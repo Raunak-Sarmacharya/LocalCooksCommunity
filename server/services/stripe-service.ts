@@ -752,6 +752,7 @@ export async function reverseTransferAndRefund(
   amount: number,
   reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer',
   options?: {
+    idempotencyKey?: string;
     reverseTransferAmount?: number;
     refundApplicationFee?: boolean;
     metadata?: Record<string, string>;
@@ -829,7 +830,7 @@ export async function reverseTransferAndRefund(
         const reversal = await stripe.transfers.createReversal(transferId, {
           amount: reversalAmount,
           metadata: options?.transferMetadata || options?.metadata,
-        });
+        }, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-reversal` } : undefined);
         transferReversalId = reversal.id;
       }
     } else if (transferId && transferredAmount > 0) {
@@ -857,7 +858,7 @@ export async function reverseTransferAndRefund(
       refundParams.metadata = options.metadata;
     }
 
-    const refund = await stripe.refunds.create(refundParams);
+    const refund = await stripe.refunds.create(refundParams, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-refund` } : undefined);
 
     if (!refund.charge || typeof refund.charge !== 'string') {
       throw new Error('Refund created but charge ID is missing');

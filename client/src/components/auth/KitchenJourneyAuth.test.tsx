@@ -26,9 +26,9 @@ vi.mock("./AuthFlow", () => ({
     initialIdentifier: string;
     step: string;
     onGoogleSignIn: () => Promise<void>;
-    registerProps: { onRegistrationStart: () => void };
+    registerProps: { onRegistrationStart: () => void; showTermsInline: boolean; initialTermsAccepted: boolean };
   }) => (
-    <div data-testid="auth-flow" data-step={step}>
+    <div data-testid="auth-flow" data-step={step} data-terms-inline={String(registerProps.showTermsInline)} data-terms-accepted={String(registerProps.initialTermsAccepted)}>
       {initialIdentifier}
       <button onClick={() => void onGoogleSignIn()}>Continue with Google</button>
       <button onClick={registerProps.onRegistrationStart}>Begin registration</button>
@@ -78,6 +78,18 @@ describe("KitchenJourneyAuth verification return", () => {
 
     expect(screen.getByTestId("auth-flow")).toHaveTextContent("chef@example.com");
     expect(screen.queryByText(/Open the verification link/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["/request-tour/42?kitchenId=17", "Continue your tour request"],
+    ["/apply-kitchen/42", "Continue your access request"],
+    ["/?journey=seller", "Continue your seller journey"],
+  ])("requires explicit terms acceptance during guest registration at %s", (path, title) => {
+    window.history.replaceState({}, "", path);
+    render(<KitchenJourneyAuth title={title} />);
+
+    expect(screen.getByTestId("auth-flow")).toHaveAttribute("data-terms-inline", "true");
+    expect(screen.getByTestId("auth-flow")).toHaveAttribute("data-terms-accepted", "false");
   });
 
   it.each(["/request-tour/42?kitchenId=17", "/apply-kitchen/42?kitchenId=17"])(

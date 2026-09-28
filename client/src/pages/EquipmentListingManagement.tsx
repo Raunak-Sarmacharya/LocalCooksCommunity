@@ -1218,12 +1218,12 @@ export function EquipmentListingContent({
             <Wrench className="mx-auto h-10 w-10 opacity-20" />
             <h3 className="mt-3 text-sm font-medium">{mt("noEquipmentListedYet")}</h3>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{mt("equipmentEmptyBody")}</p>
-            {/* Outline inside a host surface: the step's Continue is the filled action
-                there, and a second brand CTA makes the manager choose between two. */}
-            <Button className="mt-4" variant={embedded ? "outline" : "default"} onClick={openAdd}>
-              <Plus className="mr-2 h-4 w-4" />
-              {mt("addEquipment")}
-            </Button>
+            {embedded && (
+              <Button className="mt-4" variant="outline" onClick={openAdd}>
+                <Plus className="mr-2 h-4 w-4" />
+                {mt("addEquipment")}
+              </Button>
+            )}
           </div>
         ) : (
           <div>

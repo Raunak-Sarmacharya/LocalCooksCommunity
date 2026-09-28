@@ -64,7 +64,7 @@ const DEFAULT_ZOOM = 12;
  * style is called positron elsewhere in CARTO's docs.
  */
 const CARTO_BASEMAP_KEY = "cb1_3ymq_1_002c4aace0fe36bd3c0d93d2";
-const CARTO_TILE_URL = `https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_BASEMAP_KEY}`;
+export const CARTO_TILE_URL = `https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_BASEMAP_KEY}`;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => {

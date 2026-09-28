@@ -16,6 +16,8 @@ export type ChefTourRow = {
   locationContactPhone: string | null;
   kitchenName: string | null;
   status: string;
+  adminReviewDecision: string | null;
+  cancelledBy: string | null;
   scheduledAt: string;
   updatedAt: string;
   requestedRescheduleAt: string | null;
@@ -36,14 +38,17 @@ export type ChefTourRow = {
   intakeEntries: [string, unknown][];
 };
 
-export function viewingStatusBadge(status: string): ViewingStatusBadge {
+export function viewingStatusBadge(status: string, adminReviewDecision?: string | null, cancelledBy?: string | null): ViewingStatusBadge {
+  if (status === "cancelled" && (adminReviewDecision === "denied" || cancelledBy === "manager_declined")) {
+    return { variant: "destructive", labelKey: "tourStatusRejected", defaultLabel: "Rejected" };
+  }
   switch (status) {
     case "pending_local_cooks":
-      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "In review" };
+      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "Request sent" };
     case "pending":
-      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "In review" };
+      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "Request sent" };
     case "confirmed":
-      return { variant: "success", labelKey: "tourStatusConfirmed", defaultLabel: "Confirmed" };
+      return { variant: "success", labelKey: "tourStatusConfirmed", defaultLabel: "Approved" };
     case "completed":
       return { variant: "info", labelKey: "tourStatusCompleted", defaultLabel: "Completed" };
     case "cancelled":
@@ -105,6 +110,8 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     locationContactPhone: row.locationContactPhone || null,
     kitchenName: row.kitchenName || viewing.kitchen?.name || null,
     status: viewing.status || "pending",
+    adminReviewDecision: viewing.adminReviewDecision ?? null,
+    cancelledBy: viewing.cancelledBy ?? null,
     scheduledAt: viewing.scheduledAt,
     updatedAt: viewing.updatedAt || viewing.createdAt || viewing.scheduledAt,
     requestedRescheduleAt: viewing.requestedRescheduleAt ?? null,

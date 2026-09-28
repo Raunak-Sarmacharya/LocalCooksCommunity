@@ -30,6 +30,7 @@ import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
 import { CheckinPolicyTimesCard } from "@/components/booking/CheckinPolicyTimesCard";
+import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
 
 interface BookingDetails {
   id: number;
@@ -119,6 +120,7 @@ interface BookingDetails {
     netAmount?: number;
     refundedAt?: string;
     refundReason?: string;
+    metadata?: { fullRefundRequest?: FullRefundRequest } | null;
   };
   // ── Kitchen Check-In / Check-Out Lifecycle ──────────────────────────────
   checkinStatus?: string | null;
@@ -248,8 +250,12 @@ export default function BookingDetailsPage() {
     };
 
     fetchBookingDetails();
+    // Refresh decisions made in another tab when returning to the booking.
+    const refreshOnFocus = () => { void fetchBookingDetails(); };
+    window.addEventListener("focus", refreshOnFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", refreshOnFocus);
     };
   }, [bookingId, isManagerView, authLoading]);
 
@@ -906,6 +912,7 @@ export default function BookingDetailsPage() {
     status: booking.status,
     paymentStatus: booking.paymentStatus,
     transactionId: booking.paymentTransaction?.id,
+    fullRefundRequest: booking.paymentTransaction?.metadata?.fullRefundRequest,
     transactionAmount: booking.paymentTransaction?.amount,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
@@ -1048,6 +1055,7 @@ export default function BookingDetailsPage() {
             throw new Error(d.error || 'Failed to request full refund');
           }
           toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
+          setBooking({ ...booking, paymentTransaction: booking.paymentTransaction ? { ...booking.paymentTransaction, metadata: { ...booking.paymentTransaction.metadata, fullRefundRequest: { status: 'pending' } } } : undefined });
           setManagementSheetOpen(false);
           break;
         }
@@ -1206,8 +1214,13 @@ export default function BookingDetailsPage() {
             )}
           </div>
 
-          {isManagerView && (booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'cancellation_requested' || booking.checkinStatus === 'checkout_requested') && (
+          {isManagerView && (booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'cancellation_requested' || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')) || booking.checkinStatus === 'checkout_requested') && (
             <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
+            {booking.status === 'cancelled' && bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '') && (
+              <Button type="button" size="sm" variant="outline" disabled={isManagementProcessing || booking.paymentTransaction?.metadata?.fullRefundRequest?.status === 'pending'} onClick={() => handleManagementSubmit({ bookingId: booking.id, action: 'request-full-refund' })}>
+                Request full refund from Local Cooks
+              </Button>
+            )}
             {booking.status === 'pending' && (
               <Button
                 type="button"
@@ -1723,8 +1736,9 @@ export default function BookingDetailsPage() {
 
         {/* ── Sidebar ── */}
         <div className="space-y-6">
-          <Card className="sticky top-24 border-border shadow-none">
+          <Card className="border-border shadow-none">
             <CardContent className="p-5">
+              {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
               <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">{t("bdPaymentSection")}</h3>
 
               <div className="space-y-2.5">
@@ -1799,6 +1813,7 @@ export default function BookingDetailsPage() {
                           : t("bdYourPayout", { defaultValue: "Your payout" })
                       }
                       showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
+                      chargeLabel={t("bdTotalCharged", { defaultValue: "Total charged" })}
                       processingFeeLabel={
                         pricingBreakdownInput.paymentProcessorFeeIsEstimate
                           ? t("bdEstProcessingFee", {

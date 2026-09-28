@@ -1173,6 +1173,8 @@
   "needsRepair": "Needs Repair",
   "needsReview": "Needs review",
   "netRevenue": "Net Revenue",
+  "managerPayout": "Manager payout",
+  "kitchenSubtotal": "Kitchen subtotal",
   "netRevenue2": "Net Revenue:",
   "managerRevenueRemaining": "Your remaining revenue:",
   "netRevenueAfterTaxAndStripeFees": "Net revenue after tax and Stripe fees",

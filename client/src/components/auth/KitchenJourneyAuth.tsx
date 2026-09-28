@@ -17,7 +17,7 @@ export function useKitchenJourneyEmailVerified() {
   );
 }
 
-export default function KitchenJourneyAuth({ title, description = "Use your Local Cooks account or create one here. We collect your full name and phone number, and verify your email before sending a request.", initialEmail = "", initialTermsAccepted = false, subject = "request" }: { title: string; description?: string; initialEmail?: string; initialTermsAccepted?: boolean; subject?: string }) {
+export default function KitchenJourneyAuth({ title, description = "Use your Local Cooks account or create one here. ", initialEmail = "", initialTermsAccepted = false, subject = "request" }: { title: string; description?: string; initialEmail?: string; initialTermsAccepted?: boolean; subject?: string }) {
   const { user, loading, authenticateWithGoogle, updateUserVerification, refreshUserData, discardPendingGoogleRegistration } = useFirebaseAuth();
   const [step, setStep] = useState<AuthFlowStep>(() =>
     isPendingGoogleRegistration(auth.currentUser?.uid) ? "register" : "identifier"

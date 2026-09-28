@@ -1463,6 +1463,7 @@ router.get('/firebase/admin/chat/applications/:applicationId/conversation', requ
         if (!Number.isInteger(applicationId) || applicationId <= 0) return res.status(400).json({ error: 'Invalid application' });
         const application = await chefApplicationService.getApplicationById(applicationId);
         if (!application) return res.status(404).json({ error: 'Application not found' });
+        if (application.status !== 'approved') return res.status(409).json({ error: 'Chat opens after the request to apply is approved' });
         const conversationId = application.chat_conversation_id || await initializeConversation(application);
         if (!conversationId) return res.status(409).json({ error: 'Chat is unavailable for this application' });
         const snapshot = await (await getAdminDb()).collection('conversations').doc(conversationId).get();

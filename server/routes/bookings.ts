@@ -710,23 +710,19 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
 
         for (const booking of expiredRequests) {
             try {
-                await db.update(kitchenBookings)
-                    .set({ status: 'cancelled', updatedAt: new Date() })
-                    .where(eq(kitchenBookings.id, booking.id));
-
-                // ── CASCADE: Cancel associated storage & equipment bookings ──
-                try {
+                await db.transaction(async tx => {
                     const { storageBookings: sbT, equipmentBookings: ebT } = await import("@shared/schema");
                     const { ne: neOp } = await import("drizzle-orm");
-                    await db.update(sbT)
+                    await tx.update(kitchenBookings)
+                        .set({ status: 'cancelled', updatedAt: new Date() })
+                        .where(eq(kitchenBookings.id, booking.id));
+                    await tx.update(sbT)
                         .set({ status: "cancelled", updatedAt: new Date() })
                         .where(and(eq(sbT.kitchenBookingId, booking.id), neOp(sbT.status, "cancelled")));
-                    await db.update(ebT)
+                    await tx.update(ebT)
                         .set({ status: "cancelled", updatedAt: new Date() })
                         .where(and(eq(ebT.kitchenBookingId, booking.id), neOp(ebT.status, "cancelled")));
-                } catch (cascadeErr: any) {
-                    logger.warn(`[Cron] Cascade cancel failed for auto-accepted booking ${booking.id}:`, cascadeErr);
-                }
+                });
 
                 // ── JSONB SYNC: Mark all items as rejected ──
                 try {
@@ -755,7 +751,7 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
                             target: 'chef',
                             type: 'booking_cancellation_accepted',
                             title: 'Cancellation Auto-Accepted',
-                            message: 'Your cancellation request was automatically accepted. A refund may be processed by the kitchen manager.',
+                            message: 'Your cancellation request was automatically accepted. Cancellation does not confirm a refund. Any refund is handled separately.',
                             metadata: { bookingId: booking.id },
                         });
                     } catch (notifErr) {
@@ -806,7 +802,7 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
                             target: 'chef',
                             type: 'booking_cancellation_accepted',
                             title: 'Storage Cancellation Auto-Accepted',
-                            message: 'Your storage cancellation request was automatically accepted. A refund may be processed by the kitchen manager.',
+                            message: 'Your storage cancellation request was automatically accepted. Cancellation does not confirm a refund. Any refund is handled separately.',
                             metadata: { storageBookingId: sb.id },
                         });
                     } catch (notifErr) {
@@ -2706,9 +2702,18 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             }
 
             // Immediate cancel — no manager approval needed
-            await db.update(kitchenBookings)
-                .set({ status: 'cancelled', updatedAt: new Date() })
-                .where(eq(kitchenBookings.id, id));
+            await db.transaction(async tx => {
+                const { equipmentBookings } = await import("@shared/schema");
+                await tx.update(kitchenBookings)
+                    .set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(eq(kitchenBookings.id, id));
+                await tx.update(storageBookings)
+                    .set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(eq(storageBookings.kitchenBookingId, id));
+                await tx.update(equipmentBookings)
+                    .set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(eq(equipmentBookings.kitchenBookingId, id));
+            });
 
             // Phase 3: Remove access code from smart lock
             try {
@@ -2752,9 +2757,18 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         }
 
         // Fallback: For any other state, attempt direct cancel
-        await db.update(kitchenBookings)
-            .set({ status: 'cancelled', updatedAt: new Date() })
-            .where(eq(kitchenBookings.id, id));
+        await db.transaction(async tx => {
+            const { equipmentBookings } = await import("@shared/schema");
+            await tx.update(kitchenBookings)
+                .set({ status: 'cancelled', updatedAt: new Date() })
+                .where(eq(kitchenBookings.id, id));
+            await tx.update(storageBookings)
+                .set({ status: 'cancelled', updatedAt: new Date() })
+                .where(eq(storageBookings.kitchenBookingId, id));
+            await tx.update(equipmentBookings)
+                .set({ status: 'cancelled', updatedAt: new Date() })
+                .where(eq(equipmentBookings.kitchenBookingId, id));
+        });
 
         sendCancellationNotifications(booking, id, 'cancelled').catch(err =>
             logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)

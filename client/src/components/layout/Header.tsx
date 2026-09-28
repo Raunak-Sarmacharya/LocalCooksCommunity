@@ -302,7 +302,6 @@ const hasActiveApplication = (applications?: Application[]) => {
 
 export default function Header({
   position = "fixed",
-  hideHowItWorks = false,
   centerContent,
 }: {
   position?: "fixed" | "static";
@@ -769,13 +768,6 @@ export default function Header({
                 </DropdownMenuContent>
               </DropdownMenu>
             </li>
-            {!hideHowItWorks && (
-              <li>
-                <a href="#how-it-works" className={NAV_ITEM} onClick={(e) => scrollToSection("how-it-works", e)}>
-                  {t("howItWorks")}
-                </a>
-              </li>
-            )}
             <li>
               <a href="#resources" className={NAV_ITEM} onClick={(e) => scrollToSection("resources", e)}>
                 {t("resources")}
@@ -1033,16 +1025,6 @@ export default function Header({
                 </a>
               </li>
               <li role="separator" className="border-t border-gray-200/70 my-1" />
-              {!hideHowItWorks && <li>
-                <a
-                  href="#how-it-works"
-                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={(e) => {
-                    scrollToSection("how-it-works", e);
-                    closeMenu();
-                  }}
-                >{t("howItWorks")}</a>
-              </li>}
               <li>
                 <a
                   href="#resources"

@@ -38,6 +38,7 @@ export interface DateFieldProps {
   /** Block days before today. Default true — the common case is an expiry. */
   minToday?: boolean;
   disabled?: boolean;
+  disabledDate?: (date: Date) => boolean;
   className?: string;
 }
 
@@ -48,6 +49,7 @@ export function DateField({
   placeholder,
   minToday = true,
   disabled,
+  disabledDate,
   className,
 }: DateFieldProps) {
   const [open, setOpen] = React.useState(false);
@@ -91,7 +93,7 @@ export function DateField({
             onChange(date ? format(date, "yyyy-MM-dd") : "");
             setOpen(false);
           }}
-          disabled={minToday ? (date) => date < new Date(new Date().setHours(0, 0, 0, 0)) : undefined}
+          disabled={(date) => (minToday && date < new Date(new Date().setHours(0, 0, 0, 0))) || !!disabledDate?.(date)}
           initialFocus
           className="w-[280px] p-3"
         />

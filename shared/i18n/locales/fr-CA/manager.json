@@ -1173,6 +1173,8 @@
   "needsRepair": "Besoin de réparation",
   "needsReview": "Besoin d'un examen",
   "netRevenue": "Revenu net",
+  "managerPayout": "Versement au gestionnaire",
+  "kitchenSubtotal": "Sous-total de la cuisine",
   "netRevenue2": "Revenu net :",
   "managerRevenueRemaining": "Votre revenu restant :",
   "netRevenueAfterTaxAndStripeFees": "Revenu net après impôts et frais Stripe",

@@ -1040,24 +1040,19 @@ router.put(
       if (action === "accept") {
         // Accept: Cancel the booking + cascade to all associated storage/equipment.
         // Manager then uses the existing "Issue Refund" action to process the refund.
-        await db
-          .update(kitchenBookings)
-          .set({ status: "cancelled", updatedAt: new Date() })
-          .where(eq(kitchenBookings.id, bookingId));
-
-        // ── CASCADE: Cancel associated storage & equipment bookings ──────────
-        // When the entire kitchen booking is cancelled, all bundled items must follow.
-        try {
+        // Kitchen and linked bookings must cancel together or roll back together.
+        await db.transaction(async tx => {
           const { storageBookings: sbTable, equipmentBookings: ebTable } = await import("@shared/schema");
-          await db.update(sbTable)
+          await tx.update(kitchenBookings)
+            .set({ status: "cancelled", updatedAt: new Date() })
+            .where(eq(kitchenBookings.id, bookingId));
+          await tx.update(sbTable)
             .set({ status: "cancelled", updatedAt: new Date() })
             .where(and(eq(sbTable.kitchenBookingId, bookingId), ne(sbTable.status, "cancelled")));
-          await db.update(ebTable)
+          await tx.update(ebTable)
             .set({ status: "cancelled", updatedAt: new Date() })
             .where(and(eq(ebTable.kitchenBookingId, bookingId), ne(ebTable.status, "cancelled")));
-        } catch (cascadeErr: any) {
-          logger.warn(`[Cancellation Request] Cascade cancel failed for booking ${bookingId}:`, cascadeErr);
-        }
+        });
 
         // ── JSONB SYNC: Mark all items as rejected in JSONB for table display ──
         try {
@@ -1093,7 +1088,7 @@ router.put(
               type: "booking_cancellation_accepted",
               title: "Cancellation Accepted",
               message:
-                "Your booking cancellation request has been accepted. A refund will be processed shortly.",
+                "Your booking cancellation request has been accepted. Cancellation does not confirm a refund. Any refund is handled separately.",
               metadata: { bookingId },
             });
 
@@ -1334,7 +1329,7 @@ router.put(
               type: "booking_cancellation_accepted",
               title: "Storage Cancellation Accepted",
               message:
-                "Your storage cancellation request has been accepted. A refund will be processed shortly.",
+                "Your storage cancellation request has been accepted. Cancellation does not confirm a refund. Any refund is handled separately.",
               metadata: { storageBookingId },
             });
 
@@ -1521,9 +1516,11 @@ router.post(
           .json({ error: "Refund amount must be a positive number of cents" });
       }
 
+      const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM payment_transactions WHERE id = ${transactionId} FOR UPDATE`);
       const { findPaymentTransactionById, updatePaymentTransaction } =
         await import("../services/payment-transactions-service");
-      const transaction = await findPaymentTransactionById(transactionId, db);
+      const transaction = await findPaymentTransactionById(transactionId, tx);
 
       if (!transaction) {
         return res.status(404).json({ error: "Transaction not found" });
@@ -1535,7 +1532,7 @@ router.post(
         (await getManagerIdForBooking(
           transaction.booking_id,
           transaction.booking_type as any,
-          db,
+          tx,
         ));
 
       if (!transactionManagerId || transactionManagerId !== managerId) {
@@ -1557,6 +1554,10 @@ router.post(
           .json({
             error: `Refunds are only allowed for paid transactions. Current status: ${transaction.status}`,
           });
+      }
+
+      if ((transaction.metadata as any)?.fullRefundRequest?.status === "pending") {
+        return res.status(409).json({ error: "A full refund is awaiting admin review. Resolve that request before issuing another refund." });
       }
 
       // Extract transaction amounts
@@ -1627,6 +1628,7 @@ router.post(
         refundToCustomer,
         stripeReason,
         {
+          idempotencyKey: `manager-refund-${transactionId}-${currentRefundAmount}-${amountCents}`,
           reverseTransferAmount: deductFromManager,
           // Separate-charges flow has no application_fee; service fee is returned
           // by including it in the customer refund (platform absorbs from balance).
@@ -1703,7 +1705,7 @@ router.post(
           lastSyncedAt: new Date(),
           metadata: updatedMetadata,
         },
-        db,
+        tx,
       );
 
       // Update booking payment status for chef visibility
@@ -1815,7 +1817,7 @@ router.post(
         0,
       );
 
-      res.json({
+      return {
         success: true,
         refundId: refund.refundId,
         status: newStatus,
@@ -1830,7 +1832,9 @@ router.post(
         originalStripeFee: stripeProcessingFee,
         originalServiceFee: serviceFee,
         transferReversalId: refund.transferReversalId,
+      };
       });
+      if (!res.headersSent) res.json(result);
     } catch (error: any) {
       logger.error("[Refund] Error processing refund:", error);
       return errorResponse(res, error);
@@ -1855,12 +1859,14 @@ router.post(
         return res.status(400).json({ error: "Invalid transaction ID" });
       }
 
+      const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM payment_transactions WHERE id = ${transactionId} FOR UPDATE`);
       const {
         findPaymentTransactionById,
         updatePaymentTransaction,
         addPaymentHistory,
       } = await import("../services/payment-transactions-service");
-      const transaction = await findPaymentTransactionById(transactionId, db);
+      const transaction = await findPaymentTransactionById(transactionId, tx);
       if (!transaction) return res.status(404).json({ error: "Transaction not found" });
 
       const transactionManagerId = transaction.manager_id ?? await getManagerIdForBooking(
@@ -1914,7 +1920,7 @@ router.post(
       };
       await updatePaymentTransaction(transactionId, {
         metadata: { ...metadata, fullRefundRequest },
-      }, db);
+      }, tx);
       await addPaymentHistory(transactionId, {
         previousStatus: transaction.status,
         newStatus: transaction.status,
@@ -1923,9 +1929,11 @@ router.post(
         description: `Manager requested full remaining refund of $${(requestedAmount / 100).toFixed(2)}`,
         metadata: fullRefundRequest,
         createdBy: managerId,
-      }, db);
+      }, tx);
 
-      return res.status(201).json({ success: true, request: fullRefundRequest });
+      return { success: true, request: fullRefundRequest };
+      });
+      if (!res.headersSent) return res.status(201).json(result);
     } catch (error) {
       logger.error("[Full Refund Request] Error:", error);
       return errorResponse(res, error);
@@ -4895,7 +4903,16 @@ router.put(
       }
 
       // Update booking status
-      await bookingService.updateBookingStatus(id, status);
+      if (status === "cancelled") {
+        const { kitchenBookings, storageBookings, equipmentBookings } = await import("@shared/schema");
+        await db.transaction(async tx => {
+          await tx.update(kitchenBookings).set({ status, updatedAt: new Date() }).where(eq(kitchenBookings.id, id));
+          await tx.update(storageBookings).set({ status, updatedAt: new Date() }).where(eq(storageBookings.kitchenBookingId, id));
+          await tx.update(equipmentBookings).set({ status, updatedAt: new Date() }).where(eq(equipmentBookings.kitchenBookingId, id));
+        });
+      } else {
+        await bookingService.updateBookingStatus(id, status);
+      }
 
       // Update associated storage bookings — supports modular per-item approval
       // If storageActions is provided, each storage booking is handled individually
@@ -4914,7 +4931,7 @@ router.put(
               }
             }
             for (const storageBooking of associatedStorageBookings) {
-              const action = actionMap.get(storageBooking.id) || status;
+              const action = status === "cancelled" ? "cancelled" : actionMap.get(storageBooking.id) || status;
               await bookingService.updateStorageBooking(storageBooking.id, {
                 status: action as 'pending' | 'confirmed' | 'cancelled',
               });
@@ -4959,7 +4976,7 @@ router.put(
               }
             }
             for (const equipmentBooking of associatedEquipmentBookings) {
-              const action = actionMap.get(equipmentBooking.id) || status;
+              const action = status === "cancelled" ? "cancelled" : actionMap.get(equipmentBooking.id) || status;
               await bookingService.updateEquipmentBooking(equipmentBooking.id, {
                 status: action as 'pending' | 'confirmed' | 'cancelled',
               });

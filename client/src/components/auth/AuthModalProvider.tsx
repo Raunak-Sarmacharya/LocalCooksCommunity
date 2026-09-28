@@ -499,8 +499,6 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
         description: applicationData.businessDescription || "",
         usageFrequency: applicationData.usageFrequency || "",
         sessionDuration: "",
-        termsAgree: true,
-        accuracyAgree: true,
       });
 
       Object.entries(applicationData).forEach(([key, value]) => {
@@ -545,8 +543,6 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       ) {
         formData.append("foodEstablishmentCert", "notSure");
       }
-      formData.append("termsAgree", "true");
-      formData.append("accuracyAgree", "true");
       formData.append("businessDescription", businessInfo);
 
       let resolvedLocationId: string | null = null;

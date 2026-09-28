@@ -55,6 +55,7 @@ export default function RequestTourPage() {
       description={loading ? "Checking this kitchen and your existing requests." : applicationError ? "Please check your kitchen access before requesting a tour." : hasApplication ? "Tours are available before requesting access to a kitchen." : "We could not find this kitchen."}
       imageUrl={kitchen?.imageUrl}
       onBack={back}
+      backLabel="Cancel"
       aside={<p className="text-sm text-muted-foreground">{loading ? "Your choices will stay here as the page loads." : "You can return to this kitchen's listing."}</p>}
     >
       <div role={loading ? "status" : undefined} className="space-y-4 text-sm text-muted-foreground">

@@ -129,7 +129,7 @@ export function getApplicationColumns({
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>{mt("actions")}</DropdownMenuLabel>
 
-                            {(app.status === "approved" || app.status === "inReview") && onChat && (
+                            {app.status === "approved" && onChat && (
                                 <DropdownMenuItem onClick={() => onChat(app)}>
                                     <MessageCircle className="mr-2 h-4 w-4" />{mt("chatWithChef")}</DropdownMenuItem>
                             )}

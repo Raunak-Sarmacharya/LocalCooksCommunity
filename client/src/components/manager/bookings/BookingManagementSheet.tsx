@@ -10,6 +10,7 @@ import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export interface BookingForManagement {
 
   // Payment/transaction info
   transactionId?: number;
+  fullRefundRequest?: FullRefundRequest | null;
   transactionAmount?: number;
   stripeProcessingFee?: number;
   managerRevenue?: number;
@@ -551,6 +553,15 @@ function BookingManagementContent({
         <Separator />
 
         {/* ── Kitchen Session ── */}
+        <RefundRequestStatus request={booking.fullRefundRequest} />
+        {booking.transactionId && ["paid", "succeeded", "partially_refunded"].includes(booking.paymentStatus || "") && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Request a full refund for admin approval.</p>
+            <Button type="button" variant="outline" size="sm" onClick={handleFullRefundRequest} disabled={isProcessing || booking.fullRefundRequest?.status === "pending"}>
+              Request full refund from Local Cooks
+            </Button>
+          </div>
+        )}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
             <Calendar className="h-3.5 w-3.5" />{mt("kitchenSession")}</p>
@@ -1009,18 +1020,6 @@ function BookingManagementContent({
                       <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={handleFullRefundRequest}
-                      disabled={isProcessing || !booking.transactionId}
-                    >
-                      Request full refund from admin
-                    </Button>
-                  </div>
                 </div>
               )}
 

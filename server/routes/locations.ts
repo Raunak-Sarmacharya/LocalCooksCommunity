@@ -345,6 +345,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         );
 
         // Sanitize and normalize kitchens
+        const coordinates = (await geocodeAddresses([location.address])).get(location.address);
         const sanitizedKitchens = await Promise.all(activeKitchens.map(async (kitchen: any) => {
             const kImageUrl = normalizeImageUrl(
                 kitchen.imageUrl || null,
@@ -382,6 +383,8 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 pricingModel: kitchen.pricingModel || 'hourly',
                 currency: kitchen.currency || 'CAD',
                 availability,
+                latitude: coordinates?.lat ?? null,
+                longitude: coordinates?.lng ?? null,
             };
         }));
 

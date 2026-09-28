@@ -508,6 +508,61 @@ router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) 
     }
 });
 
+// Public operating hours include manager-set date overrides, but not booking capacity.
+router.get("/public/kitchens/:kitchenId/operating-schedule", async (req: Request, res: Response) => {
+    try {
+        const kitchenId = Number(req.params.kitchenId);
+        if (!Number.isInteger(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const location = await locationService.getLocationById(kitchen.locationId);
+        const timezone = location.timezone || "America/St_Johns";
+        const parts = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+        }).formatToParts(new Date());
+        const part = (type: string) => parts.find((item) => item.type === type)!.value;
+        const today = `${part("year")}-${part("month")}-${part("day")}`;
+        const dateAt = (offset: number) => {
+            const date = new Date(`${today}T12:00:00Z`);
+            date.setUTCDate(date.getUTCDate() + offset);
+            return date;
+        };
+        const [weekly, overrides] = await Promise.all([
+            kitchenService.getKitchenAvailability(kitchenId),
+            kitchenService.getKitchenDateOverrides(
+                kitchenId,
+                new Date(`${dateAt(-6).toISOString().slice(0, 10)}T00:00:00Z`),
+                new Date(`${dateAt(35).toISOString().slice(0, 10)}T23:59:59.999Z`),
+            ),
+        ]);
+        const weeklyByDay = new Map(weekly.map((row) => [row.dayOfWeek, row]));
+        const overridesByDate = new Map(overrides.map((row) => [
+            new Date(row.specificDate).toISOString().slice(0, 10), row,
+        ]));
+        const days = Array.from({ length: 42 }, (_, index) => {
+            const date = dateAt(index - 6);
+            const dateKey = date.toISOString().slice(0, 10);
+            const hours = overridesByDate.get(dateKey) ?? weeklyByDay.get(date.getUTCDay());
+            const isOpen = !!(hours?.isAvailable && hours.startTime && hours.endTime);
+            return {
+                date: dateKey,
+                isOpen,
+                startTime: isOpen ? hours!.startTime : null,
+                endTime: isOpen ? hours!.endTime : null,
+            };
+        });
+        res.json({ timezone, today, days });
+    } catch (error) {
+        logger.error("Error fetching public operating schedule:", error);
+        res.status(500).json({ error: "Failed to fetch operating schedule" });
+    }
+});
+
 // Public month availability for kitchen preview calendar (no auth)
 router.get("/public/kitchens/:kitchenId/month-availability", async (req: Request, res: Response) => {
     try {

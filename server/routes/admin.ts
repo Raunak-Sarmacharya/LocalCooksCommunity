@@ -3729,27 +3729,29 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
         const decision = req.body?.decision;
         const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
         if (!Number.isInteger(transactionId) || transactionId <= 0) {
-            return res.status(400).json({ error: "Invalid transaction ID" });
+            throw Object.assign(new Error("Invalid transaction ID"), { status: 400 });
         }
         if (!['approve', 'reject'].includes(decision)) {
-            return res.status(400).json({ error: "Decision must be approve or reject" });
+            throw Object.assign(new Error("Decision must be approve or reject"), { status: 400 });
         }
 
+        const result = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT id FROM payment_transactions WHERE id = ${transactionId} FOR UPDATE`);
         const { findPaymentTransactionById, updatePaymentTransaction, addPaymentHistory } = await import("../services/payment-transactions-service");
-        const transaction = await findPaymentTransactionById(transactionId, db);
-        if (!transaction) return res.status(404).json({ error: "Transaction not found" });
+        const transaction = await findPaymentTransactionById(transactionId, tx);
+        if (!transaction) throw Object.assign(new Error("Transaction not found"), { status: 404 });
         const metadata = transaction.metadata && typeof transaction.metadata === 'object'
             ? transaction.metadata as Record<string, any>
             : {};
         const request = metadata.fullRefundRequest;
         if (!request || request.status !== 'pending') {
-            return res.status(409).json({ error: "No pending full refund request exists for this transaction" });
+            throw Object.assign(new Error("No pending full refund request exists for this transaction"), { status: 409 });
         }
 
         const decidedAt = new Date().toISOString();
         if (decision === 'reject') {
             const resolvedRequest = { ...request, status: 'rejected', decidedAt, decidedBy: adminId, note: note || null };
-            await updatePaymentTransaction(transactionId, { metadata: { ...metadata, fullRefundRequest: resolvedRequest } }, db);
+            await updatePaymentTransaction(transactionId, { metadata: { ...metadata, fullRefundRequest: resolvedRequest } }, tx);
             await addPaymentHistory(transactionId, {
                 previousStatus: transaction.status,
                 newStatus: transaction.status,
@@ -3758,15 +3760,15 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
                 description: 'Admin rejected the manager full refund request',
                 metadata: resolvedRequest,
                 createdBy: adminId,
-            }, db);
-            return res.json({ success: true, decision: 'rejected' });
+            }, tx);
+            return { success: true, decision: 'rejected' };
         }
 
         if (!transaction.payment_intent_id) {
-            return res.status(400).json({ error: "No payment intent linked to this transaction" });
+            throw Object.assign(new Error("No payment intent linked to this transaction"), { status: 400 });
         }
         if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
-            return res.status(400).json({ error: "Only paid transactions can be refunded" });
+            throw Object.assign(new Error("Only paid transactions can be refunded"), { status: 400 });
         }
 
         const totalAmount = Number(transaction.amount || 0);
@@ -3791,7 +3793,7 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
         );
         const requestedAdminAmount = req.body?.amount == null ? maxRefundable : Math.round(Number(req.body.amount));
         if (!Number.isFinite(requestedAdminAmount) || requestedAdminAmount <= 0 || requestedAdminAmount > maxRefundable) {
-            return res.status(400).json({ error: `Refund amount must be between $0.01 and $${(maxRefundable / 100).toFixed(2)}`, maxRefundable });
+            throw Object.assign(new Error(`Refund amount must be between $0.01 and $${(maxRefundable / 100).toFixed(2)}`), { status: 400 });
         }
 
         const { reverseTransferAndRefund } = await import("../services/stripe-service");
@@ -3802,6 +3804,7 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
             requestedAdminAmount,
             'requested_by_customer',
             {
+                idempotencyKey: `admin-refund-${transactionId}-${request.requestedAt}`,
                 reverseTransferAmount: managerDebitCents,
                 refundApplicationFee: false,
                 metadata: {
@@ -3847,15 +3850,21 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
                 refunds: [...(Array.isArray(metadata.refunds) ? metadata.refunds : []), refundEntry],
                 lastRefund: refundEntry,
             },
-        }, db);
+        }, tx);
 
         const paymentStatus = newStatus === 'refunded' ? 'refunded' : 'partially_refunded';
         if (transaction.booking_type === 'kitchen' || transaction.booking_type === 'bundle') {
-            await db.update(kitchenBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(kitchenBookings.id, transaction.booking_id));
+            await tx.update(kitchenBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(kitchenBookings.id, transaction.booking_id));
+            // A complete bundle refund applies to its charged linked items as well.
+            // Partial refunds have no item allocation, so do not mark each item partially refunded.
+            if (newStatus === 'refunded') {
+                await tx.update(storageBookings).set({ paymentStatus, updatedAt: new Date() }).where(and(eq(storageBookings.kitchenBookingId, transaction.booking_id), inArray(storageBookings.paymentStatus, ['paid', 'partially_refunded'])));
+                await tx.update(equipmentBookings).set({ paymentStatus, updatedAt: new Date() }).where(and(eq(equipmentBookings.kitchenBookingId, transaction.booking_id), inArray(equipmentBookings.paymentStatus, ['paid', 'partially_refunded'])));
+            }
         } else if (transaction.booking_type === 'storage') {
-            await db.update(storageBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(storageBookings.id, transaction.booking_id));
+            await tx.update(storageBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(storageBookings.id, transaction.booking_id));
         } else if (transaction.booking_type === 'equipment') {
-            await db.update(equipmentBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(equipmentBookings.id, transaction.booking_id));
+            await tx.update(equipmentBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(equipmentBookings.id, transaction.booking_id));
         }
         await addPaymentHistory(transactionId, {
             previousStatus: transaction.status,
@@ -3865,12 +3874,14 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
             description: `Admin approved refund of $${(requestedAdminAmount / 100).toFixed(2)}`,
             metadata: resolvedRequest,
             createdBy: adminId,
-        }, db);
+        }, tx);
 
-        return res.json({ success: true, decision: 'approved', refund: refundEntry, status: newStatus });
+        return { success: true, decision: 'approved', refund: refundEntry, status: newStatus };
+        });
+        return res.json(result);
     } catch (error: any) {
         logger.error('[Admin Full Refund Decision] Error:', error);
-        return res.status(500).json({ error: error?.message || 'Failed to resolve refund request' });
+        return res.status(error?.status || 500).json({ error: error?.message || 'Failed to resolve refund request' });
     }
 });
 

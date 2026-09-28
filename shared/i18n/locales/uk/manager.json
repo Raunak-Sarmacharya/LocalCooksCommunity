@@ -1173,6 +1173,8 @@
   "needsRepair": "Потребує ремонту",
   "needsReview": "Потребує перегляду",
   "netRevenue": "Чистий дохід",
+  "managerPayout": "Виплата менеджеру",
+  "kitchenSubtotal": "Підсумок кухні",
   "netRevenue2": "Чистий дохід:",
   "managerRevenueRemaining": "Ваш залишковий дохід:",
   "netRevenueAfterTaxAndStripeFees": "Чистий дохід після сплати податків і комісій Stripe",

@@ -949,8 +949,8 @@ router.post(
           chefId,
           type: "booking_confirmed", // Reusing this type, but logically it's a request receipt
           priority: "normal",
-          title: "Kitchen Tour Request Received",
-          message: `Your tour request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to Local Cooks for review.`,
+          title: "Kitchen tour request sent",
+          message: `Your tour request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} was sent. We'll let you know when it is approved or rejected.`,
           metadata: {
             viewingId: newViewing.id,
             locationId,
@@ -1395,23 +1395,13 @@ router.patch(
             })).catch(err => logger.error("Failed to send manager tour request email", err));
           }
         }
-        await notificationService.createForChef({
-          chefId: record.viewing.chefId,
-          type: "booking_confirmed",
-          priority: "normal",
-          title: "Tour request sent to the kitchen manager",
-          message: `Local Cooks approved your request for ${kitchenName}. The kitchen manager will make the final decision.`,
-          metadata: { viewingId, locationId: record.viewing.locationId },
-          actionUrl: "/dashboard?view=viewings",
-          actionLabel: "View Details",
-        });
       } else {
         await notificationService.createForChef({
           chefId: record.viewing.chefId,
           type: "booking_cancelled",
           priority: "high",
-          title: "Tour request update",
-          message: `Local Cooks could not approve your request for ${kitchenName}. Reason: ${reason}`,
+          title: "Tour request rejected",
+          message: `Your tour request for ${kitchenName} was rejected. Reason: ${reason}`,
           metadata: { viewingId, locationId: record.viewing.locationId },
           actionUrl: "/dashboard?view=viewings",
           actionLabel: "View Details",
@@ -1527,7 +1517,7 @@ router.patch(
       }
 
       if (parsed.data.status === "cancelled") {
-        updateData.cancelledBy = isChef ? "chef" : "manager";
+        updateData.cancelledBy = isChef ? "chef" : viewing.status === "pending" ? "manager_declined" : "manager";
         updateData.cancellationReason = parsed.data.cancellationReason;
         updateData.cancelledAt = new Date();
       }
@@ -1596,8 +1586,10 @@ router.patch(
             chefId: viewing.chefId,
             type: "booking_cancelled",
             priority: "high",
-            title: "Kitchen Tour Cancelled",
-            message: `Your tour at ${locationName} has been cancelled by the manager.${parsed.data.cancellationReason ? ` Reason: ${parsed.data.cancellationReason}` : ""} Please book a new time.`,
+            title: viewing.status === "pending" ? "Tour request rejected" : "Kitchen Tour Cancelled",
+            message: viewing.status === "pending"
+              ? `Your tour request at ${locationName} was rejected by the manager.${parsed.data.cancellationReason ? ` Reason: ${parsed.data.cancellationReason}` : ""}`
+              : `Your tour at ${locationName} has been cancelled by the manager.${parsed.data.cancellationReason ? ` Reason: ${parsed.data.cancellationReason}` : ""} Please book a new time.`,
             metadata: { viewingId },
             actionUrl: `/dashboard?view=viewings`,
             actionLabel: "Reschedule",

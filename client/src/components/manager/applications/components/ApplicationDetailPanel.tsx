@@ -273,7 +273,7 @@ export function ApplicationDetailPanel({
                     </div>
 
                     {/* Chat Button */}
-                    {(application.status === 'approved' || application.chat_conversation_id) && (
+                    {application.status === 'approved' && (
                         <Button
                             variant="ghost"
                             size="sm"

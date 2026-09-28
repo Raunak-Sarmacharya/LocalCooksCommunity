@@ -121,7 +121,7 @@ function CtaLabelSkeleton({
   );
 }
 
-/** One-line description with “Show all” immediately after the truncated text. */
+/** One-line description that expands in place. */
 function ExpandableDescription({
   text,
   title,
@@ -166,7 +166,14 @@ function ExpandableDescription({
           className="pointer-events-none invisible absolute whitespace-nowrap text-sm font-medium"
           aria-hidden
         />
-        {cut !== null ? (
+        {open ? (
+          <>
+            <span className="whitespace-pre-wrap">{text}</span>{" "}
+            <button type="button" onClick={() => setOpen(false)} className="font-medium text-[#F51042] hover:underline">
+              {t("showLess", "Show less")}
+            </button>
+          </>
+        ) : cut !== null ? (
           <>
             <span>{cut}… </span>
             <button
@@ -181,22 +188,6 @@ function ExpandableDescription({
           <span>{preview}</span>
         )}
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="flex max-h-[85vh] w-[min(100vw-1.5rem,32rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
-        >
-          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-            <DialogTitle>{title || t("aboutThisKitchen", "About this kitchen")}</DialogTitle>
-            <DialogDescription className="sr-only">
-              {t("fullKitchenDescription", "Full kitchen description")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{text}</p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -430,6 +421,8 @@ interface StorageListing {
 }
 
 interface PublicKitchen {
+  latitude?: number | null;
+  longitude?: number | null;
   id: number;
   name: string;
   description?: string | null;
@@ -462,6 +455,60 @@ const DAY_SHORT = ["daySun", "dayMon", "dayTue", "dayWed", "dayThu", "dayFri", "
 
 function formatHourLabel(time: string): string {
   return formatTime(time.slice(0, 5));
+}
+
+function PreviewScroll({ children, className, axis = "x" }: { children: ReactNode; className?: string; axis?: "x" | "y" }) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ before: false, after: false });
+  const check = useCallback(() => {
+    const node = viewport.current;
+    if (!node) return;
+    const position = axis === "x" ? node.scrollLeft : node.scrollTop;
+    const size = axis === "x" ? node.clientWidth : node.clientHeight;
+    const total = axis === "x" ? node.scrollWidth : node.scrollHeight;
+    setEdges({ before: position > 2, after: position + size < total - 2 });
+  }, [axis]);
+  useEffect(() => {
+    const node = viewport.current;
+    if (!node) return;
+    const observer = new ResizeObserver(check);
+    observer.observe(node);
+    Array.from(node.children).forEach(child => observer.observe(child));
+    check();
+    return () => observer.disconnect();
+  }, [check, children]);
+  return <div className="relative min-w-0">
+    <div ref={viewport} onScroll={check} tabIndex={0} className={cn("scrollbar-none", axis === "x" ? "overflow-x-auto" : "overflow-y-auto", className)}>{children}</div>
+    {(["before", "after"] as const).map(edge => edges[edge] && <button key={edge} type="button" aria-label={`Scroll ${axis === "x" ? edge === "before" ? "left" : "right" : edge === "before" ? "up" : "down"}`} onClick={() => viewport.current?.scrollBy({ [axis === "x" ? "left" : "top"]: (edge === "before" ? -1 : 1) * (axis === "x" ? viewport.current.clientWidth : viewport.current.clientHeight) * 0.75, behavior: "smooth" })} className={cn("absolute z-10 flex items-center justify-center text-muted-foreground", axis === "x" ? "inset-y-0 w-8" : "inset-x-0 h-8", axis === "x" ? edge === "before" ? "left-0 bg-gradient-to-r from-background to-transparent" : "right-0 bg-gradient-to-l from-background to-transparent" : edge === "before" ? "top-0 bg-gradient-to-b from-background to-transparent" : "bottom-0 bg-gradient-to-t from-background to-transparent")}><PreviewIcon icon={`mdi:chevron-${axis === "x" ? edge === "before" ? "left" : "right" : edge === "before" ? "up" : "down"}`} /></button>)}
+  </div>;
+}
+
+function PreviewLocationName({ name }: { name: string }) {
+  const nameRef = useRef<HTMLButtonElement>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const nameElement = nameRef.current;
+    if (!nameElement) return;
+    const measure = () => setTruncated(nameElement.scrollWidth > nameElement.clientWidth + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(nameElement);
+    return () => observer.disconnect();
+  }, [name]);
+
+  return (
+    <h1 className="min-w-0 text-xl font-semibold tracking-tight text-[#1F1F1F] sm:text-2xl">
+      <Popover>
+        <PopoverTrigger asChild>
+          <button ref={nameRef} type="button" disabled={!truncated} aria-label={truncated ? `Show full location name: ${name}` : undefined} className="block w-full min-w-0 truncate text-left disabled:cursor-default">
+            {name}
+          </button>
+        </PopoverTrigger>
+        {truncated && <PopoverContent align="start" className="w-[min(22rem,calc(100vw-2rem))] break-words p-3 text-sm font-medium leading-relaxed">{name}</PopoverContent>}
+      </Popover>
+    </h1>
+  );
 }
 
 function getKitchenImages(kitchen: PublicKitchen): string[] {
@@ -574,15 +621,6 @@ function DockBookingTotalBesideApply({
       </p>
     </div>
   );
-}
-
-function availableDaySummary(availability: PublicKitchen["availability"] | undefined, t: any): string | null {
-  if (!availability || availability.length === 0) return null;
-  const days = availability.filter((a) => a.isAvailable);
-  if (days.length === 0) return t("hoursNotListed", "Hours not listed");
-  if (days.length === 7) return t("openEveryDay", "Open every day");
-  const daysStr = days.map((a) => t(DAY_SHORT[a.dayOfWeek])).join(", ");
-  return t("openDays", { days: daysStr, defaultValue: `Open ${daysStr}` });
 }
 
 // Availability Display Component (Old Eagle 35 Style)
@@ -930,7 +968,7 @@ function IncludedEquipmentList({
                   {visible.map((item) => (
                     <li
                       key={item.id}
-                      className="flex min-w-0 items-center gap-2 py-1"
+                      className="flex min-w-0 items-center gap-2 py-1.5"
                     >
                       <InventoryTypeIcon
                         icon={resolveEquipmentIcon(item.equipmentType, item.category)}
@@ -965,7 +1003,7 @@ function PricedRow({
   icon?: string;
 }) {
   return (
-    <li className="flex min-w-0 items-center justify-between gap-3 py-1">
+    <li className="flex min-w-0 items-center justify-between gap-3 py-1.5">
       <span className="flex min-w-0 items-center gap-2">
         {icon ? <InventoryTypeIcon icon={icon} /> : null}
         <NameCell name={name} hint={hint} />
@@ -989,7 +1027,7 @@ function InventoryPreviewRow({
   icon?: string;
 }) {
   return (
-    <li className="flex min-h-8 min-w-0 items-center justify-between gap-3 py-1">
+    <li className="flex min-h-8 min-w-0 items-center justify-between gap-3 py-1.5">
       <span className="flex min-w-0 items-center gap-2">
         {icon ? <InventoryTypeIcon icon={icon} /> : null}
         <span className="min-w-0">
@@ -1076,7 +1114,7 @@ function KitchenEquipmentSections({
           {previewPerSection != null ? (
             <CompactList>
               {includedList.map((item) => (
-                <li key={item.id} className="flex min-w-0 items-center gap-2 py-1">
+                <li key={item.id} className="flex min-w-0 items-center gap-2 py-1.5">
                   <InventoryTypeIcon
                     icon={resolveEquipmentIcon(item.equipmentType, item.category)}
                   />
@@ -1234,7 +1272,7 @@ function InventoryShowAllButton({
   return (
     <button
       type="button"
-      className="mt-1 inline-flex items-center text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+      className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[#F51042] hover:text-[#d10e39] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]"
       onClick={onClick}
     >
       {t("showAllCount", { count, label: t(label, { defaultValue: label }), defaultValue: `Show all ${count} ${label}` })}
@@ -1262,6 +1300,7 @@ function InventoryModal({
   const { t } = useTranslation("kitchen");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollMore, setCanScrollMore] = useState(false);
+  const [canScrollBack, setCanScrollBack] = useState(false);
 
   const updateScrollHint = useCallback(() => {
     const el = scrollRef.current;
@@ -1270,6 +1309,7 @@ function InventoryModal({
       return;
     }
     setCanScrollMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+    setCanScrollBack(el.scrollTop > 8);
   }, []);
 
   useEffect(() => {
@@ -1334,10 +1374,11 @@ function InventoryModal({
         <div className="relative min-h-0 flex-1 overflow-hidden">
           <div
             ref={scrollRef}
-            className="max-h-[min(62vh,34rem)] overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
+            className="scrollbar-none max-h-[min(62vh,34rem)] overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
           >
             {children}
           </div>
+          {canScrollBack && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex justify-center bg-gradient-to-b from-background to-transparent pb-8 pt-1"><PreviewIcon icon="mdi:chevron-up" /></div>}
           {canScrollMore ? (
             <div
               className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background from-40% via-background/85 to-transparent pb-1.5 pt-10"
@@ -1390,26 +1431,20 @@ function KitchenInventoryPair({
   const equipmentCount = included.length + rental.length;
   const showEquipment = hasEquipment && equipmentCount > 0;
   const showStorage = hasStorage && storage.length > 0;
-  const both = showEquipment && showStorage;
 
   return (
-    <div className="w-full">
-      <div
-        className={cn(
-          "grid items-stretch gap-2.5",
-          both ? "sm:grid-cols-2" : "grid-cols-1"
-        )}
-      >
+    <div id="preview-inventory" className="w-full scroll-mt-32">
+      <div className="grid items-start gap-3 xl:grid-cols-2">
         {showEquipment && (
           <div
             id="preview-equipment"
-            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-3 scroll-mt-32"
+            className="flex min-h-0 min-w-0 flex-col rounded-2xl border border-gray-200 bg-white p-4 scroll-mt-32"
             data-preview-tour="equipment"
           >
-            <h3 className="mb-1.5 flex shrink-0 items-center gap-1.5 text-sm font-semibold text-gray-900">
-              <Icon icon="mdi:pot-steam" className="h-4 w-4 text-[#F51042]" />
+            <h3 className="mb-3 flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-100 pb-3 text-base font-semibold text-gray-900">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF1F3] text-[#F51042]"><Icon icon="mdi:pot-steam" className="h-4 w-4" /></span>
               {t("equipment", "Equipment")}
-              <span className="ml-auto flex items-center gap-1 text-xs font-normal text-gray-400">
+              <span className="ml-auto flex items-center gap-1 text-xs font-medium text-gray-500">
                 {included.length > 0 ? (
                   <span>
                     {t("includedCountShort", {
@@ -1442,11 +1477,11 @@ function KitchenInventoryPair({
             <div className="min-h-0 flex-1 overflow-hidden">
               <KitchenEquipmentSections
                 kitchen={kitchen}
-                previewPerSection={Math.max(2, Math.ceil(CARD_PREVIEW_COUNT / 2))}
+                previewPerSection={equipmentCount > CARD_PREVIEW_COUNT ? Math.max(2, Math.ceil(CARD_PREVIEW_COUNT / 2)) : undefined}
               />
             </div>
             {equipmentCount > CARD_PREVIEW_COUNT && (
-              <div className="mt-auto shrink-0 pt-0.5">
+              <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
                 <InventoryShowAllButton
                   count={equipmentCount}
                   label="equipment"
@@ -1460,13 +1495,13 @@ function KitchenInventoryPair({
         {showStorage && (
           <div
             id="preview-storage"
-            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-3 scroll-mt-32"
+            className="flex min-h-0 min-w-0 flex-col rounded-2xl border border-gray-200 bg-white p-4 scroll-mt-32"
             data-preview-tour="storage"
           >
-            <h3 className="mb-1.5 flex shrink-0 items-center gap-1.5 text-sm font-semibold text-gray-900">
-              <Icon icon="mdi:warehouse" className="h-4 w-4 text-[#F51042]" />
+            <h3 className="mb-3 flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-100 pb-3 text-base font-semibold text-gray-900">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF1F3] text-[#F51042]"><Icon icon="mdi:warehouse" className="h-4 w-4" /></span>
               {t("storage", "Storage")}
-              <span className="ml-auto flex items-center gap-1 text-xs font-normal text-gray-400">
+              <span className="ml-auto flex items-center gap-1 text-xs font-medium text-gray-500">
                 <span>{storage.length}</span>
                 <button
                   type="button"
@@ -1482,7 +1517,7 @@ function KitchenInventoryPair({
               <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
             </div>
             {storage.length > CARD_PREVIEW_COUNT && (
-              <div className="mt-auto shrink-0 pt-0.5">
+              <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
                 <InventoryShowAllButton
                   count={storage.length}
                   label="storage"
@@ -1815,7 +1850,7 @@ function previewDockTourCtaClass(  kind: "request" | "pending" | "confirmed" | "
 ) {
   if (kind === "confirmed") {
     return cn(
-      "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 hover:text-emerald-950",
+      "border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
       PREMIUM_CTA_SHADOW
     );
   }
@@ -1846,38 +1881,136 @@ function previewDockTourCtaClass(  kind: "request" | "pending" | "confirmed" | "
   );
 }
 
-/** Open-days + optional tour CTA under the listing title. Rate lives on the sticky booking card. */
-function RateHoursFacts({
-  hoursSummary,
-  extra,
-}: {
-  hoursSummary: string | null;
-  extra?: ReactNode;
-}) {
+type OperatingDay = { date: string; isOpen: boolean; startTime: string | null; endTime: string | null };
+type OperatingSchedule = { timezone: string; today: string; days: OperatingDay[] };
+
+function scheduleDate(date: string, offset: number): Date {
+  const result = new Date(`${date}T12:00:00Z`);
+  result.setUTCDate(result.getUTCDate() + offset);
+  return result;
+}
+
+function scheduleDateKey(date: string, offset: number): string {
+  return scheduleDate(date, offset).toISOString().slice(0, 10);
+}
+
+function scheduleMinutes(time: string): number {
+  const [hour, minute] = time.slice(0, 5).split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function operatingWindow(day: OperatingDay) {
+  const start = Date.parse(`${day.date}T00:00:00Z`) + scheduleMinutes(day.startTime!) * 60_000;
+  let end = Date.parse(`${day.date}T00:00:00Z`) + scheduleMinutes(day.endTime!) * 60_000;
+  if (end <= start) end += 86_400_000;
+  return { start, end };
+}
+
+function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
   const { t } = useTranslation("kitchen");
-  if (!hoursSummary && !extra) return null;
-  const count = [hoursSummary, extra].filter(Boolean).length;
+  const [modalOpen, setModalOpen] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  const { data: schedule, isLoading, isError } = useQuery<OperatingSchedule>({
+    queryKey: ["public-operating-schedule", kitchenId],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/kitchens/${kitchenId}/operating-schedule`);
+      if (!response.ok) throw new Error("Could not load kitchen hours");
+      return response.json();
+    },
+    refetchInterval: 60_000,
+  });
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const parts = schedule ? new Intl.DateTimeFormat("en-US", {
+    timeZone: schedule.timezone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(now) : [];
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "00";
+  const today = schedule ? `${part("year")}-${part("month")}-${part("day")}` : "";
+  const currentTime = today
+    ? Date.parse(`${today}T00:00:00Z`) + (Number(part("hour")) * 60 + Number(part("minute"))) * 60_000
+    : 0;
+  const byDate = new Map(schedule?.days.map((day) => [day.date, day]) ?? []);
+  const openDays = schedule?.days.filter((day) => day.isOpen && day.startTime && day.endTime) ?? [];
+  const currentWindow = openDays.find((day) => {
+    const { start, end } = operatingWindow(day);
+    return start <= currentTime && currentTime < end;
+  });
+  const nextOpen = openDays.find((day) => operatingWindow(day).start > currentTime);
+  const nextOffset = nextOpen && today
+    ? Math.round((scheduleDate(nextOpen.date, 0).getTime() - scheduleDate(today, 0).getTime()) / 86_400_000)
+    : null;
+  const nextDayLabel = nextOpen
+    ? new Intl.DateTimeFormat(i18n.language, { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }).format(scheduleDate(nextOpen.date, 0))
+    : "";
+  const currentEndsTomorrow = !!(currentWindow && operatingWindow(currentWindow).end >= Date.parse(`${today}T00:00:00Z`) + 86_400_000);
+  const nextOpeningDetail = nextOpen
+    ? nextOffset === 0
+        ? t("scheduleOpensToday", { time: formatHourLabel(nextOpen.startTime!), defaultValue: `Opens today at ${formatHourLabel(nextOpen.startTime!)}` })
+        : nextOffset === 1
+          ? t("scheduleOpensTomorrow", { time: formatHourLabel(nextOpen.startTime!), defaultValue: `Opens tomorrow at ${formatHourLabel(nextOpen.startTime!)}` })
+          : t("scheduleOpensOn", { day: nextDayLabel, time: formatHourLabel(nextOpen.startTime!), defaultValue: `Opens ${nextDayLabel} at ${formatHourLabel(nextOpen.startTime!)}` })
+    : t("hoursNotListed", "Hours not listed");
+  const statusDetail = currentWindow
+    ? currentEndsTomorrow
+      ? t("scheduleOpenUntilTomorrow", { time: formatHourLabel(currentWindow.endTime!), defaultValue: `Open until tomorrow at ${formatHourLabel(currentWindow.endTime!)}` })
+      : t("scheduleOpenUntil", { time: formatHourLabel(currentWindow.endTime!), defaultValue: `Open until ${formatHourLabel(currentWindow.endTime!)}` })
+    : `${t("scheduleClosed", "Closed")} · ${nextOpeningDetail}`;
+  const shortDate = (date: string) => new Intl.DateTimeFormat(i18n.language, { month: "short", day: "numeric", timeZone: "UTC" }).format(scheduleDate(date, 0));
+
   return (
-    <div
-      className={cn(
-        "grid gap-2",
-        count === 2
-          ? "grid-cols-1 sm:grid-cols-2"
-          : extra
-            ? "grid-cols-1"
-            : "grid-cols-1 max-w-xs"
-      )}
-    >
-      {hoursSummary && (
-        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2">
-          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
-            {t("openDaysLabel", "Open days")}
-          </p>
-          <p className="mt-0.5 text-sm font-semibold text-gray-900">{hoursSummary}</p>
+    <section className="border-y border-gray-200 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <h2 className="text-sm font-semibold text-gray-900">{t("scheduleKitchenHours", "Kitchen hours")}</h2>
+          <span className="text-sm text-gray-600">
+            {isLoading ? t("scheduleLoading", "Loading hours…") : isError ? t("scheduleUnavailable", "Hours unavailable") : statusDetail}
+          </span>
         </div>
-      )}
-      {extra}
-    </div>
+        {schedule && <button type="button" onClick={() => setModalOpen(true)} className="inline-flex min-h-8 shrink-0 items-center gap-1 text-sm font-semibold text-[#C8103B] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]">
+          {t("viewFullSchedule", "View full schedule")} <PreviewIcon icon="mdi:chevron-right" size={16} />
+        </button>}
+      </div>
+      {schedule && today ? <>
+        <PreviewScroll key={`${kitchenId}-${today}`} className="mt-3 px-1 pb-1">
+          <div className="grid min-w-[700px] grid-cols-7 gap-2">
+            {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+              const date = scheduleDateKey(today, offset);
+              const day = byDate.get(date);
+              const weekday = scheduleDate(date, 0).getUTCDay();
+              return <div key={date} aria-current={offset === 0 ? "date" : undefined} aria-label={`${t(DAY_LABELS[weekday])}, ${shortDate(date)}: ${day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}`} className={cn("flex flex-col items-center rounded-lg border bg-white px-2 py-2 text-center", offset === 0 ? "border-[#F51042] bg-[#FFF8F9]" : "border-gray-200")}>
+                <span className={cn("text-xs font-medium", offset === 0 ? "text-[#C8103B]" : "text-gray-600")}>{t(DAY_SHORT[weekday])}</span>
+                <span className="mt-0.5 text-base font-semibold tabular-nums text-gray-900">{scheduleDate(date, 0).getUTCDate()}</span>
+                <span className={cn("mt-0.5 text-xs", day?.isOpen ? "font-medium text-gray-700" : "text-gray-500")}>{day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}</span>
+              </div>;
+            })}
+          </div>
+
+        </PreviewScroll>
+        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+          <DialogContent className="w-[min(100vw-1.5rem,28rem)] rounded-2xl p-5 sm:p-6">
+            <DialogHeader className="text-left">
+              <DialogTitle>{t("fullSchedule", "Full schedule")}</DialogTitle>
+              <DialogDescription>{shortDate(today)} – {shortDate(scheduleDateKey(today, 6))} · {t("kitchenLocalTime", "Kitchen local time")}</DialogDescription>
+            </DialogHeader>
+            <div className="mt-2 divide-y divide-gray-100">
+              {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                const date = scheduleDateKey(today, offset);
+                const day = byDate.get(date);
+                const weekday = scheduleDate(date, 0).getUTCDay();
+                return <div key={date} className={cn("flex items-center justify-between gap-4 py-2.5 text-sm", date === today && "font-semibold")}>
+                  <span className="flex items-center gap-2 text-gray-900">{t(DAY_LABELS[weekday])} <span className="text-xs font-normal text-gray-500">{shortDate(date)}</span>{date === today && <span className="rounded-full bg-[#FFF1F3] px-2 py-0.5 text-xs font-semibold text-[#C8103B]">{t("scheduleToday", "Today")}</span>}</span>
+                  <span className={cn("text-right tabular-nums", day?.isOpen ? "text-gray-900" : "text-gray-500")}>{day?.isOpen ? <>{formatHourLabel(day.startTime!)} – {formatHourLabel(day.endTime!)}{scheduleMinutes(day.endTime!) <= scheduleMinutes(day.startTime!) ? <span className="block text-xs font-normal text-gray-500">{t("scheduleNextDay", "Next day")}</span> : null}</> : t("scheduleClosed", "Closed")}</span>
+                </div>;
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </> : null}
+    </section>
   );
 }
 
@@ -1936,20 +2069,20 @@ function ThingsToKnowSection({
 
   return (
     <section id="preview-things-to-know" className="scroll-mt-32 border-t border-gray-200 pt-6 sm:pt-8">
-      <h2 className="text-lg sm:text-xl font-bold text-gray-900">
+      <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
         {t("thingsToKnowTitle", "Before You Book")}
       </h2>
-      <div className="mt-4 grid grid-cols-1 divide-y divide-gray-200 sm:mt-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <div className="mt-4 grid grid-cols-1 divide-y divide-gray-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {columns.map((col) => (
           <div
             key={col.title}
             className="flex flex-col py-4 first:pt-0 last:pb-0 sm:px-5 sm:py-0 first:sm:pl-0 last:sm:pr-0"
           >
             <div className="flex items-center gap-2">
-              <PreviewIcon icon={col.icon} size={16} className="shrink-0 text-[#F51042]" />
+              <PreviewIcon icon={col.icon} size={16} className="text-[#F51042]" />
               <h3 className="text-sm font-semibold text-gray-900">{col.title}</h3>
             </div>
-            <p className="mt-1.5 line-clamp-1 text-sm leading-relaxed text-gray-600">{col.body}</p>
+            <p className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-600">{col.body}</p>
             {col.id === "cancellation" ? (
               <button
                 type="button"
@@ -2069,6 +2202,16 @@ function GuestHoursCard({
   const [, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const isAuthenticated = !!user;
+  const { data: bookingRules } = useQuery<{ minimumBookingHours?: number }>({
+    queryKey: ["/api/public/kitchens", kitchenId, "booking-estimate", "preview-minimum"],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/kitchens/${kitchenId}/booking-estimate`);
+      if (!response.ok) throw new Error("Could not load booking rules");
+      return response.json();
+    },
+    enabled: !!kitchenId,
+  });
+  const minimumBookingHours = Number(bookingRules?.minimumBookingHours);
   
   const storageKey = kitchenId ? `kitchen_dates_${kitchenId}` : 'kitchen_dates_generic';
   const tourStorageKey = kitchenId ? `viewing_booking_${kitchenId}` : null;
@@ -2180,7 +2323,7 @@ function GuestHoursCard({
           const from = new Date(parsed.from);
           from.setHours(0, 0, 0, 0);
           setSelectedDate(from);
-          setDateInputValue(toLocalDateString(from));
+          setDateInputValue(`${String(from.getDate()).padStart(2, "0")}/${String(from.getMonth() + 1).padStart(2, "0")}/${from.getFullYear()}`);
           setCalendarMonth(new Date(from.getFullYear(), from.getMonth(), 1));
         }
       }
@@ -2224,7 +2367,7 @@ function GuestHoursCard({
 
   const commitAvailableDate = (next: Date) => {
     setSelectedDate(next);
-    setDateInputValue(toLocalDateString(next));
+    setDateInputValue(`${String(next.getDate()).padStart(2, "0")}/${String(next.getMonth() + 1).padStart(2, "0")}/${next.getFullYear()}`);
     setDateNotAvailable(false);
     pendingTypedDateRef.current = null;
     if (kitchenId) {
@@ -2331,6 +2474,8 @@ function GuestHoursCard({
   };
 
   const handleDateInputChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    value = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join("/");
     setDateInputValue(value);
     if (!value) {
       setSelectedDate(undefined);
@@ -2360,7 +2505,7 @@ function GuestHoursCard({
     const next = new Date(day);
     next.setHours(0, 0, 0, 0);
     if (!isDayAvailable(next)) {
-      setDateInputValue(toLocalDateString(next));
+      setDateInputValue(`${String(next.getDate()).padStart(2, "0")}/${String(next.getMonth() + 1).padStart(2, "0")}/${next.getFullYear()}`);
       setSelectedDate(undefined);
       setDateNotAvailable(true);
       return;
@@ -2460,6 +2605,9 @@ function GuestHoursCard({
           </Fragment>
         ))}
       </p>
+      {Number.isFinite(minimumBookingHours) && minimumBookingHours > 0 && <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        {t("minimumBookingHoursLabel", { defaultValue: minimumBookingHours === 1 ? "Minimum booking: {count} hour" : "Minimum booking: {count} hours", count: minimumBookingHours })}
+      </p>}
     </div>
   ) : null;
 
@@ -2510,8 +2658,7 @@ function GuestHoursCard({
       </div>
     ) : null;
 
-  // Chip row owns its own 3px top/bottom; card drops bottom pad so they don’t stack.
-  const cardPad = cn("px-3 pt-3", accessChipRow ? "pb-0" : "pb-3");
+  const cardPad = cn("px-4 pt-4", accessChipRow ? "pb-0" : "pb-4");
 
   if (!bookingDatesReady) {
     return (
@@ -2580,6 +2727,7 @@ function GuestHoursCard({
       <Collapsible open={calendarOpen} onOpenChange={setCalendarOpen}>
         <div className="flex items-center gap-2">
           <div
+            onClick={() => setCalendarOpen(true)}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3.5 py-2.5 transition-colors",
               dateNotAvailable
@@ -2595,9 +2743,16 @@ function GuestHoursCard({
                 type="text"
                 value={dateInputValue}
                 inputMode="numeric"
-                maxLength={10}
                 onChange={(event) => handleDateInputChange(event.target.value)}
-                placeholder={t("datePlaceholder", "DD/MM/YYYY")}
+                onKeyDown={(event) => {
+                  if (event.key === "Backspace" && event.currentTarget.selectionStart === event.currentTarget.selectionEnd && event.currentTarget.selectionStart && event.currentTarget.value[event.currentTarget.selectionStart - 1] === "/") {
+                    event.preventDefault();
+                    handleDateInputChange(event.currentTarget.value.slice(0, event.currentTarget.selectionStart - 2) + event.currentTarget.value.slice(event.currentTarget.selectionStart));
+                  }
+                }}
+                onFocus={() => setCalendarOpen(true)}
+                aria-label={t("selectYourDate", "Choose your date")}
+                placeholder={calendarOpen ? t("datePlaceholder", "DD/MM/YYYY") : t("addDate", "Add date")}
                 aria-invalid={dateNotAvailable}
                 aria-describedby={dateNotAvailable ? "preview-date-unavailable" : undefined}
                 className="mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none focus-visible:ring-0"
@@ -2610,7 +2765,7 @@ function GuestHoursCard({
             </label>
             <button
               type="button"
-              onClick={() => setCalendarOpen(!calendarOpen)}
+              onClick={(event) => { event.stopPropagation(); setCalendarOpen(!calendarOpen); }}
               className="shrink-0 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               aria-expanded={calendarOpen}
               aria-label={calendarOpen ? t("hideCalendar", "Hide calendar") : t("showCalendar", "Show calendar")}
@@ -2740,7 +2895,7 @@ function KitchenDetailsSection({
       animate="visible"
       exit={{ opacity: 0, y: -20 }}
       variants={fadeInUp}
-      className="space-y-3"
+      className="space-y-4"
     >
       {!hidePhotoCollage && (
         <KitchenPhotoCollage images={allImages} kitchenName={kitchen.name} />
@@ -2782,15 +2937,14 @@ function KitchenDetailsSection({
           )}
 
           {locationAddress && (
-            <div id="preview-location" className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 scroll-mt-32">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                <PreviewIcon icon="mdi:map-marker" size={16} className="text-[#F51042]" />
+            <div id="preview-location" className="rounded-2xl border border-gray-200 bg-white p-4 scroll-mt-32">
+              <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
+                <PreviewIcon icon="mdi:map-marker" size={18} className="text-[#F51042]" />
                 {t("whereItIs", "Location")}
               </h3>
-              {locationName && (
-                <p className="text-sm text-gray-600 mb-3">{locationAddress}</p>
-              )}
               <LocationMap
+                latitude={kitchen.latitude}
+                longitude={kitchen.longitude}
                 address={locationAddress}
                 name={locationName || kitchen.name}
                 heightClassName="h-[220px]"
@@ -2876,6 +3030,8 @@ function KitchenDetailsSection({
                         {t("location")}
                       </h3>
                       <LocationMap
+                        latitude={kitchen.latitude}
+                        longitude={kitchen.longitude}
                         address={locationAddress}
                         name={locationName || kitchen.name}
                         heightClassName="h-[220px]"
@@ -2947,8 +3103,7 @@ function previewSpyOffsetPx(args: {
 
 const PREVIEW_SPY_SECTION_IDS = [
   "preview-overview",
-  "preview-equipment",
-  "preview-storage",
+  "preview-inventory",
   "preview-location",
   "preview-things-to-know",
 ] as const;
@@ -2962,7 +3117,7 @@ function resolvePreviewActiveSection(spyOffset: number): string | null {
   }
   if (sections.length === 0) return null;
 
-  // Visual order (side-by-side equipment/storage share a top).
+  // Use visual order for sections that may shift as content loads.
   sections.sort((a, b) => a.top - b.top);
 
   const doc = document.documentElement;
@@ -3052,6 +3207,28 @@ function KitchenPreviewDockNav({
   onNavigate: (id: string) => void;
 }) {
   const { t } = useTranslation("kitchen");
+  const navRef = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
+  useEffect(() => {
+    if (!visible) return;
+    const nav = navRef.current;
+    const viewport = nav?.parentElement;
+    if (!nav || !viewport) return;
+    const revealActive = () => {
+      const active = nav.querySelector<HTMLElement>('[aria-current="location"]');
+      if (!active) return;
+      const bounds = viewport.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      const inset = 32;
+      const delta = item.left < bounds.left + inset ? item.left - bounds.left - inset
+        : item.right > bounds.right - inset ? item.right - bounds.right + inset : 0;
+      if (delta) viewport.scrollBy({ left: delta, behavior: reduceMotion ? "auto" : "smooth" });
+    };
+    revealActive();
+    const observer = new ResizeObserver(revealActive);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [activeId, visible, reduceMotion]);
   if (typeof document === "undefined") return null;
   return createPortal(
     <div
@@ -3065,7 +3242,7 @@ function KitchenPreviewDockNav({
       aria-hidden={!visible}
     >
       <div className={cn("flex h-14 items-center gap-3 sm:gap-4", contentClassName)}>
-        <nav className="flex min-w-0 flex-1 items-center gap-4 sm:gap-5 overflow-x-auto" aria-label={t("kitchenSectionsNav", "Kitchen sections")}>
+        <div className="min-w-0 flex-1"><PreviewScroll><nav ref={navRef} className="flex items-center gap-4 sm:gap-5" aria-label={t("kitchenSectionsNav", "Kitchen sections")}>
           {links.map((link) => {
             const isActive = activeId === link.id;
             return (
@@ -3088,7 +3265,7 @@ function KitchenPreviewDockNav({
               </a>
             );
           })}
-        </nav>
+        </nav></PreviewScroll></div>
         {cta}
       </div>
     </div>,
@@ -3121,8 +3298,7 @@ export default function KitchenPreviewPage() {
   const [datesGateScrolling, setDatesGateScrolling] = useState(false);
   const [activeSection, setActiveSection] = useState("preview-overview");
   const [photosInView, setPhotosInView] = useState(true);
-  const [tourInView, setTourInView] = useState(true);
-  /** Sticky tour under apply — dock only after this scrolls away. */
+  /** The tour action joins the mobile dock after its card scrolls away. */
   const [stickyTourInView, setStickyTourInView] = useState(true);
   const [applyInView, setApplyInView] = useState(true);
 
@@ -3362,7 +3538,6 @@ export default function KitchenPreviewPage() {
       raf = 0;
       const headerPx = headerOffsetPx(useChefChrome, staticSiteHeader);
       const photos = document.getElementById("preview-photos");
-      const tour = document.getElementById("preview-tour");
       const stickyTour = document.getElementById("preview-tour-sticky");
       const apply = document.getElementById("preview-apply");
       const photosStillInView = photos
@@ -3382,9 +3557,6 @@ export default function KitchenPreviewPage() {
       }
 
       setPhotosInView(photosStillInView);
-      setTourInView((wasInView) => tourAnchorInView(tour, ctaInset, wasInView));
-      // Sticky tour mounts only after the fact-row tour scrolls away. Until then,
-      // treat it as in-view so the dock does not show tour early.
       if (!stickyTour) {
         setStickyTourInView(true);
       } else {
@@ -3678,7 +3850,6 @@ export default function KitchenPreviewPage() {
     const requireDatesForApply =
       bookingDatesReady && (ctaSpec?.requireDates ?? true);
 
-    const hoursSummary = availableDaySummary(selectedKitchen?.availability, t);
     const includedCount = kitchenEquipment?.included?.length ?? 0;
     const rentalCount = kitchenEquipment?.rental?.length ?? 0;
     const storageCount = kitchenStorage?.length ?? 0;
@@ -3750,7 +3921,7 @@ export default function KitchenPreviewPage() {
         ? cn("bg-[#F51042] text-white hover:bg-[#E00A38]", PREMIUM_PRIMARY_SHADOW)
         : tourCta?.kind === "confirmed"
           ? cn(
-              "border border-emerald-200/90 bg-emerald-50 text-emerald-950 hover:bg-emerald-100/80",
+              "border border-gray-200/90 bg-white text-gray-900 hover:bg-gray-50",
               PREMIUM_CTA_SHADOW
             )
           : tourCta?.kind === "pending"
@@ -3770,7 +3941,7 @@ export default function KitchenPreviewPage() {
       tourCta?.kind === "request"
         ? "text-white"
         : tourCta?.kind === "confirmed"
-          ? "text-emerald-900"
+          ? "text-gray-900"
           : tourCta?.kind === "history"
             ? "text-gray-900"
           : tourCta?.kind === "loading"
@@ -3780,7 +3951,7 @@ export default function KitchenPreviewPage() {
       tourCta?.kind === "request"
         ? "text-white/85"
         : tourCta?.kind === "confirmed"
-          ? "text-emerald-800/80"
+          ? "text-gray-600"
           : tourCta?.kind === "history"
             ? "text-gray-600"
           : tourCta?.kind === "loading"
@@ -3790,7 +3961,7 @@ export default function KitchenPreviewPage() {
       tourCta?.kind === "request"
         ? "bg-white/20 text-white"
         : tourCta?.kind === "confirmed"
-          ? "bg-emerald-600 text-white"
+          ? "bg-[#FFF1F3] text-[#F51042]"
           : tourCta?.kind === "history"
             ? "bg-gray-100 text-gray-700"
           : tourCta?.kind === "loading"
@@ -3800,7 +3971,7 @@ export default function KitchenPreviewPage() {
       tourCta?.kind === "request"
         ? "text-white"
         : tourCta?.kind === "confirmed"
-          ? "text-emerald-700"
+          ? "text-gray-500"
           : tourCta?.kind === "history"
             ? "text-gray-600"
           : tourCta?.kind === "loading"
@@ -3812,15 +3983,6 @@ export default function KitchenPreviewPage() {
     // for any unresolved kind rather than inheriting the button's foreground.
     const tourSkeletonTone: CtaSkeletonTone =
       tourCta?.kind === "request" ? "solid" : "outline";
-    const tourEyebrowClass =
-      tourCta?.kind === "request"
-        ? "text-white/90"
-        : tourCta?.kind === "confirmed"
-          ? "text-emerald-700"
-          : tourCta?.kind === "history"
-            ? "text-gray-600"
-          : "text-amber-700";
-
     const tourButton = !tourCta ? null : (
       <button
         type="button"
@@ -3853,31 +4015,7 @@ export default function KitchenPreviewPage() {
       </button>
     );
 
-    const tourFactCard = !tourCta ? null : (
-      <button
-        type="button"
-        data-preview-tour="schedule"
-        onClick={tourOnClick}
-        aria-busy={tourBusy || undefined}
-        disabled={tourBusy}
-        className={cn(
-          "flex h-full w-full flex-col justify-center rounded-xl px-4 py-3 text-left transition-colors",
-          tourSurfaceClass
-        )}
-      >
-        <p className={cn("flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider", tourEyebrowClass)}>
-          {tourBusy ? <CtaSpinner /> : <PreviewIcon icon={tourIcon} size={14} />}
-          {tourBusy ? <CtaLabelSkeleton widthClass="w-24" tone={tourSkeletonTone} /> : tourTitle}
-        </p>
-        <p className={cn("mt-1 flex items-start gap-1 text-sm font-medium leading-snug", tourTitleClass)}>
-          <span className="min-w-0">{tourHint}</span>
-          <PreviewIcon icon="mdi:chevron-right" size={16} className={cn("mt-0.5 shrink-0", tourChevronClass)} />
-        </p>
-      </button>
-    );
-
-    // Dock tour only after the sticky-under-apply tour scrolls away (second position).
-    const showDockTour = !!tourCta && !tourInView && !stickyTourInView;
+    const showDockTour = !!tourCta && !stickyTourInView;
     const showDockApply = !applyInView && showDateGatedApplyCta;
     const dockTourPairedWithApply = showDockTour && showDockApply;
 
@@ -3921,7 +4059,7 @@ export default function KitchenPreviewPage() {
     ) : null;
 
     const dockCtaSlot = (
-      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="ml-auto hidden shrink-0 items-center gap-2 lg:flex">
         {showDockTotal && bookingPricePreview ? (
           <DockBookingTotalBesideApply
             preview={bookingPricePreview}
@@ -3960,7 +4098,7 @@ export default function KitchenPreviewPage() {
     );
 
     return (
-      <div className={cn("font-sans space-y-3 sm:space-y-4", "pb-24 lg:pb-0")}>
+      <div className={cn("font-sans space-y-5 sm:space-y-6", "pb-24 lg:pb-0")}>
         <Helmet>
           <title>{location.name} Commercial Kitchen | Local Cooks</title>
           <meta
@@ -3982,9 +4120,21 @@ export default function KitchenPreviewPage() {
               className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover flex-shrink-0"
             />
           ) : null}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="min-w-0 text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-3">
+            <div className="col-start-1 row-start-1 min-w-0">
+              <PreviewLocationName name={location.name} />
+            </div>
+            <p className="col-start-1 row-start-2 min-w-0 text-sm text-gray-600">{location.address}
+              {kitchens.length > 1 && (
+                <span className="text-gray-500">{" | "}
+                  {t("kitchensAtThisLocationPrefix", {
+                    count: kitchens.length,
+                    defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}`,
+                  })}{" "}
+                  {t("kitchensAtThisLocationSuffix", "at this location")}
+                </span>
+              )}
+            </p>
 
               {/* One chip, answering the only question this slot is asked: can I book here?
                   When the answer is no, that is what belongs here — a "Licensed kitchen"
@@ -3994,36 +4144,24 @@ export default function KitchenPreviewPage() {
                   Nothing listed is its own answer, and NOT "Coming Soon": that chip means
                   "not finished yet", which is a different thing from a manager who has taken
                   the listing down. */}
+            <div className="col-start-1 row-start-3 mt-1 justify-self-start sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-self-end">
               {kitchens.length === 0 ? (
-                <InfoChip tone="warning" className="shrink-0">
+                <InfoChip tone="warning">
                   {t("kitchenNotTakingBookingsShort", "Not taking bookings")}
                 </InfoChip>
               ) : location.canAcceptApplications === false ? (
-                <InfoChip tone="progress" className="shrink-0">
+                <InfoChip tone="progress">
                   {t("applyFlowComingSoonBadge", "Coming Soon")}
                 </InfoChip>
               ) : location.kitchenLicenseStatus === "approved" ? (
                 <InfoChip
                   tone="success"
-                  className="shrink-0"
                   icon={<PreviewIcon icon="mdi:shield-check" size={12} />}
                 >
                   {t("licensedKitchenBadge", "Licensed kitchen")}
                 </InfoChip>
               ) : null}
             </div>
-            <p className="mt-1 text-sm text-gray-600">{location.address}</p>
-            {/* No count to report when nothing is listed. "0 kitchens at this location" is true and
-                reads as a broken page; the chip above already carries the state. */}
-            {kitchens.length > 0 && (
-              <p className="mt-0.5 text-sm text-gray-500">
-                {t("kitchensAtThisLocationPrefix", {
-                  count: kitchens.length,
-                  defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}`,
-                })}{" "}
-                {t("kitchensAtThisLocationSuffix", "at this location")}
-              </p>
-            )}
           </div>
         </div>
 
@@ -4051,11 +4189,15 @@ export default function KitchenPreviewPage() {
             links={[
               { id: "preview-photos", label: t("photos", "Photos") },
               { id: "preview-overview", label: t("overviewTab", "Overview") },
-              ...(!isLoadingAddons && (includedCount > 0 || rentalCount > 0)
-                ? [{ id: "preview-equipment", label: t("equipment", "Equipment") }]
-                : []),
-              ...(!isLoadingAddons && storageCount > 0
-                ? [{ id: "preview-storage", label: t("storage", "Storage") }]
+              ...(!isLoadingAddons && (includedCount > 0 || rentalCount > 0 || storageCount > 0)
+                ? [{
+                    id: "preview-inventory",
+                    label: includedCount + rentalCount > 0 && storageCount > 0
+                      ? t("equipmentAndStorage", "Equipment & storage")
+                      : includedCount + rentalCount > 0
+                        ? t("equipment", "Equipment")
+                        : t("storage", "Storage"),
+                  }]
                 : []),
               { id: "preview-location", label: t("whereItIs", "Location") },
               { id: "preview-things-to-know", label: t("thingsToKnowTitle", "Before You Book") },
@@ -4148,33 +4290,15 @@ export default function KitchenPreviewPage() {
             )
           : null}
 
-        {/* Airbnb-style: left listing content + sticky date/CTA card on the right */}
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-3 sm:gap-x-8 sm:gap-y-3 lg:items-start">
-          <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-2 min-w-0">
-            {(hoursSummary || tourFactCard) && (
-              <div className="space-y-1.5">
-                <RateHoursFacts
-                  hoursSummary={hoursSummary}
-                  extra={
-                    tourFactCard ? (
-                      <div id="preview-tour" className="h-full">
-                        {tourFactCard}
-                      </div>
-                    ) : undefined
-                  }
-                />
-              </div>
-            )}
-
+        {/* Listing content and booking actions */}
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-5 sm:gap-x-8 sm:gap-y-6 lg:items-start">
+          <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-5 min-w-0">
             {kitchens.length > 1 && (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-1.5">
                   {t("chooseAKitchen")}
                 </p>
-                <div
-                  className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1"
-                  data-preview-tour="kitchen-picker"
-                >
+                <PreviewScroll><div className="flex gap-2 pb-0.5 px-1" data-preview-tour="kitchen-picker">
                   {kitchens.map((kitchen) => {
                     const selected = selectedKitchen?.id === kitchen.id;
                     const rate = formatKitchenRate(kitchen);
@@ -4202,13 +4326,13 @@ export default function KitchenPreviewPage() {
                       </button>
                     );
                   })}
-                </div>
+                </div></PreviewScroll>
               </div>
             )}
 
             {selectedKitchen && (
               <div id="preview-overview" className="space-y-1 scroll-mt-32">
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900">
+                <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
                   {selectedKitchen.name}
                 </h2>
                 {selectedKitchen.description ? (
@@ -4219,6 +4343,7 @@ export default function KitchenPreviewPage() {
                 ) : null}
               </div>
             )}
+            {selectedKitchen ? <RateHoursFacts kitchenId={selectedKitchen.id} /> : null}
           </div>
 
           <aside
@@ -4227,7 +4352,7 @@ export default function KitchenPreviewPage() {
               "order-2 lg:col-span-5 xl:col-span-4 lg:row-span-2 lg:col-start-8 xl:col-start-9 w-full min-w-0 max-w-md lg:max-w-none mx-auto lg:mx-0 self-start scroll-mt-32",
               "lg:sticky",
               useChefChrome
-                ? "top-20"
+                ? "top-0"
                 : isAuthenticated
                   ? "top-[calc(var(--header-total)_+_1rem)]"
                   : staticSiteHeader
@@ -4240,6 +4365,7 @@ export default function KitchenPreviewPage() {
             )}
           >
             <div className="w-full min-w-0 space-y-3">
+              {tourButton ? <div id="preview-tour-sticky">{tourButton}</div> : null}
               <GuestHoursCard
                 key={selectedKitchen?.id ?? "no-kitchen"}
                 availability={selectedKitchen?.availability}
@@ -4275,24 +4401,6 @@ export default function KitchenPreviewPage() {
                 // panel would be explaining the wrong thing entirely.
                 noKitchen={kitchens.length === 0}
               />
-              <AnimatePresence initial={false}>
-                {!tourInView && tourButton ? (
-                  <motion.div
-                    key="sticky-tour"
-                    id="preview-tour-sticky"
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{
-                      duration: reduceMotion ? 0 : 0.35,
-                      ease: [0.22, 1, 0.36, 1],
-                    }}
-                    className="w-full min-w-0"
-                  >
-                    {tourButton}
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
             </div>
           </aside>
 

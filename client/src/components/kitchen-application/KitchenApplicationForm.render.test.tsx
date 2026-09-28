@@ -22,7 +22,7 @@
  * instead of shipping.
  */
 import { beforeEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 
 /*
@@ -205,6 +205,19 @@ describe("KitchenApplicationForm render harness", () => {
     // Two instances on purpose: the wide block below `lg` and the sticky rail at `lg`+. Only one is
     // visible at a time, and both drive the same <form> through `form={FORM_ID}`.
     expect(screen.getAllByTestId("kitchen-application-submit").length).toBeGreaterThan(0);
+  });
+
+  it("requires an explicit choice for both application agreements", () => {
+    render(<KitchenApplicationForm location={location} />);
+    const agreements = screen.getAllByRole("checkbox");
+    expect(agreements).toHaveLength(2);
+    agreements.forEach((checkbox) => expect(checkbox).toHaveAttribute("data-state", "unchecked"));
+    screen.getAllByTestId("kitchen-application-submit").forEach((button) => expect(button).toBeDisabled());
+    fireEvent.click(agreements[0]);
+    expect(agreements[0]).toHaveAttribute("data-state", "checked");
+    expect(agreements[1]).toHaveAttribute("data-state", "unchecked");
+    fireEvent.click(agreements[1]);
+    agreements.forEach((checkbox) => expect(checkbox).toHaveAttribute("data-state", "checked"));
   });
 
   it("renders tier 1 when a phone number is already on file", () => {

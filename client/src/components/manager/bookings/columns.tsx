@@ -977,7 +977,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                             This covers both:
                             - Cancelled confirmed bookings (need manual refund)
                             - Active bookings where manager wants to issue partial refund */}
-                        {onRefund && !onManageBooking && hasRefundableAmount && (
+                        {onRefund && (!onManageBooking || booking.status === "cancelled") && hasRefundableAmount && (
                             <DropdownMenuItem
                                 onClick={() => onRefund(booking)}
                                 className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"

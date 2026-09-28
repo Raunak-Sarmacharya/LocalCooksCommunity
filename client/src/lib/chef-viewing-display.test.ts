@@ -6,10 +6,13 @@ describe("viewingStatusBadge", () => {
     expect(viewingStatusBadge("pending_local_cooks")).toEqual({
       variant: "warning",
       labelKey: "tourStatusPending",
-      defaultLabel: "In review",
+      defaultLabel: "Request sent",
     });
     expect(viewingStatusBadge("pending").variant).toBe("warning");
     expect(viewingStatusBadge("confirmed").variant).toBe("success");
+    expect(viewingStatusBadge("cancelled", "denied").defaultLabel).toBe("Rejected");
+    expect(viewingStatusBadge("cancelled", "approved", "manager_declined").defaultLabel).toBe("Rejected");
+    expect(viewingStatusBadge("cancelled", "approved", "chef").defaultLabel).toBe("Cancelled");
   });
 
   it("reserves destructive for cancel / no-show only", () => {

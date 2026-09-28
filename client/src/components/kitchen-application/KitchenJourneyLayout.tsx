@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { useIsChefShell } from "@/layouts/chef-shell-context";
@@ -9,52 +9,68 @@ type Props = {
   title: string;
   description: string;
   onBack: () => void;
+  backLabel?: string;
+  showCancel?: boolean;
+  compactContent?: boolean;
   imageUrl?: string | null;
   children: ReactNode;
   aside: ReactNode;
 };
 
-export default function KitchenJourneyLayout({ eyebrow, title, description, onBack, imageUrl, children, aside }: Props) {
+export default function KitchenJourneyLayout({ eyebrow, title, description, onBack, backLabel = "Cancel", showCancel = true, compactContent = false, children, aside }: Props) {
   const inChefShell = useIsChefShell();
   return (
-    <div className={inChefShell ? "bg-background rounded-[1.75rem]" : "min-h-screen bg-background"}>
+    <div className={inChefShell ? "bg-[#FFF8F5]" : "min-h-screen bg-gradient-to-b from-[#FFF8F5] via-white to-white"}>
       {!inChefShell && <Header />}
-      <main className={inChefShell ? "mx-auto max-w-7xl px-4 pb-12 pt-4 sm:px-6 sm:pt-6 lg:px-10" : "mx-auto max-w-7xl px-4 pb-20 pt-[calc(var(--header-total)_+_2rem)] sm:px-6 sm:pt-[calc(var(--header-total)_+_3rem)] lg:px-10"}>
-        <header className="relative isolate overflow-hidden rounded-[1.75rem] border border-primary/10 bg-gradient-to-br from-[#fff0f4] via-white to-[#fff9fa]">
-          {imageUrl && <img src={imageUrl} alt="" className="absolute inset-y-0 right-0 hidden h-full w-[38%] object-cover lg:block" />}
-          <div className={imageUrl ? "absolute inset-0 hidden bg-gradient-to-r from-[#fff0f4] via-white to-transparent lg:block" : "absolute -right-16 -top-24 h-80 w-80 rounded-full bg-primary/10 blur-3xl"} aria-hidden />
-          <div className="relative max-w-3xl px-6 py-9 sm:px-10 sm:py-11 lg:px-12">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{eyebrow}</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">{title}</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
+      <main className={inChefShell ? "mx-auto max-w-4xl px-4 pb-12 pt-4 sm:px-6 sm:pt-6" : "mx-auto max-w-4xl px-4 pb-16 pt-[calc(var(--header-total)_+_1.5rem)] sm:px-6 sm:pt-[calc(var(--header-total)_+_2rem)]"}>
+        <header className="flex items-start justify-between gap-6 border-b border-[#2C2C2C]/10 pb-5">
+          <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{eyebrow}</p>
+          <h1 className="mt-1 text-xl font-semibold leading-tight tracking-tight text-[#1A1A1A] sm:text-2xl">{title}</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6B6B6B]">{description}</p>
           </div>
+          {showCancel && <Button variant="ghost" className="hidden shrink-0 gap-2 text-muted-foreground lg:inline-flex" onClick={onBack}><X className="h-4 w-4" aria-hidden />{backLabel}</Button>}
         </header>
-        <div className="grid gap-10 pt-10 lg:grid-cols-[minmax(270px,0.42fr)_minmax(0,1fr)] lg:gap-20 lg:pt-12">
-          <aside className="h-fit border-t pt-8 lg:sticky lg:top-28 lg:border-t-0 lg:pr-10 lg:pt-0">
+        <div className="space-y-6 pt-5 sm:space-y-7 sm:pt-6">
+          <aside>
             {aside}
-            <Button variant="ghost" className="-ml-3 mt-6 gap-2 text-muted-foreground" onClick={onBack}>
-              <ArrowLeft className="h-4 w-4" aria-hidden /> Back to kitchen details
-            </Button>
           </aside>
-          <div className="min-w-0">{children}</div>
+          <div className={`mx-auto w-full min-w-0 lg:rounded-2xl lg:border lg:border-[#2C2C2C]/[0.08] lg:bg-white lg:p-8 lg:shadow-[0_8px_30px_rgba(44,44,44,0.05)] ${compactContent ? "lg:max-w-[642px]" : "lg:max-w-[746px]"}`}>
+            {children}
+            {showCancel && <div className="mt-8 border-t border-[#2C2C2C]/10 pt-4 lg:hidden">
+              <Button variant="ghost" className="-ml-3 gap-2 text-muted-foreground" onClick={onBack}>
+                <X className="h-4 w-4" aria-hidden /> {backLabel}
+              </Button>
+            </div>}
+          </div>
         </div>
       </main>
-      
     </div>
   );
 }
 
-export function KitchenJourneySteps({ steps, current }: { steps: string[]; current: number }) {
+export function KitchenJourneySteps({ steps, current, actions = {} }: { steps: string[]; current: number; actions?: Record<number, { label: string; onClick: () => void }> }) {
   return (
-    <ol className="space-y-3" aria-label="Request progress">
+    <div>
+      <div className="sm:hidden" role="status" aria-label={`Step ${current + 1} of ${steps.length}: ${steps[current]}`}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium text-foreground">Step {current + 1} of {steps.length} <span className="text-muted-foreground">· {steps[current]}</span></p>
+          {Object.entries(actions).map(([index, action]) => <button key={index} type="button" onClick={action.onClick} className="shrink-0 rounded px-1 py-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{action.label}</button>)}
+        </div>
+        <div className="mt-2 flex gap-1.5" aria-hidden>
+          {steps.map((label, index) => <span key={label} className={`h-1 flex-1 rounded-full ${index <= current ? "bg-primary" : "bg-muted"}`} />)}
+        </div>
+      </div>
+      <ol className="hidden gap-4 sm:grid" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label="Request progress">
       {steps.map((label, index) => (
-        <li key={label} className="flex items-center gap-3 text-sm">
-          <span className={index < current ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-white" : index === current ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-primary/10 font-semibold text-primary" : "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"}>
+        <li key={label} aria-current={index === current ? "step" : undefined} className={`flex items-center gap-2 border-b-2 pb-3 text-sm ${index <= current ? "border-primary" : "border-border"}`}>
+          <span className={index < current ? "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-white" : index === current ? "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary" : "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"}>
             {index < current ? <Check className="h-4 w-4" aria-hidden /> : index + 1}
           </span>
-          <span className={index <= current ? "font-medium text-foreground" : "text-muted-foreground"}>{label}</span>
+          {actions[index] ? <button type="button" onClick={actions[index].onClick} className="rounded text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{actions[index].label}</button> : <span className={index <= current ? "font-medium text-foreground" : "text-muted-foreground"}>{label}</span>}
         </li>
       ))}
-    </ol>
+      </ol>
+    </div>
   );
 }

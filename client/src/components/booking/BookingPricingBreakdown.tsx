@@ -97,6 +97,7 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
   currency?: string;
   className?: string;
   title?: string;
+  chargeLabel?: string;
   showProcessorFee?: boolean;
   processingFeeLabel?: string;
   platformFeeLabel?: string;
@@ -116,6 +117,7 @@ export function KitchenPayoutStatementBreakdown({
   currency = "CAD",
   className,
   title = "Net payout",
+  chargeLabel = "Total charged",
   showProcessorFee,
   processingFeeLabel = "Processing fee",
   platformFeeLabel = "Local Cooks fee",
@@ -136,10 +138,14 @@ export function KitchenPayoutStatementBreakdown({
   const platformFeeLabelResolved = b.platformFeeWithheldFromManager
     ? platformFeeLabel
     : (platformFeeChefPaidLabel || platformFeeLabel);
+  const chargedAmount = input.chargeAmountCents;
 
   return (
     <div className={cn("space-y-2", className)}>
-      {b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 && (
+      {chargedAmount != null && (
+        <BreakdownLine label={chargeLabel} amountCents={chargedAmount} currency={currency} />
+      )}
+      {chargedAmount == null && b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 && (
         <BreakdownLine
           label={hstLabel ?? `HST (${b.kitchenHstRatePercent}%)`}
           amountCents={b.kitchenHstAmountCents}
@@ -160,10 +166,8 @@ export function KitchenPayoutStatementBreakdown({
           }
           amountCents={b.platformFeeAmountCents}
           currency={currency}
-          prefix={b.platformFeeWithheldFromManager ? "−" : undefined}
-          amountClassName={
-            b.platformFeeWithheldFromManager ? undefined : "text-muted-foreground"
-          }
+          prefix={chargedAmount != null || b.platformFeeWithheldFromManager ? "−" : undefined}
+          amountClassName={chargedAmount == null && !b.platformFeeWithheldFromManager ? "text-muted-foreground" : undefined}
         />
       )}
       {showStripe && (

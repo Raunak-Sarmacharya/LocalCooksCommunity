@@ -4772,7 +4772,7 @@ export const generateStorageExtensionRejectedEmail = (data: {
   const firstName = data.chefName.split(' ')[0];
   const subject = `Storage Extension Declined - ${data.storageName}`;
   const dashboardUrl = getDashboardUrl();
-  const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5&#8211;10 business days.` : 'A refund will be processed shortly.';
+  const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5&#8211;10 business days.` : 'Cancellation does not confirm a refund. Any refund is handled separately.';
 
   const html = `
 <!DOCTYPE html>
@@ -4817,7 +4817,7 @@ export const generateStorageExtensionRejectedEmail = (data: {
 </body>
 </html>`;
 
-  const refundPlainText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited within 5-10 business days.` : 'A refund will be processed shortly.';
+  const refundPlainText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited within 5-10 business days.` : 'Cancellation does not confirm a refund. Any refund is handled separately.';
 
   return {
     to: data.chefEmail,
@@ -6848,7 +6848,7 @@ export const generateCancellationAcceptedEmail = (data: {
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
       <p class="message" style="margin-bottom: 20px;">Your cancellation request for the ${bookingLabel} at <strong>${data.kitchenName}</strong> has been accepted by the kitchen manager.</p>
       <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
-        <p style="font-size: 14px; line-height: 1.6; color: #166534; margin: 0;">A refund will be processed shortly. You will receive a separate email once the refund is issued.</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #166534; margin: 0;">Cancellation does not confirm a refund. Any refund is handled separately.</p>
       </div>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.kitchenName}</strong></p>
@@ -6883,7 +6883,7 @@ ${data.locationName ? `Location: ${data.locationName}` : ''}
 Date: ${formattedDate}
 Time: ${data.startTime} – ${data.endTime}
 
-A refund will be processed shortly. You will receive a separate email once the refund is issued.
+Cancellation does not confirm a refund. Any refund is handled separately.
 
 View bookings: ${dashboardUrl}
 

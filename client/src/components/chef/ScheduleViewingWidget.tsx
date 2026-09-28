@@ -33,9 +33,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { ct } from "@/i18n/chef-ns";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { tourAvailableDate } from "@/lib/tour-available-date";
 
 async function getAuthHeaders(forceRefresh = false): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
@@ -229,6 +230,8 @@ export function ScheduleViewingWidget({
     data: availability,
     isLoading: slotsLoading,
     isFetching: slotsFetching,
+    isError: slotsError,
+    refetch: refetchSlots,
   } = useQuery<AvailabilityResponse>({
     queryKey: [`/api/viewings/available-slots/${targetedKitchenId}?date=${dateStr}`],
     enabled: !!selectedDate && !!dateStr,
@@ -301,7 +304,6 @@ export function ScheduleViewingWidget({
     },
   });
 
-  const maxBookingDays = availability?.settings?.maxAdvanceBookingDays || 30;
   const today = startOfDay(new Date());
 
   const handleDateSelect = useCallback((date: Date | undefined) => {
@@ -456,7 +458,7 @@ export function ScheduleViewingWidget({
           title: t("tourModalDoneTitle", "Tour requested"),
           subtext: t(
             "tourModalDoneSubtext",
-            "Local Cooks reviews your request first. If approved, the kitchen manager will receive it. We'll email you with updates."
+            "Your tour request was sent. We'll let you know when it's approved or rejected."
           ),
         };
       default:
@@ -480,7 +482,7 @@ export function ScheduleViewingWidget({
       : [
           { id: "date", label: t("tourGuideStepDate") },
           { id: "time", label: t("tourGuideStepTime") },
-          { id: "account", label: t("tourGuideStepAccount") },
+          { id: "account", label: isAuthenticated && !emailVerified ? "Verify email" : t("tourGuideStepAccount") },
           { id: "confirm", label: t("tourGuideStepConfirm") },
         ];
     const railIdx = skipVerify
@@ -509,26 +511,7 @@ export function ScheduleViewingWidget({
           pagedNavigation={presentation === "page" && !isMobile}
           selected={selectedDate}
           onSelect={handleDateSelect}
-          disabled={(date) => {
-            const maxDays = calMetadata?.settings?.maxAdvanceBookingDays || maxBookingDays;
-            if (isBefore(date, today) || isBefore(addDays(today, maxDays), date)) return true;
-            if (!calMetadata) return true;
-            const dayOfWeek = date.getDay();
-            const availDay = calMetadata.availability?.find((a: { dayOfWeek: number; isAvailable?: boolean }) => a.dayOfWeek === dayOfWeek);
-            if (!availDay || !availDay.isAvailable) return true;
-            const dStart = startOfDay(date);
-            for (const b of calMetadata.blackouts || []) {
-              if (
-                dStart >= startOfDay(new Date(b.startDate)) &&
-                dStart <= endOfDay(new Date(b.endDate))
-              ) {
-                return true;
-              }
-            }
-            const ds = format(date, "yyyy-MM-dd");
-            if (calMetadata.fullyBookedDates?.includes(ds)) return true;
-            return false;
-          }}
+          disabled={(date) => !tourAvailableDate(date, calMetadata, today)}
           className={presentation === "page" ? "w-full bg-transparent p-1" : "rounded-xl border"}
           classNames={presentation === "page" ? journeyCalendarClassNames(!isMobile) : undefined}
         />
@@ -551,6 +534,11 @@ export function ScheduleViewingWidget({
           <span className="ml-2 text-sm text-muted-foreground">
             {t("loadingAvailableTimes", "Loading available times...")}
           </span>
+        </div>
+      ) : slotsError ? (
+        <div className="rounded-xl border border-border p-5 text-center">
+          <p className="text-sm text-muted-foreground">We couldn’t load the available times for this day.</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchSlots()}>Try again</Button>
         </div>
       ) : availability?.slots.length === 0 ? (
         <div className="text-center py-12 space-y-3">
@@ -580,16 +568,12 @@ export function ScheduleViewingWidget({
 
   const renderAccountStep = () => (
     <div className="space-y-5">
-      <Button variant="ghost" size="sm" onClick={handleBack} className="self-start -ml-2 text-gray-500">
-        <ArrowLeft className="h-4 w-4 mr-1" />
-        Change visit time
-      </Button>
-      <KitchenJourneyAuth title="Continue your tour request" />
+      <KitchenJourneyAuth title="Continue your tour request" subject="tour request" />
     </div>
   );
 
   const renderVerifyStep = () => presentation === "page" ? (
-    <KitchenJourneyAuth title="Verify your email to continue" />
+    <KitchenJourneyAuth title="Verify your email to continue" subject="tour request" />
   ) : (
     <div className="space-y-4">
       <div className="rounded-[1.35rem] border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
@@ -688,7 +672,7 @@ export function ScheduleViewingWidget({
               <p className="text-sm font-medium">
                 {locationName || t("applyFlowKitchenFallbackName", "Kitchen")}
               </p>
-              {targetedKitchenName && (
+              {targetedKitchenName && targetedKitchenName !== locationName && (
                 <p className="text-xs text-muted-foreground">
                   {t("interestedIn", {
                     defaultValue: "Interested in: {name}",
@@ -776,7 +760,7 @@ export function ScheduleViewingWidget({
         <p className="text-sm text-muted-foreground">
           {t("kitchenTourRequestedAwaitingApproval", {
             defaultValue:
-              "Your kitchen tour at {locationName} has been sent to Local Cooks for review. If approved, it will then go to the kitchen manager.",
+              "Your kitchen tour at {locationName} has been sent for review.",
             locationName: locationName || t("theKitchen", "the kitchen"),
           })}
         </p>
@@ -845,34 +829,30 @@ export function ScheduleViewingWidget({
         <KitchenJourneyLayout
           eyebrow="Request a tour"
           title={`Visit ${targetedKitchenName || locationName || "this kitchen"}`}
-          description="See the space in person before you request access. Choose a date and time, then use your Local Cooks account to send the tour request."
+          description="Your visit is requested only when you confirm the details."
           imageUrl={kitchenImageUrl}
           onBack={requestClose}
+          backLabel="Cancel"
+          showCancel={step !== "success"}
+          compactContent={step === "account" || step === "verify"}
           aside={<div className="flex flex-col gap-6">
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-primary">Your progress</p>
-              <h2 className="text-2xl font-semibold tracking-tight">{guidedChrome.title}</h2>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{guidedChrome.subtext}</p>
-            </div>
             {step !== "success" && renderGuideRail()}
-            <div className="rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">{targetedKitchenName || locationName}</p>
-              {selectedDate && selectedSlot ? (
-                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                  <span>{format(selectedDate, "EEE, MMM d, yyyy")}</span>
-                  <span aria-hidden className="text-muted-foreground/60">·</span>
-                  <span className="font-medium text-foreground">
-                    {formatJourneyClock(selectedSlot.startTime)}–{formatJourneyClock(selectedSlot.endTime)}
-                  </span>
-                </p>
-              ) : (
-                <p className="mt-1">Pick a visit time. Local Cooks reviews each tour request before the kitchen sees it.</p>
-              )}
-            </div>
+            {selectedDate && selectedSlot && step !== "confirm" && step !== "success" && <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground sm:text-sm">
+              <p className="flex min-w-0 items-center gap-x-1 whitespace-nowrap sm:gap-x-1.5">
+                <span className="sm:hidden">{format(selectedDate, "MMM d")}</span>
+                <span className="hidden sm:inline">{format(selectedDate, "EEE, MMM d, yyyy")}</span>
+                <span aria-hidden className="text-muted-foreground/60">·</span>
+                <span className="font-medium text-foreground">{formatJourneyClock(selectedSlot.startTime)}–{formatJourneyClock(selectedSlot.endTime)}</span>
+              </p>
+              {(step === "account" || step === "verify") && <Button variant="ghost" size="sm" className="shrink-0 px-1 text-xs text-primary sm:px-3 sm:text-sm" onClick={() => setStep("time")}>Change time</Button>}
+            </div>}
           </div>}
         >
           <div className="min-w-0">
-            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-primary">{step === "date" ? "Step 1 · Choose a date" : step === "time" ? "Step 2 · Choose a time" : "Your tour request"}</p>
+            {step !== "account" && step !== "verify" && <>
+              <h2 className="text-xl font-semibold tracking-tight">{guidedChrome.title}</h2>
+              <p className="mb-5 mt-1 text-sm leading-6 text-muted-foreground">{guidedChrome.subtext}</p>
+            </>}
             <div className="max-w-3xl">{body}</div>
           </div>
         </KitchenJourneyLayout>

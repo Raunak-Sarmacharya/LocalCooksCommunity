@@ -19,6 +19,7 @@ type TourRequest = {
     chefNotes: string | null;
     intakeData: Record<string, unknown> | null;
     status: string;
+    cancelledBy: string | null;
     adminReviewDecision: "approved" | "denied" | null;
     adminReviewReason: string | null;
     adminReviewedAt: string | null;
@@ -124,8 +125,13 @@ export function AdminTourRequestsSection() {
                     <CardTitle className="text-base">{request.chefName || request.chefUsername || "Chef"}</CardTitle>
                     <CardDescription>{request.kitchenName || request.locationName || "Kitchen tour"}</CardDescription>
                   </div>
-                  <Badge variant={request.viewing.adminReviewDecision === "approved" ? "success" : request.viewing.adminReviewDecision === "denied" ? "destructive" : "warning"}>
-                    {request.viewing.adminReviewDecision === "approved" ? "Approved" : request.viewing.adminReviewDecision === "denied" ? "Denied" : "Local Cooks review"}
+                  <Badge variant={request.viewing.status === "cancelled" || request.viewing.status === "no_show" ? "destructive" : request.viewing.status === "confirmed" || request.viewing.status === "completed" ? "success" : "warning"}>
+                    {request.viewing.status === "cancelled"
+                      ? request.viewing.adminReviewDecision === "denied" || request.viewing.cancelledBy === "manager_declined" ? "Rejected" : "Cancelled"
+                      : request.viewing.status === "confirmed" ? "Approved"
+                      : request.viewing.status === "completed" ? "Completed"
+                      : request.viewing.status === "no_show" ? "No show"
+                      : request.viewing.adminReviewDecision === "approved" ? "Request sent" : "Local Cooks review"}
                   </Badge>
                 </div>
               </CardHeader>

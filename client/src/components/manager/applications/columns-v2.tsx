@@ -269,7 +269,7 @@ export function getApplicationColumnsV2({
             cell: ({ row }) => {
                 const app = row.original;
                 const unreadCount = unreadCounts[app.id] || 0;
-                const canChat = app.status === 'approved' || app.chat_conversation_id;
+                const canChat = app.status === 'approved';
                 const tier = app.current_tier ?? 1;
                 const isFullyApproved = app.status === 'approved' && tier >= 3;
 

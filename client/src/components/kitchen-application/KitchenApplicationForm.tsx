@@ -194,8 +194,8 @@ const baseKitchenApplicationSchema = z.object({
   foodEstablishmentCertExpiry: z.string().optional(),
   usageFrequency: z.string().optional().or(z.literal('')),
   sessionDuration: z.string().optional().or(z.literal('')),
-  termsAgree: z.boolean().default(true),
-  accuracyAgree: z.boolean().default(true),
+  termsAgree: z.boolean().default(false),
+  accuracyAgree: z.boolean().default(false),
   // Tier 2 field - kitchen experience description
   kitchenExperienceDescription: z.string().optional(),
 });
@@ -520,8 +520,8 @@ export default function KitchenApplicationForm({
         foodEstablishmentCertExpiry: z.string().optional(),
         usageFrequency: optionalText,
         sessionDuration: optionalText,
-        termsAgree: z.boolean().default(true).optional(),
-        accuracyAgree: z.boolean().default(true).optional(),
+        termsAgree: z.boolean().optional(),
+        accuracyAgree: z.boolean().optional(),
         kitchenExperienceDescription: requirements.tier2_kitchen_experience_required
           ? z.string().min(1, t("valKitchenExpReq", { defaultValue: "Kitchen experience description is required" }))
           : z.string().optional(),
@@ -589,8 +589,8 @@ export default function KitchenApplicationForm({
       foodEstablishmentCertExpiry: z.string().optional(),
       usageFrequency: optionalText,
       sessionDuration: optionalText,
-      termsAgree: z.boolean().default(true).optional(),
-      accuracyAgree: z.boolean().default(true).optional(),
+      termsAgree: z.literal(true, { message: t("valAcceptKitchenTerms", { defaultValue: "Please agree to the kitchen terms and policies" }) }),
+      accuracyAgree: z.literal(true, { message: t("valConfirmApplicationAccuracy", { defaultValue: "Please confirm your application is accurate" }) }),
       kitchenExperienceDescription: z.string().optional(),
     };
 
@@ -676,8 +676,8 @@ export default function KitchenApplicationForm({
       foodEstablishmentCertExpiry: "",
       usageFrequency: "",
       sessionDuration: "",
-      termsAgree: true,
-      accuracyAgree: true,
+      termsAgree: false,
+      accuracyAgree: false,
       kitchenExperienceDescription: "",
     };
 
@@ -811,12 +811,6 @@ export default function KitchenApplicationForm({
   /** The form itself, so a failed submit can bring the blocking field into view. */
   const formRef = useRef<HTMLFormElement | null>(null);
   //
-  // The two Section-5 agreements are not `useWatch`ed (they are declared below the checklist, so
-  // reading them there would be a read-before-declare), so their live value is mirrored here.
-  // Writing a ref during render is safe and is what makes the progress row update on the same
-  // render as the tick, rather than one behind.
-  const termsAgreeRef = useRef<boolean | null>(null);
-  const accuracyAgreeRef = useRef<boolean | null>(null);
   const registerSection = useCallback((id: string) => (el: HTMLElement | null) => {
     sectionRefs.current[id] = el;
   }, []);
@@ -1066,8 +1060,7 @@ export default function KitchenApplicationForm({
     push(required, {
       id: "terms",
       label: t("termsAndAgreements", { defaultValue: "Terms & Agreements" }),
-      // Read BEFORE the render-time `Ref` assignment, so this is current on every keystroke.
-      state: termsAgreeRef.current === true && accuracyAgreeRef.current === true ? "done" : "todo",
+      state: watchedValues.termsAgree === true && watchedValues.accuracyAgree === true ? "done" : "todo",
       onNavigate: () => goToSection("terms"),
     });
 
@@ -1096,15 +1089,14 @@ export default function KitchenApplicationForm({
   const phaseCaptions = (() => {
     if (currentTier >= 2) {
       return application?.tier2_completed_at
-        ? [t("progressDocsSubmitted", { defaultValue: "With the kitchen for review." })]
+        ? ["Documents submitted. Nothing needed from you."]
         : [
             t("progressDocsCaption", { defaultValue: "Documents this kitchen requires." }),
-            t("progressDocsReviewLine", { defaultValue: "Kitchen reviews them before you book." }),
           ];
     }
     if (hasApplication && application?.status !== 'rejected' && application?.status !== 'cancelled') {
       return [
-        t("progressWaitingCaption", { defaultValue: "With LocalCooks. Nothing needed from you." }),
+        "Request submitted. Nothing needed from you.",
         t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
       ];
     }
@@ -1651,7 +1643,7 @@ export default function KitchenApplicationForm({
         icon: Clock,
         color: "text-warning bg-muted",
         title: t("applicationPending", { defaultValue: "Application Pending" }),
-        description: t("applicationPendingDesc", { defaultValue: "Your request to apply is being reviewed by the LocalCooks team." }),
+        description: "Your request to apply has been submitted. We’ll notify you when its status changes.",
       },
     };
 
@@ -2490,7 +2482,7 @@ export default function KitchenApplicationForm({
                       <div className="bg-muted rounded-lg p-4">
                         <p className="text-sm text-muted-foreground">
                           <strong>{t("whatHappensNext", { defaultValue: "What happens next?" })}</strong><br />
-                          {t("managerWillReviewDocs1", { defaultValue: "The manager will review your submitted documents. They may reach out via messages on Local Cooks if additional information is needed. " })}
+                          You’ll be notified if additional information is needed. {" "}
                           {t("managerWillReviewDocs2", { defaultValue: "Once approved, you\'ll have full access to book this kitchen." })}
                         </p>
                       </div>
@@ -2973,9 +2965,7 @@ export default function KitchenApplicationForm({
                 <FormField
                   control={form.control}
                   name="termsAgree"
-                  render={({ field }) => {
-                    termsAgreeRef.current = field.value === true;
-                    return (
+                  render={({ field }) => (
                     <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                       <FormControl>
                         <Checkbox
@@ -3003,16 +2993,13 @@ export default function KitchenApplicationForm({
                         <FormMessage />
                       </div>
                     </FormItem>
-                    );
-                  }}
+                  )}
                 />
 
                 <FormField
                   control={form.control}
                   name="accuracyAgree"
-                  render={({ field }) => {
-                    accuracyAgreeRef.current = field.value === true;
-                    return (
+                  render={({ field }) => (
                     <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                       <FormControl>
                         <Checkbox
@@ -3040,8 +3027,7 @@ export default function KitchenApplicationForm({
                         <FormMessage />
                       </div>
                     </FormItem>
-                    );
-                  }}
+                  )}
                 />
               </div>
             </CardContent>

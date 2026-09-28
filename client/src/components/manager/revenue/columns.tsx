@@ -216,7 +216,7 @@ export function getTransactionColumns({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="justify-end w-full"
-                >{mt("total")}<ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("kitchenSubtotal")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => (
@@ -307,7 +307,7 @@ export function getTransactionColumns({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="justify-end w-full"
-                >{mt("netRevenue")}<ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("managerPayout")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => {

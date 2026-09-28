@@ -605,9 +605,11 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         status: details.status,
         paymentStatus: details.paymentStatus,
         transactionId: details.paymentTransaction?.id || booking.transactionId, // prefer details PT id
+        fullRefundRequest: details.paymentTransaction?.metadata?.fullRefundRequest,
         transactionAmount: details.paymentTransaction?.amount,
         stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
         managerRevenue: details.paymentTransaction?.managerRevenue,
+        managerRemainingBalance: details.managerRemainingBalance ?? booking.managerRemainingBalance,
         serviceFee:
           details.paymentTransaction?.serviceFee ||
           details.serviceFee ||

@@ -58,6 +58,7 @@ interface ViewingRecord {
     noShowReason: string | null
     intakeData: Record<string, any>
     cancelledBy: string | null
+    adminReviewDecision: string | null
     cancellationReason: string | null
     cancelledAt: string | null
     completedAt: string | null
@@ -77,7 +78,10 @@ interface ViewingRecord {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getStatusBadge(status: string) {
+function getStatusBadge(status: string, cancelledBy?: string | null, adminReviewDecision?: string | null) {
+  if (status === "cancelled" && (cancelledBy === "manager_declined" || adminReviewDecision === "denied")) {
+    return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />{mt("rejected")}</Badge>
+  }
   switch (status) {
     case "confirmed":
       return (
@@ -120,6 +124,10 @@ function getIntakeLabel(key: string): string {
   return labels[key] || key
 }
 
+function canReviewReschedule(viewing: ViewingRecord["viewing"]): boolean {
+  return viewing.status === "confirmed" && !!viewing.requestedRescheduleAt && new Date(viewing.scheduledAt).getTime() > Date.now()
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface ViewingsDashboardProps {
@@ -152,7 +160,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
       if (!response.ok) throw new Error((await response.json()).error || "Could not review date change");
       return response.json();
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [queryUrl] }); toast.success("Date change reviewed"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [queryUrl] }); closeSheet(); toast.success("Date change reviewed"); },
     onError: (error: Error) => toast.error(error.message),
   });
 
@@ -292,7 +300,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             </div>
           )}
         </TableCell>
-        <TableCell><div className="flex flex-col items-start gap-1">{viewing.status === "pending" && new Date(viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">Request expired</Badge> : getStatusBadge(viewing.status)}{viewing.requestedRescheduleAt && <Badge variant="outline" className="text-amber-700 border-amber-300">Date change requested</Badge>}</div></TableCell>
+        <TableCell><div className="flex flex-col items-start gap-1">{viewing.status === "pending" && new Date(viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">Request expired</Badge> : getStatusBadge(viewing.status, viewing.cancelledBy, viewing.adminReviewDecision)}{viewing.requestedRescheduleAt && <Badge variant="outline" className="text-amber-700 border-amber-300">Date change requested</Badge>}</div></TableCell>
         <TableCell>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -301,8 +309,8 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {viewing.requestedRescheduleAt && new Date(viewing.scheduledAt).getTime() > Date.now() && <>
-                <DropdownMenuItem disabled>Requested: {formatTourWhen(viewing.requestedRescheduleAt, viewing.durationMinutes, record.locationTimezone || "America/St_Johns")}</DropdownMenuItem>
+              {canReviewReschedule(viewing) && <>
+                <DropdownMenuItem disabled>Requested: {formatTourWhen(viewing.requestedRescheduleAt!, viewing.durationMinutes, record.locationTimezone || "America/St_Johns")}</DropdownMenuItem>
                 <DropdownMenuItem disabled={reviewReschedule.isPending} onClick={() => reviewReschedule.mutate({ id: viewing.id, decision: "accept" })}>Approve new time</DropdownMenuItem>
                 <DropdownMenuItem disabled={reviewReschedule.isPending} onClick={() => reviewReschedule.mutate({ id: viewing.id, decision: "decline" })}>Keep original time</DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -520,9 +528,20 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{mt("status")}</span>
-                    {getStatusBadge(selectedViewing.viewing.status)}
+                    {getStatusBadge(selectedViewing.viewing.status, selectedViewing.viewing.cancelledBy, selectedViewing.viewing.adminReviewDecision)}
                   </div>
                 </div>
+
+                {canReviewReschedule(selectedViewing.viewing) && (
+                  <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4">
+                    <p className="text-sm font-medium">Date change requested</p>
+                    <p className="text-sm">Requested: {formatTourWhen(selectedViewing.viewing.requestedRescheduleAt!, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button variant="outline" className="w-full sm:w-auto" disabled={reviewReschedule.isPending} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "decline" })}>Keep original time</Button>
+                      <Button className="w-full sm:w-auto" disabled={reviewReschedule.isPending} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "accept" })}>Approve new time</Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Chef Notes */}
                 {selectedViewing.viewing.chefNotes && (

@@ -29,7 +29,7 @@ import { tt } from "@/i18n/common-ns";
 import { Icon } from "@iconify/react";
 import { useLocation } from "wouter";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
-import { countPendingOrUpcomingTours, normalizeChefTourRow, type ChefTourRow } from "@/lib/chef-viewing-display";
+import { countPendingOrUpcomingTours, normalizeChefTourRow, viewingStatusBadge, type ChefTourRow } from "@/lib/chef-viewing-display";
 
 interface OverviewTabContentProps {
   user: {
@@ -208,15 +208,14 @@ export default function OverviewTabContent({
   const tourRows = (viewings as unknown[]).map(normalizeChefTourRow).filter((row): row is ChefTourRow => row != null);
   const activeTourCount = countPendingOrUpcomingTours(tourRows);
   const latestTour = [...tourRows].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+  const latestTourBadge = latestTour && viewingStatusBadge(latestTour.status, latestTour.adminReviewDecision, latestTour.cancelledBy);
   const latestTourHint = latestTour
     ? `${latestTour.kitchenName || latestTour.locationName} · ${
         latestTour.status === "confirmed"
           ? new Date(latestTour.scheduledAt).getTime() + (latestTour.durationMinutes ?? 30) * 60_000 < Date.now()
             ? t("tourStatusAwaitingOutcome", "Awaiting outcome")
-            : t("tourStatusConfirmed", "Confirmed")
-          : latestTour.status === "pending" || latestTour.status === "pending_local_cooks"
-            ? t("tourStatusPending", "In review")
-            : t(`tourStatus${latestTour.status === "no_show" ? "NoShow" : latestTour.status.charAt(0).toUpperCase() + latestTour.status.slice(1)}`, latestTour.status)
+            : t("tourStatusConfirmed", "Approved")
+          : t(latestTourBadge!.labelKey, latestTourBadge!.defaultLabel)
       }`
     : t("ovNoViewings", "No tours scheduled");
 

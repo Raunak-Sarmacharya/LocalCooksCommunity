@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { tt } from "@/i18n/common-ns";
 import { ChefTourRow, chefTourRowHasDetails, formatTourWhen, normalizeChefTourRow, viewingStatusBadge } from "@/lib/chef-viewing-display";
+import { tourAvailableDate } from "@/lib/tour-available-date";
 
 function TourDownloadButton({ tour, t }: { tour: ChefTourRow; t: (key: string, defaultValue?: string | Record<string, unknown>) => string }) {
   const [downloading, setDownloading] = useState(false);
@@ -72,6 +73,15 @@ function TourDetailPanel({
   const expired = ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() < Date.now();
   const [date, setDate] = useState("");
   const [slot, setSlot] = useState("");
+  const { data: calendarAvailability } = useQuery({
+    queryKey: [`/api/viewings/calendar-availability/${tour.targetedKitchenId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/viewings/calendar-availability/${tour.targetedKitchenId}`);
+      if (!response.ok) throw new Error("Could not load tour availability");
+      return response.json();
+    },
+    enabled: !!tour.targetedKitchenId && tour.status === "confirmed" && !pastEnd,
+  });
   const { data: slots = [], isFetching: loadingSlots } = useQuery<{ scheduledAt: string; startTime: string }[]>({
     queryKey: ["/api/viewings/available-slots", tour.id, date],
     queryFn: async () => {
@@ -113,7 +123,7 @@ function TourDetailPanel({
         <details className="rounded-lg border bg-background p-3">
           <summary className="cursor-pointer font-medium text-foreground">{t("tourRequestNewTime", "Request new time")}</summary>
           <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-56"><label className="mb-1 block text-xs font-medium" htmlFor={`tour-date-${tour.id}`}>{t("tourNewDate", "New date")}</label><DateField id={`tour-date-${tour.id}`} value={date} onChange={(value) => { setDate(value); setSlot(""); }} placeholder={t("tourChooseDate", "Choose a date")} /></div>
+          <div className="w-full sm:w-56"><label className="mb-1 block text-xs font-medium" htmlFor={`tour-date-${tour.id}`}>{t("tourNewDate", "New date")}</label><DateField id={`tour-date-${tour.id}`} value={date} onChange={(value) => { setDate(value); setSlot(""); }} placeholder={t("tourChooseDate", "Choose a date")} disabledDate={(day) => !tourAvailableDate(day, calendarAvailability)} /></div>
           <div className="w-full sm:w-56"><label className="mb-1 block text-xs font-medium" htmlFor={`tour-time-${tour.id}`}>{t("tourAvailableTime", "Available time")}</label><Select value={slot} onValueChange={setSlot} disabled={!date || loadingSlots || slots.length === 0}><SelectTrigger id={`tour-time-${tour.id}`}><SelectValue placeholder={loadingSlots ? t("tourLoadingTimes", "Loading…") : t("tourChooseTime", "Choose a time")} /></SelectTrigger><SelectContent>{slots.map((item) => <SelectItem key={item.scheduledAt} value={item.scheduledAt}>{item.startTime}</SelectItem>)}</SelectContent></Select></div>
           <Button variant="outline" size="sm" disabled={!slot || rescheduling} onClick={() => onReschedule(tour, slot)}>{t("tourRequestNewTime", "Request new time")}</Button>
           </div>
@@ -175,7 +185,7 @@ function TourDetailPanel({
       {tour.adminReviewReason && <div><p className="font-medium text-xs">{t("tourDetailReviewReason", "Review note")}</p><p className="text-muted-foreground whitespace-pre-wrap">{tour.adminReviewReason}</p></div>}
       {tour.noShowReason && <div><p className="font-medium text-xs">{t("tourDetailNoShowReason", "No-show reason")}</p><p className="text-muted-foreground">{tour.noShowReason.replace(/_/g, " ")}</p></div>}
       </div></details>}
-      {(tour.status === "pending_local_cooks" || tour.status === "pending") && !expired && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("tourListPendingNext", "Your request is moving through Local Cooks and kitchen manager approval. You’ll get an email after the final decision.")}</p>}
+      {(tour.status === "pending_local_cooks" || tour.status === "pending") && !expired && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("tourListPendingNext", "Your tour request was sent. We’ll let you know when it is approved or rejected.")}</p>}
       {tour.status === "confirmed" && !pastEnd && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-950">{t("tourListConfirmedNext", "Tour confirmed. Arrive on time and bring questions about equipment, storage, and access.")}</p>}
     </div>
   );
@@ -279,7 +289,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           const hasDetails = chefTourRowHasDetails(tour);
           const pastEnd = new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 < Date.now();
           const expired = ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() < Date.now();
-          const badge = viewingStatusBadge(tour.status);
+          const badge = viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy);
           return (
             <article key={tour.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
               <div className="p-4 sm:p-5">

@@ -881,6 +881,7 @@ export default function EnhancedAuthPage() {
                   onSuccess: handleSuccess,
                   setHasAttemptedLogin: setHasAttemptedLogin,
                   hideApplyingToggle: true,
+                  showTermsInline: sellerJourneyDraft?.termsAccepted !== true,
                   initialTermsAccepted: sellerJourneyDraft?.termsAccepted === true,
                   animateEntrance: false,
                   onRegistrationStart: handleRegistrationStart,

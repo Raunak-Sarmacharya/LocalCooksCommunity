@@ -2259,7 +2259,7 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   // Pre-tour intake data for lead qualification (JSONB)
   intakeData: jsonb("intake_data").default({}), // { intendedUse, estimatedWeeklyHours, hasLicense, targetStartDate }
   // Cancellation tracking
-  cancelledBy: text("cancelled_by"), // 'chef' | 'manager'
+  cancelledBy: text("cancelled_by"), // 'chef' | 'manager' | 'manager_declined' | 'local_cooks'
   cancellationReason: text("cancellation_reason"),
   cancelledAt: timestamp("cancelled_at"),
   adminReviewDecision: text("admin_review_decision"), // 'approved' | 'denied'
