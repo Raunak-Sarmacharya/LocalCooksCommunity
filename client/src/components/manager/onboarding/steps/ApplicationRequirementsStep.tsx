@@ -37,6 +37,7 @@ export default function ApplicationRequirementsStep() {
     registerStepSave,
     saveAndExit,
     isSubmitting,
+    trackStepCompletion,
   } = useManagerOnboarding();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -64,6 +65,20 @@ export default function ApplicationRequirementsStep() {
     isReady: Boolean(requirementsLoaded),
     partCount: PART_COUNT,
   });
+
+  /**
+   * Reaching the REVIEW is what finishes this step, and only this component knows it happened.
+   *
+   * The pane ships with the platform defaults already filled in, so the common case is a manager
+   * who reads them, changes nothing and moves on — and writes no `location_requirements` row for
+   * `hasRequirements` to see. `isRequirementsStepBehindUs` accepts "reached the review" for exactly
+   * that case; without this, the only way to record it was pressing Continue, and leaving from the
+   * review lost it.
+   */
+  useEffect(() => {
+    if (!isSummary) return;
+    void trackStepCompletion('application-requirements');
+  }, [isSummary, trackStepCompletion]);
 
   /**
    * The saved row, for the review.

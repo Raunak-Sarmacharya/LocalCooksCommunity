@@ -1,4 +1,3 @@
-import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 /**
@@ -8,28 +7,22 @@ import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect, useCallback, useImperativeHandle, useRef } from "react";
 import type { Ref } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Storefront, Plus, Loader2, Package, Wrench, Image as Images, Clock, ClipboardCheck } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { ImageWithReplace } from "@/components/ui/image-with-replace";
-import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { ChefPageHeader } from "@/components/chef/ui";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CurrencyInput } from "@/components/ui/currency-input";
 import { EquipmentListingContent } from "@/pages/EquipmentListingManagement";
 import { StorageListingContent } from "@/pages/StorageListingManagement";
 import KitchenDetailsPricing, { type KitchenDetailsPricingHandle } from "./KitchenDetailsPricing";
 import { KitchenListingStatus } from "./KitchenListingStatus";
 import { KitchenSwitcher } from "./KitchenSwitcher";
 import KitchenPhotos from "./KitchenPhotos";
+import { KitchenSetupForm } from "./KitchenSetupForm";
 import { DEFAULT_KITCHEN_SECTION, kitchenSectionFromParams, type KitchenSection, type KitchensNavigationTarget } from "@/lib/manager-kitchens-navigation";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
@@ -103,15 +96,7 @@ const HEADER_LINK = "rounded-lg text-muted-foreground hover:bg-muted hover:text-
 
 export default function KitchensManagement({ location, onNavigate, onConfigureRequirements, onDirtyChange, saveRef, initialKitchenId }: KitchensManagementProps) {
   
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
-  const [newKitchenName, setNewKitchenName] = useState('');
-  const [newKitchenDescription, setNewKitchenDescription] = useState('');
-  const [newKitchenImageUrl, setNewKitchenImageUrl] = useState('');
-  const [newKitchenHourlyRate, setNewKitchenHourlyRate] = useState('');
-  const [newKitchenMinimumHours, setNewKitchenMinimumHours] = useState('1');
-  const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId ?? null);
   const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
 
@@ -153,14 +138,26 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       : null;
   const activeKitchen = selectedKitchen ?? kitchens[0] ?? null;
   const activeKitchenId = activeKitchen?.id ?? null;
-  const hourlyRateValue = Number.parseFloat(newKitchenHourlyRate);
-  const newKitchenIncomplete = !newKitchenName.trim() || !newKitchenDescription.trim()
-    || !newKitchenImageUrl || !(hourlyRateValue > 0);
 
-  // The details form only exists while its tab is mounted, so unsaved edits can
-  // only exist there. Masking by section also keeps a stale flag from surviving a
-  // tab switch, which unmounts the form and drops its state.
-  const kitchensDirty = activeSection === DEFAULT_KITCHEN_SECTION && detailsDirty;
+  /*
+   * The create form takes the CONTENT slot — that is the whole point of it not being a modal. Two
+   * ways in, one screen: the switcher's "Add Kitchen", or the empty state's own action. It replaces
+   * the tabs while it is up, which is why `kitchensDirty` below is masked by it.
+   */
+  const showingCreateForm = showCreateKitchen;
+
+  /*
+   * The details form only exists while its tab is mounted, so unsaved edits can
+   * only exist there. Masking by section also keeps a stale flag from surviving a
+   * tab switch, which unmounts the form and drops its state.
+   *
+   * `!showingCreateForm` is the third mask, and it is not cosmetic: while the create form is up the
+   * details tab is UNMOUNTED, so there is nothing left to save — and a live `detailsDirty` would put
+   * a "Save changes" button in the header that reports success without writing anything, because
+   * `saveAllChanges` falls back to `true` when its ref is null.
+   */
+  const kitchensDirty =
+    activeSection === DEFAULT_KITCHEN_SECTION && detailsDirty && !showingCreateForm;
 
   useEffect(() => {
     setSelectedKitchenId((current) =>
@@ -274,73 +271,22 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     return () => window.removeEventListener('popstate', syncSectionFromUrl);
   }, []);
 
-  const handleCreateKitchen = async () => {
-    // Guard on the parsed rate, not the raw string: "abc" is truthy but
-    // serialises to null and comes back as a 400 from the pricing validation.
-    if (newKitchenIncomplete) {
-      toast({ title: mt("error"),
-        description: mt("completeKitchenEssentials"),
-        variant: "destructive",
-      });
-      return;
-    }
+  /**
+   * Open the create form, asking about unsaved edits first.
+   *
+   * The form takes the content slot, so opening it unmounts the details tab — which makes this a
+   * NAVIGATION rather than a reveal, and it needs the same protection switching tabs or kitchens
+   * gets. Without it, "Add Kitchen" silently threw away whatever the manager had typed in Details.
+   */
+  const openCreateKitchen = () => guardNavigation(() => setShowCreateKitchen(true));
 
-    setIsCreatingKitchen(true);
-    try {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error(tt("firebaseUserNotAvailable"));
-      }
-
-      const token = await currentFirebaseUser.getIdToken();
-
-      const response = await fetch('/api/manager/kitchens', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          locationId: location.id,
-          name: newKitchenName.trim(),
-          description: newKitchenDescription.trim(),
-          imageUrl: newKitchenImageUrl,
-          hourlyRate: Math.round(hourlyRateValue * 100),
-          currency: "CAD",
-          minimumBookingHours: parseInt(newKitchenMinimumHours, 10) || 1,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create kitchen');
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
-      // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
-
-      toast({ title: mt("success"),
-        description: mt("kitchenCreatedSuccessfully"),
-      });
-
-      setNewKitchenName('');
-      setNewKitchenDescription('');
-      setNewKitchenImageUrl('');
-      setNewKitchenHourlyRate('');
-      setNewKitchenMinimumHours('1');
-      setShowCreateKitchen(false);
-    } catch (error: any) {
-      logger.error('Kitchen creation error:', error);
-      toast({ title: mt("error"),
-        description: error.message || tt("failedToCreateKitchen"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingKitchen(false);
-    }
-  };
+  /**
+   * Leave the create form without creating anything.
+   *
+   * Nothing to restore: the form is unmounted while it is closed, so its half-filled fields are
+   * already gone. This only puts the content slot back.
+   */
+  const closeCreateKitchen = () => setShowCreateKitchen(false);
 
   /**
    * The kitchen switcher, rendered as the IDENTITY at the head of the listing-status bar rather than
@@ -356,7 +302,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       kitchens={kitchens}
       activeKitchenId={activeKitchen.id}
       onSelect={(kitchenId) => guardNavigation(() => setSelectedKitchenId(kitchenId))}
-      onAddKitchen={() => setShowCreateKitchen(true)}
+      onAddKitchen={openCreateKitchen}
     />
   ) : null;
 
@@ -387,72 +333,29 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
         }
       />
 
-      <Dialog open={showCreateKitchen} onOpenChange={setShowCreateKitchen}>
-        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{mt("newKitchen")}</DialogTitle>
-            <DialogDescription>{mt("newKitchenDescription")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="kitchen-name">{mt("kitchenName")} *</Label>
-              <Input
-                id="kitchen-name"
-                value={newKitchenName}
-                onChange={(e) => setNewKitchenName(e.target.value)}
-                placeholder={mt("eGMainKitchenPrepKitchen")}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="kitchen-desc">{mt("description")} *</Label>
-              <Textarea
-                id="kitchen-desc"
-                value={newKitchenDescription}
-                onChange={(e) => setNewKitchenDescription(e.target.value)}
-                placeholder={mt("placeholderKitchenDescription")}
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{mt("coverPhoto")} *</Label>
-              <ImageWithReplace imageUrl={newKitchenImageUrl || undefined} onImageChange={(url) => setNewKitchenImageUrl(url || '')} onRemove={() => setNewKitchenImageUrl('')} fieldName="new-kitchen-cover" aspectRatio="16/9" className="h-48 rounded-lg object-cover" />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="kitchen-rate">{mt("hourlyRate")} (CAD) *</Label>
-                <CurrencyInput
-                  id="kitchen-rate"
-                  value={newKitchenHourlyRate}
-                  onValueChange={setNewKitchenHourlyRate}
-                  placeholder="25.00"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="kitchen-minimum">{mt("minimumBooking")} ({mt("hoursSuffix")})</Label>
-                <Input id="kitchen-minimum" type="number" min="1" max="24" step="1" value={newKitchenMinimumHours} onChange={(event) => setNewKitchenMinimumHours(event.target.value)} />
-              </div>
-            </div>
-            {newKitchenIncomplete && (
-              <p className="text-xs text-muted-foreground">{mt("completeKitchenEssentials")}</p>
-            )}
-          </div>
-          <DialogFooter className="gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setShowCreateKitchen(false)}>{mt("cancel")}</Button>
-            <StatusButton
-              onClick={handleCreateKitchen}
-              status={isCreatingKitchen ? "loading" : "idle"}
-              disabled={newKitchenIncomplete}
-              labels={{ idle: mt("createKitchen"), loading: mt("creating"), success: mt("created") }}
-            />
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Kitchen List */}
+      {/*
+        * Kitchen List — or the create form, in the SAME slot.
+        *
+        * The form is not an overlay on this page, it is this page's content while it is open. That
+        * is the whole reason it is not a dialog any more: the old one dimmed a page it was asking
+        * the manager to leave, and the wizard's kitchen part had already made the opposite call for
+        * the same fields. See `KitchenSetupForm`.
+        *
+        * Three branches, in this order: still loading; the create form; the empty state; the page.
+        * The empty state survives in front of the form rather than being replaced by it, because
+        * that is the shape the location prerequisite already uses on the dashboard — a notice that
+        * says what the thing unlocks, and then the form in the same slot. See `NeedsPrerequisite`.
+        */}
       {isLoadingKitchens ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : showingCreateForm ? (
+        <KitchenSetupForm
+          locationId={location.id}
+          onCancel={closeCreateKitchen}
+          onCreated={closeCreateKitchen}
+        />
       ) : kitchens.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
@@ -461,7 +364,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             </div>
             <h3 className="text-base font-semibold mb-1">{mt("noKitchensYet")}</h3>
             <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">{mt("addYourFirstKitchenToStartManagingPhotosDescriptionsAndAccep")}</p>
-            <Button onClick={() => setShowCreateKitchen(true)} size="sm">
+            <Button onClick={openCreateKitchen} size="sm">
               <Plus className="mr-1.5 h-4 w-4" />{mt("addYourFirstKitchen")}</Button>
           </CardContent>
         </Card>

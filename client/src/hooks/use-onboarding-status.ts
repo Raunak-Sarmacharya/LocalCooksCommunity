@@ -5,6 +5,23 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { auth } from "@/lib/firebase"; // Keep direct auth import for token if needed, or rely on useFirebaseAuth
 import { mt } from "@/i18n/manager";
+/*
+ * The step-completion rules, imported rather than re-derived.
+ *
+ * This hook used to decide each of these for itself — two regexes over the RAW stored record and an
+ * inline copy of the Stripe rule — while the wizard used the predicates in `step-completion.ts` over
+ * a NORMALISED one. Same record, two answers: a legacy `step_3` key was honoured by the wizard and
+ * ignored here, and the wizard could count a signal this hook cannot see. The rail and the banner
+ * disagreed, and both could be wrong.
+ *
+ * The predicates were already exported for this reason. This is the reader that never called them.
+ */
+import {
+  isAvailabilityStepBehindUs,
+  isRequirementsStepBehindUs,
+  normalizeCompletedSteps,
+  resolveStripeState,
+} from "@/components/manager/onboarding/step-completion";
 
 export interface OnboardingStatus {
     isLoading: boolean;
@@ -167,38 +184,6 @@ export function invalidateOnboardingStatus(queryClient: QueryClient): void {
     }
 }
 
-/**
- * Whether the sidebar should carry the "Getting started" checklist.
- *
- * The dashboard banner and this checklist read the same status, so they have to agree — and
- * they did not. The gate required a SELECTED LOCATION for the setup banner to reach the
- * checklist, while the banner itself has no such requirement. A manager who left the wizard
- * at step one ("Maybe later") has a verified email and no location, so BOTH clauses failed:
- *
- *   profile step complete  -> first clause false   (they registered, so the email is verified)
- *   no selectedLocation    -> second clause false  (the wizard never created one)
- *
- * …and the checklist was hidden while the banner directly above it said "Continue setup".
- * The manager with nothing set up yet is precisely the one who needs the checklist.
- *
- * `improvementSteps` (logo, cover photo, kitchen descriptions) stay location-scoped — they
- * are about a listing, and there is no listing to improve without a location.
- */
-export function shouldShowSidebarGuidance(input: {
-  isLoading: boolean;
-  setupSteps: ManagerSetupStep[];
-  hasSelectedLocation: boolean;
-  showSetupBanner: boolean;
-  improvementStepCount: number;
-}): boolean {
-  if (input.isLoading) return false;
-  return (
-    input.setupSteps.some((step) => step.id === "profile" && !step.complete) ||
-    input.showSetupBanner ||
-    (input.hasSelectedLocation && input.improvementStepCount > 0)
-  );
-}
-
 export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const { user: firebaseUser } = useFirebaseAuth();
 
@@ -335,32 +320,37 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const hasAvailability = shouldSkipDetailedQueries ? true : !!availabilityData;
 
     /*
-     * Whether the availability step is BEHIND the manager — the progress question, which is
-     * NOT the same as `hasAvailability` ("is there an open day to book?").
+     * The stored step record, normalised by the ONE normaliser both readers share.
      *
-     * The durable record is the authority: the engine POSTs the step's completion when the
-     * manager leaves its review, and `/api/user/profile` returns it as
-     * `managerOnboardingStepsCompleted`. Both spellings are read because the wizard's own
-     * context reads the snake_case one, which the profile endpoint does not actually send —
-     * so at least one of these two readers is wrong, and guessing which would be the third
-     * time this codebase has shipped a definition of a fact that nothing can satisfy.
+     * The durable record is the authority: the engine POSTs a step's completion when the manager
+     * leaves its review, and `/api/user/profile` returns it as `managerOnboardingStepsCompleted`.
+     * Both spellings are still accepted — but the tolerance now lives in `step-completion.ts`
+     * instead of being re-decided here. It used to be decided in both places, differently:
+     * `/api/user/profile` sends camelCase (`...safeUser`), this hook read snake_case as a fallback,
+     * and the wizard's context read snake_case as its ONLY spelling. One of those was wrong for the
+     * whole session, which is the mechanism behind "the tick was there, and then it was gone".
      *
-     * `hasAvailability` is kept in the OR: a manager who set a real schedule but whose session
-     * predates the durable write is still plainly done with the step.
+     * With one normaliser a wrong guess is a wrong guess in both readers at once — a bug you can
+     * see, rather than two readers quietly disagreeing.
+     *
+     * `?? {}` because this hook has no prior state to preserve. The wizard keeps its own and treats
+     * `null` as "nothing to say", so a blinking profile response cannot untick its steps.
      */
     const completedStepMap =
-        (userData?.managerOnboardingStepsCompleted as Record<string, boolean> | undefined) ??
-        (userData?.manager_onboarding_steps_completed as Record<string, boolean> | undefined) ??
-        {};
+        normalizeCompletedSteps(
+            (userData?.managerOnboardingStepsCompleted as Record<string, boolean> | undefined) ??
+                (userData?.manager_onboarding_steps_completed as Record<string, boolean> | undefined),
+        ) ?? {};
+
     /*
-     * A location-scoped key counts for ANY location, not just the selected one — the wizard
-     * writes `availability_location_<id>` and the manager may have since switched. The pattern
-     * is the same one the wizard's own normaliser uses, so the two cannot drift.
+     * A plain lookup now, not a regex: `normalizeCompletedSteps` above has already folded
+     * `availability_location_<id>` into the generic key AND decoded a legacy `step_3`. The regex
+     * could do neither for the legacy form, which is half of why the two readers disagreed.
      */
-    const availabilityStepDone =
-        Object.entries(completedStepMap).some(
-            ([key, done]) => !!done && /^availability(?:_location_\d+)?$/.test(key),
-        ) || hasAvailability;
+    const availabilityStepDone = isAvailabilityStepBehindUs({
+        hasAvailability,
+        dbCompletedSteps: completedStepMap,
+    });
 
     // 5. Fetch Requirements Status
     // SKIP when onboarding is complete
@@ -389,13 +379,13 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
      * review and accepted the pre-filled defaults, which writes no row — the engine records that
      * in `managerOnboardingStepsCompleted` instead. Reading only the row flag is what kept the
      * dashboard's setup banner offering "Chef requirements" after the step was finished and its
-     * rail was ticked (2026-09-26). Same regex shape as the availability key above, so the two
-     * derivations cannot drift apart.
+     * rail was ticked (2026-09-26). It reads the same predicate the wizard reads now, so the two
+     * cannot drift apart.
      */
-    const requirementsStepDone =
-        Object.entries(completedStepMap).some(
-            ([key, done]) => !!done && /^application-requirements(?:_location_\d+)?$/.test(key),
-        ) || hasRequirements;
+    const requirementsStepDone = isRequirementsStepBehindUs({
+        hasRequirements,
+        dbCompletedSteps: completedStepMap,
+    });
 
     // --- Logic ---
 
@@ -417,10 +407,10 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     // - Skip detailed status checks (Stripe, kitchens, availability, requirements)
     // - These were verified when manager_onboarding_completed was set to true
     // - Only license status is checked for showLicenseReviewBanner
-    const isStripeComplete = shouldSkipDetailedQueries 
+    const isStripeComplete = shouldSkipDetailedQueries
         ? true  // Was verified during onboarding
-        : (stripeConnectStatus?.status === 'complete' && 
-           stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled);
+        // `connected`, not `initiated`: this row is about money actually moving.
+        : resolveStripeState(stripeConnectStatus).connected;
     
     const hasKitchens = (kitchens?.length || 0) > 0;
     const setupSteps = buildManagerSetupSteps({

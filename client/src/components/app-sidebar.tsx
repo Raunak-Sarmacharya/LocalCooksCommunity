@@ -13,9 +13,8 @@ import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { mt } from "@/i18n/manager";
 import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
-import ManagerGettingStarted from "@/components/manager/ManagerGettingStarted";
-import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
-import { EMAIL_FOCUS_PARAM, EMAIL_FOCUS_VALUE } from "@/lib/email-verification-nav";
+import ManagerGettingStarted, { type ManagerGettingStartedProps } from "@/components/manager/ManagerGettingStarted";
+import type { GettingStartedItemId } from "@/lib/manager-getting-started";
 
 interface NavItem {
     labelKey: string;
@@ -92,16 +91,6 @@ const navData: { navMain: NavGroup[] } = {
     ],
 }
 
-/** Where each "Getting started" checklist row navigates to. */
-const SETUP_STEP_VIEWS: Record<ManagerSetupStep["id"], string> = {
-    profile: "profile",
-    license: "settings-license",
-    kitchen: "kitchens",
-    availability: "availability",
-    requirements: "application-requirements",
-    payments: "payments",
-};
-
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string;
     onViewChange: (view: string) => void;
@@ -110,9 +99,14 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     onLocationChange: (location: { id: number; name: string } | null) => void;
     onCreateLocation?: () => void;
     breadcrumbs?: ManagerBreadcrumb[];
-    managerSetupSteps?: ManagerSetupStep[];
-    managerImprovementSteps?: string[];
-    onImproveManagerListing?: (task: string) => void;
+    /**
+     * The Getting Started checklist, already built.
+     *
+     * The sidebar renders it and nothing else — the rules live in `lib/manager-getting-started.ts`
+     * and the destinations in the dashboard, which owns `handleViewChange` and its dirty-form
+     * guards. This replaced the wizard's `setupSteps`, which the banner and this list used to share.
+     */
+    managerGettingStarted?: ManagerGettingStartedProps;
 }
 
 export function AppSidebar({
@@ -123,9 +117,7 @@ export function AppSidebar({
     selectedLocation: _selectedLocation,
     onLocationChange: _onLocationChange,
     onCreateLocation: _onCreateLocation,
-    managerSetupSteps = [],
-    managerImprovementSteps = [],
-    onImproveManagerListing,
+    managerGettingStarted,
     ...props
 }: AppSidebarProps) {
     const { user, logout } = useFirebaseAuth();
@@ -151,20 +143,15 @@ export function AppSidebar({
         onViewChange(view);
     };
 
-    /** "Getting started" rows deep-link into the page that completes them. */
-    const handleManagerSetupStep = (stepId: ManagerSetupStep["id"]) => {
-        handleAccountAction(SETUP_STEP_VIEWS[stepId]);
-        if (stepId !== "profile") return;
-        // The profile view is a multi-section tab; land the manager on the email
-        // card specifically rather than at the top of the page. Written
-        // synchronously so the param is present before the view mounts and reads it.
-        const url = new URL(window.location.href);
-        url.searchParams.set(EMAIL_FOCUS_PARAM, EMAIL_FOCUS_VALUE);
-        window.history.replaceState({}, "", url);
-    };
-
-    const handleImproveManagerListing = (task: string) => {
-        onImproveManagerListing?.(task);
+    /**
+     * "Getting started" rows deep-link into the page that completes them.
+     *
+     * The DASHBOARD owns the destination — it owns `handleViewChange` and the dirty-form guards
+     * that stop a row navigating away from unsaved work — so this only forwards, and closes the
+     * mobile drawer, which the dashboard cannot see.
+     */
+    const handleGettingStartedItem = (id: GettingStartedItemId) => {
+        managerGettingStarted?.onSelectItem?.(id);
         if (isMobile) setOpenMobile(false);
     };
 
@@ -260,16 +247,21 @@ export function AppSidebar({
                         </SidebarMenu>
                     </SidebarGroup>
                 ))}
-                {managerSetupSteps.length || managerImprovementSteps.length ? (
-                    <ManagerGettingStarted
-                        steps={managerSetupSteps}
-                        improvementSteps={managerImprovementSteps}
-                        onSelectStep={handleManagerSetupStep}
-                        onImprove={handleImproveManagerListing}
-                    />
-                ) : null}
             </SidebarContent>
             <SidebarFooter>
+                {/*
+                  Getting Started lives in the FOOTER rather than in `SidebarContent`.
+
+                  The panel opens as a portalled flyout, so nothing here is clipped either way — but
+                  the footer groups the checklist with the account menu, which is where a persistent
+                  progress widget belongs, and it drops the `mt-auto` hack the nav list needed.
+                */}
+                {managerGettingStarted?.items.length ? (
+                    <ManagerGettingStarted
+                        {...managerGettingStarted}
+                        onSelectItem={handleGettingStartedItem}
+                    />
+                ) : null}
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <DropdownMenu modal={false}>

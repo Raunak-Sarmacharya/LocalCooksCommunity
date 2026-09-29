@@ -11,6 +11,7 @@ import { kitchens, locations, kitchenDateOverrides, kitchenAvailability, kitchen
 import { eq, and, asc, desc, gte, lte, sql } from 'drizzle-orm';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
+import { kitchenIsVisibleToChefs, licenseAllowsBookings } from '@shared/kitchen-license';
 
 /**
  * Repository for kitchen data access
@@ -137,13 +138,24 @@ export class KitchenRepository {
    */
   async findAllActive(): Promise<KitchenDTO[]> {
     try {
+      /*
+       * The licence lives on the LOCATION, so the visibility rule cannot be a WHERE clause here
+       * without writing the licence state machine out again in SQL — which is exactly how one rule
+       * acquires two definitions. The kitchen's own switches stay in the query; the licence is applied
+       * through the shared predicate, in JS.
+       *
+       * Fetching rows and filtering here is what `findAllWithLocation` above already does, for the
+       * same reason.
+       */
       const results = await db
-        .select()
+        .select({ kitchen: kitchens, location: locations })
         .from(kitchens)
-        .where(and(eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active")))
+        .leftJoin(locations, eq(kitchens.locationId, locations.id))
         .orderBy(desc(kitchens.createdAt));
 
-      return results.map(k => this.mapToDTO(k));
+      return results
+        .filter(({ kitchen, location }) => kitchenIsVisibleToChefs(kitchen, location))
+        .map(({ kitchen }) => this.mapToDTO(kitchen));
     } catch (error: any) {
       logger.error('[KitchenRepository] Error finding all active kitchens:', error);
       throw new DomainError(
@@ -169,11 +181,27 @@ export class KitchenRepository {
   async findListedLocationIds(): Promise<number[]> {
     try {
       const rows = await db
-        .selectDistinct({ locationId: kitchens.locationId })
+        .selectDistinct({
+          locationId: kitchens.locationId,
+          kitchenLicenseUrl: locations.kitchenLicenseUrl,
+          kitchenLicenseStatus: locations.kitchenLicenseStatus,
+          kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
+          kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+          kitchenLicensePendingExpiry: locations.kitchenLicensePendingExpiry,
+        })
         .from(kitchens)
+        .leftJoin(locations, eq(kitchens.locationId, locations.id))
         .where(and(eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active")));
 
-      return rows.map((row) => row.locationId);
+      /*
+       * DISTINCT still earns its keep: two kitchens at one location with the same licence state
+       * collapse to one row, so this reads a set of STATES rather than a set of kitchens. The Set at
+       * the end collapses the states into the location ids the callers actually want.
+       *
+       * `filter` gets an arrow, not the bare function: `Array.filter` passes the INDEX as the second
+       * argument, which `licenseAllowsBookings` would take as `now`.
+       */
+      return Array.from(new Set(rows.filter((row) => licenseAllowsBookings(row)).map((row) => row.locationId)));
     } catch (error: any) {
       logger.error('[KitchenRepository] Error finding listed location ids:', error);
       throw new DomainError(

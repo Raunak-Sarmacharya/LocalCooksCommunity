@@ -6,6 +6,21 @@ vi.mock("./dev-auth-bypass-gates", () => ({
   isValidDevAuthSecret: vi.fn((s?: string) => s === "test-secret"),
 }));
 
+/*
+ * The logger is mocked for SPEED, not for correctness, and it is worth saying why.
+ *
+ * `e2e-outbound-guard` imports `logger`, which imports `pino` AND `@sentry/node`. The `beforeEach`
+ * below calls `vi.resetModules()`, so each of the three tests re-imports that graph from scratch —
+ * about 3.5 seconds EACH, ~10 seconds for the file. Alone that fits inside vitest's 5s default; under
+ * a full parallel run it does not, and the file failed as a TIMEOUT. Which read as "the production
+ * guard is broken" when the guard was fine and the clock was the problem.
+ *
+ * Nothing here asserts anything about logging, so the real logger bought the test nothing.
+ */
+vi.mock("./logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), operational: vi.fn() },
+}));
+
 describe("e2e-outbound-guard", () => {
   beforeEach(() => {
     vi.resetModules();

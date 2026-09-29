@@ -4,7 +4,7 @@ import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
 import { normalizeImageUrl } from './utils';
 import { updateLocationRequirementsSchema, platformSettings } from '@shared/schema';
-import { licenseAllowsBookings } from '@shared/kitchen-license';
+import { kitchenIsVisibleToChefs, licenseAllowsBookings } from '@shared/kitchen-license';
 import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
 import { fromZodError } from 'zod-validation-error';
 import { db } from '../db';
@@ -330,8 +330,8 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         // and the page then defaulted to `kitchens[0]` — newest-first, i.e. usually the fresh draft the
         // manager had not published.
         const locationKitchens = await kitchenService.getKitchensByLocationId(locationId, true);
-        const activeKitchens = locationKitchens.filter(
-            (kitchen: any) => kitchen.listingStatus === "active"
+        const activeKitchens = locationKitchens.filter((kitchen: any) =>
+            kitchenIsVisibleToChefs(kitchen, location),
         );
 
         // Normalize location images

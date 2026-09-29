@@ -3,6 +3,7 @@ import {
   daysUntilExpiry,
   kitchenLicenseState,
   licenseAllowsBookings,
+  kitchenIsVisibleToChefs,
   licenseReminderStage,
   isReplacementUnderReview,
   licenseHasNoExpiryDate,
@@ -156,5 +157,49 @@ describe("licenseReminderStage", () => {
   it("stays silent for anything that was never approved", () => {
     expect(licenseReminderStage({ kitchenLicenseUrl: "u", kitchenLicenseStatus: "pending", kitchenLicenseExpiry: "2026-03-10" }, now)).toBeNull();
     expect(licenseReminderStage({}, now)).toBeNull();
+  });
+});
+
+describe("kitchenIsVisibleToChefs", () => {
+  const published = { isActive: true, listingStatus: "active" };
+  const NOW = new Date(2026, 2, 3); // 3 March 2026
+
+  it("hides a kitchen whose licence has LAPSED", () => {
+    /*
+     * The gap this closes. A lapsed licence was refused at booking and blocked at publishing, but
+     * nothing took an ALREADY-LIVE listing down — so a chef could find the kitchen, open its calendar
+     * and only be told no at the end.
+     */
+    expect(kitchenIsVisibleToChefs(published, approved("2026-03-02"), NOW)).toBe(false);
+  });
+
+  it("keeps a kitchen whose licence is inside its final 30 days", () => {
+    // `expiring_soon` is still VALID. Renewing early must not cost a manager their listing — the
+    // same rule the publish gate and the booking path use.
+    expect(kitchenIsVisibleToChefs(published, approved("2026-03-20"), NOW)).toBe(true);
+  });
+
+  it("keeps a kitchen whose renewal is under review while the live licence is valid", () => {
+    const replacing: KitchenLicenseFields = {
+      kitchenLicenseUrl: "https://cdn.example/live.pdf",
+      kitchenLicenseStatus: "pending_update",
+      kitchenLicenseExpiry: "2026-06-01",
+      kitchenLicensePendingUrl: "https://cdn.example/new.pdf",
+      kitchenLicensePendingExpiry: "2027-06-01",
+    };
+    expect(kitchenIsVisibleToChefs(published, replacing, NOW)).toBe(true);
+  });
+
+  it("still requires the kitchen's own two switches", () => {
+    // The licence is a THIRD condition, not a replacement for the other two.
+    expect(kitchenIsVisibleToChefs({ isActive: true, listingStatus: "draft" }, approved("2027-01-01"), NOW)).toBe(false);
+    expect(kitchenIsVisibleToChefs({ isActive: false, listingStatus: "active" }, approved("2027-01-01"), NOW)).toBe(false);
+  });
+
+  it("hides a published kitchen whose location has no licence on file", () => {
+    // The publish gate requires an approved licence, so this should not happen — and if it does, the
+    // kitchen is not something a chef may book.
+    expect(kitchenIsVisibleToChefs(published, {}, NOW)).toBe(false);
+    expect(kitchenIsVisibleToChefs(published, null, NOW)).toBe(false);
   });
 });

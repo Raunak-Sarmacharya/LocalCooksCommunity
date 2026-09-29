@@ -27,6 +27,7 @@ import {
 } from "@/lib/manager-kitchens-navigation";
 import { mt } from "@/i18n/manager";
 import type {
+  KitchenReadinessReview,
   ListingRecommendationId,
   ListingRequirementId,
 } from "@shared/kitchen-listing-readiness";
@@ -70,37 +71,6 @@ const RECOMMENDATION_TARGET: Record<ListingRecommendationId, RowTarget> = {
   tours: { view: "tour-availability" },
   terms: { view: "settings-booking-rules" },
 };
-
-interface ReadinessResponse {
-  checklist: {
-    requirements: Array<{ id: ListingRequirementId; met: boolean }>;
-    recommendations: Array<{ id: ListingRecommendationId; met: boolean }>;
-    canPublish: boolean;
-    missingRequirementIds: ListingRequirementId[];
-    openRecommendationIds: ListingRecommendationId[];
-  };
-  details: {
-    kitchenName: string;
-    locationName: string | null;
-    description: string | null;
-    hourlyRateCents: number | null;
-    dailyRateCents: number | null;
-    coverPhotoUrl: string | null;
-    galleryImageCount: number;
-    availabilityDayCount: number;
-    licenseStatus: string;
-    stripeAccountId: string | null;
-    hasApplicationRequirements: boolean;
-    termsUploadedAt: string | null;
-    toursEnabled: boolean;
-    cancellationPolicyHours: number;
-    dailyBookingLimit: number;
-    minimumBookingWindowHours: number;
-    minimumBookingHours: number;
-  };
-  listingStatus: "draft" | "active";
-  adminHidden: boolean;
-}
 
 interface KitchenListingReviewProps {
   kitchenId: number;
@@ -151,7 +121,7 @@ export default function KitchenListingReview({
   const queryClient = useQueryClient();
   const [completedOpen, setCompletedOpen] = useState(false);
 
-  const { data, isLoading } = useQuery<ReadinessResponse>({
+  const { data, isLoading } = useQuery<KitchenReadinessReview>({
     queryKey: kitchenListingReadinessKey(kitchenId),
     queryFn: () => apiGet(`/manager/kitchens/${kitchenId}/listing-readiness`),
     enabled: Number.isFinite(kitchenId) && kitchenId > 0,
@@ -425,7 +395,7 @@ export default function KitchenListingReview({
  */
 function requirementValue(
   id: ListingRequirementId,
-  d: ReadinessResponse["details"],
+  d: KitchenReadinessReview["details"],
   met: boolean,
 ): string | null {
   if (!met) return null;

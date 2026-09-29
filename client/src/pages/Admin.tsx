@@ -67,6 +67,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
+import { SERVICE_PROVINCE } from "@shared/service-area";
 import { FormLegend } from "@/components/ui/form-legend";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useToast } from "@/hooks/use-toast";
@@ -1780,7 +1781,7 @@ function AdminDashboard() {
                                   <AddressAutocomplete
                                     placeholder="e.g. 123 Water St, St. John's, NL"
                                     value={shopDetails[selectedApplication.id]?.shopAddress ?? ((selectedApplication as any).shopAddress && (selectedApplication as any).shopAddress !== "Address Not Provided" ? (selectedApplication as any).shopAddress : '')}
-                                    province="NL"
+                                    province={SERVICE_PROVINCE}
                                     onChange={(value, lat, lng) => setShopDetails(prev => ({
                                       ...prev,
                                       [selectedApplication.id]: {

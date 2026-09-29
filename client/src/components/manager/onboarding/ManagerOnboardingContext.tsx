@@ -12,6 +12,20 @@ import { optionalPhoneNumberSchema } from "@shared/phone-validation";
 import { useOnboarding } from "@onboardjs/react";
 import { steps } from "@/config/onboarding-steps";
 import { resumeBlockedBy } from "./resume-gate";
+/*
+ * The step-completion rules and the normaliser they read. They used to live in this file, which is
+ * why the dashboard's own reader never called them — importing a 2600-line component module to get
+ * at a pure function is the wrong trade, and re-deriving them is what let the two readers disagree.
+ * See `step-completion.ts` for why there is exactly one of each.
+ */
+import {
+  isAvailabilityStepBehindUs,
+  isLocationStepBehindUs,
+  isRequirementsStepBehindUs,
+  normalizeCompletedSteps,
+  resolveStripeState,
+  NUMERIC_TO_STRING_MAP,
+} from "./step-completion";
 import { Link, useLocation } from "wouter";
 
 // [ENTERPRISE] Generate unique submission ID using crypto API or fallback
@@ -23,28 +37,9 @@ const generateSubmissionId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
 
-// Step ID mapping for backwards compatibility with legacy numeric format in database
-// MUST match the order in onboarding-steps.ts
-//
-// 5 and 6 are deliberately MISSING. They were 'equipment-listings' and 'storage-listings'
-// until those merged into 'create-kitchen' (2026-09-19). The numbers are not reused:
-// rows written before the merge are keyed `step_5` / `step_6`, and handing those numbers
-// to payment-setup / completion-summary would decode a manager's stored progress as two
-// steps they never took. A number with no entry here is DROPPED by the normaliser below,
-// which is the right outcome — those two only ever recorded "the manager has seen this
-// optional step", and the step no longer exists to be seen.
-const STEP_ID_MAP: Record<string, number> = {
-  'welcome': 0,
-  'location': 1,
-  'create-kitchen': 2,
-  'availability': 3,
-  'application-requirements': 4,
-  'payment-setup': 7,
-  'completion-summary': 8
-};
 
-const NUMERIC_TO_STRING_MAP: Record<number, string> = Object.entries(STEP_ID_MAP)
-  .reduce((acc, [str, num]) => ({ ...acc, [num]: str }), {});
+
+
 
 
 // We re-export the step interface from types or core if needed, 
@@ -166,6 +161,23 @@ interface ManagerOnboardingContextType {
   isAvailabilityComplete?: boolean;
   /** Mark the Availability & policies step done without a schedule. Called on reaching its review. */
   setAvailabilityStepCompleted?: (completed: boolean) => void;
+  /**
+   * Record a step as complete — optimistically, then durably.
+   *
+   * Exposed for the steps whose completion is decided by REACHING THEIR REVIEW rather than by data
+   * they save. Availability and Booking Requirements both ship pre-filled: the week is optional and
+   * the requirements pane carries the platform defaults, so a manager can read either review,
+   * change nothing and move on — and no row is ever written for them to be counted by. The review
+   * IS the decision (see `isAvailabilityStepBehindUs`), and only the step knows it was shown.
+   *
+   * It is the DURABLE writer on purpose. The session flag below is the other half of the same fact,
+   * and it dies on reload — its own note admits it. This ticks the UI immediately AND survives
+   * leaving the wizard.
+   *
+   * Calling it also stands auto-resume down (`isManualNavigation`), which is correct: a manager
+   * standing on a review is driving, not being driven.
+   */
+  trackStepCompletion: (stepId: number | string) => Promise<void>;
   /**
    * Whether the Requirements step is behind the manager.
    *
@@ -341,94 +353,11 @@ interface ManagerOnboardingContextType {
 
 const ManagerOnboardingContext = createContext<ManagerOnboardingContextType | undefined>(undefined);
 
-/**
- * THE availability rule: "is this step behind you?", in one place.
- *
- * Three ways in, one meaning out. A real open day is one answer; having been through the step
- * and reached its review is another (accepting the pre-filled booking policies is how most
- * managers finish it); and the DURABLE record of that visit is the third, so the answer
- * survives the context remounting — which it does on the redirect that follows the payment
- * step, and which is what made the rail tick vanish while the manager was mid-wizard.
- *
- * This is for ONBOARDING progress, not bookability. A kitchen with no opening hours still
- * cannot be listed (`listingReq_availability` is "Opening hours"), and that gate reads the
- * data flag, not this.
- *
- * Exported and pure because this rule was spelled out in three separate readers and one of
- * them drifted: the setup summary kept the `hasAvailability`-only version, so a manager who
- * skipped the schedule saw the rail tick, then a summary and a dashboard banner both saying
- * availability was still missing (2026-09-26).
- */
-export function isAvailabilityStepBehindUs(input: {
-  hasAvailability?: boolean;
-  availabilityStepCompleted?: boolean;
-  dbCompletedSteps?: Record<string, boolean>;
-}): boolean {
-  return Boolean(
-    input.hasAvailability ||
-      input.availabilityStepCompleted ||
-      input.dbCompletedSteps?.['availability'],
-  );
-}
 
-/**
- * Whether the Requirements step is behind the manager.
- *
- * Two ways in, one meaning out. A saved `location_requirements` row is the obvious one; the
- * other is that the manager reached the step's REVIEW and accepted what it showed them.
- *
- * The review IS the decision. This pane ships with the platform defaults already filled in,
- * so the common case is a manager who reads them, changes nothing, and moves on — and for
- * them no row is ever written. `hasRequirements` means "a row exists" (`id > 0`), which is
- * why reading it alone left the sidebar unticked and the dashboard banner still asking for a
- * step that had been completed, the same loop `isAvailabilityStepBehindUs` above was written
- * to end.
- *
- * What it does NOT mean: that the manager has customised anything. Nothing downstream reads
- * this as a claim about the requirements' CONTENT; the chef-facing application reads the
- * saved row (or the defaults) directly.
- */
-export function isRequirementsStepBehindUs(input: {
-  hasRequirements?: boolean;
-  dbCompletedSteps?: Record<string, boolean>;
-}): boolean {
-  return Boolean(
-    input.hasRequirements || input.dbCompletedSteps?.['application-requirements'],
-  );
-}
 
-/**
- * The two Stripe facts, derived in ONE place from the status endpoint's payload.
- *
- * They answer different questions and must never be collapsed into one flag:
- *
- * - `connected` — the account can take and send money (`charges` AND `payouts` enabled).
- *   This is the strict fact. The dashboard's Getting Started checklist, and the gates on
- *   listing or booking a kitchen, read this and nothing else.
- * - `initiated` — the manager has finished THEIR part: they submitted Stripe's onboarding
- *   form and the account is now with Stripe. This is what the wizard gates on.
- *
- * Why they are separate: full verification takes Stripe days to a week, and it is not ours
- * to make. Gating "finish setup" on it left a manager stuck on the last onboarding step
- * until a bank check cleared. Gating nothing on it is the opposite mistake — a manager would
- * be told they can be paid when they cannot. So: setup completes on `initiated`, and every
- * money-facing surface still reads `connected`.
- *
- * `detailsSubmitted` is Stripe's own signal (the status endpoint copies it off the account
- * object, and the server flips `status` to "pending" at that same moment). An account that
- * was created but whose form was abandoned is `detailsSubmitted: false` — correctly still
- * "not done", because there is nothing for Stripe to review yet.
- *
- * `connected` implies `detailsSubmitted`, so a fully verified account satisfies both.
- */
-export function resolveStripeState(
-  status: { status?: string; chargesEnabled?: boolean; payoutsEnabled?: boolean; detailsSubmitted?: boolean } | null | undefined,
-): { connected: boolean; initiated: boolean } {
-  const connected =
-    status?.status === "complete" && status?.chargesEnabled === true && status?.payoutsEnabled === true;
-  const initiated = connected || status?.detailsSubmitted === true;
-  return { connected, initiated };
-}
+
+
+
 
 // Internal component to consume OnboardJS hook and provide the blended context
 function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: ReactNode, isOpen: boolean, setIsOpen: (val: boolean) => void }) {
@@ -633,33 +562,19 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
      *
      * Both spellings are accepted so a future shape change cannot silently empty this again.
      */
-    const rawSteps = (userData?.managerOnboardingStepsCompleted ??
-      userData?.manager_onboarding_steps_completed) as Record<string, boolean> | undefined;
-    if (rawSteps) {
-      const normalized: Record<string, boolean> = {};
-
-      for (const [key, value] of Object.entries(rawSteps)) {
-        // Handle legacy format: step_0, step_1, step_0_location_28
-        const match = key.match(/^step_(\d+)(?:_location_\d+)?$/);
-        if (match) {
-          const numericId = parseInt(match[1]);
-          const stringId = NUMERIC_TO_STRING_MAP[numericId];
-          if (stringId && !normalized[stringId]) {
-            normalized[stringId] = Boolean(value);
-          }
-        } else {
-          // Already string format (new)
-          normalized[key] = Boolean(value);
-          // Also normalize location-specific keys: "create-kitchen_location_28" → "create-kitchen"
-          // saveAndExit() saves with locationId suffix, but completedSteps checks generic keys
-          const locSuffixMatch = key.match(/^(.+)_location_\d+$/);
-          if (locSuffixMatch && !normalized[locSuffixMatch[1]]) {
-            normalized[locSuffixMatch[1]] = Boolean(value);
-          }
-        }
-      }
-      setDbCompletedSteps(normalized);
-    }
+    const normalized = normalizeCompletedSteps(
+      (userData?.managerOnboardingStepsCompleted ??
+        userData?.manager_onboarding_steps_completed) as Record<string, boolean> | undefined,
+    );
+    /*
+     * `null` means there was nothing to normalise. Keep what we already had rather than clearing
+     * every tick because the profile query blinked — the old inline loop had the same guard, and it
+     * is the difference between "no data yet" and "no steps done".
+     *
+     * The loop itself lives in `step-completion.ts` now, because the dashboard's reader needs the
+     * identical normalisation and re-deriving it is how the two came to disagree.
+     */
+    if (normalized) setDbCompletedSteps(normalized);
   }, [userData]);
 
   // Derived State - declare BEFORE useMemo that depends on it
@@ -706,27 +621,34 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // review never opens. The licence is the only document this step still collects.
     // [ENTERPRISE FIX] Check both camelCase and snake_case field names for compatibility
     // Also check dbCompletedSteps as fallback for in-session completion before data refresh
+    /*
+     * The Business & licence step, decided by the rule that OWNS it.
+     *
+     * The log is kept — it is the fastest way to answer "why is this step ticked?" from a console —
+     * but it is not part of the decision. The decision is `isLocationStepBehindUs`, so this surface
+     * cannot restate it differently from the next one.
+     */
     if (selectedLocationId && locations.length > 0) {
       const loc = locations.find(l => l.id === selectedLocationId) as any;
-      const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
-
       logger.info('[completedSteps] Location check:', {
         selectedLocationId,
         locFound: !!loc,
-        hasLicense: !!hasLicense,
+        hasLicense: !!(loc?.kitchenLicenseUrl || loc?.kitchen_license_url),
         kitchenLicenseUrl: loc?.kitchenLicenseUrl,
         kitchen_license_url: loc?.kitchen_license_url,
         dbCompletedSteps: dbCompletedSteps['location']
       });
+    }
 
-      // Primary check: the licence is on the record
-      // Secondary check: dbCompletedSteps marked true (handles race condition during save)
-      if (hasLicense || dbCompletedSteps['location']) {
-        result['location'] = true;
-      }
-    } else if (dbCompletedSteps['location'] && !isAddingLocation) {
-      // Fallback: if dbCompletedSteps says location is done but locations haven't loaded yet
-      // [MULTI-LOCATION FIX] Don't use fallback when adding a new location — old location's completion doesn't count
+    if (
+      isLocationStepBehindUs({
+        isLoadingLocations,
+        selectedLocationId,
+        locations,
+        dbCompletedSteps,
+        isAddingLocation,
+      })
+    ) {
       result['location'] = true;
     }
 
@@ -793,7 +715,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
     return result;
-  }, [locations, selectedLocationId, kitchens.length,
+  }, [locations, isLoadingLocations, selectedLocationId, kitchens.length,
     isRequirementsComplete, isAvailabilityComplete, isStripeOnboardingComplete,
     dbCompletedSteps, isAddingLocation]);
 
@@ -2228,6 +2150,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     isAvailabilityComplete,
     availabilityStepCompleted,
     setAvailabilityStepCompleted,
+    trackStepCompletion,
     isRequirementsComplete,
     availabilityLoaded,
     kitchensLoaded,
@@ -2402,43 +2325,44 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         }
 
         /*
-         * The step record is written even when the step holds nothing — do not "optimise" this away.
+         * WHICH KEY TO RECORD — and why it is not simply "the step I am on".
          *
-         * It is not only a note of what was saved. `ManagerProtectedRoute` reads
-         * `managerOnboardingStepsCompleted` as the "this manager has started onboarding" signal, and
-         * only then lets them reach the dashboard (`needsOnboarding` requires
-         * `!hasStartedOnboarding`). Skipping the write when `hasUnsavedChanges` was false therefore
-         * TRAPPED a manager on the welcome step: "Maybe later" navigated to the dashboard, which
-         * redirected straight back to /manager/setup because no step had ever been recorded — and
-         * pressing it again did the same thing, so the welcome screen appeared twice in a row.
+         * One write was answering two different questions:
          *
-         * The comment that used to sit here claimed "the only place the stored flag is read at all is
-         * as a fallback for 'location'". That was wrong, and it is what made the early return look
-         * safe.
+         *   "Has this manager started onboarding?"  `ManagerProtectedRoute` reads the record's
+         *     NON-EMPTINESS and only then lets them reach the dashboard. Skipping the write
+         *     entirely therefore TRAPPED a manager on the welcome step: "Maybe later" went to the
+         *     dashboard, which redirected straight back to /manager/setup because no step had ever
+         *     been recorded — and pressing it again did the same thing, so the welcome screen
+         *     appeared twice in a row. That trap is why this write became unconditional, and it
+         *     must not come back.
+         *
+         *   "Is this step finished?"  Every progress surface reads the KEY, and writing it on the
+         *     way out answered "I was here" instead. That is a different fact, and it is why
+         *     opening Availability or Booking Requirements and leaving ticked them off without the
+         *     manager ever reaching their review — the auto-completion that made the dashboard look
+         *     like it was making progress on its own. It also split the two readers of the Business
+         *     step: the wizard's rail ORs this flag into a licence check the dashboard's banner
+         *     cannot see, so the two disagreed about the same manager.
+         *
+         * So the key is written only when the step IS complete, and `welcome` — which is honestly
+         * what "started onboarding" means — is written when the manager has no location yet and so
+         * has no step that could be complete. The dashboard still lets them in, and nothing is
+         * ticked that was not done.
+         *
+         * `completedSteps` is the right test for "complete", because it is the one every surface
+         * already reads — including the rail and the banner. Using it here is what keeps the three
+         * of them from disagreeing.
          *
          * The BUTTON is what must not overpromise, and it does not: its label follows
          * `hasUnsavedChanges`, so a formless step offers "Maybe later" rather than "Save & exit".
          */
-        if (!token) {
-          logger.warn('[Onboarding] No auth token for saveAndExit');
-          const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
-          setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
-          return;
-        }
+        const recordedStepId: string | number | null =
+          stepId && completedSteps[stepId]
+            ? stepId
+            : locations.length === 0 ? 'welcome' : null;
 
-        // 1. Mark current step as "seen" via manager onboarding step tracking
-        //
-        // Two different records, do not confuse them:
-        //   - `managerOnboardingStepsCompleted` (what this writes) — which steps the manager has
-        //     been through in the wizard. `ManagerProtectedRoute` reads it as the "has started
-        //     onboarding" signal.
-        //   - `has_seen_welcome` — the standalone welcome SCREEN's flag
-        //     (`POST /api/user/seen-welcome`). It is NOT chef-only, and it does NOT mean this step
-        //     is done: the screen and the wizard's `welcome` step are different things, and the step
-        //     is completed only by leaving it (which is what this writes).
-        // A previous version of this comment claimed `has_seen_welcome` was chef-only, which is how
-        // the write below came to be skipped.
-        if (stepId) {
+        if (recordedStepId) {
           const response = await fetch("/api/manager/onboarding/step", {
             method: "POST",
             headers: {
@@ -2446,7 +2370,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
-              stepId: stepId, 
+              stepId: recordedStepId, 
               locationId: selectedLocationId || undefined 
             }),
           });
@@ -2461,7 +2385,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
                 ...oldData,
                 managerOnboardingStepsCompleted: {
                   ...currentSteps,
-                  [stepId]: true
+                  [recordedStepId]: true
                 }
               };
             });
@@ -2474,12 +2398,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
                 ...oldData,
                 managerOnboardingStepsCompleted: {
                   ...currentSteps,
-                  [stepId]: true
+                  [recordedStepId]: true
                 }
               };
             });
 
-            logger.info('[Onboarding] ✅ Optimistically updated user profile with step:', stepId);
+            logger.info('[Onboarding] ✅ Optimistically updated user profile with step:', recordedStepId);
           }
         }
 

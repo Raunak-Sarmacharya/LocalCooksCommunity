@@ -20,10 +20,11 @@ import {
   users,
 } from "@shared/schema";
 import { licenseAllowsBookings } from "@shared/kitchen-license";
+import { hasKitchenRate } from "@shared/kitchen-booking-rate";
 import {
   buildListingChecklist,
   hasAnyApplicationRequirement,
-  type ListingChecklist,
+  type KitchenReadinessReview,
   type ListingReadinessInput,
 } from "@shared/kitchen-listing-readiness";
 import { logger } from "../logger";
@@ -31,42 +32,15 @@ import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 import { getAccountStatus } from "./stripe-connect-service";
 
-/** The raw values behind each checklist row, so the review screen can show what is set. */
-export interface KitchenReadinessDetails {
-  kitchenName: string;
-  locationName: string | null;
-  description: string | null;
-  hourlyRateCents: number | null;
-  dailyRateCents: number | null;
-  coverPhotoUrl: string | null;
-  galleryImageCount: number;
-  /** Whole days of the week with opening hours, e.g. `["Mon", "Tue"]` is not built here — a count. */
-  availabilityDayCount: number;
-  licenseStatus: string;
-  stripeAccountId: string | null;
-  hasApplicationRequirements: boolean;
-  termsUploadedAt: Date | null;
-  toursEnabled: boolean;
-  /**
-   * The booking rules, shown as VALUES rather than as a pass/fail.
-   *
-   * They cannot be unset — every column is NOT NULL with a default — so the review row exists to let
-   * a manager confirm what a chef is agreeing to, not to report a gap.
-   */
-  cancellationPolicyHours: number;
-  dailyBookingLimit: number;
-  minimumBookingWindowHours: number;
-  minimumBookingHours: number;
-}
-
-export interface KitchenReadinessReview {
-  checklist: ListingChecklist;
-  details: KitchenReadinessDetails;
-  /** The state the kitchen is in right now, independent of readiness. */
-  listingStatus: "draft" | "active";
-  /** True when the admin has hidden it — publishing will not make it visible. */
-  adminHidden: boolean;
-}
+/*
+ * `KitchenReadinessDetails` and `KitchenReadinessReview` are NOT declared here any more.
+ *
+ * They are the payload of the endpoint this service feeds, so they belong to the payload — and the
+ * endpoint's consumers are on the CLIENT, which cannot import a server module. Declaring them here
+ * meant three client surfaces each re-declared their own idea of the shape, and one of them got it
+ * wrong in a way that crashed the dashboard. One declaration, in
+ * `@shared/kitchen-listing-readiness`, next to the checklist it wraps.
+ */
 
 function isNonEmptyText(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
@@ -159,7 +133,9 @@ export async function buildKitchenReadiness(
 
   const input: ListingReadinessInput = {
     hasDescription: isNonEmptyText(kitchen.description),
-    hasRate: hourlyRateCents !== null || dailyRateCents !== null,
+    // Read off the ROW rather than off the two normalised locals below, so this is the same test the
+    // forms run (`hasKitchenRate`) and not a second opinion that can drift from it.
+    hasRate: hasKitchenRate(kitchen.hourlyRate, kitchen.dailyRate),
     licenseApproved: location ? licenseAllowsBookings(location) : false,
     hasAvailability: availabilityDayCount > 0,
     hasCoverPhoto: isNonEmptyText(kitchen.imageUrl),
@@ -199,7 +175,15 @@ export async function buildKitchenReadiness(
       licenseStatus: location?.kitchenLicenseStatus ?? "not_uploaded",
       stripeAccountId,
       hasApplicationRequirements: hasAnyApplicationRequirement(requirements),
-      termsUploadedAt: location?.kitchenTermsUploadedAt ?? null,
+      /*
+       * An ISO STRING, not the `Date` the row holds — the shared type describes the WIRE, and
+       * `res.json` would have stringified it anyway. Converting here is what makes the declared type
+       * true rather than approximately true, so a client reading it cannot call `getTime()` on a
+       * string and discover the difference at runtime.
+       */
+      termsUploadedAt: location?.kitchenTermsUploadedAt
+        ? new Date(location.kitchenTermsUploadedAt).toISOString()
+        : null,
       toursEnabled: Boolean(viewingSettings[0]?.isActive),
       cancellationPolicyHours: location?.cancellationPolicyHours ?? 24,
       dailyBookingLimit: location?.defaultDailyBookingLimit ?? 2,

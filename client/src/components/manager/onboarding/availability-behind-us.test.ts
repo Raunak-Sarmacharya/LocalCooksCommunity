@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isAvailabilityStepBehindUs } from "./ManagerOnboardingContext";
+import { isAvailabilityStepBehindUs } from "./step-completion";
 
 /**
  * The contract this file holds: "is the availability step behind us?" has ONE answer, and

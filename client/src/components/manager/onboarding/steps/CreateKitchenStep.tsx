@@ -22,6 +22,7 @@ import {
 } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { hasKitchenRate } from "@shared/kitchen-booking-rate";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
 import { FormLegend } from "@/components/ui/form-legend";
@@ -457,27 +458,23 @@ export default function CreateKitchenStep() {
    * modes; the create button carries the same expression inline.
    */
   /**
-   * A rate the listing gate would actually accept.
-   *
-   * `> 0`, not "something was typed": the gate reads the rates through `positiveNumber`, so a
-   * kitchen saved at 0.00 has no rate as far as publishing and checkout are concerned. Letting the
-   * form through on a typed zero would put it back out of step with the gate — which is the whole
-   * thing this pair of fields was wrong about.
-   */
-  const isRateSet = (value: string) => {
-    const parsed = parseFloat(value);
-    return !isNaN(parsed) && parsed > 0;
-  };
-
-  /**
    * The rate requirement, which is ONE answer with two forms.
    *
-   * The listing gate accepts an hourly OR a daily rate — its own checklist label is
-   * `listingReq_rate`: "Hourly or daily rate" — and `booking.service` refuses a booking in a mode
-   * the kitchen does not offer. This form used to demand the hourly specifically, so a manager who
-   * charges by the day could not leave part 1 at all.
+   * `hasKitchenRate` is the shared OWNER of the rule — the listing gate, the server's readiness
+   * service and every form that creates or edits a kitchen read the same function, so no form can
+   * accept a kitchen the gate would then call unconfigured, and none can reject one the gate
+   * accepts.
+   *
+   * Either rate alone is a complete answer: the gate's own checklist label is `listingReq_rate` —
+   * "Hourly or daily rate" — and `booking.service` refuses a booking in a mode the kitchen does not
+   * offer. This form used to demand the hourly specifically, so a manager who charges by the day
+   * could not leave part 1 at all.
+   *
+   * `> 0`, not "something was typed": a kitchen saved at 0.00 has no rate as far as publishing and
+   * checkout are concerned, so letting the form through on a typed zero would put it back out of
+   * step with the gate.
    */
-  const hasARate = isRateSet(localHourlyRate) || isRateSet(localDailyRate);
+  const hasARate = hasKitchenRate(localHourlyRate, localDailyRate);
 
   const editIsValid =
     Boolean(localName.trim()) &&

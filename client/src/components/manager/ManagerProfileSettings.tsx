@@ -2,7 +2,6 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import i18n from "@/i18n";
 import { useState, useEffect, useCallback } from "react";
-import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -34,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
 import LocationSettings from "@/components/manager/settings/LocationSettings";
+import { NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 
 interface ManagerProfileSettingsProps {
     location?: {
@@ -79,24 +79,6 @@ function CardHead({ title, description }: { title: string; description: string }
     );
 }
 
-/**
- * The Location and Notifications tabs both need a location to edit. When the manager
- * has none — they have not finished onboarding — the old copy was a dead end that
- * told them to "Select a Location" with nothing to select. This offers the one action
- * that actually resolves the state.
- */
-function NoKitchenYet() {
-    const [, setLocation] = useLocation();
-    return (
-        <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
-            <h3 className="font-semibold text-foreground">{mt("noKitchenTitle")}</h3>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{mt("noKitchenDesc")}</p>
-            <Button className="mt-5" onClick={() => setLocation("/manager/setup")}>
-                {mt("addYourKitchen")}
-            </Button>
-        </div>
-    );
-}
 
 export default function ManagerProfileSettings({
     location,
@@ -497,7 +479,7 @@ export default function ManagerProfileSettings({
                     {location && onSaveLocationSettings ? (
                         <LocationSettings location={location} onSave={onSaveLocationSettings} embedded />
                     ) : (
-                        <NoKitchenYet />
+                        <NeedsLocation />
                     )}
                 </TabsContent>
 
@@ -521,7 +503,7 @@ export default function ManagerProfileSettings({
                             embedded
                         />
                     ) : (
-                        <NoKitchenYet />
+                        <NeedsLocation />
                     )}
                 </TabsContent>
 

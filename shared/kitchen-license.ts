@@ -147,6 +147,40 @@ export function licenseAllowsBookings(
 }
 
 /**
+ * Whether a CHEF may see this kitchen at all.
+ *
+ * THREE switches, and the third was the one missing. The admin has not hidden it (`isActive`), the
+ * manager has published it (`listingStatus === 'active'`), and the location's licence is currently
+ * valid. The first two were written out at every chef-facing call site — six of them — and the third
+ * was nowhere.
+ *
+ * What that cost: a licence could lapse and the kitchen stayed in the chef's search. The booking was
+ * refused (`chef.service.ts` returns `license_invalid`) and the publish gate would have stopped it
+ * going live in the first place, but a listing that is ALREADY live was never taken down — so a chef
+ * could find a kitchen, open its calendar and only be told no at the end. `license-expiry.ts` cannot
+ * fix that: it only sends email, deliberately, so the gate has to hold at read time.
+ *
+ * This is that read. It is the same `licenseAllowsBookings` the publish gate and the booking path
+ * already use, so all three now answer from one rule — and it stays deliberately generous: a licence
+ * inside its final 30 days is still VALID, and a renewal under review is judged against the live
+ * document, so nobody mid-renewal loses their listing.
+ *
+ * Pass the LOCATION (or its licence fields). A kitchen with no location, or a location with no
+ * licence on file, is not visible — which is what the publish gate already required.
+ */
+export function kitchenIsVisibleToChefs(
+  kitchen: { isActive?: boolean | null; listingStatus?: string | null },
+  license: KitchenLicenseFields | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  return (
+    Boolean(kitchen.isActive) &&
+    kitchen.listingStatus === "active" &&
+    licenseAllowsBookings(license ?? {}, now)
+  );
+}
+
+/**
  * The reminder this location is due right now, or null.
  *
  * Callers are expected to make the send idempotent with a tracking id derived from

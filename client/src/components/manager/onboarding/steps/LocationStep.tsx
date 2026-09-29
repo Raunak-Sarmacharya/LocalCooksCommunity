@@ -22,6 +22,7 @@ import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { StepSummary } from "../StepSummary";
 import { useStepParts } from "../use-step-parts";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
+import { SERVICE_PROVINCE } from "@shared/service-area";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { SettingsFileUpload } from "@/components/manager/settings/SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "@/components/manager/settings/AuthenticatedDocumentLink";
@@ -673,7 +674,7 @@ export default function LocationStep() {
                 onChange={(value) => locationForm.setAddress(value)}
                 placeholder={mt("startTypingYourAddress")}
                 className="w-80"
-                province="NL"
+                province={SERVICE_PROVINCE}
               />
             </SettingsRow>
 

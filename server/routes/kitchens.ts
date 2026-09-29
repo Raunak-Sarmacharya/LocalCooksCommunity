@@ -14,6 +14,7 @@ const router = Router();
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 import { chefService } from "../domains/users/chef.service";
+import { kitchenIsVisibleToChefs } from "@shared/kitchen-license";
 import { bookingService } from "../domains/bookings/booking.service";
 import { userService } from "../domains/users/user.service";
 
@@ -26,12 +27,17 @@ router.get("/chef/kitchens", requireChef, async (req: Request, res: Response) =>
         // Use the new KitchenService to fetch data
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
 
-        // `findAllWithLocation` returns every kitchen, so the visibility filter lives here. Both
-        // switches must be on: the manager has published it (`listingStatus`) AND the admin has not
-        // hidden it (`isActive`). Filtering on `isActive` alone is what let an unfinished kitchen
-        // reach chefs — `isActive` defaults to true and only an admin can change it.
-        const activeKitchens = allKitchens.filter(
-            (kitchen) => kitchen.isActive && kitchen.listingStatus === "active",
+        // `findAllWithLocation` returns every kitchen, so the visibility filter lives here. THREE
+        // switches now, and the third is the one that was missing: the manager has published it
+        // (`listingStatus`), the admin has not hidden it (`isActive`), AND the location's kitchen
+        // licence is currently valid. Filtering on `isActive` alone is what let an unfinished kitchen
+        // reach chefs; leaving out the licence is what let a LAPSED one stay there — the publish gate
+        // stops it going live, and the booking path refuses it, but nothing took a live listing down.
+        //
+        // The rule itself lives in `kitchenIsVisibleToChefs` because six chef-facing sites ask this
+        // question and writing it out at each is how they came to disagree before.
+        const activeKitchens = allKitchens.filter((kitchen) =>
+            kitchenIsVisibleToChefs(kitchen, kitchen.location),
         );
 
         // Normalize image URLs for all kitchens
@@ -516,12 +522,18 @@ router.get("/public/kitchens/:kitchenId/operating-schedule", async (req: Request
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+        // The location carries the licence — the third switch. See `kitchenIsVisibleToChefs`.
+        const location = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+        // THREE switches: published by the manager, not hidden by the admin, and a VALID licence.
+        // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
+        // the manager had never published serve its hours to anyone who knew the id.
+        // These three are PUBLIC — unauthenticated, reachable by anyone holding a kitchen id — so the
+        // gate matters most here.
+        if (!kitchen || !kitchenIsVisibleToChefs(kitchen, location)) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const location = await locationService.getLocationById(kitchen.locationId);
-        const timezone = location.timezone || "America/St_Johns";
+        const timezone = location?.timezone || "America/St_Johns";
         const parts = new Intl.DateTimeFormat("en-US", {
             timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
         }).formatToParts(new Date());
@@ -572,10 +584,16 @@ router.get("/public/kitchens/:kitchenId/month-availability", async (req: Request
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        // Published by the manager AND not hidden by the admin — the same pair `findAllActive` applies.
+        // The location carries the licence — the third switch. See the gate below.
+        const gateLocation = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+        // THREE switches: published by the manager, not hidden by the admin, and a VALID licence.
         // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
         // the manager had never published serve its calendar and pricing to anyone who knew the id.
-        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+        // Leaving out the licence is what let a LAPSED one keep serving them.
+        //
+        // These three are PUBLIC — unauthenticated, reachable by anyone holding a kitchen id — so the
+        // gate matters most here.
+        if (!kitchen || !kitchenIsVisibleToChefs(kitchen, gateLocation)) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
@@ -615,10 +633,16 @@ router.get("/public/kitchens/:kitchenId/slots", async (req: Request, res: Respon
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        // Published by the manager AND not hidden by the admin — the same pair `findAllActive` applies.
+        // The location carries the licence — the third switch. See the gate below.
+        const gateLocation = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+        // THREE switches: published by the manager, not hidden by the admin, and a VALID licence.
         // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
         // the manager had never published serve its calendar and pricing to anyone who knew the id.
-        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+        // Leaving out the licence is what let a LAPSED one keep serving them.
+        //
+        // These three are PUBLIC — unauthenticated, reachable by anyone holding a kitchen id — so the
+        // gate matters most here.
+        if (!kitchen || !kitchenIsVisibleToChefs(kitchen, gateLocation)) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
@@ -648,10 +672,16 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        // Published by the manager AND not hidden by the admin — the same pair `findAllActive` applies.
+        // The location carries the licence — the third switch. See the gate below.
+        const gateLocation = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+        // THREE switches: published by the manager, not hidden by the admin, and a VALID licence.
         // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
         // the manager had never published serve its calendar and pricing to anyone who knew the id.
-        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+        // Leaving out the licence is what let a LAPSED one keep serving them.
+        //
+        // These three are PUBLIC — unauthenticated, reachable by anyone holding a kitchen id — so the
+        // gate matters most here.
+        if (!kitchen || !kitchenIsVisibleToChefs(kitchen, gateLocation)) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveStripeState } from "./ManagerOnboardingContext";
+import { resolveStripeState } from "./step-completion";
 
 /**
  * The contract this file exists to hold:

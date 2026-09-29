@@ -40,6 +40,12 @@ interface Kitchen {
   name: string;
   description?: string;
   isActive: boolean;
+  /**
+   * The MANAGER's publish switch, from the kitchen DTO (`mapToDTO` normalises the shared
+   * `listing_status` enum down to these two values). A `draft` kitchen is invisible to cooks, so
+   * "has a kitchen" and "has a PUBLISHED kitchen" are different questions and both are asked.
+   */
+  listingStatus?: "active" | "draft";
   createdAt: string;
   updatedAt: string;
 }

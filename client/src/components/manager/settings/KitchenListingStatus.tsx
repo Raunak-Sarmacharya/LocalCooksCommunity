@@ -29,28 +29,7 @@ import {
   kitchenListingReadinessKey,
 } from "@/lib/manager-kitchens-navigation";
 import { mt } from "@/i18n/manager";
-import type {
-  ListingRecommendationId,
-  ListingRequirementId,
-} from "@shared/kitchen-listing-readiness";
-
-interface ReadinessResponse {
-  checklist: {
-    requirements: Array<{ id: ListingRequirementId; met: boolean }>;
-    recommendations: Array<{ id: ListingRecommendationId; met: boolean }>;
-    canPublish: boolean;
-    missingRequirementIds: ListingRequirementId[];
-    openRecommendationIds: ListingRecommendationId[];
-  };
-  listingStatus: "draft" | "active";
-  adminHidden: boolean;
-  /**
-   * The same payload the review page reads. Only `kitchenName` is used here: the take-down
-   * confirmation has to name the kitchen it is about, because a dialog is read on its own and the
-   * header's switcher is not in view behind it.
-   */
-  details: { kitchenName: string };
-}
+import type { KitchenReadinessReview } from "@shared/kitchen-listing-readiness";
 
 interface KitchenListingStatusProps {
   kitchenId: number;
@@ -225,7 +204,7 @@ export function KitchenListingStatus({
    */
   const [confirmTakeDown, setConfirmTakeDown] = useState(false);
 
-  const { data, isLoading } = useQuery<ReadinessResponse>({
+  const { data, isLoading } = useQuery<KitchenReadinessReview>({
     queryKey: kitchenListingReadinessKey(kitchenId),
     queryFn: () => apiGet(`/manager/kitchens/${kitchenId}/listing-readiness`),
     enabled: Number.isFinite(kitchenId) && kitchenId > 0,

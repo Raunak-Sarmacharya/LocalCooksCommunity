@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import NotificationCenter from "@/components/manager/NotificationCenter";
 import { useTranslation } from "react-i18next";
 import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
-import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
+import type { ManagerGettingStartedProps } from "@/components/manager/ManagerGettingStarted";
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
 import { mt } from "@/i18n/manager";
@@ -23,9 +23,7 @@ interface DashboardLayoutProps {
     onLocationChange: (location: any) => void;
     onCreateLocation?: () => void;
     breadcrumbs?: ManagerBreadcrumb[];
-    managerSetupSteps?: ManagerSetupStep[];
-    managerImprovementSteps?: string[];
-    onImproveManagerListing?: (task: string) => void;
+    managerGettingStarted?: ManagerGettingStartedProps;
 }
 
 export default function DashboardLayout({
@@ -37,9 +35,7 @@ export default function DashboardLayout({
     onLocationChange,
     onCreateLocation,
     breadcrumbs,
-    managerSetupSteps,
-    managerImprovementSteps,
-    onImproveManagerListing,
+    managerGettingStarted,
 }: DashboardLayoutProps) {
     const { t } = useTranslation("manager");
     const displayBreadcrumbs = breadcrumbs ?? [];
@@ -58,9 +54,7 @@ export default function DashboardLayout({
                 onLocationChange={onLocationChange}
                 onCreateLocation={onCreateLocation}
                 breadcrumbs={displayBreadcrumbs}
-                managerSetupSteps={managerSetupSteps}
-                managerImprovementSteps={managerImprovementSteps}
-                onImproveManagerListing={onImproveManagerListing}
+                managerGettingStarted={managerGettingStarted}
             />
             {/*
               The app frame is viewport-height, and `<main>` below is the scroll container.

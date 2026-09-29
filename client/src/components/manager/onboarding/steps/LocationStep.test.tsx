@@ -264,6 +264,40 @@ describe("Business step — the review", () => {
 describe("Business step — where it opens", () => {
   const headOf = (key: string) => screen.queryByText(key) !== null;
 
+  it("resumes at the CONTACT part for a location created outside the wizard", () => {
+    /*
+     * The requirement: the Business step has three internal parts, and completing some of them
+     * elsewhere must not mark the whole step done — the wizard has to pick up at the first part the
+     * record still owes.
+     *
+     * This is the shape a dashboard-created location has: the identity fields (name, address, logo)
+     * are on the record because that is what creating one writes, and nothing else is — no contact
+     * details, no licence. So part 1 is owed, and part 1 is where the step must open.
+     *
+     * No `h.completed` flag, deliberately: the manager has never finished this step, and the
+     * derivation must not need one to get this right. `recordResumePart` reads the RECORD, so work
+     * done anywhere else is counted without anything having to tell the wizard about it.
+     */
+    h.record = { contactEmail: "", kitchenLicenseUrl: null, kitchenLicenseExpiry: null };
+    h.completed = {};
+    render(<LocationStep />);
+
+    expect(headOf("businessPartContactTitle")).toBe(true);
+    expect(headOf("businessPartDetailsTitle")).toBe(false);
+    expect(headOf("businessSummaryTitle")).toBe(false);
+  });
+
+  it("resumes at the LICENCE part once the contact details are on the record", () => {
+    // The next outstanding part, by the same rule — proving it walks the parts in order rather
+    // than always landing on the same one.
+    h.record = { kitchenLicenseUrl: null, kitchenLicenseExpiry: null };
+    h.completed = {};
+    render(<LocationStep />);
+
+    expect(headOf("businessPartDocumentsTitle")).toBe(true);
+    expect(headOf("businessSummaryTitle")).toBe(false);
+  });
+
   it("opens the part the record still owes, not the review, when the step is flagged complete", () => {
     h.completed = { location: true };
     // Part 1 saved (name, address, logo); contact details and the licence never were.

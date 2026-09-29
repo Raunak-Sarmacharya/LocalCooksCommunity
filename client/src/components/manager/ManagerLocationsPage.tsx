@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
+import { NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, Search, Filter, RefreshCw } from "@/components/ui/manager-icons";
@@ -272,27 +273,24 @@ export default function ManagerLocationsPage({
             <LocationCardSkeleton key={i} />
           ))}
         </div>
+      ) : locations.length === 0 ? (
+        /*
+         * No locations at all — the SAME prerequisite screen every other surface shows, with the
+         * create form inside it.
+         *
+         * This was its own grey empty state whose button called `startNewLocation`, which clears the
+         * wizard's state and navigates to `/manager/setup?newLocation=true`: a manager who wanted to
+         * add one thing was sent into a seven-step wizard. See `NeedsLocation` for why that shape is
+         * wrong, and note this is a DIFFERENT case from the branch below.
+         */
+        <NeedsLocation />
       ) : filteredLocations.length === 0 ? (
+        /* A search with no matches. Not a prerequisite — nothing is missing, the filter is just
+           narrow — so this keeps its own quieter copy. */
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Building2 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          {locations.length === 0 ? (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noLocationsYet")}</h3>
-              <p className="text-gray-500 mb-6">{mt("createYourFirstLocationToStartManagingYourKitchens")}</p>
-              <div className="flex flex-col items-center gap-3">
-                <Button
-                  onClick={onCreateLocation}
-                  className="gap-2"
-                >
-                  <Plus className="w-4 h-4" />{mt("addYourFirstLocation")}</Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noMatchingLocations")}</h3>
-              <p className="text-gray-500">{mt("tryAdjustingYourSearchOrFilterCriteria")}</p>
-            </>
-          )}
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noMatchingLocations")}</h3>
+          <p className="text-gray-500">{mt("tryAdjustingYourSearchOrFilterCriteria")}</p>
         </div>
       ) : (
         <DataTable

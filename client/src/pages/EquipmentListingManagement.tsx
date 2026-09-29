@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+import { NeedsKitchen } from "@/components/manager/locations/NeedsPrerequisite";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -456,6 +458,7 @@ export function EquipmentListingContent({
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
+  const [, navigate] = useLocation();
   const [listings, setListings] = useState<EquipmentListing[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -998,14 +1001,19 @@ export function EquipmentListingContent({
   const selectedKitchen = kitchens.find(k => k.id === selectedKitchenId);
 
   if (!selectedKitchenId) {
+    /*
+     * No kitchen to attach a listing to.
+     *
+     * The copy here used to be "select a location and kitchen from the sidebar" - an action the
+     * sidebar cannot perform, since it holds no location or kitchen picker. `ManagerPageLayout`
+     * now selects the first kitchen as soon as one exists, so reaching here means there genuinely
+     * is none, and the manager needs a way to MAKE one rather than an instruction.
+     */
     return (
-      <Card className="border-dashed h-full">
-        <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
-          <Wrench className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
-          <p>{mt("selectALocationAndKitchenFromTheSidebarToManageEquipment")}</p>
-        </CardContent>
-      </Card>
+      <NeedsKitchen
+        hasKitchen={kitchens.length > 0}
+        onGoToKitchens={() => navigate("/manager/dashboard?view=kitchens")}
+      />
     );
   }
 

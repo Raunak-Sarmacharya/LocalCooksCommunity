@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -60,6 +59,23 @@ export function CreateLocationDialog({
         setTermsFile(null);
     };
 
+    /**
+     * Upload one document and return its URL. Both attachments route through here so the two
+     * copies of this fetch cannot drift apart.
+     */
+    const uploadDocument = async (file: File, token: string): Promise<string> => {
+        const body = new FormData();
+        body.append("file", file);
+        const response = await fetch("/api/files/upload-file", {
+            method: "POST",
+            headers: { 'Authorization': `Bearer ${token}` },
+            credentials: "include",
+            body,
+        });
+        if (!response.ok) throw new Error(tt("failedToUploadLicense"));
+        return (await response.json()).url;
+    };
+
     const onSubmit = async (data: CreateLocationFormValues) => {
         setIsCreating(true);
         try {
@@ -68,31 +84,20 @@ export function CreateLocationDialog({
 
             const token = await currentFirebaseUser.getIdToken();
 
-            // License is now required, validation happens before this block/API call
-            if (!licenseFile) {
-                toast({ title: mt("licenseRequired"),
-                    description: mt("pleaseUploadAKitchenLicenseToCreateALocation"),
-                    variant: "destructive",
-                });
-                setIsCreating(false);
-                return;
-            }
-
-            // Terms & Policies are also required
-            if (!termsFile) {
-                toast({ title: mt("termsPoliciesRequired"),
-                    description: mt("pleaseUploadYourKitchenTermsAndPoliciesDocument"),
-                    variant: "destructive",
-                });
-                setIsCreating(false);
-                return;
-            }
-
-            // A licence with no expiry cannot be reviewed, approved, or warned about
-            // before it lapses — the Kitchen License page has always refused to save one,
-            // and this dialog was the one surface that let a document through without a
-            // date. Required alongside the file, not after it.
-            if (!licenseExpiryDate) {
+            /*
+             * The licence and the terms are OPTIONAL, deliberately.
+             *
+             * The licence is written ONTO a location (`location.kitchenLicenseUrl`), so it cannot
+             * exist before one does — requiring it in the form that CREATES the location puts a
+             * document upload in front of the very thing the document belongs to, and a manager who
+             * has not found that PDF yet cannot get past it. It becomes the next outstanding item
+             * instead, on the dashboard's licence page.
+             *
+             * The one rule that stays: a licence WITH NO EXPIRY is refused, here and by the API
+             * ("A license expiry date is required when uploading a kitchen license"), because a
+             * document nobody can date cannot be reviewed or warned about before it lapses.
+             */
+            if (licenseFile && !licenseExpiryDate) {
                 toast({ title: mt("expirationDateRequired"),
                     description: mt("pleaseProvideAnExpirationDateForTheLicense"),
                     variant: "destructive",
@@ -124,66 +129,45 @@ export function CreateLocationDialog({
 
             const newLocation = await response.json();
 
-            // License is mandatory, so we always upload it here
-            setIsUploadingLicense(true);
-            const formData = new FormData();
-            formData.append("file", licenseFile);
+            // Attach only what was actually supplied, in ONE write.
+            const documents: Record<string, unknown> = {};
+            if (licenseFile) {
+                setIsUploadingLicense(true);
+                documents.kitchenLicenseUrl = await uploadDocument(licenseFile, token);
+                documents.kitchenLicenseStatus = 'pending';
+                documents.kitchenLicenseExpiry = licenseExpiryDate;
+                setIsUploadingLicense(false);
+            }
+            if (termsFile) {
+                setIsUploadingTerms(true);
+                documents.kitchenTermsUrl = await uploadDocument(termsFile, token);
+                setIsUploadingTerms(false);
+            }
 
-            const uploadResponse = await fetch("/api/files/upload-file", {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
-                credentials: "include",
-                body: formData,
-            });
-
-            if (!uploadResponse.ok) throw new Error(tt("failedToUploadLicense")); // or handle gracefully but we require it
-
-            const uploadResult = await uploadResponse.json();
-            const licenseUrl = uploadResult.url;
-            setIsUploadingLicense(false);
-
-            // Upload terms file
-            setIsUploadingTerms(true);
-            const termsFormData = new FormData();
-            termsFormData.append("file", termsFile);
-
-            const termsUploadResponse = await fetch("/api/files/upload-file", {
-                method: "POST",
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
-                credentials: "include",
-                body: termsFormData,
-            });
-
-            if (!termsUploadResponse.ok) throw new Error(tt("failedToUploadTerms"));
-
-            const termsUploadResult = await termsUploadResponse.json();
-            const termsUrl = termsUploadResult.url;
-            setIsUploadingTerms(false);
-
-            // Update location with license and terms
-            await fetch(`/api/manager/locations/${newLocation.id}`, {
-                method: "PUT",
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                    kitchenLicenseUrl: licenseUrl,
-                    kitchenLicenseStatus: 'pending',
-                    kitchenLicenseExpiry: licenseExpiryDate,
-                    kitchenTermsUrl: termsUrl,
-                }),
-            });
+            if (Object.keys(documents).length > 0) {
+                const attach = await fetch(`/api/manager/locations/${newLocation.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: "include",
+                    body: JSON.stringify(documents),
+                });
+                if (!attach.ok) {
+                    const error = await attach.json().catch(() => ({}));
+                    throw new Error(error.error || tt("failedToCreateLocation"));
+                }
+            }
 
             queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 
+            // The description names the documents only when there were any — claiming they were
+            // submitted is the kind of copy that makes a platform feel untrustworthy.
             toast({ title: mt("locationCreated"),
-                description: `${newLocation.name} has been created. License and terms submitted.`,
+                description: documents.kitchenLicenseUrl
+                    ? `${newLocation.name} has been created. License and terms submitted.`
+                    : newLocation.name,
             });
 
             onLocationCreated(newLocation);
@@ -217,11 +201,14 @@ export function CreateLocationDialog({
 
                 <FormLegend />
 
-                <Alert className="bg-amber-50 border-amber-200">
-                    <AlertTitle className="text-amber-800 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />{mt("requiredDocuments")}</AlertTitle>
-                    <AlertDescription className="text-amber-700 text-xs mt-1">{mt("aValidKitchenLicenseAndYourKitchenTermsPoliciesDocumentAreRe")}</AlertDescription>
-                </Alert>
+                {/*
+                  * A note, not a warning. These documents are OPTIONAL here: the licence is written
+                  * ONTO a location, so it cannot exist before one does, and gating creation on it
+                  * put a document upload in front of the very thing the document belongs to. The
+                  * amber "Required Documents" framing made a three-field form read as a compliance
+                  * checkpoint. The expiry date stays conditional — see the guard in onSubmit.
+                  */}
+                <p className="text-xs text-muted-foreground">{mt("locationDocumentsOptional")}</p>
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-2">
@@ -282,19 +269,30 @@ export function CreateLocationDialog({
                             />
                         </div>
 
-                        <div className="space-y-2">
-                            <FormLabel>{mt("licenseExpirationDate")}<span className="text-destructive">*</span></FormLabel>
-                            <DateField
-                                id="new-location-license-expiry"
-                                value={licenseExpiryDate}
-                                onChange={setLicenseExpiryDate}
-                                placeholder={mt("licenseExpirationDate")}
-                            />
-                            <p className="text-[0.8rem] text-muted-foreground">{mt("requiredEnterTheDateWhenThisLicenseExpires")}</p>
-                        </div>
+                        {/*
+                          * The expiry date appears WITH the licence, never on its own.
+                          *
+                          * A licence and its date are one fact — the date is what makes the document
+                          * reviewable and what lets the platform warn before it lapses — so asking
+                          * for a date on its own invites a date for a document that is not there.
+                          * Choosing the file reveals the field; the guard in onSubmit is the
+                          * backstop, not the only defence.
+                          */}
+                        {licenseFile && (
+                            <div className="space-y-2">
+                                <FormLabel>{mt("licenseExpirationDate")}</FormLabel>
+                                <DateField
+                                    id="new-location-license-expiry"
+                                    value={licenseExpiryDate}
+                                    onChange={setLicenseExpiryDate}
+                                    placeholder={mt("licenseExpirationDate")}
+                                />
+                                <p className="text-[0.8rem] text-muted-foreground">{mt("licenseExpiryRequiredWithUpload")}</p>
+                            </div>
+                        )}
 
                         <div className="space-y-2">
-                            <FormLabel>{mt("kitchenLicense")}<span className="text-destructive">*</span></FormLabel>
+                            <FormLabel>{mt("kitchenLicense")}</FormLabel>
                             <div
                                 className={cn(
                                     "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",
@@ -348,7 +346,7 @@ export function CreateLocationDialog({
 
                         {/* Kitchen Terms & Policies Upload */}
                         <div className="space-y-2">
-                            <FormLabel>{mt("kitchenTermsPolicies")}<span className="text-destructive">*</span></FormLabel>
+                            <FormLabel>{mt("kitchenTermsPolicies")}</FormLabel>
                             <div
                                 className={cn(
                                     "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",

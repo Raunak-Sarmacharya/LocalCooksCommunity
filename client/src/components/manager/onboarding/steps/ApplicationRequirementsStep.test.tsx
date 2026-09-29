@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   isRequirementsComplete: false,
   requirementsLoaded: true,
+  /** The durable writer. Reaching the review is what finishes this step. */
+  trackStepCompletion: vi.fn(),
 }));
 
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
@@ -41,6 +43,7 @@ vi.mock("../ManagerOnboardingContext", () => ({
     registerStepSave: vi.fn(),
     saveAndExit: vi.fn(),
     isSubmitting: false,
+    trackStepCompletion: h.trackStepCompletion,
   }),
 }));
 
@@ -49,6 +52,7 @@ import ApplicationRequirementsStep from "./ApplicationRequirementsStep";
 beforeEach(() => {
   h.isRequirementsComplete = false;
   h.requirementsLoaded = true;
+  h.trackStepCompletion = vi.fn();
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({}) })));
 });
 afterEach(() => {
@@ -70,6 +74,28 @@ describe("Requirements step — which screen it opens on", () => {
 
     expect(screen.getByText("requirements-form")).toBeInTheDocument();
     expect(screen.queryByText("requirementsRecapTitle")).not.toBeInTheDocument();
+  });
+
+  it("records the step when its review is shown, and not before", () => {
+    /*
+     * The pane ships with the platform defaults filled in, so the common case is a manager who
+     * reads them, changes nothing and moves on — and writes no `location_requirements` row for
+     * `hasRequirements` to see. `isRequirementsStepBehindUs` accepts "reached the review" for
+     * exactly that case, and only this component knows it was shown.
+     *
+     * It records DURABLY: pressing Continue already wrote the flag, but leaving from the review did
+     * not, so a manager who reviewed the step and exited found it un-done on return.
+     */
+    h.isRequirementsComplete = true;
+    render(<ApplicationRequirementsStep />);
+
+    expect(h.trackStepCompletion).toHaveBeenCalledWith("application-requirements");
+  });
+
+  it("records nothing while the manager is still on the form", () => {
+    render(<ApplicationRequirementsStep />);
+
+    expect(h.trackStepCompletion).not.toHaveBeenCalled();
   });
 
   it("waits for the fetch before deciding, so a revisit does not land on the form", () => {

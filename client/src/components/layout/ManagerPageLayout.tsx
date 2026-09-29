@@ -93,12 +93,37 @@ export function ManagerPageLayout({
   }, [urlKitchenId]);
 
 
-  // Auto-select single location
+  /**
+   * Select a location as soon as one exists — the FIRST one, not only when there is exactly one.
+   *
+   * The `=== 1` this replaces left a manager with two or more locations unselected until they chose,
+   * and the dashboard had the identical condition and the identical problem. The wizard resolves it
+   * this way already ("Auto-select first kitchen … works for 1 kitchen (obvious) and 2+ kitchens
+   * (gives a starting point)"), so all three now agree.
+   *
+   * What matters is what `null` MEANS afterwards: with this, an unselected location is no longer
+   * "has not chosen yet" — it is "has none". That is the only reading the pages under this layout
+   * can act on, and it is what lets their empty states say one thing.
+   */
   useEffect(() => {
-    if (!isLoadingLocations && locations.length === 1 && !selectedLocationId) {
+    if (!isLoadingLocations && locations.length > 0 && !selectedLocationId) {
       setSelectedLocationId(locations[0].id);
     }
   }, [isLoadingLocations, locations, selectedLocationId]);
+
+  /**
+   * Select a kitchen for the same reason, and this one was missing entirely.
+   *
+   * Without it `selectedKitchenId` stayed null for a manager who HAD a kitchen but had not picked
+   * one, so every page under this layout — equipment, storage, pricing — fell through to its own
+   * "select a location and kitchen from the sidebar" copy, naming an action the sidebar cannot
+   * perform. A URL `?kit=` still wins: this only runs while nothing is selected.
+   */
+  useEffect(() => {
+    if (selectedKitchenId) return;
+    const first = kitchens.find((kitchen) => kitchen.locationId === selectedLocationId);
+    if (first) setSelectedKitchenId(first.id);
+  }, [kitchens, selectedLocationId, selectedKitchenId]);
 
   // Derived state
   const availableKitchens = kitchens.filter(k => k.locationId === selectedLocationId);

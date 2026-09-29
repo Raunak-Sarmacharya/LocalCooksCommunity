@@ -274,3 +274,64 @@ export function buildListingChecklist(input: ListingReadinessInput): ListingChec
     openRecommendationIds: recommendations.filter((r) => !r.met).map((r) => r.id),
   };
 }
+
+/**
+ * The raw values behind each checklist row, so a screen can show what is SET rather than only
+ * pass/fail.
+ *
+ * Typed for the WIRE, not for the database: this is what arrives over `res.json()`, so the timestamp
+ * is an ISO string. The server converts before returning (`termsUploadedAt` is a `Date` in the row),
+ * which is why nothing here is a `Date`.
+ */
+export interface KitchenReadinessDetails {
+  kitchenName: string;
+  locationName: string | null;
+  description: string | null;
+  hourlyRateCents: number | null;
+  dailyRateCents: number | null;
+  coverPhotoUrl: string | null;
+  galleryImageCount: number;
+  /** Whole days of the week with opening hours — a count, not the day names. */
+  availabilityDayCount: number;
+  licenseStatus: string;
+  stripeAccountId: string | null;
+  hasApplicationRequirements: boolean;
+  termsUploadedAt: string | null;
+  toursEnabled: boolean;
+  /**
+   * The booking rules, shown as VALUES rather than as a pass/fail.
+   *
+   * They cannot be unset — every column is NOT NULL with a default — so this row exists to let a
+   * manager confirm what a chef is agreeing to, not to report a gap.
+   */
+  cancellationPolicyHours: number;
+  dailyBookingLimit: number;
+  minimumBookingWindowHours: number;
+  minimumBookingHours: number;
+}
+
+/**
+ * The payload of `GET /manager/kitchens/:id/listing-readiness` — and therefore of the ONE cache slot
+ * `kitchenListingReadinessKey(kitchenId)`.
+ *
+ * **One declaration for one slot, and that is the whole point.** Three surfaces read that key: the
+ * status bar in My Kitchens, the publish review, and the dashboard's Getting Started list. Each used
+ * to carry its own idea of what was in it — two near-identical local copies of this interface, and
+ * the Getting Started hook asserting a BARE `ListingChecklist`. That last one read
+ * `.recommendations` off the review object and crashed the entire dashboard
+ * ("Cannot read properties of undefined (reading 'some')") the moment a kitchen existed, because
+ * `useMemo` runs synchronously on the first render and React Query hands it the CACHED value while
+ * the refetch is still in flight — `refetchOnMount: "always"` does not protect the first paint.
+ *
+ * A query key IS the identity of its data. Two shapes under one key means the shape is decided by
+ * whichever `queryFn` ran first, and nothing type-checks a cache read. So: one interface, named by
+ * every reader, next to the checklist it contains.
+ */
+export interface KitchenReadinessReview {
+  checklist: ListingChecklist;
+  details: KitchenReadinessDetails;
+  /** The state the kitchen is in right now, independent of readiness. */
+  listingStatus: "draft" | "active";
+  /** True when the admin has hidden it — publishing will not make it visible. */
+  adminHidden: boolean;
+}

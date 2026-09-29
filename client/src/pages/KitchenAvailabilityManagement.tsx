@@ -4,6 +4,8 @@ import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle, Eye } f
 import { forwardRef, useEffect, useState, useCallback, useImperativeHandle, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+import { NeedsKitchen } from "@/components/manager/locations/NeedsPrerequisite";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -215,6 +217,10 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
         ref={bookingRef}
         selectedLocationId={initialLocationId || null}
         selectedKitchenId={initialKitchenId || null}
+        // Same prop as the tabbed path below. The wizard always passes a kitchen id, so this branch
+        // never reaches the empty state — but the TYPE has to be satisfied, and a second render path
+        // that silently forgot it is exactly what `tsc` was run to catch.
+        hasKitchen={availableKitchens.length > 0}
         onSaveSuccess={onSaveSuccess}
         hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
         onDirtyChange={setBookingDirty}
@@ -259,6 +265,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
             ref={bookingRef}
             selectedLocationId={selectedLocationId}
             selectedKitchenId={selectedKitchenId}
+            hasKitchen={availableKitchens.length > 0}
             hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
             onDirtyChange={setBookingDirty}
           />
@@ -301,18 +308,31 @@ export default KitchenAvailabilityManagement;
 const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
+  /**
+   * Whether the manager has ANY kitchen, which is a different question from whether one is selected.
+   *
+   * It has to be a prop: this is a separate component, and the kitchens list lives in the one above
+   * it. Reaching for that list from here is what crashed this screen — `availableKitchens is not
+   * defined`, thrown while rendering, so "Exit setup" on the Availability step blew up the whole
+   * wizard. Only the WORDS of the empty state need it: "add a kitchen" is wrong advice for a manager
+   * who already has one and simply has not chosen it.
+   */
+  hasKitchen: boolean,
   onSaveSuccess?: () => void | Promise<void>,
   hideWeeklyScheduleSaveButton?: boolean,
   onDirtyChange?: (dirty: boolean) => void
 }>(function AvailabilityContent({
   selectedLocationId,
   selectedKitchenId,
+  hasKitchen,
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false,
   onDirtyChange
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  // Its own hook: the outer component's `navigate` is not in this scope either.
+  const [, navigate] = useLocation();
 
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [activeTab, setActiveTab] = useState("weekly");
@@ -663,14 +683,22 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   if (!selectedKitchenId) {
+    /*
+     * No kitchen to schedule against.
+     *
+     * The copy here used to be "select a location and kitchen from the sidebar" — an action the
+     * sidebar cannot perform, since it holds no location or kitchen picker. A manager who reached
+     * this page with no kitchen was told to do something impossible.
+     *
+     * `availableKitchens` decides the WORDS. The effect above selects the first kitchen whenever one
+     * exists, so reaching here means either there is genuinely none or the fetch has not landed —
+     * and telling a manager who has a kitchen to add one is its own small insult.
+     */
     return (
-      <Card className="border-dashed h-full">
-        <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
-          <CalendarIcon className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
-          <p>{mt("selectALocationAndKitchenFromTheSidebarToManageAvailability")}</p>
-        </CardContent>
-      </Card>
+      <NeedsKitchen
+        hasKitchen={hasKitchen}
+        onGoToKitchens={() => navigate("/manager/dashboard?view=kitchens")}
+      />
     );
   }
 

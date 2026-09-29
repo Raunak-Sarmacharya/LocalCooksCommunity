@@ -1,22 +1,39 @@
 import assert from "node:assert/strict";
 import { cancellationPolicyFirstLine, buildCancellationPolicyText } from "../components/booking/CancellationPolicyDialog";
 
-const t = (key: string, options?: Record<string, unknown>) => {
-  if (key === "cancellationPolicyDefaultMessage") {
-    return `Bookings cannot be cancelled within ${options?.hours} hours of the scheduled time.`;
-  }
-  if (key === "cancellationPolicyRefundRules") {
-    return "Cancel before approval for a full release.";
-  }
-  return key;
-};
+import { describe, it } from "vitest";
 
-const first = cancellationPolicyFirstLine(48, null, t);
-assert.equal(first.includes("48 hours"), true);
-assert.equal(first.includes("full release"), false);
+/*
+ * A `node:assert` script, wrapped so vitest can REPORT it.
+ *
+ * It was named `*.test.ts`, which made vitest collect it — and a file with no `describe`/`it`
+ * is reported as "No test suite found", i.e. a FAILED FILE. So a script whose every assertion
+ * PASSED showed up as a failure, and a genuine regression showed up as exactly the same
+ * failure. The signal was useless in both directions, and twenty of these had buried the two
+ * real failures in this repo's baseline.
+ */
+describe("cancellation-policy-dialog", () => {
+  it("holds", () => {
 
-const full = buildCancellationPolicyText(48, null, t);
-assert.equal(full.includes("48 hours"), true);
-assert.equal(full.includes("full release"), true);
+    const t = (key: string, options?: Record<string, unknown>) => {
+      if (key === "cancellationPolicyDefaultMessage") {
+        return `Bookings cannot be cancelled within ${options?.hours} hours of the scheduled time.`;
+      }
+      if (key === "cancellationPolicyRefundRules") {
+        return "Cancel before approval for a full release.";
+      }
+      return key;
+    };
 
-console.log("cancellation-policy-dialog.test.ts: ok");
+    const first = cancellationPolicyFirstLine(48, null, t);
+    assert.equal(first.includes("48 hours"), true);
+    assert.equal(first.includes("full release"), false);
+
+    const full = buildCancellationPolicyText(48, null, t);
+    assert.equal(full.includes("48 hours"), true);
+    assert.equal(full.includes("full release"), true);
+
+    console.log("cancellation-policy-dialog.test.ts: ok");
+
+  });
+});

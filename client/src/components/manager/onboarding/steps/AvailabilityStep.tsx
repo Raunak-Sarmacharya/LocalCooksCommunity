@@ -75,6 +75,7 @@ const AvailabilityStep = () => {
         isAvailabilityComplete,
         setAvailabilityStepCompleted,
         availabilityLoaded,
+        trackStepCompletion,
         hasUnsavedChanges,
         setUnsavedChanges,
         registerStepSave,
@@ -105,6 +106,27 @@ const AvailabilityStep = () => {
         isReady: Boolean(availabilityLoaded),
         partCount: PART_COUNT,
     });
+
+    /**
+     * The DURABLE half of "this step was reviewed" — the session half is the effect below.
+     *
+     * Reaching the review is what finishes this step: the week is optional and the booking policies
+     * carry platform defaults, so a manager can read the review, change nothing and move on, and no
+     * row is ever written for `hasAvailability` to see. That case is why
+     * `isAvailabilityStepBehindUs` accepts more than a saved schedule, and it ORs both signals.
+     *
+     * The session flag dies on reload — its own note admits as much — so a manager who reviewed the
+     * step, left, and came back found it un-done and had to walk it again. This writes the record
+     * that outlives the tab. Both are kept deliberately: the session flag is per-location and is
+     * what `startNewLocation` can clear for a fresh one, and the record is what survives the exit.
+     *
+     * `ApplicationRequirementsStep` now does the same, because it had NEITHER — its completion was
+     * only ever recorded by pressing Continue, so leaving from its review lost it entirely.
+     */
+    useEffect(() => {
+        if (!isSummary) return;
+        void trackStepCompletion('availability');
+    }, [isSummary, trackStepCompletion]);
     const [isSaving, setIsSaving] = useState(false);
     const [bookingPoliciesDirty, setBookingPoliciesDirty] = useState(false);
     // Continuing to a shorter part used to leave you mid-page.

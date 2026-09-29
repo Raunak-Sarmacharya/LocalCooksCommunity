@@ -20,16 +20,23 @@ const { state } = vi.hoisted(() => ({
 vi.mock("../../db", () => ({
   db: {
     select: () => ({
-      from: () => ({
-        where: () => ({
-          // `findAllActive` / `findByLocationId` await `orderBy(...)` directly — there is no
-          // `.limit()` on either path. The args are captured so the ORDER can be asserted.
-          orderBy: (...args: unknown[]) => {
-            state.orderArgs = args;
-            return Promise.resolve(state.rows);
-          },
-        }),
-      }),
+      from: () => {
+        // `findAllActive` / `findByLocationId` await `orderBy(...)` directly — there is no
+        // `.limit()` on either path. The args are captured so the ORDER can be asserted.
+        const orderBy = (...args: unknown[]) => {
+          state.orderArgs = args;
+          return Promise.resolve(state.rows);
+        };
+        /*
+         * TWO chains, because the two methods differ now. `findAllActive` LEFT JOINs the location —
+         * the licence lives there, and it is a third visibility switch alongside the kitchen's own
+         * two. `findByLocationId` reads kitchens alone and keeps the plain `where` chain.
+         */
+        return {
+          leftJoin: () => ({ orderBy }),
+          where: () => ({ orderBy }),
+        };
+      },
     }),
   },
 }));
@@ -37,7 +44,7 @@ vi.mock("../../db", () => ({
 import { KitchenRepository } from "./kitchen.repository";
 
 /** The columns `mapToDTO` reads, plus the ones `KitchenDTO` requires. */
-const row = (listingStatus: string) => ({
+const kitchenRow = (listingStatus: string) => ({
   id: 1,
   locationId: 1,
   name: "Prep kitchen",
@@ -60,6 +67,25 @@ const row = (listingStatus: string) => ({
   updatedAt: new Date("2026-01-01T00:00:00Z"),
 });
 
+/**
+ * The location side of the join, carrying a licence that is VALID today.
+ *
+ * It has to be valid or `kitchenIsVisibleToChefs` drops the row before `mapToDTO` is reached — which
+ * is the new filter doing its job, and would make these cases fail for a reason they are not about.
+ */
+const locationWith = (kitchenLicenseExpiry: string | null) => ({
+  id: 1,
+  kitchenLicenseUrl: "https://cdn.example/license.pdf",
+  kitchenLicenseStatus: "approved",
+  kitchenLicenseExpiry,
+});
+
+/** What the joined query hands back, in the shape the repository now selects. */
+const row = (listingStatus: string) => ({
+  kitchen: kitchenRow(listingStatus),
+  location: locationWith("2027-01-01"),
+});
+
 describe("KitchenRepository.mapToDTO — listingStatus", () => {
   beforeEach(() => {
     state.rows.length = 0;
@@ -74,15 +100,43 @@ describe("KitchenRepository.mapToDTO — listingStatus", () => {
   /*
    * The load-bearing case. Every other member of the shared enum means "not published", so folding
    * them all to `draft` is what makes the DTO's narrow type TRUE rather than merely asserted.
+   *
+   * `findByLocationId` is the vehicle, not `findAllActive`: the latter now applies the
+   * chef-visibility filter, so a kitchen that is not published never reaches `mapToDTO` through it.
+   * That filter is the next block's subject. This one is about the MAPPING — and the manager's own
+   * list is exactly where a draft must still be readable.
    */
   it.each(["draft", "pending", "approved", "rejected", "inactive"])(
     "folds %s down to 'draft'",
     async (status) => {
-      state.rows.push(row(status));
-      const [kitchen] = await new KitchenRepository().findAllActive();
+      state.rows.push(kitchenRow(status));
+      const [kitchen] = await new KitchenRepository().findByLocationId(1);
       expect(kitchen.listingStatus).toBe("draft");
     },
   );
+
+  it("drops a published kitchen whose licence has LAPSED", async () => {
+    /*
+     * The whole point of joining the location. A published kitchen with a lapsed licence is not
+     * something a chef may see — it used to keep serving its calendar and price while the booking
+     * path refused it at the end.
+     */
+    state.rows.push({ kitchen: kitchenRow("active"), location: locationWith("2020-01-01") });
+
+    expect(await new KitchenRepository().findAllActive()).toHaveLength(0);
+  });
+
+  it("keeps a published kitchen whose licence is merely about to lapse", async () => {
+    // Still valid, so still visible: renewing early must not cost a manager their listing.
+    const soon = new Date();
+    soon.setDate(soon.getDate() + 10);
+    state.rows.push({
+      kitchen: kitchenRow("active"),
+      location: locationWith(soon.toISOString().slice(0, 10)),
+    });
+
+    expect(await new KitchenRepository().findAllActive()).toHaveLength(1);
+  });
 });
 
 /**

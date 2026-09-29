@@ -10,7 +10,12 @@ import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
-import { useOnboardingStatus, invalidateOnboardingStatus, shouldShowSidebarGuidance, SETUP_STEP_WIZARD_STEP } from "@/hooks/use-onboarding-status";
+import { useOnboardingStatus, invalidateOnboardingStatus, SETUP_STEP_WIZARD_STEP } from "@/hooks/use-onboarding-status";
+import {
+  useManagerGettingStarted,
+  invalidateGettingStarted,
+} from "@/hooks/use-manager-getting-started";
+import type { GettingStartedItemId } from "@/lib/manager-getting-started";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -33,6 +38,9 @@ import LocationRequirementsSettings from "@/components/manager/LocationRequireme
 import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, KitchenListingReview, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
 import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } from "@/components/manager/settings";
+// The one screen for "no location yet". Nine settings views used to carry their own version of it,
+// each saying a location was needed without offering any way to make one.
+import { NeedsKitchen, NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
@@ -149,7 +157,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
 
 
 export default function ManagerBookingDashboard() {
@@ -278,7 +286,27 @@ export default function ManagerBookingDashboard() {
     missingSteps,
     improvementSteps,
     setupSteps,
+    // For the publish review's empty state: a manager who has a kitchen but no review target
+    // needs different words from one who has no kitchen at all.
+    hasKitchens,
   } = useOnboardingStatus(selectedLocation?.id);
+
+  /**
+   * What a view that needs a kitchen should show instead, when the prerequisites are not there.
+   *
+   * Two levels, in the order they are needed: a location first, then a kitchen inside it. Views
+   * rendered with only a location id used to fall through to their own copy — "select a location and
+   * kitchen from the sidebar" — which named an action the sidebar cannot perform.
+   *
+   * Returns null when both are present, so a caller reads as
+   * `kitchenPrerequisite ?? <the real view>`.
+   */
+  const kitchenPrerequisite = !selectedLocation ? (
+    <NeedsLocation />
+  ) : !hasKitchens ? (
+    //  because this branch only runs when there is none.
+    <NeedsKitchen hasKitchen={false} onGoToKitchens={() => handleViewChange('kitchens')} />
+  ) : null;
 
   // Sync activeView with URL parameters. Listens to popstate so back/forward
   // through the pushed tab history correctly updates the active view.
@@ -333,7 +361,13 @@ export default function ManagerBookingDashboard() {
      * that names only `"kitchens"` resolves to no section, i.e. "whatever tab the URL already held".
      */
     const targetSection = resolveDestination(view, section).section;
-    const profileTab = view === 'payments' ? 'payments' : view === 'notification-settings' ? 'notifications' : null;
+    const profileTab =
+      view === 'payments' ? 'payments'
+      : view === 'notification-settings' ? 'notifications'
+      // "Sign-in & security" — where Google, phone and password are rows, and the only page that
+      // can complete the Getting Started backup-sign-in row.
+      : view === 'security' ? 'account'
+      : null;
     const availabilityTab = view === 'tour-availability' ? 'tours' : null;
     const nextView = targetSection
       ? 'kitchens'
@@ -372,6 +406,9 @@ export default function ManagerBookingDashboard() {
     // profile and location keys were invalidated, the kitchens / availability /
     // requirements keys were not).
     invalidateOnboardingStatus(queryClient);
+    // Same reason, for the Getting Started list: its rows complete on the pages the sidebar links
+    // to, and returning to a page does not remount the widget that shows them.
+    invalidateGettingStarted(queryClient);
 
     setActiveView(nextView);
     const url = new URL(window.location.href);
@@ -392,6 +429,26 @@ export default function ManagerBookingDashboard() {
     if (nextUrl !== window.location.href) {
       window.history.pushState({}, '', nextUrl);
     }
+
+    /*
+     * Tell the URL-backed children the URL moved.
+     *
+     * `history.pushState` does NOT fire `popstate` — that is the spec, not a quirk — so a component
+     * that reads its state from the query string ONCE at mount never hears about a change made while
+     * it stays mounted. That was the reported bug: "Offer equipment add-ons" / "Offer storage add-ons"
+     * / "Add more photos" landed on the wrong tab from My Kitchens, but worked from Revenue. From
+     * Revenue the Kitchens page MOUNTS and reads `?section=`; already on it, the page kept whatever
+     * section it was on because nothing re-read the URL.
+     *
+     * `KitchensManagement` already subscribes to `popstate` for exactly this reason (as does the
+     * shell's own URL→view sync below), so dispatching it is the established channel here — not a
+     * new one. Doing it at this single navigation entry point means every URL-backed child gets it,
+     * rather than each caller remembering to notify the page it happens to be standing on.
+     *
+     * Safe to fire unconditionally: listeners only re-read the URL, and the URL is already the one
+     * we just wrote, so a listener cannot loop back into a navigation.
+     */
+    window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
   const continueFromAvailability = (view: ViewType) => {
@@ -611,9 +668,23 @@ export default function ManagerBookingDashboard() {
     handleStripeReturn();
   }, [toast, queryClient]);
 
-  // Auto-select location if only one exists
+  /**
+   * Select a location as soon as one exists — the FIRST one, not only when there is exactly one.
+   *
+   * The `=== 1` this replaces left a manager with two or more locations looking at "Select a
+   * Location" until they picked one, and there is no picker on most of those screens. The wizard
+   * already resolves this the same way for kitchens ("Auto-select first kitchen … works for 1
+   * kitchen (obvious) and 2+ kitchens (gives a starting point)"), so this matches it.
+   *
+   * The point is what the condition MEANS afterwards. With this, `selectedLocation === null` is no
+   * longer "hasn't chosen yet" — it is exactly "has no location at all". That is the only reading
+   * the empty states below can act on, and it is why they can now say one thing.
+   *
+   * `?locationId=` still wins: that effect runs first and sets a specific location, so by the time
+   * this runs `selectedLocation` is already set and this is a no-op.
+   */
   useEffect(() => {
-    if (!isLoadingLocations && locations.length === 1 && !selectedLocation) {
+    if (!isLoadingLocations && locations.length > 0 && !selectedLocation) {
       setSelectedLocation(locations[0]);
     }
   }, [locations, isLoadingLocations, selectedLocation]);
@@ -886,13 +957,65 @@ export default function ManagerBookingDashboard() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  const showSidebarGuidance = shouldShowSidebarGuidance({
-    isLoading: isLoadingOnboardingStatus,
-    setupSteps,
-    hasSelectedLocation: !!selectedLocation,
-    showSetupBanner,
-    improvementStepCount: improvementSteps.length,
-  });
+  /*
+   * Setup is complete when the setup BANNER has nothing left to say.
+   *
+   * Read from the same verdict the banner renders (`showSetupBanner`) rather than re-derived, so the
+   * two surfaces cannot disagree about whether a host is set up — and `isLoadingOnboardingStatus`
+   * stops an unknown answer being read as "done", which would flash the wrong stage.
+   */
+  const isSetupComplete = !isLoadingOnboardingStatus && !showSetupBanner;
+  const gettingStarted = useManagerGettingStarted(isSetupComplete);
+
+  /**
+   * Where each Getting Started row goes.
+   *
+   * Every destination is an EXISTING view: the checklist is a map of the dashboard, not a second
+   * copy of it, so no row re-implements a page. `handleViewChange` is what runs, so a row inherits
+   * the dirty-form guards rather than navigating away from unsaved work.
+   */
+  const handleGettingStartedItem = (id: GettingStartedItemId) => {
+    switch (id) {
+      case "finish-setup":
+        // The wizard owns the setup work; this row is the door to it. `handleContinueSetup` already
+        // names the step in the URL, so the wizard opens where the host left off rather than at the
+        // top — which is what made "Add your kitchen" feel like it went to the wrong place.
+        handleContinueSetup();
+        break;
+      case "phone":
+        // "Sign-in & security" — the tab where Google, phone and password are rows.
+        handleViewChange("security");
+        break;
+      case "stripe":
+        handleViewChange("payments");
+        break;
+      case "publish-kitchen":
+        // The listing REVIEW is the page that shows what is still blocking, and it carries Go live.
+        if (gettingStarted.primaryKitchenId != null) {
+          handleViewChange("listing-review", gettingStarted.primaryKitchenId);
+        } else {
+          handleViewChange("kitchens");
+        }
+        break;
+      case "photos":
+        handleViewChange("kitchens", gettingStarted.primaryKitchenId ?? undefined, "photos");
+        break;
+      case "tours":
+        handleViewChange("tour-availability");
+        break;
+      case "equipment":
+        // Each add-on has its own tab on My Kitchens, so each row opens its own.
+        handleViewChange("kitchens", gettingStarted.primaryKitchenId ?? undefined, "equipment");
+        break;
+      case "storage":
+        handleViewChange("kitchens", gettingStarted.primaryKitchenId ?? undefined, "storage");
+        break;
+      case "first-booking":
+        // A milestone, so it is never a button — but if it ever is, this is the sensible landing.
+        handleViewChange("bookings");
+        break;
+    }
+  };
 
   return (
     <DashboardLayout
@@ -903,9 +1026,17 @@ export default function ManagerBookingDashboard() {
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
       onCreateLocation={startNewLocation}
       breadcrumbs={breadcrumbs}
-      managerSetupSteps={showSidebarGuidance ? setupSteps : []}
-      managerImprovementSteps={showSidebarGuidance ? improvementSteps : []}
-      onImproveManagerListing={showSidebarGuidance ? handleImprovementTask : undefined}
+      // The widget gates itself: it renders nothing once every row is done, and nothing while the
+      // answers are still loading. It used to be gated on the WIZARD's state — the coupling this
+      // change removes, and with it the `shouldShowSidebarGuidance` helper, which is now deleted.
+      managerGettingStarted={{
+        items: gettingStarted.items,
+        completed: gettingStarted.completed,
+        total: gettingStarted.total,
+        hiddenStage: gettingStarted.hiddenStage,
+        isLoading: isLoadingOnboardingStatus || gettingStarted.isLoading,
+        onSelectItem: handleGettingStartedItem,
+      }}
     >
       {/* Onboarding Status Banners */}
       <OnboardingStatusBanner
@@ -986,7 +1117,7 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
-      {activeView === 'availability' && (
+      {activeView === 'availability' && (kitchenPrerequisite ?? (
         <div className="min-h-[calc(100vh-10rem)]">
           <KitchenAvailabilityManagement
             ref={availabilityRef}
@@ -995,13 +1126,13 @@ export default function ManagerBookingDashboard() {
             onDirtyChange={setAvailabilityDirty}
           />
         </div>
-      )}
+      ))}
 
-      {activeView === 'tour-availability' && (
+      {activeView === 'tour-availability' && (kitchenPrerequisite ?? (
         <div className="min-h-[calc(100vh-10rem)]">
           <KitchenAvailabilityManagement initialLocationId={selectedLocation?.id} initialAvailabilityTab="tours" />
         </div>
-      )}
+      ))}
 
       {activeView === 'applications' && (
         <ManagerKitchenApplicationsContent
@@ -1023,11 +1154,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageSettings")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'revenue' && (
@@ -1118,11 +1245,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'kitchens' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageKitchens")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'listing-review' && kitchenForReview && (
@@ -1136,11 +1259,20 @@ export default function ManagerBookingDashboard() {
         />
       )}
 
+      {/*
+        * The publish review is per-kitchen, and it resolves its target from an explicit choice or
+        * the URL — so this is reached either with no kitchen at all, or with one the review was
+        * never told to open. "Please select a kitchen first" covered both and offered neither a
+        * kitchen to select nor a way to make one.
+        *
+        * Both cases route to the Kitchens view, which is where a kitchen is created AND where one
+        * is chosen, and which already seeds itself from the first kitchen.
+        */}
       {activeView === 'listing-review' && !kitchenForReview && (
-        <div className="rounded-lg border bg-card p-12 text-center">
-          <h3 className="text-lg font-medium text-foreground">{mt("noKitchenSelected")}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{mt("pleaseSelectAKitchenFirst")}</p>
-        </div>
+        <NeedsKitchen
+          hasKitchen={hasKitchens}
+          onGoToKitchens={() => handleViewChange('kitchens')}
+        />
       )}
 
       {activeView === 'settings-license' && selectedLocation && (
@@ -1154,11 +1286,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-license' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageLicenseSettings")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'settings-booking-rules' && selectedLocation && (
@@ -1172,11 +1300,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-booking-rules' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageBookingRules")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'settings-facility-docs' && selectedLocation && (
@@ -1186,11 +1310,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-facility-docs' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageFacilityDocuments")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'settings-location' && selectedLocation && (
@@ -1201,11 +1321,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-location' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageLocationSettings")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'application-requirements' && selectedLocation && (
@@ -1220,11 +1336,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'application-requirements' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageApplicationRequirements")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'notifications' && (
@@ -1250,11 +1362,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageCheckInCheckOutSettings")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       {activeView === 'settings-storage-checkin-checkout' && selectedLocation && (
@@ -1264,11 +1372,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-storage-checkin-checkout' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageStorageCheckInCheckOutSettings")}</p>
-        </div>
+        <NeedsLocation />
       )}
 
       <UnsavedChangesDialog

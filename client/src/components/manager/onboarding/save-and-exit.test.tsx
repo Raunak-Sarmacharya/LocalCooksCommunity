@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
   partSave: vi.fn<() => Promise<boolean>>(async () => true),
   setLocation: vi.fn(),
   fetch: vi.fn(),
+  /** The manager's locations. What `completedSteps` derives from, so cases vary it. */
+  locations: [] as any[],
 }));
 
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
@@ -37,7 +39,7 @@ vi.mock("@/lib/firebase", () => ({
 }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({
   useManagerDashboard: () => ({
-    locations: [{ id: 1, name: "Harbour Kitchen", address: "1 Water St" }],
+    locations: h.locations,
     isLoadingLocations: false,
   }),
 }));
@@ -97,6 +99,7 @@ async function renderExit() {
 }
 
 beforeEach(() => {
+  h.locations = [{ id: 1, name: "Harbour Kitchen", address: "1 Water St" }];
   h.partSave = vi.fn(async () => true);
   h.setLocation.mockClear();
   h.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
@@ -109,6 +112,20 @@ afterEach(() => {
 
 describe("Save & exit — the part is written before leaving", () => {
   it("saves the part, then records the step, then leaves", async () => {
+    /*
+     * The ORDER is the point: the part is written BEFORE the record and before leaving, so the
+     * record can never describe work that was not stored.
+     *
+     * The location carries a licence because the Business step's completion IS the licence being on
+     * the record — without one there is nothing to record, which is the next block's subject.
+     */
+    h.locations = [{
+      id: 1,
+      name: "Harbour Kitchen",
+      address: "1 Water St",
+      kitchenLicenseUrl: "https://cdn.example.com/license.pdf",
+      kitchenLicenseExpiry: "2027-03-01",
+    }];
     await renderExit();
 
     await act(async () => {
@@ -167,5 +184,60 @@ describe("Save & exit — the part is written before leaving", () => {
 
     expect(h.partSave).toHaveBeenCalledTimes(1);
     expect(h.setLocation).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * What the exit RECORDS, which is a different question from what it saves.
+ *
+ * The record used to be written for whatever step the manager was standing on, so leaving a step
+ * said "I was here" and every progress surface read it as "I finished". That is why opening
+ * Availability or Booking Requirements and pressing Exit ticked them off, and why the wizard's rail
+ * and the dashboard's banner disagreed about the Business step — the rail ORs the flag into a
+ * licence check the banner cannot see.
+ *
+ * The other half is the trap this must not re-open: `ManagerProtectedRoute` reads the record's
+ * NON-EMPTINESS as "has started onboarding". Stop writing it entirely and "Maybe later" bounces a
+ * manager straight back to the wizard, twice in a row.
+ */
+describe("Save & exit — what it records", () => {
+  it("records NOTHING for a step the manager has not finished", async () => {
+    // The Business step's completion is the licence being on the record, and this location has none.
+    await renderExit();
+    await act(async () => { await ctx.saveAndExit(); });
+
+    expect(stepRecordPosts()).toHaveLength(0);
+    // Still leaves — the record is not what lets them out of the wizard.
+    expect(h.setLocation).toHaveBeenCalledTimes(1);
+  });
+
+  it("records the step when it IS finished", async () => {
+    h.locations = [{
+      id: 1,
+      name: "Harbour Kitchen",
+      address: "1 Water St",
+      kitchenLicenseUrl: "https://cdn.example.com/license.pdf",
+      kitchenLicenseExpiry: "2027-03-01",
+    }];
+    await renderExit();
+    await act(async () => { await ctx.saveAndExit(); });
+
+    expect(stepRecordPosts()).toHaveLength(1);
+    expect(JSON.parse(stepRecordPosts()[0][1].body).stepId).toBe("location");
+  });
+
+  it("records `welcome` with no location, so the manager can still reach the dashboard", async () => {
+    /*
+     * With no location there is no step that could be complete, and `welcome` is honestly what
+     * "started onboarding" means — the wizard's own comment calls the step complete once a manager
+     * has left it. Recording nothing here is what trapped managers on the welcome screen.
+     */
+    h.locations = [];
+    await renderExit();
+    await act(async () => { await ctx.saveAndExit(); });
+
+    expect(stepRecordPosts()).toHaveLength(1);
+    expect(JSON.parse(stepRecordPosts()[0][1].body).stepId).toBe("welcome");
+    expect(h.setLocation).toHaveBeenCalledTimes(1);
   });
 });

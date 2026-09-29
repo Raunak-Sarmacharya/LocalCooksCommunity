@@ -1,100 +1,117 @@
 import assert from "node:assert/strict";
 import { computeManagerGrossAndCommission } from "./manager-payout-math";
 
-// Prefer capture metadata when it sums to charge (fee on subtotal only)
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 1220,
-    platformCommissionRate: 0.07,
-    approvedSubtotalCents: 1000,
-    approvedTaxCents: 150,
-    platformCommissionCents: 70,
-  });
-  assert.equal(r.managerGrossCents, 1150);
-  assert.equal(r.platformCommissionCents, 70);
-}
+import { describe, it } from "vitest";
 
-// A stale 8% fee must not reduce kitchen gross when Stripe actually charged 7%.
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 1220,
-    platformCommissionRate: 0.07,
-    storedBaseAmountCents: 1150,
-    storedServiceFeeCents: 80,
-  });
-  assert.equal(r.managerGrossCents, 1150);
-  assert.equal(r.platformCommissionCents, 70);
-}
+/*
+ * A `node:assert` script, wrapped so vitest can REPORT it.
+ *
+ * It was named `*.test.ts`, which made vitest collect it — and a file with no `describe`/`it`
+ * is reported as "No test suite found", i.e. a FAILED FILE. So a script whose every assertion
+ * PASSED showed up as a failure, and a genuine regression showed up as exactly the same
+ * failure. The signal was useless in both directions, and twenty of these had buried the two
+ * real failures in this repo's baseline.
+ */
+describe("manager-payout-math", () => {
+  it("holds", () => {
 
-// Prefer stored PT columns when metadata missing
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 1220,
-    platformCommissionRate: 0.07,
-    storedBaseAmountCents: 1150,
-    storedServiceFeeCents: 70,
-  });
-  assert.equal(r.managerGrossCents, 1150);
-  assert.equal(r.platformCommissionCents, 70);
-}
+    // Prefer capture metadata when it sums to charge (fee on subtotal only)
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 1220,
+        platformCommissionRate: 0.07,
+        approvedSubtotalCents: 1000,
+        approvedTaxCents: 150,
+        platformCommissionCents: 70,
+      });
+      assert.equal(r.managerGrossCents, 1150);
+      assert.equal(r.platformCommissionCents, 70);
+    }
 
-// Prefer stored service_fee over rate-based reverse-engineering.
-// charge=1220 (subtotal 1000 + tax 150 + fee 70). Without metadata, storedFee=70
-// is more accurate than charge/(1+rate) which confuses tax for commission.
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 1220,
-    platformCommissionRate: 0.07,
-    storedServiceFeeCents: 70,
-  });
-  assert.equal(r.managerGrossCents, 1150);
-  assert.equal(r.platformCommissionCents, 70);
-}
+    // A stale 8% fee must not reduce kitchen gross when Stripe actually charged 7%.
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 1220,
+        platformCommissionRate: 0.07,
+        storedBaseAmountCents: 1150,
+        storedServiceFeeCents: 80,
+      });
+      assert.equal(r.managerGrossCents, 1150);
+      assert.equal(r.platformCommissionCents, 70);
+    }
 
-// Fallback reverse-engineer when nothing stored (no tax, no metadata)
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 1070,
-    platformCommissionRate: 0.07,
-  });
-  // charge/(1+rate) = 1070/1.07 ≈ 1000; same as rate*charge/(1+rate)
-  const expectedCommission = Math.round(1070 * 0.07 / 1.07);
-  assert.equal(r.platformCommissionCents, expectedCommission);
-  assert.equal(r.managerGrossCents, 1070 - expectedCommission);
-}
+    // Prefer stored PT columns when metadata missing
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 1220,
+        platformCommissionRate: 0.07,
+        storedBaseAmountCents: 1150,
+        storedServiceFeeCents: 70,
+      });
+      assert.equal(r.managerGrossCents, 1150);
+      assert.equal(r.platformCommissionCents, 70);
+    }
 
-// Partial capture: persisted subtotal + tax + commission prevents tax from
-// being mistaken for platform commission during a webhook race.
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 6100,
-    platformCommissionRate: 0.07,
-    approvedSubtotalCents: 5000,
-    approvedTaxCents: 750,
-    platformCommissionCents: 350,
-    storedBaseAmountCents: 11500,
-    storedServiceFeeCents: 700,
-  });
-  assert.equal(r.managerGrossCents, 5750);
-  assert.equal(r.platformCommissionCents, 350);
-}
+    // Prefer stored service_fee over rate-based reverse-engineering.
+    // charge=1220 (subtotal 1000 + tax 150 + fee 70). Without metadata, storedFee=70
+    // is more accurate than charge/(1+rate) which confuses tax for commission.
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 1220,
+        platformCommissionRate: 0.07,
+        storedServiceFeeCents: 70,
+      });
+      assert.equal(r.managerGrossCents, 1150);
+      assert.equal(r.platformCommissionCents, 70);
+    }
 
-// Booking 66 regression: a daily rate was multiplied by eight hours in the
-// capture metadata, while Stripe correctly captured the original $292.80 hold.
-{
-  const r = computeManagerGrossAndCommission({
-    chargeAmountCents: 29280,
-    platformCommissionRate: 0.07,
-    approvedSubtotalCents: 192000,
-    approvedTaxCents: 28800,
-    platformCommissionCents: 13440,
-    capturedAmountCents: 234240,
-    originalAuthorizedAmountCents: 29280,
-    storedBaseAmountCents: 220800,
-    storedServiceFeeCents: 13440,
-  });
-  assert.equal(r.managerGrossCents, 27600);
-  assert.equal(r.platformCommissionCents, 1680);
-}
+    // Fallback reverse-engineer when nothing stored (no tax, no metadata)
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 1070,
+        platformCommissionRate: 0.07,
+      });
+      // charge/(1+rate) = 1070/1.07 ≈ 1000; same as rate*charge/(1+rate)
+      const expectedCommission = Math.round(1070 * 0.07 / 1.07);
+      assert.equal(r.platformCommissionCents, expectedCommission);
+      assert.equal(r.managerGrossCents, 1070 - expectedCommission);
+    }
 
-console.log("manager-payout-math: ok");
+    // Partial capture: persisted subtotal + tax + commission prevents tax from
+    // being mistaken for platform commission during a webhook race.
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 6100,
+        platformCommissionRate: 0.07,
+        approvedSubtotalCents: 5000,
+        approvedTaxCents: 750,
+        platformCommissionCents: 350,
+        storedBaseAmountCents: 11500,
+        storedServiceFeeCents: 700,
+      });
+      assert.equal(r.managerGrossCents, 5750);
+      assert.equal(r.platformCommissionCents, 350);
+    }
+
+    // Booking 66 regression: a daily rate was multiplied by eight hours in the
+    // capture metadata, while Stripe correctly captured the original $292.80 hold.
+    {
+      const r = computeManagerGrossAndCommission({
+        chargeAmountCents: 29280,
+        platformCommissionRate: 0.07,
+        approvedSubtotalCents: 192000,
+        approvedTaxCents: 28800,
+        platformCommissionCents: 13440,
+        capturedAmountCents: 234240,
+        originalAuthorizedAmountCents: 29280,
+        storedBaseAmountCents: 220800,
+        storedServiceFeeCents: 13440,
+      });
+      assert.equal(r.managerGrossCents, 27600);
+      assert.equal(r.platformCommissionCents, 1680);
+    }
+
+    console.log("manager-payout-math: ok");
+
+  });
+});
