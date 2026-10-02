@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { getSubdomainFromHostname, getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
-import { parseLocationLocale } from "@/i18n/routing";
+import { buildLocalizedPath, parseLocationLocale } from "@/i18n/routing";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { scrollToPageSection } from "@/lib/scroll-to-page-section";
@@ -33,7 +33,7 @@ addCollection(navIcons);
 //
 // Three rules worth keeping if you edit this:
 //
-// 1. THE SERVICES MENU HAS EXACTLY TWO SERVICE ROWS. Selling food and booking a kitchen are
+// 1. THE CHEF SERVICES MENU HAS EXACTLY TWO SERVICE ROWS. Selling food and booking a kitchen are
 //    independent - a chef can take either or both, never one *then* the other. A third row
 //    (there used to be "Payments and delivery handled") splits one service into two and reads
 //    as a sequence. The kitchen-owner handoff is a different audience on a different site, so
@@ -202,6 +202,11 @@ function KitchenPartnerCard({
 const ROW_RADIUS = "!rounded-[18px]";
 const ROW_RADIUS_SM = "!rounded-[14px]";
 
+const kitchenHostServices = [
+  ["mdi:cash-multiple", "kitchenLandingEarn", "kitchenLandingEarnDesc", "revenue-streams"],
+  ["mdi:calendar-check-outline", "kitchenLandingControls", "kitchenLandingControlsDesc", "everything-included"],
+] as const;
+
 /** Hairline between panel sections. */
 function PanelRule() {
   return <div role="separator" className="mx-2 my-2 border-t border-[#2C2C2C]/[0.07]" />;
@@ -303,9 +308,15 @@ const hasActiveApplication = (applications?: Application[]) => {
 export default function Header({
   position = "fixed",
   centerContent,
+  kitchenHostLinks = false,
+  hideOnScroll = false,
 }: {
   position?: "fixed" | "static";
   hideHowItWorks?: boolean;
+  /** Kitchen landing and resources links; other pages keep their navigation. */
+  kitchenHostLinks?: boolean;
+  /** Use the shared hide-down/reveal-up behavior without changing navigation links. */
+  hideOnScroll?: boolean;
   /**
    * Optional slot rendered in the middle of the bar (desktop only). Pages own the content;
    * the header only provides the centred flex cell. Compare Kitchens uses it for the compact
@@ -316,9 +327,12 @@ export default function Header({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isServicesOpen, setIsServicesOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isScrollHidden, setIsScrollHidden] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
   const { t } = useTranslation("common");
+  const kitchenHomePath = buildLocalizedPath("/", parseLocationLocale(location).locale);
 
   // ── Hover intent for the Services menu ──────────────────────────────────────
   // Radix's DropdownMenu is click/keyboard only, which is correct for a menu but wrong for a
@@ -378,6 +392,40 @@ export default function Header({
       window.removeEventListener("pointerdown", onPointer, true);
     };
   }, []);
+
+  const scrollHeader = (kitchenHostLinks || hideOnScroll) && position === "fixed";
+  const menuIsOpen = isMenuOpen || isServicesOpen || isAccountOpen;
+
+  useEffect(() => {
+    setIsScrollHidden(false);
+    if (!scrollHeader || menuIsOpen) return;
+
+    // Clamp rubber-band overscroll and accumulate direction so tiny corrections don't flicker.
+    const scrollPosition = () => Math.max(0, Math.min(window.scrollY,
+      Math.max(0, document.documentElement.scrollHeight - window.innerHeight)));
+    let previousY = scrollPosition();
+    let travel = 0;
+    const topBoundary = headerRef.current?.offsetHeight || 64;
+    const onScroll = () => {
+      const currentY = scrollPosition();
+      const delta = currentY - previousY;
+      previousY = currentY;
+      if (currentY <= topBoundary ||
+          (lastInputWasKeyboard.current && headerRef.current?.contains(document.activeElement))) {
+        travel = 0;
+        setIsScrollHidden(false);
+        return;
+      }
+      if (!delta) return;
+      travel = Math.sign(delta) === Math.sign(travel) ? travel + delta : delta;
+      if (travel >= 20 || travel <= -8) {
+        setIsScrollHidden(travel > 0);
+        travel = 0;
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [scrollHeader, menuIsOpen, location]);
 
   // Get current subdomain
   const currentSubdomain = useMemo(() => {
@@ -554,8 +602,13 @@ export default function Header({
     // Landing pages (main, chef, kitchen) render these sections inline.
     // Strip any locale prefix (/en-CA, /fr-CA, /uk) before deciding we're "home",
     // otherwise the locale-prefixed URL makes us navigate instead of scroll.
-    const { pathWithoutLocale } = parseLocationLocale(location);
+    const { locale, pathWithoutLocale } = parseLocationLocale(location);
     if (pathWithoutLocale === "/") {
+      if (scrollHeader && isMenuOpen) {
+        // Measure the compact bar after React closes the mobile menu.
+        requestAnimationFrame(scrollToElement);
+        return;
+      }
       // Try immediately
       if (scrollToElement()) return;
 
@@ -564,6 +617,11 @@ export default function Header({
       delays.forEach((delay) => {
         setTimeout(scrollToElement, delay);
       });
+      return;
+    }
+
+    if (kitchenHostLinks) {
+      setLocation(`${buildLocalizedPath("/", locale)}#${sectionId}`);
       return;
     }
 
@@ -577,7 +635,7 @@ export default function Header({
 
     // Other landing pages retain their existing deep-link behavior.
     setLocation(`/#${sectionId}`);
-  }, [currentSubdomain, location, setLocation]);
+  }, [currentSubdomain, kitchenHostLinks, scrollHeader, isMenuOpen, location, setLocation]);
 
   /**
    * Who the bar is signed in as, for the account menu.
@@ -625,11 +683,18 @@ export default function Header({
 
   return (
     <header
+      ref={headerRef}
+      data-scroll-hidden={scrollHeader && !menuIsOpen && isScrollHidden}
+      onFocusCapture={() => {
+        if (scrollHeader && lastInputWasKeyboard.current) setIsScrollHidden(false);
+      }}
       className={cn(
         // A hairline and a blur, not `shadow-md border-b`: the landing page sits behind a grid
         // and a brand glow, and a grey 1px line plus a hard shadow read as a different product.
         "z-50 mobile-safe-area transition-colors duration-300 border-b border-[#2C2C2C]/[0.07] bg-background/85 backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-background/70",
-        position === "fixed" ? "fixed top-0 left-0 right-0" : "relative"
+        position === "fixed" ? "fixed top-0 left-0 right-0" : "relative",
+        scrollHeader && "transform-gpu transition-[transform,background-color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        scrollHeader && (isScrollHidden && !menuIsOpen ? "-translate-y-full" : "translate-y-0")
       )}
     >
       <div className="mx-auto flex h-[var(--header-height)] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -666,6 +731,9 @@ export default function Header({
 
         <nav className="hidden md:block">
           <ul className="flex items-center gap-0.5">
+            {kitchenHostLinks && (
+              <li><a href={`${kitchenHomePath}#how-it-works`} className={NAV_ITEM} onClick={(e) => scrollToSection("how-it-works", e)}>{t("howItWorks")}</a></li>
+            )}
             <li
               onPointerEnter={hoverOpensServices ? openServicesOnHover : undefined}
               onPointerLeave={hoverOpensServices ? scheduleServicesClose : undefined}
@@ -701,9 +769,9 @@ export default function Header({
                     if (!lastInputWasKeyboard.current) event.preventDefault();
                   }}
                 >
-                  {/* Chef side: exactly two services. See rule 1 at the top of this file.
-                      Kitchen side is untouched content-wise - it inherits the new shell only. */}
-                  {currentSubdomain === 'kitchen' ? (
+                  {kitchenHostLinks ? kitchenHostServices.map(([icon, title, description, section]) => (
+                    <ServiceRow key={title} icon={icon} title={t(title)} description={t(description)} href={`${kitchenHomePath}#${section}`} onSelect={(e) => scrollToSection(section, e)} />
+                  )) : currentSubdomain === 'kitchen' ? (
                     <>
                       <ServiceRow
                         icon="mdi:storefront-outline"
@@ -926,6 +994,8 @@ export default function Header({
           <Button
             variant="ghost"
             size="icon"
+            aria-label={scrollHeader ? t(isMenuOpen ? "closeMenu" : "openMenu") : undefined}
+            aria-expanded={scrollHeader ? isMenuOpen : undefined}
             onClick={toggleMenu}
             className="mobile-touch-target mobile-no-tap-highlight p-3 rounded-xl"
           >
@@ -943,10 +1013,13 @@ export default function Header({
         <div className="md:hidden border-t border-[#2C2C2C]/[0.07] mobile-momentum-scroll" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
           <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
             <ul className="space-y-2">
+              {kitchenHostLinks && (
+                <li><a href={`${kitchenHomePath}#how-it-works`} className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight" onClick={(e) => scrollToSection("how-it-works", e)}>{t("howItWorks")}</a></li>
+              )}
               <li>
                 {currentSubdomain === 'kitchen' ? (
                   <>
-                    {([
+                    {(kitchenHostLinks ? kitchenHostServices.map(([icon, title, description, section]) => [icon, title, description, `${kitchenHomePath}#${section}`, section] as const) : [
                       ["mdi:storefront-outline", "kitchenServiceListSpace", "kitchenServiceListSpaceDesc", "/#how-it-works", "how-it-works"],
                       ["mdi:calendar-check-outline", "kitchenServiceManageBookings", "kitchenServiceManageBookingsDesc", "/#how-it-works", "how-it-works"],
                       ["mdi:cash-multiple", "kitchenServiceEarn", "kitchenServiceEarnDesc", "/#how-it-works", "how-it-works"],

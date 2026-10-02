@@ -405,7 +405,7 @@ function MobileNav({ onNavigate }: { onNavigate: (id: string) => void }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="lg:hidden sticky top-16 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+    <div data-resource-mobile-nav className="lg:hidden sticky top-16 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
       <div className="container mx-auto max-w-7xl px-4">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
@@ -470,7 +470,7 @@ export default function KitchenResourcesPage_en() {
           { name: "Privacy", description: "Privacy policy", url: "https://kitchen.localcooks.ca/privacy" },
         ]}
       />
-      <Header />
+      <Header kitchenHostLinks />
 
       {/* Mobile navigation — Sheet drawer */}
       <MobileNav onNavigate={scrollToSection} />

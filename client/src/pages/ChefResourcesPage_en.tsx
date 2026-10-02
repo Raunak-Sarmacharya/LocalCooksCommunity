@@ -409,7 +409,7 @@ function MobileNav({ onNavigate }: { onNavigate: (id: string) => void }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="lg:hidden sticky top-16 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+    <div data-resource-mobile-nav className="lg:hidden sticky top-16 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
       <div className="container mx-auto max-w-7xl px-4">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
@@ -476,7 +476,7 @@ export default function ChefResourcesPage_en() {
       />
       {/* `hideHowItWorks` matches the chef landing page: this page has no `how-it-works`
           section, so the item could only navigate back to the landing page. */}
-      <Header hideHowItWorks />
+      <Header hideHowItWorks hideOnScroll />
 
       {/* Mobile navigation — Sheet drawer */}
       <MobileNav onNavigate={scrollToSection} />

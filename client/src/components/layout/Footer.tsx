@@ -267,8 +267,8 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
         {/* Bottom bar */}
         <div className="border-t border-white/[0.06] pt-5">
           <div className="flex flex-col items-center justify-between gap-3 text-[11px] text-white/30 sm:flex-row">
-            <p className="font-medium whitespace-nowrap">&copy; {new Date().getFullYear()} Local Cooks. {t("allRightsReserved")}</p>
-            <div className="flex items-center gap-4">
+            <p className="max-w-full text-center font-medium sm:text-left">&copy; {new Date().getFullYear()} Local Cooks. {t("allRightsReserved")}</p>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
               <a
                 href="https://www.localcooks.ca/terms"
                 className="hover:text-white/60 transition-colors duration-200 whitespace-nowrap"

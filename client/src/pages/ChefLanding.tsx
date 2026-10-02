@@ -2097,7 +2097,7 @@ export default function ChefLanding() {
         ]}
       />
       <CustomerSupportButton />
-      <Header hideHowItWorks />
+      <Header hideHowItWorks hideOnScroll />
 
       <main className="flex-grow">
         <ChefHero
