@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { MessageCircle, Mail, Phone, HelpCircle, Shield, FileText, ExternalLink, AlertTriangle, Calendar } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 import { useTidioChat } from "@/components/chat/TidioController";
 import { ChefPageHeader, QuietNotice } from "@/components/chef/ui";
 
@@ -25,13 +25,13 @@ export interface SupportFaqItem {
 
 export interface SupportFaqCategory {
   category: string;
-  icon: LucideIcon;
+  icon: ComponentType<{ className?: string }>;
   questions: SupportFaqItem[];
 }
 
 export interface SupportResource {
   label: string;
-  icon: LucideIcon;
+  icon: ComponentType<{ className?: string }>;
   /** External or in-app link. Omit when `onClick` is used instead. */
   href?: string;
   onClick?: () => void;

@@ -4,6 +4,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes auth-loading-dot {
+  0%, 75%, 100% { opacity: .3; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-3px); }
+}
+.auth-loading-dot { animation: auth-loading-dot 1.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .auth-loading-dot { animation: none; }
+}
+
 /* Keep toast hierarchy and contrast consistent across dev and production. */
 .toaster [data-sonner-toast][data-styled="true"] [data-title] {
   font-weight: 600;
@@ -15,6 +24,16 @@
 }
 
 @layer utilities {
+  /* Scroll cues provide the affordance; browser chrome should never cover content. */
+  *, *::before, *::after {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -802,11 +821,8 @@ a[role="button"] {
   @apply min-h-[44px];
 }
 
-/* Sidebar controls keep the 44px touch target the global rule used to provide.
-   `menu-button`/`menu-action`/`trigger`/`rail` are plain <button>s whose height
-   otherwise comes only from their utility classes (h-8/h-7/w-4), so without this
-   the sidebar rows visibly shrink. Scoped by `data-sidebar` so nothing else moves. */
-[data-sidebar="menu-button"],
+/* Navigation rows use their compact component heights on desktop.
+   The mobile rules below retain larger touch targets. */
 [data-sidebar="menu-action"],
 [data-sidebar="group-action"],
 [data-sidebar="trigger"],
@@ -1431,6 +1447,13 @@ input[type="number"] {
    viewport-fit=cover, and older Android. The class already sits on both app headers. */
 .mobile-safe-area {
   padding-top: env(safe-area-inset-top, 0px);
+}
+.data-table-mobile-card .truncate:not(.mobile-keep-truncate) {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Resource navigation follows the shared bar instead of floating below an empty gap. */

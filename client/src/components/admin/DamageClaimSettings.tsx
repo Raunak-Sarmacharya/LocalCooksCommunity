@@ -158,10 +158,6 @@ export function DamageClaimSettings() {
             Configure platform-wide damage claim limits and deadlines
           </p>
         </div>
-        <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
       </div>
 
       {/* Current Settings Alert */}
@@ -227,7 +223,7 @@ export function DamageClaimSettings() {
                 placeholder={String(limits.chefResponseDeadlineHours)}
               />
               <p className="text-xs text-muted-foreground">
-                Recommended: 72 hours (3 days). Range: 24-168 hours.
+                Recommended: 24 hours. Range: 24-168 hours.
               </p>
             </div>
           </CardContent>

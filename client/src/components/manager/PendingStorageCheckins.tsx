@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Storage Check-In History Component
  *
@@ -13,14 +14,17 @@ import { useState, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery } from "@tanstack/react-query";
 import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
-import { CheckCircle, Clock, Package, User, Image as ImageIcon, Loader2, ArrowUpDown, MapPin, Eye, RefreshCw, LogIn, SkipForward, ClipboardCheck } from "@/components/ui/manager-icons";
+import { CheckCircle, Clock, User, Image as ImageIcon, Loader2, ArrowUpDown, MapPin, Eye, RefreshCw, LogIn, SkipForward, ClipboardCheck } from "@/components/ui/manager-icons";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
@@ -211,9 +215,9 @@ const getCheckinHistoryColumns = ({
   },
 ];
 
-// ─── Read-Only Detail Sheet ─────────────────────────────────────────────────────
+// ─── Read-Only Detail Dialog ─────────────────────────────────────────────────────
 
-function CheckinDetailSheet({
+function CheckinDetailDialog({
   checkin,
   open,
   onOpenChange,
@@ -232,16 +236,16 @@ function CheckinDetailSheet({
   const isSkipped = checkin.checkinStatus === "skipped";
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <LogIn className="h-5 w-5 text-emerald-600" />{mt("moveInInspectionDetails")}</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <LogIn className="h-5 w-5 text-emerald-600" />{mt("moveInInspectionDetails")}</DialogTitle>
+          <DialogDescription>
             {checkin.storageName} · {checkin.kitchenName} ·{" "}
             {checkin.locationName}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* Chef + timestamps */}
@@ -369,8 +373,8 @@ function CheckinDetailSheet({
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
@@ -420,25 +424,17 @@ export function PendingStorageCheckins() {
               {mt("completedMoveInInspections", { count: checkinHistory.length })}
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isLoading}
-            className="shrink-0"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`}
-            />{mt("refresh")}</Button>
         </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="space-y-3 py-3" role="status" aria-label="Loading storage inspections">
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
           </div>
         ) : (
-          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <>
+          <MobileTableCards rows={historyTable.getRowModel().rows} />
+          <div className="hidden rounded-md border overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 {historyTable.getHeaderGroups().map((headerGroup) => (
@@ -494,10 +490,11 @@ export function PendingStorageCheckins() {
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </CardContent>
 
-      <CheckinDetailSheet
+      <CheckinDetailDialog
         checkin={historySelected}
         open={historySelected !== null}
         onOpenChange={(open: boolean) => !open && setHistorySelected(null)}

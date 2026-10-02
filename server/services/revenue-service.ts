@@ -47,9 +47,13 @@ export interface RevenueByLocation {
 
 export interface RevenueByDate {
   date: string; // YYYY-MM-DD
-  totalRevenue: number;
+  totalRevenue: number; // paid customer charges minus refunds occurring on this date
+  grossRevenue?: number; // paid customer charges on this date
+  refundedAmount?: number; // customer refunds issued on this date
+  paidEarnings?: number; // manager payout credited on this date
+  refundDebit?: number; // manager payout reversed on this date
   platformFee: number;
-  managerRevenue: number;
+  managerRevenue: number; // paidEarnings minus refundDebit; can be negative
   bookingCount: number;
 }
 
@@ -835,7 +839,7 @@ export async function getRevenueByDate(
         AND kb.status != 'cancelled'
         AND DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${startParam}
         AND DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${endParam}
-      GROUP BY DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone})
+      GROUP BY 1
       ORDER BY date ASC
     `);
 

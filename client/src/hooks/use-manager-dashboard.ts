@@ -40,6 +40,7 @@ interface Kitchen {
   name: string;
   description?: string;
   isActive: boolean;
+  checkinCheckoutEnabled?: boolean;
   /**
    * The MANAGER's publish switch, from the kitchen DTO (`mapToDTO` normalises the shared
    * `listing_status` enum down to these two values). A `draft` kitchen is invisible to cooks, so
@@ -60,9 +61,17 @@ interface KitchenAvailability {
 }
 
 interface Booking {
+  attendanceReviewComplete?: boolean;
+  paymentDecision?: { state?: string } | null;
+  equipmentItems?: Array<{ id: number; equipmentBookingId?: number; status?: string; name?: string }>;
+  storageItems?: Array<{ id: number; storageBookingId?: number }>;
   id: number;
+  locationId?: number;
+  location?: { id: number };
   chefId: number;
   kitchenId: number;
+  kitchenName?: string;
+  chefName?: string;
   bookingDate: string;
   startTime: string;
   endTime: string;
@@ -172,6 +181,8 @@ export function useManagerDashboard() {
   // Get all bookings for manager
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/manager/bookings"],
+    refetchInterval: 30_000,
+    staleTime: 0,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch("/api/manager/bookings", {
@@ -275,10 +286,13 @@ export function useManagerDashboard() {
   return {
     locations: locationsQuery.data || [],
     isLoadingLocations: locationsQuery.isLoading,
+    isErrorLocations: locationsQuery.isError,
     kitchens: kitchensQuery.data || [],
     isLoadingKitchens: kitchensQuery.isLoading,
+    isErrorKitchens: kitchensQuery.isError,
     bookings: bookingsQuery.data || [],
     isLoadingBookings: bookingsQuery.isLoading,
+    isErrorBookings: bookingsQuery.isError,
     getKitchensForLocation,
     getKitchenAvailability,
     setKitchenAvailability,

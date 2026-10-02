@@ -25,6 +25,8 @@ import {
 import { KitchenPricingContent, type KitchenPricingHandle } from "@/pages/KitchenPricingManagement";
 import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 import { SettingsRow } from "./SettingsRow";
+import KitchenWorkspaceControls from "./KitchenWorkspaceControls";
+import { useListingImpactConfirm } from "@/components/manager/ListingImpactConfirm";
 
 /**
  * The subset of a kitchen this tab reads. Declared structurally rather than
@@ -46,7 +48,10 @@ export interface KitchenDetailsPricingHandle {
 
 interface KitchenDetailsPricingProps {
   locationId: number;
+  locationName: string;
   kitchen: KitchenDetailsTarget;
+  onConfigureTracking: () => void;
+  highlightTracking?: boolean;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -69,9 +74,10 @@ const DESTRUCTIVE_ACTION =
 const KitchenDetailsPricing = forwardRef<
   KitchenDetailsPricingHandle,
   KitchenDetailsPricingProps
->(function KitchenDetailsPricing({ locationId, kitchen, onDirtyChange }, ref) {
+>(function KitchenDetailsPricing({ locationId, locationName, kitchen, onConfigureTracking, highlightTracking, onDirtyChange }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const listingImpact = useListingImpactConfirm();
 
   const [name, setName] = useState(kitchen.name);
   const [description, setDescription] = useState(kitchen.description ?? '');
@@ -125,6 +131,7 @@ const KitchenDetailsPricing = forwardRef<
     }
 
     if (!detailsDirty) return;
+    if (!await listingImpact.confirm(kitchen.id, !nextDescription)) throw new Error("Save cancelled");
 
     const currentFirebaseUser = auth.currentUser;
     if (!currentFirebaseUser) throw new Error(tt("firebaseUserNotAvailable"));
@@ -147,7 +154,7 @@ const KitchenDetailsPricing = forwardRef<
 
     await invalidateKitchenCaches();
     toast({ title: mt("success"), description: mt("kitchenDetailsUpdated") });
-  }, [name, description, detailsDirty, kitchen.id, invalidateKitchenCaches, toast]);
+  }, [name, description, detailsDirty, kitchen.id, invalidateKitchenCaches, toast, listingImpact.confirm]);
 
   useImperativeHandle(
     ref,
@@ -321,11 +328,15 @@ const KitchenDetailsPricing = forwardRef<
       </Card>
 
       <KitchenPricingContent
+        hideMinimumBookingDuration
         ref={pricingRef}
         selectedLocationId={locationId}
         selectedKitchenId={kitchen.id}
         onDirtyChange={setPricingDirty}
       />
+
+      <KitchenWorkspaceControls kitchenId={kitchen.id} location={{ id: locationId, name: locationName }} mode="tracking"
+        onConfigure={onConfigureTracking} highlight={highlightTracking} />
 
       <Card className="border-destructive/25">
         <CardHeader className="p-4 pb-3">
@@ -377,6 +388,7 @@ const KitchenDetailsPricing = forwardRef<
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {listingImpact.dialog}
     </div>
   );
 });

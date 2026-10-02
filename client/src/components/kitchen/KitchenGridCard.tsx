@@ -86,7 +86,7 @@ export function KitchenGridCard({
   return (
     <article
       className={cn(
-        "group flex h-full flex-col overflow-hidden bg-white shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(245,16,66,0.12)]",
+        "group flex h-full min-w-0 flex-col overflow-hidden bg-white shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(245,16,66,0.12)]",
         CARD_RADIUS,
         onCardClick && "cursor-pointer",
         className
@@ -121,16 +121,16 @@ export function KitchenGridCard({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-4">
-        <div className="flex min-h-7 items-start gap-3">
+        <div className="flex min-h-7 min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
           <TruncatedText
             as="h3"
-            className="min-w-0 flex-1 line-clamp-1 text-[1.05rem] font-bold leading-snug text-[#1A1A1A]"
+            className="min-w-0 flex-1 break-words text-[1.05rem] font-bold leading-snug text-[#1A1A1A] sm:line-clamp-1"
           >
             {title || "\u00a0"}
           </TruncatedText>
           <span
             className={cn(
-              "shrink-0 tabular-nums text-sm font-bold leading-snug text-[#F51042]",
+              "min-w-0 break-words tabular-nums text-sm font-bold leading-snug text-[#F51042] sm:shrink-0",
               !price && "invisible"
             )}
             aria-hidden={!price}
@@ -140,7 +140,7 @@ export function KitchenGridCard({
         </div>
         <TruncatedText
           as="p"
-          className="mt-1 line-clamp-1 min-h-5 truncate text-sm leading-relaxed text-[#8A8A8A]"
+          className="mt-1 min-h-5 break-words text-sm leading-relaxed text-[#8A8A8A] sm:line-clamp-1"
         >
           {address?.trim() || "\u00a0"}
         </TruncatedText>

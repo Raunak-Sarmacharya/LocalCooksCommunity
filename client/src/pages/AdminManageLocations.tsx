@@ -1,5 +1,7 @@
+import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
-import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, EyeOff, Wrench, Package, KeyRound } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
@@ -22,7 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
-import { LocationDetailSheet } from "@/components/admin/LocationDetailSheet";
+import { LocationDetailDialog } from "@/components/admin/LocationDetailDialog";
 import { auth } from "@/lib/firebase";
 
 
@@ -55,8 +57,9 @@ export default function AdminManageLocations() {
   const [editingKitchen, setEditingKitchen] = useState<any | null>(null);
   const [editingManager, setEditingManager] = useState<any | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ type: 'location' | 'kitchen' | 'manager', id: number, name: string } | null>(null);
-  const [detailLocationId, setDetailLocationId] = useState<number | null>(null);
-  const [showDetailSheet, setShowDetailSheet] = useState(false);
+  const searchLocationId = Number(new URLSearchParams(window.location.search).get("locationId"));
+  const [detailLocationId, setDetailLocationId] = useState<number | null>(Number.isSafeInteger(searchLocationId) && searchLocationId > 0 ? searchLocationId : null);
+  const [showDetailSheet, setShowDetailSheet] = useState(Number.isSafeInteger(searchLocationId) && searchLocationId > 0);
 
   const [locations, setLocations] = useState<any[]>([]);
   const [kitchens, setKitchens] = useState<any[]>([]);
@@ -872,8 +875,8 @@ export default function AdminManageLocations() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="space-y-3 py-4" role="status" aria-label="Loading locations">
+                  {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
                 </div>
               ) : locations.length === 0 ? (
                 <div className="text-center py-12">
@@ -1015,8 +1018,8 @@ export default function AdminManageLocations() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="space-y-3 py-4" role="status" aria-label="Loading kitchens">
+                  {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
                 </div>
               ) : kitchens.length === 0 ? (
                 <div className="text-center py-12">
@@ -1159,8 +1162,8 @@ export default function AdminManageLocations() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="space-y-3 py-4" role="status" aria-label="Loading managers">
+                  {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
                 </div>
               ) : managers.length === 0 ? (
                 <div className="text-center py-12">
@@ -1459,7 +1462,7 @@ export default function AdminManageLocations() {
       </Dialog>
 
       {/* Location Detail Sheet */}
-      <LocationDetailSheet
+      <LocationDetailDialog
         locationId={detailLocationId}
         open={showDetailSheet}
         onOpenChange={setShowDetailSheet}

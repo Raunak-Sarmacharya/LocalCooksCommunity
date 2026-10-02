@@ -11,7 +11,7 @@ import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate, formatTime } from "@/lib/formatters";
-import { ArrowRight, ExternalLink, Loader2 } from "lucide-react";
+import { ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { openChefShopHome, useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { useToast } from "@/hooks/use-toast";
@@ -27,9 +27,14 @@ import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { tt } from "@/i18n/common-ns";
 import { Icon } from "@iconify/react";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
+import { findChefNavItem } from "@/lib/chef-nav-sections";
 import { useLocation } from "wouter";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { countPendingOrUpcomingTours, normalizeChefTourRow, viewingStatusBadge, type ChefTourRow } from "@/lib/chef-viewing-display";
+import { tourActivity } from "@shared/tour-activity";
+import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { useTourClock } from "@/hooks/use-tour-clock";
 
 interface OverviewTabContentProps {
   user: {
@@ -179,6 +184,7 @@ export default function OverviewTabContent({
   isSellerApplicationFullyApproved,
   isShopCreated,
 }: OverviewTabContentProps) {
+  useTourClock();
   const { t, i18n } = useTranslation("chef");
   const tr = t as unknown as import("i18next").TFunction;
   const { data: shopStatus } = useShopStatus();
@@ -187,31 +193,32 @@ export default function OverviewTabContent({
   const [, navigate] = useLocation();
 
   const { user: authUser } = useFirebaseAuth();
-  const { data: viewings = [] } = useQuery({
+  const { data: viewings = [], isError: toursFailed } = useQuery({
     queryKey: ["/api/viewings", "chef", authUser?.uid],
     queryFn: async () => {
       if (!authUser) return [];
-      try {
         const token = await auth.currentUser?.getIdToken();
         const res = await fetch("/api/viewings/chef", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error(tt("failedToFetchViewings"));
         return res.json();
-      } catch (error) {
-        console.error(error);
-        return [];
-      }
     },
     enabled: !!authUser?.uid,
+    refetchInterval: 30_000,
+    staleTime: 0,
   });
   const tourRows = (viewings as unknown[]).map(normalizeChefTourRow).filter((row): row is ChefTourRow => row != null);
   const activeTourCount = countPendingOrUpcomingTours(tourRows);
   const latestTour = [...tourRows].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-  const latestTourBadge = latestTour && viewingStatusBadge(latestTour.status, latestTour.adminReviewDecision, latestTour.cancelledBy);
+  const latestTourBadge = latestTour && viewingStatusBadge(latestTour.status, latestTour.adminReviewDecision, latestTour.cancelledBy, latestTour.disruptionReason);
+  const recentTours = tourRows.flatMap(tour => tourActivity(tour).map(event => ({ tour, event })))
+    .sort((a, b) => Date.parse(b.event.recordedAt) - Date.parse(a.event.recordedAt)).slice(0, 4);
   const latestTourHint = latestTour
     ? `${latestTour.kitchenName || latestTour.locationName} · ${
-        latestTour.status === "confirmed"
+        ['pending', 'pending_local_cooks'].includes(latestTour.status) && Date.parse(latestTour.scheduledAt) <= Date.now()
+          ? t('tourStatusExpired')
+          : latestTour.status === "confirmed"
           ? new Date(latestTour.scheduledAt).getTime() + (latestTour.durationMinutes ?? 30) * 60_000 < Date.now()
             ? t("tourStatusAwaitingOutcome", "Awaiting outcome")
             : t("tourStatusConfirmed", "Approved")
@@ -281,6 +288,11 @@ export default function OverviewTabContent({
       cta: string;
       onClick: () => void;
     }> = [];
+    for (const tour of tourRows.filter(tour => tour.status === 'no_show' || tour.disruptionReason)) {
+      items.push({ id: `tour-${tour.id}`, title: t('ovTourOutcomeReview'),
+        description: `${tour.kitchenName || tour.locationName} · ${tr(viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy, tour.disruptionReason).labelKey, { ns: 'chef' })}`,
+        cta: t('ovReviewTour'), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
+    }
 
     const docTone = documentToneFromLabel(documentStatus);
     if (latestApp && docTone === "danger") {
@@ -343,6 +355,8 @@ export default function OverviewTabContent({
     shopStatus,
     onSetActiveTab,
     onSetApplicationViewMode,
+    viewings,
+    navigate,
     t,
   ]);
 
@@ -438,6 +452,15 @@ export default function OverviewTabContent({
         />
       </div>
 
+      {toursFailed && <p role="status" className="text-sm text-destructive">{t('ovTourLoadFailed')}</p>}
+      {recentTours.length > 0 && <Card className="shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base">{t('ovTourRecentActivity')}</CardTitle></CardHeader>
+        <CardContent><ul className="divide-y">{recentTours.map(({ tour, event }) => {
+          const label = event.corrected ? t('tourOutcomeCorrected') : tr(viewingStatusBadge(event.status, tour.adminReviewDecision, tour.cancelledBy, event.disruptionReason).labelKey, { ns: 'chef' });
+          return <li key={`${tour.id}-${event.key}`}><button type="button" className="flex w-full items-center justify-between gap-3 py-3 text-left" onClick={() => navigate(`/dashboard?view=viewings&viewing=${tour.id}`)}>
+            <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{tour.kitchenName || tour.locationName} · TOUR-{tour.id}</span></span>
+            <time dateTime={event.recordedAt} className="text-xs text-muted-foreground">{new Date(event.recordedAt).toLocaleString(i18n.language, { timeZone: DEFAULT_TIMEZONE, dateStyle: 'medium', timeStyle: 'short' })}</time>
+          </button></li>;
+        })}</ul></CardContent></Card>}
       {attentionItems.length > 0 && (
         <Card className="shadow-none">
           <CardHeader className="pb-2">
@@ -460,7 +483,7 @@ export default function OverviewTabContent({
                     </div>
                     <span className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
                       {item.cta}
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <ChevronRight className="h-3.5 w-3.5" />
                     </span>
                   </button>
                 </li>
@@ -516,7 +539,7 @@ export default function OverviewTabContent({
                 />
               </div>
             </CardContent>
-            <CardFooter className="mt-auto flex-row justify-end gap-2">
+            <CardFooter className="mt-auto flex-col items-stretch justify-end gap-2 sm:flex-col sm:items-stretch sm:gap-2 xl:flex-row xl:items-center">
               {shopStatus?.linked ? (
                 <>
                   <Button variant="outline" size="sm" onClick={openShop}>
@@ -526,7 +549,7 @@ export default function OverviewTabContent({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="ml-2"
+                    className="xl:ml-2"
                     onClick={handleOpenDashboard}
                     disabled={dashboardLinkMutation.isPending}
                   >
@@ -585,13 +608,13 @@ export default function OverviewTabContent({
                 />
               </div>
             </CardContent>
-            <CardFooter className="mt-auto flex-row justify-end gap-2">
+            <CardFooter className="mt-auto flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onSetActiveTab("applications")}
               >
-                <Icon icon="mdi:file-document-outline" className="size-4" aria-hidden />
+                <Icon icon={findChefNavItem("applications")!.icon} className="size-4" aria-hidden />
                 {t("ovViewApplication")}
               </Button>
             </CardFooter>
@@ -641,7 +664,7 @@ export default function OverviewTabContent({
                           className="text-xs text-primary underline hover:text-primary/80 transition-colors flex items-center gap-1 mt-0.5"
                         >
                           {t("ovContinueCta", "Continue")}
-                          <ArrowRight className="h-3 w-3" />
+                          <ChevronRight className="h-3 w-3" />
                         </span>
                       ) : (
                         <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{display.stepCaption}</TruncatedText>
@@ -652,23 +675,23 @@ export default function OverviewTabContent({
                 ))}
               </div>
             </CardContent>
-            <CardFooter className="mt-auto flex-row justify-end gap-2">
+            <CardFooter className="mt-auto flex-col items-stretch justify-end gap-2 sm:flex-col sm:items-stretch sm:gap-2 xl:flex-row xl:items-center">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onSetActiveTab("kitchen-applications")}
               >
-                <Icon icon="mdi:office-building-outline" className="mr-2 size-4" aria-hidden />
+                <KitchenIcon className="mr-2 size-4" />
                 {t("ovMyKitchensBtn")}
               </Button>
               <Button
                 size="sm"
-                className="ml-2"
+                className="xl:ml-2"
                 onClick={() => {
                   onSetActiveTab("discover-kitchens");
                 }}
               >
-                <Icon icon="mdi:magnify" className="size-4" aria-hidden />
+                <Icon icon={findChefNavItem("discover-kitchens")!.icon} className="size-4" aria-hidden />
                 {t("ovExploreKitchensBtn")}
               </Button>
             </CardFooter>
@@ -770,7 +793,7 @@ function UpcomingBookings({
           </div>
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onViewAll}>
             {t("ovViewAllBtn")}
-            <ArrowRight />
+            <ChevronRight />
           </Button>
         </div>
       </CardHeader>
@@ -823,7 +846,7 @@ function UpcomingBookings({
         </div>
         {bookings.length > 4 && (
           <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onViewAll}>
-            <Icon icon="mdi:calendar-month-outline" className="size-4" aria-hidden />
+            <Icon icon={findChefNavItem("bookings")!.icon} className="size-4" aria-hidden />
             {t("ovMore", { count: bookings.length - 4 })}
           </Button>
         )}

@@ -1,1552 +1,413 @@
-import { logger } from "@/lib/logger";
-import { mt } from "@/i18n/manager";
-import { useTranslation } from "react-i18next";
-import { useMemo, useState, useEffect } from "react";
+import { managerNavIcons } from "@/lib/manager-nav-icons";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { bookingNextAction, tourNextAction, licenseNextAction, overstayNextAction, storageHasEnded } from "@/lib/manager-overview-lifecycle";
+import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
+import { useTourClock } from "@/hooks/use-tour-clock";
+import { tourActivity } from "@shared/tour-activity";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { Link } from "wouter";
+import { apiGet } from "@/lib/api";
+import { mt } from "@/i18n/manager";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { auth } from "@/lib/firebase";
-import { Calendar, Clock, TrendingUp, TrendingDown, Users, DollarSign, AlertTriangle, CheckCircle2, XCircle, ArrowRight, Settings, FileText, Eye, MessageSquare, Percent, CalendarDays, BarChart3, Bell, Zap, Search, Mail, Phone, Star, Filter, MapPin, Building2, Info } from "@/components/ui/manager-icons";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
+import { useManagerOverviewActivity } from "@/hooks/use-manager-overview-activity";
+import { formatCurrency, formatDate, formatRelativeTime } from "@/lib/formatters";
+import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
+import { CheckCircle, ChevronRight, DollarSign } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import BookingCalendarWidget from "./BookingCalendarWidget";
-import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
-import { formatCurrency, formatTime as formatTimeLocale, formatDate as formatDateLocale } from "@/lib/formatters";
-import { tt } from "@/i18n/common-ns";
-import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
-
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'revenue';
-
-interface Location {
+interface Location { id: number; name: string; address: string; kitchenLicenseUrl?: string | null; kitchenLicenseStatus?: string | null; kitchenLicenseExpiry?: string | null; timezone?: string; kitchenLicensePendingUrl?: string | null; kitchenLicensePendingExpiry?: string | null }
+interface Kitchen { id: number; locationId: number; name: string; isActive: boolean; listingStatus?: string }
+interface Booking {
+  attendanceReviewComplete?: boolean;
+  paymentDecision?: { state?: string } | null;
+  equipmentItems?: Array<{ id: number; equipmentBookingId?: number; status?: string; name?: string }>;
   id: number;
-  name: string;
-  address: string;
+  locationId?: number;
+  location?: { id: number };
+  kitchenId: number;
+  kitchenName?: string;
+  chefName?: string;
+  chefId?: number;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  status: "pending" | "confirmed" | "cancelled" | "completed" | "cancellation_requested";
+  createdAt: string;
+  checkinStatus?: string | null;
+  operatingWindowStartTime?: string | null;
 }
+interface Viewing { viewing: { id: number; locationId: number; status: string; scheduledAt: string; createdAt?: string; updatedAt?: string; durationMinutes?: number; requestedRescheduleAt?: string | null; disruptionReason?: string | null; outcomeHistory?: unknown; adminReviewDecision?: string | null; cancelledBy?: string | null }; chefName?: string; kitchenName?: string; locationName?: string }
+interface Application { chefId?: number; createdAt?: string; updatedAt?: string; fullName?: string; id: number; locationId: number; status: string; current_tier?: number; currentTier?: number; tier2_completed_at?: string | null }
+interface Revenue { completedNetRevenue?: number; netRevenue?: number; pendingPayments?: number; completedPayments?: number; paidBookingCount?: number }
 
-interface KitchenDashboardOverviewProps {
+interface Props {
   selectedLocation: Location | null;
   locations: Location[];
-  onNavigate: (view: ViewType) => void;
+  kitchens: Kitchen[];
+  onNavigate: (view: string, kitchenId?: number) => void;
   onSelectLocation?: (location: Location | null) => void;
 }
 
-// Interface for live Stripe balance data
-interface StripeBalanceData {
-  available: number;
-  pending: number;
-  inTransit: number;
-  currency: string;
-  hasStripeAccount: boolean;
-}
+const dayKey = (value: string) => value.slice(0, 10);
+const displayDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value, "short", "UTC") : formatDate(value);
+const todayKey = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 
-/** Time-of-day buckets for the greeting — same boundaries as the chef dashboard. */
-const GREETING_KEYS = {
-  morning: "goodMorning",
-  afternoon: "goodAfternoon",
-  evening: "goodEvening",
+/**
+ * Listing row tone — mirrors the `KitchenListingStatus` bar on the review page so the row reads as a
+ * scaled-down preview of the bar the click opens.
+ *
+ * Border is SOLID and full-opacity, not a /45 tint + shadow: at row scale the tint read as a faint
+ * grey hairline and the row stopped looking like a discrete object you can act on. One semantic
+ * token per state, one var carrying light+dark, no raw palette and no `dark:` twin.
+ *
+ * RED IS NOT USED HERE. Red means destruction only (delete / remove / take off listing) — see
+ * `destructive` on the "Take off the listing" action. So the tone scale is:
+ *   success green = earning, info blue = can earn, warning yellow = NEEDS ATTENTION (the manager
+ *   has something to do), muted grey = stalled (nothing the manager can act on right now).
+ * `hidden` is grey rather than yellow because "hidden by LocalCooks" is a stalled state resolved by
+ * support, not a task on the manager. Kept in step with `KitchenListingStatus.tsx`'s `TONES` so the
+ * row and the bar it opens agree.
+ */
+const LISTING_TONES = {
+  live:    { border: "border-success",             dot: "bg-success" },
+  ready:   { border: "border-info",                dot: "bg-info" },
+  blocked: { border: "border-warning",             dot: "bg-warning" },
+  hidden:  { border: "border-muted-foreground/40", dot: "bg-muted-foreground/50" },
 } as const;
+type ListingToneKey = keyof typeof LISTING_TONES;
 
-function getTimeOfDay(now: Date = new Date()): keyof typeof GREETING_KEYS {
-  const hour = now.getHours();
-  if (hour < 12) return "morning";
-  if (hour < 17) return "afternoon";
-  return "evening";
-}
+/**
+ * Destination per activity kind — drives the row's ICON and its click target from one place, so the
+ * glyph is always the same glyph the sidebar and the "Needs attention" group use for that view.
+ * `managerNavIcons` is the single source of truth: the sidebar, the command menu and the attention
+ * groups all read it, so picking icons by hand here made e.g. a cancelled booking wear `Calendar`
+ * while the sidebar's Bookings entry wore `CalendarDays`.
+ */
+const ACTIVITY_VIEW: Record<string, keyof typeof managerNavIcons> = {
+  booking: "bookings",
+  tour: "viewings",
+  storage: "storage-bookings",
+  application: "applications",
+  claim: "damage-claims",
+  overstay: "overstays",
+};
 
-// Helper function to get auth headers
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  if (token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  }
-  return {
-    'Content-Type': 'application/json',
-  };
-}
+/** The URL param each destination deep-links with. Bookings link straight to their own page. */
+const ACTIVITY_PARAM: Record<string, string | undefined> = {
+  booking: undefined,
+  tour: "viewing",
+  storage: "storageBooking",
+  application: "application",
+  claim: "claim",
+  overstay: undefined,
+};
 
-export default function KitchenDashboardOverview({ 
-  selectedLocation, 
-  locations = [],
-  onNavigate,
-  onSelectLocation
-}: KitchenDashboardOverviewProps) {
-  
-  // Get Firebase user for authentication
-  const { user: firebaseUser } = useFirebaseAuth();
+/**
+ * How many entries the Recent activity feed renders.
+ *
+ * This card is a FEED, not a work queue: it is informational, it is already sorted newest-first, and
+ * every entry is also reachable from its own page (Bookings, Tours, Applications, …). So a hard cap
+ * costs the manager nothing they need. Without it the card mounts every booking, tour, application,
+ * storage booking, claim and overstay the location has EVER had — thousands of rows on a mature
+ * account, all mounted at once inside a 320px scroll box with no virtualization.
+ *
+ * `attentionGroups` is deliberately NOT capped. That card is a WORK QUEUE: every row is money on the
+ * table (a booking to confirm, an application to review), so silently truncating it would hide work.
+ * It is self-limiting instead — items leave as they are actioned.
+ */
+const RECENT_ACTIVITY_LIMIT = 20;
+
+export default function KitchenDashboardOverview({ selectedLocation, locations, kitchens, onNavigate, onSelectLocation }: Props) {
+  useTourClock();
+  const { user } = useFirebaseAuth();
   const { i18n } = useTranslation();
+  const { bookings: allBookings, isLoadingBookings, isErrorBookings } = useManagerDashboard();
+  const locationKitchens = kitchens.filter((kitchen) => !selectedLocation || kitchen.locationId === selectedLocation.id);
+  const activity = useManagerOverviewActivity(selectedLocation?.id, locationKitchens.map((kitchen) => kitchen.id));
+  const licenseForKitchen = (kitchen: Kitchen) => locations.find((location) => location.id === kitchen.locationId);
+  const liveKitchens = locationKitchens.filter((kitchen) => kitchenIsVisibleToChefs(kitchen, licenseForKitchen(kitchen)));
+  const draftKitchens = locationKitchens.filter((kitchen) => kitchen.listingStatus !== "active");
+  const publishedKitchen = locationKitchens.find((kitchen) => kitchen.listingStatus === "active");
+  const publishedButUnavailable = !!publishedKitchen && liveKitchens.length === 0;
+  const licenseNeedsAttention = publishedButUnavailable && !licenseAllowsBookings(licenseForKitchen(publishedKitchen!) ?? {});
+  const bookings = (allBookings as Booking[]).filter((booking) =>
+    !selectedLocation || (booking.locationId ?? booking.location?.id) === selectedLocation.id,
+  );
 
-  // The greeting addresses the manager, not the location — the location belongs
-  // in the subtitle below. Same source as the sidebar avatar/name.
-  const managerDisplayName = firebaseUser?.displayName?.trim();
-  const greeting = mt(GREETING_KEYS[getTimeOfDay()]);
-  
-  // Create a map of location names to location IDs for filtering bookings
-  const locationNameToIdMap = useMemo(() => {
-    const map = new Map<string, number>();
-    (locations || []).forEach(loc => {
-      map.set(loc.name, loc.id);
-    });
-    return map;
-  }, [locations]);
-  
-  // Fetch all bookings for this manager
-  const { data: bookings = [], isLoading: isLoadingBookings } = useQuery({
-    queryKey: ['managerBookings', firebaseUser?.uid],
-    queryFn: async () => {
-      if (!firebaseUser) {
-        throw new Error(tt("notAuthenticated"));
-      }
-      
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error(tt("notAuthenticated"));
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      };
-      
-      const response = await fetch('/api/manager/bookings', {
-        headers,
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        throw new Error(tt("failedToFetchBookings"));
-      }
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      }
-      return [];
-    },
-    enabled: !!firebaseUser,
-    refetchInterval: 10000, // Real-time updates
-    refetchOnWindowFocus: true,
+  const { data: viewings = [], isLoading: isLoadingViewings, isError: isErrorViewings } = useQuery<Viewing[]>({
+    queryKey: ["managerViewings", user?.uid],
+    queryFn: () => apiGet("/viewings/manager"),
+    enabled: !!user,
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+  const locationViewings = viewings.filter((item) =>
+    !selectedLocation || item.viewing.locationId === selectedLocation.id,
+  );
+  const { data: applications = [], isLoading: isLoadingApplications, isError: isErrorApplications } = useQuery<Application[]>({
+    queryKey: ["/api/manager/kitchen-applications"],
+    queryFn: () => apiGet("/manager/kitchen-applications"),
+    enabled: !!user && locationKitchens.length > 0,
+    staleTime: 30_000,
+  });
+  const locationApplications = applications.filter((application) =>
+    !selectedLocation || application.locationId === selectedLocation.id,
+  );
+
+  const month = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const toKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return { start: toKey(start), end: toKey(end) };
+  }, []);
+  const { data: revenue, isLoading: isLoadingRevenue, isError: isErrorRevenue } = useQuery<Revenue>({
+    queryKey: ["/api/manager/revenue/overview", month.start, month.end, selectedLocation?.id],
+    queryFn: () => apiGet(`/manager/revenue/overview?startDate=${month.start}&endDate=${month.end}${selectedLocation ? `&locationId=${selectedLocation.id}` : ""}`),
+    enabled: !!user && (liveKitchens.length > 0 || bookings.length > 0 || activity.storageBookings.length > 0),
   });
 
-  // Enrich bookings with locationId by matching locationName
-  const enrichedBookings = useMemo(() => {
-    return bookings.map((booking: any) => {
-      const locationId = booking.locationName 
-        ? locationNameToIdMap.get(booking.locationName) || null
-        : null;
-      return {
-        ...booking,
-        locationId,
-      };
-    });
-  }, [bookings, locationNameToIdMap]);
-  
-  // Filter bookings by selected location
-  const filteredBookings = useMemo(() => {
-    if (!selectedLocation) {
-      return enrichedBookings;
-    }
-    return enrichedBookings.filter((b: any) => b.locationId === selectedLocation.id);
-  }, [enrichedBookings, selectedLocation]);
-
-  // Fetch chef kitchen applications for this manager
-  const { data: applications = [], isLoading: isLoadingApplications } = useQuery({
-    queryKey: ['managerKitchenApplications', firebaseUser?.uid],
-    queryFn: async () => {
-      if (!firebaseUser) {
-        throw new Error(tt("notAuthenticated"));
-      }
-      
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error(tt("notAuthenticated"));
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      };
-      
-      const response = await fetch('/api/manager/kitchen-applications', {
-        headers,
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        throw new Error(tt("failedToFetchApplications"));
-      }
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      }
-      return [];
-    },
-    enabled: !!firebaseUser,
-    refetchInterval: 10000, // Real-time updates
-    refetchOnWindowFocus: true,
-  });
-
-  // Fetch manager's viewings
-  const { data: viewingsData = [], isLoading: isLoadingViewings } = useQuery({
-    queryKey: ['managerViewings', firebaseUser?.uid],
-    queryFn: async () => {
-      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
-      const token = await currentFirebaseUser.getIdToken();
-      
-      const response = await fetch('/api/viewings/manager', {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: "include",
-      });
-      
-      if (!response.ok) throw new Error(tt("failedToFetchViewings"));
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      }
-      return [];
-    },
-    enabled: !!firebaseUser,
-    refetchInterval: 10000,
-    refetchOnWindowFocus: true,
-  });
-
-  // Filter viewings by selected location
-  const filteredViewings = useMemo(() => {
-    const enriched = viewingsData.map((v: any) => {
-      const locationId = v.locationName 
-        ? locationNameToIdMap.get(v.locationName) || null
-        : null;
-      return { ...v, locationId };
-    });
-    
-    if (!selectedLocation) return enriched;
-    return enriched.filter((v: any) => v.locationId === selectedLocation.id);
-  }, [viewingsData, selectedLocation, locationNameToIdMap]);
-
-  // Calculate this month's date range (moved outside query for use in queryKey)
-  const thisMonthDateRange = useMemo(() => {
-    const today = new Date();
-    const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-    const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    return {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-    };
-  }, []); // Recalculate when month changes
-
-  // Fetch revenue metrics for this month
-  interface RevenueMetrics {
-    totalRevenue?: number;
-    managerRevenue?: number;
-    depositedManagerRevenue?: number;
-    pendingPayments?: number;
-    [key: string]: any;
+  const tourTime = (tour: Viewing) => Number.isFinite(Date.parse(tour.viewing.scheduledAt)) ? new Date(tour.viewing.scheduledAt).toLocaleTimeString(i18n.language, { hour: "numeric", minute: "2-digit", timeZone: DEFAULT_TIMEZONE }) : "";
+  const today = todayKey();
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 6);
+  const nextWeekKey = `${nextWeek.getFullYear()}-${String(nextWeek.getMonth() + 1).padStart(2, "0")}-${String(nextWeek.getDate()).padStart(2, "0")}`;
+  const pendingBookings = bookings.filter((booking) => booking.status === "pending");
+  const pendingTours = locationViewings.filter((item) => item.viewing.status === "pending");
+  const pendingApplications = locationApplications.filter((application) => application.status === "inReview" ||
+    (application.status === "approved" && (application.current_tier ?? application.currentTier) === 2 && !!application.tier2_completed_at));
+  const approvedApplications = locationApplications.filter((application) => application.status === "approved" && (application.current_tier ?? application.currentTier ?? 1) >= 2);
+  const todayBookings = bookings.filter((booking) => dayKey(booking.bookingDate) === today && ["pending", "confirmed", "cancellation_requested"].includes(booking.status));
+  const upcoming = bookings.filter((booking) => ["pending", "confirmed", "cancellation_requested"].includes(booking.status) && dayKey(booking.bookingDate) >= today && bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone) !== "overviewBookingOutcomes")
+    .sort((a, b) => `${a.bookingDate} ${a.startTime}`.localeCompare(`${b.bookingDate} ${b.startTime}`));
+  const weekBookings = upcoming.filter((booking) => dayKey(booking.bookingDate) <= nextWeekKey);
+  const bookingActivityLabel: Record<string, string> = { pending: "activityBookingRequested", confirmed: "activityBookingConfirmed", cancelled: "activityBookingCancelled", completed: "activityBookingCompleted", cancellation_requested: "activityBookingCancellationRequested" };
+  const tourActivityLabel: Record<string, string> = { pending: "activityTourRequested", confirmed: "activityTourScheduled", cancelled: "activityTourCancelled", completed: "activityTourCompleted", no_show: "activityTourNoShow", rejected: "activityTourDeclined" };
+  const chefDisplayName = (record: {chefName?: string; chefId?: number | null; fullName?: string}) => {
+    const parentName = record.chefId ? (allBookings as Booking[]).find(booking => booking.chefId === record.chefId && booking.chefName && !booking.chefName.includes("@"))?.chefName : undefined;
+    const name = [parentName, record.chefName, record.fullName, record.chefId ? applications.find(application => application.chefId === record.chefId)?.fullName : undefined].find(value => value?.trim() && !value.includes("@"));
+    return name?.trim() || mt("guestChef");
+  };
+  const financialActivityStatus: Record<string,string> = {draft:"overviewDraft",submitted:"overviewAwaitingAdmin",under_review:"overviewAwaitingAdmin",chef_disputed:"overviewAwaitingAdmin",chef_accepted:"chefAccepted",approved:"approved",partially_approved:"partiallyApproved",charge_pending:"overviewPaymentProcessing",charge_failed:"chargeFailed",charge_succeeded:"overviewPaymentCollected",resolved:"overviewResolved",rejected:"rejected",expired:"overviewExpired",escalated:"overviewEscalated",pending_review:"overviewAwaitingReview",penalty_approved:"approved",penalty_waived:"overviewWaived",detected:"overviewOverstayDetected",grace_period:"overviewGracePeriod"};
+  const recent = [
+    ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: displayDate(booking.bookingDate), time: [booking.startTime, booking.endTime].filter(Boolean).join(" – "), href: `/manager/booking/${booking.id}` })),
+    ...(activity.bookingEvents || []).map(event => ({ kind: "booking" as const, id: event.bookingId!, activityKey: `event:${event.id}`, date: event.createdAt!,
+      title: event.title || mt("activityBooking"), person: chefDisplayName(bookings.find(booking => booking.id === event.bookingId) || {}),
+      kitchen: event.kitchenName, scheduled: "", time: "", href: `/manager/booking/${event.bookingId}` })),
+    ...locationViewings.flatMap((item) => tourActivity(item.viewing).map(event => ({ kind: "tour" as const, id: item.viewing.id, activityKey: event.key, date: event.recordedAt,
+      title: mt(event.corrected ? "activityTourCorrected" : event.disruptionReason ? "activityTourDisrupted" : event.status === 'cancelled' && (item.viewing.adminReviewDecision === 'denied' || item.viewing.cancelledBy === 'manager_declined') ? "activityTourDeclined" : tourActivityLabel[event.status] ?? "kitchenTours"),
+      person: chefDisplayName(item), kitchen: item.kitchenName || item.locationName, scheduled: displayDate(item.viewing.scheduledAt), time: tourTime(item) }))),
+    ...activity.storageBookings.filter(item => !!item.createdAt).map(item => ({kind:"storage" as const,id:item.id,date:item.createdAt!,title:mt("activityStorageRequested"),person:chefDisplayName(item),kitchen:item.storageName || item.kitchenName,scheduled: [item.startDate,item.endDate].filter(Boolean).map(value=>displayDate(item.pricingModel === "hourly" ? value! : value!.slice(0, 10))).join(" – "),time:""})),
+    ...locationApplications.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"application" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewApplicationActivity", {status:mt(({inReview:"overviewAwaitingReview",approved:"approved",rejected:"rejected",pending:"pending"} as Record<string,string>)[item.status] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:locations.find(location=>location.id===item.locationId)?.name,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
+    ...activity.claims.filter(item => !!(item.updatedAt || item.createdAt)).map(item => ({kind:"claim" as const,id:item.id,date:item.updatedAt || item.createdAt!,title:mt("overviewClaimActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.createdAt!),time:""})),
+    ...activity.overstays.filter(item => !!(item.updatedAt || item.detectedAt || item.createdAt)).map(item => ({kind:"overstay" as const,id:item.overstayId ?? item.id,date:item.updatedAt || item.detectedAt || item.createdAt!,title:mt("overviewOverstayActivity",{status:mt(financialActivityStatus[item.status ?? ""] ?? "overviewStatusUpdated")}),person:chefDisplayName(item),kitchen:item.kitchenName,scheduled:displayDate(item.updatedAt || item.detectedAt || item.createdAt!),time:""})),
+  ].filter(item => Number.isFinite(Date.parse(item.date)) && Date.parse(item.date) <= Date.now()).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, RECENT_ACTIVITY_LIMIT);
+  const hasHistory = bookings.length > 0 || locationViewings.length > 0;
+  const primaryKitchen = draftKitchens[0] ?? locationKitchens[0];
+  const status = liveKitchens.length > 0 ? "live" : publishedButUnavailable ? "unavailable" : locationKitchens.length > 0 ? "draft" : "empty";
+  const applicationJourney = status === "live" && bookings.length === 0;
+  const journeyView = applicationJourney ? "applications" : primaryKitchen ? "listing-review" : "kitchens";
+  interface Task { id: string; title: string; detail?: string; view: string; href?: string; param?: string; locationId?: number }
+  const groups = new Map<string, Task[]>();
+  const addTask = (label: string, task: Task) => groups.set(label, [...(groups.get(label) ?? []), task]);
+  const recordTitle = (record: { id?: number; chefName?: string; kitchenName?: string; storageName?: string; claimTitle?: string; referenceCode?: string }) =>
+    record.claimTitle || [chefDisplayName(record), record.storageName || record.kitchenName].filter(Boolean).join(" · ") || record.referenceCode || `#${record.id}`;
+  if (activity.paymentsNeedAttention) addTask("overviewPaymentsAttention", { id: "payments", title: mt(activity.paymentsAction ?? "overviewPaymentsUpdate"), view: "payments" });
+  const unreadThreads = activity.unreadThreads ?? [];
+  for (const thread of unreadThreads) addTask("overviewUnreadMessages", { id: thread.id, title: applications.find((application) => application.id === thread.applicationId)?.fullName || mt("overviewConversationTitle", { id: thread.applicationId }), detail: mt("overviewUnreadThreadCount", { count: thread.unreadManagerCount }), view: "messages", param: "conversation" });
+  if (!unreadThreads.length && activity.unreadMessages > 0) addTask("overviewUnreadMessages", { id: "messages", title: mt("overviewUnreadThreadCount", { count: activity.unreadMessages }), view: "messages" });
+  for (const booking of bookings) {
+    const label = bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone);
+    if (label) addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: `${displayDate(booking.bookingDate)} · ${booking.startTime} – ${booking.endTime}`, view: "bookings", href: `/manager/booking/${booking.id}` });
+    for (const item of booking.equipmentItems || []) if (booking.status === 'confirmed' && item.status === 'cancellation_requested')
+      addTask('overviewEquipmentCancellations', { id: `${booking.id}:equipment:${item.equipmentBookingId ?? item.id}`, title: item.name || recordTitle(booking),
+        view: 'bookings', href: `/manager/booking/${booking.id}` });
   }
-
-  const { data: revenueMetrics, isLoading: isLoadingRevenue, error: revenueError } = useQuery<RevenueMetrics>({
-    queryKey: ['/api/manager/revenue/overview', thisMonthDateRange.startDate, thisMonthDateRange.endDate, selectedLocation?.id],
-    queryFn: async () => {
-      if (!firebaseUser) {
-        throw new Error(tt("notAuthenticated"));
-      }
-      
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error(tt("notAuthenticated"));
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      
-      const params = new URLSearchParams({
-        startDate: thisMonthDateRange.startDate,
-        endDate: thisMonthDateRange.endDate,
-      });
-      
-      // Add location filter if a specific location is selected
-      if (selectedLocation && selectedLocation.id) {
-        params.append('locationId', selectedLocation.id.toString());
-      }
-      
-      const response = await fetch(`/api/manager/revenue/overview?${params}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.error('[Overview] Failed to fetch revenue metrics:', response.status, errorText);
-        throw new Error(tt("failedToFetchRevenueMetrics"));
-      }
-      
-      const data = await response.json();
-      logger.info('[Overview] Revenue metrics received:', data);
-      return data;
-    },
-    enabled: !!firebaseUser,
-    refetchInterval: 30000, // Refresh every 30 seconds
-    refetchOnWindowFocus: true,
-    retry: 2,
-  });
-
-  // Handle errors using useEffect (React Query v5 doesn't support onError)
-  useEffect(() => {
-    if (revenueError) {
-      logger.error('[Overview] Revenue metrics query error:', revenueError);
+  for (const tour of locationViewings) {
+    const label = tourNextAction(tour.viewing);
+    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}`, view: "viewings", param: "viewing" });
+  }
+  for (const application of pendingApplications) addTask("overviewPendingApplications", { id: String(application.id), title: application.fullName || `#${application.id}`, view: "applications", param: "application" });
+  for (const storage of activity.storageBookings) if (!bookings.some(booking => booking.id === storage.kitchenBookingId && booking.paymentDecision?.state === 'pending') && ["pending", "cancellation_requested"].includes(storage.status ?? "")) addTask(storage.cancellationAcceptedAt ? 'overviewStorageOutcomes' : "overviewStorageRequests", { id: String(storage.id), title: recordTitle(storage), detail: storage.cancellationAcceptedAt ? mt("storageRemovalConfirmationRequired") : undefined, view: "storage-bookings", param: "storageBooking" });
+  for (const storage of activity.storageBookings) {
+    if (storage.status !== "confirmed") continue;
+    if (storage.checkinStatus === "checkin_requested") addTask("overviewStorageCheckinReviews", { id: String(storage.id), title: recordTitle(storage), view: "storage-checkouts" });
+    if (storage.checkoutStatus === "active" && storageHasEnded(storage.endDate) && !activity.overstays.some((item) => item.storageBookingId === storage.id)) addTask("overviewStorageOutcomes", { id: String(storage.id), title: recordTitle(storage), view: "storage-bookings", param: "storageBooking" });
+  }
+  for (const extension of activity.extensions) addTask("overviewStorageExtensions", { id: String(extension.storageBookingId ?? extension.id), title: recordTitle(extension), view: "storage-bookings", param: "storageBooking", detail: extension.newEndDate ? mt("overviewExtensionUntil", { date: displayDate(extension.newEndDate) }) : undefined });
+  for (const checkout of activity.storageCheckouts) addTask("overviewStorageCheckoutReviews", { id: String(checkout.storageBookingId ?? checkout.id), title: recordTitle(checkout), view: "storage-checkouts" });
+  for (const claim of activity.claims) if (["draft", "approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"].includes(claim.status ?? "")) addTask("overviewClaimsToAction", { id: String(claim.id), title: recordTitle(claim), view: "damage-claims", param: "claim", detail: mt(claim.status === "draft" ? "overviewClaimComplete" : "overviewClaimCollect") });
+  for (const overstay of activity.overstays) { const action = overstayNextAction(overstay); if (action) addTask("overviewOverstaysToAction", { id: String(overstay.overstayId ?? overstay.id), title: recordTitle({ ...overstay, id: overstay.overstayId ?? overstay.id }), detail: mt(action), view: "overstays" }); }
+  for (const location of locations) {
+    if (selectedLocation && location.id !== selectedLocation.id) continue;
+    const action = licenseNextAction(location);
+    if (action) addTask("overviewLicenseAttention", { id: String(location.id), title: location.name, detail: mt(action), view: "settings-license", locationId: location.id });
+  }
+  const attentionGroups = Array.from(groups, ([label, items]) => ({ label, items }));
+  /**
+   * Zero is not shown. The empty state below already says "all caught up" in words, so a "0 actions"
+   * badge next to the heading would be the same fact twice — and a count of zero next to a heading
+   * reads as a broken number rather than as reassurance. Absent means nothing needs you.
+   */
+  const attentionCount = attentionGroups.reduce((sum, group) => sum + group.items.length, 0);
+  const openTask = (task: Task) => {
+    if (task.locationId) { const location = locations.find(item => item.id === task.locationId); if (location) onSelectLocation?.(location); }
+    onNavigate(task.view);
+    if (task.param) {
+      const url = new URL(window.location.href);
+      url.searchParams.set(task.param, task.id);
+      window.history.replaceState({}, "", url);
+      window.dispatchEvent(new PopStateEvent("popstate"));
     }
-  }, [revenueError]);
-
-  // Fetch live Stripe balance for real-time payout data
-  const { data: stripeBalance, isLoading: isLoadingStripeBalance } = useQuery<StripeBalanceData>({
-    queryKey: ['stripeBalance'],
-    queryFn: async () => {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error(tt("firebaseUserNotAvailable"));
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch('/api/manager/revenue/stripe-balance', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error(tt("failedToFetchStripeBalance"));
-      }
-      return response.json();
-    },
-    enabled: !!firebaseUser,
-    staleTime: 1000 * 30, // Cache for 30 seconds
-    refetchInterval: 1000 * 60, // Refresh every minute
-  });
-
-  // Calculate dashboard metrics (using filtered bookings)
-  const dashboardMetrics = useMemo(() => {
-    // Helper function to normalize date to YYYY-MM-DD in local timezone
-    const normalizeDate = (date: Date | string): string => {
-      const d = typeof date === 'string' ? new Date(date) : date;
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = normalizeDate(today);
-    const weekFromNow = new Date(today);
-    weekFromNow.setDate(weekFromNow.getDate() + 7);
-    weekFromNow.setHours(23, 59, 59, 999);
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-
-    // Filter bookings by date (using filteredBookings)
-    const todayBookings = filteredBookings.filter((b: any) => {
-      if (!b.bookingDate) return false;
-      const bookingDateStr = normalizeDate(b.bookingDate);
-      return bookingDateStr === todayStr && b.status !== 'cancelled';
-    });
-
-    const weekBookings = filteredBookings.filter((b: any) => {
-      if (!b.bookingDate) return false;
-      const bookingDate = new Date(b.bookingDate);
-      bookingDate.setHours(0, 0, 0, 0);
-      return bookingDate >= today && bookingDate <= weekFromNow && b.status !== 'cancelled';
-    });
-
-    const pendingBookings = filteredBookings.filter((b: any) => b.status === 'pending');
-    const confirmedBookings = filteredBookings.filter((b: any) => b.status === 'confirmed');
-    const cancelledBookings = filteredBookings.filter((b: any) => b.status === 'cancelled');
-
-    // Applications & Viewings metrics
-    const pendingApplications = applications.filter((a: any) => a.status === 'pending');
-    
-    const todayViewings = filteredViewings.filter((v: any) => {
-      if (!v.viewing?.scheduledAt) return false;
-      const viewingDateStr = normalizeDate(v.viewing.scheduledAt);
-      return viewingDateStr === todayStr && v.viewing.status !== 'cancelled';
-    });
-
-    const pendingViewings = filteredViewings.filter((v: any) => v.viewing?.status === 'pending');
-    
-    const totalPendingCount = pendingBookings.length + pendingApplications.length + pendingViewings.length;
-
-    // This month's bookings
-    const thisMonthBookings = filteredBookings.filter((b: any) => {
-      if (!b.bookingDate) return false;
-      const bookingDate = new Date(b.bookingDate);
-      bookingDate.setHours(0, 0, 0, 0);
-      return bookingDate >= startOfMonth && b.status === 'confirmed';
-    });
-
-    // Last month's bookings (for comparison)
-    const lastMonthBookings = filteredBookings.filter((b: any) => {
-      if (!b.bookingDate) return false;
-      const bookingDate = new Date(b.bookingDate);
-      bookingDate.setHours(0, 0, 0, 0);
-      return bookingDate >= lastMonthStart && bookingDate <= lastMonthEnd && b.status === 'confirmed';
-    });
-
-    // Calculate trend
-    const thisMonthCount = thisMonthBookings.length;
-    const lastMonthCount = lastMonthBookings.length || 1; // Avoid division by zero
-    const bookingTrend = ((thisMonthCount - lastMonthCount) / lastMonthCount) * 100;
-
-    // Unique chefs this month
-    const uniqueChefs = new Set(
-      thisMonthBookings.map((b: any) => b.chefId || b.userId || b.portalUserId).filter(Boolean)
-    );
-
-    // Calculate utilization (assuming 12 hours per day available)
-    const availableHoursThisWeek = 7 * 12;
-    const bookedHoursThisWeek = weekBookings.reduce((total: number, b: any) => {
-      if (!b.startTime || !b.endTime) return total;
-      const [startH] = b.startTime.split(':').map(Number);
-      const [endH] = b.endTime.split(':').map(Number);
-      return total + (endH - startH);
-    }, 0);
-    const utilizationRate = Math.round((bookedHoursThisWeek / availableHoursThisWeek) * 100);
-
-    return {
-      todayBookings: todayBookings.length,
-      todayViewings: todayViewings.length,
-      weekBookings: weekBookings.length,
-      pendingBookings: pendingBookings.length,
-      pendingViewings: pendingViewings.length,
-      pendingApplications: pendingApplications.length,
-      totalPendingCount,
-      confirmedBookings: confirmedBookings.length,
-      cancelledBookings: cancelledBookings.length,
-      totalBookings: filteredBookings.length,
-      thisMonthBookings: thisMonthCount,
-      bookingTrend: Math.round(bookingTrend),
-      uniqueChefs: uniqueChefs.size,
-      utilizationRate: Math.min(utilizationRate, 100),
-    };
-  }, [filteredBookings, filteredViewings, applications]);
-
-  // Generate chart data for weekly bookings (next 7 days including today)
-  const weeklyChartData = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) =>
-      new Intl.DateTimeFormat(i18n.language, { weekday: "short" }).format(new Date(2024, 0, 7 + i))
-    );
-    const today = new Date();
-    // Set to start of day in local timezone to avoid timezone issues
-    today.setHours(0, 0, 0, 0);
-    const data = [];
-
-    // Helper function to normalize date to YYYY-MM-DD in local timezone
-    const normalizeDate = (date: Date | string): string => {
-      const d = typeof date === 'string' ? new Date(date) : date;
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    // Get next 7 days (including today) to match "This Week" metric
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() + i);
-      const dateStr = normalizeDate(date);
-      
-      const dayBookings = filteredBookings.filter((b: any) => {
-        if (!b.bookingDate) return false;
-        const bookingDateStr = normalizeDate(b.bookingDate);
-        return bookingDateStr === dateStr;
-      });
-
-      data.push({
-        day: days[date.getDay()],
-        date: date.getDate(),
-        confirmed: dayBookings.filter((b: any) => b.status === 'confirmed').length,
-        pending: dayBookings.filter((b: any) => b.status === 'pending').length,
-        total: dayBookings.filter((b: any) => b.status !== 'cancelled').length,
-      });
-    }
-    return data;
-  }, [filteredBookings, i18n.language]);
-
-  // Get recent bookings for the table
-  const recentBookings = useMemo(() => {
-    return [...filteredBookings]
-      .sort((a: any, b: any) => new Date(b.createdAt || b.bookingDate).getTime() - new Date(a.createdAt || a.bookingDate).getTime())
-      .slice(0, 5);
-  }, [filteredBookings]);
-
-  // Get urgent actions
-  const urgentActions = useMemo(() => {
-    const actions: { type: 'danger' | 'warning' | 'info'; icon: any; title: string; count: number; action: ViewType }[] = [];
-    
-    // Check for today's bookings
-    if (dashboardMetrics.todayBookings > 0) {
-      actions.push({
-        type: 'info',
-        icon: CalendarDays,
-        title: mt("todaysSessions"),
-        count: dashboardMetrics.todayBookings,
-        action: 'bookings'
-      });
-    }
-
-    return actions;
-  }, [dashboardMetrics]);
-
-  const formatTime = (time: string) => formatTimeLocale(time, i18n.language);
-  const formatDate = (dateStr: string) => formatDateLocale(dateStr, 'short', undefined, i18n.language);
-
-  // Calculate per-location metrics for summary cards
-  const locationMetrics = useMemo(() => {
-    const metrics = new Map<number, {
-      location: Location;
-      todayBookings: number;
-      weekBookings: number;
-      pendingBookings: number;
-      thisMonthBookings: number;
-      thisMonthRevenue: number;
-    }>();
-
-    (locations || []).forEach(location => {
-      const locationBookings = enrichedBookings.filter((b: any) => b.locationId === location.id);
-      
-      const normalizeDate = (date: Date | string): string => {
-        const d = typeof date === 'string' ? new Date(date) : date;
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = normalizeDate(today);
-      const weekFromNow = new Date(today);
-      weekFromNow.setDate(weekFromNow.getDate() + 7);
-      weekFromNow.setHours(23, 59, 59, 999);
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-      const todayBookings = locationBookings.filter((b: any) => {
-        if (!b.bookingDate) return false;
-        const bookingDateStr = normalizeDate(b.bookingDate);
-        return bookingDateStr === todayStr && b.status !== 'cancelled';
-      });
-
-      const weekBookings = locationBookings.filter((b: any) => {
-        if (!b.bookingDate) return false;
-        const bookingDate = new Date(b.bookingDate);
-        bookingDate.setHours(0, 0, 0, 0);
-        return bookingDate >= today && bookingDate <= weekFromNow && b.status !== 'cancelled';
-      });
-
-      const pendingBookings = locationBookings.filter((b: any) => b.status === 'pending');
-
-      const thisMonthBookings = locationBookings.filter((b: any) => {
-        if (!b.bookingDate) return false;
-        const bookingDate = new Date(b.bookingDate);
-        bookingDate.setHours(0, 0, 0, 0);
-        return bookingDate >= startOfMonth && b.status === 'confirmed';
-      });
-
-      // Calculate revenue for this month (from confirmed bookings)
-      const thisMonthRevenue = thisMonthBookings.reduce((total: number, b: any) => {
-        return total + (b.totalPrice || 0);
-      }, 0) / 100; // Convert from cents to dollars
-
-      metrics.set(location.id, {
-        location,
-        todayBookings: todayBookings.length,
-        weekBookings: weekBookings.length,
-        pendingBookings: pendingBookings.length,
-        thisMonthBookings: thisMonthBookings.length,
-        thisMonthRevenue,
-      });
-    });
-
-    return Array.from(metrics.values());
-  }, [locations, enrichedBookings]);
-
-  return (
-    <div className="space-y-6">
-      {/* ═══════════════════════════════════════════════════════════════════════
-          WELCOME HEADER WITH LOCATION SELECTOR
-      ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 min-w-0">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 break-words">
-            {managerDisplayName
-              ? mt("greetingNamed", { greeting, name: managerDisplayName })
-              : greeting}
-          </h1>
-          <p className="text-gray-500 mt-1 break-words">
-            {selectedLocation
-              ? mt("heresWhatsHappeningWith", { name: selectedLocation.name })
-              : mt("heresWhatsHappeningAcross")}
-          </p>
-        </div>
-        <div className="flex items-center gap-4 flex-wrap shrink-0 min-w-0">
-          {/* Location Selector */}
-          {(locations || []).length > 1 && onSelectLocation && (
-            <Select
-              value={selectedLocation?.id?.toString() || 'all'}
-              onValueChange={(value) => {
-                if (value === 'all') {
-                  onSelectLocation(null);
-                } else {
-                  const location = (locations || []).find(l => l.id.toString() === value);
-                  if (location) {
-                    onSelectLocation(location);
-                  }
-                }
-              }}
-            >
-              <SelectTrigger className="w-full max-w-[200px] sm:w-[200px]">
-                <SelectValue placeholder={mt("selectLocation")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{mt("cmdAllLocations")}</SelectItem>
-                {(locations || []).map((location) => (
-                  <SelectItem key={location.id} value={location.id.toString()}>
-                    {location.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <CalendarDays className="h-4 w-4" />
-            {new Date().toLocaleDateString(i18n.language, {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          PRIMARY KPIs - Bento Style Layout (Symmetric)
-      ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="space-y-4">
-        {/* Row 1: Three Smaller Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {/* Today's Bookings */}
-          <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("today")}</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayBookings}</p>
-                  <p className="text-gray-500 text-xs mt-1">{mt("sessionsScheduled")}</p>
-                </div>
-                <CalendarDays className="h-4 w-4 text-rose-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Today's Viewings */}
-          <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("today")}</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayViewings}</p>
-                  <p className="text-gray-500 text-xs mt-1">{mt("kitchenTours2")}</p>
-                </div>
-                <Eye className="h-4 w-4 text-violet-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Pending Review */}
-          <TooltipProvider delayDuration={100}>
-            <UITooltip>
-              <TooltipTrigger asChild>
-                <button type="button" className="w-full text-left p-0 m-0 border-none bg-transparent outline-none appearance-none" onClick={(e) => e.preventDefault()}>
-                  <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-help h-full">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider flex items-center gap-1">{mt("pending")}<Info className="h-3 w-3 text-muted-foreground" />
-                          </p>
-                          <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.totalPendingCount}</p>
-                          <p className="text-gray-500 text-xs mt-1">{mt("needsReview")}</p>
-                        </div>
-                        <Clock className="h-4 w-4 text-amber-500" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="text-xs space-y-1 p-1">
-                  <div className="font-semibold pb-1 mb-1 border-b">{mt("pendingItemsBreakdown")}</div>
-                  <div className="flex justify-between gap-4">
-                    <span>{mt("kitchenBookings")}</span>
-                    <span className="font-bold">{dashboardMetrics.pendingBookings}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" />{mt("kitchenTours")}</span>
-                    <span className="font-bold">{dashboardMetrics.pendingViewings}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span>{mt("kitchenApplications")}</span>
-                    <span className="font-bold">{dashboardMetrics.pendingApplications}</span>
-                  </div>
-                </div>
-              </TooltipContent>
-            </UITooltip>
-          </TooltipProvider>
-        </div>
-
-        {/* Row 2: Two Larger Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Weekly Activity */}
-          <Card className="border border-gray-200 shadow-sm bg-white hover:shadow-md transition-shadow duration-300">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-blue-600" />
-                  <div>
-                    <p className="text-gray-700 text-sm font-semibold">{mt("weeklyActivity")}</p>
-                    <p className="text-xs text-gray-500">{mt("next7Days")}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-gray-900">
-                    {weeklyChartData.reduce((sum, day) => sum + day.total, 0)}
-                  </p>
-                  <p className="text-[10px] text-gray-500">{mt("totalBookings2")}</p>
-                </div>
-              </div>
-              <div className="h-[120px]">
-                {isLoadingBookings ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
-                  </div>
-                ) : weeklyChartData.every(day => day.total === 0) ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <BarChart3 className="h-8 w-8 text-gray-300 mb-2" />
-                    <p className="text-sm text-gray-500">{mt("noBookingsThisWeek")}</p>
-                    <p className="text-xs text-gray-400 mt-1">{mt("bookingsWillAppearHere")}</p>
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={weeklyChartData} barCategoryGap="15%">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis 
-                        dataKey="day" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#9ca3af', fontSize: 10 }}
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#9ca3af', fontSize: 10 }}
-                        width={30}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          borderRadius: '8px', 
-                          border: 'none', 
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          padding: '8px 12px',
-                          fontSize: '12px',
-                          backgroundColor: 'white'
-                        }}
-                        cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-                        formatter={(value: any, name: string) => [value, name]}
-                        labelFormatter={(label) => mt("chartDayLabel", { label })}
-                      />
-                      <Bar dataKey="confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} name={mt("confirmed")} />
-                      <Bar dataKey="pending" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name={mt("pending")} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-              <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-gray-50">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] text-gray-500">{mt("confirmed")}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-[10px] text-gray-500">{mt("pending")}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* This Month */}
-          <Card className="border border-gray-200 shadow-sm bg-white hover:shadow-md transition-shadow duration-300">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-rose-600" />
-                  <p className="text-gray-700 text-sm font-semibold">{mt("thisMonth")}</p>
-                </div>
-                <div className={`flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full ${
-                  dashboardMetrics.bookingTrend >= 0 
-                    ? 'text-emerald-700 bg-emerald-50' 
-                    : 'text-red-700 bg-red-50'
-                }`}>
-                  {dashboardMetrics.bookingTrend >= 0 ? (
-                    <TrendingUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <TrendingDown className="h-3.5 w-3.5" />
-                  )}
-                </div>
-              </div>
-              <p className="text-4xl font-bold text-gray-900 mb-1">{dashboardMetrics.thisMonthBookings}</p>
-              <p className="text-gray-500 text-sm">{mt("totalBookings")}</p>
-              
-              <div className="mt-5 pt-4 border-t border-gray-100">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="text-center p-3 bg-emerald-50 rounded-xl">
-                    <p className="text-xl font-bold text-emerald-600">{dashboardMetrics.confirmedBookings}</p>
-                    <p className="text-xs text-emerald-600/70 font-medium">{mt("confirmed")}</p>
-                  </div>
-                  <div className="text-center p-3 bg-amber-50 rounded-xl">
-                    <p className="text-xl font-bold text-amber-600">{dashboardMetrics.pendingBookings}</p>
-                    <p className="text-xs text-amber-600/70 font-medium">{mt("pending")}</p>
-                  </div>
-                  <div className="text-center p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xl font-bold text-gray-500">{dashboardMetrics.cancelledBookings}</p>
-                    <p className="text-xs text-gray-500/70 font-medium">{mt("cancelled")}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Row 3: Revenue Metrics - This Month */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Total Revenue This Month */}
-          <Card 
-            className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
-            onClick={() => onNavigate('revenue')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("thisMonth")}</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">
-                    {isLoadingRevenue ? (
-                      <span className="text-gray-400">...</span>
-                    ) : revenueMetrics ? (
-                      formatCurrency(revenueMetrics.totalRevenue || 0)
-                    ) : (
-                      '$0.00'
-                    )}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-1">{mt("totalRevenue")}</p>
-                </div>
-                <DollarSign className="h-4 w-4 text-emerald-500" />
-              </div>
-              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
-                <span>{mt("viewDetails2")}</span>
-                <ArrowRight className="h-3 w-3" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Your Earnings - Live Stripe Balance (Available) */}
-          <Card 
-            className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
-            onClick={() => onNavigate('revenue')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("availableBalance")}</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">
-                    {isLoadingStripeBalance ? (
-                      <span className="text-gray-400">...</span>
-                    ) : stripeBalance ? (
-                      formatCurrency(stripeBalance.available || 0)
-                    ) : (
-                      '$0.00'
-                    )}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-1">
-                    {stripeBalance?.hasStripeAccount ? mt("readyForPayout") : mt("noStripeAccount")}
-                  </p>
-                </div>
-                <DollarSign className="h-4 w-4 text-blue-500" />
-              </div>
-              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
-                <span>{mt("viewDetails2")}</span>
-                <ArrowRight className="h-3 w-3" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Pending Balance - Live Stripe Balance */}
-          <Card
-            className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
-            onClick={() => onNavigate('revenue')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("pending")}</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">
-                    {isLoadingStripeBalance ? (
-                      <span className="text-gray-400">...</span>
-                    ) : (
-                      formatCurrency(stripeBalance?.pending ?? 0)
-                    )}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-1">{mt("processing27Days")}</p>
-                </div>
-                <Clock className="h-4 w-4 text-amber-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          ALERTS / PENDING ACTIONS (if any)
-      ═══════════════════════════════════════════════════════════════════════ */}
-      {urgentActions.length > 0 && (
-        <Card className="border-0 bg-gradient-to-r from-gray-50 to-white shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Bell className="h-4 w-4 text-rose-500" />
-              <h3 className="font-semibold text-gray-900 text-sm">{mt("actionRequired")}</h3>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {urgentActions.map((action, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onNavigate(action.action)}
-                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 hover:scale-105 ${
-                    action.type === 'danger' 
-                      ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' 
-                      : action.type === 'warning' 
-                      ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' 
-                      : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-                  }`}
-                >
-                  <action.icon className="h-4 w-4" />
-                  <span className="font-medium">{action.title}</span>
-                  <Badge variant="secondary" className={`${
-                    action.type === 'danger' ? 'bg-red-200 text-red-800' :
-                    action.type === 'warning' ? 'bg-amber-200 text-amber-800' :
-                    'bg-blue-200 text-blue-800'
-                  }`}>
-                    {action.count}
-                  </Badge>
-                  <ArrowRight className="h-3 w-3 ml-1" />
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          LOCATION SUMMARY CARDS (Only shown when viewing all locations)
-      ═══════════════════════════════════════════════════════════════════════ */}
-      {!selectedLocation && (locations || []).length > 1 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">{mt("locationOverview")}</h2>
-            <p className="text-sm text-gray-500">{(locations || []).length} locations</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {locationMetrics.map((metrics) => (
-              <Card
-                key={metrics.location.id}
-                className="border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer group"
-                onClick={() => onSelectLocation?.(metrics.location)}
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Building2 className="h-4 w-4 text-gray-400" />
-                        <h3 className="font-semibold text-gray-900">{metrics.location.name}</h3>
-                      </div>
-                      <p className="text-xs text-gray-500 line-clamp-1">{metrics.location.address}</p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-2 bg-rose-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">{mt("today")}</p>
-                      <p className="text-lg font-bold text-gray-900">{metrics.todayBookings}</p>
-                    </div>
-                    <div className="p-2 bg-violet-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">{mt("thisWeek")}</p>
-                      <p className="text-lg font-bold text-gray-900">{metrics.weekBookings}</p>
-                    </div>
-                    <div className="p-2 bg-amber-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">{mt("pending")}</p>
-                      <p className="text-lg font-bold text-gray-900">{metrics.pendingBookings}</p>
-                    </div>
-                    <div className="p-2 bg-emerald-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">{mt("thisMonth")}</p>
-                      <p className="text-lg font-bold text-gray-900">
-                        {new Intl.NumberFormat('en-CA', {
-                          style: 'currency',
-                          currency: 'CAD',
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(metrics.thisMonthRevenue)}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          UPCOMING BOOKINGS AND VIEWINGS
-      ═══════════════════════════════════════════════════════════════════════ */}
-      <TodaysKitchenBookings />
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          BOOKING CALENDAR - Main Highlight
-      ═══════════════════════════════════════════════════════════════════════ */}
-      <BookingCalendarWidget
-        bookings={filteredBookings}
-        isLoading={isLoadingBookings}
-        onNavigateToBookings={() => onNavigate('bookings')}
-      />
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          MAIN CONTENT - Recent Bookings & Customer Management Side-by-Side
-      ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Bookings */}
-        <Card className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300 flex flex-col">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-violet-600" />
-                <div>
-                  <CardTitle className="text-base">{mt("recentBookings")}</CardTitle>
-                  <p className="text-xs text-gray-500">{mt("latestRequests")}</p>
-                </div>
-              </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => onNavigate('bookings')}
-                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-              >{mt("viewAll")}<ArrowRight className="ml-1 h-3 w-3" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col">
-            {isLoadingBookings ? (
-              <div className="flex items-center justify-center py-8 flex-1">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-500" />
-              </div>
-            ) : recentBookings.length === 0 ? (
-              <div className="text-center py-8 flex-1 flex flex-col items-center justify-center">
-                <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">{mt("noBookingsYet")}</p>
-                <p className="text-sm text-gray-400">{mt("bookingsWillAppearHere")}</p>
-              </div>
-            ) : (
-              <div className="space-y-3 flex-1">
-                {recentBookings.map((booking: any, idx: number) => (
-                  <div 
-                    key={booking.id || idx}
-                    className="flex items-center justify-between p-4 rounded-xl bg-gray-50/50 hover:bg-gray-100/70 transition-colors duration-200 cursor-pointer group"
-                    onClick={() => onNavigate('bookings')}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        booking.status === 'confirmed' ? 'bg-emerald-100' :
-                        booking.status === 'pending' ? 'bg-amber-100' :
-                        'bg-gray-100'
-                      }`}>
-                        <Calendar className={`h-5 w-5 ${
-                          booking.status === 'confirmed' ? 'text-emerald-600' :
-                          booking.status === 'pending' ? 'text-amber-600' :
-                          'text-gray-500'
-                        }`} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {booking.chefName || booking.portalUserName || mt("guestChef")}
-                        </p>
-                        <div className="flex items-center gap-2 text-sm text-gray-500">
-                          <span>{formatDate(booking.bookingDate)}</span>
-                          <span className="text-gray-300">•</span>
-                          <span>{kitchenBookingBlocks(booking).map(block =>
-                            `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge 
-                        className={`font-medium ${
-                          booking.status === 'confirmed' 
-                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' 
-                            : booking.status === 'pending' 
-                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        {booking.status === 'confirmed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                        {booking.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
-                        {booking.status === 'cancelled' && <XCircle className="h-3 w-3 mr-1" />}
-                        {booking.status === 'confirmed' ? mt("confirmed")
-                          : booking.status === 'pending' ? mt("pending")
-                          : booking.status === 'cancelled' ? mt("cancelled")
-                          : booking.status === 'completed' ? mt("completed")
-                          : booking.status}
-                      </Badge>
-                      <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Customer Management */}
-        <CustomerManagementPanel 
-          bookings={filteredBookings}
-          applications={applications}
-          onNavigate={onNavigate}
-          isLoading={isLoadingBookings || isLoadingApplications}
-        />
-      </div>
-
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CUSTOMER MANAGEMENT PANEL - User Management Style Component
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface CustomerManagementPanelProps {
-  bookings: any[];
-  applications: any[];
-  onNavigate: (view: ViewType) => void;
-  isLoading: boolean;
-}
-
-function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading }: CustomerManagementPanelProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Count pending applications to set default filter
-  const pendingCount = useMemo(() => {
-    return applications.filter((app: any) => app.status === 'inReview').length;
-  }, [applications]);
-  
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'recent' | 'pending'>(
-    pendingCount > 0 ? 'pending' : 'all'
-  );
-
-  // Extract unique chefs from bookings
-  const chefsFromBookings = useMemo(() => {
-    const chefMap = new Map<string, {
-      id: string;
-      name: string;
-      email?: string;
-      phone?: string;
-      totalBookings: number;
-      confirmedBookings: number;
-      lastBookingDate: Date | null;
-      isActive: boolean;
-    }>();
-
-    bookings.forEach((booking: any) => {
-      const chefId = booking.chefId || booking.userId || booking.portalUserId;
-      const chefName = booking.chefName || booking.portalUserName || mt("guestChef");
-      const chefEmail = booking.chefEmail || booking.portalUserEmail;
-      const chefPhone = booking.chefPhone || booking.portalUserPhone;
-      
-      if (!chefId && !chefName) return;
-      
-      const key = chefId || chefName;
-      const existing = chefMap.get(key);
-      const bookingDate = new Date(booking.bookingDate);
-      const isConfirmed = booking.status === 'confirmed';
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      if (existing) {
-        existing.totalBookings += 1;
-        if (isConfirmed) existing.confirmedBookings += 1;
-        if (!existing.lastBookingDate || bookingDate > existing.lastBookingDate) {
-          existing.lastBookingDate = bookingDate;
-        }
-        existing.isActive = existing.lastBookingDate ? existing.lastBookingDate > thirtyDaysAgo : false;
-      } else {
-        chefMap.set(key, {
-          id: key,
-          name: chefName,
-          email: chefEmail,
-          phone: chefPhone,
-          totalBookings: 1,
-          confirmedBookings: isConfirmed ? 1 : 0,
-          lastBookingDate: bookingDate,
-          isActive: bookingDate > thirtyDaysAgo,
-        });
-      }
-    });
-
-    return Array.from(chefMap.values());
-  }, [bookings]);
-
-  // Extract unique chefs from applications
-  const chefsFromApplications = useMemo(() => {
-    const chefMap = new Map<string, {
-      id: string;
-      name: string;
-      email?: string;
-      phone?: string;
-      applicationStatus: string;
-      applicationDate: Date | null;
-      locationName?: string;
-      isPending: boolean;
-    }>();
-
-    applications.forEach((application: any) => {
-      const chefId = application.chefId || application.chef?.id;
-      const chefName = application.fullName || application.chef?.username || mt("unknownChef");
-      const chefEmail = application.email;
-      const chefPhone = application.phone;
-      
-      if (!chefId && !chefName) return;
-      
-      const key = chefId?.toString() || chefName;
-      const applicationDate = new Date(application.createdAt);
-      const isPending = application.status === 'inReview';
-      
-      // If chef already exists, keep the most recent application
-      const existing = chefMap.get(key);
-      if (!existing || applicationDate > (existing.applicationDate || new Date(0))) {
-        chefMap.set(key, {
-          id: key,
-          name: chefName,
-          email: chefEmail,
-          phone: chefPhone,
-          applicationStatus: application.status,
-          applicationDate: applicationDate,
-          locationName: application.location?.name,
-          isPending: isPending,
-        });
-      }
-    });
-
-    return Array.from(chefMap.values());
-  }, [applications]);
-
-  // Combine chefs from bookings and applications, prioritizing applications
-  const chefs = useMemo(() => {
-    const combinedMap = new Map<string, {
-      id: string;
-      name: string;
-      email?: string;
-      phone?: string;
-      totalBookings: number;
-      confirmedBookings: number;
-      lastBookingDate: Date | null;
-      isActive: boolean;
-      applicationStatus?: string;
-      applicationDate?: Date | null;
-      locationName?: string;
-      isPending?: boolean;
-      hasApplication: boolean;
-    }>();
-
-    // First, add chefs from bookings
-    chefsFromBookings.forEach(chef => {
-      combinedMap.set(chef.id, {
-        ...chef,
-        hasApplication: false,
-      });
-    });
-
-    // Then, add/update with chefs from applications
-    chefsFromApplications.forEach(chef => {
-      const existing = combinedMap.get(chef.id);
-      if (existing) {
-        // Update existing chef with application info
-        existing.applicationStatus = chef.applicationStatus;
-        existing.applicationDate = chef.applicationDate;
-        existing.locationName = chef.locationName;
-        existing.isPending = chef.isPending;
-        existing.hasApplication = true;
-        // Use application email/phone if booking doesn't have them
-        if (!existing.email && chef.email) existing.email = chef.email;
-        if (!existing.phone && chef.phone) existing.phone = chef.phone;
-      } else {
-        // New chef from application only
-        combinedMap.set(chef.id, {
-          id: chef.id,
-          name: chef.name,
-          email: chef.email,
-          phone: chef.phone,
-          totalBookings: 0,
-          confirmedBookings: 0,
-          lastBookingDate: null,
-          isActive: false,
-          applicationStatus: chef.applicationStatus,
-          applicationDate: chef.applicationDate,
-          locationName: chef.locationName,
-          isPending: chef.isPending,
-          hasApplication: true,
-        });
-      }
-    });
-
-    return Array.from(combinedMap.values()).sort((a, b) => {
-      // Sort by: pending applications first, then by most recent activity
-      if (a.isPending && !b.isPending) return -1;
-      if (!a.isPending && b.isPending) return 1;
-      
-      const aDate = a.applicationDate || a.lastBookingDate;
-      const bDate = b.applicationDate || b.lastBookingDate;
-      
-      if (!aDate) return 1;
-      if (!bDate) return -1;
-      return bDate.getTime() - aDate.getTime();
-    });
-  }, [chefsFromBookings, chefsFromApplications]);
-
-  // Filter chefs based on search and filter
-  const filteredChefs = useMemo(() => {
-    let result = chefs;
-    
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(chef => 
-        chef.name.toLowerCase().includes(query) ||
-        chef.email?.toLowerCase().includes(query) ||
-        chef.locationName?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply status filter
-    if (activeFilter === 'active') {
-      result = result.filter(chef => chef.isActive);
-    } else if (activeFilter === 'recent') {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      result = result.filter(chef => {
-        const date = chef.applicationDate || chef.lastBookingDate;
-        return date && date > sevenDaysAgo;
-      });
-    } else if (activeFilter === 'pending') {
-      result = result.filter(chef => chef.isPending);
-    }
-    
-    return result.slice(0, 5); // Show top 5
-  }, [chefs, searchQuery, activeFilter]);
-
-  const filterTabs = [
-    { id: 'all' as const, label: mt("filterAll"), count: chefs.length },
-    { id: 'pending' as const, label: mt("pending"), count: chefs.filter(c => c.isPending).length },
-    { id: 'active' as const, label: mt("active"), count: chefs.filter(c => c.isActive).length },
-    { id: 'recent' as const, label: mt("filterRecent"), count: chefs.filter(c => {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const date = c.applicationDate || c.lastBookingDate;
-      return date && date > sevenDaysAgo;
-    }).length },
-  ];
-
-  // Generate avatar initials
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
   };
+  const futureTours = locationViewings.filter((tour) => tour.viewing.status === "confirmed" && isPendingOrUpcomingTour({ ...tour.viewing, durationMinutes: tour.viewing.durationMinutes ?? null }));
+  const scheduledStorage = activity.storageBookings.filter((booking) => booking.status === "confirmed" && !["completed", "checkout_claim_filed"].includes(booking.checkoutStatus ?? "") && !!booking.endDate && Number.isFinite(Date.parse(booking.endDate)) && !storageHasEnded(booking.endDate));
+  const scheduleRows = [
+    ...upcoming.map(booking => ({key:`booking-${booking.id}`,id:String(booking.id),title:chefDisplayName(booking),detail:[displayDate(booking.bookingDate),`${booking.startTime} – ${booking.endTime}`,booking.kitchenName].filter(Boolean).join(" · "),time:createBookingDateTime(dayKey(booking.bookingDate),booking.startTime,locations.find(location=>location.id===(booking.locationId ?? booking.location?.id))?.timezone ?? DEFAULT_TIMEZONE).getTime(),href:`/manager/booking/${booking.id}`,view:"bookings",param:undefined,label:mt(booking.status === "cancellation_requested" ? "cancellationRequested" : booking.status)})),
+    ...futureTours.map(tour => ({key:`tour-${tour.viewing.id}`,id:String(tour.viewing.id),title:chefDisplayName(tour),detail:[displayDate(tour.viewing.scheduledAt),tourTime(tour),tour.kitchenName || tour.locationName].filter(Boolean).join(" · "),time:Date.parse(tour.viewing.scheduledAt),href:undefined,view:"viewings",param:"viewing",label:mt("kitchenTours")})),
+    ...scheduledStorage.map(storage => ({key:`storage-${storage.id}`,id:String(storage.id),title:recordTitle(storage),detail:[displayDate(storage.startDate ?? ""),displayDate(storage.endDate ?? "")].join(" – "),time:Date.parse(storage.startDate ?? ""),href:undefined,view:"storage-bookings",param:"storageBooking",label:mt("overviewStorageBookingType")})),
+  ].sort((a,b)=>(Number.isFinite(a.time)?a.time:Infinity)-(Number.isFinite(b.time)?b.time:Infinity));
+  const hasSchedule = bookings.length > 0 || futureTours.length > 0 || scheduledStorage.length > 0;
+  const cardClass = "min-w-0 rounded-[20px] border border-border/70 bg-card shadow-[0_2px_12px_-6px_rgba(15,23,42,0.12)]";
 
-  // Generate avatar color based on name
-  const getAvatarColor = (name: string) => {
-    const colors = [
-      'bg-rose-500',
-      'bg-violet-500',
-      'bg-blue-500',
-      'bg-emerald-500',
-      'bg-amber-500',
-      'bg-pink-500',
-      'bg-indigo-500',
-      'bg-teal-500',
-    ];
-    const index = name.charCodeAt(0) % colors.length;
-    return colors[index];
-  };
-
-  return (
-    <Card className="border border-gray-200 shadow-sm bg-white hover:shadow-md transition-shadow duration-300 flex flex-col">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-blue-600" />
-            <div>
-              <CardTitle className="text-base">{mt("customerManagement")}</CardTitle>
-              <p className="text-xs text-gray-500">{mt("chefs")}</p>
-            </div>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => onNavigate('applications')}
-            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-          >{mt("viewAll")}<ArrowRight className="ml-1 h-3 w-3" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 flex-1 flex flex-col">
-        {/* Search Bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            type="text"
-            placeholder={mt("searchChefs")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-gray-300 focus:ring-0 rounded-lg text-sm"
-          />
-        </div>
-
-        {/* Filter Tabs - Minimal Design */}
-        <div className="flex items-center gap-1">
-          {filterTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveFilter(tab.id)}
-              className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
-                activeFilter === tab.id
-                  ? 'text-rose-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab.id === 'active' && (
-                <span className={`w-1.5 h-1.5 rounded-full ${activeFilter === tab.id ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-              )}
-              {tab.id === 'pending' && (
-                <span className={`w-1.5 h-1.5 rounded-full ${activeFilter === tab.id ? 'bg-rose-500' : 'bg-amber-500'}`} />
-              )}
-              <span>{tab.label}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                activeFilter === tab.id 
-                  ? 'bg-rose-50 text-rose-600' 
-                  : 'bg-gray-100 text-gray-500'
-              }`}>
-                {tab.count}
-              </span>
-              {activeFilter === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-500 rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Chef List */}
-        <div className="space-y-2 flex-1">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8 flex-1">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-rose-500" />
-            </div>
-          ) : filteredChefs.length === 0 ? (
-            <div className="text-center py-6 flex-1 flex flex-col items-center justify-center">
-              <Users className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-500 text-sm">{mt("noChefsFound")}</p>
-              <p className="text-gray-400 text-xs">{mt("chefApplicationsAndBookingsWillAppearHere")}</p>
-            </div>
-          ) : (
-            filteredChefs.map((chef, idx) => (
-              <div
-                key={`chef-${chef.id}-${idx}`}
-                className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50/80 transition-colors duration-200 cursor-pointer group border border-transparent hover:border-gray-100"
-                onClick={() => onNavigate('applications')}
-              >
-                {/* Avatar */}
-                <div className={`w-10 h-10 rounded-full ${getAvatarColor(chef.name)} flex items-center justify-center text-white font-semibold text-sm shadow-sm flex-shrink-0`}>
-                  {getInitials(chef.name)}
-                </div>
-                
-                {/* Chef Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium text-gray-900 text-sm leading-tight break-words">{chef.name}</p>
-                    {chef.isPending && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[10px] font-medium border border-amber-100">
-                        <span className="w-1 h-1 rounded-full bg-amber-500" />{mt("pending")}</span>
-                    )}
-                    {chef.isActive && !chef.isPending && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[10px] font-medium border border-emerald-100">
-                        <span className="w-1 h-1 rounded-full bg-emerald-500" />{mt("active")}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-tight break-words">
-                    {chef.email || chef.locationName || mt("bookingsCount", { count: chef.totalBookings })}
-                  </p>
-                  {chef.locationName && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">{chef.locationName}</p>
-                  )}
-                </div>
-
-                {/* Status Badge */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="text-right">
-                    {chef.hasApplication && chef.isPending ? (
-                      <>
-                        <p className="text-sm font-semibold text-amber-600">{mt("review")}</p>
-                        <p className="text-[10px] text-gray-400">{mt("needed")}</p>
-                      </>
-                    ) : chef.totalBookings > 0 ? (
-                      <>
-                        <p className="text-sm font-semibold text-gray-900">{chef.confirmedBookings}</p>
-                        <p className="text-[10px] text-gray-400">{mt("bookingsLabel")}</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm font-semibold text-gray-500">{mt("newLabel")}</p>
-                        <p className="text-[10px] text-gray-400">{mt("applicant")}</p>
-                      </>
-                    )}
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-60 transition-opacity" />
-                </div>
+  const panelClass = `${cardClass} h-[320px]`;
+  const attentionCard = (<Card className={panelClass}>
+          <CardContent className="flex h-full flex-col p-5 md:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewToday")}</p>
+                <h2 className="mt-1 text-xl font-semibold tracking-tight">{mt("overviewNeedsAttention")}</h2>
               </div>
-            ))
-          )}
+              {isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading ? <Skeleton className="h-6 w-16 rounded-full" /> : attentionCount > 0 ? <Badge variant="outline" className="shrink-0 border-primary/15 bg-primary/5 text-primary tabular-nums">{mt("overviewActionCount", { count: attentionCount })}</Badge> : null}
+            </div>
+
+            <ScrollArea className="min-h-0 flex-1" tabIndex={0} role="region" aria-label={mt("overviewNeedsAttention")}>
+            {isErrorBookings || isErrorViewings || isErrorApplications || activity.isError ? <p role="status" className="mt-4 text-sm text-destructive">{mt("overviewActivityPartialError")}</p> : null}
+            {isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading ? <Skeleton className="mt-4 h-10 rounded-xl" /> : null}
+            <div className="mt-4 space-y-3">{attentionGroups.map((group) => {
+              const isPayouts = group.items[0]?.view === "payments";
+              const GroupIcon = managerNavIcons[group.items[0]?.view as keyof typeof managerNavIcons] ?? managerNavIcons.bookings;
+              return <section key={group.label} className="overflow-hidden">
+              <h3 className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/60 bg-card py-2 text-xs font-semibold"><span className="flex items-center gap-2"><GroupIcon aria-hidden="true" className={`size-4 shrink-0 ${isPayouts ? "text-stripe" : "text-primary"}`} />{mt(group.label)}</span><Badge variant="count">{group.items.length}</Badge></h3>
+              <div className="divide-y divide-border/50">{group.items.map((task) => {
+                const content = <><span className="min-w-0"><span className="block truncate text-sm font-medium">{task.title}</span>{task.detail && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{task.detail}</span>}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></>;
+                /* Same hover contract as `rowClass` above — background wash only, no red text flip.
+                   These are the only two clickable row styles on the page, so they must agree. */
+                const taskClass = "flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left transition-[background-color,color] duration-200 ease-out motion-reduce:transition-none hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+                return task.href ? <Link key={task.id} href={task.href} className={taskClass}>{content}</Link> : <button key={task.id} className={taskClass} onClick={() => openTask(task)}>{content}</button>;
+              })}</div>
+            </section>; })}</div>
+            {/*
+             * Empty state, dressed like the sibling cards' empty states: a `bg-muted/40` block,
+             * left-aligned, sized by its own content.
+             *
+             * It used to be centred inside `h-full max-h-44` with a green-tinted fill, which broke in
+             * three ways. `h-full` cannot resolve here — Radix wraps ScrollArea children in a
+             * `display: table` element that sizes to its content, so 100% of it is 100% of nothing and
+             * the block collapsed to `max-h-44`. The fixed `max-h-44` then stopped it responding to
+             * longer copy or a narrower column. And the centring made it the only centred empty state
+             * on the page, so it sat off-axis from the Upcoming and Recent activity cards.
+             *
+             * No green. "All caught up" is an ABSENCE of work, not an achievement, so the whole block
+             * stays in the muted register — icon included. It is still legible: the heading keeps the
+             * normal text colour and only the supporting line drops to muted.
+             */}
+            {!attentionGroups.length && !activity.isLoading && !activity.isError && !isLoadingBookings && !isLoadingViewings && !isLoadingApplications && !isErrorBookings && !isErrorViewings && !isErrorApplications && <div className="mt-4 flex items-start gap-3 rounded-xl bg-muted/40 p-4"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background/70 text-muted-foreground" aria-hidden="true"><CheckCircle className="size-4" /></span><div className="min-w-0"><p className="text-sm font-medium">{mt("overviewAllCaughtUp")}</p><p className="mt-1 text-xs text-muted-foreground">{mt("overviewAllCaughtUpBody")}</p></div></div>}
+            </ScrollArea>
+          </CardContent>
+        </Card>);
+  const listingCard = (<Card className={panelClass}><CardContent className="flex h-full flex-col gap-4 p-5 md:p-6">
+<div><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewListingStatus")}</p><h2 className="mt-1 text-xl font-semibold tracking-tight">{mt("overviewKitchenCount", { count: locationKitchens.length })}</h2></div>
+<ScrollArea className="min-h-0 flex-1" tabIndex={0} role="region" aria-label={mt("overviewListingStatus")}>
+{!locationKitchens.length ? <div><h2 className="text-lg font-semibold">{mt("overviewEmptyTitle")}</h2><p className="mt-1 text-sm text-muted-foreground">{mt("overviewEmptyBody")}</p><Button className="mt-4" onClick={() => onNavigate("kitchens")}>{mt("addYourKitchen")}<ChevronRight className="size-4" aria-hidden="true" /></Button></div> : locationKitchens.map((kitchen) => {
+const review = (activity.listingReadiness ?? []).find((item) => item.kitchenId === kitchen.id);
+const checklist = review?.data?.checklist;
+const listed = kitchenIsVisibleToChefs(kitchen, licenseForKitchen(kitchen));
+const unavailable = kitchen.listingStatus === "active" && !listed;
+const missing = checklist?.missingRequirementIds.length ?? 0;
+const recommendations = checklist?.openRecommendationIds.length ?? 0;
+const listingComplete = Boolean(checklist && !review?.isLoading && !review?.isError && missing === 0 && recommendations === 0);
+const licenseAction = licenseNextAction(licenseForKitchen(kitchen) ?? {});
+const toneKey: ListingToneKey = !kitchen.isActive
+  ? "hidden"
+  : listed
+    ? "live"
+    : unavailable || missing > 0
+      ? "blocked"
+      : "ready";
+const tone = LISTING_TONES[toneKey];
+const stateLabelKey = listed
+  ? "listingStatusLiveLabel"
+  : unavailable
+    ? "overviewUnavailableShort"
+    : "listingStatusDraftLabel";
+const bodyText = review?.isLoading
+  ? null
+  : review?.isError
+    ? mt("overviewListingGuidanceError")
+    : checklist
+      ? mt(unavailable ? !kitchen.isActive ? "listingStatusHiddenDesc" : licenseAction ? "listingSummaryLicense" : "listingSummaryLicenseReview" : missing ? listed ? "listingSummaryLiveIncomplete" : "listingReviewBlockedHeadline" : listed ? "listingSummaryLive" : "listingSummaryReady", { count: missing }) + (unavailable && missing > 0 ? ` ${mt("listingSummaryRequiredUpdates", { count: missing })}` : "") + (recommendations > 0 ? ` ${mt("overviewListingSuggestions", { count: recommendations })}` : "")
+      : null;
+return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(listingComplete ? "kitchens" : "listing-review", kitchen.id)} className={`group mb-2 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${tone.border}`}>
+<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+<div className="flex min-w-0 items-center gap-2">
+<h2 className="min-w-0 truncate text-sm font-semibold">{kitchen.name}</h2>
+<span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+<span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+{mt(stateLabelKey)}
+</span>
+</div>
+{review?.isLoading ? <Skeleton className="h-3 w-40 rounded" /> : bodyText ? <p className={`min-w-0 text-xs leading-4 ${review?.isError ? "text-destructive" : "text-muted-foreground"}`}>{bodyText}</p> : null}
+</div>
+<ChevronRight className="size-4 shrink-0 text-muted-foreground transition-[transform,color] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" />
+</button>{!listed && licenseAction && <Button variant="ghost" size="sm" className="mb-3" onClick={() => openTask({ id: String(kitchen.locationId), title: kitchen.name, view: "settings-license", locationId: kitchen.locationId })}>{mt("overviewReviewLicense")}<ChevronRight className="size-4" aria-hidden="true" /></Button>}</div>;
+})}</ScrollArea></CardContent></Card>);
+  // A padded surface responds on hover while labels retain their colour.
+  const rowClass = "flex w-full items-center justify-between gap-3 rounded-lg border-b border-border/50 px-2 py-2.5 text-left transition-[background-color,color] duration-200 ease-out motion-reduce:transition-none hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+  const scrollClass = "mt-4 min-h-0 flex-1";
+  const upcomingCard = <Card className={panelClass}><CardContent className="flex h-full flex-col p-5 md:p-6">
+    <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewSchedule")}</p><h2 className="mt-1 text-xl font-semibold">{mt("overviewUpcomingBookings")}</h2></div><Button variant="ghost" size="sm" onClick={() => onNavigate(upcoming.length ? "bookings" : futureTours.length ? "viewings" : scheduledStorage.length ? "storage-bookings" : journeyView, primaryKitchen?.id)}>{mt(hasSchedule ? "viewAll" : applicationJourney ? "overviewViewApplications" : primaryKitchen ? "overviewReviewListing" : "addYourKitchen")}<ChevronRight className="size-4" aria-hidden="true" /></Button></div>
+    {bookings.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-muted/35 px-3 py-2.5">{[{label:"overviewTodaySessions",value:todayBookings.length},{label:"overviewNextSevenDays",value:weekBookings.length}].map(metric => <div key={metric.label}><p className="text-xs text-muted-foreground">{mt(metric.label)}</p><strong className="text-xl tabular-nums">{metric.value}</strong></div>)}</div>}
+    <ScrollArea className={scrollClass} tabIndex={0} role="region" aria-label={mt("overviewUpcomingBookings")}>
+      {isLoadingBookings || isLoadingViewings || (!bookings.length && isLoadingApplications) || activity.isLoading ? <Skeleton className="h-32 rounded-xl" /> : isErrorBookings || isErrorViewings || (!bookings.length && isErrorApplications) || activity.isError ? <p role="status" className="text-sm text-destructive">{mt("overviewActivityPartialError")}</p> : null}
+      {scheduleRows.map(item => {const content=<><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span></span><span className="flex shrink-0 items-center gap-2"><Badge variant="outline" className="font-medium">{item.label}</Badge><ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" /></span></>;return item.href ? <Link key={item.key} href={item.href} className={rowClass}>{content}</Link> : <button key={item.key} className={rowClass} onClick={()=>openTask(item)}>{content}</button>;})}
+      {!upcoming.length && !futureTours.length && !scheduledStorage.length && !isLoadingBookings && !isLoadingViewings && !isLoadingApplications && !activity.isLoading && !isErrorBookings && !isErrorViewings && !isErrorApplications && !activity.isError && <div className="rounded-xl bg-muted/40 p-4"><p className="font-medium">{mt(bookings.length ? "overviewNoUpcoming" : !applicationJourney ? "overviewPrepareForApplications" : pendingApplications.length ? "overviewApplicationsToReview" : approvedApplications.length ? "overviewApprovedChefs" : "overviewWaitingForApplications")}</p><p className="mt-1 text-sm text-muted-foreground">{mt(bookings.length ? status === "draft" && hasHistory ? "overviewPastBookingsRemain" : "overviewNoUpcomingBody" : !applicationJourney ? "overviewPublishBeforeApplicationsBody" : pendingApplications.length ? "overviewReviewApplicationsBody" : approvedApplications.length ? "overviewApprovedChefsBody" : "overviewWaitingForApplicationsBody")}</p></div>}
+    </ScrollArea></CardContent></Card>;
+  const historyLoading = isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading;
+  const historyError = isErrorBookings || isErrorViewings || isErrorApplications || activity.isError;
+  const historyCard = <Card className={panelClass}><CardContent className="flex h-full flex-col p-5 md:p-6"><div><p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{mt("overviewHistory")}</p><h2 className="mt-1 text-xl font-semibold">{mt("overviewRecentActivity")}</h2></div><ScrollArea className={scrollClass} tabIndex={0} role="region" aria-label={mt("overviewRecentActivity")}>
+    {historyError && <p role="status" className="mb-3 text-sm text-destructive">{mt("overviewActivityPartialError")}</p>}
+    {historyLoading && !recent.length && <Skeleton className="h-32 rounded-xl" />}
+    {!historyLoading && !historyError && !recent.length && <p className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">{mt("overviewRecentActivityEmpty")}</p>}
+    {recent.map(item => {const view = ACTIVITY_VIEW[item.kind] ?? "bookings"; const ActivityIcon = managerNavIcons[view] ?? managerNavIcons.bookings; const content = <><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground" aria-hidden="true"><ActivityIcon className="size-4" /></span><span className="flex min-w-0 flex-1 flex-col"><span className="block text-sm font-medium">{item.title}</span><span className="mt-0.5 block truncate text-xs leading-5 text-muted-foreground">{[item.person, item.kitchen, item.scheduled, item.time].filter(Boolean).join(" · ")}</span></span><span className="flex shrink-0 items-center gap-2"><time dateTime={item.date} title={displayDate(item.date)} className="whitespace-nowrap text-xs text-muted-foreground">{formatRelativeTime(item.date, i18n.language)}</time><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-[transform,color] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none group-hover:translate-x-0.5 group-hover:text-foreground" aria-hidden="true" /></span></>;return item.kind === "booking" ? <Link key={`booking-${item.activityKey}`} href={item.href} className={`group ${rowClass}`}>{content}</Link> : <button key={`${item.kind}-${item.id}-${item.kind === "tour" ? item.activityKey : "current"}`} onClick={() => openTask({ id: String(item.id), title: item.title, view, param: ACTIVITY_PARAM[item.kind] })} className={`group ${rowClass}`}>{content}</button>;})}
+  </ScrollArea></CardContent></Card>;
+  return <div className="space-y-4"><header className="pb-2"><p className="mb-1 text-xs font-semibold uppercase tracking-widest text-primary">{mt("overviewEyebrow")}</p><h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{mt("overviewWelcome", {name:user?.displayName?.split(" ")[0] || mt("shellManagerFallback")})}</h1><p className="mt-1 text-sm text-muted-foreground">{selectedLocation?.name ?? (locations.length > 1 ? mt("cmdAllLocations") : mt("overviewYourWorkspace"))}</p></header>
+    <div className="grid gap-4 lg:grid-cols-2">{liveKitchens.length ? <>{attentionCard}{listingCard}</> : <>{listingCard}{attentionCard}</>}</div>
+    {(bookings.length > 0 || activity.storageBookings.length > 0 || liveKitchens.length > 0) && <Card className={cardClass}>
+      <CardContent className="p-5 md:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/[0.08] text-primary"><DollarSign className="size-4" /></span><div><h2 className="text-sm font-semibold">{mt("overviewThisMonthRevenue")}</h2><p className="mt-0.5 text-xs text-muted-foreground">{new Date().toLocaleDateString(i18n.language, { month: "long", year: "numeric" })}</p></div></div>
+          <Button variant="ghost" size="sm" className="shrink-0" onClick={() => onNavigate("revenue")}>{mt("overviewRevenueDetails")}<ChevronRight className="ml-1 size-4" /></Button>
         </div>
+        {isLoadingRevenue ? <div className="grid gap-3 sm:grid-cols-3"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div> : isErrorRevenue ? <p role="status" className="rounded-xl bg-muted/40 p-4 text-sm text-destructive">{mt("overviewRevenueError")}</p> : <div className="grid gap-4 sm:grid-cols-[1.4fr_1fr_1fr] sm:items-center">
+          <div className="min-w-0 rounded-xl border border-primary/10 bg-gradient-to-br from-primary/5 to-transparent px-4 py-3"><span className="block text-xs font-medium text-muted-foreground">{mt("overviewPaidEarnings")}</span><strong className="mt-1 block break-words text-3xl font-semibold tracking-tight tabular-nums">{formatCurrency(revenue?.completedNetRevenue ?? revenue?.netRevenue ?? 0)}</strong></div>
+          <div className="grid grid-cols-2 gap-4 sm:col-span-2">{[{label:"overviewPendingPayments",value:formatCurrency(revenue?.pendingPayments ?? 0)},{label:"overviewPaidBookings",value:revenue?.paidBookingCount ?? 0}].map((metric,index) => <div key={metric.label} className={`min-w-0 ${index ? "border-l border-border/70 pl-4" : "sm:pl-2"}`}><span className="block text-xs text-muted-foreground">{mt(metric.label)}</span><strong className="mt-1 block break-words text-xl font-semibold tracking-tight tabular-nums">{metric.value}</strong></div>)}</div>
+        </div>}
       </CardContent>
-    </Card>
-  );
-}
+    </Card>}
 
+    <div className="grid gap-4 lg:grid-cols-2">{upcomingCard}{historyCard}</div>
+    {upcoming.length > 0 && <BookingCalendarWidget bookings={bookings.map(booking => ({...booking,status:booking.status === "cancellation_requested" ? "confirmed" as const : booking.status}))} isLoading={isLoadingBookings} onNavigateToBookings={() => onNavigate("bookings")} />}
+  </div>;
+}

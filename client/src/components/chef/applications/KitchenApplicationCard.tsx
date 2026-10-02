@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Building, CheckCircle, Clock, FileText, MapPin, ArrowRight, User, Mail, Phone, FileCheck, Eye } from "lucide-react";
+import { Building, CheckCircle, Clock, FileText, MapPin, ChevronRight, User, Mail, Phone, FileCheck, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -466,16 +466,16 @@ export function KitchenApplicationDetails({
           ) : (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/kitchen-requirements/${app.locationId}`}>
-                <ArrowRight className="mr-1 h-4 w-4" />
                 {t("continueKitchenApplication", { defaultValue: "Continue application" })}
+                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
               </Link>
             </Button>
           ))}
         {(app.status === "rejected" || app.status === "cancelled") && (
           <Button variant="outline" size="sm" asChild>
             <Link href={`/apply-kitchen/${app.locationId}`}>
-              <ArrowRight className="mr-1 h-4 w-4" />
               {t("kdApplyAgain", "Apply again")}
+                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
             </Link>
           </Button>
         )}
@@ -514,38 +514,37 @@ export default function KitchenApplicationCard({
   return (
     <>
       <Card className="overflow-hidden shadow-none">
-        <div className="flex items-center gap-4 p-5">
-          {imageUrl ? (
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border">
-              <SmartImage
-                src={getR2ProxyUrl(imageUrl)}
-                alt={kitchenName}
-                className="h-full w-full object-cover"
-              />
-            </div>
-          ) : (
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <Building className="h-6 w-6 text-muted-foreground" />
-            </div>
-          )}
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <TruncatedText className="truncate font-medium">{kitchenName}</TruncatedText>
-                <KitchenStatusChip display={display} />
+        <div className="min-w-0 p-4 sm:p-5">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            {imageUrl ? (
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border">
+                <SmartImage
+                  src={getR2ProxyUrl(imageUrl)}
+                  alt={kitchenName}
+                  className="h-full w-full object-cover"
+                />
               </div>
-              <p className="mt-1 flex items-center gap-1 truncate text-sm text-muted-foreground">
-                <MapPin className="h-3 w-3 shrink-0" />
-                <TruncatedText className="truncate">{app.location?.address || t("apptabAddressNotAvailable")}</TruncatedText>
-                <span className="text-border">·</span>
-                <span>{display.stepCaption}</span>
-              </p>
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Building className="h-6 w-6 text-muted-foreground" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <TruncatedText className="block break-words font-medium">{kitchenName}</TruncatedText>
+              <div className="mt-1.5"><KitchenStatusChip display={display} /></div>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+          </div>
+          <p className="mt-3 flex min-w-0 items-start gap-1.5 text-sm text-muted-foreground">
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 break-words">{app.location?.address || t("apptabAddressNotAvailable")}</span>
+          </p>
+          {display.actionKind !== "book" && <p className="mt-1 text-xs text-muted-foreground">{display.stepCaption}</p>}
+          <div className="mt-4 flex min-w-0 flex-wrap gap-2 border-t pt-3">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="min-w-0 flex-1 sm:flex-none"
                 onClick={openKitchenApplications}
               >
                 <Eye />
@@ -555,6 +554,7 @@ export default function KitchenApplicationCard({
                 <Button
                   size="sm"
                   variant="outline"
+                  className="min-w-0 flex-1 sm:flex-none"
                   onClick={() =>
                     onBookKitchen(
                       app.locationId,
@@ -568,18 +568,17 @@ export default function KitchenApplicationCard({
                 </Button>
               )}
               {display.actionKind === "complete-step" && (
-                <Button size="sm" variant="outline" asChild>
+                <Button size="sm" variant="outline" className="min-w-0 flex-1 sm:flex-none" asChild>
                   <Link href={`/kitchen-requirements/${app.locationId}`}>{t("apptabContinue")}</Link>
                 </Button>
               )}
               {display.actionKind === "discover" && (
-                <Button size="sm" variant="outline" asChild>
+                <Button size="sm" variant="outline" className="min-w-0 flex-1 sm:flex-none" asChild>
                   <Link href={`/apply-kitchen/${app.locationId}`}>
                     {t("kdApplyAgain", "Apply again")}
                   </Link>
                 </Button>
               )}
-            </div>
           </div>
         </div>
       </Card>

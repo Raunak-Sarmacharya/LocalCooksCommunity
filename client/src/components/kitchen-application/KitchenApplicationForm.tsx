@@ -25,6 +25,7 @@ import { KitchenManagerContactCard } from "./KitchenManagerContactCard";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { InfoChip } from "@/components/chef/info-chip";
 import { VerifiedDocumentChip } from "@/components/common/VerifiedDocumentChip";
@@ -1756,8 +1757,9 @@ export default function KitchenApplicationForm({
   // Show loading state while fetching requirements
   if (isLoadingRequirements || isLoadingChefProfile) {
     return (
-      <div className="max-w-[700px] mx-auto py-12 flex justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="mx-auto max-w-[700px] space-y-4 py-8" role="status" aria-label="Loading application">
+        <Skeleton className="h-8 w-1/2" />
+        {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-20 w-full rounded-xl" />)}
       </div>
     );
   }

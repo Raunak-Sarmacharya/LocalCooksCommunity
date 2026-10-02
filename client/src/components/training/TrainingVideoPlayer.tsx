@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -494,11 +495,9 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
   // Loading state
   if (isLoading) {
     return (
-      <div className={cn("flex items-center justify-center py-16", className)}>
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-sm text-muted-foreground">{t("trPlayerLoading")}</p>
-        </div>
+      <div className={cn("space-y-4", className)} role="status" aria-label={t("trPlayerLoading")}>
+        <Skeleton className="aspect-video w-full rounded-xl" />
+        <Skeleton className="h-5 w-1/2" />
       </div>
     );
   }

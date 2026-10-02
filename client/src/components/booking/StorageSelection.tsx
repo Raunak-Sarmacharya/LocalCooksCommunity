@@ -1,3 +1,4 @@
+import { EQUIPMENT_ICON_NAME, STORAGE_ICON_NAME } from "@/components/ui/inventory-icons";
 import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Calendar, calendarRangeCellClass, calendarRangeDayClass, calendarRangeDayModifiers } from "@/components/ui/calendar";
@@ -453,7 +454,7 @@ export function StorageSelection({
   if (activeListings.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-        <Icon icon="mdi:archive-outline" className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" aria-hidden />
+        <Icon icon={STORAGE_ICON_NAME} className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" aria-hidden />
         <p className="text-sm text-muted-foreground">{t("storageSelNoStorage")}</p>
       </div>
     );

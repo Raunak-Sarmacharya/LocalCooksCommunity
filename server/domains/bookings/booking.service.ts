@@ -66,6 +66,12 @@ export class BookingService {
         // 1.1 Validate Chef Access (Tier 2 Requirement)
         const kitchen = await kitchenService.getKitchenById(data.kitchenId);
         if (!kitchen) throw new Error("Kitchen not found");
+        const selectedStorageIds = data.selectedStorage?.map(item => item.storageListingId) || data.selectedStorageIds || [];
+        if (selectedStorageIds.length) {
+            const { inventoryService } = await import('../inventory/inventory.service');
+            for (const id of selectedStorageIds) if ((await inventoryService.getStorageListingById(id))?.awaitingRemoval)
+                throw new Error('This storage is awaiting confirmed removal and cannot be reserved yet.');
+        }
 
         const pricingMode = data.pricingMode ?? 'hourly';
         if (pricingMode !== 'hourly' && pricingMode !== 'daily') throw new Error('Invalid pricing mode');
@@ -528,7 +534,7 @@ export class BookingService {
             const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(eq(kitchens.id, kitchenId)).limit(1);
-            const timezone = location?.timezone || 'America/St_Johns';
+            const timezone = 'America/St_Johns';
             if (requestedIntervals.some(slot => !isUnambiguousBookingSlot(dateStr, slot, availabilityStartTime, timezone))) {
                 return { valid: false, error: 'This hour is affected by a daylight saving clock change and is unavailable for self-service booking' };
             }
@@ -629,7 +635,7 @@ export class BookingService {
                 .where(eq(kitchens.id, kitchenId)).limit(1);
             return slots.filter(slot => !bookedSlots.has(slot) && isUnambiguousBookingSlot(
                 dateStr, { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
-                location?.timezone || 'America/St_Johns'));
+                'America/St_Johns'));
         } catch (error) {
             logger.error('Error getting available time slots:', error);
             throw error;
@@ -721,7 +727,7 @@ export class BookingService {
                 const bookedCount = slotBookingCounts.get(slot) || 0;
                 const clockSafe = isUnambiguousBookingSlot(dateStr,
                     { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
-                    location?.timezone || 'America/St_Johns');
+                    'America/St_Johns');
                 return {
                     time: slot,
                     available: clockSafe ? Math.max(0, capacity - bookedCount) : 0,
@@ -891,7 +897,7 @@ export class BookingService {
         const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .where(eq(kitchens.id, kitchenId)).limit(1);
-        const timezone = location?.timezone || 'America/St_Johns';
+        const timezone = 'America/St_Johns';
 
         const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string }>();
         weeklyAvailability.forEach((a: any) => {

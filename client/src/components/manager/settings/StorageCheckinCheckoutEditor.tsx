@@ -1,3 +1,4 @@
+import { StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 /**
  * Storage Check-In / Check-Out Unified Editor
  *
@@ -19,7 +20,7 @@
 import { useCallback, useMemo, useState, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { Plus, Trash2, Camera, ClipboardCheck, Eye, Info, Boxes, LogIn, LogOut, Upload, ArrowUpDown } from "@/components/ui/manager-icons";
+import { Plus, Trash2, Camera, ClipboardCheck, Eye, Info, LogIn, LogOut, Upload, ArrowUpDown } from "@/components/ui/manager-icons";
 import { ColumnDef, SortingState, flexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,8 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormLegend } from "@/components/ui/form-legend";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -285,9 +287,9 @@ function StageCheckbox({
   );
 }
 
-// ─── Chef Preview Sheet ───────────────────────────────────────────────────────
+// ─── Chef Preview Dialog ───────────────────────────────────────────────────────
 
-function ChefPreviewSheet({
+function ChefPreviewDialog({
   open,
   onOpenChange,
   stage,
@@ -309,17 +311,17 @@ function ChefPreviewSheet({
   const hasAnyContent = filledItems.length > 0 || !!instructions;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Boxes className="h-5 w-5 text-amber-600" />
             {stage === "checkin" ? mt("storageCheckInTitle") : mt("storageCheckOutTitle")}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             This is exactly what the chef sees — updates as you edit.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         {filledItems.length > 0 && <FormLegend className="mt-4 mb-0" />}
 
@@ -422,8 +424,8 @@ function ChefPreviewSheet({
             uploaded.
           </p>
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
@@ -462,8 +464,8 @@ function StageHeader({
 
   return (
     <div className={cn("rounded-lg border p-3 space-y-3", panelClass)}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2 min-w-0">
+      <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 items-start gap-2">
           <div
             className={cn(
               "size-8 rounded-md flex items-center justify-center bg-background border shrink-0",
@@ -501,7 +503,7 @@ function StageHeader({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex w-full items-center justify-between gap-2">
           {enabled && (
             <Button
               type="button"
@@ -515,6 +517,7 @@ function StageHeader({
           <Switch
             checked={enabled}
             onCheckedChange={onEnabledChange}
+            className="ml-auto"
             aria-label={
               enabled ? `Disable Storage ${title}` : `Enable Storage ${title}`
             }
@@ -635,7 +638,7 @@ function ChecklistTable({
         cell: ({ row }) => {
           const item = row.original;
           return (
-            <div className="space-y-1 min-w-[220px]">
+            <div className="min-w-0 space-y-1 md:min-w-[220px]">
               <Input
                 value={item.label}
                 onChange={(e) =>
@@ -834,7 +837,32 @@ function ChecklistTable({
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border overflow-x-auto">
+        <>
+        <div className="space-y-3 md:hidden">
+          {table.getRowModel().rows.length ? table.getRowModel().rows.map((row) => {
+            const cell = (id: string) => row.getVisibleCells().find((entry) => entry.column.id === id);
+            const renderCell = (id: string) => {
+              const entry = cell(id);
+              return entry ? flexRender(entry.column.columnDef.cell, entry.getContext()) : null;
+            };
+            return <div key={row.id} className="min-w-0 space-y-3 rounded-xl border bg-card p-3">
+              <div className="flex min-w-0 items-start gap-2">
+                <span className="pt-2 text-xs tabular-nums text-muted-foreground">{row.index + 1}.</span>
+                <div className="min-w-0 flex-1 [&>div]:min-w-0">{renderCell("label")}</div>
+                {renderCell("actions")}
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-t pt-3">
+                {([['checkin', mt("checkIn")], ['checkout', mt("checkOut")], ['photo', mt("photo")]] as const).map(([id, label]) =>
+                  <div key={id} className="flex flex-col items-center gap-1 text-center">
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                    {renderCell(id)}
+                  </div>
+                )}
+              </div>
+            </div>;
+          }) : <p className="rounded-lg border py-8 text-center text-xs text-muted-foreground">No items match "{filter}".</p>}
+        </div>
+        <div className="hidden rounded-lg border md:block md:overflow-x-auto">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -912,6 +940,7 @@ function ChecklistTable({
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       <Button
@@ -1010,7 +1039,7 @@ export function StorageCheckinCheckoutEditor({
         />
       </CardContent>
 
-      <ChefPreviewSheet
+      <ChefPreviewDialog
         open={previewStage !== null}
         onOpenChange={(o) => {
           if (!o) setPreviewStage(null);

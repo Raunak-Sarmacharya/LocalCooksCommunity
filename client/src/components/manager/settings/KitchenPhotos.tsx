@@ -52,14 +52,11 @@ import {
 } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { cn } from "@/lib/utils";
 import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
+import { useListingImpactConfirm } from "@/components/manager/ListingImpactConfirm";
 
 /** Revealed on hover and — importantly — on keyboard focus. */
 const OVERLAY_REVEAL =
   "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100";
-
-/** Opts a `Button` out of the chef marketing CTA surface (pill radius, layered
- *  shadow, lift on hover) so it reads as product UI rather than a promo. */
-const QUICK_ACTION = "rounded-lg shadow-none hover:shadow-none hover:translate-y-0 active:translate-y-0";
 
 interface KitchenPhotosProps {
   locationId: number;
@@ -85,6 +82,7 @@ interface KitchenPhotosProps {
 export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const listingImpact = useListingImpactConfirm();
 
   const [gallery, setGallery] = useState<string[]>(kitchen.galleryImages ?? []);
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null);
@@ -186,6 +184,7 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
   const setCover = useCallback(
     async (imageUrl: string | null) => {
       try {
+        if (!await listingImpact.confirm(kitchen.id, !imageUrl)) return;
         const response = await fetch(`/api/manager/kitchens/${kitchen.id}/image`, {
           method: "PUT",
           headers: { ...(await authHeader()), "Content-Type": "application/json" },
@@ -206,7 +205,7 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
         toast({ title: mt("error"), description: error.message, variant: "destructive" });
       }
     },
-    [authHeader, kitchen.id, refreshKitchens, toast],
+    [authHeader, kitchen.id, refreshKitchens, toast, listingImpact.confirm],
   );
 
   /** Upload a batch, then save the gallery once rather than once per file. */
@@ -399,14 +398,14 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
             </div>
             <Button
               size="sm"
-              className={cn("shrink-0", QUICK_ACTION)}
+              className="shrink-0"
               disabled={batch !== null}
               onClick={() => galleryInputRef.current?.click()}
             >
               {batch ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <ImagePlus className="mr-1.5 h-4 w-4" />
+                <ImagePlus className="h-4 w-4" />
               )}
               {mt("addPhotos")}
             </Button>
@@ -685,6 +684,7 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
         </DialogContent>
       </Dialog>
 
+      {listingImpact.dialog}
       <AlertDialog
         open={pendingRemoval !== null}
         onOpenChange={(open) => {

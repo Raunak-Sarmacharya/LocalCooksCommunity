@@ -22,6 +22,16 @@ const conversation = (id: string, extra: Partial<Conversation> = {}): Conversati
 });
 
 describe("ConversationList archive", () => {
+  it("distinguishes an empty inbox from a search with no matches", () => {
+    const { rerender } = render(<ConversationList conversations={[]} onSelect={vi.fn()} getPartnerName={() => "Chef"} getPartnerLocation={() => "Kitchen"} />);
+    expect(screen.getByText("chatNoConversations")).toBeInTheDocument();
+    rerender(<ConversationList conversations={[conversation("1")]} onSelect={vi.fn()} getPartnerName={() => "Chef"} getPartnerLocation={() => "Kitchen"} />);
+    fireEvent.change(screen.getByPlaceholderText("chatSearchPlaceholder"), { target: { value: "Unknown" } });
+    expect(screen.getByText("chatNoSearchResults")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("chatClearSearch"));
+    expect(screen.getByText("Chef")).toBeInTheDocument();
+  });
+
   it("groups manually archived and inactive chats for a manager, with a muted inactive chip", () => {
     const onToggleArchive = vi.fn();
     render(<ConversationList

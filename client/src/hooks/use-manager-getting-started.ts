@@ -123,15 +123,16 @@ export function useManagerGettingStarted(isSetupComplete: boolean): ManagerGetti
   } = useManagerDashboard();
 
   /*
-   * The host's PRIMARY kitchen — the earliest one they created.
+   * The host's PRIMARY kitchen — a published one, or the earliest draft.
    *
-   * Earliest-created rather than "the selected one": the checklist must not move under the host as
-   * they switch kitchens, which is exactly the repetitive feel this design is avoiding. It is also
-   * the kitchen they set up first, i.e. the one the rows are teaching.
+   * The account-level polish rows should never describe a second draft while another
+   * kitchen is published. Keep the choice stable by creation order within each state.
    */
   const primaryKitchen = useMemo(() => {
     if (!kitchens.length) return null;
     return [...kitchens].sort((a, b) => {
+      const byPublication = Number(b.listingStatus === "active") - Number(a.listingStatus === "active");
+      if (byPublication !== 0) return byPublication;
       const byDate = String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
       return byDate !== 0 ? byDate : a.id - b.id;
     })[0];
@@ -198,7 +199,7 @@ export function useManagerGettingStarted(isSetupComplete: boolean): ManagerGetti
         hasPublishedKitchen: isLive,
         // The checklist out of the shared review payload — the same object the review page renders.
         readiness: readinessReview?.checklist ?? null,
-        hasConfirmedBooking: bookings.some((booking) => booking.status === "confirmed"),
+        hasConfirmedBooking: bookings.some((booking) => booking.status === "confirmed" || booking.status === "completed"),
       }),
     [isSetupComplete, phoneVerified, stripeStatus, isLive, readinessReview, bookings],
   );
@@ -216,6 +217,7 @@ export function useManagerGettingStarted(isSetupComplete: boolean): ManagerGetti
       isSetupComplete,
       phoneVerified,
       isLive,
+      hasEverBooked: bookings.some((booking) => booking.status === "confirmed" || booking.status === "completed"),
     });
 
     return {

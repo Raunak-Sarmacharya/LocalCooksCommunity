@@ -17,6 +17,7 @@ import { createLocationSchema, CreateLocationFormValues } from "@/schemas/locati
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { FormLegend } from "@/components/ui/form-legend";
 import { DateField } from "@/components/ui/date-field";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
 interface CreateLocationDialogProps {
     open: boolean;
@@ -41,6 +42,7 @@ export function CreateLocationDialog({
     const [isUploadingLicense, setIsUploadingLicense] = useState(false);
     const [isUploadingTerms, setIsUploadingTerms] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
+    const [confirmExit, setConfirmExit] = useState(false);
 
     const form = useForm<CreateLocationFormValues>({
         resolver: zodResolver(createLocationSchema),
@@ -57,6 +59,11 @@ export function CreateLocationDialog({
         setLicenseFile(null);
         setLicenseExpiryDate("");
         setTermsFile(null);
+    };
+    const requestClose = () => {
+        if (isCreating || isUploadingLicense || isUploadingTerms) return;
+        if (form.formState.isDirty || licenseFile || termsFile || licenseExpiryDate) setConfirmExit(true);
+        else { onOpenChange(false); resetForm(); }
     };
 
     /**
@@ -187,10 +194,8 @@ export function CreateLocationDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={(val) => {
-            if (!val) resetForm(); // Reset on close
-            onOpenChange(val);
-        }}>
+        <>
+        <Dialog open={open} onOpenChange={(val) => val ? onOpenChange(true) : requestClose()}>
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
@@ -399,7 +404,7 @@ export function CreateLocationDialog({
                         </div>
 
                         <DialogFooter className="mt-6">
-                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>{mt("cancel")}</Button>
+                            <Button type="button" variant="ghost" onClick={requestClose} disabled={isCreating}>{mt("cancel")}</Button>
                             <StatusButton
                                 type="submit"
                                 status={(isCreating || isUploadingLicense || isUploadingTerms) ? "loading" : "idle"}
@@ -410,5 +415,7 @@ export function CreateLocationDialog({
                 </Form>
             </DialogContent>
         </Dialog>
+        <UnsavedChangesDialog open={confirmExit} onOpenChange={setConfirmExit} description={mt("locationModalUnsavedDescription")} onDiscard={() => { setConfirmExit(false); onOpenChange(false); resetForm(); }} />
+        </>
     );
 }

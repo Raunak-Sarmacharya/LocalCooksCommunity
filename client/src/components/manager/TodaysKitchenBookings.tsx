@@ -17,19 +17,22 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
-import { format } from "date-fns"
+import { formatInTimezone as format } from "@shared/timezone-utils"
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { SmartImage } from "@/components/ui/smart-image";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
+import { ct } from "@/i18n/chef-ns";
 import { calendarDateForBookingTime } from '@shared/operating-hours';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +49,7 @@ interface TodayBooking {
   endTime: string
   operatingWindowStartTime?: string | null
   status: string
+  operationsComplete?: boolean
   checkinStatus: string | null
   checkedInAt: string | null
   checkedInMethod: string | null
@@ -59,6 +63,7 @@ interface TodayBooking {
   checkoutPhotoUrls: string[] | null
   checkinNotes: string | null
   checkoutNotes: string | null
+  checkoutManagerMessage?: string | null
   checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null
   checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null
   accessCode: string | null
@@ -357,7 +362,7 @@ export function TodaysKitchenBookings() {
           method: "POST",
           headers,
           credentials: "include",
-          body: JSON.stringify({ managerNotes, visitId }),
+          body: JSON.stringify({ sharedManagerMessage: managerNotes, visitId }),
         }
       )
       if (!response.ok) {
@@ -371,7 +376,7 @@ export function TodaysKitchenBookings() {
       queryClient.invalidateQueries({
         queryKey: ["/api/manager/bookings/today"],
       })
-      closeSheet()
+      closeDialog()
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -401,7 +406,7 @@ export function TodaysKitchenBookings() {
           method: "POST",
           headers,
           credentials: "include",
-          body: JSON.stringify({ ...claimData, visitId }),
+          body: JSON.stringify({ ...claimData, managerNotes: undefined, sharedManagerMessage: claimData.managerNotes, visitId }),
         }
       )
       if (!response.ok) {
@@ -415,14 +420,14 @@ export function TodaysKitchenBookings() {
       queryClient.invalidateQueries({
         queryKey: ["/api/manager/bookings/today"],
       })
-      closeSheet()
+      closeDialog()
     },
     onError: (error: Error) => {
       toast.error(error.message)
     },
   })
 
-  const closeSheet = () => {
+  const closeDialog = () => {
     setSelectedBooking(null)
     setActionMode("view")
     setNotes("")
@@ -471,15 +476,6 @@ export function TodaysKitchenBookings() {
               <CardTitle>{mt("upcomingKitchenBookings")}</CardTitle>
               <CardDescription>{mt("liveCheckInCheckoutStatusAndUpcomingBookings")}</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              <RefreshCw
-                className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")}
-              />{mt("refresh")}</Button>
           </div>
 
           {/* Stats Row */}
@@ -511,8 +507,8 @@ export function TodaysKitchenBookings() {
 
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="space-y-3 py-3" role="status" aria-label="Loading bookings">
+              {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
             </div>
           ) : bookings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -520,7 +516,27 @@ export function TodaysKitchenBookings() {
               <p className="text-sm">{mt("noUpcomingBookings")}</p>
             </div>
           ) : (
-            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {bookings.map((booking) => <article key={`${booking.id}-${booking.visitId ?? 'single'}`} className="min-w-0 space-y-3 rounded-xl border bg-card p-4">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0"><p className="break-words font-semibold">{booking.kitchenName}</p><p className="text-sm text-muted-foreground">{format(new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`), "MMM d, yyyy")} · {formatTime(booking.startTime)} – {formatTime(booking.endTime)}</p></div>
+                  {booking.status === 'pending' ? <Badge variant="outline">{mt("awaitingApproval")}</Badge> : getCheckinBadge(booking.checkinStatus)}
+                </div>
+                <p className="break-words text-sm">{booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}</p>
+                {booking.visitId && <p className="text-xs text-muted-foreground">Visit {(booking.visitBlockIndex ?? 0) + 1}</p>}
+                {booking.referenceCode && <p className="break-all font-mono text-xs text-muted-foreground">{booking.referenceCode}</p>}
+                {booking.hasAccessCodeHash && <p className="text-xs text-blue-600">{mt("codeSet")}</p>}
+                <div className="flex flex-wrap gap-2 border-t pt-3">
+                  <Button variant="outline" size="sm" onClick={() => openAction(booking, "view")}>{mt("viewDetails")}</Button>
+                  {booking.checkinStatus === "checkout_requested" && <>
+                    <Button variant="outline" size="sm" onClick={() => openAction(booking, "clear-checkout")}>{mt("clearNoIssues")}</Button>
+                    <Button variant="outline" size="sm" onClick={() => openAction(booking, "file-claim")}>{mt("fileDamageClaim")}</Button>
+                  </>}
+                </div>
+              </article>)}
+            </div>
+            <div className="hidden rounded-md border overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -541,7 +557,7 @@ export function TodaysKitchenBookings() {
                       )}
                     >
                       <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
-                        <div>{format(new Date(booking.bookingDate), "MMM d, yyyy")}</div>
+                        <div>{format(new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`), "MMM d, yyyy")}</div>
                         <div className="text-muted-foreground mb-1">
                           {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
                         </div>
@@ -554,6 +570,7 @@ export function TodaysKitchenBookings() {
                           ) : (
                             getCheckinBadge(booking.checkinStatus)
                           )}
+                          {booking.operationsComplete && <p className="text-xs text-muted-foreground whitespace-normal">{ct('bookingAttendanceEnded')}</p>}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -627,6 +644,7 @@ export function TodaysKitchenBookings() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -638,17 +656,31 @@ export function TodaysKitchenBookings() {
           <CardDescription>{mt("scheduledViewingsForYourKitchens")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="min-w-0">
             {isLoadingViewings ? (
-              <div className="py-8 text-center text-muted-foreground flex items-center justify-center">
-                <Loader2 className="w-6 h-6 animate-spin mr-2" />{mt("loadingViewings")}</div>
+              <div className="space-y-3 py-3" role="status" aria-label={mt("loadingViewings")}>
+                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
+              </div>
             ) : upcomingViewings.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground bg-gray-50/50 rounded-lg border border-dashed">
                 <Calendar className="w-10 h-10 mx-auto text-gray-400 mb-2 opacity-50" />
                 <p className="text-sm">{mt("noUpcomingViewingsScheduled")}</p>
               </div>
             ) : (
-              <Table>
+              <>
+              <div className="space-y-3 md:hidden">
+                {upcomingViewings.map((viewingRec: any) => {
+                  const start = new Date(viewingRec.viewing.scheduledAt);
+                  return <article key={viewingRec.viewing.id} className="min-w-0 rounded-xl border bg-card p-4">
+                    <p className="break-words font-semibold">{viewingRec.kitchenName}</p>
+                    {viewingRec.locationName && <p className="text-xs text-muted-foreground">{viewingRec.locationName}</p>}
+                    <p className="mt-1 text-sm text-muted-foreground">{format(start, "MMM d, yyyy")} · {start.toLocaleTimeString([], { timeZone: 'America/St_Johns', hour: "2-digit", minute: "2-digit" })} – {new Date(start.getTime() + viewingRec.viewing.durationMinutes * 60000).toLocaleTimeString([], { timeZone: 'America/St_Johns', hour: "2-digit", minute: "2-digit" })}</p>
+                    <p className="mt-2 break-words text-sm">{viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Chef #${viewingRec.viewing.chefId}`}</p>
+                    <Badge className="mt-3" variant={viewingRec.viewing.status === "pending" ? "outline" : "secondary"}>{viewingRec.viewing.status}</Badge>
+                  </article>;
+                })}
+              </div>
+              <div className="hidden overflow-x-auto md:block"><Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{mt("time")}</TableHead>
@@ -659,14 +691,14 @@ export function TodaysKitchenBookings() {
                 <TableBody>
                   {upcomingViewings.map((viewingRec: any) => {
                     const d = new Date(viewingRec.viewing.scheduledAt);
-                    const isToday = d.toDateString() === new Date().toDateString();
+                    const isToday = format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                     const dEnd = new Date(d.getTime() + viewingRec.viewing.durationMinutes * 60000);
 
                     return (
                       <TableRow key={`viewing-${viewingRec.viewing.id}`}>
                         <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
                           <div>{format(d, "MMM d, yyyy")}</div>
-                          <div className="text-muted-foreground mb-1">{d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} – {dEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                          <div className="text-muted-foreground mb-1">{d.toLocaleTimeString([], { timeZone: 'America/St_Johns',hour: '2-digit', minute:'2-digit'})} – {dEnd.toLocaleTimeString([], { timeZone: 'America/St_Johns',hour: '2-digit', minute:'2-digit'})}</div>
                           <div className="whitespace-nowrap">
                             <Badge
                               variant={
@@ -704,35 +736,36 @@ export function TodaysKitchenBookings() {
                     );
                   })}
                 </TableBody>
-              </Table>
+              </Table></div>
+              </>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Action Sheet */}
-      <Sheet
+      {/* Action Dialog */}
+      <Dialog
         open={selectedBooking !== null}
-        onOpenChange={(open) => !open && closeSheet()}
+        onOpenChange={(open) => !open && closeDialog()}
       >
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <AppDialogContent className="sm:max-w-md">
           {selectedBooking && (
             <>
-              <SheetHeader>
-                <SheetTitle>
+              <DialogHeader>
+                <DialogTitle>
                   {actionMode === "clear-checkout" && mt("clearCheckout")}
                   {actionMode === "file-claim" && mt("fileDamageClaim")}
                   {actionMode === "view" && mt("bookingDetailsTitle")}
-                </SheetTitle>
-                <SheetDescription>
+                </DialogTitle>
+                <DialogDescription>
                   {selectedBooking.kitchenName} ·{" "}
                   {formatTime(selectedBooking.startTime)} –{" "}
                   {formatTime(selectedBooking.endTime)}
                   {selectedBooking.visitId && ` · Visit ${(selectedBooking.visitBlockIndex ?? 0) + 1}`}
                   {selectedBooking.referenceCode &&
                     ` · ${selectedBooking.referenceCode}`}
-                </SheetDescription>
-              </SheetHeader>
+                </DialogDescription>
+              </DialogHeader>
 
               <div className="py-4 space-y-4">
                 {/* Common booking info */}
@@ -1018,7 +1051,7 @@ export function TodaysKitchenBookings() {
                       the booking.
                     </p>
                     <div>
-                      <Label>{mt("managerNotesOptional")}</Label>
+                      <Label>{ct('bookingAttendanceMessage')}</Label>
                       <Textarea
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
@@ -1106,7 +1139,7 @@ export function TodaysKitchenBookings() {
                         <label htmlFor="evidence-photo-upload" className="flex flex-col items-center justify-center cursor-pointer">
                           {isUploadingEvidence ? (
                             <>
-                              <Loader2 className="h-6 w-6 text-primary animate-spin mb-1" />
+                              <Upload className="h-6 w-6 text-primary mb-1" />
                               <span className="text-xs text-muted-foreground">{mt("uploadingPercent", { percent: Math.round(evidenceUploadProgress) })}</span>
                             </>
                           ) : (
@@ -1124,11 +1157,11 @@ export function TodaysKitchenBookings() {
                     </div>
 
                     <div>
-                      <Label>{mt("managerNotesOptional")}</Label>
+                      <Label>{ct('bookingAttendanceMessage')}</Label>
                       <Textarea
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder={mt("internalNotes")}
+                        placeholder="Message shared with the chef"
                         rows={2}
                       />
                     </div>
@@ -1137,8 +1170,8 @@ export function TodaysKitchenBookings() {
               </div>
 
               {actionMode !== "view" && (
-                <SheetFooter className="gap-2 sm:gap-0">
-                  <Button variant="outline" onClick={closeSheet}>{mt("cancel")}</Button>
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button variant="ghost" onClick={closeDialog}>{mt("cancel")}</Button>
 
                   {actionMode === "clear-checkout" && (
                     <Button
@@ -1225,12 +1258,12 @@ export function TodaysKitchenBookings() {
                       File Claim
                     </Button>
                   )}
-                </SheetFooter>
+                </DialogFooter>
               )}
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </AppDialogContent>
+      </Dialog>
     </div>
   )
 }

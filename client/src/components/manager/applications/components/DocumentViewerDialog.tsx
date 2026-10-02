@@ -9,6 +9,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusButton } from "@/components/ui/status-button";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { auth } from "@/lib/firebase";
@@ -219,10 +220,10 @@ export function DocumentViewerDialog({
                             text={labels.loadFailed}
                         />
                     ) : previewLoading ? (
-                        <Placeholder
-                            icon={<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
-                            text={labels.loading}
-                        />
+                        <div className="space-y-4" role="status" aria-label={labels.loading}>
+                            <Skeleton className="h-8 w-1/2" />
+                            <Skeleton className="h-[420px] w-full rounded-xl" />
+                        </div>
                     ) : previewError || assetFailed || !previewUrl ? (
                         <Placeholder
                             icon={<AlertTriangle className="h-6 w-6 text-destructive" />}

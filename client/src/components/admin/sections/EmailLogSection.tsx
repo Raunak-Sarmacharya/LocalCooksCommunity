@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { CheckCircle, ChevronLeft, ChevronRight, Download, Eye, Mail, RefreshCw, Search, XCircle, AlertTriangle, Loader2, RotateCcw } from "lucide-react";
 import { downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
@@ -403,18 +404,6 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
         <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={logs.length === 0}>
           <Download className="h-4 w-4 mr-1" /> CSV
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            logsQuery.refetch();
-            statsQuery.refetch();
-          }}
-          disabled={logsQuery.isFetching}
-        >
-          <RefreshCw className={`h-4 w-4 mr-1 ${logsQuery.isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
         <span className="text-xs text-muted-foreground ml-auto">{rangeLabel}</span>
       </div>
 
@@ -529,14 +518,14 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
         </div>
       )}
 
-      <Sheet open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <SheetContent className="sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Email details</SheetTitle>
-            <SheetDescription>
+      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <AppDialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Email details</DialogTitle>
+            <DialogDescription>
               Delivery record for this outgoing message.
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           {selectedLog && (
             <div className="mt-6 space-y-4 text-sm">
               <div className="flex items-center justify-between">
@@ -626,8 +615,8 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
               )}
             </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </AppDialogContent>
+      </Dialog>
     </div>
   );
 }

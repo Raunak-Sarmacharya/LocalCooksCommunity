@@ -301,7 +301,7 @@ export default function TermsContent() {
       </ul>
       <p className="mb-4">Local Cooks may reject or return incomplete or unsupported claims.</p>
 
-      <p className="mb-4"><strong>Chef notification and response.</strong> When a Kitchen Owner submits a damage claim, Local Cooks will notify the Chef and provide a fixed response period (for example, 72 hours) to accept, pay, dispute, or provide additional information. If the Chef does not respond within the stated time, Local Cooks may treat the claim as undisputed for the purpose of facilitating payment, subject to Applicable Law and the available claim limits.</p>
+      <p className="mb-4"><strong>Chef notification and response.</strong> When a Kitchen Owner submits a damage claim, Local Cooks will notify the Chef and provide a fixed response period (set by Local Cooks) to accept, pay, dispute, or provide additional information. If the Chef does not respond within the stated time, Local Cooks will review the claim before any payment is facilitated, subject to Applicable Law and the available claim limits.</p>
 
       <p className="mb-2"><strong>Platform review and decision.</strong> Local Cooks may review the Booking details, messages, evidence, and any responses and, in its discretion, may:</p>
       <ul className="list-disc pl-6 mb-4">

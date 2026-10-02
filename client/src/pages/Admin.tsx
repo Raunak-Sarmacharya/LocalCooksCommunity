@@ -61,6 +61,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode, fallbac
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1269,8 +1270,8 @@ function AdminDashboard() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center p-8">
           <h2 className="text-xl font-semibold mb-2">Admin Dashboard Error</h2>
-          <p className="text-muted-foreground mb-4">Something went wrong. Please refresh the page.</p>
-          <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+          <p className="text-muted-foreground mb-4">Something went wrong.</p>
+          <Button onClick={() => window.location.reload()}>Try again</Button>
         </div>
       </div>
     }>
@@ -1306,9 +1307,9 @@ function AdminDashboard() {
   function renderApplicationList(apps: Application[]) {
     if (isLoading) {
       return (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4">Loading applications...</p>
+        <div className="space-y-3 py-4" role="status" aria-label="Loading applications">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-xl" />)}
         </div>
       );
     }

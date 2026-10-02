@@ -340,7 +340,7 @@ function ManagerKitchenApplicationsContentLegacy({
       setReviewFeedback("");
     } catch (error: any) {
       toast({ title: mt("error"),
-        description: error.message || "Failed to approve application",
+        description: error.message || "Failed to approve access request",
         variant: "destructive",
       });
     }
@@ -362,7 +362,7 @@ function ManagerKitchenApplicationsContentLegacy({
       setReviewFeedback("");
     } catch (error: any) {
       toast({ title: mt("error"),
-        description: error.message || "Failed to approve Chef Application Requirements",
+        description: error.message || "Failed to approve kitchen access requirements",
         variant: "destructive",
       });
     }
@@ -391,7 +391,7 @@ function ManagerKitchenApplicationsContentLegacy({
       setReviewFeedback("");
     } catch (error: any) {
       toast({ title: mt("error"),
-        description: error.message || "Failed to reject application",
+        description: error.message || "Failed to decline access request",
         variant: "destructive",
       });
     }

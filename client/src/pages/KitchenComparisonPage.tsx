@@ -19,6 +19,7 @@ import { SmartImage } from "@/components/ui/smart-image";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import KitchensMap, { type KitchenMapMarker } from "@/components/kitchen/KitchensMap";
 import { tt } from "@/i18n/common-ns";
+import { kitchenPreviewHref as buildKitchenPreviewHref } from "@/lib/kitchen-preview-url";
 
 /**
  * One PUBLISHED KITCHEN, from `/api/public/kitchens`.
@@ -33,6 +34,7 @@ import { tt } from "@/i18n/common-ns";
 interface PublicKitchen {
   id: number;
   name: string;
+  slug?: string | null;
   description?: string | null;
   imageUrl?: string | null;
   galleryImages?: string[];
@@ -444,12 +446,9 @@ export default function KitchenComparisonPage() {
   }, [filteredKitchens]);
 
   const kitchenPreviewHref = (kitchen: PublicKitchen) =>
-    `/kitchen-preview/${kitchen.locationSlug || kitchen.locationId}?kitchenId=${kitchen.id}`;
+    buildKitchenPreviewHref(kitchen.locationSlug || kitchen.locationId, kitchen);
 
   const handleViewDetails = (kitchen: PublicKitchen) => {
-    // `?kitchenId=` is what the preview page reads to open on a SPECIFIC kitchen; without it the
-    // preview falls back to the location's first kitchen. A card that names a kitchen must open
-    // on that kitchen, or two cards at one address would both open the same room.
     navigate(kitchenPreviewHref(kitchen));
   };
 

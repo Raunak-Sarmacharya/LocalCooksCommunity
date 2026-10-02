@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { AdminSidebar, type AdminSection } from "./AdminSidebar";
 import { AdminHeader } from "./AdminHeader";
 import { CommandMenu } from "@/components/command-menu";
@@ -43,9 +44,11 @@ export function AdminLayout({
           isRefreshing={isRefreshing}
           onSearchClick={() => setIsCommandOpen(true)}
         />
-        <main className="flex-1 overflow-auto">
+        <ScrollArea className="flex-1 min-h-0">
+        <main>
           <div className="p-4 md:p-6">{children}</div>
         </main>
+        </ScrollArea>
       </SidebarInset>
       <CommandMenu
         open={isCommandOpen}

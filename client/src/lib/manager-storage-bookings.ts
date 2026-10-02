@@ -1,5 +1,7 @@
 export interface ManagerStorageBooking {
   id: number;
+  kitchenBookingId?: number | null;
+  chefId?: number | null;
   referenceCode: string | null;
   storageName: string;
   storageType: string;
@@ -12,6 +14,17 @@ export interface ManagerStorageBooking {
   totalPrice: string | number;
   currency: string;
   createdAt: string;
+}
+
+export function inheritStorageChef<T extends { id: number; kitchenBookingId?: number | null; chefId?: number | null; chefName?: string }>(rows: T[], parents: Array<{ id: number; chefId?: number; chefName?: string; storageItems?: Array<{ id: number; storageBookingId?: number }> }>): T[] {
+  const byBooking = new Map(parents.map(parent => [parent.id, parent]));
+  const byStorage = new Map<number, typeof parents[number]>();
+  for (const parent of parents) for (const item of parent.storageItems ?? []) byStorage.set(item.storageBookingId ?? item.id, parent);
+  return rows.map(row => {
+    const parent = row.kitchenBookingId ? byBooking.get(row.kitchenBookingId) : byStorage.get(row.id);
+    if (!parent?.chefName?.trim() || parent.chefName.includes("@")) return row;
+    return { ...row, chefName: parent.chefName.trim(), chefId: parent.chefId ?? row.chefId };
+  });
 }
 
 export function filterManagerStorageBookings(

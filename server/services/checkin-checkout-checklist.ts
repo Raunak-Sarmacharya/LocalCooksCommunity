@@ -6,12 +6,25 @@
  * chef/booking callers treated `!== false` as enabled.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   checkinCheckoutChecklists,
+  kitchens,
+  kitchenBookingVisits,
   type CheckinCheckoutChecklist,
 } from "@shared/schema";
+import { resolveKitchenTracking } from "@shared/kitchen-tracking";
+
+export async function getKitchenTrackingState(kitchenId: number, checkinStatus?: string | null, bookingId?: number) {
+  const [row] = await db.select({ enabled: kitchens.checkinCheckoutEnabled,
+    trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${bookingId ?? -1} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
+    checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
+    checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled }).from(kitchens)
+    .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, kitchens.locationId))
+    .where(eq(kitchens.id, kitchenId)).limit(1);
+  return resolveKitchenTracking(row?.enabled, row, row?.trackingStarted ? "checked_in" : checkinStatus);
+}
 
 /** Schema default: sections are off until a manager explicitly enables them. */
 export function isChecklistSectionEnabled(

@@ -116,7 +116,7 @@ export function transactionsToManagerRevenueCSV(
     transactions: Transaction[],
     includeHeaders: boolean = true
 ): string {
-    const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Service Fee", "Stripe Fee", "Refunded", "Net Revenue", "Status"];
+    const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status"];
 
     const rows = transactions.map(transaction => {
         const breakdown = getTransactionRevenueBreakdown(transaction);
@@ -129,7 +129,6 @@ export function transactionsToManagerRevenueCSV(
             formatCurrency(breakdown.totalPrice),
             formatCurrency(breakdown.taxAmount),
             `${transaction.taxRatePercent ?? 0}%`,
-            formatCurrency(breakdown.serviceFee),
             formatCurrency(breakdown.stripeFee),
             breakdown.refundAmount > 0 ? `-${formatCurrency(breakdown.refundAmount)}` : "",
             formatCurrency(breakdown.netRevenue),

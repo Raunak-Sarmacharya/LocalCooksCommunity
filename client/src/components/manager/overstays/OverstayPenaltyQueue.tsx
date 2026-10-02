@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * OverstayPenaltyQueue Component
  * 
@@ -16,7 +17,8 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog } from "@/components/ui/dialog";
+import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@/components/ui/app-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -24,14 +26,20 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { AlertTriangle, Clock, DollarSign, CheckCircle, XCircle, CreditCard, Package, User, RefreshCw, MoreHorizontal, ArrowUpDown, ChevronDown, ChevronUp, Shield, Settings } from "@/components/ui/manager-icons";
+import { AlertTriangle, Clock, DollarSign, CheckCircle, XCircle, CreditCard, User, RefreshCw, MoreHorizontal, ArrowUpDown, ChevronDown, ChevronUp, Shield, Settings } from "@/components/ui/manager-icons";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { OverstayPenaltySettings } from "./OverstayPenaltySettings";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import { overstayCollectionError } from '@shared/overstay-collection';
 
 // Types
 interface OverstayRecord {
   overstayId: number;
+  itemsRemovedAt: string | null;
+  chefDisputeDeadline: string | null;
+  chefDisputedAt: string | null;
+  disputeReviewedAt: string | null;
   storageBookingId: number;
   status: string;
   daysOverdue: number;
@@ -115,35 +123,65 @@ function OverstayCard({
   isProcessing 
 }: { 
   overstay: OverstayRecord;
-  onApprove: (id: number, amount?: number, notes?: string) => void;
-  onWaive: (id: number, reason: string, notes?: string) => void;
+  onApprove: (id: number, amount?: number, notes?: string) => Promise<unknown>;
+  onWaive: (id: number, reason: string, notes?: string) => Promise<unknown>;
   onCharge: (id: number) => void;
-  onResolve: (id: number, type: string, notes?: string) => void;
+  onResolve: (id: number, type: string, notes?: string) => Promise<unknown>;
   isProcessing: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showWaiveDialog, setShowWaiveDialog] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
+  const [pendingActionExit, setPendingActionExit] = useState<"approve" | "waive" | "resolve" | null>(null);
   const [adjustedAmount, setAdjustedAmount] = useState<string>((overstay.calculatedPenaltyCents / 100).toFixed(2));
   const [waiveReason, setWaiveReason] = useState("");
   const [managerNotes, setManagerNotes] = useState("");
   const [resolutionType, setResolutionType] = useState<string>("extended");
 
+  const requestActionClose = (action: "approve" | "waive" | "resolve") => {
+    const dirty = action === "approve"
+      ? Math.round(parseFloat(adjustedAmount) * 100) !== overstay.calculatedPenaltyCents || !!managerNotes.trim()
+      : action === "waive" ? !!waiveReason.trim() || !!managerNotes.trim() : resolutionType !== "extended";
+    if (dirty) setPendingActionExit(action);
+    else if (action === "approve") setShowApproveDialog(false);
+    else if (action === "waive") setShowWaiveDialog(false);
+    else setShowResolveDialog(false);
+  };
+  const discardActionDraft = () => {
+    if (pendingActionExit === "approve") setShowApproveDialog(false);
+    if (pendingActionExit === "waive") setShowWaiveDialog(false);
+    if (pendingActionExit === "resolve") setShowResolveDialog(false);
+    setAdjustedAmount((overstay.calculatedPenaltyCents / 100).toFixed(2));
+    setWaiveReason("");
+    setManagerNotes("");
+    setResolutionType("extended");
+    setPendingActionExit(null);
+  };
+
   const isInGracePeriod = overstay.status === 'grace_period' || overstay.status === 'detected';
-  const canApprove = overstay.status === 'pending_review' || overstay.status === 'charge_failed';
-  const canCharge = overstay.status === 'penalty_approved';
-  const canResolve = !['resolved', 'charge_succeeded', 'escalated'].includes(overstay.status);
+  const canApprove = !!overstay.itemsRemovedAt && (overstay.status === 'pending_review' || overstay.status === 'charge_failed' || (overstay.status === 'penalty_approved' && !overstay.chefDisputeDeadline));
+  const canCharge = !overstayCollectionError(overstay) && (overstay.status === 'penalty_approved' || overstay.status === 'charge_failed');
+  const canResolve = !overstay.itemsRemovedAt || !['resolved', 'charge_succeeded', 'penalty_waived', 'escalated'].includes(overstay.status);
   const hasPaymentMethod = overstay.stripeCustomerId && overstay.stripePaymentMethodId;
 
   // Derived calculation values (mirrors server formula for transparent display)
   const penaltyRateDecimal = parseFloat(overstay.penaltyRate);
-  const penaltyDays = isInGracePeriod ? 0 : Math.min(overstay.daysOverdue - overstay.gracePeriodDays, overstay.maxPenaltyDays);
+  const penaltyDays = isInGracePeriod ? 0 : Math.max(0, Math.min(overstay.daysOverdue - overstay.gracePeriodDays, overstay.maxPenaltyDays));
   const dailyPenaltyChargeCents = Math.round(overstay.dailyRateCents * (1 + penaltyRateDecimal));
+
+  // An empty amount field parses to NaN, and every comparison against NaN is
+  // false — so `amount > max` alone left the Approve button enabled and sent
+  // NaN to the API. Validate the parsed value explicitly instead.
+  const adjustedAmountCents = Math.round(parseFloat(adjustedAmount) * 100);
+  const canConfirmApprove =
+    Number.isFinite(adjustedAmountCents) &&
+    adjustedAmountCents > 0 &&
+    adjustedAmountCents <= overstay.calculatedPenaltyCents;
 
   return (
     <>
-      <Card className={`mb-4 ${isInGracePeriod ? 'border-yellow-200' : overstay.status === 'pending_review' ? 'border-orange-200' : ''}`}>
+      <Card className="mb-3 rounded-xl border-border shadow-sm">
         <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
             <div>
@@ -180,12 +218,13 @@ function OverstayCard({
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{mt("calculatedPenalty")}</p>
+              {!overstay.itemsRemovedAt && <p className="text-xs text-muted-foreground">Accruing estimate. Confirm removal before final review and payment.</p>}
               <p className="font-medium text-orange-600">{formatCurrency(overstay.calculatedPenaltyCents)}</p>
             </div>
           </div>
 
-          {/* Transparent formula breakdown */}
-          {!isInGracePeriod && penaltyDays > 0 && (
+          {/* Keep the calculation available without making every card a full report. */}
+          {expanded && !isInGracePeriod && penaltyDays > 0 && (
             <div className="bg-muted/40 border rounded-md p-3 mb-2 text-sm">
               <p className="text-xs font-medium text-muted-foreground mb-2">{mt("penaltyCalculation")}</p>
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
@@ -203,7 +242,7 @@ function OverstayCard({
           )}
 
           {/* Tax breakdown summary */}
-          {overstay.kitchenTaxRatePercent > 0 && (
+          {expanded && overstay.kitchenTaxRatePercent > 0 && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 mb-2">
               <p className="text-xs font-medium text-amber-800 dark:text-amber-200">{mt("chefTotalChargeWithTax")}</p>
               <div className="flex items-baseline gap-2 mt-1">
@@ -317,16 +356,15 @@ function OverstayCard({
         </CardContent>
       </Card>
 
-      {/* Approve Sheet */}
-      <Sheet open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{mt("approvePenalty")}</SheetTitle>
-            <SheetDescription>
-              Review and approve the penalty amount for {overstay.storageName}.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 py-4">
+      {/* Approve Dialog */}
+      <Dialog open={showApproveDialog} onOpenChange={(open) => open ? setShowApproveDialog(true) : requestActionClose("approve")}>
+        <AppDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <AppDialogHeader
+            icon={<CheckCircle className="w-4 h-4" />}
+            title={mt("approvePenalty")}
+            description={<>Review and approve the penalty amount for {overstay.storageName}.</>}
+          />
+          <AppDialogBody className="space-y-4">
             <div>
               <label className="text-sm font-medium">{mt("penaltyAmountCAD")}</label>
               <CurrencyInput
@@ -373,7 +411,7 @@ function OverstayCard({
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  The chef&apos;s card on file will be automatically charged this amount.
+                  The chef receives the final amount and can dispute it during the admin-configured window. Collection is available after that window and any dispute review.
                 </p>
               </div>
             )}
@@ -387,34 +425,35 @@ function OverstayCard({
                 className="mt-1"
               />
             </div>
-          </div>
-          <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setShowApproveDialog(false)}>{mt("cancel")}</Button>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button variant="ghost" onClick={() => requestActionClose("approve")}>{mt("cancel")}</Button>
             <Button 
               onClick={() => {
-                const amountCents = Math.round(parseFloat(adjustedAmount) * 100);
                 // Enforce maximum penalty cap
-                const cappedAmountCents = Math.min(amountCents, overstay.calculatedPenaltyCents);
-                onApprove(overstay.overstayId, cappedAmountCents, managerNotes);
-                setShowApproveDialog(false);
+                const cappedAmountCents = Math.min(adjustedAmountCents, overstay.calculatedPenaltyCents);
+                void onApprove(overstay.overstayId, cappedAmountCents, managerNotes).then(() => {
+                  setShowApproveDialog(false);
+                  setManagerNotes("");
+                  setAdjustedAmount((overstay.calculatedPenaltyCents / 100).toFixed(2));
+                }).catch(() => {});
               }}
-              disabled={isProcessing || parseFloat(adjustedAmount) * 100 > overstay.calculatedPenaltyCents}
+              disabled={isProcessing || !canConfirmApprove}
             >
-              <CreditCard className="w-4 h-4 mr-1" />{mt("approveCharge")}</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+              <CheckCircle className="w-4 h-4 mr-1" />Approve final amount</Button>
+          </AppDialogFooter>
+        </AppDialogContent>
+      </Dialog>
 
-      {/* Waive Sheet */}
-      <Sheet open={showWaiveDialog} onOpenChange={setShowWaiveDialog}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{mt("waivePenalty")}</SheetTitle>
-            <SheetDescription>
-              Waive the penalty for {overstay.storageName}. A reason is required.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 py-4">
+      {/* Waive Dialog */}
+      <Dialog open={showWaiveDialog} onOpenChange={(open) => open ? setShowWaiveDialog(true) : requestActionClose("waive")}>
+        <AppDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <AppDialogHeader
+            icon={<XCircle className="w-4 h-4" />}
+            title={mt("waivePenalty")}
+            description={<>Waive the penalty for {overstay.storageName}. A reason is required.</>}
+          />
+          <AppDialogBody className="space-y-4">
             <div>
               <label className="text-sm font-medium">{mt("reasonForWaivingRequired")}</label>
               <Textarea
@@ -434,22 +473,25 @@ function OverstayCard({
                 className="mt-1"
               />
             </div>
-          </div>
-          <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setShowWaiveDialog(false)}>{mt("cancel")}</Button>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button variant="ghost" onClick={() => requestActionClose("waive")}>{mt("cancel")}</Button>
             <Button 
               onClick={() => {
-                onWaive(overstay.overstayId, waiveReason, managerNotes);
-                setShowWaiveDialog(false);
+                void onWaive(overstay.overstayId, waiveReason, managerNotes).then(() => {
+                  setShowWaiveDialog(false);
+                  setWaiveReason("");
+                  setManagerNotes("");
+                }).catch(() => {});
               }}
               disabled={isProcessing || !waiveReason.trim()}
             >{mt("waivePenalty")}</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </AppDialogFooter>
+        </AppDialogContent>
+      </Dialog>
 
       {/* Resolve Dialog */}
-      <AlertDialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
+      <AlertDialog open={showResolveDialog} onOpenChange={(open) => open ? setShowResolveDialog(true) : requestActionClose("resolve")}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{mt("markAsResolved")}</AlertDialogTitle>
@@ -484,16 +526,21 @@ function OverstayCard({
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={() => {
-                onResolve(overstay.overstayId, resolutionType);
-                setShowResolveDialog(false);
+            <AlertDialogCancel onClick={(event) => { if (resolutionType !== "extended") { event.preventDefault(); requestActionClose("resolve"); } }}>{mt("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isProcessing}
+              onClick={(event) => {
+                event.preventDefault();
+                void onResolve(overstay.overstayId, resolutionType).then(() => {
+                  setShowResolveDialog(false);
+                  setResolutionType("extended");
+                }).catch(() => {});
               }}
             >{mt("confirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UnsavedChangesDialog open={pendingActionExit !== null} onOpenChange={(open) => { if (!open) setPendingActionExit(null); }} description={mt("overstayActionUnsavedDescription")} onDiscard={discardActionDraft} />
     </>
   );
 }
@@ -506,15 +553,19 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
 
   const [showPastPenalties, setShowPastPenalties] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [confirmSettingsExit, setConfirmSettingsExit] = useState(false);
+
+  const closeSettings = () => {
+    if (settingsDirty) setConfirmSettingsExit(true);
+    else setIsSettingsOpen(false);
+  };
 
   // Fetch overstays (including past if toggled)
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/manager/overstays', showPastPenalties],
+    queryKey: ['/api/manager/overstays', 'all'],
     queryFn: async () => {
-      const url = showPastPenalties 
-        ? '/api/manager/overstays?includeAll=true' 
-        : '/api/manager/overstays';
-      const response = await apiRequest('GET', url);
+      const response = await apiRequest('GET', '/api/manager/overstays?includeAll=true');
       return response.json();
     },
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -604,9 +655,9 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-48 w-full" />
+      <div className="space-y-4" aria-label={mt("navOverstayPenalties")}>
+        <Skeleton className="h-16 w-2/3" />
+        <Skeleton className="h-24 w-full" />
         <Skeleton className="h-48 w-full" />
       </div>
     );
@@ -614,10 +665,12 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
 
   if (error) {
     return (
-      <Card className="border-destructive">
-        <CardContent className="pt-6">
-          <p className="text-destructive">Error loading overstays: {(error as Error).message}</p>
-          <Button onClick={() => refetch()} className="mt-4">
+      <Card className="border-border shadow-sm">
+        <CardContent className="py-12 text-center">
+          <AlertTriangle className="mx-auto mb-4 h-8 w-8 text-muted-foreground" />
+          <h3 className="font-semibold">{mt("overstaysLoadFailed")}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{mt("overstaysLoadFailedHelp")}</p>
+          <Button onClick={() => refetch()} className="mt-5" variant="outline">
             <RefreshCw className="w-4 h-4 mr-2" />{mt("retry")}</Button>
         </CardContent>
       </Card>
@@ -626,16 +679,31 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">{mt("navOverstayPenalties")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{mt("overstaysPageDescription")}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setIsSettingsOpen(true)} disabled={!locationId} title={!locationId ? mt("selectALocationToManageSettings") : undefined}>
+            <Settings className="mr-2 h-4 w-4" />{mt("settings")}
+          </Button>
+          {pastOverstays.length > 0 && <Button variant={showPastPenalties ? "secondary" : "outline"} onClick={() => setShowPastPenalties(!showPastPenalties)}>
+            {showPastPenalties ? mt("hidePastPenalties") : `${mt("showPastPenalties")} (${pastOverstays.length})`}
+          </Button>}
+        </div>
+      </div>
+
       {/* Stats Summary */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {stats && stats.total > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-orange-500" />
                 <div>
-                  <p className="text-2xl font-bold">{stats.pendingReview}</p>
-                  <p className="text-xs text-muted-foreground">{mt("pendingReview")}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{overstays.filter(o => ['pending_review', 'charge_failed', 'escalated'].includes(o.status)).length}</p>
+                  <p className="text-xs text-muted-foreground">{mt("actionRequired")}</p>
                 </div>
               </div>
             </CardContent>
@@ -645,7 +713,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-yellow-500" />
                 <div>
-                  <p className="text-2xl font-bold">{stats.inGracePeriod}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{overstays.filter(o => ['detected', 'grace_period'].includes(o.status)).length}</p>
                   <p className="text-xs text-muted-foreground">{mt("inGracePeriod")}</p>
                 </div>
               </div>
@@ -656,7 +724,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-500" />
                 <div>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.totalPenaltiesCollected)}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.totalPenaltiesCollected)}</p>
                   <p className="text-xs text-muted-foreground">{mt("collected")}</p>
                 </div>
               </div>
@@ -665,10 +733,10 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <XCircle className="w-5 h-5 text-gray-500" />
+                <CheckCircle className="w-5 h-5 text-muted-foreground" />
                 <div>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.totalPenaltiesWaived)}</p>
-                  <p className="text-xs text-muted-foreground">{mt("waived")}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{pastOverstays.length}</p>
+                  <p className="text-xs text-muted-foreground">{mt("pastPenalties")}</p>
                 </div>
               </div>
             </CardContent>
@@ -676,34 +744,14 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">{mt("navOverstayPenalties")}</h2>
-          <p className="text-muted-foreground">{mt("reviewAndManageStorageOverstaySituations")}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsSettingsOpen(true)} disabled={!locationId}>
-            <Settings className="mr-2 h-4 w-4" />{mt("settings")}
-          </Button>
-          <Button 
-            variant={showPastPenalties ? "default" : "outline"} 
-            onClick={() => setShowPastPenalties(!showPastPenalties)}
-          >
-            {showPastPenalties ? mt("hidePastPenalties") : mt("showPastPenalties")}
-          </Button>
-          <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />{mt("refresh")}</Button>
-        </div>
-      </div>
-
       {/* Overstay List */}
       {overstays.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">{mt("noOverstays")}</h3>
-            <p className="text-muted-foreground">{mt("allStorageBookingsAreWithinTheirRentalPeriod")}</p>
+        <Card className="border-dashed shadow-none">
+          <CardContent className="flex flex-col items-center py-14 text-center">
+            <Package className="mb-4 h-9 w-9 text-muted-foreground/60" />
+            <h3 className="text-lg font-semibold">{stats?.total ? mt("noActiveOverstaysTitle") : mt("noOverstayHistoryTitle")}</h3>
+            <p className="mt-2 max-w-md text-sm text-muted-foreground">{stats?.total ? mt("noActiveOverstaysHelp") : mt("noOverstayHistoryHelp")}</p>
+            {pastOverstays.length > 0 && !showPastPenalties && <Button variant="outline" size="sm" className="mt-5" onClick={() => setShowPastPenalties(true)}>{mt("showPastPenalties")}</Button>}
           </CardContent>
         </Card>
       ) : (
@@ -718,10 +766,10 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
-                    onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
+                    onApprove={(id, amount, notes) => approveMutation.mutateAsync({ id, amount, notes })}
+                    onWaive={(id, reason, notes) => waiveMutation.mutateAsync({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
-                    onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
+                    onResolve={(id, type, notes) => resolveMutation.mutateAsync({ id, type, notes })}
                     isProcessing={isProcessing}
                   />
                 ))}
@@ -738,10 +786,10 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
-                    onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
+                    onApprove={(id, amount, notes) => approveMutation.mutateAsync({ id, amount, notes })}
+                    onWaive={(id, reason, notes) => waiveMutation.mutateAsync({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
-                    onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
+                    onResolve={(id, type, notes) => resolveMutation.mutateAsync({ id, type, notes })}
                     isProcessing={isProcessing}
                   />
                 ))}
@@ -758,10 +806,10 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
-                    onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
+                    onApprove={(id, amount, notes) => approveMutation.mutateAsync({ id, amount, notes })}
+                    onWaive={(id, reason, notes) => waiveMutation.mutateAsync({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
-                    onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
+                    onResolve={(id, type, notes) => resolveMutation.mutateAsync({ id, type, notes })}
                     isProcessing={isProcessing}
                   />
                 ))}
@@ -785,10 +833,10 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
-                    onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
+                    onApprove={(id, amount, notes) => approveMutation.mutateAsync({ id, amount, notes })}
+                    onWaive={(id, reason, notes) => waiveMutation.mutateAsync({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
-                    onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
+                    onResolve={(id, type, notes) => resolveMutation.mutateAsync({ id, type, notes })}
                     isProcessing={isProcessing}
                   />
                 ))}
@@ -837,27 +885,28 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
         </div>
       )}
 
-      {showPastPenalties && pastOverstays.length === 0 && (
-        <Card className="mt-8 border-gray-200">
-          <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground">{mt("noPastPenaltiesFound")}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
-          <SheetHeader className="mb-6">
-            <SheetTitle>{mt("storageOverstayPenaltyDefaults")}</SheetTitle>
-            <SheetDescription>{mt("configureDefaultPenaltySettingsForStorageOverstays")}</SheetDescription>
-          </SheetHeader>
-          {locationId ? (
-            <OverstayPenaltySettings locationId={locationId} />
-          ) : (
-            <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{mt("selectALocationToManageSettings")}</div>
-          )}
-        </SheetContent>
-      </Sheet>
+      <Dialog open={isSettingsOpen} onOpenChange={(open) => open ? setIsSettingsOpen(true) : closeSettings()}>
+        <AppDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <AppDialogHeader
+            icon={<Settings className="w-4 h-4" />}
+            title={mt("storageOverstayPenaltyDefaults")}
+            description={mt("configureDefaultPenaltySettingsForStorageOverstays")}
+          />
+          <AppDialogBody>
+            {locationId ? (
+              <OverstayPenaltySettings locationId={locationId} onDirtyChange={setSettingsDirty} />
+            ) : (
+              <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{mt("selectALocationToManageSettings")}</div>
+            )}
+          </AppDialogBody>
+        </AppDialogContent>
+      </Dialog>
+      <UnsavedChangesDialog
+        open={confirmSettingsExit}
+        onOpenChange={setConfirmSettingsExit}
+        description={mt("overstaySettingsUnsavedDescription")}
+        onDiscard={() => { setConfirmSettingsExit(false); setSettingsDirty(false); setIsSettingsOpen(false); }}
+      />
     </div>
   );
 }

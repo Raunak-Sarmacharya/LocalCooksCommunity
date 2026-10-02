@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -377,8 +378,8 @@ export function AccessCodeDashboard() {
           </CardHeader>
           <CardContent>
             {activeLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
+              <div className="space-y-3 py-3" role="status" aria-label="Loading active access codes">
+                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 w-full rounded-lg" />)}
               </div>
             ) : activeCodes.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No active access codes</p>
@@ -480,8 +481,8 @@ export function AccessCodeDashboard() {
           </CardHeader>
           <CardContent>
             {auditLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
+              <div className="space-y-3 py-3" role="status" aria-label="Loading access code history">
+                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 w-full rounded-lg" />)}
               </div>
             ) : auditEntries.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No audit entries found</p>
@@ -537,8 +538,8 @@ export function AccessCodeDashboard() {
           </CardHeader>
           <CardContent>
             {analyticsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
+              <div className="grid gap-4 py-3 md:grid-cols-2" role="status" aria-label="Loading access code analytics">
+                {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 w-full rounded-xl" />)}
               </div>
             ) : (
               <div className="grid gap-6 md:grid-cols-2">

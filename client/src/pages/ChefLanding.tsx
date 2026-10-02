@@ -1,3 +1,5 @@
+import { KITCHEN_ICON_NAME } from "@/components/ui/kitchen-icon";
+import { KITCHEN_APPLICATION_ICON } from "@/components/ui/application-icons";
 import { logger } from "@/lib/logger";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -836,7 +838,7 @@ function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => v
     },
     kitchen: {
       label: t("hiwTabKitchen"),
-      icon: "mdi:silverware-fork-knife",
+      icon: KITCHEN_APPLICATION_ICON,
       steps: [
         { title: t("hiwKitchen1Title"), desc: t("hiwKitchen1Desc") },
         { title: t("hiwKitchen2Title"), desc: t("hiwKitchen2Desc") },
@@ -1604,7 +1606,7 @@ function KitchenPreview() {
               )}
             >
               <span className="hidden h-7 w-7 flex-shrink-0 items-center sm:flex justify-center rounded-lg border border-[#2C2C2C]/[0.06] bg-[#F6F5F3] text-[#7A7A7A]">
-                <Icon icon="mdi:silverware-fork-knife" className="h-3.5 w-3.5" />
+                <Icon icon={KITCHEN_ICON_NAME} className="h-3.5 w-3.5" />
               </span>
               <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-3">
                 <span className="min-w-0 truncate text-[0.8rem] font-semibold text-[#1F1F1F] sm:flex-1">

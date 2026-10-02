@@ -44,6 +44,9 @@ interface UnifiedChatViewProps {
   userId: number;
   role: 'chef' | 'manager';
   initialConversationId?: string | null;
+  onNavigate?: (view: string) => void;
+  chefHasApplications?: boolean;
+  managerHasKitchen?: boolean;
   /**
    * Hide the conversation sidebar. Set when the chat was opened *for* one
    * specific application — a row action on the chef-application table. The
@@ -53,7 +56,7 @@ interface UnifiedChatViewProps {
   hideConversationList?: boolean;
 }
 
-export default function UnifiedChatView({ userId, role, initialConversationId, hideConversationList = false }: UnifiedChatViewProps) {
+export default function UnifiedChatView({ userId, role, initialConversationId, onNavigate, chefHasApplications = false, managerHasKitchen = true, hideConversationList = false }: UnifiedChatViewProps) {
   const { t } = useTranslation('chef');
   const { toast } = useToast();
   const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
@@ -417,6 +420,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, h
   // labels update as the details land; partner-name/location getters already
   // fall back gracefully, so nothing renders blank.
   const visibleConversations = conversations;
+  const showEmptyInbox = conversations.length === 0 && !isListLoading;
 
   return (
     <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
@@ -424,7 +428,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, h
       {!hideConversationList && (
         <div className={cn(
           "w-full md:w-80 border-r flex-col bg-muted/10",
-          isMobileListVisible ? "flex" : "hidden md:flex"
+          isMobileListVisible && !showEmptyInbox ? "flex" : "hidden md:flex"
         )}>
           <ConversationList
             conversations={visibleConversations}
@@ -445,7 +449,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, h
       {/* Main Chat Area */}
       <div className={cn(
         "flex-1 flex flex-col bg-background",
-        hideConversationList || !isMobileListVisible ? "flex" : "hidden md:flex"
+        hideConversationList || showEmptyInbox || !isMobileListVisible ? "flex" : "hidden md:flex"
       )}>
         {selectedConversation ? (
           <ChatPanel
@@ -471,12 +475,13 @@ export default function UnifiedChatView({ userId, role, initialConversationId, h
             embedded={true}
           />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-              <MessageCircle className="h-8 w-8 text-muted-foreground/50" />
+          <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
+            <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <MessageCircle className="size-6" />
             </div>
-            <h3 className="font-semibold text-lg">{t("chatNoChatSelected")}</h3>
-            <p className="text-sm">{t("chatSelectConversation")}</p>
+            <h3 className="text-lg font-semibold tracking-tight">{t(conversations.length ? "chatNoChatSelected" : role === "manager" ? "chatManagerEmptyTitle" : "chatChefEmptyTitle")}</h3>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{t(conversations.length ? "chatSelectConversation" : role === "manager" ? managerHasKitchen ? "chatManagerEmptyBody" : "chatManagerNoKitchenBody" : chefHasApplications ? "chatChefAppliedEmptyBody" : "chatChefEmptyBody")}</p>
+            {!conversations.length && onNavigate && <Button className="mt-5 rounded-full" onClick={() => onNavigate(role === "manager" ? managerHasKitchen ? "applications" : "kitchens" : chefHasApplications ? "kitchen-requests" : "discover-kitchens")}>{t(role === "manager" ? managerHasKitchen ? "chatManagerEmptyAction" : "chatManagerNoKitchenAction" : chefHasApplications ? "chatChefAppliedEmptyAction" : "chatChefEmptyAction")}</Button>}
           </div>
         )}
       </div>

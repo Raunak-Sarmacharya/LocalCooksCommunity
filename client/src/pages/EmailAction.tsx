@@ -277,6 +277,7 @@ function isKitchenFlowPath(pathOrUrl: string): boolean {
       : pathOrUrl.split("?")[0];
     return (
       path.includes("/kitchen-preview") ||
+      path.includes("/kitchen/") ||
       path.includes("/apply-kitchen") ||
       path.includes("/request-tour") ||
       path.includes("/book-kitchen") ||

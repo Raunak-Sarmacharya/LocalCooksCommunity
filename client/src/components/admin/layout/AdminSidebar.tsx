@@ -1,6 +1,7 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, Package, FileWarning, Key, KeyRound, Mail, CalendarDays } from "lucide-react";
+import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning, Key, KeyRound, Mail, CalendarDays } from "lucide-react";
 
 export type AdminSection =
   | "overview"
@@ -133,7 +134,7 @@ export function AdminSidebar({
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  const badgeCount = getBadgeCount(item.badgeKey);
+                  const badgeCount = getBadgeCount('badgeKey' in item ? item.badgeKey : undefined);
                   return (
                     <SidebarMenuItem key={item.id}>
                       <SidebarMenuButton

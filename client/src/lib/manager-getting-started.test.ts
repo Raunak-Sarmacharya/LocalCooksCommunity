@@ -62,6 +62,17 @@ const stageOf = (input: GettingStartedInput): GettingStartedStage => ({
   isLive: input.hasPublishedKitchen,
 });
 
+it("keeps the first booking milestone visible after a host unpublishes", () => {
+  const stage: GettingStartedStage = {
+    isSetupComplete: true,
+    phoneVerified: true,
+    isLive: false,
+    hasEverBooked: true,
+  };
+  expect(isItemVisible("first-booking", stage)).toBe(true);
+  expect(isItemVisible("photos", stage)).toBe(false);
+});
+
 function item(input: GettingStartedInput, id: string) {
   const found = buildGettingStartedItems(input).find((entry) => entry.id === id);
   if (!found) throw new Error(`Expected a Getting Started item with id "${id}"`);

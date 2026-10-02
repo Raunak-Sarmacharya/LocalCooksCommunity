@@ -266,6 +266,17 @@ export async function confirmPaymentIntent(
 /**
  * Retrieve PaymentIntent status
  */
+export async function getBookingCheckoutSession(paymentIntentId: string): Promise<Stripe.Checkout.Session | null> {
+  if (!stripe) throw new Error('Stripe is not configured');
+  const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 2 });
+  return sessions.data.length === 1 && !sessions.has_more ? sessions.data[0] : null;
+}
+
+export async function getBookingPaymentIntent(paymentIntentId: string) {
+  if (!stripe) throw new Error('Stripe is not configured');
+  return stripe.paymentIntents.retrieve(paymentIntentId);
+}
+
 export async function getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentResult | null> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -458,6 +469,7 @@ export async function capturePaymentIntent(
   paymentIntentId: string,
   amountToCapture?: number,
   _applicationFeeAmount?: number,
+  idempotencyKey?: string,
 ): Promise<PaymentIntentResult> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -475,7 +487,8 @@ export async function capturePaymentIntent(
     // The webhook (payment_intent.succeeded) handles the transfer to the manager
     // using the actual Stripe fee from balance_transaction.
 
-    const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);
+    const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams,
+      idempotencyKey ? { idempotencyKey } : undefined);
 
     return {
       id: paymentIntent.id,

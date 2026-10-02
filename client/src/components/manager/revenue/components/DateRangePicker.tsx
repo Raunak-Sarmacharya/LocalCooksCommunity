@@ -188,7 +188,7 @@ export function DateRangePicker({
                 {/* Footer */}
                 <div className="border-t p-3 flex justify-end gap-2">
                     <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         onClick={() => setIsOpen(false)}
                     >{mt("cancel")}</Button>

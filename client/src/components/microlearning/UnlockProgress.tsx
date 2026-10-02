@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { QuietNotice } from "@/components/chef/ui";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -179,8 +180,9 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-3 p-4" role="status" aria-label="Loading progress">
+        <Skeleton className="h-6 w-1/2" />
+        <Skeleton className="h-24 w-full rounded-xl" />
       </div>
     );
   }

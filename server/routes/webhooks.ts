@@ -1,10 +1,12 @@
 import { Router, Request, Response } from "express";
+import { requireFirebaseAuthWithUser } from '../firebase-auth-middleware';
 import Stripe from "stripe";
 import { db, pool } from "../db";
 import {
   users,
   kitchenBookings,
   storageBookings,
+  storageOverstayQuotes,
   equipmentBookings,
   locations,
   kitchens,
@@ -18,7 +20,8 @@ import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
 import { generateReferenceCode } from "../reference-code";
-import { parseCheckoutSlots } from "../services/checkout-metadata";
+import { parseCheckoutSlots, parseCheckoutCancellationPolicy } from "../services/checkout-metadata";
+import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 
 const router = Router();
 
@@ -55,15 +58,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
     });
 
     if (!webhookSecret) {
-      if (process.env.NODE_ENV === "production") {
-        logger.error(
-          "❌ CRITICAL: STRIPE_WEBHOOK_SECRET is required in production!",
-        );
-        return res.status(500).json({ error: "Webhook configuration error" });
-      }
-      logger.warn(
-        "⚠️ STRIPE_WEBHOOK_SECRET not configured - webhook verification disabled (development only)",
-      );
+      logger.error("STRIPE_WEBHOOK_SECRET is required for webhook verification");
+      return res.status(500).json({ error: "Webhook configuration error" });
+    }
+    if (typeof sig !== 'string' || !sig.trim()) {
+      return res.status(400).json({ error: "Missing Stripe signature" });
     }
 
     let event: Stripe.Event;
@@ -76,24 +75,16 @@ router.post("/stripe", async (req: Request, res: Response) => {
     
     logger.operational(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
 
-    // Verify webhook signature if secret is configured
-    if (webhookSecret && sig) {
-      try {
+    // Every environment verifies the signature before dispatching an event.
+    try {
         event = stripe.webhooks.constructEvent(
           rawBody,
-          sig as string,
+          sig,
           webhookSecret,
         );
-      } catch (err: any) {
+    } catch (err: any) {
         logger.error("⚠️ Webhook signature verification failed:", err.message);
         return res.status(400).json({ error: `Webhook Error: ${err.message}` });
-      }
-    } else {
-      // In development without webhook secret, parse the body
-      // req.body is a Buffer from express.raw(), so we need to parse it
-      const bodyStr = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : req.body;
-      event = typeof bodyStr === 'string' ? JSON.parse(bodyStr) : bodyStr as Stripe.Event;
-      logger.warn("⚠️ Processing webhook without signature verification (development mode)");
     }
 
     // Handle different event types
@@ -186,7 +177,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
 // This endpoint allows triggering the checkout.session.completed handler manually
 // when Stripe webhooks fail to reach the server or fail to process
 // In production, requires admin secret for security
-router.post("/stripe/manual-process-session", async (req: Request, res: Response) => {
+router.post("/stripe/manual-process-session", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  if (!['chef', 'admin'].includes(req.neonUser!.role || '')) return res.status(403).json({ error: 'Access denied' });
   // In production, require admin secret for security
   if (process.env.NODE_ENV === "production") {
     const adminSecret = req.headers['x-admin-secret'] || req.body.adminSecret;
@@ -215,6 +207,8 @@ router.post("/stripe/manual-process-session", async (req: Request, res: Response
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ["payment_intent"],
     });
+    if (req.neonUser!.role !== 'admin' && session.metadata?.chef_id !== String(req.neonUser!.id))
+      return res.status(404).json({ error: 'Checkout session not found' });
 
     logger.info(`[Manual Webhook] Processing session ${sessionId}, payment_status: ${session.payment_status}`);
 
@@ -539,6 +533,14 @@ async function handleCheckoutSessionCompleted(
           return;
         }
 
+        if (metadata.addon_prices) {
+          const { fulfillQuotedKitchenBooking } = await import('../services/booking-checkout-fulfillment');
+          const intent = expandedSession.payment_intent;
+          if (!intent || typeof intent === 'string') throw new Error('Checkout payment intent was not expanded');
+          await fulfillQuotedKitchenBooking(expandedSession, intent, stripe);
+          return;
+        }
+
         // IDEMPOTENCY: Check if booking already exists for this payment intent
         if (paymentIntentId) {
           const [existingBooking] = await db
@@ -613,6 +615,7 @@ async function handleCheckoutSessionCompleted(
               currency: "CAD",
               selectedSlots: selectedSlots,
               operatingWindowStartTime: metadata.window_start_time || null,
+              cancellationPolicyHours: parseCheckoutCancellationPolicy(metadata.cancellation_policy_hours),
               pricingMode: metadata.pricing_mode === 'daily' ? 'daily' : 'hourly',
               storageItems: [],
               equipmentItems: [],
@@ -736,6 +739,10 @@ async function handleCheckoutSessionCompleted(
                 .limit(1);
               
               if (storageListing) {
+                const quoteId = metadata[`storage_quote_${storage.storageListingId}`];
+                const [overstayQuote] = quoteId ? await db.select().from(storageOverstayQuotes)
+                  .where(and(eq(storageOverstayQuotes.id, quoteId), eq(storageOverstayQuotes.chefId, chefId),
+                    eq(storageOverstayQuotes.storageListingId, storage.storageListingId))).limit(1) : [];
                 const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
                 const minDays = storageListing.minimumBookingDuration || 1;
                 const storageStartDate = new Date(storage.startDate);
@@ -766,6 +773,8 @@ async function handleCheckoutSessionCompleted(
                     referenceCode: sbRefCode,
                     kitchenBookingId: booking.id,
                     storageListingId: storageListing.id,
+                    overstayTerms: overstayQuote ? { ...(overstayQuote.terms as Record<string, unknown>),
+                      acceptedAt: new Date().toISOString() } : null,
                     chefId,
                     startDate: storageStartDate,
                     endDate: storageEndDate,
@@ -1185,6 +1194,25 @@ async function handleCheckoutSessionCompleted(
       try {
         const bookingId = parseInt(metadata.booking_id);
         if (!isNaN(bookingId)) {
+          const [termsOwner] = await db.select({ chefId: kitchenBookings.chefId }).from(kitchenBookings)
+            .where(eq(kitchenBookings.id, bookingId)).limit(1);
+          if (termsOwner?.chefId != null) {
+            for (const [key, quoteId] of Object.entries(metadata)) {
+              if (!key.startsWith('storage_booking_quote_') || !quoteId) continue;
+              const storageBookingId = Number(key.slice('storage_booking_quote_'.length));
+              if (!Number.isSafeInteger(storageBookingId) || storageBookingId <= 0) continue;
+              const [storage] = await db.select().from(storageBookings).where(and(eq(storageBookings.id, storageBookingId),
+                eq(storageBookings.kitchenBookingId, bookingId), eq(storageBookings.chefId, termsOwner.chefId))).limit(1);
+              if (!storage) continue;
+              const [quote] = await db.select().from(storageOverstayQuotes).where(and(eq(storageOverstayQuotes.id, quoteId),
+                eq(storageOverstayQuotes.chefId, termsOwner.chefId), eq(storageOverstayQuotes.storageListingId, storage.storageListingId))).limit(1);
+              if (!quote || !isStorageOverstayTerms(quote.terms)) throw new Error('Storage checkout quote is missing or invalid');
+              if (isStorageOverstayTerms(storage.overstayTerms) && !storage.overstayTerms.acceptedAt) {
+                await db.update(storageBookings).set({ overstayTerms: { ...quote.terms, acceptedAt: new Date().toISOString() } })
+                  .where(and(eq(storageBookings.id, storage.id), eq(storageBookings.chefId, termsOwner.chefId)));
+              }
+            }
+          }
           const paymentSucceeded = expandedSession.payment_status === "paid";
           const newPaymentStatus = paymentSucceeded ? "paid" : "processing";
           
@@ -1310,6 +1338,7 @@ async function handleCheckoutSessionCompleted(
         }
       } catch (bookingError) {
         logger.error(`[Webhook] Error updating legacy booking:`, bookingError as any);
+        throw bookingError;
       }
     }
   } catch (error: any) {
@@ -1319,7 +1348,7 @@ async function handleCheckoutSessionCompleted(
       extra: { sessionId: session.id },
     });
     // Acknowledging an unfulfilled kitchen checkout prevents Stripe from retrying it.
-    if (session.metadata?.type === 'kitchen_booking' && !session.metadata.booking_id) throw error;
+    if (session.metadata?.type === 'kitchen_booking') throw error;
   }
 }
 
@@ -1705,6 +1734,9 @@ async function handlePaymentIntentSucceeded(
       paymentIntent.id,
       db,
     );
+    const { reconcileObligationPayment } = await import('../services/obligation-payment-service');
+    const obligationTransaction = await reconcileObligationPayment(paymentIntent);
+    if (!transaction && obligationTransaction) transaction = await createPaymentTransaction(obligationTransaction, db);
     if (!transaction) {
       const [booking] = await db
         .select({
@@ -2650,6 +2682,13 @@ async function handleOverstayPenaltyPaymentCompleted(
       logger.error(`[Webhook] Overstay record ${overstayRecordId} not found`);
       return;
     }
+    if (overstayRecord.stripeCheckoutSessionId !== sessionId || !paymentIntentId)
+      throw new Error('Checkout does not match the active overstay payment');
+    const { reconcileObligationPayment } = await import('../services/obligation-payment-service');
+    const obligationStripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!obligationStripeKey) throw new Error('Stripe is not configured');
+    const obligationStripe = new Stripe(obligationStripeKey, { apiVersion: '2026-02-25.clover' });
+    await reconcileObligationPayment(await obligationStripe.paymentIntents.retrieve(paymentIntentId));
 
     // Get manager ID through the booking chain
     let managerId: number | null = null;
@@ -2689,7 +2728,7 @@ async function handleOverstayPenaltyPaymentCompleted(
       }
     }
 
-    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
+    const penaltyAmountCents = overstayRecord.finalPenaltyCents ?? overstayRecord.calculatedPenaltyCents ?? 0;
 
     // Update the overstay record to charge_succeeded
     await db
@@ -2703,7 +2742,8 @@ async function handleOverstayPenaltyPaymentCompleted(
         resolutionType: "paid",
         updatedAt: new Date(),
       })
-      .where(eq(storageOverstayRecords.id, overstayRecordId));
+      .where(and(eq(storageOverstayRecords.id, overstayRecordId), eq(storageOverstayRecords.status, 'charge_succeeded'),
+        eq(storageOverstayRecords.stripePaymentIntentId, paymentIntentId)));
 
     // Create history entry — use actual previous status from the record
     await db
@@ -2838,20 +2878,6 @@ async function handleOverstayPenaltyPaymentCompleted(
       logger.error(`[Webhook] Failed to create payment_transactions for overstay penalty:`, ptError);
     }
 
-    // ENTERPRISE STANDARD: Auto-complete the storage booking after penalty is paid via self-serve checkout.
-    // The booking has expired and the overstay penalty is settled — it should no longer show as "Active".
-    try {
-      const bookingIdToComplete = isNaN(storageBookingId) ? overstayRecord.storageBookingId : storageBookingId;
-      await db
-        .update(storageBookings)
-        .set({ status: 'completed', updatedAt: new Date() })
-        .where(eq(storageBookings.id, bookingIdToComplete));
-      logger.info(`[Webhook] Auto-completed storage booking ${bookingIdToComplete} after overstay penalty paid via checkout`);
-    } catch (completeError) {
-      logger.error(`[Webhook] Failed to auto-complete booking after overstay payment:`, completeError);
-      // Non-blocking — penalty payment succeeded, booking completion is best-effort
-    }
-
     logger.info(`[Webhook] ✅ Overstay penalty payment completed`, {
       overstayRecordId,
       chefId,
@@ -2949,6 +2975,7 @@ async function handleOverstayPenaltyPaymentCompleted(
 
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
+    throw error;
   }
 }
 
@@ -2991,7 +3018,14 @@ async function handleDamageClaimPaymentCompleted(
       return;
     }
 
-    const chargeAmount = claim.finalAmountCents || claim.claimedAmountCents || 0;
+    if (claim.stripeCheckoutSessionId !== sessionId || !paymentIntentId)
+      throw new Error('Checkout does not match the active damage claim payment');
+    const { reconcileObligationPayment } = await import('../services/obligation-payment-service');
+    const obligationStripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!obligationStripeKey) throw new Error('Stripe is not configured');
+    const obligationStripe = new Stripe(obligationStripeKey, { apiVersion: '2026-02-25.clover' });
+    await reconcileObligationPayment(await obligationStripe.paymentIntents.retrieve(paymentIntentId));
+    const chargeAmount = claim.finalAmountCents ?? 0;
 
     // Update the damage claim to charge_succeeded
     await db
@@ -3005,7 +3039,8 @@ async function handleDamageClaimPaymentCompleted(
         resolutionType: "paid",
         updatedAt: new Date(),
       })
-      .where(eq(damageClaims.id, claimId));
+      .where(and(eq(damageClaims.id, claimId), eq(damageClaims.status, 'charge_succeeded'),
+        eq(damageClaims.stripePaymentIntentId, paymentIntentId)));
 
     // Create history entry — use actual previous status from the record
     await db
@@ -3219,6 +3254,7 @@ async function handleDamageClaimPaymentCompleted(
 
   } catch (error) {
     logger.error(`[Webhook] Error handling damage claim payment:`, error);
+    throw error;
   }
 }
 

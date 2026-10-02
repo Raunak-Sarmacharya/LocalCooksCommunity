@@ -573,22 +573,6 @@ export async function getRevenueByDateFromTransactions(
   endDate: string | Date
 ): Promise<RevenueByDate[]> {
   try {
-    // Check if payment_transactions table exists
-    const tableCheck = await db.execute(sql`
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'payment_transactions'
-      ) as table_exists
-    `);
-
-    if (!tableCheck.rows[0]?.table_exists) {
-      throw new Error('payment_transactions table does not exist');
-    }
-
-    // Look up the manager's location timezone for accurate date grouping
-    // A payment at 11:30 PM Newfoundland = 3:00 AM UTC next day — without timezone conversion,
-    // DATE() in UTC would group this on the wrong date
     const tzResult = await db.execute(sql`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
@@ -599,74 +583,69 @@ export async function getRevenueByDateFromTransactions(
 
     const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
     const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-
-    // Build conditions including dynamic dates
-    const whereConditions = [sql`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-
-    // Exclude kitchen transactions that are part of a bundle
-    whereConditions.push(sql`
-      NOT (
-        pt.booking_type = 'kitchen' 
-        AND EXISTS (
-          SELECT 1 FROM payment_transactions pt2
-          WHERE pt2.booking_id = pt.booking_id
-            AND pt2.booking_type = 'bundle'
-            AND pt2.manager_id = pt.manager_id
-        )
-      )
-    `);
-
-    // Date filtering logic — convert UTC timestamps to manager's local timezone before extracting date
-    // timestamp without time zone in a GMT session is effectively UTC
-    // AT TIME ZONE 'UTC' declares it as UTC, then AT TIME ZONE tz converts to local
-    whereConditions.push(sql`
-      (
-        (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
-          AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${start}::date 
-          AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${end}::date)
-        OR (pt.status != 'succeeded' 
-          AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${start}::date 
-          AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${end}::date)
-      )
-    `);
-
-    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
-
-    // Get revenue by date from payment_transactions
-    // Convert to manager's local timezone for correct date grouping
+    // Cash movement: captured payments belong to their payment date; each refund belongs to
+    // its refund date. Older/external refunds without itemized metadata use refunded_at.
+    // Filtering happens AFTER those events are assembled, so a refund this month can offset
+    // a payment from an earlier month without pulling that old payment into this period.
     const result = await db.execute(sql`
-      SELECT 
-        DATE(
-          CASE 
-            WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
-            THEN pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
-            ELSE pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
-          END
-        )::text as date,
-        COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
-        -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
-        COALESCE(
-          SUM(
-            CASE 
-              WHEN pt.service_fee::numeric > 0 THEN pt.service_fee::numeric
-              ELSE (pt.amount::numeric - pt.manager_revenue::numeric)
-            END
-          ), 
-          0
-        )::bigint as platform_fee,
-        COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
-        COUNT(DISTINCT pt.booking_id) as booking_count
-      FROM payment_transactions pt
-      ${whereClause}
-      GROUP BY DATE(
-        CASE 
-          WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
-          THEN pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
-          ELSE pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
-        END
+      WITH scoped AS (
+        SELECT pt.* FROM payment_transactions pt
+        WHERE pt.manager_id = ${managerId}
+          AND pt.status IN ('succeeded', 'partially_refunded', 'refunded')
+          AND NOT (
+            pt.booking_type = 'kitchen' AND EXISTS (
+              SELECT 1 FROM payment_transactions bundle
+              WHERE bundle.booking_id = pt.booking_id
+                AND bundle.booking_type = 'bundle'
+                AND bundle.manager_id = pt.manager_id
+            )
+          )
+      ), refund_items AS (
+        SELECT pt.id,
+          (entry.value->>'createdAt')::timestamptz AS occurred_at,
+          GREATEST(0, COALESCE((entry.value->>'customerReceived')::numeric, 0)) AS customer_amount,
+          GREATEST(0, COALESCE((entry.value->>'managerDebited')::numeric, (entry.value->>'customerReceived')::numeric, 0)) AS manager_debit
+        FROM scoped pt
+        CROSS JOIN LATERAL jsonb_array_elements(
+          CASE WHEN jsonb_typeof(pt.metadata->'refunds') = 'array'
+            THEN pt.metadata->'refunds' ELSE '[]'::jsonb END
+        ) entry(value)
+        WHERE entry.value->>'createdAt' IS NOT NULL
+      ), logged_refunds AS (
+        SELECT id, SUM(customer_amount) AS customer_amount, SUM(manager_debit) AS manager_debit
+        FROM refund_items GROUP BY id
+      ), events AS (
+        SELECT DATE(COALESCE(pt.paid_at, pt.created_at) AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) AS day,
+          pt.amount::numeric AS gross, 0::numeric AS refunds,
+          pt.manager_revenue::numeric AS earnings, 0::numeric AS refund_debit, 1 AS bookings
+        FROM scoped pt
+        UNION ALL
+        SELECT DATE(item.occurred_at AT TIME ZONE ${managerTimezone}),
+          0, item.customer_amount, 0, item.manager_debit, 0
+        FROM refund_items item
+        UNION ALL
+        SELECT DATE(COALESCE(pt.refunded_at, pt.updated_at) AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}),
+          0,
+          GREATEST(0, LEAST(pt.amount::numeric, COALESCE(pt.refund_amount::numeric, 0)) - COALESCE(logged.customer_amount, 0)),
+          0, LEAST(
+            GREATEST(0, pt.manager_revenue::numeric - COALESCE(logged.manager_debit, 0)),
+            GREATEST(0, LEAST(pt.amount::numeric, COALESCE(pt.refund_amount::numeric, 0)) - COALESCE(logged.customer_amount, 0))
+          ), 0
+        FROM scoped pt LEFT JOIN logged_refunds logged ON logged.id = pt.id
+        WHERE COALESCE(pt.refund_amount::numeric, 0) > COALESCE(logged.customer_amount, 0)
       )
-      ORDER BY date ASC
+      SELECT day::text AS date,
+        SUM(gross)::bigint AS gross_revenue,
+        SUM(refunds)::bigint AS refunded_amount,
+        SUM(gross - refunds)::bigint AS total_revenue,
+        SUM(earnings)::bigint AS paid_earnings,
+        SUM(refund_debit)::bigint AS refund_debit,
+        SUM(earnings - refund_debit)::bigint AS manager_revenue,
+        SUM(bookings)::int AS booking_count
+      FROM events
+      WHERE day BETWEEN ${start}::date AND ${end}::date
+      GROUP BY 1
+      ORDER BY 1
     `);
 
     logger.info(`[Revenue Service V2] Revenue by date: ${result.rows.length} dates found`);
@@ -681,8 +660,12 @@ export async function getRevenueByDateFromTransactions(
       return {
         date: row.date,
         totalRevenue: parseNumeric(row.total_revenue),
-        platformFee: parseNumeric(row.platform_fee),
-        managerRevenue: Math.max(0, parseNumeric(row.total_revenue) - parseNumeric(row.platform_fee)), // Calculate as total - platform fee
+        grossRevenue: parseNumeric(row.gross_revenue),
+        refundedAmount: parseNumeric(row.refunded_amount),
+        paidEarnings: parseNumeric(row.paid_earnings),
+        refundDebit: parseNumeric(row.refund_debit),
+        platformFee: 0,
+        managerRevenue: parseNumeric(row.manager_revenue),
         bookingCount: parseInt(row.booking_count) || 0,
       };
     });

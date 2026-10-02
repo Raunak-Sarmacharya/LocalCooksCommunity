@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Trash2, Loader2, UserMinus } from "lucide-react";
 import { auth } from "@/lib/firebase";
 
@@ -224,11 +225,7 @@ export function AdminUserManagement() {
               </TableRow>
             )}
             {loading && users.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-6">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 4 }, (_, index) => <TableRow key={index}><TableCell colSpan={5}><Skeleton className="h-10 w-full rounded-lg" /></TableCell></TableRow>)
             )}
           </TableBody>
         </Table>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { ChevronRight } from "@/components/ui/manager-icons"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuBadge, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
@@ -117,7 +118,7 @@ export function ChefSidebar({
                                     role="listitem"
                                     className={cn(
                                         "min-w-0 max-w-full truncate text-left",
-                                        canNavigate && "cursor-pointer hover:text-sidebar-accent-foreground",
+                                        canNavigate && "cursor-pointer rounded-md border border-transparent px-1 py-0.5 transition-colors duration-200 ease-out motion-reduce:transition-none hover:border-sidebar-border hover:bg-sidebar-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                                         !canNavigate && isLeaf && "cursor-default",
                                         !isLeaf &&
                                             "font-medium text-sidebar-foreground/80",
@@ -144,17 +145,17 @@ export function ChefSidebar({
                 <Collapsible key={item.id} asChild open={kitchensOpen} onOpenChange={setKitchensOpen} className="group/collapsible">
                     <SidebarMenuItem>
                         <CollapsibleTrigger asChild>
-                            <SidebarMenuButton isActive={kitchenChildActive} tooltip={label} onClick={() => handleViewChange(item.id)}>
+                            <SidebarMenuButton isActive={activeView === item.id} tooltip={label} onClick={() => handleViewChange(item.id)}>
                                 <Icon icon={item.icon} width={16} height={16} aria-hidden />
                                 <span>{label}</span>
-                                <Icon icon="mdi:chevron-right" className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" aria-hidden />
+                                <ChevronRight className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" aria-hidden />
                             </SidebarMenuButton>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                            <SidebarMenuSub className="mx-2 mb-0 mt-0 translate-x-0 gap-0 border-l border-sidebar-border/80 px-2 py-0">
+                            <SidebarMenuSub className="mx-2 mb-1 mt-1 translate-x-0 gap-1 border-l border-sidebar-border/80 px-2 py-1">
                                 {item.children.map((child) => (
                                     <SidebarMenuSubItem key={child.id}>
-                                        <SidebarMenuSubButton asChild isActive={activeView === child.id} size="md" className="h-8 px-2 text-sm">
+                                        <SidebarMenuSubButton asChild isActive={activeView === child.id} size="md" className="h-auto min-h-11 px-1.5 py-1 text-sm md:min-h-9">
                                             <button type="button" className="w-full cursor-pointer text-left" onClick={() => handleViewChange(child.id)}>
                                                 <Icon icon={child.icon} className="size-4" aria-hidden />
                                                 <span>{tr(child.labelKey as never)}</span>
@@ -181,7 +182,7 @@ export function ChefSidebar({
                     onClick={() => handleViewChange(item.id)}
                     tooltip={label}
                     className={cn(
-                        isActive && "text-sidebar-primary-foreground font-medium"
+                        isActive && "font-medium"
                     )}
                 >
                     {item.icon ? (
@@ -197,7 +198,7 @@ export function ChefSidebar({
                 {showBranch && (
                     <SidebarMenuSub
                         className={cn(
-                            "mx-2 mb-0 mt-0 translate-x-0 gap-0 border-l border-sidebar-border/80 px-2 py-0"
+                            "mx-2 mb-1 mt-1 translate-x-0 gap-1 border-l border-sidebar-border/80 px-2 py-1"
                         )}
                     >
                         {renderBranchTrail(branch)}
@@ -238,7 +239,7 @@ export function ChefSidebar({
                 {visibleSections.map((section) => (
                     <SidebarGroup key={section.id} className="px-2 py-1">
                         {section.titleKey && <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tr(section.titleKey as never)}</SidebarGroupLabel>}
-                        <SidebarMenu className="gap-0.5">
+                        <SidebarMenu className="gap-1.5">
                             {section.visibleItems.map(renderNavItem)}
                         </SidebarMenu>
                     </SidebarGroup>

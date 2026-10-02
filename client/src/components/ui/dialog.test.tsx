@@ -16,6 +16,7 @@ describe("dialog primitive", () => {
     // satisfies the *effect* with aria-hidden on the sibling layer but leaves the
     // attribute off, so this is supplied by the wrapper.
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
   });
 
   it("lets a genuinely non-modal dialog opt out", () => {

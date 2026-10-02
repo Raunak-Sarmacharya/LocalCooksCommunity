@@ -11,26 +11,29 @@
  * - Composing smaller components from revenue/components/
  */
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useCallback } from "react"
+import { SiStripe } from "react-icons/si"
 import { mt } from "@/i18n/manager"
 import { useFirebaseAuth } from "@/hooks/use-auth"
-import { Info, CreditCard, ExternalLink, AlertCircle, FileText, Download } from "@/components/ui/manager-icons"
+import { CreditCard, ExternalLink, AlertCircle, FileText, Download, ChevronRight, Loader2 } from "@/components/ui/manager-icons"
+import { useMutation } from "@tanstack/react-query"
+import { getManagerStripeDashboardLink } from "@/lib/manager-stripe-dashboard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
-import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus } from "@/components/manager/revenue"
+import { useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, getDefaultDateRange, type DateRange, type LocationOption } from "@/components/manager/revenue"
 
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
 import { DateRangePicker } from "@/components/manager/revenue/components/DateRangePicker"
-import { RevenueTrendChart, RevenueByLocationChart, PaymentStatusChart } from "@/components/manager/revenue/components/RevenueCharts"
+import { RevenueTrendChart } from "@/components/manager/revenue/components/RevenueCharts"
 import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import { useToast } from "@/hooks/use-toast"
+import StripeConnectSetup from "@/components/manager/StripeConnectSetup"
 
 // ═══════════════════════════════════════════════════════════════════════
 // COMPONENT PROPS
@@ -39,6 +42,9 @@ import { useToast } from "@/hooks/use-toast"
 interface ManagerRevenueDashboardProps {
   selectedLocation: LocationOption | null
   locations: LocationOption[]
+  hasPublishedKitchen?: boolean
+  hasRevenueHistory?: boolean
+  isHistoryLoading?: boolean
   onNavigate?: (view: string) => void
 }
 
@@ -46,85 +52,80 @@ interface ManagerRevenueDashboardProps {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════
 
-export default function ManagerRevenueDashboard({
+export default function ManagerRevenueDashboard(props: ManagerRevenueDashboardProps) {
+  const { user } = useFirebaseAuth()
+  const { data: status, isLoading, isError, refetch } = useStripeConnectStatus(!!user)
+  const ready = !!status?.accountId && status.hasAccount && status.status === "complete"
+    && status.chargesEnabled === true && status.payoutsEnabled === true
+  if (!ready && props.isHistoryLoading) {
+    return <div className="space-y-6"><ChefPageHeader title={mt("navRevenue")} /><Skeleton className="h-40 w-full" /></div>
+  }
+  if (!ready && props.hasRevenueHistory === false) {
+    return <div className="space-y-6">
+      <ChefPageHeader title={mt("navRevenue")} />
+      {!user || isLoading ? <Skeleton className="mx-auto h-40 w-full max-w-2xl" /> : isError ? <Alert variant="destructive" className="mx-auto max-w-2xl">
+        <AlertTitle>{mt("revenueConnectionUnavailable")}</AlertTitle>
+        <AlertDescription><Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>{mt("retry")}</Button></AlertDescription>
+      </Alert> : <Card className="mx-auto max-w-2xl"><CardContent className="p-6 md:p-8"><StripeConnectSetup /></CardContent></Card>}
+    </div>
+  }
+  return <RevenueAnalytics {...props} showReconnectNotice={!!user && !isLoading && !isError && !ready} hasPaymentAccount={!!status?.hasAccount} />
+}
+
+function RevenueSectionError({ section, onRetry }: { section: string; onRetry: () => void }) {
+  return <Card className="border-destructive/30"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
+    <p className="text-sm text-destructive">{mt("revenueSectionUnavailable", { section })}</p>
+    <Button variant="outline" size="sm" onClick={onRetry}>{mt("retry")}</Button>
+  </CardContent></Card>
+}
+
+function RevenueAnalytics({
   selectedLocation,
-  locations,
   onNavigate,
-}: ManagerRevenueDashboardProps) {
+  hasPublishedKitchen = false,
+  showReconnectNotice = false,
+  hasPaymentAccount = false,
+}: ManagerRevenueDashboardProps & { showReconnectNotice?: boolean; hasPaymentAccount?: boolean }) {
   const { user: firebaseUser } = useFirebaseAuth()
   const { toast } = useToast()
+  const stripeDashboard = useMutation({
+    mutationFn: () => getManagerStripeDashboardLink(),
+    onSuccess: ({ url }) => { window.open(url, "_blank", "noopener,noreferrer") },
+    onError: (error: Error) => { toast({ title: mt("error"), description: error.message, variant: "destructive" }) },
+  })
   const isEnabled = !!firebaseUser
 
   // Filter State
-  const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange())
-  const [selectedLocationFilter, setSelectedLocationFilter] = useState<number | "all">("all")
+  const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange)
 
   // Data Hooks
-  const {
-    data: metrics,
-    isLoading: isLoadingMetrics,
-  } = useRevenueMetrics({
+  const { data: chartData = [], isLoading: isLoadingCharts, isError: isErrorCharts, refetch: refetchCharts } = useRevenueChartData(
     dateRange,
-    locationId: selectedLocationFilter,
-    enabled: isEnabled,
-  })
-
-  const { data: revenueByLocation = [], isLoading: isLoadingByLocation } = useRevenueByLocation(
-    dateRange,
-    isEnabled
-  )
-
-  const { data: chartData = [], isLoading: isLoadingCharts } = useRevenueChartData(
-    dateRange,
-    selectedLocationFilter,
+    "all",
     isEnabled
   )
 
   const {
     data: transactionsData,
     isLoading: isLoadingTransactions,
+    isError: isErrorTransactions,
+    refetch: refetchTransactions,
   } = useTransactions({
     dateRange,
-    locationId: selectedLocationFilter,
+    locationId: "all",
     enabled: isEnabled,
   })
 
-  const { data: invoices = [], isLoading: isLoadingInvoices } = useInvoices(
+  const { data: invoices = [], isLoading: isLoadingInvoices, isError: isErrorInvoices, refetch: refetchInvoices } = useInvoices(
     dateRange,
-    selectedLocationFilter,
+    "all",
     10,
     isEnabled
   )
 
-  const { data: payouts = [], isLoading: isLoadingPayouts } = usePayouts(isEnabled)
+  const { data: payouts = [], isLoading: isLoadingPayouts, isError: isErrorPayouts, refetch: refetchPayouts } = usePayouts(isEnabled)
 
   const { data: stripeStatus } = useStripeConnectStatus(isEnabled)
-
-  // Prepare payment status chart data
-  // Uses totalPrice for consistency with Revenue Trend chart's "Total Revenue"
-  const paymentStatusData = useMemo(() => {
-    if (!transactionsData?.transactions) return []
-
-    const statusAmounts: Record<string, { amount: number; count: number }> = {}
-
-    transactionsData.transactions.forEach((t) => {
-      const status = t.paymentStatus || "pending"
-      // Use totalPrice for all statuses to match Revenue Trend's Total Revenue
-      const amount = t.totalPrice || 0
-
-      if (!statusAmounts[status]) {
-        statusAmounts[status] = { amount: 0, count: 0 }
-      }
-      statusAmounts[status].amount += amount
-      statusAmounts[status].count += 1
-    })
-
-    return Object.entries(statusAmounts).map(([status, data]) => ({
-      status: status as PaymentStatus,
-      amount: data.amount,
-      count: data.count,
-    }))
-  }, [transactionsData])
 
   // Handlers
   const handleDownloadInvoice = useCallback(async (bookingId: number, bookingType?: string, transactionId?: number) => {
@@ -172,75 +173,55 @@ export default function ManagerRevenueDashboard({
         title={mt("navRevenue")}
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            {hasPaymentAccount && <Button variant="outline" size="sm" disabled={stripeDashboard.isPending} onClick={() => stripeDashboard.mutate()}>
+              {stripeDashboard.isPending
+                ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                : <SiStripe className="size-4 text-stripe" aria-hidden="true" />}
+              {mt("viewStripeDashboard")}<ChevronRight className="size-4" aria-hidden="true" />
+            </Button>}
             {/* Date Range Picker */}
             <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
             />
 
-            {/* Location Filter */}
-            {locations.length > 1 && (
-              <Select
-                value={selectedLocationFilter === "all" ? "all" : selectedLocationFilter.toString()}
-                onValueChange={(value) =>
-                  setSelectedLocationFilter(value === "all" ? "all" : parseInt(value))
-                }
-              >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder={mt("cmdAllLocations")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{mt("cmdAllLocations")}</SelectItem>
-                  {locations.map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id.toString()}>
-                      {loc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
           </div>
         }
       />
 
-      {/* Info Banner */}
-      <Card className="border-blue-200 bg-blue-50/50">
-        <CardContent className="p-3">
-          <div className="flex items-start gap-2">
-            <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-blue-800">
-              <p className="font-medium mb-1">{mt("understandingYourRevenue")}</p>
-              <p className="text-blue-700">
-                <strong>{mt("completedPayments")}</strong> Money in your Stripe account.{" "}
-                <strong>{mt("processing2")}</strong>{mt("paymentsBeingProcessed")}</p>
-            </div>
+      {showReconnectNotice && <Alert>
+        <AlertTitle>{mt(hasPaymentAccount ? "revenueReconnectTitle" : "connectStripeAccount")}</AlertTitle>
+        <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+          <span>{mt(hasPaymentAccount ? "revenueReconnectBody" : "connectStripeAccountDesc")}</span>
+          <Button variant="outline" size="sm" onClick={handleNavigateToPayments}>{mt(hasPaymentAccount ? "navPayments" : "setUpStripeConnect")}</Button>
+        </AlertDescription>
+      </Alert>}
+
+      {!hasPublishedKitchen && !isLoadingTransactions && !isErrorTransactions && transactionsData?.total === 0 && !isLoadingCharts && !isErrorCharts && chartData.length === 0 && <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5 md:p-6">
+          <div>
+            <p className="font-semibold">{mt("revenueNoPaymentsTitle")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{mt("revenueNoPaymentsBody")}</p>
           </div>
+          {!hasPublishedKitchen && onNavigate && <Button variant="outline" size="sm" onClick={() => onNavigate("kitchens")}>{mt("overviewReviewListing")}</Button>}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* Revenue Metrics */}
-      <RevenueMetricCards metrics={metrics} isLoading={isLoadingMetrics} transactions={transactionsData?.transactions} />
+      {!isErrorCharts && <RevenueMetricCards data={chartData} isLoading={isLoadingCharts} />}
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RevenueTrendChart data={chartData} isLoading={isLoadingCharts} />
-
-        {locations.length > 1 ? (
-          <RevenueByLocationChart data={revenueByLocation} isLoading={isLoadingByLocation} />
-        ) : (
-          <PaymentStatusChart data={paymentStatusData} isLoading={isLoadingTransactions} />
-        )}
-      </div>
+      {isErrorCharts ? <RevenueSectionError section={mt("revenueEarningsActivity")} onRetry={() => void refetchCharts()} />
+        : <RevenueTrendChart data={chartData} dateRange={dateRange} isLoading={isLoadingCharts} />}
 
       {/* Transaction History */}
-      <TransactionTable
+      {isErrorTransactions ? <RevenueSectionError section={mt("transactionHistory")} onRetry={() => void refetchTransactions()} /> : <TransactionTable
         transactions={transactionsData?.transactions || []}
         isLoading={isLoadingTransactions}
         onDownloadInvoice={handleDownloadInvoice}
-      />
+      />}
 
       {/* Recent Invoices */}
-      {invoices.length > 0 && (
+      {isErrorInvoices ? <RevenueSectionError section={mt("recentInvoices")} onRetry={() => void refetchInvoices()} /> : invoices.length > 0 && (
         <Card>
           <CardHeader>
             <div>
@@ -355,7 +336,12 @@ export default function ManagerRevenueDashboard({
             );
           })()}
 
-          {isLoadingPayouts ? (
+          {isErrorPayouts ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 py-5">
+              <p className="text-sm text-destructive">{mt("revenueSectionUnavailable", { section: mt("payoutHistory") })}</p>
+              <Button variant="outline" size="sm" onClick={() => void refetchPayouts()}>{mt("retry")}</Button>
+            </div>
+          ) : isLoadingPayouts ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />

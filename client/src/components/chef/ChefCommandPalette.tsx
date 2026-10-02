@@ -1,9 +1,13 @@
+import { ChefApplicationIcon } from "@/components/ui/application-icons";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
-import { LayoutDashboard, FileText, Building, Calendar, BookOpen, MessageCircle, Search, Headphones, CreditCard, AlertTriangle, Store, MessageSquare, DollarSign } from "lucide-react";
+import { LayoutDashboard, Calendar, BookOpen, MessageCircle, Search, Headphones, CreditCard, AlertTriangle, Store, MessageSquare, DollarSign } from "lucide-react";
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
+import { Icon } from "@iconify/react";
+import { findChefNavItem } from "@/lib/chef-nav-sections";
 
 interface ChefCommandPaletteProps {
   onNavigate: (view: string) => void;
@@ -11,8 +15,8 @@ interface ChefCommandPaletteProps {
 
 const navigationItems = [
   { labelKey: "shellOverview", value: "overview", icon: LayoutDashboard, group: "shellNavigation" },
-  { labelKey: "shellMyApplication", value: "applications", icon: FileText, group: "shellNavigation" },
-  { labelKey: "shellMyKitchens", value: "kitchen-applications", icon: Building, group: "shellNavigation" },
+  { labelKey: "shellMyApplication", value: "applications", icon: ChefApplicationIcon, group: "shellNavigation" },
+  { labelKey: "shellMyKitchens", value: "kitchen-applications", icon: KitchenIcon, group: "shellNavigation" },
   { labelKey: "shellMyBookings", value: "bookings", icon: Calendar, group: "shellNavigation" },
   { labelKey: "shellMyEarnings", value: "seller-revenue", icon: DollarSign, group: "shellNavigation" },
   { labelKey: "shellLinkedAccounts", value: "my-account", icon: Store, group: "shellNavigation" },
@@ -29,7 +33,7 @@ const financialItems = [
 ];
 
 const quickActions = [
-  { labelKey: "shellApplyToSell", value: "applications", icon: Store, group: "shellQuickActions" },
+  { labelKey: "shellApplyToSell", value: "applications", icon: ChefApplicationIcon, group: "shellQuickActions" },
   { labelKey: "shellBookKitchenSession", value: "discover-kitchens", icon: Calendar, group: "shellQuickActions" },
   { labelKey: "shellStartLiveChat", value: "support", icon: MessageCircle, group: "shellQuickActions" },
 ];
@@ -72,7 +76,9 @@ export default function ChefCommandPalette({ onNavigate }: ChefCommandPalettePro
               value={tr(item.labelKey as never)}
               onSelect={() => handleSelect(item.value)}
             >
-              <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+              {findChefNavItem(item.value)?.icon
+                ? <Icon icon={findChefNavItem(item.value)!.icon} className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden />
+                : <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />}
               <span>{tr(item.labelKey as never)}</span>
             </CommandItem>
           ))}
@@ -85,7 +91,9 @@ export default function ChefCommandPalette({ onNavigate }: ChefCommandPalettePro
               value={tr(item.labelKey as never)}
               onSelect={() => handleSelect(item.value)}
             >
-              <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+              {findChefNavItem(item.value)?.icon
+                ? <Icon icon={findChefNavItem(item.value)!.icon} className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden />
+                : <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />}
               <span>{tr(item.labelKey as never)}</span>
             </CommandItem>
           ))}

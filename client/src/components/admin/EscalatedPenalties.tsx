@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Admin Escalated Penalties Dashboard
  * 
@@ -16,15 +17,21 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, RefreshCw, DollarSign, Package, FileWarning, CheckCircle } from "lucide-react";
+import { AlertTriangle, RefreshCw, DollarSign, FileWarning, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { TruncatedText } from "@/components/common/TruncatedText";
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface EscalatedOverstay {
+  chefDisputeReason: string | null;
+  chefDisputedAt: string | null;
+  disputeReviewedAt: string | null;
   id: number;
   storageBookingId: number;
   status: string;
@@ -86,6 +93,32 @@ async function adminFetch(url: string) {
 
 function formatCurrency(cents: number) {
   return `$${(cents / 100).toFixed(2)} CAD`;
+}
+
+function OverstayDisputeReview({ penalty, onReviewed }: { penalty: EscalatedOverstay; onReviewed: () => void }) {
+  const [amount, setAmount] = useState(String((penalty.finalPenaltyCents ?? 0) / 100));
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const cents = Math.round(Number(amount) * 100);
+  async function save() {
+    setSaving(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/admin/overstay-penalties/${penalty.id}/review-dispute`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amountCents: cents, reason }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to save decision');
+      toast.success('Dispute reviewed'); onReviewed();
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Failed to review dispute'); }
+    finally { setSaving(false); }
+  }
+  return <div className="space-y-2 mt-2">
+    <Input aria-label="Final amount in CAD" type="number" min="0" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} />
+    <Textarea aria-label="Dispute decision reason" value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain the reviewed amount; zero waives the penalty" />
+    <Button size="sm" disabled={saving || !amount.trim() || !Number.isSafeInteger(cents) || cents < 0 || cents > (penalty.finalPenaltyCents ?? 0) || reason.trim().length < 10} onClick={save}>Save review decision</Button>
+  </div>;
 }
 
 // ============================================================================
@@ -193,10 +226,6 @@ export default function EscalatedPenalties() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4 mr-1" />
-          Refresh
-        </Button>
       </div>
 
       {/* Status Tabs */}
@@ -279,7 +308,7 @@ export default function EscalatedPenalties() {
               <Package className="h-5 w-5 text-red-600" />
               <div>
                 <CardTitle className="text-base">Escalated Overstay Penalties ({overstays.length})</CardTitle>
-                <CardDescription>Storage overstay penalties that failed auto-charge</CardDescription>
+                <CardDescription>Disputes, unsupported rates, and payment issues requiring review</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -327,7 +356,7 @@ export default function EscalatedPenalties() {
                       </TableCell>
                       <TableCell className="text-right text-sm">
                         {(() => {
-                          const base = o.finalPenaltyCents || o.calculatedPenaltyCents;
+                          const base = o.finalPenaltyCents ?? o.calculatedPenaltyCents;
                           const taxRate = parseFloat(String(o.kitchenTaxRatePercent || 0));
                           const total = taxRate > 0 ? Math.round(base * (1 + taxRate / 100)) : base;
                           return (
@@ -344,7 +373,8 @@ export default function EscalatedPenalties() {
                       </TableCell>
                       <TableCell>{getOverstayStatusBadge(o.status)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px]">
-                        <TruncatedText className="truncate">{o.chargeFailureReason || "Unknown"}</TruncatedText>
+                        <TruncatedText className="truncate">{o.chefDisputeReason || o.chargeFailureReason || "Manual review required"}</TruncatedText>
+                        {o.chefDisputedAt && !o.disputeReviewedAt && <OverstayDisputeReview penalty={o} onReviewed={() => refetch()} />}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {format(new Date(o.detectedAt), "MMM d, yyyy")}

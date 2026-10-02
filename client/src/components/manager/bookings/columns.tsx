@@ -1,13 +1,15 @@
+import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 "use client"
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2, LogIn, LogOut, Camera, FileWarning } from "@/components/ui/manager-icons"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2, LogIn, LogOut, Camera, FileWarning } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { BookingOperationsStatus } from '@/components/booking/BookingOperationsStatus';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown"
@@ -92,8 +94,6 @@ interface BookingColumnsProps {
     onConfirm: (bookingId: number) => void;
     onReject: (booking: Booking) => void;
     onCancel: (booking: Booking) => void;
-    onRefund?: (booking: Booking) => void;
-    onCancelAndRefund?: (booking: Booking) => void;
     onTakeAction?: (booking: Booking) => void;
     onAcceptCancellation?: (booking: Booking) => void;
     onDeclineCancellation?: (booking: Booking) => void;
@@ -170,13 +170,16 @@ function getCheckinBadgeProps(checkinStatus: string | null | undefined):
     return null;
 }
 
-export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onCancelAndRefund, onTakeAction, onAcceptCancellation, onDeclineCancellation, onAcceptStorageCancellation, onDeclineStorageCancellation, onManageBooking, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
+export const getBookingColumns = ({ onConfirm, onReject, onCancel, onTakeAction, onAcceptCancellation, onDeclineCancellation, onAcceptStorageCancellation, onDeclineStorageCancellation, onManageBooking, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
     {
         accessorKey: "createdAt",
         header: () => null,
         cell: () => null,
         enableHiding: true,
-        meta: { hidden: true },
+        // `hidden` is a TanStack column-visibility default; the mobile card reads `mobileHidden`.
+        // This column renders NOTHING, so without the second flag the card opened with an empty
+        // bordered identity row and pushed the chef's name down into the grid.
+        meta: { hidden: true, mobileHidden: true },
     },
     {
         accessorKey: "chefName",
@@ -217,6 +220,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
     },
     {
         accessorKey: "kitchenName",
+        // The header is a sort button, so the mobile card has no string to label the field with.
+        meta: { mobileLabel: mt("kitchenLocation2") },
         header: ({ column }) => {
             return (
                 <Button
@@ -249,6 +254,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
     },
     {
         accessorKey: "bookingDate",
+        // Sort-button header, so the label has to be declared for the mobile card.
+        meta: { mobileLabel: mt("dateTime") },
         header: ({ column }) => (
             <Button
                 variant="ghost"
@@ -290,6 +297,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
     },
     {
         id: "addons",
+        // A list of rental/storage chips — half a card would wrap every one of them onto its own line.
+        meta: { mobileLabel: mt("rentals"), mobileSpan: "full" },
         header: () => (
             <div className="flex items-center gap-1">
                 <Boxes className="h-3.5 w-3.5" />
@@ -417,6 +426,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
     },
     {
         accessorKey: "totalPrice",
+        // Node header (icon + label), so the mobile card needs the label declared.
+        meta: { mobileLabel: mt("payment") },
         header: () => (
             <div className="text-right flex items-center justify-end gap-1">
                 <DollarSign className="h-3.5 w-3.5" />
@@ -744,16 +755,11 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                     icon = <Clock className="h-3 w-3 mr-1" />
                     extraClassName = "bg-gray-100 text-gray-600 border-gray-300"
                     label = mt("expired")
-                } else if (paymentStatus === 'refunded') {
-                    // Cancelled and fully refunded
+                } else {
+                    // Refund progress belongs to the payment column, not the cancellation tone.
                     variant = "outline"
                     icon = <XCircle className="h-3 w-3 mr-1" />
-                    extraClassName = "bg-gray-100 text-gray-600 border-gray-300"
-                    label = mt("refunded")
-                } else {
-                    // Manager rejected or cancelled the booking
-                    variant = "destructive"
-                    icon = <XCircle className="h-3 w-3 mr-1" />
+                    extraClassName = "bg-muted text-muted-foreground border-border font-medium"
                     label = tt("cancelled")
                 }
             } else if (status === 'cancellation_requested') {
@@ -769,8 +775,6 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
 
             const isVoided = row.original.isVoidedAuthorization === true;
             const isAuthHold = row.original.isAuthorizedHold === true;
-            const isRefunded = paymentStatus === 'refunded';
-            const isPartiallyRefunded = paymentStatus === 'partially_refunded';
 
             // ── Kitchen Check-In/Check-Out lifecycle badge ─────────────────
             // Show for confirmed/completed bookings where check-in is relevant.
@@ -801,6 +805,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                             {checkinBadgeProps.label}
                         </Badge>
                     )}
+                    <BookingOperationsStatus booking={row.original} />
                     {isVoided && (
                         <Badge variant="outline" className="text-[10px] text-muted-foreground w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />{mt("authVoided")}</Badge>
@@ -809,14 +814,14 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                         <Badge variant="info" className="text-[10px] w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />{mt("paymentHeld")}</Badge>
                     )}
-                    {isRefunded && (
-                        <Badge variant="warning" className="text-[10px] w-fit">
-                            <RotateCcw className="h-2.5 w-2.5 mr-0.5" />{mt("refunded")}</Badge>
-                    )}
-                    {isPartiallyRefunded && (
-                        <Badge variant="warning" className="text-[10px] w-fit">
-                            <RotateCcw className="h-2.5 w-2.5 mr-0.5" />{mt("partialRefund")}</Badge>
-                    )}
+                    {/*
+                      No refund badge here, deliberately. The `totalPrice` cell beside this one
+                      already states the refund AND its amount ("Refunded: $115.03" under a
+                      struck-through original), so a "Refunded" chip in the status column repeated
+                      the word while carrying none of the information — and when the status chip
+                      itself also read "Refunded" (see the `cancelled` branch above) the same chip
+                      appeared twice on one row.
+                    */}
                 </div>
             )
         },
@@ -836,7 +841,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             // Check if time has passed for confirmed bookings. Resolve in the
             // LOCATION's timezone so this matches the server's view of
             // past/future (server measures against the kitchen's wall clock).
-            const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
+            const timezone = DEFAULT_TIMEZONE;
             const bookingDateTime = createBookingDateTime(
                 calendarDateForBookingTime(booking.bookingDate.split('T')[0], booking.startTime, booking.operatingWindowStartTime),
                 booking.startTime,
@@ -851,31 +856,22 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                 ['paid', 'partially_refunded'].includes(booking.paymentStatus) && 
                 (booking.refundableAmount === undefined || booking.refundableAmount > 0);
             
-            // For cancelled bookings, only show refund action if there's refundable amount
-            if (isCancelled && !hasRefundableAmount) {
-                return null; // No actions for fully refunded cancelled bookings
-            }
-            
             const hasStorageCancellationRequest = (booking.storageItems || []).some(s => s.cancellationRequested);
-
-            if (isConfirmed && isPast && !hasStorageCancellationRequest && !hasRefundableAmount) {
-                return null; // No actions for past confirmed bookings (unless storage cancel pending or refundable)
-            }
-
-            // Cancellation requested bookings always show actions
-            // (Accept + Issue Refund, or Decline)
+            // Restrict workflow actions without hiding details and reference access.
+            const showWorkflowActions = !(isCancelled && !hasRefundableAmount)
+                && !(isConfirmed && isPast && !hasStorageCancellationRequest && !hasRefundableAmount);
 
             return (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
                             <span className="sr-only">{mt("openMenu")}</span>
                             <MoreHorizontal className="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuLabel>{mt("actions")}</DropdownMenuLabel>
-
+                        {showWorkflowActions && <>
                         {isPending && onTakeAction && (
                             <DropdownMenuItem
                                 onClick={() => onTakeAction(booking)}
@@ -916,14 +912,6 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 className="text-red-600 focus:text-red-700 focus:bg-red-50"
                             >
                                 <XCircle className="mr-2 h-4 w-4" />{mt("cancelBooking")}</DropdownMenuItem>
-                        )}
-
-                        {canCancel && !onManageBooking && onCancelAndRefund && hasRefundableAmount && (
-                            <DropdownMenuItem
-                                onClick={() => onCancelAndRefund(booking)}
-                                className="text-red-600 focus:text-red-700 focus:bg-red-50"
-                            >
-                                <RotateCcw className="mr-2 h-4 w-4" />{mt("cancelRefund")}</DropdownMenuItem>
                         )}
 
                         {/* Cancellation Request actions — Accept (cancel + then Issue Refund) or Decline */}
@@ -973,19 +961,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                             });
                         })()}
 
-                        {/* Refund action - show for paid/partially_refunded bookings with refundable amount
-                            This covers both:
-                            - Cancelled confirmed bookings (need manual refund)
-                            - Active bookings where manager wants to issue partial refund */}
-                        {onRefund && (!onManageBooking || booking.status === "cancelled") && hasRefundableAmount && (
-                            <DropdownMenuItem
-                                onClick={() => onRefund(booking)}
-                                className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"
-                            >
-                                <RotateCcw className="mr-2 h-4 w-4" />{mt("issueRefund")}</DropdownMenuItem>
-                        )}
-
                         <DropdownMenuSeparator />
+                        </>}
                         <DropdownMenuItem asChild>
                             <a href={`/manager/booking/${booking.id}`}>
                                 <Eye className="mr-2 h-4 w-4" />{mt("viewDetails")}</a>

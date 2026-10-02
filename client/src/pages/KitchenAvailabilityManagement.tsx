@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle, Eye } from "@/components/ui/manager-icons";
+import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle, KitchenTour } from "@/components/ui/manager-icons";
 import { forwardRef, useEffect, useState, useCallback, useImperativeHandle, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +29,9 @@ import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { ChefPageHeader } from "@/components/chef/ui";
 import ViewingSettingsPanel, { type ViewingSettingsPanelHandle } from "@/components/manager/ViewingSettingsPanel";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import { AvailabilitySkeleton } from "@/components/manager/AvailabilitySkeleton";
+import { useListingImpactConfirm } from "@/components/manager/ListingImpactConfirm";
+import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 
 // --- Types ---
 interface DateAvailability {
@@ -134,6 +137,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
   const tourRef = useRef<ViewingSettingsPanelHandle>(null);
   const selectedKitchen = availableKitchens.find((kitchen) => kitchen.id === selectedKitchenId);
   const selectedLocationId = initialLocationId ?? selectedKitchen?.locationId ?? null;
+  const facilityKitchenCount = availableKitchens.filter((kitchen) => kitchen.locationId === selectedLocationId).length;
 
   useEffect(() => {
     setSelectedKitchenId((current) =>
@@ -221,6 +225,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
         // never reaches the empty state — but the TYPE has to be satisfied, and a second render path
         // that silently forgot it is exactly what `tsc` was run to catch.
         hasKitchen={availableKitchens.length > 0}
+        facilityKitchenCount={facilityKitchenCount}
         onSaveSuccess={onSaveSuccess}
         hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
         onDirtyChange={setBookingDirty}
@@ -229,7 +234,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
   }
 
   if (isLoadingKitchens) {
-    return <div className="space-y-6"><Skeleton className="h-16 w-full" /><Skeleton className="h-[500px] w-full" /></div>;
+    return <AvailabilitySkeleton header={!embedded} />;
   }
 
   return (
@@ -256,7 +261,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
             <CalendarIcon className="h-4 w-4" />{mt("kitchenBookingAvailability")}
           </TabsTrigger>
           <TabsTrigger value="tours" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background">
-            <Eye className="h-4 w-4" />{mt("kitchenTours")}
+            <KitchenTour className="h-4 w-4" />{mt("kitchenTours")}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="bookings" className="mt-6">
@@ -266,6 +271,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
             selectedLocationId={selectedLocationId}
             selectedKitchenId={selectedKitchenId}
             hasKitchen={availableKitchens.length > 0}
+            facilityKitchenCount={facilityKitchenCount}
             hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
             onDirtyChange={setBookingDirty}
           />
@@ -277,6 +283,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
               ref={tourRef}
               kitchenId={selectedKitchenId}
               kitchenName={selectedKitchen?.name}
+              facilityKitchenCount={facilityKitchenCount}
               onDirtyChange={setTourDirty}
             />
           ) : (
@@ -318,6 +325,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
    * who already has one and simply has not chosen it.
    */
   hasKitchen: boolean,
+  facilityKitchenCount: number,
   onSaveSuccess?: () => void | Promise<void>,
   hideWeeklyScheduleSaveButton?: boolean,
   onDirtyChange?: (dirty: boolean) => void
@@ -325,12 +333,14 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   selectedLocationId,
   selectedKitchenId,
   hasKitchen,
+  facilityKitchenCount,
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false,
   onDirtyChange
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const listingImpact = useListingImpactConfirm();
   // Its own hook: the outer component's `navigate` is not in this scope either.
   const [, navigate] = useLocation();
 
@@ -340,6 +350,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   // State for date exception dialog
   const [isExceptionDialogOpen, setIsExceptionDialogOpen] = useState(false);
   const [selectedException, setSelectedException] = useState<DateAvailability | null>(null);
+  const [exceptionScope, setExceptionScope] = useState<"kitchen" | "facility">("kitchen");
   const [exceptionForm, setExceptionForm] = useState({
     isAvailable: false,
     reason: "",
@@ -348,6 +359,10 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
     maxSlotsPerChef: 1,
   });
   const [savedExceptionForm, setSavedExceptionForm] = useState('');
+  const refreshExceptions = () => {
+    void queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides'] });
+    void queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/viewings/settings/') });
+  };
 
   // Alert Dialog State
   const [alertConfig, setAlertConfig] = useState<{
@@ -356,6 +371,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
     description: string;
     actionType: 'save' | 'delete';
     onConfirm: () => void;
+    deleteId?: number;
   }>({
     open: false,
     title: "",
@@ -367,7 +383,24 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   // State for weekly schedule
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, WeeklyScheduleItem>>({});
   const [savedWeeklySchedule, setSavedWeeklySchedule] = useState('');
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(!!selectedKitchenId);
+  const [scheduleLoadError, setScheduleLoadError] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const scopeSelector = facilityKitchenCount > 1 && (
+    <fieldset className="space-y-2 border-t pt-4">
+      <legend className="text-sm font-medium">{mt("exceptionScopeQuestion")}</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {(["kitchen", "facility"] as const).map((scope) => (
+          <label key={scope} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm ${exceptionScope === scope ? "border-primary" : "border-border"}`}>
+            <input type="radio" name="exception-scope" value={scope} checked={exceptionScope === scope}
+              onChange={() => setExceptionScope(scope)} className="accent-primary" />
+            {mt(scope === "kitchen" ? "exceptionScopeKitchen" : "exceptionScopeFacility")}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">{mt(selectedException ? "exceptionScopeMatchingDetail" : "exceptionScopeDetail")}</p>
+    </fieldset>
+  );
 
   // Queries
   const { data: availabilityExceptions = [], isLoading: isLoadingExceptions } = useQuery({
@@ -405,11 +438,14 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   const loadWeeklySchedule = useCallback(async () => {
     if (!selectedKitchenId) return;
 
+    setIsLoadingSchedule(true);
+    setScheduleLoadError(false);
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/availability/${selectedKitchenId}`, { headers });
 
-      if (response.ok) {
+      if (!response.ok) throw new Error(`Failed to load schedule (${response.status})`);
+      {
         const data = await response.json();
         const scheduleMap: Record<number, WeeklyScheduleItem> = {};
         [0, 1, 2, 3, 4, 5, 6].forEach(day => {
@@ -434,6 +470,9 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       }
     } catch (error) {
       logger.error("Failed to load schedule", error);
+      setScheduleLoadError(true);
+    } finally {
+      setIsLoadingSchedule(false);
     }
   }, [selectedKitchenId]);
 
@@ -476,10 +515,12 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides', selectedKitchenId] });
+    onSuccess: (result: { skippedKitchenIds?: number[] }) => {
+      refreshExceptions();
       setIsExceptionDialogOpen(false);
-      toast({ title: mt("success"), description: mt("exceptionSavedSuccessfully") });
+      toast({ title: mt("success"), description: result.skippedKitchenIds?.length
+        ? mt("exceptionSavedWithSkippedKitchens")
+        : mt("exceptionSavedSuccessfully") });
     },
     onError: (err: any, data) => {
       if (showOverrideBookingWarning(err, bookingIds => createAvailability.mutate({ ...data, acknowledgedBookingIds: bookingIds }))) return;
@@ -503,10 +544,12 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides', selectedKitchenId] });
+    onSuccess: (result: { skippedKitchenIds?: number[] }) => {
+      refreshExceptions();
       setIsExceptionDialogOpen(false);
-      toast({ title: mt("success"), description: mt("exceptionUpdatedSuccessfully") });
+      toast({ title: mt("success"), description: result.skippedKitchenIds?.length
+        ? mt("exceptionChangedWithUnchangedKitchens")
+        : mt("exceptionUpdatedSuccessfully") });
     },
     onError: (err: any, variables) => {
       if (showOverrideBookingWarning(err, bookingIds => updateAvailability.mutate({
@@ -517,16 +560,18 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   });
 
   const deleteAvailability = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, scope }: { id: number; scope: "kitchen" | "facility" }) => {
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/manager/date-overrides/${id}`, { method: 'DELETE', headers });
+      const res = await fetch(`/api/manager/date-overrides/${id}?scope=${scope}`, { method: 'DELETE', headers });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides', selectedKitchenId] });
+    onSuccess: (result: { skippedKitchenIds?: number[] }) => {
+      refreshExceptions();
       setIsExceptionDialogOpen(false);
-      toast({ title: mt("success"), description: mt("exceptionRemovedSuccessfully") });
+      toast({ title: mt("success"), description: result.skippedKitchenIds?.length
+        ? mt("exceptionChangedWithUnchangedKitchens")
+        : mt("exceptionRemovedSuccessfully") });
     },
     onError: (err: any) => {
       toast({ title: mt("error"), description: err.message, variant: "destructive" });
@@ -534,10 +579,11 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   });
 
 
-  const handleSaveWeeklySchedule = useCallback(async (acknowledgedBookingIds?: number[]) => {
+  const handleSaveWeeklySchedule = useCallback(async (acknowledgedBookingIds?: number[], listingApproved = false) => {
     if (!selectedKitchenId) return false;
     setIsSavingSchedule(true);
     try {
+      if (!listingApproved && !await listingImpact.confirm(selectedKitchenId, Object.values(weeklySchedule).every(day => !day.isAvailable))) return false;
       const headers = await getAuthHeaders();
       const scheduleArray = [0, 1, 2, 3, 4, 5, 6].map(day => {
         const item = weeklySchedule[day] || {};
@@ -563,7 +609,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
             actionType: 'save',
             onConfirm: () => {
               setAlertConfig(current => ({ ...current, open: false }));
-              void handleSaveWeeklySchedule(conflict.bookingIds);
+              void handleSaveWeeklySchedule(conflict.bookingIds, true);
             },
           });
           return false;
@@ -572,6 +618,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       if (!response.ok) throw new Error(await response.text() || 'Failed to save weekly schedule');
       toast({ title: mt("success"), description: mt("weeklyScheduleSaved") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/availability', selectedKitchenId] });
+      invalidateKitchenListingState(queryClient, selectedKitchenId, selectedLocationId ?? undefined);
       // [NEW] Notify parent that save was successful
       if (onSaveSuccess) {
         await onSaveSuccess();
@@ -584,7 +631,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
     } finally {
       setIsSavingSchedule(false);
     }
-  }, [onSaveSuccess, queryClient, selectedKitchenId, toast, weeklySchedule]);
+  }, [onSaveSuccess, queryClient, selectedKitchenId, selectedLocationId, toast, weeklySchedule, listingImpact.confirm]);
 
   useImperativeHandle(ref, () => ({
     saveWeeklySchedule: handleSaveWeeklySchedule
@@ -592,6 +639,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
 
   const handleDateClick = (clickedDate: Date | undefined) => {
     if (!clickedDate) return;
+    setExceptionScope("kitchen");
     setDate(clickedDate);
 
     // Check for existing exception
@@ -649,7 +697,8 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       endTime: exceptionForm.isAvailable ? exceptionForm.endTime : null,
       isAvailable: exceptionForm.isAvailable,
       reason: exceptionForm.reason,
-      maxSlotsPerChef: exceptionForm.maxSlotsPerChef
+      maxSlotsPerChef: exceptionForm.maxSlotsPerChef,
+      scope: facilityKitchenCount > 1 ? exceptionScope : "kitchen"
     };
 
     if (selectedException) {
@@ -666,10 +715,8 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       title: mt("confirmDeletion"),
       description: mt("removeExceptionConfirmDesc"),
       actionType: 'delete',
-      onConfirm: () => {
-        deleteAvailability.mutate(selectedException.id);
-        setAlertConfig(prev => ({ ...prev, open: false }));
-      }
+      deleteId: selectedException.id,
+      onConfirm: () => {}
     });
   };
 
@@ -703,6 +750,9 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   }
 
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  if (isLoadingSchedule) return <AvailabilitySkeleton />;
+  if (scheduleLoadError) return <Card><CardContent className="p-6"><Button variant="outline" onClick={() => void loadWeeklySchedule()}>{mt("retry")}</Button></CardContent></Card>;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
@@ -749,13 +799,13 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                     </Label>
 
                     {/* Column 2 — time range (or the closed state, same lane) */}
-                    <div className="flex items-center gap-2 sm:justify-end">
+                    <div className="order-3 col-span-2 flex items-center gap-2 sm:order-2 sm:col-span-1 sm:justify-end">
                       {isAvailable ? (
                         <>
                           <Input
                             type="time"
                             aria-label={`${dayName} ${mt("open")}`}
-                            className="h-9 w-28 text-sm"
+                            className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none"
                             value={schedule.startTime || "09:00"}
                             onChange={(e) => {
                               setWeeklySchedule(prev => ({
@@ -768,7 +818,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                           <Input
                             type="time"
                             aria-label={`${dayName} ${mt("closed")}`}
-                            className="h-9 w-28 text-sm"
+                            className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none"
                             value={schedule.endTime || "17:00"}
                             onChange={(e) => {
                               setWeeklySchedule(prev => ({
@@ -789,6 +839,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                     {/* Column 3 — toggle, always the rightmost element */}
                     <Switch
                       aria-label={dayName}
+                      className="order-2 justify-self-end sm:order-3 sm:justify-self-auto"
                       checked={isAvailable}
                       onCheckedChange={(checked) => {
                         setWeeklySchedule(prev => ({
@@ -901,15 +952,14 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                               size="sm"
                               onClick={() => {
                                 setSelectedException(ex);
+                                setExceptionScope("kitchen");
                                 setAlertConfig({
                                   open: true,
                                   title: mt("confirmDeletion"),
                                   description: mt("removeThisException"),
                                   actionType: 'delete',
-                                  onConfirm: () => {
-                                    deleteAvailability.mutate(ex.id);
-                                    setAlertConfig(prev => ({ ...prev, open: false }));
-                                  }
+                                  deleteId: ex.id,
+                                  onConfirm: () => {}
                                 });
                               }}
                               className="h-8 w-8 text-muted-foreground hover:text-destructive"
@@ -974,6 +1024,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                 placeholder={exceptionForm.isAvailable ? "e.g. Extended hours" : "e.g. Holiday closure"}
               />
             </div>
+            {scopeSelector}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             {selectedException && (
@@ -1003,16 +1054,23 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
             <AlertDialogDescription className="whitespace-pre-wrap">
               {alertConfig.description}
             </AlertDialogDescription>
+            {alertConfig.actionType === 'delete' && scopeSelector}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={alertConfig.onConfirm}
+              onClick={() => {
+                if (alertConfig.actionType === 'delete' && alertConfig.deleteId != null) {
+                  deleteAvailability.mutate({ id: alertConfig.deleteId, scope: facilityKitchenCount > 1 ? exceptionScope : "kitchen" });
+                  setAlertConfig(previous => ({ ...previous, open: false }));
+                } else alertConfig.onConfirm();
+              }}
               className={alertConfig.actionType === 'delete' ? "bg-destructive hover:bg-destructive/90" : ""}
             >{mt("confirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {listingImpact.dialog}
     </div>
   );
 });

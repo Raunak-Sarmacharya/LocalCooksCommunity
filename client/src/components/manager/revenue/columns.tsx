@@ -3,7 +3,7 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw } from "@/components/ui/manager-icons"
+import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw, User, MapPin, Calendar as CalendarIcon } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -158,12 +158,13 @@ export function getTransactionColumns({
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className="h-8 px-0 text-xs"
                 >{mt("date")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => (
-                <span className="text-sm font-medium">
-                    {formatDate(row.getValue("bookingDate"))}
+                <span className="flex items-center gap-2 text-sm font-medium"><CalendarIcon className="size-3 shrink-0 text-muted-foreground" />
+                    {formatDate(row.original.bookingDate, "short", /^\d{4}-\d{2}-\d{2}$/.test(row.original.bookingDate) ? "UTC" : undefined)}
                 </span>
             ),
         },
@@ -171,9 +172,9 @@ export function getTransactionColumns({
             accessorKey: "chefName",
             header: mt("chefHeader"),
             cell: ({ row }) => (
-                <span className="text-sm">
-                    {row.getValue("chefName") || tt("guest")}
-                </span>
+                <div className="space-y-1"><span className="flex items-center gap-2 text-sm font-medium"><User className="size-3 shrink-0 text-muted-foreground" />{row.getValue("chefName") || tt("guest")}</span>
+                  {!row.getAllCells().find((cell) => cell.column.id === "reference")?.column.getIsVisible() && <span className="block pl-5 font-mono text-xs text-muted-foreground">#{row.original.referenceCode || row.original.bookingId || row.original.id}</span>}
+                </div>
             ),
         },
         {
@@ -186,7 +187,7 @@ export function getTransactionColumns({
                 const description = row.original.description;
                 
                 return (
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium">
                             {isDamageClaim ? (
                                 <span className="text-green-600 font-semibold">
@@ -198,13 +199,14 @@ export function getTransactionColumns({
                                 row.original.kitchenName
                             )}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="size-3 shrink-0" />
                             {isDamageClaim ? (
                                 <span className="text-green-600">{mt("claimPayment")}</span>
                             ) : (
                                 row.getValue("locationName")
                             )}
                         </span>
+                        <span className="text-xs text-muted-foreground">{mt("transactionCreatedOn", { date: formatDate(row.original.createdAt) })}</span>
                     </div>
                 )
             },
@@ -215,7 +217,7 @@ export function getTransactionColumns({
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="justify-end w-full"
+                    className="h-8 w-full justify-end px-0 text-xs"
                 >{mt("kitchenSubtotal")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
@@ -306,7 +308,7 @@ export function getTransactionColumns({
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="justify-end w-full"
+                    className="h-8 w-full justify-end px-0 text-xs"
                 >{mt("managerPayout")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),

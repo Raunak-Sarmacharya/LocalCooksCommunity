@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -19,11 +19,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   kitchens: [] as any[],
   navigate: vi.fn(),
+  readiness: vi.fn(),
 }));
 
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "token" } } }));
+vi.mock("@/lib/api", () => ({ apiGet: h.readiness }));
 vi.mock("@/hooks/use-manager-dashboard", () => ({
   useManagerDashboard: () => ({ kitchens: h.kitchens, isLoadingKitchens: false }),
 }));
@@ -82,5 +85,31 @@ describe("KitchenAvailabilityManagement — no kitchen", () => {
 
     // With a kitchen, the component resolves it and never reaches the prerequisite screen.
     expect(screen.queryByText("noKitchenTitle")).not.toBeInTheDocument();
+  });
+});
+
+describe("zero-day listing change", () => {
+  it("asks before saving and sends seven closed days only after confirmation", async () => {
+    h.kitchens = [{ id: 99, name: "Harbour Kitchen", locationId: 7 }];
+    h.readiness.mockResolvedValue({ listingStatus: "active", details: { kitchenName: "Harbour Kitchen" } });
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => ({
+      ok: true,
+      json: async () => url.endsWith("/availability/99")
+        ? Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isAvailable: dayOfWeek === 1, startTime: "09:00", endTime: "17:00" }))
+        : [],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<KitchenAvailabilityManagement />);
+    const monday = await screen.findByRole("switch", { name: "Monday" });
+    await waitFor(() => expect(monday).toBeChecked());
+    fireEvent.click(monday);
+    fireEvent.click(screen.getByRole("button", { name: "saveSchedule" }));
+    expect(await screen.findByText("listingImpactKitchenTitle")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url, options]) => url === "/api/manager/availability/weekly" && options?.method === "PUT")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "listingImpactConfirm" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => url === "/api/manager/availability/weekly" && options?.method === "PUT")).toBe(true));
+    const [, request] = fetchMock.mock.calls.find(([url]) => url === "/api/manager/availability/weekly")!;
+    expect(JSON.parse(String(request?.body)).days).toHaveLength(7);
+    expect(JSON.parse(String(request?.body)).days.every((day: { isAvailable: boolean }) => !day.isAvailable)).toBe(true);
   });
 });

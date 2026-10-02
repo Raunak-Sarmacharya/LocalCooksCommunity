@@ -5,8 +5,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppLocale } from "@shared/i18n";
 import type { GeneratedSearchContentDocument, GlobalSearchResult, SearchPortal } from "@shared/search";
+import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
 import {
   createSearchSnippet,
+  isLikelyTypo,
   mergeSearchResults,
   scoreStaticDocument,
 } from "./global-search-utils";
@@ -76,6 +78,14 @@ type DatabaseSearchRow = {
   body: string;
   view: string;
   score: number | string;
+  location_id: number;
+  kitchen_id: number | null;
+  kitchen_active: boolean | null;
+  listing_status: string | null;
+  kitchen_license_url: string | null;
+  kitchen_license_status: string | null;
+  kitchen_license_expiry: string | null;
+  fuzzy: boolean;
 };
 
 function navigationResults(query: string, portal: SearchPortal, locale: AppLocale): GlobalSearchResult[] {
@@ -86,7 +96,8 @@ function navigationResults(query: string, portal: SearchPortal, locale: AppLocal
       : document.title!;
     const searchableBody = `${title} ${document.body}`;
     const score = scoreStaticDocument(title, searchableBody, query);
-    if (!score) return [];
+    const fuzzy = !score && isLikelyTypo(title, query);
+    if (!score && !fuzzy) return [];
     const baseUrl = portal === "chef" ? "/dashboard" : portal === "manager" ? "/manager/booking-dashboard" : "/admin";
     return [{
       id: `navigation:${portal}:${document.view}`,
@@ -99,7 +110,8 @@ function navigationResults(query: string, portal: SearchPortal, locale: AppLocal
         { label: document.parent ?? portal },
         { label: title },
       ],
-      score,
+      score: fuzzy ? 1 : score,
+      fuzzy,
     }];
   });
 }
@@ -109,7 +121,8 @@ function resourceResults(query: string, portal: SearchPortal, locale: AppLocale)
   return GENERATED_SEARCH_CONTENT.flatMap((document) => {
     if (document.locale !== locale || !audiences.includes(document.audience)) return [];
     const score = scoreStaticDocument(document.title, document.body, query);
-    if (!score) return [];
+    const fuzzy = !score && isLikelyTypo(document.title, query);
+    if (!score && !fuzzy) return [];
     const localizedPath = `/${document.locale}/resources`;
     return [{
       id: `resource:${document.id}`,
@@ -121,7 +134,8 @@ function resourceResults(query: string, portal: SearchPortal, locale: AppLocale)
         { label: document.collection, url: localizedPath },
         { label: document.title },
       ],
-      score: score + 0.5,
+      score: fuzzy ? 0.8 : score + 0.5,
+      fuzzy,
     }];
   });
 }
@@ -135,23 +149,30 @@ export async function searchGlobally(options: {
 }): Promise<GlobalSearchResult[]> {
   const { query, portal, userId, locale } = options;
   const limit = Math.min(Math.max(options.limit ?? 12, 1), 20);
-  const databaseLimit = Math.min(limit * 2, 40);
+  const databaseLimit = Math.min(limit * 6, 120);
+  const escapedQuery = query.toLowerCase().replace(/[\\%_]/g, "\\$&");
+  const prefixPattern = `${escapedQuery}%`;
+  const containsPattern = `%${escapedQuery}%`;
 
   const result = await pool.query<DatabaseSearchRow>(
     `WITH documents AS (
       SELECT 'location'::text AS type, l.id AS source_id, l.name AS title,
-        concat_ws(' ', l.address, l.cancellation_policy_message, l.overstay_policy_text) AS body,
-        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' ||
+        l.id AS location_id, NULL::integer AS kitchen_id, NULL::boolean AS kitchen_active, NULL::text AS listing_status,
+        l.kitchen_license_url, l.kitchen_license_status, l.kitchen_license_expiry::text,
+        concat_ws(' ', l.address, l.description, l.cancellation_policy_message, l.overstay_policy_text) AS body,
+        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' || coalesce(l.description, '') || ' ' ||
           coalesce(l.cancellation_policy_message, '') || ' ' || coalesce(l.overstay_policy_text, '') AS searchable,
-        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' ||
+        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' || coalesce(l.description, '') || ' ' ||
           coalesce(l.cancellation_policy_message, '') || ' ' || coalesce(l.overstay_policy_text, '') AS indexed_searchable,
-        CASE WHEN $2 = 'admin' THEN 'kitchen-management' WHEN $2 = 'manager' THEN 'my-locations' ELSE 'discover-kitchens' END AS view
+        CASE WHEN $2 = 'admin' THEN 'kitchen-management' WHEN $2 = 'manager' THEN 'profile' ELSE 'discover-kitchens' END AS view
       FROM locations l
       WHERE $2 = 'admin'
         OR ($2 = 'manager' AND l.manager_id = $3)
-        OR ($2 = 'chef' AND EXISTS (SELECT 1 FROM kitchens visible_k WHERE visible_k.location_id = l.id AND visible_k.is_active = true))
+        OR ($2 = 'chef' AND EXISTS (SELECT 1 FROM kitchens visible_k WHERE visible_k.location_id = l.id AND visible_k.is_active = true AND visible_k.listing_status = 'active'))
       UNION ALL
       SELECT 'kitchen', k.id, k.name,
+        l.id, k.id, k.is_active, k.listing_status::text,
+        l.kitchen_license_url, l.kitchen_license_status, l.kitchen_license_expiry::text,
         concat_ws(' ', l.name, l.address, k.description, k.amenities::text),
         coalesce(k.name, '') || ' ' || coalesce(k.description, '') || ' ' || coalesce(k.amenities::text, ''),
         coalesce(k.name, '') || ' ' || coalesce(k.description, ''),
@@ -160,6 +181,8 @@ export async function searchGlobally(options: {
       WHERE $2 = 'admin' OR ($2 = 'manager' AND l.manager_id = $3) OR ($2 = 'chef' AND k.is_active = true)
       UNION ALL
       SELECT 'storage', s.id, s.name,
+        l.id, k.id, k.is_active, k.listing_status::text,
+        l.kitchen_license_url, l.kitchen_license_status, l.kitchen_license_expiry::text,
         concat_ws(' ', l.name, k.name, s.storage_type::text, s.description, s.features::text,
           s.security_features::text, s.temperature_range, s.house_rules::text, s.prohibited_items::text),
         coalesce(s.name, '') || ' ' || coalesce(s.storage_type::text, '') || ' ' || coalesce(s.description, '') || ' ' ||
@@ -171,7 +194,9 @@ export async function searchGlobally(options: {
       WHERE $2 = 'admin' OR ($2 = 'manager' AND l.manager_id = $3)
         OR ($2 = 'chef' AND k.is_active = true AND s.is_active = true AND s.status::text IN ('approved', 'active'))
       UNION ALL
-      SELECT 'equipment', e.id, concat_ws(' ', e.brand, e.equipment_type),
+      SELECT 'equipment', e.id, btrim(coalesce(e.brand, '') || ' ' || coalesce(e.equipment_type, '')),
+        l.id, k.id, k.is_active, k.listing_status::text,
+        l.kitchen_license_url, l.kitchen_license_status, l.kitchen_license_expiry::text,
         concat_ws(' ', l.name, k.name, e.category::text, e.description, e.condition::text),
         coalesce(e.brand, '') || ' ' || coalesce(e.equipment_type, '') || ' ' || coalesce(e.category::text, '') || ' ' ||
           coalesce(e.description, '') || ' ' || coalesce(e.condition::text, ''),
@@ -182,27 +207,46 @@ export async function searchGlobally(options: {
         OR ($2 = 'chef' AND k.is_active = true AND e.is_active = true AND e.status::text IN ('approved', 'active'))
     ), ranked AS (
       SELECT *,
-        (ts_rank_cd(to_tsvector('simple', searchable), websearch_to_tsquery('simple', $1))
-          + CASE WHEN lower(title) = lower($1) THEN 8 WHEN lower(title) LIKE lower($1) || '%' THEN 4 ELSE 0 END
-          + CASE WHEN lower(searchable) LIKE '%' || lower($1) || '%' THEN 1 ELSE 0 END) AS score
+        (CASE WHEN lower(title) = lower($1) THEN 12
+          WHEN lower(title) LIKE $5 THEN 9
+          WHEN lower(title) LIKE $6 THEN 7
+          WHEN to_tsvector('simple', title) @@ websearch_to_tsquery('simple', $1) THEN 5
+          WHEN to_tsvector('simple', searchable) @@ websearch_to_tsquery('simple', $1)
+            OR lower(searchable) LIKE $6 THEN 4
+          ELSE 1 END + LEAST(ts_rank_cd(to_tsvector('simple', searchable), websearch_to_tsquery('simple', $1)), 1)) AS score,
+        NOT (to_tsvector('simple', searchable) @@ websearch_to_tsquery('simple', $1)
+          OR lower(searchable) LIKE $6) AS fuzzy
       FROM documents
       WHERE to_tsvector('simple', indexed_searchable) @@ websearch_to_tsquery('simple', $1)
-        OR lower(indexed_searchable) LIKE '%' || lower($1) || '%'
+        OR lower(indexed_searchable) LIKE $6
         OR to_tsvector('simple', searchable) @@ websearch_to_tsquery('simple', $1)
-        OR lower(searchable) LIKE '%' || lower($1) || '%'
+        OR lower(searchable) LIKE $6
+        OR (length($1) >= 4 AND lower(title) % lower($1))
     )
-    SELECT type, source_id, title, body, view, score FROM ranked
-    ORDER BY score DESC, title ASC LIMIT $4`,
-    [query, portal, userId, databaseLimit],
+    SELECT type, source_id, title, body, view, score, fuzzy, location_id, kitchen_id, kitchen_active,
+      listing_status, kitchen_license_url, kitchen_license_status, kitchen_license_expiry FROM ranked
+    ORDER BY fuzzy ASC, score DESC, title ASC LIMIT $4`,
+    [query, portal, userId, databaseLimit, prefixPattern, containsPattern],
   );
 
   const baseUrl = portal === "chef" ? "/dashboard" : portal === "manager" ? "/manager/booking-dashboard" : "/admin";
-  const databaseResults: GlobalSearchResult[] = result.rows.map((row) => ({
+  const visibleRows = result.rows.filter((row) => portal !== "chef" ||
+    (row.type === "location"
+      ? licenseAllowsBookings({ kitchenLicenseUrl: row.kitchen_license_url, kitchenLicenseStatus: row.kitchen_license_status, kitchenLicenseExpiry: row.kitchen_license_expiry })
+      : kitchenIsVisibleToChefs(
+          { isActive: row.kitchen_active, listingStatus: row.listing_status },
+          { kitchenLicenseUrl: row.kitchen_license_url, kitchenLicenseStatus: row.kitchen_license_status, kitchenLicenseExpiry: row.kitchen_license_expiry },
+        )));
+  const databaseResults: GlobalSearchResult[] = visibleRows.map((row) => ({
     id: `${row.type}:${row.source_id}`,
     type: row.type,
     title: row.title,
     snippet: createSearchSnippet(row.body, query),
-    url: `${baseUrl}?${portal === "admin" ? "section" : "view"}=${encodeURIComponent(row.view)}`,
+    url: portal === "chef"
+      ? `/kitchen-preview/${row.location_id}${row.kitchen_id ? `?kitchenId=${row.kitchen_id}` : ""}`
+      : portal === "admin"
+        ? `/admin/manage-locations?locationId=${row.location_id}`
+        : `${baseUrl}?view=${encodeURIComponent(row.view)}${portal === "manager" && row.type === "location" ? "&tab=location" : ""}&locationId=${row.location_id}${row.kitchen_id ? `&kit=${row.kitchen_id}` : ""}${row.type === "storage" || row.type === "equipment" ? `&itemId=${row.source_id}` : ""}`,
     view: row.view,
     breadcrumb: [
       { label: portal === "chef" ? tLocale(locale, "shellDashboard", { ns: "chef" }) : portal === "manager" ? tLocale(locale, "navDashboard", { ns: "manager" }) : "Admin" },
@@ -210,6 +254,7 @@ export async function searchGlobally(options: {
       { label: row.title },
     ],
     score: Number(row.score),
+    fuzzy: row.fuzzy,
   }));
 
   return mergeSearchResults(

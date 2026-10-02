@@ -4,25 +4,25 @@ import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, Search, X } from "@/components/ui/manager-icons";
+import { AlertTriangle, Search, X } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
-import ManagerHeader from "@/components/layout/ManagerHeader";
+import { ManagerShell } from "@/layouts/ManagerShell";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 import { PendingCancellationRequests } from "@/components/manager/PendingCancellationRequests";
-import { BookingActionSheet, type BookingForAction } from "@/components/manager/bookings/BookingActionSheet";
-import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
+import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { DataTable } from "@/components/ui/data-table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { getBookingColumns, Booking } from "@/components/manager/bookings/columns";
 import { auth } from "@/lib/firebase";
@@ -59,37 +59,27 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 interface ManagerBookingsPanelProps {
   embedded?: boolean;
+  onGoToKitchens?: () => void;
 }
 
-export default function ManagerBookingsPanel({ embedded = false }: ManagerBookingsPanelProps = {}) {
+export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens }: ManagerBookingsPanelProps = {}) {
   const { t } = useTranslation("manager");
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { locations } = useManagerDashboard();
+  const { locations, kitchens } = useManagerDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [locationFilter, setLocationFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
-  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
-  const [bookingToRefund, setBookingToRefund] = useState<Booking | null>(null);
-  const [refundAmount, setRefundAmount] = useState<string>('');
-  const [cancelAndRefundDialogOpen, setCancelAndRefundDialogOpen] = useState(false);
-  const [bookingToCancelAndRefund, setBookingToCancelAndRefund] = useState<Booking | null>(null);
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [bookingForAction, setBookingForAction] = useState<BookingForAction | null>(null);
   const [isLoadingActionDetails, setIsLoadingActionDetails] = useState(false);
-  // Management sheet state (for confirmed/paid bookings)
-  const [managementSheetOpen, setManagementSheetOpen] = useState(false);
-  const [bookingForManagement, setBookingForManagement] = useState<BookingForManagement | null>(null);
-  const [isManagementProcessing, setIsManagementProcessing] = useState(false);
-
   // Check if any location has approved license
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
 
   // Fetch all bookings for this manager with real-time polling
-  const { data: bookings = [], isLoading, error: bookingsError } = useQuery({
+  const { data: bookings = [], isLoading, error: bookingsError, refetch: refetchBookings } = useQuery({
     queryKey: ['managerBookings'],
     queryFn: async () => {
       try {
@@ -247,7 +237,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     },
   });
 
-  // ENTERPRISE STANDARD: Fetch full booking details before opening action sheet.
+  // ENTERPRISE STANDARD: Fetch full booking details before opening action dialog.
   // The list endpoint returns JSONB snapshots (storageItems/equipmentItems) and raw
   // kitchen_bookings.total_price which may be stale or include bundle pricing.
   // The details endpoint recalculates kitchen-only price, fetches relational storage/equipment
@@ -282,7 +272,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
       managerRevenue: details.paymentTransaction?.managerRevenue,
       taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
-      // Include ALL items with rejected flag so action sheet shows full audit trail
+      // Include ALL items with rejected flag so action dialog shows full audit trail
       // Rejected items appear as read-only, actionable items are toggleable
       storageItems: details.storageBookings
         ?.map((s: any) => ({
@@ -307,20 +297,20 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     };
   };
 
-  // Single "Take Action" handler — fetches full details then opens the unified action sheet
+  // Single "Take Action" handler — fetches full details then opens the unified action dialog
   const handleTakeAction = async (booking: Booking) => {
     setIsLoadingActionDetails(true);
-    setActionSheetOpen(true);
+    setActionDialogOpen(true);
     try {
       const actionData = await fetchBookingDetailsForAction(booking.id);
       setBookingForAction(actionData);
     } catch (error: any) {
-      logger.error('Error fetching booking details for action sheet:', error);
+      logger.error('Error fetching booking details for action dialog:', error);
       toast({ title: t("error"),
         description: t("failedToLoadBookingDetailsPleaseTryAgain"),
         variant: "destructive",
       });
-      setActionSheetOpen(false);
+      setActionDialogOpen(false);
     } finally {
       setIsLoadingActionDetails(false);
     }
@@ -343,7 +333,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       { bookingId: params.bookingId, status: params.status, storageActions: params.storageActions, equipmentActions: params.equipmentActions },
       {
         onSettled: () => {
-          setActionSheetOpen(false);
+          setActionDialogOpen(false);
           setBookingForAction(null);
         },
       }
@@ -358,128 +348,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     }
   };
 
-  const handleCancelAndRefundClick = (booking: Booking) => {
-    setBookingToCancelAndRefund(booking);
-    setCancelAndRefundDialogOpen(true);
-  };
-
-  const handleCancelAndRefundConfirm = () => {
-    if (bookingToCancelAndRefund) {
-      updateStatusMutation.mutate(
-        { bookingId: bookingToCancelAndRefund.id, status: 'cancelled' },
-        {
-          onSuccess: () => {
-            if (bookingToCancelAndRefund.transactionId) {
-              fullRefundRequestMutation.mutate(bookingToCancelAndRefund.transactionId);
-            }
-          },
-          onSettled: () => {
-            setCancelAndRefundDialogOpen(false);
-            setBookingToCancelAndRefund(null);
-          },
-        }
-      );
-    }
-  };
-
-  const handleCancelAndRefundDialogClose = () => {
-    setCancelAndRefundDialogOpen(false);
-    setBookingToCancelAndRefund(null);
-  };
-
   const handleCancelDialogClose = () => {
     setCancelDialogOpen(false);
     setBookingToCancel(null);
-  };
-
-  // Refund mutation
-  const refundMutation = useMutation({
-    mutationFn: async ({ transactionId, amountCents }: { transactionId: number; amountCents: number }) => {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/revenue/transactions/${transactionId}/refund`, {
-        method: 'POST',
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ amount: amountCents, reason: 'Refund issued by manager' }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || mt("failedToProcessRefund"));
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] });
-      toast({ title: t("refundProcessed"),
-        description: t("theRefundHasBeenSuccessfullyProcessed"),
-      });
-      setRefundDialogOpen(false);
-      setBookingToRefund(null);
-      setRefundAmount('');
-    },
-    onError: (error: Error) => {
-      toast({ title: t("refundFailed"),
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const fullRefundRequestMutation = useMutation({
-    mutationFn: async (transactionId: number) => {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/revenue/transactions/${transactionId}/full-refund-request`, {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ reason: 'Full refund requested by manager' }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to request full refund');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
-      handleRefundDialogClose();
-    },
-    onError: (error: Error) => toast({ title: 'Request failed', description: error.message, variant: 'destructive' }),
-  });
-
-  const handleRefundClick = (booking: Booking) => {
-    setBookingToRefund(booking);
-    // Managers can directly refund only their remaining payout share.
-    const refundableAmount = (booking as any).managerRemainingBalance || 0;
-    setRefundAmount((refundableAmount / 100).toFixed(2));
-    setRefundDialogOpen(true);
-  };
-
-  const handleFullRefundRequest = () => {
-    const transactionId = (bookingToRefund as any)?.transactionId;
-    if (transactionId) fullRefundRequestMutation.mutate(transactionId);
-  };
-
-  const handleRefundConfirm = () => {
-    if (bookingToRefund && refundAmount) {
-      const amountCents = Math.round(parseFloat(refundAmount) * 100);
-      const transactionId = (bookingToRefund as any).transactionId;
-      if (transactionId && amountCents > 0) {
-        refundMutation.mutate({ transactionId, amountCents });
-      } else {
-        toast({ title: t("refundError"),
-          description: t("noTransactionIDFoundForThisBookingPleaseUseTheRevenueDashboa"),
-          variant: "destructive",
-        });
-      }
-    }
-  };
-
-  const handleRefundDialogClose = () => {
-    setRefundDialogOpen(false);
-    setBookingToRefund(null);
-    setRefundAmount('');
   };
 
   // ── Cancellation Request: Accept / Decline ──────────────────────────────
@@ -578,207 +449,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     storageCancellationMutation.mutate({ storageBookingId, action: 'decline' });
   };
 
-  // ── Management Sheet: Fetch details & open ─────────────────────────────
-  const handleManageBooking = async (booking: Booking) => {
-    setManagementSheetOpen(true);
-    setBookingForManagement(null); // Show loading state
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/bookings/${booking.id}/details`, {
-        headers,
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error(`Failed to fetch booking details: ${response.status}`);
-      const details = await response.json();
-
-      const mgmt: BookingForManagement = {
-        id: details.id,
-        kitchenName: details.kitchen?.name,
-        chefName: details.chef?.fullName || details.chef?.username,
-        locationName: details.location?.name,
-        bookingDate: details.bookingDate,
-        startTime: details.startTime,
-        endTime: details.endTime,
-        selectedSlots: details.selectedSlots,
-        operatingWindowStartTime: details.operatingWindowStartTime,
-        totalPrice: details.totalPrice,
-        status: details.status,
-        paymentStatus: details.paymentStatus,
-        transactionId: details.paymentTransaction?.id || booking.transactionId, // prefer details PT id
-        fullRefundRequest: details.paymentTransaction?.metadata?.fullRefundRequest,
-        transactionAmount: details.paymentTransaction?.amount,
-        stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
-        managerRevenue: details.paymentTransaction?.managerRevenue,
-        managerRemainingBalance: details.managerRemainingBalance ?? booking.managerRemainingBalance,
-        serviceFee:
-          details.paymentTransaction?.serviceFee ||
-          details.serviceFee ||
-          booking.serviceFee ||
-          0,
-        taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
-        refundableAmount:
-          (details.paymentTransaction?.managerRevenue || 0) +
-            (details.paymentTransaction?.serviceFee || details.serviceFee || booking.serviceFee || 0) ||
-          booking.refundableAmount,
-        refundAmount: details.paymentTransaction?.refundAmount || booking.refundAmount || 0,
-        cancellationRequested: !!details.cancellationRequestedAt,
-        cancellationReason: details.cancellationRequestReason,
-        storageItems: details.storageBookings?.map((s: any) => ({
-          id: s.id,
-          storageBookingId: s.id,
-          name: s.storageListing?.name || `Storage #${s.storageListingId}`,
-          storageType: s.storageListing?.storageType || 'Storage',
-          totalPrice: s.totalPrice,
-          startDate: s.startDate,
-          endDate: s.endDate,
-          status: s.status,
-          cancellationRequested: !!s.cancellationRequestedAt,
-          cancellationReason: s.cancellationRequestReason,
-        })),
-        equipmentItems: details.equipmentBookings?.map((e: any) => ({
-          id: e.id,
-          equipmentBookingId: e.id,
-          name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
-          totalPrice: e.totalPrice,
-          status: e.status,
-        })),
-      };
-      setBookingForManagement(mgmt);
-    } catch (error: any) {
-      logger.error('Error fetching management details:', error);
-      toast({ title: t("error"), description: t("failedToLoadBookingDetails"), variant: "destructive" });
-      setManagementSheetOpen(false);
-    }
-  };
-
-  // ── Management Sheet: Submit handler (orchestrates API calls) ──────────
-  const handleManagementSubmit = async (params: ManagementSubmitParams) => {
-    setIsManagementProcessing(true);
-    try {
-      const headers = await getAuthHeaders();
-
-      switch (params.action) {
-        case "cancel-booking": {
-          // Cancel entire booking, no refund
-          const res = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ status: 'cancelled', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToCancelBooking")); }
-          toast({ title: t("bookingCancelled"), description: mt("useIssueRefundOrManagement") });
-          break;
-        }
-        case "cancel-booking-refund": {
-          // Cancel the booking, then route the full refund to admin approval.
-          const res = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ status: 'cancelled', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToCancelBooking")); }
-          if (!bookingForManagement?.transactionId) throw new Error(mt("noTransactionForRefund"));
-          const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
-            method: 'POST', headers, credentials: 'include',
-            body: JSON.stringify({ reason: 'Full refund requested after manager cancellation' }),
-          });
-          if (!requestRes.ok) { const d = await requestRes.json().catch(() => ({})); throw new Error(d.error || 'Booking cancelled, but the full refund request failed'); }
-          toast({ title: 'Booking cancelled', description: 'Full refund sent to admin for approval.' });
-          break;
-        }
-        case "partial-cancel":
-        case "partial-cancel-refund": {
-          // Cancel only addons (keep kitchen confirmed)
-          const statusRes = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
-          });
-          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || mt("failedToUpdateBooking")); }
-
-          // If refund requested, issue it separately
-          if (params.action === "partial-cancel-refund" && params.refundAmountCents && params.refundAmountCents > 0 && bookingForManagement?.transactionId) {
-            const refundRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`, {
-              method: 'POST', headers, credentials: "include",
-              body: JSON.stringify({ amount: params.refundAmountCents, reason: 'Partial cancellation refund' }),
-            });
-            if (!refundRes.ok) { const d = await refundRes.json().catch(() => ({})); throw new Error(d.error || mt("itemsCancelledRefundFailed")); }
-            toast({ title: t("itemsCancelledRefunded"), description: `Refund of $${(params.refundAmountCents / 100).toFixed(2)} processed.` });
-          } else {
-            toast({ title: t("itemsCancelled"), description: t("selectedItemsHaveBeenCancelled") });
-          }
-          break;
-        }
-        case "refund-only": {
-          if (!bookingForManagement?.transactionId || !params.refundAmountCents) {
-            throw new Error(mt("noTransactionForRefund"));
-          }
-          const res = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`, {
-            method: 'POST', headers, credentials: "include",
-            body: JSON.stringify({ amount: params.refundAmountCents, reason: 'Refund issued by manager' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToProcessRefund")); }
-          toast({ title: t("refundProcessed"), description: `$${(params.refundAmountCents / 100).toFixed(2)} refunded to chef.` });
-          break;
-        }
-        case "request-full-refund": {
-          if (!bookingForManagement?.transactionId) throw new Error(mt("noTransactionForRefund"));
-          const res = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
-            method: 'POST', headers, credentials: 'include',
-            body: JSON.stringify({ reason: 'Full refund requested by manager' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to request full refund'); }
-          toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
-          break;
-        }
-        case "accept-cancellation": {
-          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ action: 'accept' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToAcceptCancellation")); }
-          toast({ title: t("cancellationAccepted"), description: t("toastBookingCancelledPerChefRequest") });
-          break;
-        }
-        case "decline-cancellation": {
-          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ action: 'decline' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToDeclineCancellation")); }
-          toast({ title: t("cancellationDeclined"), description: t("bookingRemainsConfirmed") });
-          break;
-        }
-        case "accept-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error(mt("noStorageBookingId"));
-          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ action: 'accept' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToAcceptStorageCancellation")); }
-          toast({ title: t("storageCancellationAccepted"), description: t("storageBookingCancelled") });
-          break;
-        }
-        case "decline-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error(mt("noStorageBookingId"));
-          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ action: 'decline' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToDeclineStorageCancellation")); }
-          toast({ title: t("storageCancellationDeclined"), description: t("storageBookingRemainsActive") });
-          break;
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] });
-      setManagementSheetOpen(false);
-      setBookingForManagement(null);
-    } catch (error: any) {
-      toast({ title: t("error"), description: error.message || mt("somethingWentWrong"), variant: "destructive" });
-    } finally {
-      setIsManagementProcessing(false);
-    }
-  };
-
   // Categorize bookings by timezone-aware timeline (Upcoming, Past)
   // Confirmed bookings go into Upcoming category
   const { upcomingBookings, pastBookings } = useMemo(() => {
@@ -864,7 +534,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     return { upcomingBookings: upcoming, pastBookings: past };
   }, [bookings]);
 
-  // Filter bookings based on status filter, location filter and time category
+  // Filter bookings by status, time category, and search.
   const filteredBookings = useMemo(() => {
     let filtered: Booking[] = [];
 
@@ -880,11 +550,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     } else {
       // Filter by status (pending, cancelled)
       filtered = bookings.filter((booking: Booking) => booking.status === statusFilter);
-    }
-
-    // Apply location filter if not 'all'
-    if (locationFilter !== 'all') {
-      filtered = filtered.filter((booking: Booking) => booking.locationName === locationFilter);
     }
 
     // Apply search filter (includes reference code for lookup)
@@ -903,7 +568,25 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     }
 
     return filtered;
-  }, [bookings, statusFilter, locationFilter, searchQuery, upcomingBookings, pastBookings]);
+  }, [bookings, statusFilter, searchQuery, upcomingBookings, pastBookings]);
+
+  // Counts behind the status filter cards.
+  const statusFilterOptions = useMemo(() => {
+    const countFor = (key: string): number => {
+      if (key === 'upcoming') return upcomingBookings.length;
+      if (key === 'past') return pastBookings.length;
+      if (key === 'pending' || key === 'cancelled') return bookings.filter((b: Booking) => b.status === key).length;
+      return bookings.length;
+    };
+
+    return [
+      { key: 'all', label: mt("filterAll") },
+      { key: 'upcoming', label: mt("upcoming") },
+      { key: 'past', label: mt("past") },
+      { key: 'pending', label: tt("pending") },
+      { key: 'cancelled', label: tt("cancelled") },
+    ].map((filter) => ({ ...filter, count: countFor(filter.key) }));
+  }, [bookings, upcomingBookings, pastBookings]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -922,35 +605,15 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      confirmed: 'bg-green-100 text-green-800 border-green-300',
-      cancelled: 'bg-red-100 text-red-800 border-red-300',
-    };
-    const icons = {
-      pending: <Clock className="h-4 w-4" />,
-      confirmed: <CheckCircle className="h-4 w-4" />,
-      cancelled: <XCircle className="h-4 w-4" />,
-    };
-    return (
-      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800'}`}>
-        {icons[status as keyof typeof icons]}
-        <span className="font-medium capitalize">{status}</span>
-      </div>
-    );
-  };
-
+  /*
+   * A plain div now, not a main element — the shell owns the main element, the page gutters and the
+   * page heading. This used to carry `pt-20 sm:pt-24` to clear the fixed `ManagerHeader`, its own
+   * `container` padding, and its own `text-3xl` heading in raw palette greys: three things the
+   * shell already does, done a second time.
+   */
   const content = (
-    <main className={embedded ? "flex-1" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
-      <div className={embedded ? "w-full" : "container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8"}>
-        {!embedded && (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">{t("bookingRequests")}</h1>
-            <p className="text-gray-600 mt-2">{t("reviewAndManageChefBookingRequests")}</p>
-          </div>
-        )}
-
+    <div className={embedded ? "flex-1" : undefined}>
+      <div className={embedded ? "w-full" : undefined}>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -972,61 +635,48 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               </Button>
             )}
           </div>
-          {locations.length > 1 && (
-            <label className="sr-only" htmlFor="booking-location-filter">{t("location2")}</label>
-          )}
-          {locations.length > 1 && (
-            <select
-              id="booking-location-filter"
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm sm:ml-auto sm:w-56"
-            >
-              <option value="all">{t("cmdAllLocations")}</option>
-              {locations.map((loc: any) => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
-            </select>
-          )}
         </div>
 
-        {/* Filter Tabs */}
-        <Tabs value={statusFilter} onValueChange={setStatusFilter} className="mb-6 w-full">
-          <TabsList className="grid w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-5">
-            {[
-              { key: 'all', label: mt("filterAll") },
-              { key: 'upcoming', label: mt("upcoming") },
-              { key: 'past', label: mt("past") },
-              { key: 'pending', label: tt("pending") },
-              { key: 'cancelled', label: tt("cancelled") },
-            ].map((filter) => {
-              const baseBookings = locationFilter === 'all'
-                ? bookings
-                : bookings.filter((b: Booking) => b.locationName === locationFilter);
-
-              let count = 0;
-              if (filter.key === 'all') {
-                count = baseBookings.length;
-              } else if (filter.key === 'upcoming') {
-                count = upcomingBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
-              } else if (filter.key === 'past') {
-                count = pastBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
-              } else {
-                count = baseBookings.filter((b: Booking) => b.status === filter.key).length;
-              }
-
-              return (
-                <TabsTrigger key={filter.key} value={filter.key} className="rounded-lg px-2 py-2 text-xs sm:text-sm">
-                  {filter.label} <Badge variant="count" className="ml-1">{count}</Badge>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-        </Tabs>
+        {/* Status filter - the same clickable stat-card pattern as the damage-claim and overstay queues */}
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {statusFilterOptions.map((filter) => {
+            const isActive = statusFilter === filter.key;
+            return (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setStatusFilter(filter.key)}
+                aria-pressed={isActive}
+                className={isActive
+                  ? "rounded-xl border border-primary bg-primary/[0.04] p-4 text-left transition-colors"
+                  : "rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"}
+              >
+                <p className="text-xs text-muted-foreground">{filter.label}</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">{filter.count}</p>
+              </button>
+            );
+          })}
+        </div>
 
         {/* Bookings List */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="space-y-3" role="status" aria-label="Loading bookings">
+            <Skeleton className="h-11 w-full rounded-xl" />
+            {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-xl" />)}
           </div>
+        ) : bookingsError ? (
+          <Card className="border-destructive/40"><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="text-sm text-destructive">{mt("overviewActivityError")}</p>
+            <Button variant="outline" size="sm" onClick={() => void refetchBookings()}>{mt("retry")}</Button>
+          </CardContent></Card>
+        ) : bookings.length === 0 ? (
+          <Card><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="font-medium">{mt("noBookingsYet")}</p>
+            <p className="max-w-sm text-sm text-muted-foreground">{mt("bookingsEmptyBody")}</p>
+            {!kitchens.some((kitchen) => kitchen.listingStatus === "active") && <Button variant="outline" size="sm" onClick={onGoToKitchens ?? (() => { window.location.href = "/manager/booking-dashboard?view=kitchens" })}>
+              {mt(kitchens.length ? "overviewReviewListing" : "addYourKitchen")}
+            </Button>}
+          </CardContent></Card>
         ) : (
           <div className="space-y-4">
             <DataTable
@@ -1034,8 +684,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 onConfirm: () => {},
                 onReject: handleCancelClick,
                 onCancel: handleCancelClick,
-                onRefund: handleRefundClick,
-                onCancelAndRefund: handleCancelAndRefundClick,
                 onAcceptCancellation: handleAcceptCancellation,
                 onDeclineCancellation: handleDeclineCancellation,
                 onAcceptStorageCancellation: handleAcceptStorageCancellation,
@@ -1050,7 +698,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                   }
                   handleTakeAction(booking as any);
                 },
-                onManageBooking: (booking) => handleManageBooking(booking as any),
+                onManageBooking: (booking) => { window.location.href = `/manager/booking/${booking.id}`; },
                 hasApprovedLicense
               })}
               data={filteredBookings}
@@ -1169,11 +817,11 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Unified Booking Action Sheet (for pending/authorized bookings) */}
-      <BookingActionSheet
-        open={actionSheetOpen}
+      {/* Unified Booking Action Dialog (for pending/authorized bookings) */}
+      <BookingActionDialog
+        open={actionDialogOpen}
         onOpenChange={(open) => {
-          setActionSheetOpen(open);
+          setActionDialogOpen(open);
           if (!open) setBookingForAction(null);
         }}
         booking={bookingForAction}
@@ -1181,218 +829,12 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         onSubmit={handleActionSubmit}
       />
 
-      {/* Booking Management Sheet (for confirmed/paid bookings) */}
-      <BookingManagementSheet
-        open={managementSheetOpen}
-        onOpenChange={(open) => {
-          setManagementSheetOpen(open);
-          if (!open) setBookingForManagement(null);
-        }}
-        booking={bookingForManagement}
-        isProcessing={isManagementProcessing}
-        onSubmit={handleManagementSubmit}
-      />
+      {/* Booking Management Dialog (for confirmed/paid bookings) */}
 
-      {/* Refund Dialog */}
-      <AlertDialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-orange-600">{t("issueRefund")}</AlertDialogTitle>
-            <AlertDialogDescription className="pt-4">
-              <div className="space-y-4">
-                <p className="font-medium">{t("enterTheRefundAmountForThisBooking")}</p>
-                {bookingToRefund && (
-                  <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{t("chef2")}</span>
-                      <span>{bookingToRefund.chefName || mt("chefNumber", { id: bookingToRefund.chefId })}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{t("kitchen2")}</span>
-                      <span>{bookingToRefund.kitchenName || mt("kitchenHeader")}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{t("totalCharged2")}</span>
-                      <span>${((bookingToRefund.transactionAmount || bookingToRefund.totalPrice || 0) / 100).toFixed(2)}</span>
-                    </div>
-                    {(bookingToRefund.refundAmount || 0) > 0 && (
-                      <div className="flex items-center gap-2 text-orange-600">
-                        <span className="font-medium">{t("alreadyRefunded2")}</span>
-                        <span>${((bookingToRefund.refundAmount || 0) / 100).toFixed(2)}</span>
-                      </div>
-                    )}
-                    {/* Managers may refund only their share; platform fees require admin approval. */}
-                    <div className="border-t pt-3 mt-3 space-y-2">
-                      {(bookingToRefund.stripeProcessingFee || 0) > 0 && (
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{t("stripeFeeNonRefundable")}</span>
-                          <span>${((bookingToRefund.stripeProcessingFee || 0) / 100).toFixed(2)}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between font-semibold text-green-600 bg-green-50 p-2 rounded-md">
-                        <span>Your refundable share</span>
-                        <span>${((bookingToRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Service fee excluded. Request a full refund below if the platform share must also be returned.</p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Refund Input with Real-time Preview */}
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="refundAmount">{t("refundAmount")}</Label>
-                    <CurrencyInput
-                      id="refundAmount"
-                      value={refundAmount}
-                      onValueChange={setRefundAmount}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  
-                  {/* Real-time Refund Preview */}
-                  {refundAmount && parseFloat(refundAmount) > 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-                      <div className="text-sm font-medium text-blue-800">{t("refundPreview")}</div>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-blue-700">{t("customerReceives")}</span>
-                          <span className="font-semibold text-blue-900">${parseFloat(refundAmount).toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-blue-700">{t("yourAccountDebited")}</span>
-                          <span className="font-semibold text-blue-900">${parseFloat(refundAmount).toFixed(2)}</span>
-                        </div>
-                      </div>
-                      <div className="text-xs text-blue-600 mt-1">
-                        ✓ {mt("sameAmountRefundNote")}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                <p className="text-muted-foreground text-xs">
-                  {mt("refundArrivalNote")}
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleRefundDialogClose}>{t("cancel")}</AlertDialogCancel>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleFullRefundRequest}
-              disabled={fullRefundRequestMutation.isPending || !(bookingToRefund as any)?.transactionId}
-            >
-              {fullRefundRequestMutation.isPending ? 'Requesting…' : 'Request full refund'}
-            </Button>
-            <AlertDialogAction
-              onClick={handleRefundConfirm}
-              className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
-              disabled={
-                refundMutation.isPending ||
-                !refundAmount ||
-                parseFloat(refundAmount) <= 0 ||
-                Math.round(parseFloat(refundAmount) * 100) > ((bookingToRefund as any)?.managerRemainingBalance || 0)
-              }
-            >
-              {refundMutation.isPending ? mt("processingEllipsis") : mt("processRefund")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
-      {/* Cancel & Refund Sheet */}
-      <Sheet open={cancelAndRefundDialogOpen} onOpenChange={setCancelAndRefundDialogOpen}>
-        <SheetContent className="sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              {mt("cancelAndRefundBooking")}
-            </SheetTitle>
-            <SheetDescription>{t("cancelThisBookingAndRefundTheChefUpToYourAvailableBalance")}</SheetDescription>
-          </SheetHeader>
 
-          {bookingToCancelAndRefund && (
-            <div className="space-y-4 py-4">
-              {/* Booking Details */}
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t("chef")}</span>
-                  <span className="font-medium">{bookingToCancelAndRefund.chefName || mt("chefNumber", { id: bookingToCancelAndRefund.chefId })}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t("kitchen")}</span>
-                  <span className="font-medium">{bookingToCancelAndRefund.kitchenName || mt("kitchenHeader")}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t("date")}</span>
-                  <span className="font-medium">{formatDate(bookingToCancelAndRefund.bookingDate)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t("time")}</span>
-                  <span className="font-medium">
-                    {kitchenBookingBlocks(bookingToCancelAndRefund).map(block =>
-                      `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}
-                  </span>
-                </div>
-              </div>
 
-              <Separator />
-
-              {/* Refund breakdown — includes platform service fee; Stripe fee is sunk */}
-              <div className="space-y-2 text-sm">
-                <p className="font-medium text-sm">{t("refundBreakdown")}</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{t("totalChargedToChef")}</span>
-                  <span>${((bookingToCancelAndRefund.transactionAmount || bookingToCancelAndRefund.totalPrice || 0) / 100).toFixed(2)}</span>
-                </div>
-                {(bookingToCancelAndRefund.managerRevenue || 0) > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{t("yourRevenueAfterFees")}</span>
-                    <span>${((bookingToCancelAndRefund.managerRevenue || 0) / 100).toFixed(2)}</span>
-                  </div>
-                )}
-                {(bookingToCancelAndRefund.refundAmount || 0) > 0 && (
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t("alreadyRefunded")}</span>
-                    <span>-${((bookingToCancelAndRefund.refundAmount || 0) / 100).toFixed(2)}</span>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex items-center justify-between font-semibold text-green-700 bg-green-50 p-2 rounded-md">
-                  <span>{t("maxRefundYourAvailableBalance")}</span>
-                  <span>${((bookingToCancelAndRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">{t("youCanOnlyRefundUpToWhatYouReceivedStripeProcessingFeesAreAS")}</p>
-              </div>
-
-              <Separator />
-
-              <p className="text-xs text-muted-foreground">{t("theChefWillBeNotifiedViaEmailRefundsTypicallyArriveWithin510")}</p>
-            </div>
-          )}
-
-          <SheetFooter className="flex flex-row gap-2 pt-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={handleCancelAndRefundDialogClose}
-              disabled={updateStatusMutation.isPending}
-            >{t("keepBooking")}</Button>
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={handleCancelAndRefundConfirm}
-              disabled={updateStatusMutation.isPending}
-            >
-              {updateStatusMutation.isPending ? mt("processingEllipsis") : mt("cancelAndRefundBooking")}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    </main>
+    </div>
   );
 
   if (embedded) {
@@ -1400,9 +842,12 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <ManagerHeader />
+    <ManagerShell
+      activeView="bookings"
+      title={t("bookingRequests")}
+      description={t("reviewAndManageChefBookingRequests")}
+    >
       {content}
-    </div>
+    </ManagerShell>
   );
 }

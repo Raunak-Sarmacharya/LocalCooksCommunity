@@ -7,11 +7,13 @@ import { logger } from "../../logger";
  */
 
 import { db } from '../../db';
+import { resolveKitchenBookingPolicies } from '@shared/kitchen-booking-policies';
 import { kitchens, locations, kitchenDateOverrides, kitchenAvailability, kitchenBookings } from '@shared/schema';
 import { eq, and, asc, desc, gte, lte, sql } from 'drizzle-orm';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from '@shared/kitchen-license';
+import { previewSlugBase, availablePreviewSlug } from '@shared/preview-slug';
 
 /**
  * Repository for kitchen data access
@@ -26,8 +28,8 @@ export class KitchenRepository {
       description: row.description || undefined,
       // `listing_status` is the SHARED enum — storage and equipment listings review through
       // `pending` / `approved` / `rejected` — but a kitchen is only ever WRITTEN as `draft` or
-      // `active` (the column defaults to `draft`; `POST /manager/kitchens/:id/listing-status` is the
-      // only writer). Translating it here makes `KitchenDTO.listingStatus` true by construction
+      // `active` (publishing sets active; removing a required item returns it to draft).
+      // Translating it here makes `KitchenDTO.listingStatus` true by construction
       // instead of asserting it with a cast, and mirrors what
       // `kitchen-listing-readiness-service.ts` does when it builds the client payload.
       listingStatus: row.listingStatus === "active" ? "active" : "draft",
@@ -217,11 +219,14 @@ export class KitchenRepository {
    */
   async create(dto: CreateKitchenDTO): Promise<KitchenDTO> {
     try {
+      const siblingSlugs = await db.select({ slug: kitchens.slug }).from(kitchens).where(eq(kitchens.locationId, dto.locationId));
+      const slug = availablePreviewSlug(previewSlugBase(dto.name, 'kitchen'), siblingSlugs.map((row) => row.slug).filter((value): value is string => !!value));
       const [kitchen] = await db
         .insert(kitchens)
         .values({
           locationId: dto.locationId,
           name: dto.name,
+          slug,
           description: dto.description || null,
           imageUrl: dto.imageUrl || null,
           galleryImages: dto.galleryImages || [],
@@ -230,7 +235,7 @@ export class KitchenRepository {
           hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : null, // Convert number to string for numeric column
           dailyRate: dto.dailyRate ? dto.dailyRate.toString() : null,
           currency: dto.currency || 'CAD',
-          minimumBookingHours: dto.minimumBookingHours || 1,
+          minimumBookingHours: dto.minimumBookingHours ?? 1,
           pricingModel: dto.pricingModel || 'hourly',
           taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : null,
           smartLockAvailable: dto.smartLockAvailable ?? false,
@@ -260,6 +265,8 @@ export class KitchenRepository {
           name: dto.name,
           description: dto.description,
           imageUrl: dto.imageUrl,
+          ...((dto.description !== undefined && !dto.description?.trim()) || (dto.imageUrl !== undefined && !dto.imageUrl)
+            ? { listingStatus: 'draft' as const } : {}),
           galleryImages: dto.galleryImages,
           amenities: dto.amenities,
           isActive: dto.isActive,
@@ -366,11 +373,11 @@ export class KitchenRepository {
   /**
    * Update kitchen image
    */
-  async updateImage(id: number, imageUrl: string): Promise<KitchenDTO | null> {
+  async updateImage(id: number, imageUrl: string | null): Promise<KitchenDTO | null> {
     try {
       const [kitchen] = await db
         .update(kitchens)
-        .set({ imageUrl })
+        .set({ imageUrl, ...(!imageUrl ? { listingStatus: 'draft' as const } : {}) })
         .where(eq(kitchens.id, id))
         .returning();
 
@@ -446,6 +453,7 @@ export class KitchenRepository {
         ...this.mapToDTO(kitchen),
         location: location ? {
           ...location,
+          ...resolveKitchenBookingPolicies(kitchen, location),
           logoUrl: location.logoUrl || null,
           brandImageUrl: location.brandImageUrl || null,
           kitchenLicenseUrl: location.kitchenLicenseUrl || null,

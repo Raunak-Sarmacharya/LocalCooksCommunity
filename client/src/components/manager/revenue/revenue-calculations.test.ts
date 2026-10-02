@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { getTransactionRevenueBreakdown } from "./revenue-calculations";
+import { getTransactionRevenueBreakdown, transactionsToManagerRevenueCSV } from "./revenue-calculations";
 import type { Transaction } from "./types";
 
 import { describe, it } from "vitest";
@@ -51,20 +51,22 @@ describe("revenue-calculations", () => {
 
     // $10 subtotal + 15% tax + 7% service on (sub+tax); Stripe $0.75; manager keeps tax
     {
-      const breakdown = getTransactionRevenueBreakdown(tx({
+      const transaction = tx({
         totalPrice: 1000,
         taxAmount: 150,
         taxRatePercent: 15,
         serviceFee: 70,
         stripeFee: 75,
         managerRevenue: 1075, // 1000+150-75
-      }));
+      });
+      const breakdown = getTransactionRevenueBreakdown(transaction);
       assert.equal(breakdown.taxAmount, 150);
       assert.equal(breakdown.serviceFee, 70);
       assert.equal(breakdown.stripeFee, 75);
       assert.equal(breakdown.netRevenue, 1075);
       // Must NOT treat service fee as stripe fee
       assert.notEqual(breakdown.stripeFee, 75 + 70);
+      assert.equal(transactionsToManagerRevenueCSV([transaction]).includes("Service Fee"), false);
     }
 
     // Prefer stored taxAmount over reverse tax-inclusive math on subtotal

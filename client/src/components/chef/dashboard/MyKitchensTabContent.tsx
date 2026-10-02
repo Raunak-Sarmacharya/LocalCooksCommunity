@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
-import { Building, Clock, MessageCircle, ArrowRight, FileCheck } from "lucide-react";
+import { Clock, MessageCircle, ChevronRight, FileCheck } from "lucide-react";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import type {
   KitchenApplicationWithLocation,
   PublicKitchen,
@@ -14,7 +15,7 @@ import { getKitchenDisplayStatus } from "@/components/chef/applications/status";
 import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
-import { kitchenPreviewPath } from "@/lib/discover-location-groups";
+import { kitchenPreviewHref } from "@/lib/kitchen-preview-url";
 import { mergeEquipmentSummaries, mergeStorageSummaries } from "@/lib/kitchen-grid-card";
 import { cn } from "@/lib/utils";
 import { Icon } from "@iconify/react";
@@ -28,7 +29,7 @@ interface MyKitchensTabContentProps {
   onOpenChat: (app: KitchenApplicationWithLocation) => void;
 }
 
-const actionClass = "h-11 min-h-[44px] w-full box-border font-semibold";
+const actionClass = "h-auto min-h-11 w-full box-border whitespace-normal px-3 py-2 text-center font-semibold";
 const outlineActionClass = cn(
   actionClass,
   chefOutlineCtaClass(),
@@ -75,10 +76,9 @@ export default function MyKitchensTabContent({
             const display = getKitchenDisplayStatus(app, t);
             const title =
               app.location?.name || t("apptabUnknownLocation", "Unknown Location");
-            const previewHref = kitchenPreviewPath(
-              app.locationId,
-              kitchenData?.locationSlug
-            );
+            const previewHref = kitchenData
+              ? kitchenPreviewHref(kitchenData.locationSlug || app.locationId, kitchenData)
+              : null;
 
             /**
              * Whether this chef may book here is decided in ONE place: `getKitchenDisplayStatus`,
@@ -125,7 +125,7 @@ export default function MyKitchensTabContent({
                   <Badge
                     variant="outline"
                     className={cn(
-                      "h-11 w-full justify-center font-medium",
+                      "h-auto min-h-11 w-full justify-center whitespace-normal px-3 py-2 text-center font-medium",
                       chefOutlineCtaClass()
                     )}
                   >
@@ -159,7 +159,7 @@ export default function MyKitchensTabContent({
                   <Badge
                     variant="outline"
                     className={cn(
-                      "h-11 w-full justify-center font-medium",
+                      "h-auto min-h-11 w-full justify-center whitespace-normal px-3 py-2 text-center font-medium",
                       chefOutlineCtaClass()
                     )}
                   >
@@ -176,8 +176,8 @@ export default function MyKitchensTabContent({
                       window.location.href = `/kitchen-requirements/${app.locationId}`;
                     }}
                   >
-                    <ArrowRight className="mr-1.5 h-4 w-4" />
                     {t("apptabContinue", "Continue")}
+                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
                   </Button>
                 );
               }
@@ -186,7 +186,7 @@ export default function MyKitchensTabContent({
                 <Badge
                   variant="outline"
                   className={cn(
-                    "h-11 w-full justify-center font-medium",
+                    "h-auto min-h-11 w-full justify-center whitespace-normal px-3 py-2 text-center font-medium",
                     chefOutlineCtaClass()
                   )}
                 >
@@ -203,8 +203,8 @@ export default function MyKitchensTabContent({
                     window.location.href = `/apply-kitchen/${app.locationId}`;
                   }}
                 >
-                  <ArrowRight className="mr-1.5 h-4 w-4" />
                   {t("kdApplyAgain", "Apply again")}
+                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
                 </Button>
               );
             }
@@ -227,9 +227,7 @@ export default function MyKitchensTabContent({
                   // listing is down, and the chef's own step otherwise.
                   <KitchenStatusChip display={display} />
                 }
-                onCardClick={() => {
-                  window.location.href = previewHref;
-                }}
+                onCardClick={previewHref ? () => { window.location.href = previewHref; } : undefined}
                 actionRows={1}
                 actions={
                   <div className="flex w-full gap-2">
@@ -260,7 +258,7 @@ export default function MyKitchensTabContent({
       ) : (
         <Card className="border-dashed py-16 shadow-none">
           <CardContent className="flex flex-col items-center gap-4 text-center">
-            <Building className="h-8 w-8 text-muted-foreground" />
+            <KitchenIcon className="h-8 w-8 text-muted-foreground" />
             <div className="space-y-1">
               <CardTitle className="text-lg">
                 {t("apptabNoKitchenAccessYet", "No kitchen access yet")}
@@ -279,7 +277,7 @@ export default function MyKitchensTabContent({
               }}
             >
               {t("apptabExploreKitchens", "Discover Kitchens")}
-              <ArrowRight />
+              <ChevronRight />
             </Button>
           </CardContent>
         </Card>

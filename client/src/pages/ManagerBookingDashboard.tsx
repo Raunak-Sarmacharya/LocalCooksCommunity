@@ -1,8 +1,10 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
+import { managerNavIcons } from "@/lib/manager-nav-icons";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Clock, Settings, Check, Save, AlertCircle, FileText, ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2, Eye, Package } from "@/components/ui/manager-icons";
+import { Calendar, Clock, Settings, Check, Save, AlertCircle, FileText, ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, ClipboardCheck, Plus, Loader2, HelpCircle, Trash2, KitchenTour } from "@/components/ui/manager-icons";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
@@ -31,7 +33,6 @@ import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPen
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
 import { PendingStorageCheckins } from "@/components/manager/PendingStorageCheckins";
-import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
@@ -41,7 +42,8 @@ import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } fro
 // The one screen for "no location yet". Nine settings views used to carry their own version of it,
 // each saying a location was needed without offering any way to make one.
 import { NeedsKitchen, NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Dialog } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
@@ -54,7 +56,7 @@ import { OnboardingStatusBanner } from "@/components/manager/OnboardingStatusBan
 import { getManagerImprovementDestination } from "@/lib/manager-guidance";
 import NotificationCenter from "@/components/manager/NotificationCenter";
 import { legacyKitchenSection, resolveDestination, type KitchenSection, type ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -164,7 +166,7 @@ export default function ManagerBookingDashboard() {
   
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
-  const { locations, isLoadingLocations } = useManagerDashboard();
+  const { locations, isLoadingLocations, isErrorLocations, kitchens: managerKitchens, isLoadingKitchens, isErrorKitchens, bookings: managerBookings } = useManagerDashboard();
   const { startNewLocation } = useManagerOnboarding();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [reviewedApplicationName, setReviewedApplicationName] = useState<string | null>(null);
@@ -176,10 +178,11 @@ export default function ManagerBookingDashboard() {
     const view = params.get('view');
     const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
+    if (view === 'my-locations') return 'profile';
     if (view === 'settings-storage-checkout') {
       return 'settings-storage-checkin-checkout';
     }
-    if (legacyKitchenSection(view)) {
+    if (legacyKitchenSection(view, params.get("tab"))) {
       return 'kitchens';
     }
     if (view && validViews.includes(view as ViewType)) {
@@ -221,6 +224,7 @@ export default function ManagerBookingDashboard() {
   const [kitchensDirty, setKitchensDirty] = useState(false);
   const [pendingKitchensView, setPendingKitchensView] = useState<ViewType | null>(null);
   const checkinCheckoutRef = useRef<CheckinCheckoutHandle>(null);
+  const storageChecklistRef = useRef<{ saveAllChanges: () => Promise<boolean> }>(null);
   const bypassCheckinCheckoutGuard = useRef(false);
   const [checkinCheckoutDirty, setCheckinCheckoutDirty] = useState(false);
   const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<ViewType | null>(null);
@@ -249,6 +253,37 @@ export default function ManagerBookingDashboard() {
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
+  const { data: workspaceNavigation, isLoading: workspaceNavigationLoading, isError: workspaceNavigationError } = useQuery<{
+    showBookings: boolean;
+    showStorageBookings: boolean;
+    showApplications: boolean;
+    showRevenue: boolean;
+    hasRevenueHistory: boolean;
+  }>({
+    queryKey: ["managerWorkspaceNavigation", firebaseUser?.uid],
+    queryFn: async () => {
+      const response = await fetch("/api/manager/workspace-navigation", { headers: await getAuthHeaders() });
+      if (!response.ok) throw new Error("Failed to load workspace navigation");
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+    staleTime: 0,
+  });
+
+  // A running server may still return the older navigation response during a client update.
+  // Check applications directly in that case so neither a new account nor a manager with
+  // past applicants gets the wrong sidebar state.
+  const legacyApplications = useQuery<unknown[]>({
+    queryKey: ["managerLegacyApplicationVisibility", firebaseUser?.uid],
+    queryFn: async () => {
+      const response = await fetch("/api/manager/kitchen-applications", { headers: await getAuthHeaders() });
+      if (!response.ok) throw new Error("Failed to load application visibility");
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!firebaseUser && !!workspaceNavigation && workspaceNavigation.showApplications === undefined,
+    staleTime: 5 * 60_000,
+  });
 
   const { data: userData } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
@@ -321,14 +356,22 @@ export default function ManagerBookingDashboard() {
       setDeepLinkConversationId(params.get("conversation"));
       const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
       // Back-compat: redirect legacy URL to the new combined page.
+      if (view === 'my-locations') {
+        params.set('view', 'profile');
+        params.set('tab', 'location');
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        setActiveView('profile');
+        return;
+      }
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
         return;
       }
-      const legacySection = legacyKitchenSection(view);
+      const legacySection = legacyKitchenSection(view, params.get("tab"));
       if (legacySection) {
         params.set('view', 'kitchens');
         params.set('section', legacySection);
+        params.delete('tab');
         window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
         setActiveView('kitchens');
         return;
@@ -352,6 +395,7 @@ export default function ManagerBookingDashboard() {
   // so the back button walks through the user's tab journey instead of always
   // returning to whatever tab was last viewed before opening a sub-page.
   const handleViewChange = (view: ViewType, kitchenId?: number, section?: KitchenSection) => {
+    void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] });
     // Remember which kitchen a task view belongs to. Held in state rather than the URL so opening
     // the publish review never depends on the URL shape, which differs between environments.
     if (kitchenId) setReviewKitchenId(kitchenId);
@@ -362,7 +406,8 @@ export default function ManagerBookingDashboard() {
      */
     const targetSection = resolveDestination(view, section).section;
     const profileTab =
-      view === 'payments' ? 'payments'
+      view === 'my-locations' ? 'location'
+      : view === 'payments' ? 'payments'
       : view === 'notification-settings' ? 'notifications'
       // "Sign-in & security" — where Google, phone and password are rows, and the only page that
       // can complete the Getting Started backup-sign-in row.
@@ -372,13 +417,13 @@ export default function ManagerBookingDashboard() {
     const nextView = targetSection
       ? 'kitchens'
       : availabilityTab
-        ? 'availability'
+        ? 'tour-availability'
         : profileTab
           ? 'profile'
           : view;
-    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !targetSection;
+    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !targetSection && !kitchenId;
     if (isSameDestination) return;
-    if (activeView === 'availability' && availabilityDirty && !bypassAvailabilityGuard.current) {
+    if ((activeView === 'availability' || activeView === 'tour-availability') && availabilityDirty && !bypassAvailabilityGuard.current) {
       setPendingAvailabilityView(view);
       return;
     }
@@ -390,7 +435,7 @@ export default function ManagerBookingDashboard() {
       setPendingKitchensView(view);
       return;
     }
-    if (activeView === 'settings-checkin-checkout' && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
+    if ((activeView === 'settings-checkin-checkout' || activeView === 'settings-storage-checkin-checkout') && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
       setPendingCheckinCheckoutView(view);
       return;
     }
@@ -412,10 +457,19 @@ export default function ManagerBookingDashboard() {
 
     setActiveView(nextView);
     const url = new URL(window.location.href);
+    if (kitchenId && (nextView === "kitchens" || nextView === "listing-review" || nextView === "settings-storage-checkin-checkout")) {
+      url.searchParams.set("kit", String(kitchenId));
+    } else if (nextView !== "kitchens" && nextView !== "listing-review" && nextView !== "settings-storage-checkin-checkout") {
+      url.searchParams.delete("kit");
+    }
     if (nextView !== 'applications') url.searchParams.delete('application');
+    if (nextView !== 'viewings') url.searchParams.delete('viewing');
+    if (nextView !== 'damage-claims') url.searchParams.delete('claim');
+    if (nextView !== 'storage-bookings') url.searchParams.delete('storageBooking');
     if (targetSection) {
       url.searchParams.set('view', 'kitchens');
       url.searchParams.set('section', targetSection);
+      url.searchParams.delete('tab');
     } else if (nextView === 'overview') {
       url.searchParams.delete('view');
     } else {
@@ -492,11 +546,15 @@ export default function ManagerBookingDashboard() {
   };
 
   const saveAndLeaveKitchens = async () => {
-    if (!pendingKitchensView) return;
+    const destination = pendingKitchensView;
+    if (!destination) return;
+    // My Kitchens may ask which kitchens a policy change should affect. Let its
+    // scope dialog open cleanly, without stacking this unsaved-changes dialog.
+    setPendingKitchensView(null);
     setIsSavingBeforeLeave(true);
     const saved = await kitchensSaveRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
-    if (saved) continueFromKitchens(pendingKitchensView);
+    if (saved) continueFromKitchens(destination);
   };
 
   const continueFromCheckinCheckout = (view: ViewType) => {
@@ -510,6 +568,12 @@ export default function ManagerBookingDashboard() {
   const saveAndLeaveCheckinCheckout = async () => {
     if (!pendingCheckinCheckoutView) return;
     setIsSavingBeforeLeave(true);
+    if (activeView === 'settings-storage-checkin-checkout') {
+      const saved = (await storageChecklistRef.current?.saveAllChanges()) ?? false;
+      setIsSavingBeforeLeave(false);
+      if (saved) continueFromCheckinCheckout(pendingCheckinCheckoutView);
+      return;
+    }
     checkinCheckoutRef.current?.save();
     setIsSavingBeforeLeave(false);
     continueFromCheckinCheckout(pendingCheckinCheckoutView);
@@ -544,13 +608,14 @@ export default function ManagerBookingDashboard() {
   };
 
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
+    "tour-availability": mt("kitchenTours"),
     availability: mt("navAvailability"),
     "settings-booking-rules": mt("navBookingRules"),
     "settings-checkin-checkout": mt("navCheckinCheckout"),
-    "damage-claims": mt("navDamageClaims"),
     // The publish review is a task reached from a kitchen, not a sidebar destination — the
     // breadcrumb is what tells the manager it belongs under My Kitchens.
     "listing-review": mt("listingReviewPageTitle"),
+    "settings-storage-checkin-checkout": mt("navStorageCheckinCheckout"),
   };
   const applicationChildLabel: Partial<Record<ViewType, string>> = {
     "application-requirements": mt("navApplicationRequirements"),
@@ -559,15 +624,28 @@ export default function ManagerBookingDashboard() {
     "settings-facility-docs": mt("facilityDocuments"),
   };
   const storageChildLabel: Partial<Record<ViewType, string>> = {
-    "settings-storage-checkin-checkout": mt("navStorageCheckinCheckout"),
     overstays: mt("navOverstayPenalties"),
     "storage-checkouts": mt("navStorageInspections"),
   };
   const isKitchenChild = Boolean(kitchenChildLabel[activeView]);
+  const isBookingChild = activeView === 'damage-claims';
   const isStorageChild = Boolean(storageChildLabel[activeView]);
   const isApplicationChild = Boolean(applicationChildLabel[activeView]);
   const isMessageChild = Boolean(messageChildLabel[activeView]);
-  const shellActiveView = isKitchenChild ? 'kitchens' : isStorageChild ? 'storage-bookings' : isApplicationChild ? 'applications' : isMessageChild ? 'messages' : activeView;
+  const shellActiveView = isKitchenChild ? 'kitchens' : isBookingChild ? 'bookings' : isStorageChild ? 'storage-bookings' : isApplicationChild ? 'applications' : isMessageChild ? 'messages' : activeView;
+  const viewLabels: Record<ViewType, string> = {
+    'my-locations': 'navMyLocations', overview: 'navDashboard', bookings: 'navBookings',
+    'storage-bookings': 'navStorageBookings', viewings: 'kitchenTours', availability: 'navAvailability',
+    'tour-availability': 'kitchenTours', settings: 'navSettings', applications: 'navRequests', pricing: 'navPricing',
+    'storage-listings': 'navStorage', 'equipment-listings': 'navEquipment', payments: 'navPayments',
+    security: 'navAccount', revenue: 'navRevenue', messages: 'navMessages', profile: 'shellProfile',
+    kitchens: 'navSpaces', 'listing-review': 'listingReviewPageTitle', 'settings-license': 'kitchenLicense',
+    'settings-booking-rules': 'navBookingRules', 'settings-facility-docs': 'facilityDocuments',
+    'settings-location': 'navPropertySettings', 'settings-checkin-checkout': 'navCheckinCheckout',
+    'settings-storage-checkin-checkout': 'navStorageCheckinCheckout', 'application-requirements': 'navApplicationRequirements',
+    notifications: 'navNotifications', 'notification-settings': 'navNotificationSettings',
+    overstays: 'navOverstayPenalties', 'damage-claims': 'navDamageClaims', 'storage-checkouts': 'navStorageInspections', support: 'navSupport',
+  };
   const breadcrumbs: ManagerBreadcrumb[] = activeView === 'applications' && reviewedApplicationName
     ? [
         { label: mt("navRequests"), navId: "applications", onClick: () => showApplicationsListRef.current() },
@@ -575,9 +653,16 @@ export default function ManagerBookingDashboard() {
       ]
     : activeView === 'kitchens'
     ? [{ label: mt("navSpaces"), navId: "kitchens" }]
+    : isBookingChild
+      ? [
+          { label: mt("navBookings"), navId: "bookings", onClick: () => handleViewChange('bookings') },
+          { label: mt("navDamageClaims"), navId: "damage-claims" },
+        ]
     : isKitchenChild
       ? [
           { label: mt("navSpaces"), navId: "kitchens", onClick: () => handleViewChange('kitchens') },
+          ...(activeView === 'settings-storage-checkin-checkout' ? [{ label: mt("navStorage"), onClick: () => handleViewChange('kitchens', kitchenForReview ?? undefined, 'storage') }] : []),
+          ...(activeView === 'tour-availability' ? [{ label: mt("navAvailability"), navId: "availability", onClick: () => handleViewChange('kitchens', kitchenForReview ?? undefined, 'availability') }] : []),
           { label: kitchenChildLabel[activeView]!, navId: activeView },
         ]
       : activeView === 'storage-bookings'
@@ -597,7 +682,7 @@ export default function ManagerBookingDashboard() {
                   { label: mt("navMessages"), navId: "messages", onClick: () => handleViewChange('messages') },
                   { label: messageChildLabel[activeView]!, navId: activeView },
                 ]
-          : [];
+          : [{ label: mt(viewLabels[activeView]), navId: activeView }];
 
   // Handle Stripe Connect Return
   useEffect(() => {
@@ -722,7 +807,7 @@ export default function ManagerBookingDashboard() {
         const mappedLocation = {
           ...location,
           notificationEmail: location.notificationEmail || location.notification_email || undefined,
-          cancellationPolicyHours: location.cancellationPolicyHours || location.cancellation_policy_hours,
+          cancellationPolicyHours: location.cancellationPolicyHours ?? location.cancellation_policy_hours,
           cancellationPolicyMessage: location.cancellationPolicyMessage || location.cancellation_policy_message,
           defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit,
         } as Location;
@@ -889,6 +974,7 @@ export default function ManagerBookingDashboard() {
       // Invalidate queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['locationDetails', variables.locationId] });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+      queryClient.invalidateQueries({ queryKey: ['managerKitchenWorkspace'] });
 
       toast({ title: mt("success"),
         description: successMessage,
@@ -1019,6 +1105,10 @@ export default function ManagerBookingDashboard() {
 
   return (
     <DashboardLayout
+      showBookings={workspaceNavigationError || workspaceNavigation?.showBookings === true || activeView === "bookings" || activeView === "viewings"}
+      showStorageBookings={workspaceNavigationError || workspaceNavigation?.showStorageBookings === true || activeView === "storage-bookings"}
+      showApplications={workspaceNavigationError || workspaceNavigation?.showApplications === true || managerKitchens.some((kitchen) => kitchen.listingStatus === 'active') || (workspaceNavigation?.showApplications === undefined && (legacyApplications.data?.length ?? 0) > 0) || legacyApplications.isError || activeView === "applications"}
+      showRevenue={workspaceNavigationError || workspaceNavigation?.showRevenue === true || managerKitchens.some((kitchen) => kitchen.listingStatus === 'active') || managerBookings.length > 0 || activeView === "revenue"}
       activeView={shellActiveView}
       onViewChange={(view) => handleViewChange(view as ViewType)}
       locations={locations}
@@ -1072,12 +1162,26 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'overview' && (
         <div className="space-y-6 animate-fade-in">
-          <KitchenDashboardOverview
+          {isLoadingLocations || (locations.length > 0 && isLoadingKitchens) ? (
+            <div className="space-y-5" role="status" aria-label="Loading dashboard"><div className="grid gap-4 sm:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}</div><Skeleton className="h-72 w-full rounded-xl" /></div>
+          ) : isErrorLocations || isErrorKitchens ? (
+            <Card><CardContent className="space-y-3 p-6">
+              <h1 className="text-lg font-semibold">{mt("overviewLoadErrorTitle")}</h1>
+              <p className="text-sm text-muted-foreground">{mt("overviewLoadErrorBody")}</p>
+              <Button variant="outline" onClick={() => {
+                void queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+                void queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
+              }}>{mt("retry")}</Button>
+            </CardContent></Card>
+          ) : locations.length > 0 ? <KitchenDashboardOverview
             selectedLocation={selectedLocation}
             locations={locations}
-            onNavigate={(view: ViewType) => handleViewChange(view)}
-            onSelectLocation={(location) => setSelectedLocation(location)}
-          />
+            kitchens={managerKitchens}
+            onNavigate={(view, kitchenId) => handleViewChange(view as ViewType, kitchenId)}
+            onSelectLocation={(location) => setSelectedLocation(location as Location)}
+          /> : (
+            <NeedsLocation />
+          )}
         </div>
       )}
 
@@ -1094,14 +1198,18 @@ export default function ManagerBookingDashboard() {
           />
           <Tabs value={activeView} onValueChange={(view) => handleViewChange(view as ViewType)}>
             <TabsList className="mb-6 grid w-full grid-cols-2 rounded-xl bg-muted p-1">
-              <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><Calendar className="h-4 w-4" />{mt("navBookings")}</TabsTrigger>
-              <TabsTrigger value="viewings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><Eye className="h-4 w-4" />{mt("kitchenTours")}</TabsTrigger>
+              <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><managerNavIcons.bookings className="h-4 w-4" />{mt("navBookings")}</TabsTrigger>
+              <TabsTrigger value="viewings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><KitchenTour className="h-4 w-4" />{mt("kitchenTours")}</TabsTrigger>
             </TabsList>
             <TabsContent value="bookings" className="mt-0">
-              <ManagerBookingsPanel embedded={true} />
+              <ManagerBookingsPanel embedded={true} onGoToKitchens={() => handleViewChange('kitchens')} />
             </TabsContent>
             <TabsContent value="viewings" className="mt-0">
-              <ViewingsDashboard locationId={selectedLocation?.id} />
+              <ViewingsDashboard
+                locationId={selectedLocation?.id}
+                hasKitchen={managerKitchens.length > 0}
+                onConfigureTours={() => handleViewChange('kitchens', managerKitchens[0]?.id, managerKitchens.length ? 'availability' : undefined)}
+              />
             </TabsContent>
           </Tabs>
         </div>
@@ -1112,27 +1220,21 @@ export default function ManagerBookingDashboard() {
           <ChefPageHeader
             title={mt("navStorageBookings")}
             description={mt("manageStorageBookingsDescription")}
+            actions={<Button
+              variant="ghost"
+              size="sm"
+              className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => handleViewChange('settings-storage-checkin-checkout')}
+            ><ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navStorageCheckinCheckout")}</Button>}
           />
-          <ManagerStorageBookingsPage />
+          <ManagerStorageBookingsPage
+            onOpenOverstays={() => handleViewChange('overstays')}
+            onOpenInspections={() => handleViewChange('storage-checkouts')}
+          />
         </div>
       )}
 
-      {activeView === 'availability' && (kitchenPrerequisite ?? (
-        <div className="min-h-[calc(100vh-10rem)]">
-          <KitchenAvailabilityManagement
-            ref={availabilityRef}
-            initialLocationId={selectedLocation?.id}
-            initialAvailabilityTab={new URLSearchParams(window.location.search).get('tab') === 'tours' ? 'tours' : 'bookings'}
-            onDirtyChange={setAvailabilityDirty}
-          />
-        </div>
-      ))}
 
-      {activeView === 'tour-availability' && (kitchenPrerequisite ?? (
-        <div className="min-h-[calc(100vh-10rem)]">
-          <KitchenAvailabilityManagement initialLocationId={selectedLocation?.id} initialAvailabilityTab="tours" />
-        </div>
-      ))}
 
       {activeView === 'applications' && (
         <ManagerKitchenApplicationsContent
@@ -1161,6 +1263,9 @@ export default function ManagerBookingDashboard() {
         <ManagerRevenueDashboard
           selectedLocation={selectedLocation}
           locations={locations}
+          hasPublishedKitchen={managerKitchens.some((kitchen) => kitchen.listingStatus === 'active')}
+          hasRevenueHistory={managerBookings.length > 0 ? true : workspaceNavigationLoading ? undefined : workspaceNavigation?.hasRevenueHistory ?? false}
+          isHistoryLoading={workspaceNavigationLoading}
           onNavigate={(view) => handleViewChange(view as ViewType)}
         />
       )}
@@ -1168,13 +1273,13 @@ export default function ManagerBookingDashboard() {
       {activeView === 'messages' && (
         managerId ? (
           <div className="h-[calc(100vh-8rem)]">
-            <UnifiedChatView userId={managerId} role="manager" initialConversationId={deepLinkConversationId} />
+            <UnifiedChatView userId={managerId} role="manager" initialConversationId={deepLinkConversationId} onNavigate={(view) => handleViewChange(view as ViewType)} managerHasKitchen={managerKitchens.length > 0} />
           </div>
         ) : (
           <Card>
-            <CardContent className="p-12 text-center flex flex-col items-center justify-center">
-              <LoadingSpinner size="lg" className="mb-4 text-[#208D80]" />
-              <p className="text-gray-600">{mt("loadingYourProfile")}</p>
+            <CardContent className="space-y-4 p-6" role="status" aria-label={mt("loadingYourProfile")}>
+              <Skeleton className="h-7 w-1/2" />
+              {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
             </CardContent>
           </Card>
         )
@@ -1211,22 +1316,6 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
-      {activeView === 'my-locations' && (
-        <ManagerLocationsPage
-          locations={locations}
-          isLoading={isLoadingLocations}
-          onCreateLocation={startNewLocation}
-          onSelectLocation={(loc) => {
-            setSelectedLocation(loc as Location);
-            handleViewChange('profile');
-            const url = new URL(window.location.href);
-            url.searchParams.set('tab', 'location');
-            window.history.replaceState({}, '', url);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }}
-        />
-      )}
-
       {/* New Settings Views - Enterprise-grade modular architecture */}
       {activeView === 'kitchens' && selectedLocation && (
         <KitchensManagement
@@ -1240,7 +1329,7 @@ export default function ManagerBookingDashboard() {
            * seeds itself from `kitchens[0]`, so a location holding several kitchens opens the wrong
            * one — which is what every row on the publish review used to do.
            */
-          initialKitchenId={reviewKitchenId ?? undefined}
+          initialKitchenId={kitchenForReview ?? undefined}
         />
       )}
 
@@ -1289,19 +1378,6 @@ export default function ManagerBookingDashboard() {
         <NeedsLocation />
       )}
 
-      {activeView === 'settings-booking-rules' && selectedLocation && (
-        <BookingRulesSettings
-          ref={bookingPoliciesRef}
-          location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
-          onDirtyChange={setBookingPoliciesDirty}
-          onNavigate={handleViewChange}
-        />
-      )}
-
-      {activeView === 'settings-booking-rules' && !selectedLocation && (
-        <NeedsLocation />
-      )}
 
       {activeView === 'settings-facility-docs' && selectedLocation && (
         <FacilityDocsSettings
@@ -1352,13 +1428,19 @@ export default function ManagerBookingDashboard() {
         />
       )}
 
-      {activeView === 'settings-checkin-checkout' && selectedLocation && (
+      {activeView === 'settings-checkin-checkout' && selectedLocation && managerKitchens.some((kitchen) => kitchen.checkinCheckoutEnabled) && (
         <CheckinCheckoutSettings
           location={locationDetails || selectedLocation}
           saveRef={checkinCheckoutRef}
           onDirtyChange={setCheckinCheckoutDirty}
           onNavigate={handleViewChange}
         />
+      )}
+      {activeView === 'settings-checkin-checkout' && selectedLocation && !managerKitchens.some((kitchen) => kitchen.checkinCheckoutEnabled) && (
+        <Card><CardContent className="space-y-3 p-6">
+          <p>{mt("kitchenTrackingEnableFirst")}</p>
+          <Button onClick={() => handleViewChange('kitchens', undefined, 'details')}>{mt("navSpaces")}</Button>
+        </CardContent></Card>
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (
@@ -1368,6 +1450,8 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-storage-checkin-checkout' && selectedLocation && (
         <StorageCheckinCheckoutSettings
           location={locationDetails || selectedLocation}
+          onDirtyChange={setCheckinCheckoutDirty}
+          saveRef={storageChecklistRef}
         />
       )}
 
@@ -1424,7 +1508,7 @@ export default function ManagerBookingDashboard() {
   );
 }
 
-// [PARKED] CreateLocationSheet — Multi-location "Add New Location" is parked with Coming Soon badges.
+// [PARKED] CreateLocationDialog — Multi-location "Add New Location" is parked with Coming Soon badges.
 // This component will be re-enabled when the full multi-location onboarding flow is implemented.
 // See gap analysis: engine.reset(), per-location completedSteps scoping, hasPerformedInitialAutoSkip reset.
 import { useForm } from "react-hook-form";
@@ -1436,7 +1520,7 @@ import { tt } from "@/i18n/common-ns";
 import ManagerSupportPage from "@/components/manager/ManagerSupportPage";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
+function CreateLocationDialog({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
 
   const form = useForm<CreateLocationFormValues>({
@@ -1509,8 +1593,8 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-xl w-full p-0">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-xl p-0">
         <ScrollArea className="h-full">
           <div className="p-6">
             <h2 className="text-lg font-semibold mb-1">{mt("addNewLocation")}</h2>
@@ -1580,7 +1664,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                   <div className="border-2 border-dashed border-border rounded-lg p-6 bg-muted/30 hover:bg-muted/50 transition-colors text-center cursor-pointer relative group">
                     <input
                       type="file"
-                      id="license-upload-sheet-form"
+                      id="license-upload-dialog-form"
                       className="hidden"
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={(e) => {
@@ -1593,7 +1677,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                         }
                       }}
                     />
-                    <label htmlFor="license-upload-sheet-form" className="cursor-pointer block w-full h-full">
+                    <label htmlFor="license-upload-dialog-form" className="cursor-pointer block w-full h-full">
                       <div className="flex flex-col items-center gap-2">
                         <div className="p-3 bg-background rounded-full shadow-sm group-hover:scale-110 transition-transform">
                           <Upload className="h-6 w-6 text-muted-foreground" />
@@ -1627,8 +1711,8 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
             </Form>
           </div>
         </ScrollArea>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
@@ -1837,7 +1921,7 @@ function KitchenGalleryImages({
     <div className="space-y-3">
       {/* Existing Gallery Images */}
       {currentGalleryImages.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {currentGalleryImages.map((imageUrl, index) => (
             <ImageWithReplace
               key={index}
@@ -1883,7 +1967,7 @@ function KitchenGalleryImages({
         >
           {isUploading ? (
             <>
-              <Loader2 className="h-8 w-8 text-gray-400 animate-spin mb-2" />
+              <Upload className="h-8 w-8 text-gray-400 mb-2" />
               <span className="text-sm text-gray-600">Uploading... {Math.round(uploadProgress)}%</span>
             </>
           ) : (
@@ -1926,7 +2010,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     return 'setup';
   });
 
-  const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
+  const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
   const [cancellationMessage, setCancellationMessage] = useState(
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
   );
@@ -2100,12 +2184,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
-    setCancellationHours(location.cancellationPolicyHours || 24);
+    setCancellationHours(location.cancellationPolicyHours ?? 24);
     setCancellationMessage(
       location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
     );
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+    setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
     setLogoUrl(location.logoUrl || '');
     setLicenseExpiryDate(location.kitchenLicenseExpiry || '');
     // Timezone is locked to DEFAULT_TIMEZONE - no need to update state
@@ -2779,7 +2863,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         >
                           {isUploadingLicense ? (
                             <>
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+                              <Upload className="h-8 w-8 text-orange-600" />
                               <span className="text-sm text-gray-600">{mt("uploading")}</span>
                             </>
                           ) : (
@@ -3156,8 +3240,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   )}
 
                   {isLoadingKitchens ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                    <div className="space-y-3 py-3" role="status" aria-label="Loading kitchens">
+                      {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
                     </div>
                   ) : kitchens.length === 0 && !showCreateKitchen ? (
                     <div className="text-center py-4">
@@ -3546,9 +3630,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-4">
                   {isLoadingPenaltyDefaults ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-6 w-6 animate-spin text-red-600" />
-                      <span className="ml-2 text-sm text-gray-600">{mt("loadingPenaltySettings")}</span>
+                    <div className="grid gap-3 sm:grid-cols-3" role="status" aria-label={mt("loadingPenaltySettings")}>
+                      {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-20 w-full rounded-xl" />)}
                     </div>
                   ) : (
                     <>

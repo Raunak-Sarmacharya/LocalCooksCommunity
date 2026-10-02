@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Skeleton } from "@/components/ui/skeleton";
 /**
  * CheckinStatusTracker
  *
@@ -16,7 +17,8 @@ import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, LogIn 
 import { auth } from "@/lib/firebase";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { bt } from "@/i18n/booking-ns";
@@ -145,24 +147,24 @@ export function CheckinStatusTracker({
   const steps: Step[] = buildSteps(status, data, t);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <LogIn className="h-5 w-5 text-muted-foreground" />
             {t("cstTitle")}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {t("cstMoveInProgress", {
               name: storageName || t("cstStorageUnitFallback"),
             })}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="py-6">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="space-y-4 py-3" role="status" aria-label="Loading check-in status">
+              {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
             </div>
           ) : (
             <div className="relative">
@@ -272,8 +274,8 @@ export function CheckinStatusTracker({
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 

@@ -1,17 +1,8 @@
+import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { useEffect, useState, type ElementType } from "react";
 import { SiStripe } from "react-icons/si";
-import {
-  Boxes,
-  CalendarClock,
-  Check,
-  ChevronDown,
-  Eye,
-  ImageIcon,
-  Package,
-  Phone,
-  Rocket,
-  Storefront,
-} from "@/components/ui/manager-icons";
+import { CalendarClock, Check, ChevronDown, KitchenTour, ImageIcon, Phone, Rocket } from "@/components/ui/manager-icons";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -61,9 +52,9 @@ const ITEM_ICONS: Record<GettingStartedItemId, { Icon: ElementType; iconClassNam
   "finish-setup": { Icon: Rocket },
   phone: { Icon: Phone },
   stripe: { Icon: SiStripe, iconClassName: "text-stripe" },
-  "publish-kitchen": { Icon: Storefront },
+  "publish-kitchen": { Icon: KitchenIcon },
   photos: { Icon: ImageIcon },
-  tours: { Icon: Eye },
+  tours: { Icon: KitchenTour },
   equipment: { Icon: Package },
   storage: { Icon: Boxes },
   "first-booking": { Icon: CalendarClock },
@@ -145,12 +136,7 @@ function ProgressRing({ value, complete }: { value: number; complete: boolean })
     <span
       className={cn(
         "relative flex size-[22px] shrink-0 items-center justify-center",
-        /*
-         * In the rail the button's content box is only 16px (`!size-8` minus `!p-2`), so laying the
-         * ring out in flow means it overflows that box and its position depends on overflow maths —
-         * which is what left it skewed right. Pinning it with `inset-0 m-auto` centres it on the
-         * BUTTON instead, and ignores the padding entirely. Deterministic at any button size.
-         */
+        // Centre the ring on the whole collapsed control, independently of its padding.
         "group-data-[collapsible=icon]:absolute group-data-[collapsible=icon]:inset-0",
         "group-data-[collapsible=icon]:m-auto group-data-[collapsible=icon]:size-[30px]",
       )}
@@ -436,9 +422,8 @@ export function ManagerGettingStarted({
       aria-expanded={open}
       className={cn(
         // `relative` is the containing block for the ring's absolute centring in the rail.
-        // `h-auto` because this launcher is two lines, and the app-wide 44px button floor is the
-        // minimum we WANT here rather than something to cancel.
-        "relative h-auto items-center gap-2 rounded-xl px-2 py-2",
+        // Two-line footer controls share a 48px minimum; the collapsed rail uses the shared 40px square.
+        "relative h-auto min-h-12 items-center gap-2 rounded-xl px-2 py-2",
         open && "bg-sidebar-accent",
       )}
     >
@@ -478,17 +463,7 @@ export function ManagerGettingStarted({
    * Outside is simpler, keeps the copy its natural length, and cannot clip anything.
    */
   return (
-    /*
-     * `relative p-0` is load-bearing, not tidiness.
-     *
-     * `SidebarGroup` ships its own `p-2`, and this widget lives in `SidebarFooter`, which is `p-2` as
-     * well — so the button sat in a 16px box while `SidebarMenuButton` forces
-     * `group-data-[collapsible=icon]:!size-8` (32px). A 32px button in a 16px box overflows to the
-     * RIGHT, so its centre landed 8px right of the rail's centre and the ring read as skewed. The
-     * avatar below is centred precisely because it sits directly in the footer and gets ONE padding.
-     *
-     * `relative` is the containing block for the ring's absolute centring in the rail.
-     */
+    // Footer already supplies the rail inset; avoid applying a second layer of padding.
     <SidebarGroup className="relative p-0">
       <SidebarMenu>
         <SidebarMenuItem>

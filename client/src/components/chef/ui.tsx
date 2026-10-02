@@ -52,14 +52,14 @@ export function ChefPageHeader({
 }) {
   return (
     <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}>
-      <div>
-        <div className="flex items-center gap-2">
-          <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="min-w-0 break-words text-2xl font-semibold tracking-tight">{title}</h2>
           {titleAccessory}
         </div>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? <div className="flex min-w-0 flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }

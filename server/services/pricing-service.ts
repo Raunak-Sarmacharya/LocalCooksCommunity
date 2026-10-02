@@ -65,7 +65,7 @@ export async function getKitchenPricing(kitchenId: number): Promise<KitchenPrici
     return {
       hourlyRate: hourlyRateCents,
       currency: kitchen.currency || 'CAD',
-      minimumBookingHours: kitchen.minimumBookingHours || 1,
+      minimumBookingHours: kitchen.minimumBookingHours ?? 1,
       taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent) : null,
     };
   } catch (error) {

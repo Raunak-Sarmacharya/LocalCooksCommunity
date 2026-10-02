@@ -2,7 +2,7 @@
  * Chef Seller Revenue Dashboard
  *
  * Enterprise-grade revenue dashboard for food order earnings from the PHP platform.
- * Matches TransactionHistory patterns: TanStack Table, Sheet detail view, CSV export.
+ * Matches TransactionHistory patterns: TanStack Table, Dialog detail view, CSV export.
  */
 
 import { useState, useMemo, useEffect } from "react";
@@ -24,7 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Loader2, DollarSign, TrendingUp, Receipt, ExternalLink, Link2, Store, Truck, ShoppingBag, Clock, CheckCircle2, AlertCircle, Info, ArrowUpDown, Calendar, User, Hash, Search, X, Download, RefreshCw, ChevronLeft, ChevronRight, Minus, FileText, FileSpreadsheet, ChevronDown, Users, Star, MapPin } from "lucide-react";
@@ -39,7 +40,7 @@ import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
 import { PickupOrderIcon } from "@/components/ui/PickupOrderIcon";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { ChefPageHeader, QuietNotice, StatTile } from "@/components/chef/ui";
 import { TruncatedText } from "@/components/common/TruncatedText";
@@ -286,8 +287,9 @@ function LinkSellerAccountBanner() {
   if (statusLoading) {
     return (
       <Card className="border-dashed border-2 border-muted-foreground/25">
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <CardContent className="space-y-3 py-6" role="status" aria-label="Loading seller account">
+          <Skeleton className="h-5 w-1/2" />
+          <Skeleton className="h-10 w-full rounded-lg" />
         </CardContent>
       </Card>
     );
@@ -516,7 +518,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
 // ORDER DETAIL SHEET
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function OrderDetailSheet({
+function OrderDetailDialog({
   order,
   open,
   onOpenChange,
@@ -543,17 +545,17 @@ function OrderDetailSheet({
   ];
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
             {order.type === "pre_order" ? t("revPreOrder", "Pre-Order") : t("revOrder", "Order")} #{order.id}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {t("revOrderDetailsSubtitle", "Full financial breakdown for this order")}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="mt-6 space-y-6">
           {/* Order Info */}
@@ -711,8 +713,8 @@ function OrderDetailSheet({
             </Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
@@ -1216,7 +1218,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
           {t("revExportReport")}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <AppDialogContent>
         <DialogHeader>
           <DialogTitle>{t("revExportDialogTitle")}</DialogTitle>
         </DialogHeader>
@@ -1267,7 +1269,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
             </Button>
           </div>
         </div>
-      </DialogContent>
+      </AppDialogContent>
     </Dialog>
   );
 }
@@ -1279,7 +1281,7 @@ function SellerOrderHistory({ period }: { period: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "order_time", desc: true }]);
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
@@ -1313,7 +1315,7 @@ function SellerOrderHistory({ period }: { period: string }) {
     () =>
       getOrderColumns((order) => {
         setSelectedOrder(order);
-        setSheetOpen(true);
+        setDialogOpen(true);
       }, t, i18n.language),
     [t, i18n.language]
   );
@@ -1364,10 +1366,6 @@ function SellerOrderHistory({ period }: { period: string }) {
                 )}
               </div>
               <ExportReportModal orders={orders} />
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading} className="w-full sm:w-auto">
-                <RefreshCw className={cn("h-4 w-4 mr-1.5", isLoading && "animate-spin")} />
-                {t("revRefresh")}
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -1417,7 +1415,8 @@ function SellerOrderHistory({ period }: { period: string }) {
             </div>
           ) : (
             <>
-              <div className="rounded-xl border">
+              <MobileTableCards rows={table.getRowModel().rows} onRowClick={(order) => { setSelectedOrder(order); setDialogOpen(true); }} />
+              <div className="hidden rounded-xl border md:block">
                 <Table>
                   <TableHeader>
                     {table.getHeaderGroups().map((headerGroup) => (
@@ -1440,7 +1439,7 @@ function SellerOrderHistory({ period }: { period: string }) {
                           className="hover:bg-muted/50 cursor-pointer"
                           onClick={() => {
                             setSelectedOrder(row.original);
-                            setSheetOpen(true);
+                            setDialogOpen(true);
                           }}
                         >
                           {row.getVisibleCells().map((cell) => (
@@ -1491,7 +1490,7 @@ function SellerOrderHistory({ period }: { period: string }) {
         </CardContent>
       </Card>
 
-      <OrderDetailSheet order={selectedOrder} open={sheetOpen} onOpenChange={setSheetOpen} />
+      <OrderDetailDialog order={selectedOrder} open={dialogOpen} onOpenChange={setDialogOpen} />
     </>
   );
 }

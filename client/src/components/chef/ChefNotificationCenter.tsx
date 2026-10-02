@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 /**
  * Enterprise-Grade Chef Notification Center Component
@@ -20,7 +21,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, BellOff, Check, CheckCheck, Archive, Trash2, ChevronRight, Calendar, CreditCard, FileText, MessageSquare, AlertTriangle, Info, RefreshCw, GraduationCap, Package, PartyPopper } from "lucide-react";
+import { Bell, BellOff, Check, CheckCheck, Archive, Trash2, ChevronRight, Calendar, CreditCard, FileText, MessageSquare, AlertTriangle, Info, RefreshCw, GraduationCap, PartyPopper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -662,10 +663,6 @@ export default function ChefNotificationCenter({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-                <Icon icon="mdi:refresh" className={cn("size-4", isLoading && "animate-spin")} aria-hidden />
-                {t("notifRefreshLabel", "Refresh notifications")}
-              </Button>
               {unreadCount > 0 && (
                 <Button size="sm" onClick={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending}>
                   <Icon icon="mdi:check-all" className="size-4" aria-hidden />
@@ -745,16 +742,6 @@ export default function ChefNotificationCenter({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => refetch()}
-              disabled={isLoading}
-              aria-label={isLoading ? t("notifRefreshingLabel", "Refreshing notifications") : t("notifRefreshLabel", "Refresh notifications")}
-            >
-              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
-            </Button>
             {unreadCount > 0 && (
               <Button
                 variant="ghost"

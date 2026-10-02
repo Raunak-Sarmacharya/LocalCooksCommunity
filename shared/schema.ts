@@ -40,7 +40,7 @@ export const kitchenCheckinStatusEnum = pgEnum('kitchen_checkin_status', [
   'checked_in',           // Chef checked in (self-serve or manager confirmed)
   'checkout_requested',   // Chef initiated checkout, awaiting manager review
   'checked_out',          // Manager cleared checkout (or auto-cleared)
-  'no_show',              // Chef didn't check in within grace period
+  'no_show',              // Explicit non-attendance report (legacy automatic records remain unverified)
   'checkout_claim_filed', // Manager filed damage claim during kitchen checkout
 ]);
 export const storagePricingModelEnum = pgEnum('storage_pricing_model', ['monthly-flat', 'per-cubic-foot', 'hourly', 'daily']);
@@ -456,6 +456,7 @@ export const kitchens = pgTable("kitchens", {
   id: serial("id").primaryKey(),
   locationId: integer("location_id").references(() => locations.id).notNull(),
   name: text("name").notNull(),
+  slug: text("slug"),
   description: text("description"),
   imageUrl: text("image_url"), // Image URL for the kitchen (displayed on public kitchen listings)
   galleryImages: jsonb("gallery_images").default([]), // Array of image URLs for kitchen gallery carousel
@@ -473,6 +474,10 @@ export const kitchens = pgTable("kitchens", {
    * migrations/0041_add_kitchen_listing_status.sql.
    */
   listingStatus: listingStatusEnum("listing_status").default("draft").notNull(),
+  cancellationPolicyHours: integer("cancellation_policy_hours"),
+  minimumBookingWindowHours: integer("minimum_booking_window_hours"),
+  defaultDailyBookingLimit: integer("default_daily_booking_limit"),
+  checkinCheckoutEnabled: boolean("checkin_checkout_enabled").default(false).notNull(),
   // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
   hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
   dailyRate: numeric("daily_rate"), // Base daily rate in cents; can coexist with hourlyRate
@@ -556,6 +561,8 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   equipmentItems: jsonb("equipment_items").default([]), // Array of equipment booking IDs: [{equipmentBookingId: 2, equipmentListingId: 8}]
   paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Payment status
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  paymentDecision: jsonb('payment_decision'), // Durable authorized-payment decision; retained for recovery/audit
+  cancellationPolicyHours: integer("cancellation_policy_hours"), // Frozen when the booking is created.
   // Stripe fields for off-session damage claim charging
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for damage claims
   stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
@@ -579,6 +586,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   checkedOutAt: timestamp("checked_out_at"),
   checkoutPhotoUrls: jsonb("checkout_photo_urls").default([]),
   checkoutNotes: text("checkout_notes"),
+  checkoutManagerMessage: text("checkout_manager_message"), // Explicitly shared; preserves chef checkout notes
   checkoutApprovedAt: timestamp("checkout_approved_at"),
   checkoutApprovedBy: integer("checkout_approved_by").references(() => users.id, { onDelete: "set null" }),
   // Access code integration (per-booking codes the manager programs manually)
@@ -615,6 +623,7 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
   checkedOutAt: timestamp("checked_out_at"),
   checkoutPhotoUrls: jsonb("checkout_photo_urls").default([]),
   checkoutNotes: text("checkout_notes"),
+  checkoutManagerMessage: text("checkout_manager_message"), // Explicitly shared; preserves chef checkout notes
   checkoutChecklistItems: jsonb("checkout_checklist_items"),
   checkoutApprovedAt: timestamp("checkout_approved_at"),
   checkoutApprovedBy: integer("checkout_approved_by").references(() => users.id, { onDelete: "set null" }),
@@ -623,6 +632,21 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
   actualEndTime: text("actual_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Attendance evidence is separate from reservation validity and checkout approval.
+export const kitchenBookingAttendanceEvents = pgTable("kitchen_booking_attendance_events", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").references(() => kitchenBookings.id).notNull(),
+  visitId: integer("visit_id").references(() => kitchenBookingVisits.id),
+  actorId: integer("actor_id").references(() => users.id).notNull(),
+  actorRole: text("actor_role").notNull(),
+  action: text("action").notNull(),
+  previousStatus: text("previous_status"),
+  sharedMessage: text("shared_message"),
+  internalNotes: text("internal_notes"),
+  evidenceSnapshot: jsonb("evidence_snapshot").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Access code audit trail
@@ -974,6 +998,7 @@ export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
   specialNotes: z.string().optional(),
 }).omit({
   id: true,
+  paymentDecision: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -1181,9 +1206,9 @@ export const storageListings = pgTable("storage_listings", {
   insuranceRequired: boolean("insurance_required").default(false),
 
   // Overstay penalty configuration (manager-controlled)
-  overstayGracePeriodDays: integer("overstay_grace_period_days").default(3).notNull(), // Days before penalties apply (industry standard: 3-5)
-  overstayPenaltyRate: numeric("overstay_penalty_rate").default("0.10").notNull(), // Penalty rate as decimal (0.10 = 10% of daily rate per day)
-  overstayMaxPenaltyDays: integer("overstay_max_penalty_days").default(30).notNull(), // Max days penalties can accrue
+  overstayGracePeriodDays: integer("overstay_grace_period_days"), // Null inherits location/platform defaults
+  overstayPenaltyRate: numeric("overstay_penalty_rate"),
+  overstayMaxPenaltyDays: integer("overstay_max_penalty_days"),
   overstayPolicyText: text("overstay_policy_text"), // Custom policy text shown to chefs
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1343,10 +1368,28 @@ export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListing
 // CRITICAL: Storage can ONLY be booked as part of a kitchen booking (not standalone)
 // Must include kitchen_booking_id foreign key - no standalone storage booking endpoints
 
+export const bookingLifecycleEvents = pgTable('booking_lifecycle_events', {
+  id: serial('id').primaryKey(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  kind: text('kind').notNull(),
+  actorId: integer('actor_id').references(() => users.id),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  metadata: jsonb('metadata').default({}).notNull(),
+  emails: jsonb('emails').default([]).notNull(),
+  deliveredEmailKeys: jsonb('delivered_email_keys').default([]).notNull(),
+  leaseUntil: timestamp('lease_until'),
+  leaseToken: text('lease_token'),
+  nextAttemptAt: timestamp('next_attempt_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const storageBookings = pgTable("storage_bookings", {
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. SB-X3P2NR
   storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
+  overstayTerms: jsonb("overstay_terms"), // Frozen terms; null legacy rows require review
   kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }), // NULLABLE - storage can be booked independently
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef making the booking
   startDate: timestamp("start_date").notNull(),
@@ -1388,9 +1431,18 @@ export const storageBookings = pgTable("storage_bookings", {
   cancellationRequestedAt: timestamp("cancellation_requested_at"),
   cancellationRequestReason: text("cancellation_request_reason"),
   cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
+  cancellationAcceptedAt: timestamp('cancellation_accepted_at'),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const storageOverstayQuotes = pgTable('storage_overstay_quotes', {
+  id: text('id').primaryKey(),
+  chefId: integer('chef_id').references(() => users.id).notNull(),
+  storageListingId: integer('storage_listing_id').references(() => storageListings.id).notNull(),
+  terms: jsonb('terms').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // Zod validation schemas for storage bookings
@@ -1856,6 +1908,14 @@ export const storageOverstayRecords = pgTable("storage_overstay_records", {
   
   // Detection info
   detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  itemsRemovedAt: timestamp("items_removed_at"), // Manager-confirmed physical removal; required before collection.
+  penaltyNoticeSentAt: timestamp("penalty_notice_sent_at"),
+  chefDisputeDeadline: timestamp("chef_dispute_deadline"),
+  chefDisputedAt: timestamp("chef_disputed_at"),
+  chefDisputeReason: text("chef_dispute_reason"),
+  disputeReviewedAt: timestamp("dispute_reviewed_at"),
+  disputeReviewedBy: integer("dispute_reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  disputeDecisionReason: text("dispute_decision_reason"),
   endDate: timestamp("end_date").notNull(), // Original booking end date
   daysOverdue: integer("days_overdue").default(0).notNull(),
   gracePeriodEndsAt: timestamp("grace_period_ends_at").notNull(),
@@ -1878,6 +1938,9 @@ export const storageOverstayRecords = pgTable("storage_overstay_records", {
   
   // Stripe charge tracking
   stripePaymentIntentId: text("stripe_payment_intent_id"),
+  paymentRoute: text("payment_route"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  checkoutAttempt: integer("checkout_attempt").default(0).notNull(),
   stripeChargeId: text("stripe_charge_id"),
   chargeAttemptedAt: timestamp("charge_attempted_at"),
   chargeSucceededAt: timestamp("charge_succeeded_at"),
@@ -2028,6 +2091,9 @@ export const damageClaims = pgTable("damage_claims", {
   
   // Payment
   stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
+  paymentRoute: text("payment_route"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  checkoutAttempt: integer("checkout_attempt").default(0).notNull(),
   stripeChargeId: text("stripe_charge_id"),
   paymentTransactionId: integer("payment_transaction_id").references(() => paymentTransactions.id, { onDelete: "set null" }),
   chargeAttemptedAt: timestamp("charge_attempted_at"),
@@ -2204,7 +2270,7 @@ export type EvidenceType = typeof evidenceTypeValues[number];
 export const viewingStatusEnum = pgEnum('viewing_status', ['pending_local_cooks', 'pending', 'confirmed', 'cancelled', 'completed', 'no_show']);
 
 // Define enum for no-show reason (structured tracking for cohort analytics)
-export const noShowReasonEnum = pgEnum('no_show_reason', ['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']);
+export const noShowReasonEnum = pgEnum('no_show_reason', ['chef_cancelled_late', 'chef_no_response', 'manager_no_show', 'rescheduled_by_manager', 'weather', 'other', 'visitor_absent']);
 
 // Tour settings are configured independently for each kitchen.
 export const kitchenViewingSettings = pgTable("kitchen_viewing_settings", {
@@ -2254,7 +2320,9 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   rescheduleRequestedAt: timestamp("reschedule_requested_at"),
   durationMinutes: integer("duration_minutes").default(30).notNull(),
   chefNotes: text("chef_notes"), // What the chef specifically wants to see/discuss
-  managerNotes: text("manager_notes"), // Internal notes from manager
+  managerNotes: text("manager_notes"), // Legacy internal notes: admin-only, never automatically shared.
+  sharedManagerNotes: text("shared_manager_notes"), // Explicit message from manager/admin to chef.
+  disruptionReason: text("disruption_reason"), // Cancelled tour disrupted by host/access/weather; not visitor no-show.
   noShowReason: noShowReasonEnum("no_show_reason"), // Structured no-show tracking
   // Pre-tour intake data for lead qualification (JSONB)
   intakeData: jsonb("intake_data").default({}), // { intendedUse, estimatedWeeklyHours, hasLicense, targetStartDate }
@@ -2268,6 +2336,11 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   adminReviewedAt: timestamp("admin_reviewed_at"),
   // Completion tracking
   completedAt: timestamp("completed_at"),
+  noShowAt: timestamp("no_show_at"),
+  outcomeRecordedBy: integer("outcome_recorded_by").references(() => users.id, { onDelete: "set null" }),
+  outcomeHistory: jsonb("outcome_history").default([]),
+  outcomeReminderSentAt: timestamp("outcome_reminder_sent_at"), // Reminder enqueue marker; actual delivery is tracked in tour_delivery_events.
+  outcomeNotificationPending: boolean("outcome_notification_pending").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2296,6 +2369,21 @@ export const emailLogs = pgTable("email_logs", {
 
 export type EmailLog = typeof emailLogs.$inferSelect;
 export type InsertEmailLog = typeof emailLogs.$inferInsert;
+
+export const tourDeliveryEvents = pgTable("tour_delivery_events", {
+  id: serial("id").primaryKey(),
+  viewingId: integer("viewing_id").references(() => kitchenViewings.id, { onDelete: "cascade" }).notNull(),
+  eventKey: text("event_key").notNull().unique(),
+  payload: jsonb("payload").notNull(),
+  deliveredKeys: jsonb("delivered_keys").default([]).notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  nextAttemptAt: timestamp("next_attempt_at").defaultNow().notNull(),
+  leaseToken: text("lease_token"),
+  leaseUntil: timestamp("lease_until"),
+  lastError: text("last_error"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 // ===== ZOD SCHEMAS FOR KITCHEN VIEWING SYSTEM =====
 
@@ -2366,7 +2454,9 @@ export const updateKitchenViewingStatusSchema = z.object({
   id: z.number(),
   status: z.enum(['pending', 'confirmed', 'cancelled', 'completed', 'no_show']),
   managerNotes: z.string().max(500).optional(),
-  noShowReason: z.enum(['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']).optional(),
+  sharedManagerNotes: z.string().trim().max(500).optional(),
+  noShowReason: z.literal('visitor_absent').optional(),
+  disruptionReason: z.enum(['manager_absent', 'access_unavailable', 'weather', 'other']).optional(),
   cancellationReason: z.string().max(500).optional(),
   cancelledBy: z.enum(['chef', 'manager']).optional(),
 });

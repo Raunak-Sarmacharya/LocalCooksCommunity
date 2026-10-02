@@ -563,10 +563,6 @@ export function DamageClaimReview() {
             Review and make decisions on damage claims
           </p>
         </div>
-        <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
       </div>
 
       {/* Pending Claims Alert */}

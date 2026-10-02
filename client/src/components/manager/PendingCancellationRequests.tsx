@@ -1,7 +1,8 @@
+import { StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { useState, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { format } from "date-fns";
-import { AlertTriangle, CheckCircle, XCircle, Clock, Calendar, MapPin, Boxes } from "@/components/ui/manager-icons";
+import { AlertTriangle, CheckCircle, XCircle, Clock, Calendar, MapPin } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,7 +15,9 @@ import { useToast } from "@/hooks/use-toast";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Building2, MapPin, Mail, Phone, Clock, Calendar, Globe, Save, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from "@/components/ui/manager-icons";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
@@ -137,6 +139,7 @@ export default function LocationEditModal({
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [confirmExit, setConfirmExit] = useState(false);
 
   const form = useForm<LocationFormValues>({
     resolver: zodResolver(getLocationFormSchema()),
@@ -146,7 +149,7 @@ export default function LocationEditModal({
       notificationEmail: location.notificationEmail || "",
       notificationPhone: location.notificationPhone || "",
       timezone: DEFAULT_TIMEZONE, // Locked to default
-      cancellationPolicyHours: location.cancellationPolicyHours || 24,
+      cancellationPolicyHours: location.cancellationPolicyHours ?? 24,
       cancellationPolicyMessage: location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage"),
       defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
       minimumBookingWindowHours: location.minimumBookingWindowHours ?? 1,
@@ -163,7 +166,7 @@ export default function LocationEditModal({
         notificationEmail: location.notificationEmail || "",
         notificationPhone: location.notificationPhone || "",
         timezone: DEFAULT_TIMEZONE,
-        cancellationPolicyHours: location.cancellationPolicyHours || 24,
+        cancellationPolicyHours: location.cancellationPolicyHours ?? 24,
         cancellationPolicyMessage: location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage"),
         defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
         minimumBookingWindowHours: location.minimumBookingWindowHours ?? 1,
@@ -258,13 +261,19 @@ export default function LocationEditModal({
   };
 
   const isLoading = updateBasicInfo.isPending || updateSettings.isPending;
+  const requestClose = () => {
+    if (isLoading) return;
+    if (!viewOnly && form.formState.isDirty) setConfirmExit(true);
+    else onClose();
+  };
   const statusConfig = getStatusConfig(location.kitchenLicenseStatus);
   const StatusIcon = statusConfig.icon;
 
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col">
-        <SheetHeader className="p-6 pb-4 border-b">
+    <>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && requestClose()}>
+      <AppDialogContent className="sm:max-w-xl p-0 flex flex-col">
+        <DialogHeader className="p-6 pb-4 border-b">
           <div className="flex items-center gap-3">
             {location.logoUrl ? (
               <ImageWithReplace
@@ -283,15 +292,15 @@ export default function LocationEditModal({
               </div>
             )}
             <div>
-              <SheetTitle className="text-lg">
+              <DialogTitle className="text-lg">
                 {viewOnly ? mt("locationDetails") : mt("editLocation")}
-              </SheetTitle>
-              <SheetDescription>
+              </DialogTitle>
+              <DialogDescription>
                 {viewOnly ? mt("viewYourLocationInformation") : mt("updateYourLocationDetails")}
-              </SheetDescription>
+              </DialogDescription>
             </div>
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-6">
           <Form {...form}>
@@ -558,11 +567,11 @@ export default function LocationEditModal({
           </Form>
         </div>
 
-        <SheetFooter className="p-6 pt-4 border-t gap-2">
-          <Button variant="outline" type="button" onClick={onClose}>
+        <DialogFooter className="p-6 pt-4 border-t gap-2">
+          <Button variant="outline" type="button" onClick={requestClose}>
             {viewOnly ? "Close" : "Cancel"}
           </Button>
-          {!viewOnly && (
+          {!viewOnly && (form.formState.isDirty || isLoading) && (
             <Button
               type="submit"
               onClick={form.handleSubmit(onSubmit)}
@@ -578,8 +587,10 @@ export default function LocationEditModal({
               )}
             </Button>
           )}
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </AppDialogContent>
+    </Dialog>
+    <UnsavedChangesDialog open={confirmExit} onOpenChange={setConfirmExit} description={mt("locationModalUnsavedDescription")} onDiscard={() => { setConfirmExit(false); onClose(); }} />
+    </>
   );
 }

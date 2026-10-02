@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { expandHourlySlots, parseCheckoutSlots, serializeCheckoutSlots } from "./checkout-metadata";
+import { expandHourlySlots, parseCheckoutSlots, serializeCheckoutSlots, parseCheckoutCancellationPolicy } from "./checkout-metadata";
+
+it("retains zero-hour accepted cutoffs and supports older checkout sessions", () => {
+  expect(parseCheckoutCancellationPolicy("0")).toBe(0);
+  expect(parseCheckoutCancellationPolicy("48")).toBe(48);
+  expect(parseCheckoutCancellationPolicy(undefined)).toBeUndefined();
+  for (const value of ["", "-1", "0.5", "NaN", "2147483648"]) {
+    expect(() => parseCheckoutCancellationPolicy(value)).toThrow();
+  }
+});
 
 describe("checkout slot metadata", () => {
   it("omits contiguous full-day slots and reconstructs them after checkout", () => {

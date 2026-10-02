@@ -20,7 +20,9 @@ import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +33,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
+import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 
 // Types
 interface DamageEvidence {
@@ -142,13 +145,23 @@ function ResponseDialog({
   const { t } = useTranslation("chef");
   const [action, setAction] = useState<'accept' | 'dispute' | null>(null);
   const [response, setResponse] = useState("");
+  const [supportingFile, setSupportingFile] = useState<File | null>(null);
+  const { uploadFile } = useSessionFileUpload();
 
   const respondMutation = useMutation({
     mutationFn: async () => {
       if (!action) throw new Error(t("dcSelectAction"));
+      if (supportingFile && action === 'dispute') {
+        const upload = await uploadFile(supportingFile, 'damage-claims');
+        if (!upload?.success || !upload.url) throw new Error('Failed to upload supporting evidence');
+        await apiRequest('POST', `/api/chef/damage-claims/${claim.id}/evidence`, {
+          fileUrl: upload.url, fileName: supportingFile.name, mimeType: supportingFile.type, description: response,
+        });
+        setSupportingFile(null);
+      }
       const res = await apiRequest('POST', `/api/chef/damage-claims/${claim.id}/respond`, {
         action,
-        response,
+        response: action === 'accept' && response.trim().length < 10 ? 'I accept responsibility for this claim.' : response,
       });
       return res.json();
     },
@@ -183,19 +196,19 @@ function ResponseDialog({
   const isResolved = ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed', 'escalated'].includes(claim.status);
   const isEscalated = claim.status === 'escalated';
   const [isPaying, setIsPaying] = useState(false);
-  const canRespond = claim.status === 'submitted' && !isExpired && !isResolved;
+  const canRespond = (claim.status === 'submitted' || claim.status === 'under_review') && !isResolved;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{isResolved ? t("dcDetailsTitle") : t("dcRespondTitle")}</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{isResolved ? t("dcDetailsTitle") : t("dcRespondTitle")}</DialogTitle>
+          <DialogDescription>
             {isResolved 
               ? t("dcDetailsResolvedDesc")
               : t("dcRespondDesc")}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         {/* Escalated — Payment Required Banner */}
         {isEscalated && (
@@ -204,7 +217,7 @@ function ResponseDialog({
             <AlertTitle>{t("dcStatusEscalated")}</AlertTitle>
             <AlertDescription>
               <p className="mb-3">
-                {t("dcEscalatedPayBody", { amount: formatCurrency(claim.finalAmountCents || claim.claimedAmountCents) })}
+                {t("dcEscalatedPayBody", { amount: formatCurrency(claim.finalAmountCents ?? claim.claimedAmountCents) })}
               </p>
               <Button
                 size="sm"
@@ -230,7 +243,7 @@ function ResponseDialog({
                 ) : (
                   <CreditCard className="h-4 w-4 mr-1.5" />
                 )}
-                Pay Now — {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)}
+                Pay Now — {formatCurrency(claim.finalAmountCents ?? claim.claimedAmountCents)}
               </Button>
             </AlertDescription>
           </Alert>
@@ -248,7 +261,7 @@ function ResponseDialog({
             </AlertTitle>
             <AlertDescription className="text-muted-foreground">
               {claim.status === 'charge_succeeded' 
-                ? t("dcCardChargedBody", { amount: formatCurrency(claim.finalAmountCents || claim.claimedAmountCents) })
+                ? t("dcCardChargedBody", { amount: formatCurrency(claim.finalAmountCents ?? claim.claimedAmountCents) })
                 : claim.status === 'rejected'
                 ? t("dcRejectedByAdminBody")
                 : claim.status === 'expired'
@@ -368,6 +381,7 @@ function ResponseDialog({
                   variant={action === 'accept' ? 'default' : 'outline'}
                   className="h-auto py-4 flex flex-col items-center gap-2"
                   onClick={() => setAction('accept')}
+                  disabled={claim.status === 'under_review'}
                 >
                   <CheckCircle className="w-6 h-6" />
                   <span className="font-semibold">{t("dcAcceptClaim")}</span>
@@ -406,18 +420,22 @@ function ResponseDialog({
                     rows={4}
                     required={action === 'dispute'}
                   />
-                  {action === 'dispute' && response.length < 50 && (
+                  {action === 'dispute' && response.length < 10 && (
                     <p className="text-xs text-muted-foreground">
-                      {t("dcMoreCharsRequired", { count: 50 - response.length })}
+                      {t("dcMoreCharsRequired", { count: 10 - response.length })}
                     </p>
                   )}
+                  {action === 'dispute' && <div className="space-y-1">
+                    <Label htmlFor="chef-claim-evidence">Supporting photo or document (optional)</Label>
+                    <input id="chef-claim-evidence" type="file" accept="image/*,application/pdf" onChange={event => setSupportingFile(event.target.files?.[0] || null)} />
+                  </div>}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <SheetFooter className="mt-6">
+        <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {isResolved ? t("ciClose") : t("bkCommonCancel")}
           </Button>
@@ -426,7 +444,7 @@ function ResponseDialog({
               onClick={() => respondMutation.mutate()}
               disabled={
                 respondMutation.isPending ||
-                (action === 'dispute' && response.length < 50)
+                (action === 'dispute' && response.length < 10)
               }
               variant={action === 'accept' ? 'default' : 'destructive'}
             >
@@ -437,9 +455,9 @@ function ResponseDialog({
                 : t("dcSubmitDispute")}
             </Button>
           )}
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
@@ -544,7 +562,7 @@ const getDamageClaimColumns = (t: any, {
     ),
     cell: ({ row }) => {
       const claim = row.original;
-      const finalAmount = claim.finalAmountCents || claim.claimedAmountCents;
+      const finalAmount = claim.finalAmountCents ?? claim.claimedAmountCents;
       const isDifferent = claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents;
       
       return (
@@ -628,7 +646,7 @@ const getDamageClaimColumns = (t: any, {
       const claim = row.original;
       const deadline = new Date(claim.chefResponseDeadline);
       const isExpired = deadline < new Date();
-      const canRespond = claim.status === 'submitted' && !isExpired;
+      const canRespond = claim.status === 'submitted' || claim.status === 'under_review';
       const isDownloading = downloadingInvoiceId === claim.id;
       const canDownloadInvoice = claim.status === 'charge_succeeded';
 
@@ -824,10 +842,6 @@ export function PendingDamageClaims() {
                 {table.getFilteredRowModel().rows.length} of {claims.length} claim{claims.length !== 1 ? 's' : ''}
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {t("rcRefreshBtn", "Refresh")}
-            </Button>
           </div>
         </CardHeader>
 
@@ -858,7 +872,8 @@ export function PendingDamageClaims() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <MobileTableCards rows={table.getRowModel().rows} emptyMessage={t("rcNoDamageClaimsTitle", "No Damage Claims")} />
+          <div className="hidden rounded-xl border overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (

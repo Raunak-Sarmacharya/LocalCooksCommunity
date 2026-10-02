@@ -1,7 +1,7 @@
 import { logger } from "../logger";
 /**
  * Damage Claim Limits Service
- * 
+ *
  * Enterprise-grade service for fetching and validating damage claim limits.
  * Admin-controlled limits protect chefs from excessive claims.
  */
@@ -20,7 +20,7 @@ export interface DamageClaimLimits {
 
 export interface StorageCheckoutSettings {
   reviewWindowHours: number;          // Hours manager has to inspect after chef checkout
-  extendedClaimWindowHours: number;   // Extended hours to file claims for serious issues
+  extendedClaimWindowHours: number;   // Read-only compatibility value derived from the general filing window
 }
 
 // Default limits - conservative values to protect chefs
@@ -28,13 +28,13 @@ const DEFAULTS: DamageClaimLimits = {
   maxClaimAmountCents: 500000, // $5,000 CAD max per claim
   minClaimAmountCents: 1000,   // $10 CAD minimum
   maxClaimsPerBooking: 3,      // Max 3 claims per booking
-  chefResponseDeadlineHours: 72, // 72 hours to respond
+  chefResponseDeadlineHours: 24, // 24 hours to respond - matches Airbnb's guest response window
   claimSubmissionDeadlineDays: 14, // 14 days after booking ends
 };
 
 const STORAGE_CHECKOUT_DEFAULTS: StorageCheckoutSettings = {
   reviewWindowHours: 2,             // 2 hours for manager to inspect
-  extendedClaimWindowHours: 48,     // 48 hours extended window for serious issues
+  extendedClaimWindowHours: DEFAULTS.claimSubmissionDeadlineDays * 24, // Compatibility field: general filing window
 };
 
 /**
@@ -48,13 +48,13 @@ export async function getDamageClaimLimits(): Promise<DamageClaimLimits> {
       .from(platformSettings)
       .where(eq(platformSettings.key, 'damage_claim_max_amount_cents'))
       .limit(1);
-    
+
     const [minClaimSetting] = await db
       .select()
       .from(platformSettings)
       .where(eq(platformSettings.key, 'damage_claim_min_amount_cents'))
       .limit(1);
-    
+
     const [maxClaimsPerBookingSetting] = await db
       .select()
       .from(platformSettings)
@@ -73,26 +73,28 @@ export async function getDamageClaimLimits(): Promise<DamageClaimLimits> {
       .where(eq(platformSettings.key, 'damage_claim_submission_deadline_days'))
       .limit(1);
 
-    return {
-      maxClaimAmountCents: maxClaimSetting 
-        ? parseInt(maxClaimSetting.value) 
+    const limits = {
+      maxClaimAmountCents: maxClaimSetting
+        ? Number(maxClaimSetting.value)
         : DEFAULTS.maxClaimAmountCents,
-      minClaimAmountCents: minClaimSetting 
-        ? parseInt(minClaimSetting.value) 
+      minClaimAmountCents: minClaimSetting
+        ? Number(minClaimSetting.value)
         : DEFAULTS.minClaimAmountCents,
-      maxClaimsPerBooking: maxClaimsPerBookingSetting 
-        ? parseInt(maxClaimsPerBookingSetting.value) 
+      maxClaimsPerBooking: maxClaimsPerBookingSetting
+        ? Number(maxClaimsPerBookingSetting.value)
         : DEFAULTS.maxClaimsPerBooking,
-      chefResponseDeadlineHours: responseDeadlineSetting 
-        ? parseInt(responseDeadlineSetting.value) 
+      chefResponseDeadlineHours: responseDeadlineSetting
+        ? Number(responseDeadlineSetting.value)
         : DEFAULTS.chefResponseDeadlineHours,
-      claimSubmissionDeadlineDays: submissionDeadlineSetting 
-        ? parseInt(submissionDeadlineSetting.value) 
+      claimSubmissionDeadlineDays: submissionDeadlineSetting
+        ? Number(submissionDeadlineSetting.value)
         : DEFAULTS.claimSubmissionDeadlineDays,
     };
+    if (!Object.values(limits).every(value => Number.isSafeInteger(value) && value > 0) || limits.minClaimAmountCents > limits.maxClaimAmountCents) throw new Error('Invalid damage claim settings');
+    return limits;
   } catch (error) {
     logger.error('[DamageClaimLimitsService] Error fetching limits:', error);
-    return DEFAULTS;
+    throw error;
   }
 }
 
@@ -105,6 +107,10 @@ export async function validateClaimAmount(amountCents: number): Promise<{
   limits: DamageClaimLimits;
 }> {
   const limits = await getDamageClaimLimits();
+
+  if (!Number.isSafeInteger(amountCents) || amountCents < 0) {
+    return { valid: false, error: 'Claim amount must be a non-negative whole number of cents', limits };
+  }
 
   if (amountCents < limits.minClaimAmountCents) {
     return {
@@ -133,13 +139,13 @@ export async function canFileClaimForBooking(
   bookingId: number
 ): Promise<{ allowed: boolean; error?: string; currentCount: number; maxAllowed: number }> {
   const limits = await getDamageClaimLimits();
-  
+
   // Import here to avoid circular dependency
   const { damageClaims } = await import("@shared/schema");
   const { and, eq, count } = await import("drizzle-orm");
 
-  const bookingColumn = bookingType === 'kitchen' 
-    ? damageClaims.kitchenBookingId 
+  const bookingColumn = bookingType === 'kitchen'
+    ? damageClaims.kitchenBookingId
     : damageClaims.storageBookingId;
 
   const [result] = await db
@@ -191,23 +197,19 @@ export async function getStorageCheckoutSettings(): Promise<StorageCheckoutSetti
       .where(eq(platformSettings.key, 'storage_checkout_review_window_hours'))
       .limit(1);
 
-    const [extendedWindowSetting] = await db
-      .select()
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'storage_checkout_extended_claim_window_hours'))
-      .limit(1);
+    const filingLimits = await getDamageClaimLimits();
+    if (reviewWindowSetting && (!Number.isSafeInteger(Number(reviewWindowSetting.value)) || Number(reviewWindowSetting.value) < 1))
+      throw new Error('Invalid storage checkout review window');
 
     return {
       reviewWindowHours: reviewWindowSetting
-        ? parseInt(reviewWindowSetting.value)
+        ? Number(reviewWindowSetting.value)
         : STORAGE_CHECKOUT_DEFAULTS.reviewWindowHours,
-      extendedClaimWindowHours: extendedWindowSetting
-        ? parseInt(extendedWindowSetting.value)
-        : STORAGE_CHECKOUT_DEFAULTS.extendedClaimWindowHours,
+      extendedClaimWindowHours: filingLimits.claimSubmissionDeadlineDays * 24,
     };
   } catch (error) {
     logger.error('[DamageClaimLimitsService] Error fetching storage checkout settings:', error);
-    return STORAGE_CHECKOUT_DEFAULTS;
+    throw error;
   }
 }
 

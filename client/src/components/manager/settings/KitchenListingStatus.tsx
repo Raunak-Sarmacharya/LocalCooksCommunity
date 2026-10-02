@@ -1,7 +1,8 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertTriangle,
-  ArrowRight,
+  ChevronRight,
   CheckCircle,
   EyeOff,
   Loader2,
@@ -64,23 +65,33 @@ interface KitchenListingStatusProps {
 /**
  * How each state is dressed.
  *
- * The tone is carried by the ICON alone, and the label beside it stays in the normal text colour.
+ * Tone is carried by the icon and the full bar's fine border and shadow; the label stays in the normal text colour.
  * Colouring the label too made "Not listed" read as a hyperlink — blue text next to a control is a
  * link to every reader — while the icon was already saying the same thing. A tinted badge chip is
  * deliberately not used either: in a header it becomes one more label to skim past.
  */
+/*
+ * Border is SOLID and full-opacity, in the same semantic token the overview's listing row uses, so
+ * the row the manager clicked and the bar they land on are visibly the same object. One token per
+ * state, one var carrying light+dark — no raw palette and no `dark:` twin.
+ *
+ * RED IS NOT USED HERE. Red means destruction only — the "Take off the listing" action below carries
+ * `text-destructive`, and that is the only red on this surface. So:
+ *   success green = earning, info blue = can earn, warning yellow = NEEDS ATTENTION (the manager has
+ *   something to do), muted grey = stalled (resolved by support, not by the manager).
+ */
 const TONES = {
-  live: { label: "text-emerald-700 dark:text-emerald-400", icon: CheckCircle },
-  blocked: { label: "text-amber-700 dark:text-amber-400", icon: AlertTriangle },
-  ready: { label: "text-sky-700 dark:text-sky-400", icon: CheckCircle },
-  hidden: { label: "text-amber-700 dark:text-amber-400", icon: EyeOff },
+  live: { label: "text-success", frame: "border-success shadow-[0_0_0_1px_hsl(var(--success)/0.10),0_12px_28px_-18px_hsl(var(--success)/0.35)]", icon: CheckCircle },
+  blocked: { label: "text-warning", frame: "border-warning shadow-[0_0_0_1px_hsl(var(--warning)/0.10),0_12px_28px_-18px_hsl(var(--warning)/0.32)]", icon: AlertTriangle },
+  ready: { label: "text-info", frame: "border-info shadow-[0_0_0_1px_hsl(var(--info)/0.10),0_12px_28px_-18px_hsl(var(--info)/0.32)]", icon: CheckCircle },
+  hidden: { label: "text-muted-foreground", frame: "border-muted-foreground/40 shadow-[0_0_0_1px_hsl(var(--muted-foreground)/0.08),0_12px_28px_-18px_hsl(var(--muted-foreground)/0.25)]", icon: EyeOff },
 } as const;
 
 /**
  * The bar's height, and the row it shares with the kitchen switcher.
  *
- * `h-11` (44px) because that is what the kitchen switcher ACTUALLY renders at, and the two sit side
- * by side — any other height makes one of them read as a mistake.
+ * The desktop bar uses `h-11` (44px) to match the kitchen switcher. On phones it can grow to show
+ * the complete status sentence below the action.
  *
  * Two things made this non-obvious, and both had to be MEASURED rather than reasoned about:
  *
@@ -96,8 +107,9 @@ const TONES = {
  * A CONSTANT rather than a literal in the JSX: the value has to hold in three places (the bar, the
  * loading skeleton, and the row's own floor) and they drift the moment it is typed out three times.
  */
-const BAR_H = "h-11";
-const ROW = "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2";
+const BAR_H = "min-h-11 py-2 sm:h-11 sm:py-0";
+const ROW = "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-3";
+const BAR_FRAME = "flex w-full flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden rounded-xl border bg-card pl-3 pr-4 sm:flex-nowrap";
 
 /**
  * The bar's action.
@@ -153,21 +165,24 @@ const ROW = "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2";
  * `gap-2 px-4` set explicitly because `tailwind-merge` had silently dropped the `Button` base's
  * `gap-2`, leaving the label and the `→` touching.
  *
- * `!hover:translate-y-0` cancels the lift. `client/src/lib/chef-cta.ts` puts
- * `hover:-translate-y-0.5` (`CTA_3D_EFFECT`) on every `Button` — a "3D" flourish that is right for a
- * CTA floating on a page and wrong here: this button sits inside a bordered bar with only 6px of
- * clearance above it, so hovering made it rise toward the bar's own edge and look like it was
- * escaping the container it belongs to.
- *
- * `!transition-colors` instead of the `CTA_3D_EFFECT`'s `transition-all`. With `transition-all`, every
- * animatable property of the button animates on hover — including ones the browser recomputes during
- * layout — and the label is laid out at a fractional x (`926.94px`), so the text visibly shifted and
- * shimmied while the transition ran. Only the colours need to change on hover here, so only the
- * colours are transitioned. The `duration-200` that came with `CTA_3D_EFFECT` is dropped with it and
- * the app's default is used.
+ * The shared CTA transition changes color and shadow only, so this control cannot rise out of its bar.
  */
 const ACTION =
-  "!min-h-0 !shadow-none !transition-colors h-8 shrink-0 gap-2 px-4 text-xs hover:translate-y-0 active:translate-y-0";
+  "inline-flex items-center !min-h-0 !shadow-none h-8 shrink-0 gap-2 text-xs";
+
+/**
+ * Where the action sits — identical in EVERY state, so the trailing text link lands in the same
+ * place whether the bar is live, ready, blocked, hidden or reporting a failed load.
+ *
+ * `order-2` + `ml-auto` pins it to the trailing edge of the bar's first line on a phone, where the
+ * status sentence wraps beneath it; `sm:order-none` returns it to source order on wider screens,
+ * where the whole bar fits on one row.
+ *
+ * A constant rather than three copies because the three sites drifted: the live button and the
+ * not-live link both carried these classes, but the load-failure state's Retry did not, so its
+ * action ended up flush against the message with none of the trailing-edge spacing the others had.
+ */
+const ACTION_POSITION = "order-2 ml-auto px-1 sm:order-none sm:ml-2";
 
 /**
  * The kitchen's ENTITY HEADER, worn as one bar: which kitchen, whether it is live, what is left, and
@@ -204,29 +219,12 @@ export function KitchenListingStatus({
    */
   const [confirmTakeDown, setConfirmTakeDown] = useState(false);
 
-  const { data, isLoading } = useQuery<KitchenReadinessReview>({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery<KitchenReadinessReview>({
     queryKey: kitchenListingReadinessKey(kitchenId),
     queryFn: () => apiGet(`/manager/kitchens/${kitchenId}/listing-readiness`),
     enabled: Number.isFinite(kitchenId) && kitchenId > 0,
+    refetchOnMount: "always",
   });
-
-  /*
-   * Re-read whenever the kitchen's tab is (re)shown.
-   *
-   * This header stays mounted for the whole time the Kitchens view is open while its tabs are the
-   * things that save, so nothing else ever asks it to re-read: the app defaults to
-   * `staleTime: Infinity` with no focus refetch, and the tab components invalidate only the list they
-   * are editing. Setting a cover photo therefore left this line claiming "not ready" until a full page
-   * reload. `invalidateOnboardingStatus` refreshes the kitchen list on every navigation but knows
-   * nothing about the checklist, which is why the status survived that too.
-   *
-   * Invalidating at the destination instead (the tabs that write) would mean the four of them each
-   * remembering, and Equipment and Storage live on other pages entirely. This is the one place that
-   * is always mounted while the answer can have changed.
-   */
-  useEffect(() => {
-    invalidateKitchenListingState(queryClient, kitchenId, locationId);
-  }, [queryClient, kitchenId, locationId]);
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: kitchenListingReadinessKey(kitchenId) });
@@ -252,8 +250,8 @@ export function KitchenListingStatus({
   const takeDownAction = useStatusButton(takeDown);
 
   /*
-   * The identity zone is built BEFORE the loading branch on purpose. The switcher is this page's only
-   * route to "Add Kitchen", so unmounting it while the readiness request is in flight would make the
+   * The identity zone is built BEFORE the loading branch on purpose. It contains this page's visible
+   * "Add Kitchen" action, so unmounting it while the readiness request is in flight would make the
    * one control a manager needs disappear and then reappear, taking the row's height with it.
    *
    * NO CAPTION. It wore a "KITCHEN" eyebrow, from when this was a two-line header and the switcher
@@ -265,7 +263,7 @@ export function KitchenListingStatus({
    * the title here, so the bare `KITCHEN` label was redundant with the thing it was labelling.
    */
   const identity = (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
       {selector ??
         (kitchenName ? (
           <span className="truncate text-sm font-medium">{kitchenName}</span>
@@ -273,28 +271,21 @@ export function KitchenListingStatus({
     </div>
   );
 
-  if (isLoading || !data) {
+  if (isFetching || isLoading || !data || isError) {
     return (
       <div className="flex flex-col gap-3 pb-4">
         <div className={ROW}>
           {identity}
-          {/*
-           * A skeleton the same shape and height as the real bar, not a sentence saying "checking".
-           * The switcher is the page's only route to "Add Kitchen" and it is already mounted above,
-           * so the one control a manager needs never disappears and reappears — but the bar itself
-           * must not, either: swapping a line of text for a bordered `h-9` row moves everything below
-           * it the moment the request lands. `BAR_H` rather than a copy of the height, so the two
-           * cannot disagree.
-           */}
-          <div className="min-w-[20rem] flex-1">
-            <div className={cn("flex w-full items-center gap-3 rounded-lg border border-border bg-muted/40 px-3", BAR_H)}>
-              <Loader2
-                className="h-4 w-4 shrink-0 animate-spin text-muted-foreground"
-                aria-hidden="true"
-              />
-              <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {mt("listingStatusLoading")}
-              </p>
+          {/* Match the finished row so a refetch changes its contents without moving the page. */}
+          <div className="w-full min-w-0 flex-1 sm:min-w-[20rem]">
+            <div className={cn(BAR_FRAME, "border-border/90", BAR_H)} role="status" aria-label={isError && !isFetching ? mt("listingStatusLoadingFailed") : mt("listingStatusLoading")} aria-busy={isFetching || isLoading}>
+              {isError && !isFetching ? <><p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{mt("listingStatusLoadingFailed")}</p>
+                <Button variant="ghost" size="sm" onClick={() => void refetch()} className={ACTION}>{mt("retry")}</Button></> : <>
+                <Skeleton className="size-4 shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-20 shrink-0" />
+                <Skeleton className="h-3 min-w-0 max-w-56 flex-1" />
+                <Skeleton className="ml-auto h-4 w-24 shrink-0" />
+              </>}
             </div>
           </div>
         </div>
@@ -355,8 +346,8 @@ export function KitchenListingStatus({
      * survives a theme change: the app's surfaces are white (`--card`) and near-white (`--muted`), so
      * a fill-only bar would be invisible at rest.
      */
-    <div className="flex flex-col gap-3 pb-4">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+    <div className="flex min-w-0 flex-col gap-3 pb-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-3">
         {/* The IDENTITY slots first, so the kitchen's name and its state read as one label before
             anything is asked of the reader. The bar then takes the rest of the row. */}
         {identity}
@@ -368,8 +359,8 @@ export function KitchenListingStatus({
          * a `p` — the overflow guard in the harness inspects paragraphs and would otherwise measure a
          * flex container's overflowing children against a client width that never shrinks.
          */}
-        <div className="min-w-[20rem] flex-1">
-          <div className={cn("flex w-full items-center gap-x-3 overflow-hidden rounded-lg border border-border bg-card px-3", BAR_H)}>
+        <div className="w-full min-w-0 flex-1 sm:min-w-[20rem]">
+          <div className={cn(BAR_FRAME, tone.frame, BAR_H)}>
             {/*
              * The STATE. Tone lives in the icon; the label deliberately stays in the normal text
              * colour. Colouring it made "Not listed" read as a HYPERLINK — blue text beside a control
@@ -394,57 +385,44 @@ export function KitchenListingStatus({
              * The WHAT-IS-LEFT. `flex-1` so a short sentence leaves whitespace instead of stretching a
              * rule across the bar.
              *
-             * `truncate` — one line that clips when it has to. The bar is a fixed height, and the
-             * message must never make it taller than the control beside it; the full sentence is on the
-             * review page the button opens. `min-w-0` is what actually permits the shrink: without it a
-             * truncating child's automatic minimum size is its content width, so it would overflow the
-             * bar instead of clipping.
+             * On phones the message gets its own line, so the action does not hide it. Wider screens
+             * keep the compact one-line summary beside the action.
              */}
-            <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{message}</p>
+            <p className="order-3 w-full min-w-0 break-words text-sm text-muted-foreground sm:order-none sm:w-auto sm:flex-1 sm:truncate">{message}</p>
 
             {/* The ACTION, against the bar's trailing edge where a CTA belongs. */}
             {isListed ? (
-              /*
-               * Outline, and it only OPENS a confirmation — the work happens in the dialog, so this
-               * button carries no loading or success state of its own.
-               *
-               * `style={{ backgroundColor: "transparent" }}` rather than a `bg-transparent` class.
-               * The outline variant sets `bg-background`, which is WHITE — the same as the bar behind
-               * it — so the fill drew nothing and the button was defined only by a hairline border.
-               *
-               * The class route does not work here, and that was MEASURED, not assumed: the rendered
-               * class list comes back as `... border border-input bg-background ... !min-h-0
-               * !shadow-none h-8 ...` — tailwind-merge drops `bg-transparent` and `!bg-transparent`
-               * alike as conflicts with `bg-background` and keeps the variant's copy, so the fill
-               * stayed white either way. An inline style is outside the merge and the cascade, which
-               * makes it the correct tool for overriding one property on a component whose classes
-               * this component does not own.
-               */
-              <Button
-                variant="outline"
-                size="sm"
-                className={ACTION}
-                style={{ backgroundColor: "transparent" }}
+              <button
+                type="button"
+                className={cn(ACTION, ACTION_POSITION, "cursor-pointer font-medium text-destructive transition-colors hover:text-destructive/80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
                 onClick={() => setConfirmTakeDown(true)}
               >
                 {mt("listingStatusTakeDown")}
-              </Button>
+              </button>
             ) : (
-              /*
-               * FILLED, unlike the take-down button above, and it carries an arrow. This is the
-               * page's primary action — the one that puts the kitchen in front of chefs — and the bar
-               * is the only place it appears. The arrow earns its place by naming the OUTCOME: the
-               * label describes the review, and moving through a review into a listing is exactly
-               * what "→" means. No new copy, no new string to translate.
-               */
-              <Button
-                size="sm"
-                className={ACTION}
-                onClick={() => onNavigate?.("listing-review", kitchenId)}
+              <a
+                href={(() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("view", "listing-review");
+                  url.searchParams.set("kit", String(kitchenId));
+                  url.searchParams.delete("section");
+                  url.searchParams.delete("tab");
+                  return `${url.pathname}${url.search}${url.hash}`;
+                })()}
+                // Same `ACTION` as the live state's button so all five banner states share one
+                // action height, one shadow rule and one touch-target. Without it the anchor renders
+                // at the line-height (~20px) and the row's vertical rhythm breaks between live and not.
+                className={cn(ACTION, ACTION_POSITION, "text-foreground underline decoration-foreground/45 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+                onClick={(event) => {
+                  if (onNavigate && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                    event.preventDefault();
+                    onNavigate("listing-review", kitchenId);
+                  }
+                }}
               >
                 {mt("listingStatusReviewAndGoLive")}
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Button>
+                <ChevronRight className="inline-block h-3.5 w-3.5 align-text-bottom" aria-hidden="true" />
+              </a>
             )}
           </div>
         </div>
@@ -467,7 +445,7 @@ export function KitchenListingStatus({
             <AlertDialogTitle>
               {mt("listingTakeDownConfirmTitle", { kitchen: data.details.kitchenName })}
             </AlertDialogTitle>
-            <AlertDialogDescription>{mt("listingTakeDownConfirmBody")}</AlertDialogDescription>
+            <AlertDialogDescription>{mt("listingTakeDownConfirmBody")} {mt("listingPauseObligations")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={takeDownAction.status === "loading"}>

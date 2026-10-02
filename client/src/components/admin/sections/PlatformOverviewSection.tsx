@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, BarChart3, DollarSign, Loader2, TrendingUp, Users } from "lucide-react";
 
@@ -88,8 +89,8 @@ export function PlatformOverviewSection({ getFirebaseToken }: PlatformOverviewSe
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="grid gap-4 sm:grid-cols-3" role="status" aria-label="Loading platform overview">
+          {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}
         </div>
       ) : error ? (
         <Card>

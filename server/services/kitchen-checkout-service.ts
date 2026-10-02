@@ -15,7 +15,7 @@
  *    b) "File damage claim" → checkinStatus: checkout_claim_filed, uses existing damage claim engine
  * 5. If no manager action within review window → auto-cleared by system
  *    (review window is admin-controlled via platform_settings; no per-location override)
- * 6. No-show: If chef doesn't check in within grace period → checkinStatus: no_show
+ * 6. No-show requires an explicit report; missing check-in never proves absence.
  *
  * Smart lock integration:
  * - Access codes generated when booking is confirmed (if kitchen has smart lock)
@@ -35,13 +35,13 @@ import {
   checkinCheckoutChecklists,
   type KitchenCheckinStatus,
 } from "@shared/schema";
-import { eq, and, lt, inArray, sql, type SQL } from "drizzle-orm";
+import { eq, and, lt, inArray, or, isNull, sql, type SQL } from "drizzle-orm";
 import { randomInt, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { logger } from "../logger";
-import { isChecklistSectionEnabled } from "./checkin-checkout-checklist";
-import { sendEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckoutClearedChefEmail, generateKitchenNoShowManagerEmail, generateKitchenNoShowChefEmail } from "../email";
-import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { isChecklistSectionEnabled, getKitchenTrackingState } from "./checkin-checkout-checklist";
+import { sendEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckoutClearedChefEmail } from "../email";
+import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone } from "@shared/timezone-utils";
 import { calendarDateForOperatingTime } from "@shared/operating-hours";
 
 // ============================================================================
@@ -88,13 +88,19 @@ export async function getCheckinSettings(locationId?: number) {
 
   const settingsMap = new Map(allSettings.map(s => [s.key, s.value]));
 
+  const readWindow = (key: string, fallback: number, maximum = 120) => {
+    const value = Number(settingsMap.get(key) ?? fallback);
+    if (!Number.isSafeInteger(value) || value < 0 || value > maximum) throw new Error(`Invalid setting: ${key}`);
+    return value;
+  };
+
   const platformDefaults = {
-    checkinWindowMinutesBefore: parseInt(settingsMap.get('kitchen_checkin_window_minutes_before') || '15', 10),
-    noShowGraceMinutes: parseInt(settingsMap.get('kitchen_no_show_grace_minutes') || '30', 10),
+    checkinWindowMinutesBefore: readWindow('kitchen_checkin_window_minutes_before', 15),
+    noShowGraceMinutes: readWindow('kitchen_no_show_grace_minutes', 30),
     // Admin-only (not overridable per-location)
-    checkoutReviewWindowMinutes: parseInt(settingsMap.get('kitchen_checkout_review_window_minutes') || '60', 10),
-    accessCodeValidBeforeMinutes: parseInt(settingsMap.get('kitchen_access_code_valid_before_minutes') || '15', 10),
-    accessCodeValidAfterMinutes: parseInt(settingsMap.get('kitchen_access_code_valid_after_minutes') || '15', 10),
+    checkoutReviewWindowMinutes: readWindow('kitchen_checkout_review_window_minutes', 60, 480),
+    accessCodeValidBeforeMinutes: readWindow('kitchen_access_code_valid_before_minutes', 15),
+    accessCodeValidAfterMinutes: readWindow('kitchen_access_code_valid_after_minutes', 15),
   };
 
   // If a locationId is provided, check for location-level overrides.
@@ -111,6 +117,9 @@ export async function getCheckinSettings(locationId?: number) {
       .limit(1);
 
     if (loc) {
+      for (const value of [loc.checkinWindowMinutesBefore, loc.noShowGraceMinutes]) {
+        if (value != null && (!Number.isSafeInteger(value) || value < 0 || value > 120)) throw new Error('Invalid location time window');
+      }
       return {
         ...platformDefaults,
         ...(loc.checkinWindowMinutesBefore != null ? { checkinWindowMinutesBefore: loc.checkinWindowMinutesBefore } : {}),
@@ -427,7 +436,7 @@ export async function generateBookingAccessCode(
     // Calculate validity window in the LOCATION's timezone so a booking that
     // starts "00:00" is midnight at the kitchen, not midnight on the server.
     const dateStr = bookingDate.toISOString().split('T')[0];
-    const timezone = kitchen.timezone || DEFAULT_TIMEZONE;
+    const timezone = DEFAULT_TIMEZONE;
     const validFrom = createBookingDateTime(bookingWindow?.startTime
       ? calendarDateForOperatingTime(dateStr, startTime, bookingWindow.startTime) : dateStr, startTime, timezone);
     validFrom.setMinutes(validFrom.getMinutes() - settings.accessCodeValidBeforeMinutes);
@@ -530,6 +539,7 @@ export async function requestKitchenCheckin(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        updatedAt: kitchenBookings.updatedAt,
         chefId: kitchenBookings.chefId,
         status: kitchenBookings.status,
         checkinStatus: kitchenBookings.checkinStatus,
@@ -549,6 +559,7 @@ export async function requestKitchenCheckin(
 
     if (!booking) return { success: false, error: 'Booking not found' };
     if (booking.chefId !== chefId) return { success: false, error: 'You do not have permission to check in to this booking' };
+    if (!(await getKitchenTrackingState(booking.kitchenId)).checkinEnabled) return { success: false, error: 'Check-in is not enabled for this kitchen' };
 
     // Must be confirmed
     if (booking.status !== 'confirmed') {
@@ -570,7 +581,7 @@ export async function requestKitchenCheckin(
     const settings = await getCheckinSettings(booking.locationId);
     const now = new Date();
     const dateStr = booking.bookingDate.toISOString().split('T')[0];
-    const timezone = booking.timezone || DEFAULT_TIMEZONE;
+    const timezone = DEFAULT_TIMEZONE;
 
     const bookingStart = createBookingDateTime(booking.operatingWindowStartTime
       ? calendarDateForOperatingTime(dateStr, booking.startTime, booking.operatingWindowStartTime) : dateStr, booking.startTime, timezone);
@@ -601,8 +612,8 @@ export async function requestKitchenCheckin(
     }
 
     // Perform check-in
-    const actualStartTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    await db
+    const actualStartTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/St_Johns', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+    const [checkedIn] = await db
       .update(kitchenBookings)
       .set({
         checkinStatus: 'checked_in',
@@ -616,10 +627,12 @@ export async function requestKitchenCheckin(
       })
       .where(
         and(
-          eq(kitchenBookings.id, bookingId),
-          eq(kitchenBookings.checkinStatus, 'not_checked_in'), // Atomic guard — prevent double check-in race
+          eq(kitchenBookings.id, bookingId), eq(kitchenBookings.updatedAt, booking.updatedAt),
+          eq(kitchenBookings.status, 'confirmed'),
+          or(eq(kitchenBookings.checkinStatus, 'not_checked_in'), isNull(kitchenBookings.checkinStatus)), // Legacy null is unrecorded, never a no-show.
         )
-      );
+      ).returning({ id: kitchenBookings.id });
+    if (!checkedIn) return { success: false, error: 'Booking changed; refresh before checking in' };
 
     logger.info(`[KitchenCheckout] Chef ${chefId} checked in to booking ${bookingId} via ${method}`, {
       actualStartTime,
@@ -654,6 +667,7 @@ export async function managerConfirmCheckin(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        updatedAt: kitchenBookings.updatedAt,
         chefId: kitchenBookings.chefId,
         status: kitchenBookings.status,
         checkinStatus: kitchenBookings.checkinStatus,
@@ -668,32 +682,34 @@ export async function managerConfirmCheckin(
     // Verify manager permission
     const hasPermission = await verifyManagerPermission(bookingId, managerId);
     if (!hasPermission) return { success: false, error: 'You do not have permission to manage this booking' };
+    if (!(await getKitchenTrackingState(booking.kitchenId)).checkinEnabled) return { success: false, error: 'Check-in is not enabled for this kitchen' };
 
     if (booking.status !== 'confirmed') {
       return { success: false, error: `Cannot check in — booking is ${booking.status}` };
     }
 
     const status = booking.checkinStatus as KitchenCheckinStatus | null;
-    if (status !== 'not_checked_in' && status !== 'no_show') {
+    if (status === 'no_show') return { success: false, error: 'Use the attendance correction action; it preserves report history' };
+    if (status !== 'not_checked_in') {
       return { success: false, error: `Booking is already ${status}` };
     }
 
     const now = new Date();
-    const actualStartTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const actualStartTime = new Intl.DateTimeFormat('en-GB', { timeZone: DEFAULT_TIMEZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
 
-    await db
+    const [confirmed] = await db
       .update(kitchenBookings)
       .set({
         checkinStatus: 'checked_in',
         checkedInAt: now,
         checkedInMethod: 'manager',
-        checkinNotes: notes || 'Confirmed by kitchen manager',
+        checkinNotes: notes ? `Message from kitchen manager: ${notes}` : 'Confirmed by kitchen manager',
         actualStartTime,
-        // Clear no-show if manager overrides
-        noShowDetectedAt: null,
         updatedAt: now,
       })
-      .where(eq(kitchenBookings.id, bookingId));
+      .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.updatedAt, booking.updatedAt), eq(kitchenBookings.status, 'confirmed'),
+        eq(kitchenBookings.checkinStatus, 'not_checked_in'))).returning({ id: kitchenBookings.id });
+    if (!confirmed) return { success: false, error: 'Booking changed; refresh before confirming check-in' };
 
     logger.info(`[KitchenCheckout] Manager ${managerId} confirmed check-in for booking ${bookingId}`);
 
@@ -726,6 +742,7 @@ export async function requestKitchenCheckout(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        updatedAt: kitchenBookings.updatedAt,
         chefId: kitchenBookings.chefId,
         status: kitchenBookings.status,
         checkinStatus: kitchenBookings.checkinStatus,
@@ -739,6 +756,7 @@ export async function requestKitchenCheckout(
     if (!booking) return { success: false, error: 'Booking not found' };
     if (booking.chefId !== chefId) return { success: false, error: 'You do not have permission for this booking' };
 
+    if (booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
     const status = booking.checkinStatus as KitchenCheckinStatus | null;
     if (status !== 'checked_in') {
       return { success: false, error: `Cannot checkout — current status is ${status || 'not_checked_in'}. You must be checked in first.` };
@@ -757,9 +775,9 @@ export async function requestKitchenCheckout(
     }
 
     const now = new Date();
-    const actualEndTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const actualEndTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/St_Johns', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
 
-    await db
+    const [updated] = await db
       .update(kitchenBookings)
       .set({
         checkinStatus: 'checkout_requested',
@@ -772,10 +790,12 @@ export async function requestKitchenCheckout(
       })
       .where(
         and(
-          eq(kitchenBookings.id, bookingId),
-          eq(kitchenBookings.checkinStatus, 'checked_in'), // Atomic guard
+          eq(kitchenBookings.id, bookingId), eq(kitchenBookings.updatedAt, booking.updatedAt),
+          eq(kitchenBookings.checkinStatus, 'checked_in'),
+          eq(kitchenBookings.status, 'confirmed'),
         )
-      );
+      ).returning({ id: kitchenBookings.id });
+    if (!updated) return { success: false, error: 'Booking changed; refresh before requesting checkout' };
 
     logger.info(`[KitchenCheckout] Chef ${chefId} requested checkout for booking ${bookingId}`, {
       actualEndTime,
@@ -811,6 +831,7 @@ export async function processKitchenCheckoutClear(
     const [booking] = await db
       .select({
         id: kitchenBookings.id,
+        updatedAt: kitchenBookings.updatedAt,
         chefId: kitchenBookings.chefId,
         checkinStatus: kitchenBookings.checkinStatus,
       })
@@ -828,19 +849,22 @@ export async function processKitchenCheckoutClear(
       return { success: false, error: `Cannot process checkout in status: ${status || 'not_checked_in'}` };
     }
 
-    await db
+    const [updated] = await db
       .update(kitchenBookings)
       .set({
         checkinStatus: 'checked_out',
         checkoutApprovedAt: new Date(),
+        checkedOutAt: new Date(),
         checkoutApprovedBy: managerId,
-        checkoutNotes: managerNotes
-          ? `Manager: ${managerNotes}`
-          : 'Kitchen cleared — no issues found',
+        checkoutManagerMessage: managerNotes
+          ? `Message from kitchen manager: ${managerNotes}`
+          : '',
         status: 'completed',
         updatedAt: new Date(),
       })
-      .where(eq(kitchenBookings.id, bookingId));
+      .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.updatedAt, booking.updatedAt), eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.checkinStatus, 'checkout_requested')))
+      .returning({ id: kitchenBookings.id });
+    if (!updated) return { success: false, error: 'Booking changed; refresh before reviewing checkout' };
 
     logger.info(`[KitchenCheckout] Manager ${managerId} cleared checkout for booking ${bookingId}`);
 
@@ -879,6 +903,7 @@ export async function processKitchenCheckoutClaim(
         checkinStatus: kitchenBookings.checkinStatus,
         kitchenId: kitchenBookings.kitchenId,
         checkoutPhotoUrls: kitchenBookings.checkoutPhotoUrls,
+        checkinPhotoUrls: kitchenBookings.checkinPhotoUrls,
       })
       .from(kitchenBookings)
       .where(eq(kitchenBookings.id, bookingId))
@@ -914,8 +939,8 @@ export async function processKitchenCheckoutClaim(
       claimTitle: claimData.claimTitle.trim(),
       claimDescription: claimData.claimDescription.trim(),
       claimedAmountCents: claimData.claimedAmountCents,
-      damageDate: claimData.damageDate || new Date().toISOString().split('T')[0],
-      submitImmediately: true,
+      damageDate: claimData.damageDate || formatInTimezone(new Date(), 'yyyy-MM-dd'),
+      submitImmediately: false,
     });
 
     if (!claimResult.success || !claimResult.claim) {
@@ -923,6 +948,12 @@ export async function processKitchenCheckoutClaim(
     }
 
     const claimId = claimResult.claim.id;
+    const { addEvidence } = await import('./damage-claim-service');
+    for (const fileUrl of (booking.checkinPhotoUrls || []) as string[]) {
+      const result = await addEvidence(claimId, managerId, { evidenceType: 'photo_before', fileUrl,
+        description: 'Kitchen check-in baseline' });
+      if (!result.success) logger.error('Failed to attach kitchen baseline evidence', { claimId, error: result.error });
+    }
 
     // Auto-attach checkout photos as evidence (mirrors storage-checkout-service)
     try {
@@ -946,19 +977,21 @@ export async function processKitchenCheckoutClaim(
     }
 
     // Update booking
-    await db
+    const [updated] = await db
       .update(kitchenBookings)
       .set({
         checkinStatus: 'checkout_claim_filed',
         checkoutApprovedAt: new Date(),
         checkoutApprovedBy: managerId,
-        checkoutNotes: claimData.managerNotes
-          ? `Manager: ${claimData.managerNotes} | Claim #${claimId} filed`
+        checkoutManagerMessage: claimData.managerNotes
+          ? `Message from kitchen manager: ${claimData.managerNotes} | Claim #${claimId} filed`
           : `Damage claim #${claimId} filed during kitchen checkout`,
         status: 'completed',
         updatedAt: new Date(),
       })
-      .where(eq(kitchenBookings.id, bookingId));
+      .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.checkinStatus, 'checkout_requested')))
+      .returning({ id: kitchenBookings.id });
+    if (!updated) return { success: false, error: `Booking changed; claim #${claimId} remains a draft for review` };
 
     logger.info(`[KitchenCheckout] Manager ${managerId} filed claim #${claimId} for booking ${bookingId}`);
 
@@ -989,21 +1022,25 @@ export async function autoCleanExpiredKitchenCheckout(
   if (new Date() <= deadline) return false;
 
   try {
-    await db
+    const [updated] = await db
       .update(kitchenBookings)
       .set({
         checkinStatus: 'checked_out',
         checkoutApprovedAt: new Date(),
-        checkoutNotes: `Auto-cleared by system — review window (${reviewWindowMinutes}min) expired with no issues reported`,
+        checkedOutAt: new Date(),
+        checkoutManagerMessage: '',
         status: 'completed',
         updatedAt: new Date(),
       })
       .where(
         and(
           eq(kitchenBookings.id, bookingId),
-          eq(kitchenBookings.checkinStatus, 'checkout_requested'), // Atomic guard
+          eq(kitchenBookings.checkinStatus, 'checkout_requested'),
+          eq(kitchenBookings.status, 'confirmed'),
+          eq(kitchenBookings.checkoutRequestedAt, checkoutRequestedAt),
         )
-      );
+      ).returning({ id: kitchenBookings.id });
+    if (!updated) return false;
 
     logger.info(`[KitchenCheckout] Lazy auto-cleared booking ${bookingId}`);
 
@@ -1033,11 +1070,13 @@ export async function processExpiredKitchenCheckoutReviews(): Promise<AutoClearR
       .select({
         id: kitchenBookings.id,
         chefId: kitchenBookings.chefId,
+        checkoutRequestedAt: kitchenBookings.checkoutRequestedAt,
       })
       .from(kitchenBookings)
       .where(
         and(
           eq(kitchenBookings.checkinStatus, 'checkout_requested'),
+          eq(kitchenBookings.status, 'confirmed'),
           lt(kitchenBookings.checkoutRequestedAt, cutoffTime),
         )
       );
@@ -1049,16 +1088,19 @@ export async function processExpiredKitchenCheckoutReviews(): Promise<AutoClearR
 
     for (const booking of expired) {
       try {
-        await db
+        const [updated] = await db
           .update(kitchenBookings)
           .set({
             checkinStatus: 'checked_out',
             checkoutApprovedAt: new Date(),
-            checkoutNotes: `Auto-cleared by system — review window expired`,
+            checkedOutAt: new Date(),
+            checkoutManagerMessage: '',
             status: 'completed',
             updatedAt: new Date(),
           })
-          .where(eq(kitchenBookings.id, booking.id));
+          .where(and(eq(kitchenBookings.id, booking.id), eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.checkinStatus, 'checkout_requested'), lt(kitchenBookings.checkoutRequestedAt, cutoffTime)))
+          .returning({ id: kitchenBookings.id });
+        if (!updated) continue;
 
         result.cleared++;
 
@@ -1082,99 +1124,9 @@ export async function processExpiredKitchenCheckoutReviews(): Promise<AutoClearR
 // NO-SHOW DETECTION
 // ============================================================================
 
-/**
- * Cron sweep: Mark confirmed bookings as no-show if chef didn't check in
- * within the grace period after start time.
- */
+/** Compatibility entry point: missing check-in is not evidence of absence. */
 export async function detectKitchenNoShows(): Promise<NoShowResult> {
-  const result: NoShowResult = { processed: 0, marked: 0, errors: 0 };
-
-  try {
-    const now = new Date();
-
-    // Find confirmed bookings with not_checked_in where booking start + grace has passed
-    // We need to calculate cutoff per booking (booking_date + start_time + grace_minutes)
-    // For simplicity in SQL, we look at bookings from today and yesterday
-    const twoDaysAgo = new Date(now);
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-    const candidates = await db
-      .select({
-        id: kitchenBookings.id,
-        chefId: kitchenBookings.chefId,
-        bookingDate: kitchenBookings.bookingDate,
-        startTime: kitchenBookings.startTime,
-        operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
-        kitchenId: kitchenBookings.kitchenId,
-        locationId: kitchens.locationId,
-        timezone: locations.timezone,
-      })
-      .from(kitchenBookings)
-      .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-      .innerJoin(locations, eq(locations.id, kitchens.locationId))
-      .where(
-        and(
-          eq(kitchenBookings.status, 'confirmed'),
-          eq(kitchenBookings.checkinStatus, 'not_checked_in'),
-          // Only look at recent bookings (not ancient ones)
-          lt(kitchenBookings.bookingDate, now),
-        )
-      );
-
-    result.processed = candidates.length;
-
-    for (const booking of candidates) {
-      try {
-        const { ensureKitchenBookingVisits } = await import('./kitchen-booking-visits');
-        if ((await ensureKitchenBookingVisits(booking.id)).length) continue;
-        // Use location-aware settings per booking (location override > platform default)
-        // and resolve the booking start in the LOCATION's timezone so "00:00" is
-        // midnight at the kitchen, not midnight on the server.
-        const bookingSettings = await getCheckinSettings(booking.locationId);
-        const dateStr = booking.bookingDate.toISOString().split('T')[0];
-        const timezone = booking.timezone || DEFAULT_TIMEZONE;
-        const bookingStart = createBookingDateTime(booking.operatingWindowStartTime
-          ? calendarDateForOperatingTime(dateStr, booking.startTime, booking.operatingWindowStartTime) : dateStr, booking.startTime, timezone);
-        const noShowCutoff = new Date(bookingStart.getTime() + bookingSettings.noShowGraceMinutes * 60 * 1000);
-
-        if (now <= noShowCutoff) continue; // Not yet past grace period
-
-        await db
-          .update(kitchenBookings)
-          .set({
-            checkinStatus: 'no_show',
-            noShowDetectedAt: now,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(kitchenBookings.id, booking.id),
-              eq(kitchenBookings.checkinStatus, 'not_checked_in'), // Atomic guard
-            )
-          );
-
-        result.marked++;
-        logger.info(`[KitchenCheckout] Marked booking ${booking.id} as no-show`);
-
-        // Notify manager + chef (fire-and-forget)
-        sendNoShowNotification(booking.id, booking.chefId, booking.kitchenId).catch(err =>
-          logger.error(`[KitchenCheckout] No-show notification error:`, err)
-        );
-      } catch (err) {
-        result.errors++;
-        logger.error(`[KitchenCheckout] Error marking no-show for booking ${booking.id}:`, err);
-      }
-    }
-
-    if (result.marked > 0) {
-      logger.info(`[KitchenCheckout] No-show detection: ${result.marked} marked out of ${result.processed} candidates`);
-    }
-  } catch (err) {
-    logger.error(`[KitchenCheckout] Error in detectKitchenNoShows:`, err);
-    result.errors++;
-  }
-
-  return result;
+  return { processed: 0, marked: 0, errors: 0 };
 }
 
 // ============================================================================
@@ -1270,7 +1222,7 @@ export async function expireAccessCodes(): Promise<AccessCodeExpiryResult> {
 // INTERNAL HELPERS
 // ============================================================================
 
-async function verifyManagerPermission(bookingId: number, managerId: number): Promise<boolean> {
+export async function verifyManagerPermission(bookingId: number, managerId: number): Promise<boolean> {
   try {
     const [result] = await db
       .select({ managerId: locations.managerId })
@@ -1512,122 +1464,6 @@ export async function sendCheckoutClearedNotification(
   }
 }
 
-export async function sendNoShowNotification(
-  bookingId: number,
-  chefId: number | null,
-  kitchenId: number,
-  visitId?: number,
-): Promise<void> {
-  try {
-    const visit = await visitNotificationContext(visitId);
-    const visitLabel = visit ? ` (${visit.startTime}–${visit.endTime})` : '';
-    // Notify manager
-    const [kitchen] = await db
-      .select({
-        kitchenName: kitchens.name,
-        locationName: locations.name,
-        managerId: locations.managerId,
-        notificationEmail: locations.notificationEmail,
-      })
-      .from(kitchens)
-      .innerJoin(locations, eq(kitchens.locationId, locations.id))
-      .where(eq(kitchens.id, kitchenId))
-      .limit(1);
-
-    if (kitchen?.managerId) {
-      const { notificationService } = await import('./notification.service');
-      await notificationService.create({
-        userId: kitchen.managerId,
-        target: 'manager',
-        type: 'kitchen_no_show',
-        title: 'No-Show Detected',
-        message: `A chef did not check in for their booking at ${kitchen.kitchenName}${visitLabel}.`,
-        metadata: { bookingId, ...(visitId ? { visitId } : {}) },
-      });
-    }
-
-    // Notify chef
-    if (chefId) {
-      const { notificationService } = await import('./notification.service');
-      await notificationService.create({
-        userId: chefId,
-        target: 'chef',
-        type: 'kitchen_no_show',
-        title: 'Booking Marked as No-Show',
-        message: `You did not check in for your kitchen booking${visitLabel} within the grace period. Please contact the kitchen manager if this was an error.`,
-        metadata: { bookingId, ...(visitId ? { visitId } : {}) },
-      });
-    }
-
-    // Fetch user info + booking date for emails
-    const [booking, managerUser, chefUser] = await Promise.all([
-      db.select({ bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime })
-        .from(kitchenBookings)
-        .where(eq(kitchenBookings.id, bookingId))
-        .limit(1).then(r => r[0]),
-      kitchen?.managerId
-        ? db.select({ username: users.username }).from(users).where(eq(users.id, kitchen.managerId)).limit(1).then(r => r[0])
-        : Promise.resolve(null),
-      chefId
-        ? db.select({ username: users.username }).from(users).where(eq(users.id, chefId)).limit(1).then(r => r[0])
-        : Promise.resolve(null),
-    ]);
-
-    // Manager email
-    if (kitchen?.managerId) {
-      const managerEmail = kitchen.notificationEmail || managerUser?.username;
-      if (managerEmail && booking) {
-        try {
-          await sendEmail(generateKitchenNoShowManagerEmail({
-            managerEmail,
-            managerName: managerUser?.username?.split('@')[0] || 'Manager',
-            chefName: chefUser?.username?.split('@')[0] || 'A chef',
-            kitchenName: kitchen.kitchenName,
-            locationName: kitchen.locationName,
-            bookingDate: booking.bookingDate,
-            startTime: visit?.startTime || booking.startTime,
-            endTime: visit?.endTime || booking.endTime,
-            bookingId,
-          }));
-          logger.info(`[KitchenCheckout] Sent no-show email to manager for booking ${bookingId}`);
-        } catch (emailError) {
-          logger.error(`[KitchenCheckout] Error sending no-show email to manager:`, emailError);
-        }
-      }
-    }
-
-    // Chef email
-    if (chefUser?.username && booking && kitchen) {
-      try {
-        await sendEmail(generateKitchenNoShowChefEmail({
-          chefEmail: chefUser.username,
-          chefName: chefUser.username.split('@')[0],
-          kitchenName: kitchen.kitchenName,
-          locationName: kitchen.locationName,
-          bookingDate: booking.bookingDate,
-          startTime: visit?.startTime || booking.startTime,
-          endTime: visit?.endTime || booking.endTime,
-          bookingId,
-        }));
-        logger.info(`[KitchenCheckout] Sent no-show email to chef for booking ${bookingId}`);
-      } catch (emailError) {
-        logger.error(`[KitchenCheckout] Error sending no-show email to chef:`, emailError);
-      }
-    }
-  } catch (error) {
-    logger.error(`[KitchenCheckout] Error sending no-show notification:`, error);
-  }
-}
-
-// ============================================================================
-// PHASE 4D: EMERGENCY REVOCATION
-// ============================================================================
-
-export interface EmergencyRevocationResult {
-  revoked: number;
-  errors: number;
-}
-
 /**
  * Emergency revoke ALL active access codes for a kitchen (or specific booking).
  * Calls provider.removeCode() for each, sets accessCodeValidUntil = NOW(),
@@ -1635,6 +1471,11 @@ export interface EmergencyRevocationResult {
  *
  * Use case: Security incident, lock compromise, kitchen emergency.
  */
+export interface EmergencyRevocationResult {
+  revoked: number;
+  errors: number;
+}
+
 export async function emergencyRevokeAccessCodes(
   params: { kitchenId?: number; bookingId?: number; reason: string; revokedBy: number },
 ): Promise<EmergencyRevocationResult> {

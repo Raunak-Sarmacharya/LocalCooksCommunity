@@ -2,6 +2,15 @@ import { addHour, getHourlySlotStarts } from "@shared/operating-hours";
 
 export type CheckoutSlot = { startTime: string; endTime: string };
 
+export function parseCheckoutCancellationPolicy(value: string | null | undefined): number | undefined {
+  if (value == null) return undefined; // Sessions created before policy snapshots remain fulfillable.
+  const hours = Number(value);
+  if (value.trim() === "" || !Number.isInteger(hours) || hours < 0 || hours > 2147483647) {
+    throw new Error("Invalid checkout cancellation policy");
+  }
+  return hours;
+}
+
 export function expandHourlySlots(startTime: string, endTime: string): CheckoutSlot[] {
   return getHourlySlotStarts(startTime, endTime).map((slotStart) => ({
     startTime: slotStart,

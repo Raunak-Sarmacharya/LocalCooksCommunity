@@ -608,7 +608,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       if (isKitchenApp && targetLocationId) {
         const intent = getAuthIntent();
         const returnPath = intent?.returnPath || `/kitchen-preview/${targetLocationId}`;
-        if (!window.location.pathname.includes("/kitchen-preview/")) {
+        if (!window.location.pathname.includes("/kitchen-preview/") && !window.location.pathname.includes("/kitchen/")) {
           navigate(returnPath, { replace: true });
         }
       }
@@ -935,7 +935,6 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
         }}
       >
         <DialogContent
-          showCloseButton={!isDataTakingFlow}
           className={cn(
             "p-0 !overflow-hidden bg-background flex flex-col sm:flex-row",
             isApplyFlow

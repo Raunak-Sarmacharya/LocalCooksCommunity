@@ -1,9 +1,10 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Admin Overstay Penalties History
  *
  * Full history of ALL overstay penalties across all managers/locations.
  * TanStack Table with sorting (default: detectedAt DESC), filtering, pagination.
- * Detail sheet with full audit trail timeline, Stripe details, and booking context.
+ * Detail dialog with full audit trail timeline, Stripe details, and booking context.
  */
 
 import { useState, useMemo, useCallback } from "react";
@@ -18,9 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpDown, Clock, CreditCard, DollarSign, Download, Eye, Package, RefreshCw, Search } from "lucide-react";
+import { ArrowUpDown, Clock, CreditCard, DollarSign, Download, Eye, RefreshCw, Search } from "lucide-react";
 import { formatDate as sharedFormatDate, formatCurrency as sharedFormatCurrency, formatPrice, downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
 
 // ============================================================================
@@ -317,7 +319,7 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedPenalty, setSelectedPenalty] = useState<OverstayPenalty | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   // Fetch all overstay penalties
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -364,7 +366,7 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
 
   const handleViewDetails = useCallback((p: OverstayPenalty) => {
     setSelectedPenalty(p);
-    setSheetOpen(true);
+    setDialogOpen(true);
   }, []);
 
   const columns = useMemo(() => getColumns(handleViewDetails), [handleViewDetails]);
@@ -466,9 +468,6 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
         <Button variant="outline" size="sm" onClick={handleExportCSV}>
           <Download className="h-4 w-4 mr-1" /> CSV
         </Button>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
-        </Button>
         <span className="text-xs text-muted-foreground ml-auto">
           {filteredPenalties.length} of {total} records
         </span>
@@ -526,17 +525,17 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
         </CardContent>
       </Card>
 
-      {/* Detail Sheet */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+      {/* Detail Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <AppDialogContent className="sm:max-w-2xl">
           {selectedPenalty && (
             <>
-              <SheetHeader>
-                <SheetTitle className="flex items-center gap-2">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
                   <Package className="h-5 w-5" />
                   Overstay Penalty #{selectedPenalty.id}
-                </SheetTitle>
-              </SheetHeader>
+                </DialogTitle>
+              </DialogHeader>
 
               <div className="space-y-6 mt-4">
                 {/* Status + Key Info */}
@@ -729,8 +728,8 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
               </div>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </AppDialogContent>
+      </Dialog>
     </div>
   );
 }

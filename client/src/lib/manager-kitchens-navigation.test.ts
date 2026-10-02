@@ -14,6 +14,16 @@ describe("manager Kitchens navigation", () => {
     expect(legacyKitchenSection("equipment-listings")).toBe("equipment");
     expect(legacyKitchenSection("storage-listings")).toBe("storage");
     expect(legacyKitchenSection("pricing")).toBe("details");
+    expect(legacyKitchenSection("availability")).toBe("availability");
+    expect(legacyKitchenSection("availability", "tours")).toBe("tours");
+    expect(legacyKitchenSection("tour-availability")).toBe("tours");
+    expect(kitchenSectionFromParams(new URLSearchParams("view=availability&tab=tours"))).toBe("tours");
+    expect(kitchenSectionFromParams(new URLSearchParams("view=tour-availability"))).toBe("tours");
+    expect(legacyKitchenSection("settings-booking-rules")).toBe("policies");
+    expect(kitchenSectionFromParams(new URLSearchParams("view=settings-booking-rules"))).toBe("policies");
+    expect(kitchenSectionFromParams(new URLSearchParams("view=kitchens&section=policies"))).toBe("policies");
+    expect(kitchenSectionFromParams(new URLSearchParams("view=availability"))).toBe("availability");
+    expect(kitchenSectionFromParams(new URLSearchParams("view=kitchens&section=availability"))).toBe("availability");
     expect(kitchenSectionFromParams(new URLSearchParams("view=kitchens&section=photos"))).toBe("photos");
     expect(kitchenSectionFromParams(new URLSearchParams("view=kitchens"))).toBe(DEFAULT_KITCHEN_SECTION);
     expect(DEFAULT_KITCHEN_SECTION).toBe("details");
@@ -28,7 +38,7 @@ describe("manager Kitchens navigation", () => {
  * the status banner reporting the previous answer, with no focus refetch to rescue it.
  */
 describe("invalidateKitchenListingState", () => {
-  const fakeClient = () => ({ invalidateQueries: vi.fn() });
+  const fakeClient = () => ({ invalidateQueries: vi.fn(), setQueriesData: vi.fn() });
 
   it("refreshes the kitchen's checklist, which is keyed by kitchen", () => {
     const client = fakeClient();
@@ -45,6 +55,8 @@ describe("invalidateKitchenListingState", () => {
 
     const keys = client.invalidateQueries.mock.calls.map(([arg]) => JSON.stringify(arg.queryKey));
     expect(keys).toContain(JSON.stringify(["managerKitchens", 7]));
+    expect(keys).toContain(JSON.stringify(["publicKitchenShare", 7, 42]));
+    expect(client.setQueriesData).toHaveBeenCalledWith({ queryKey: ["publicKitchenShare", 7, 42] }, null);
     expect(keys).toContain(JSON.stringify(["/api/manager/all-kitchens"]));
     expect(keys).toContain(JSON.stringify(["/api/manager/locations"]));
   });

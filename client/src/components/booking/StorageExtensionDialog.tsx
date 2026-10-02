@@ -1,10 +1,12 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Check, Package, CalendarDays, ArrowRight, Clock } from "lucide-react";
+import { AlertCircle, Check, CalendarDays, ArrowRight, Clock } from "lucide-react";
 import { format, differenceInDays, startOfToday, isBefore, addDays, addWeeks, addMonths } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
@@ -160,7 +162,7 @@ export function StorageExtensionDialog({
     onSuccess: async (data) => {
       // Redirect to Stripe Checkout
       if (data.sessionUrl) {
-        // Close the Sheet BEFORE redirecting to prevent Radix UI from leaving
+        // Close the Dialog BEFORE redirecting to prevent Radix UI from leaving
         // pointer-events: none on document.body (known Radix Dialog cleanup issue)
         onOpenChange(false);
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -220,17 +222,17 @@ export function StorageExtensionDialog({
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col">
-        <SheetHeader className="p-6 pb-4 border-b">
-          <SheetTitle className="flex items-center gap-2 text-lg">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-lg p-0 flex flex-col">
+        <DialogHeader className="p-6 pb-4 border-b">
+          <DialogTitle className="flex items-center gap-2 text-lg">
             <Package className="h-5 w-5 text-muted-foreground" />
             {t("sxDialogTitle")}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {booking.storageName} at {booking.kitchenName}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
         
         <div className="flex-1 overflow-y-auto p-6">
 
@@ -369,7 +371,7 @@ export function StorageExtensionDialog({
         </div>
         </div>
 
-        <SheetFooter className="p-6 pt-4 border-t bg-muted/30 gap-2 sm:gap-0">
+        <DialogFooter className="p-6 pt-4 border-t bg-muted/30 gap-2 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => {
@@ -394,9 +396,9 @@ export function StorageExtensionDialog({
               t("sxSelectDuration")
             )}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 

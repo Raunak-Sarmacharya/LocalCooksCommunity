@@ -1,7 +1,11 @@
+import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 "use client"
 
 import * as React from "react"
-import { Calendar, CreditCard, Settings, User, MapPin, LayoutDashboard, LogOut, Search, Wrench, Package, DollarSign, Store, MessageCircle, FileText, Loader2, Hash, ExternalLink, AlertTriangle, BookOpen, Building2, Shield, BarChart3, Users, Gift, Clock, Bell, ClipboardList, PackageCheck, Mail, ChevronRight } from "lucide-react"
+import { Calendar, CreditCard, Settings, User, MapPin, LayoutDashboard, LogOut, Search, DollarSign, FileText, Loader2, Hash, ExternalLink, AlertTriangle, Building2, Shield, BarChart3, Users, Gift, Clock, Bell, ClipboardList, PackageCheck, Mail, ChevronRight } from "lucide-react"
+import { Icon } from "@iconify/react"
+import { findChefNavItem } from "@/lib/chef-nav-sections"
+import { managerNavIcons } from "@/lib/manager-nav-icons"
 
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command"
 import { useQuery } from "@tanstack/react-query"
@@ -78,6 +82,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
     const isRefCodeSearch = REFERENCE_CODE_PATTERN.test(normalizedSearch)
     const [debouncedSearch, setDebouncedSearch] = React.useState("")
     const hasBackendQuery = searchValue.trim().length >= 2
+    const searchReady = debouncedSearch === searchValue.trim()
 
     React.useEffect(() => {
         const timer = window.setTimeout(() => setDebouncedSearch(searchValue.trim()), 250)
@@ -94,7 +99,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
             const user = auth.currentUser
             if (!user) throw new Error("Authentication required")
             const token = await user.getIdToken()
-            const params = new URLSearchParams({ q: debouncedSearch, portal: portalType, limit: "12" })
+            const params = new URLSearchParams({ q: debouncedSearch, portal: portalType, limit: "6" })
             const response = await fetch(`/api/search?${params}`, {
                 headers: { Authorization: `Bearer ${token}` },
                 signal,
@@ -181,9 +186,17 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
         enabled: open && portalType === 'manager' && !hasBackendQuery
     });
 
-    const openSearchResult = React.useCallback((result: GlobalSearchResult) => {
+    const searchResults = searchReady ? (globalSearch?.results ?? []).filter((result) =>
+        result.type !== "navigation" || !result.view || !hiddenItems.includes(result.view)) : []
+    const openSearchResult = React.useCallback((result: GlobalSearchResult, position: number) => {
+        void auth.currentUser?.getIdToken().then((token: string) => fetch("/api/search/click", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ portal: portalType, type: result.type, fuzzy: !!result.fuzzy, position }),
+            keepalive: true,
+        })).catch(() => undefined)
         runCommand(() => {
-            if (result.view && onViewChange) {
+            if (result.type === "navigation" && result.view && onViewChange) {
                 if (portalType === "admin" && result.view === "kitchen-management") {
                     navigate("/admin/manage-locations")
                     return
@@ -191,7 +204,10 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                 onViewChange(result.view)
                 return
             }
-            navigate(result.url)
+            // Entity URLs carry their location/record selection. A full navigation makes
+            // the existing dashboard URL initialization apply even when already on that page.
+            if (result.type !== "navigation" && portalType !== "chef") window.location.assign(result.url)
+            else navigate(result.url)
         })
     }, [navigate, onViewChange, portalType, runCommand])
 
@@ -200,7 +216,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
             <div className="hidden">
                 {/* Hidden trigger */}
             </div>
-            <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!hasBackendQuery && !isRefCodeSearch}>
+            <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!hasBackendQuery && !isRefCodeSearch} large>
                 <CommandInput
                     placeholder={portalType === 'admin' ? mt("shellSearchCommand") : portalType === 'manager' ? mt("shellSearchCommand") : t("shellSearchCommand")}
                     value={searchValue}
@@ -208,7 +224,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                 />
                 <CommandList>
                     <CommandEmpty>
-                        {globalSearchLoading || refLookupLoading ? (
+                        {!searchReady || globalSearchLoading || refLookupLoading ? (
                             <div className="flex items-center justify-center gap-2 py-2">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 <span className="text-sm text-muted-foreground">Searching all accessible content…</span>
@@ -263,13 +279,16 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         </CommandGroup>
                     )}
 
-                    {hasBackendQuery && (globalSearch?.results.length ?? 0) > 0 && (
-                        <CommandGroup heading="Search results">
-                            {globalSearch!.results.map((result) => (
+                    {hasBackendQuery && !searchReady && (
+                        <CommandGroup heading="Searching"><CommandItem disabled><Loader2 className="mr-2 h-4 w-4 animate-spin" />Searching…</CommandItem></CommandGroup>
+                    )}
+                    {hasBackendQuery && searchResults.length > 0 && (
+                        <CommandGroup heading={searchResults.every((result) => result.fuzzy) ? "Close matches — check the spelling" : "Search results"}>
+                            {searchResults.map((result, position) => (
                                 <CommandItem
                                     key={result.id}
                                     value={result.id}
-                                    onSelect={() => openSearchResult(result)}
+                                    onSelect={() => openSearchResult(result, position)}
                                     className="group items-start gap-3 rounded-lg px-3 py-3"
                                 >
                                     <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
@@ -307,28 +326,28 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         <>
                             <CommandGroup heading={t("shellNavigation")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
-                                    <LayoutDashboard className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("overview")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellOverview")}</span>
                                 </CommandItem>
                                 {!hiddenItems.includes("bookings") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("bookings"))}>
-                                    <Calendar className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("bookings")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellMyBookings")}</span>
                                 </CommandItem>
                                 )}
                                 {!hiddenItems.includes("kitchen-applications") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("kitchen-applications"))}>
-                                    <Building2 className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("kitchen-applications")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellMyKitchens")}</span>
                                 </CommandItem>
                                 )}
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("discover-kitchens"))}>
-                                    <Search className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("discover-kitchens")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellDiscoverKitchens")}</span>
                                 </CommandItem>
                                 {!hiddenItems.includes("messages") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("messages"))}>
-                                    <MessageCircle className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("messages")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellMessages")}</span>
                                 </CommandItem>
                                 )}
@@ -337,18 +356,18 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                             <CommandGroup heading={t("shellAccount")}>
                                 {!hiddenItems.includes("applications") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
-                                    <FileText className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("applications")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellMyApplication")}</span>
                                 </CommandItem>
                                 )}
                                 {!hiddenItems.includes("my-account") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("my-account"))}>
-                                    <Store className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("my-account")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellLinkedAccounts")}</span>
                                 </CommandItem>
                                 )}
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("training"))}>
-                                    <BookOpen className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("training")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellTraining")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("transactions"))}>
@@ -357,7 +376,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                 </CommandItem>
                                 {!hiddenItems.includes("issues-refunds") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("issues-refunds"))}>
-                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                    <Icon icon={findChefNavItem("issues-refunds")!.icon} className="mr-2 h-4 w-4" aria-hidden />
                                     <span>{t("shellResolutionCenter")}</span>
                                 </CommandItem>
                                 )}
@@ -384,40 +403,27 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         <>
                             <CommandGroup heading={mt("cmdSuggestions")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
-                                    <LayoutDashboard className="mr-2 h-4 w-4" />
+                                    <managerNavIcons.overview className="mr-2 h-4 w-4" />
                                     <span>{mt("navDashboard")}</span>
                                 </CommandItem>
-                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("bookings"))}>
-                                    <Calendar className="mr-2 h-4 w-4" />
+                                {!hiddenItems.includes("bookings") && <CommandItem onSelect={() => runCommand(() => onViewChange?.("bookings"))}>
+                                    <managerNavIcons.bookings className="mr-2 h-4 w-4" />
                                     <span>{mt("navBookings")}</span>
-                                </CommandItem>
+                                </CommandItem>}
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("messages"))}>
-                                    <MessageCircle className="mr-2 h-4 w-4" />
+                                    <managerNavIcons.messages className="mr-2 h-4 w-4" />
                                     <span>{mt("navMessages")}</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />
-                            {locations.length > 0 && (
-                                <CommandGroup heading={mt("cmdYourKitchens")}>
-                                    {locations.map((loc: any) => (
-                                        <CommandItem key={loc.id} onSelect={() => runCommand(() => {
-                                            onViewChange?.("my-locations");
-                                        })}>
-                                            <MapPin className="mr-2 h-4 w-4" />
-                                            <span>{loc.name}</span>
-                                            <span className="ml-2 text-xs text-muted-foreground truncate max-w-[100px]">{loc.address}</span>
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            )}
-                            {(locations.length > 0) && <CommandSeparator />}
                             <CommandGroup heading={mt("cmdManagement")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("my-locations"))}>
                                     <MapPin className="mr-2 h-4 w-4" />
-                                    <span>{mt("cmdAllLocations")}</span>
+                                    <span>{mt("navLocation")}</span>
+                                    {locations[0]?.name && <span className="ml-2 truncate text-xs text-muted-foreground">{locations[0].name}</span>}
                                 </CommandItem>
-                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("settings"))}>
-                                    <Settings className="mr-2 h-4 w-4" />
+                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("kitchens"))}>
+                                    <managerNavIcons.kitchens className="mr-2 h-4 w-4" />
                                     <span>{mt("cmdKitchenSettings")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("availability"))}>
@@ -442,14 +448,14 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                             </CommandGroup>
                             <CommandSeparator />
                             <CommandGroup heading={mt("cmdBusiness")}>
-                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
-                                    <FileText className="mr-2 h-4 w-4" />
+                                {!hiddenItems.includes("applications") && <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
+                                    <managerNavIcons.applications className="mr-2 h-4 w-4" />
                                     <span>{mt("navApplications")}</span>
-                                </CommandItem>
-                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("revenue"))}>
-                                    <DollarSign className="mr-2 h-4 w-4" />
+                                </CommandItem>}
+                                {!hiddenItems.includes("revenue") && <CommandItem onSelect={() => runCommand(() => onViewChange?.("revenue"))}>
+                                    <managerNavIcons.revenue className="mr-2 h-4 w-4" />
                                     <span>{mt("navRevenue")}</span>
-                                </CommandItem>
+                                </CommandItem>}
                             </CommandGroup>
                             <CommandSeparator />
                             <CommandGroup heading={mt("shellProfile")}>

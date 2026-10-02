@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { scrollToPageSection } from "@/lib/scroll-to-page-section";
 import { addCollection, Icon } from "@iconify/react";
 import { navIcons } from "@/assets/mdi-nav-icons";
+import { KITCHEN_ICON_NAME } from "@/components/ui/kitchen-icon";
 
 // The bar renders mdi glyphs - the same family the landing page uses - so they have to be in
 // Iconify's store before first paint. Without this, Iconify falls back to fetching each icon
@@ -827,7 +828,7 @@ export default function Header({
                   ) : (
                     <KitchenPartnerCard
                       href={serviceUrls.kitchen}
-                      icon="mdi:office-building-outline"
+                      icon={KITCHEN_ICON_NAME}
                       title={t("kitchenPartnerCardTitle")}
                       description={t("kitchenPartnerLinkDesc")}
                       onSelect={() => setIsServicesOpen(false)}
@@ -1076,7 +1077,7 @@ export default function Header({
                 >
                   <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-[#F51042] shadow-[0_6px_16px_-8px_rgba(245,16,66,0.55)] ring-1 ring-[#F51042]/[0.14]">
                     <Icon
-                      icon={currentSubdomain === 'kitchen' ? "mdi:chef-hat" : "mdi:office-building-outline"}
+                      icon={currentSubdomain === 'kitchen' ? "mdi:chef-hat" : KITCHEN_ICON_NAME}
                       className="h-[22px] w-[22px]"
                       aria-hidden
                     />

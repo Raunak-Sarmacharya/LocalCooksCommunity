@@ -17,6 +17,7 @@ import { ChefPageHeader } from "@/components/chef/ui";
 // Import existing components
 import { PendingDamageClaims } from "./PendingDamageClaims";
 import { OverstayPenaltiesTable } from "./OverstayPenaltiesTable";
+import { PendingOverstayPenalties } from './PendingOverstayPenalties';
 
 export function IssuesAndRefunds({ initialTab }: { initialTab?: string }) {
   const [activeTab, setActiveTab] = useState<string>(
@@ -88,6 +89,7 @@ export function IssuesAndRefunds({ initialTab }: { initialTab?: string }) {
         </TabsContent>
 
         <TabsContent value="overstay-penalties" className="mt-0">
+          <PendingOverstayPenalties />
           <OverstayPenaltiesTable />
         </TabsContent>
       </Tabs>

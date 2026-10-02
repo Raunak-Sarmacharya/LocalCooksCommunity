@@ -4,11 +4,14 @@ import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
 import { normalizeImageUrl } from './utils';
 import { updateLocationRequirementsSchema, platformSettings } from '@shared/schema';
+import { kitchens } from '@shared/schema';
+import { hasAnyApplicationRequirement } from '@shared/kitchen-listing-readiness';
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from '@shared/kitchen-license';
+import { resolveKitchenBookingPolicies } from '@shared/kitchen-booking-policies';
 import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
 import { fromZodError } from 'zod-validation-error';
 import { db } from '../db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 
 // Import Domain Services
@@ -113,7 +116,7 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 // camelCase only: this is a new field with no cached or external consumer, so the
                 // `_snake_case` compatibility alias its older neighbours carry would be dead weight.
                 featuredKitchen: featuredKitchen
-                    ? { id: featuredKitchen.id, name: featuredKitchen.name }
+                    ? { id: featuredKitchen.id, name: featuredKitchen.name, slug: featuredKitchen.slug }
                     : null,
                 kitchenCount,
                 kitchen_count: kitchenCount, // compatibility
@@ -256,6 +259,7 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
             return {
                 id: kitchen.id,
                 name: kitchen.name,
+                slug: kitchen.slug,
                 description: kitchen.description || null,
                 imageUrl,
                 galleryImages,
@@ -370,7 +374,9 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             return {
                 id: kitchen.id,
                 name: kitchen.name,
+                slug: kitchen.slug,
                 description: kitchen.description,
+                ...resolveKitchenBookingPolicies(kitchen, location),
                 imageUrl: kImageUrl,
                 image_url: kImageUrl,
                 galleryImages: kGalleryImages,
@@ -558,6 +564,10 @@ router.put('/manager/locations/:locationId/requirements',
 
             const updates = parseResult.data;
             const requirements = await locationService.upsertLocationRequirements(locationId, updates);
+            if (!hasAnyApplicationRequirement(requirements)) {
+                await db.update(kitchens).set({ listingStatus: 'draft', updatedAt: new Date() })
+                    .where(and(eq(kitchens.locationId, locationId), eq(kitchens.listingStatus, 'active')));
+            }
 
             logger.info(`✅ Location requirements updated for location ${locationId} by manager ${user.id} `);
             res.json({ success: true, requirements });

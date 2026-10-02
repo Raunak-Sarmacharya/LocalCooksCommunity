@@ -166,7 +166,7 @@ export default function ManagerKitchenApplications({
       setReviewFeedback("");
     } catch (error: any) {
       toast({ title: mt("error"),
-        description: error.message || "Failed to approve application",
+        description: error.message || "Failed to approve access request",
         variant: "destructive",
       });
     }
@@ -197,7 +197,7 @@ export default function ManagerKitchenApplications({
       setReviewFeedback("");
     } catch (error: any) {
       toast({ title: mt("error"),
-        description: error.message || "Failed to reject application",
+        description: error.message || "Failed to decline access request",
         variant: "destructive",
       });
     }
@@ -337,7 +337,7 @@ export default function ManagerKitchenApplications({
               </div>
             ) : (
               <>
-                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>{mt("cancel")}</Button>
+                <Button variant="ghost" onClick={() => setShowReviewDialog(false)}>{mt("cancel")}</Button>
                 <Button
                   variant="destructive"
                   onClick={handleReject}

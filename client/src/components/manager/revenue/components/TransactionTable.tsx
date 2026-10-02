@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { MobileTableCards } from "@/components/ui/mobile-table-cards"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getTransactionColumns } from "../columns"
@@ -38,7 +39,7 @@ export function TransactionTable({
   
     const [sorting, setSorting] = useState<SortingState>([{ id: 'createdAt', desc: true }])
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ createdAt: false })
+    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ createdAt: false, reference: false })
     const [globalFilter, setGlobalFilter] = useState('')
     const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | 'all'>('all')
     const columns = useMemo(
@@ -85,6 +86,7 @@ export function TransactionTable({
             sorting,
             columnFilters,
             columnVisibility,
+            columnOrder: ["chefName", "reference", "locationName", "createdAt", "bookingDate", "totalPrice", "taxAmount", "stripeFee", "refundAmount", "netRevenue", "paymentStatus", "actions"],
         },
         initialState: {
             pagination: { pageSize: 10 },
@@ -245,7 +247,8 @@ export function TransactionTable({
                     </div>
                 ) : (
                     <>
-                        <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+                        <MobileTableCards rows={table.getRowModel().rows} />
+                        <div className="hidden rounded-md border overflow-x-auto md:block">
                             <Table>
                                 <TableHeader>
                                     {table.getHeaderGroups().map((headerGroup) => (
@@ -281,7 +284,7 @@ export function TransactionTable({
                                     ))}
                                     {/* Totals Row */}
                                     <TableRow className="bg-muted/50 font-semibold">
-                                        <TableCell colSpan={4}>
+                                        <TableCell colSpan={table.getVisibleLeafColumns().filter((column) => ["reference", "bookingDate", "chefName", "locationName", "createdAt"].includes(column.id)).length}>
                                             {mt("totalTransactionsCount", { count: filteredData.length })}
                                         </TableCell>
                                         <TableCell className="text-right">

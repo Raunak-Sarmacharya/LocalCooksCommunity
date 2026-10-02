@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useNumberInputDraft } from "./use-number-input-draft"
 
 /**
  * CurrencyInput — Enterprise-grade currency input following shadcn InputGroup pattern.
@@ -24,11 +25,13 @@ export interface CurrencyInputProps
 }
 
 const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
-  ({ className, onValueChange, symbol = "$", size = "default", ...props }, ref) => {
+  ({ className, onValueChange, symbol = "$", size = "default", value, defaultValue, onFocus, onBlur, ...props }, ref) => {
+    const { setDraft, inputProps } = useNumberInputDraft({ value, defaultValue, onFocus, onBlur })
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value
       // Allow empty, digits, and one decimal point with up to 2 decimal places
       if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) {
+        setDraft(raw)
         onValueChange?.(raw)
       }
     }
@@ -71,6 +74,7 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
             size === "sm" ? "h-full px-2 text-xs" : "h-full px-3 text-sm"
           )}
           {...props}
+          {...inputProps}
         />
       </div>
     )

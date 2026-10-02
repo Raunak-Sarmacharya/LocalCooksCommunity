@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, MessageCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConversationItem, ApplicationStatus } from "./ConversationItem";
@@ -97,8 +97,10 @@ export function ConversationList({
           {isLoading ? (
             <ConversationListSkeleton count={4} />
           ) : filteredConversations.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              {t("chatNoConversations")}
+            <div className="flex flex-col items-center px-4 py-10 text-center text-muted-foreground">
+              <MessageCircle className="mb-3 size-6 text-primary/50" />
+              <p className="text-sm font-medium text-foreground">{t(searchQuery ? "chatNoSearchResults" : "chatNoConversations")}</p>
+              {searchQuery && <button type="button" className="mt-2 text-xs font-medium text-primary hover:underline" onClick={() => setSearchQuery("")}>{t("chatClearSearch")}</button>}
             </div>
           ) : (
             <>

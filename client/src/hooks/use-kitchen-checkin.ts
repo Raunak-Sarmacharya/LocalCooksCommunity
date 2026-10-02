@@ -15,6 +15,8 @@ export type KitchenCheckinStatus =
   | "checkout_claim_filed";
 
 export interface CheckinStatusData {
+  checkinEnabled?: boolean;
+  checkoutEnabled?: boolean;
   id: number;
   chefId: number;
   kitchenId: number;
@@ -211,7 +213,7 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
       if (['checked_out', 'no_show', 'checkout_claim_filed'].includes(visit.checkinStatus)) return false;
       const date = rawStatus!.bookingDate.split('T')[0];
       const endDate = calendarDateForBookingTime(date, visit.endTime, rawStatus!.operatingWindowStartTime, visit.startTime);
-      return createBookingDateTime(endDate, visit.endTime, rawStatus!.timezone || DEFAULT_TIMEZONE) >= new Date();
+      return createBookingDateTime(endDate, visit.endTime, DEFAULT_TIMEZONE) >= new Date();
     }) || visits[visits.length - 1];
   const status = rawStatus && currentVisit ? {
     ...rawStatus, ...currentVisit, visitId: currentVisit.id,
@@ -221,6 +223,7 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
   const canCheckin = (): boolean => {
     const s = status;
     if (!s) return false;
+    if (s.checkinEnabled !== true) return false;
     if (s.status !== "confirmed") return false;
     if (
       s.checkinStatus &&
@@ -249,7 +252,7 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
   const canCheckout = (): boolean => {
     const s = status;
     if (!s) return false;
-    return s.checkinStatus === "checked_in";
+    return s.checkoutEnabled === true && s.checkinStatus === "checked_in";
   };
 
   return {

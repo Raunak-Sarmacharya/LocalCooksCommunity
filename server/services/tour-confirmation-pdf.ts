@@ -1,5 +1,7 @@
 import PDFDocument from "pdfkit";
 import path from "node:path";
+import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
+import { formatTourSlotRange } from '@shared/tour-time';
 
 export type TourConfirmationDetails = {
   id: number;
@@ -43,9 +45,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     const muted = "#64748b";
     const line = "#e2e8f0";
     const red = "#e51636";
-    const formatDate = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: tour.timezone, weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(date);
-    const formatTime = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: tour.timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(date);
-    const end = new Date(tour.scheduledAt.getTime() + tour.durationMinutes * 60_000);
+    const formatDate = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TIMEZONE, weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(date);
     const label = (value: string, x: number, y: number) => doc.font("Helvetica-Bold").fontSize(8).fillColor(muted).text(value.toUpperCase(), x, y, { characterSpacing: 1.1 });
 
     doc.image(asset("LoCo Red.png"), 52, 42, { width: 42 });
@@ -66,7 +66,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     label("Date", 73, cardY + 24);
     doc.font("Helvetica-Bold").fontSize(15).fillColor(ink).text(formatDate(tour.scheduledAt), 73, cardY + 41, { width: 460 });
     label("Time", 73, cardY + 77);
-    doc.font("Helvetica-Bold").fontSize(13).fillColor(ink).text(`${formatTime(tour.scheduledAt)} – ${formatTime(end)}`, 73, cardY + 94);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(ink).text(formatTourSlotRange(tour.scheduledAt, tour.durationMinutes), 73, cardY + 94, { width: 320 });
     doc.font("Body").fontSize(9).fillColor(muted).text(`${tour.durationMinutes} minute visit`, 400, cardY + 97, { width: 135, align: "right" });
     doc.moveTo(73, cardY + 123).lineTo(539, cardY + 123).strokeColor(line).stroke();
     doc.font("Helvetica-Bold").fontSize(12).fillColor(ink).text(tour.kitchenName || tour.locationName, 73, cardY + 137, { width: 465 });

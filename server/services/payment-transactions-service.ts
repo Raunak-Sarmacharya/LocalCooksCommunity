@@ -499,7 +499,7 @@ export async function syncStripeAmountsToBookings(
     const ptMetadata = transaction.metadata
       ? (typeof transaction.metadata === 'string' ? JSON.parse(transaction.metadata) : transaction.metadata)
       : {};
-    if (ptMetadata.partialCapture) {
+    if (ptMetadata.partialCapture || ptMetadata.bookingDecisionId) {
       logger.info(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
       return;
     }

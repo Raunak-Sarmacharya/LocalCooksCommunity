@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -9,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { AlertCircle, Clock, DollarSign, RefreshCw, Save, TrendingUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { LifecycleSettings } from '../LifecycleSettings';
 
 export function PlatformSettingsSection() {
   const { toast } = useToast();
@@ -24,6 +26,8 @@ export function PlatformSettingsSection() {
     checkinWindowMinutesBefore: '15',
     noShowGraceMinutes: '30',
     checkoutReviewWindowMinutes: '60',
+    accessCodeValidBeforeMinutes: '15',
+    accessCodeValidAfterMinutes: '15',
   });
   const [autoAcceptHours, setAutoAcceptHours] = useState('24');
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
@@ -118,12 +122,14 @@ export function PlatformSettingsSection() {
         checkinWindowMinutesBefore: String(timeWindowData.checkinWindowMinutesBefore?.intValue ?? 15),
         noShowGraceMinutes: String(timeWindowData.noShowGraceMinutes?.intValue ?? 30),
         checkoutReviewWindowMinutes: String(timeWindowData.checkoutReviewWindowMinutes?.intValue ?? 60),
+        accessCodeValidBeforeMinutes: String(timeWindowData.accessCodeValidBeforeMinutes?.intValue ?? 15),
+        accessCodeValidAfterMinutes: String(timeWindowData.accessCodeValidAfterMinutes?.intValue ?? 15),
       });
     }
   }, [timeWindowData]);
 
   const timeWindowMutation = useMutation({
-    mutationFn: async (settings: { checkinWindowMinutesBefore?: number; noShowGraceMinutes?: number; checkoutReviewWindowMinutes?: number }) => {
+    mutationFn: async (settings: { checkinWindowMinutesBefore?: number; noShowGraceMinutes?: number; checkoutReviewWindowMinutes?: number; accessCodeValidBeforeMinutes?: number; accessCodeValidAfterMinutes?: number }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) throw new Error('Firebase user not available');
       const token = await currentFirebaseUser.getIdToken();
@@ -155,7 +161,9 @@ export function PlatformSettingsSection() {
     timeWindowMutation.mutate({
       checkinWindowMinutesBefore: parseInt(twDefaults.checkinWindowMinutesBefore, 10),
       noShowGraceMinutes: parseInt(twDefaults.noShowGraceMinutes, 10),
-      checkoutReviewWindowMinutes: parseInt(twDefaults.checkoutReviewWindowMinutes, 10),
+      checkoutReviewWindowMinutes: Number(twDefaults.checkoutReviewWindowMinutes),
+      accessCodeValidBeforeMinutes: Number(twDefaults.accessCodeValidBeforeMinutes),
+      accessCodeValidAfterMinutes: Number(twDefaults.accessCodeValidAfterMinutes),
     });
   };
 
@@ -277,8 +285,8 @@ export function PlatformSettingsSection() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-4 py-4" role="status" aria-label="Loading platform settings">
+        {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-20 w-full rounded-xl" />)}
       </div>
     );
   }
@@ -450,14 +458,6 @@ export function PlatformSettingsSection() {
         >
           Reset
         </Button>
-        <Button
-          onClick={() => refetch()}
-          disabled={isSaving}
-          variant="outline"
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
       </div>
 
       {/* Cancellation Policy Card */}
@@ -582,6 +582,11 @@ export function PlatformSettingsSection() {
               />
               <p className="text-xs text-muted-foreground">How long manager has to review checkout before auto-clear (admin-only; no per-location override)</p>
             </div>
+            {(['accessCodeValidBeforeMinutes', 'accessCodeValidAfterMinutes'] as const).map(field => <div className="space-y-2" key={field}>
+              <Label htmlFor={field}>{field === 'accessCodeValidBeforeMinutes' ? 'Access code valid before start' : 'Access code valid after end'}</Label>
+              <NumericInput id={field} suffix="minutes" value={twDefaults[field]} onValueChange={value => setTwDefaults({ ...twDefaults, [field]: value })} className="max-w-32" />
+              <p className="text-xs text-muted-foreground">Applies when issuing new access codes. Already issued codes retain their saved validity times.</p>
+            </div>)}
           </div>
           <Button
             onClick={handleSaveTimeWindows}
@@ -598,6 +603,7 @@ export function PlatformSettingsSection() {
       </Card>
 
       {/* Info Card */}
+      <LifecycleSettings />
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>How Fees Work</AlertTitle>

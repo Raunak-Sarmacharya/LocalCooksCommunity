@@ -1,7 +1,8 @@
+import { ChefApplicationIcon } from "@/components/ui/application-icons";
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { BookOpen, Building, Calendar, FileText, Shield, MessageCircle, Store, ArrowRight, Utensils, TrendingUp } from "lucide-react";
+import { BookOpen, CalendarDays, Shield, MessageCircle, Store, ChevronRight, Utensils, TrendingUp } from "lucide-react";
 import { Link } from "wouter";
 import { Application } from "@shared/schema";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
@@ -10,6 +11,7 @@ import { TruncatedText } from "@/components/common/TruncatedText";
 import { applicationStatusVariant } from "@/components/chef/applications/status";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
 
 interface ChefOverviewProps {
   user: { displayName?: string | null } | null;
@@ -154,7 +156,7 @@ export function ChefOverview({
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <ChefApplicationIcon className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">
                       {t("overviewApplicationNumber", { id: getMostRecentApplication()?.id, defaultValue: "Application #{id}" })}
                     </span>
@@ -193,7 +195,7 @@ export function ChefOverview({
                 onClick={() => onNavigate("applications")}
               >
                 {t("overviewViewApplicationDetails", "View Application Details")}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
               <Button 
@@ -201,7 +203,7 @@ export function ChefOverview({
                 onClick={onStartApplication}
               >
                 {t("overviewApplyToSell", "Apply to Sell")}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             )}
           </CardFooter>
@@ -213,7 +215,7 @@ export function ChefOverview({
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-lg border flex items-center justify-center">
-                  <Building className="h-6 w-6 text-muted-foreground" />
+                  <KitchenIcon className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div>
                   <CardTitle className="text-xl">{t("overviewKitchenAccess", "Kitchen Access")}</CardTitle>
@@ -240,7 +242,7 @@ export function ChefOverview({
                     className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50"
                   >
                     <div className="flex items-center gap-2">
-                      <Building className="h-4 w-4 text-muted-foreground" />
+                      <KitchenIcon className="h-4 w-4 text-muted-foreground" />
                       <TruncatedText className="text-sm font-medium truncate max-w-[150px]">
                         {app.location?.name || t("overviewKitchenFallbackName", "Kitchen")}
                       </TruncatedText>
@@ -260,7 +262,7 @@ export function ChefOverview({
               </div>
             ) : (
               <div className="p-4 rounded-xl border text-center">
-                <Building className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <KitchenIcon className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm font-medium">{t("overviewNeedCommercialKitchen", "Need a commercial kitchen?")}</p>
                 <p className="text-xs text-muted-foreground">{t("overviewExplorePartnerKitchens", "Explore our partner kitchens")}</p>
               </div>
@@ -274,7 +276,7 @@ export function ChefOverview({
                   className="flex-1 w-full"
                   onClick={() => onNavigate("kitchen-applications")}
               >
-                <Icon icon="mdi:office-building-outline" className="mr-2 size-4" aria-hidden />
+                <KitchenIcon className="mr-2 size-4" />
                 {t("overviewMyKitchensButton", "My Kitchens")}
                 </Button>
                 <Button
@@ -283,7 +285,7 @@ export function ChefOverview({
                   onClick={() => (window.location.href = "/compare-kitchens")}
                 >
                   {t("overviewDiscoverMore", "Discover More")}
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               </>
             ) : (
@@ -293,7 +295,7 @@ export function ChefOverview({
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
                 {t("overviewExploreKitchens", "Discover Kitchens")}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             )}
           </CardFooter>
@@ -351,7 +353,7 @@ export function ChefOverview({
                 className="h-auto py-4 px-4 justify-start gap-3"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
-                <Building className="h-5 w-5 text-muted-foreground" />
+                <KitchenIcon className="h-5 w-5 text-muted-foreground" />
                 <div className="text-left">
                   <p className="font-medium text-sm">{t("overviewFindKitchen", "Find a Kitchen")}</p>
                   <p className="text-xs text-muted-foreground">{t("overviewBrowseCommercialSpaces", "Browse commercial spaces")}</p>
@@ -366,7 +368,7 @@ export function ChefOverview({
                   className="h-auto py-4 px-4 justify-start gap-3"
                   onClick={() => onNavigate("bookings")}
                 >
-                  <Calendar className="h-5 w-5 text-muted-foreground" />
+                  <CalendarDays className="h-5 w-5 text-muted-foreground" />
                   <div className="text-left">
                     <p className="font-medium text-sm">{t("overviewBookSession", "Book a Session")}</p>
                     <p className="text-xs text-muted-foreground">{t("overviewScheduleKitchenTime", "Schedule kitchen time")}</p>

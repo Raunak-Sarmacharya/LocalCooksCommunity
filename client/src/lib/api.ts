@@ -21,7 +21,7 @@ export class APIClient {
       if (!auth.currentUser) {
         return null;
       }
-      
+
       const token = await auth.currentUser.getIdToken();
       return token;
     } catch (error) {
@@ -34,12 +34,12 @@ export class APIClient {
    * Make authenticated API request
    */
   private async makeRequest(
-    endpoint: string, 
+    endpoint: string,
     options: RequestInit = {},
     requireAuth: boolean = true
   ): Promise<Response> {
     const url = `${this.baseURL}${endpoint}`;
-    
+
     // Set up headers
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -76,11 +76,11 @@ export class APIClient {
    */
   async post(endpoint: string, data: any = null, requireAuth: boolean = true): Promise<Response> {
     return this.makeRequest(
-      endpoint, 
-      { 
-        method: 'POST', 
-        body: data ? JSON.stringify(data) : undefined 
-      }, 
+      endpoint,
+      {
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined
+      },
       requireAuth
     );
   }
@@ -90,11 +90,11 @@ export class APIClient {
    */
   async put(endpoint: string, data: any = null, requireAuth: boolean = true): Promise<Response> {
     return this.makeRequest(
-      endpoint, 
-      { 
-        method: 'PUT', 
-        body: data ? JSON.stringify(data) : undefined 
-      }, 
+      endpoint,
+      {
+        method: 'PUT',
+        body: data ? JSON.stringify(data) : undefined
+      },
       requireAuth
     );
   }
@@ -111,7 +111,7 @@ export class APIClient {
    */
   async postFormData(endpoint: string, formData: FormData, requireAuth: boolean = true): Promise<Response> {
     const url = `${this.baseURL}${endpoint}`;
-    
+
     const headers: Record<string, string> = {};
 
     // Add Firebase auth token if required
@@ -140,7 +140,7 @@ export const apiClient = new APIClient();
 /**
  * Get Firebase Auth headers for API requests
  * Enterprise-grade utility function - use this instead of duplicating auth logic
- * 
+ *
  * @returns Promise<HeadersInit> - Headers object with Content-Type and Authorization
  */
 export async function getAuthHeaders(): Promise<HeadersInit> {
@@ -186,10 +186,18 @@ export async function apiPut(endpoint: string, data: any = null, requireAuth: bo
   return response.json();
 }
 
+/** PUT for setup flows whose server validation message tells the manager what to fix. */
+export async function apiPutWithMessage(endpoint: string, data: any = null) {
+  const response = await apiClient.put(endpoint, data);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : `API Error: ${response.status} ${response.statusText}`);
+  return body;
+}
+
 export async function apiDelete(endpoint: string, requireAuth: boolean = true) {
   const response = await apiClient.delete(endpoint, requireAuth);
   if (!response.ok) {
     throw new Error(`API Error: ${response.status} ${response.statusText}`);
   }
   return response.json();
-} 
+}

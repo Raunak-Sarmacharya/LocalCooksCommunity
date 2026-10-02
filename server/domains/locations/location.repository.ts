@@ -11,6 +11,7 @@ import { locations, locationRequirements } from '@shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO, LocationRequirements, UpdateLocationRequirements } from './location.types';
 import { LocationErrorCodes, DomainError } from '../../shared/errors/domain-error';
+import { previewSlugBase, availablePreviewSlug } from '@shared/preview-slug';
 
 /**
  * Repository for location data access
@@ -65,7 +66,8 @@ export class LocationRepository {
    */
   async create(dto: CreateLocationDTO): Promise<LocationDTO> {
     try {
-      const [location] = await db
+      return await db.transaction(async (tx) => {
+      const [location] = await tx
         .insert(locations)
         .values({
           name: dto.name,
@@ -91,8 +93,14 @@ export class LocationRepository {
           kitchenTermsUploadedAt: dto.kitchenTermsUrl ? new Date() : null,
         })
         .returning();
-
-      return location as LocationDTO;
+      const existingSlugs = await tx.select({ slug: locations.slug }).from(locations);
+      const slug = availablePreviewSlug(previewSlugBase(dto.name, 'location'), existingSlugs.map((row) => row.slug).filter((value): value is string => !!value));
+      const [withSlug] = await tx.update(locations)
+        .set({ slug })
+        .where(eq(locations.id, location.id))
+        .returning();
+      return withSlug as LocationDTO;
+      });
     } catch (error: any) {
       logger.error('[LocationRepository] Error creating location:', error);
       throw new DomainError(

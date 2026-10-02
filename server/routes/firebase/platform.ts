@@ -173,10 +173,18 @@ router.put('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWit
 
         const results: Record<string, any> = {};
 
+        // Validate the complete request before any settings are persisted.
+        if (gracePeriodDays !== undefined && (!Number.isSafeInteger(Number(gracePeriodDays)) || Number(gracePeriodDays) < 0 || Number(gracePeriodDays) > 14))
+            return res.status(400).json({ error: 'Grace period must be a whole number from 0 to 14 days' });
+        if (penaltyRate !== undefined && (!Number.isFinite(Number(penaltyRate)) || Number(penaltyRate) < 0 || Number(penaltyRate) > 1))
+            return res.status(400).json({ error: 'Penalty rate must be between 0 and 1' });
+        if (maxPenaltyDays !== undefined && (!Number.isSafeInteger(Number(maxPenaltyDays)) || Number(maxPenaltyDays) < 1 || Number(maxPenaltyDays) > 90))
+            return res.status(400).json({ error: 'Max penalty days must be a whole number from 1 to 90' });
+
         // Update grace period days
         if (gracePeriodDays !== undefined) {
-            const days = parseInt(gracePeriodDays);
-            if (isNaN(days) || days < 0 || days > 14) {
+            const days = Number(gracePeriodDays);
+            if (!Number.isSafeInteger(days) || days < 0 || days > 14) {
                 return res.status(400).json({ error: 'Grace period must be between 0 and 14 days' });
             }
             
@@ -192,9 +200,9 @@ router.put('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWit
 
         // Update penalty rate
         if (penaltyRate !== undefined) {
-            const rate = typeof penaltyRate === 'string' ? parseFloat(penaltyRate) : penaltyRate;
-            if (isNaN(rate) || rate < 0 || rate > 0.50) {
-                return res.status(400).json({ error: 'Penalty rate must be between 0 and 0.50 (0% to 50%)' });
+            const rate = Number(penaltyRate);
+            if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+                return res.status(400).json({ error: 'Penalty rate must be between 0 and 1 (0% to 100%)' });
             }
             
             const [existing] = await db.select().from(platformSettings).where(eq(platformSettings.key, 'overstay_penalty_rate')).limit(1);
@@ -209,8 +217,8 @@ router.put('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWit
 
         // Update max penalty days
         if (maxPenaltyDays !== undefined) {
-            const days = parseInt(maxPenaltyDays);
-            if (isNaN(days) || days < 1 || days > 90) {
+            const days = Number(maxPenaltyDays);
+            if (!Number.isSafeInteger(days) || days < 1 || days > 90) {
                 return res.status(400).json({ error: 'Max penalty days must be between 1 and 90' });
             }
             
@@ -242,9 +250,13 @@ router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
             'kitchen_checkin_window_minutes_before',
             'kitchen_no_show_grace_minutes',
             'kitchen_checkout_review_window_minutes',
+            'kitchen_access_code_valid_before_minutes',
+            'kitchen_access_code_valid_after_minutes',
         ];
 
         const defaults: Record<string, { key: string; value: string; intValue: number; description: string | null; updatedAt: Date | null }> = {
+            accessCodeValidBeforeMinutes: { key: 'kitchen_access_code_valid_before_minutes', value: '15', intValue: 15, description: 'Access code validity before booking start', updatedAt: null },
+            accessCodeValidAfterMinutes: { key: 'kitchen_access_code_valid_after_minutes', value: '15', intValue: 15, description: 'Access code validity after booking end', updatedAt: null },
             checkinWindowMinutesBefore: { key: 'kitchen_checkin_window_minutes_before', value: '15', intValue: 15, description: 'How early (in minutes) before start time a chef can check in', updatedAt: null },
             noShowGraceMinutes: { key: 'kitchen_no_show_grace_minutes', value: '30', intValue: 30, description: 'Grace period (in minutes) after start time before marking no-show', updatedAt: null },
             checkoutReviewWindowMinutes: { key: 'kitchen_checkout_review_window_minutes', value: '60', intValue: 60, description: 'How long (in minutes) manager has to review a checkout request', updatedAt: null },
@@ -265,6 +277,10 @@ router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
                     defaults.noShowGraceMinutes = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
                 } else if (key === 'kitchen_checkout_review_window_minutes') {
                     defaults.checkoutReviewWindowMinutes = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
+                } else if (key === 'kitchen_access_code_valid_before_minutes') {
+                    defaults.accessCodeValidBeforeMinutes = { key, value: setting.value, intValue: Number(setting.value), description: setting.description, updatedAt: setting.updatedAt };
+                } else if (key === 'kitchen_access_code_valid_after_minutes') {
+                    defaults.accessCodeValidAfterMinutes = { key, value: setting.value, intValue: Number(setting.value), description: setting.description, updatedAt: setting.updatedAt };
                 }
             }
         }
@@ -279,7 +295,7 @@ router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
 // Update kitchen time window defaults
 router.put('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { checkinWindowMinutesBefore, noShowGraceMinutes, checkoutReviewWindowMinutes } = req.body;
+        const { checkinWindowMinutesBefore, noShowGraceMinutes, checkoutReviewWindowMinutes, accessCodeValidBeforeMinutes, accessCodeValidAfterMinutes } = req.body;
         const userId = req.neonUser!.id;
 
         if (!userId) {
@@ -289,15 +305,21 @@ router.put('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
         const results: Record<string, any> = {};
 
         const fields = [
+            { key: 'kitchen_access_code_valid_before_minutes', value: accessCodeValidBeforeMinutes, label: 'accessCodeValidBeforeMinutes', min: 0, max: 120, description: 'Access code validity before booking start' },
+            { key: 'kitchen_access_code_valid_after_minutes', value: accessCodeValidAfterMinutes, label: 'accessCodeValidAfterMinutes', min: 0, max: 120, description: 'Access code validity after booking end' },
             { key: 'kitchen_checkin_window_minutes_before', value: checkinWindowMinutesBefore, label: 'checkinWindowMinutesBefore', min: 0, max: 120, description: 'How early (in minutes) before start time a chef can check in' },
             { key: 'kitchen_no_show_grace_minutes', value: noShowGraceMinutes, label: 'noShowGraceMinutes', min: 0, max: 120, description: 'Grace period (in minutes) after start time before marking no-show' },
             { key: 'kitchen_checkout_review_window_minutes', value: checkoutReviewWindowMinutes, label: 'checkoutReviewWindowMinutes', min: 0, max: 480, description: 'How long (in minutes) manager has to review a checkout request' },
         ];
 
         for (const field of fields) {
+            if (field.value !== undefined && (!Number.isSafeInteger(Number(field.value)) || Number(field.value) < field.min || Number(field.value) > field.max))
+                return res.status(400).json({ error: `${field.label} must be a whole number between ${field.min} and ${field.max} minutes` });
+        }
+        for (const field of fields) {
             if (field.value !== undefined) {
-                const minutes = typeof field.value === 'string' ? parseInt(field.value) : field.value;
-                if (isNaN(minutes) || minutes < field.min || minutes > field.max) {
+                const minutes = Number(field.value);
+                if (!Number.isSafeInteger(minutes) || minutes < field.min || minutes > field.max) {
                     return res.status(400).json({ error: `${field.label} must be between ${field.min} and ${field.max} minutes` });
                 }
 

@@ -1,6 +1,5 @@
 import { mt } from "@/i18n/manager";
 import {
-  ArrowRight,
   Briefcase,
   CalendarDays,
   Clock,
@@ -116,7 +115,6 @@ export default function WelcomeStep() {
           className={`${FOOTER_ACTION} min-w-[140px] gap-2 font-semibold`}
         >
           {mt("welcomeLetsStart")}
-          <ArrowRight className="h-4 w-4" aria-hidden />
         </Button>
       </footer>
     </div>

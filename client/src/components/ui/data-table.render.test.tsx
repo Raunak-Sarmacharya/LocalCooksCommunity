@@ -65,6 +65,16 @@ const columns: ColumnDef<Row>[] = [
 ];
 
 describe("DataTable mobile card view", () => {
+  it("hides pagination for one page and shows it when rows span pages", () => {
+    const { rerender } = render(<DataTable columns={columns} data={rows} pageSize={2} />);
+    expect(screen.queryByRole("button", { name: "previous" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "next" })).toBeNull();
+
+    rerender(<DataTable columns={columns} data={[...rows, { name: "Lin", status: "active", audit: "2026-01-03" }]} pageSize={2} />);
+    expect(screen.getByRole("button", { name: "previous" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "next" })).toBeTruthy();
+  });
+
   it("renders both trees with the breakpoint classes that swap them", () => {
     render(<DataTable columns={columns} data={rows} />);
 
@@ -105,5 +115,47 @@ describe("DataTable mobile card view", () => {
 
     const mobile = screen.getByTestId("data-table-mobile");
     expect(within(mobile).getByText("noResults")).toBeTruthy();
+  });
+
+  /*
+   * The card used to render every field as its own full-width label/value block, so a wide table
+   * became a single tall column of fields. It is now an identity row plus a two-column grid — these
+   * assert the shape, because jsdom cannot tell anyone how tall a card is.
+   */
+  it("gives the first detail column its own full-width identity row", () => {
+    render(<DataTable columns={columns} data={rows} />);
+
+    const card = screen.getByTestId("data-table-mobile").querySelector(".data-table-mobile-card") as HTMLElement;
+    expect(card).toBeTruthy();
+
+    const identity = card.firstElementChild as HTMLElement;
+    expect(identity.className).toContain("border-b");
+    expect(within(identity).getByText("Ada")).toBeTruthy();
+  });
+
+  it("lays the remaining fields out in a two-column grid, not one field per line", () => {
+    render(<DataTable columns={columns} data={rows} />);
+
+    const grid = screen.getByTestId("data-table-mobile").querySelector(".grid-cols-2") as HTMLElement;
+    expect(grid).toBeTruthy();
+    // `status` is the only remaining field in the fixture, so it must live inside that grid.
+    expect(within(grid).getByText("active")).toBeTruthy();
+  });
+
+  it("gives a field the whole row when its column opts in with mobileSpan", () => {
+    const withWideField: ColumnDef<Row>[] = [
+      { accessorKey: "name", header: "Name", cell: ({ row }) => row.original.name },
+      {
+        accessorKey: "status",
+        header: "Status",
+        meta: { mobileSpan: "full" },
+        cell: ({ row }) => row.original.status,
+      },
+    ];
+    render(<DataTable columns={withWideField} data={rows} />);
+
+    const grid = screen.getByTestId("data-table-mobile").querySelector(".grid-cols-2") as HTMLElement;
+    const value = within(grid).getByText("active");
+    expect(value.parentElement?.className).toContain("col-span-2");
   });
 });

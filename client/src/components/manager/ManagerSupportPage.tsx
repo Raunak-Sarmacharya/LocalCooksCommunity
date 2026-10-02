@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { Building, Calendar, ClipboardCheck, CreditCard, FileText, Shield, Users } from "lucide-react";
+import { Calendar, CreditCard, FileText, Shield, Users } from "lucide-react";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
+import { CalendarDays } from "@/components/ui/manager-icons";
 
 import { SupportPageShell, type SupportFaqCategory, type SupportResource } from "@/components/support/SupportPageShell";
 
@@ -47,7 +49,7 @@ export default function ManagerSupportPage({
     },
     {
       category: t("supportManagerCatKitchens", "Your kitchens"),
-      icon: Building,
+      icon: KitchenIcon,
       questions: [
         {
           q: t("supportManagerKitchensQ1", "How do I add another kitchen?"),
@@ -64,22 +66,22 @@ export default function ManagerSupportPage({
       ],
     },
     {
-      category: t("supportManagerCatApplications", "Chef applications"),
+      category: t("supportManagerCatApplications", "Access Requests"),
       icon: Users,
       questions: [
         {
-          q: t("supportManagerApplicationsQ1", "What are application requirements?"),
+          q: t("supportManagerApplicationsQ1", "What are access requirements?"),
           a: t("supportManagerApplicationsA1", "The documents and questions a chef must satisfy before they can book your kitchen. You control these per location."),
         },
         {
           q: t("supportManagerApplicationsQ2", "What's the difference between the two tiers?"),
-          a: t("supportManagerApplicationsA2", "\"Request to apply\" is platform-wide and set by Local Cooks. \"Kitchen Documents\" are yours, and are collected from a chef after Local Cooks approves them."),
+          a: t("supportManagerApplicationsA2", "Local Cooks reviews the initial request. You set the kitchen access requirements, which chefs complete after initial approval."),
         },
       ],
     },
     {
       category: t("supportManagerCatBookings", "Bookings and check-in"),
-      icon: ClipboardCheck,
+      icon: CalendarDays,
       questions: [
         {
           q: t("supportManagerBookingsQ1", "How do I approve a booking?"),

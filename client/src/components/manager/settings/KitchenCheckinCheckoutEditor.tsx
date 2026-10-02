@@ -13,7 +13,7 @@
  * list of common tasks, which is how every mature product in this space avoids
  * an intimidating blank form.
  *
- * Preview opens as a side Sheet that mirrors exactly what chefs see in
+ * Preview opens as a side Dialog that mirrors exactly what chefs see in
  * `KitchenCheckinTracker.tsx` — the goal being no surprises between what the
  * manager configures and what the chef eventually interacts with.
  */
@@ -24,7 +24,6 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import {
   AlertTriangle,
-  ArrowRight,
   Camera,
   Check,
   ClipboardCheck,
@@ -56,12 +55,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import {
   Popover,
   PopoverContent,
@@ -708,7 +703,7 @@ function PresetPicker({
  * shows committed configuration only, in a fixed order, with no controls other
  * than the one action that matters — jump back to the field and change it.
  */
-function ReviewSheet({
+function ReviewDialog({
   open,
   onOpenChange,
   stage,
@@ -745,39 +740,38 @@ function ReviewSheet({
   const nothingConfigured = flowItems.length === 0 && !hasInstructions && !hasSmartLock;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       {/*
-        `hideClose` drops the primitive's floating X and the footer's close
-        button becomes the only way out, so the exit is one labelled control in
+        The footer's close button is the labelled exit, so it stays in
         the place the eye already is rather than a chrome glyph in the corner.
-        Wider than the default sheet on large screens because this is a reading
+        Wider than the default dialog on large screens because this is a reading
         surface, not a form — a line of prose wants a book measure, not a phone
         column, and the two-up checklist stays scannable at this width.
       */}
-      <SheetContent
-        hideClose
-        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg lg:max-w-2xl"
+      <AppDialogContent
+        showCloseButton={false}
+        className="flex flex-col gap-0 overflow-hidden p-0 max-h-[90vh] sm:max-w-lg lg:max-w-2xl"
       >
         {/* One header block instead of a title stack plus a counts strip: the
             counts belong to the reading order, not to the chrome above it. */}
-        <SheetHeader className="space-y-0 border-b px-5 py-4 text-left">
+        <DialogHeader className="space-y-0 border-b px-5 py-4 text-left">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <SheetTitle className="flex items-center gap-2 text-base font-medium">
+              <DialogTitle className="flex items-center gap-2 text-base font-medium">
                 <StageIcon className="size-4 shrink-0 text-muted-foreground" />
                 {isCheckin ? mt("reviewCheckinTitle") : mt("reviewCheckoutTitle")}
-              </SheetTitle>
+              </DialogTitle>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 {isCheckin ? mt("reviewCheckinSubtitle") : mt("reviewCheckoutSubtitle")}
               </p>
             </div>
-            {/* The one loud thing in the sheet: it answers "how much is this?"
+            {/* The one loud thing in the dialog: it answers "how much is this?"
                 before a single row is read. */}
             <span className="shrink-0 pt-0.5 text-2xl font-semibold tabular-nums leading-none">
               {flowItems.length}
             </span>
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {nothingConfigured ? (
@@ -864,7 +858,7 @@ function ReviewSheet({
 
         {/* One labelled exit. It replaces the primitive's floating X, so the
             way out is named rather than a glyph in the corner — and it is the
-            only control in the sheet, which is what keeps a review surface
+            only control in the dialog, which is what keeps a review surface
             feeling like a read rather than a form. */}
         <div className="border-t px-5 py-3">
           <Button
@@ -876,18 +870,18 @@ function ReviewSheet({
             {mt("close")}
           </Button>
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
-/** Which part of the page the review sheet should scroll back to. */
+/** Which part of the page the review dialog should scroll back to. */
 type ReviewEditTarget = "instructions" | "checklist";
 
 /**
- * Sends the manager from the review sheet back to the field they want to fix.
+ * Sends the manager from the review dialog back to the field they want to fix.
  *
- * Runs a frame late on purpose. The sheet is a modal, so while it is mounted it
+ * Runs a frame late on purpose. The dialog is a modal, so while it is mounted it
  * holds a focus trap and the page beneath it is inert — scrolling in the same
  * tick as the close would move the page while it is still covered, and Radix
  * restores focus on unmount, which would fight a scroll started simultaneously.
@@ -909,10 +903,10 @@ function scrollToReviewTarget(stage: Stage, target: ReviewEditTarget) {
 }
 
 /**
- * One titled group inside the review sheet.
+ * One titled group inside the review dialog.
  *
  * Every block carries its own Edit affordance rather than one at the foot of
- * the sheet, because a single global "edit" forces the manager to work out
+ * the dialog, because a single global "edit" forces the manager to work out
  * where the thing they want lives. Naming the destination is the whole value
  * of a review step.
  *
@@ -1310,9 +1304,7 @@ function StageHeader({
                   explicit, Cancel is the honest escape hatch, and the pair sits
                   where the eye already is after typing.
 
-                  Save is disabled on an untouched draft: with nothing changed
-                  there is nothing to commit, and an always-live button invites
-                  a click that appears to do nothing.
+                  Save appears only after the draft changes.
                 */}
                 <div className="flex items-center justify-end gap-1.5 pt-0.5">
                   <button
@@ -1322,16 +1314,15 @@ function StageHeader({
                   >
                     {mt("cancel")}
                   </button>
-                  <Button
+                  {notesDirty && <Button
                     type="button"
                     size="sm"
                     onClick={commitNotes}
-                    disabled={!notesDirty}
                     className="!min-h-0 h-7 gap-1.5 rounded-md px-2 text-[11px]"
                   >
                     <Check className="size-3" />
                     {mt("saveNotes")}
-                  </Button>
+                  </Button>}
                 </div>
               </div>
             ) : hasInstructions ? (
@@ -1441,7 +1432,6 @@ function StageHeader({
             >
               <ListChecks className="size-3" />
               {stage === "checkin" ? mt("reviewCheckinCta") : mt("reviewCheckoutCta")}
-              <ArrowRight className="size-3" />
             </button>
           </div>
         </>
@@ -1803,6 +1793,7 @@ function ChecklistList({
 // ─── Main Editor ──────────────────────────────────────────────────────────────
 
 export interface KitchenCheckinCheckoutEditorProps {
+  title?: string;
   items: UnifiedChecklistItem[];
   onItemsChange: (next: UnifiedChecklistItem[]) => void;
   checkinEnabled: boolean;
@@ -1828,6 +1819,7 @@ export interface KitchenCheckinCheckoutEditorProps {
 }
 
 export function KitchenCheckinCheckoutEditor({
+  title,
   items,
   onItemsChange,
   checkinEnabled,
@@ -1850,13 +1842,13 @@ export function KitchenCheckinCheckoutEditor({
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
 
   /**
-   * Takes the manager from the review sheet back to the thing they want to
-   * change, and closes the sheet on the way. The whole point of a review
+   * Takes the manager from the review dialog back to the thing they want to
+   * change, and closes the dialog on the way. The whole point of a review
    * surface is that catching a mistake there should cost one click, not a
-   * walk back through the page — leaving the sheet open would just put a
+   * walk back through the page — leaving the dialog open would just put a
    * panel between them and the field.
    *
-   * The target is scrolled to *after* the close, in a frame, because the sheet
+   * The target is scrolled to *after* the close, in a frame, because the dialog
    * is a modal: scrolling underneath it while it is still mounted does nothing
    * the manager can see, and Radix restores focus on unmount which would fight
    * a scroll started in the same tick.
@@ -1917,7 +1909,7 @@ export function KitchenCheckinCheckoutEditor({
             <ClipboardCheck className="size-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <CardTitle className="text-lg">{mt("checkInCheckOutChecklists")}</CardTitle>
+            <CardTitle className="text-lg">{title ?? mt("checkInCheckOutChecklists")}</CardTitle>
             <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground/80">
               {mt("checkinCheckoutPageHint")}
             </p>
@@ -2030,9 +2022,9 @@ export function KitchenCheckinCheckoutEditor({
       </CardContent>
 
       {/* Review surface — a read-only recap of this flow, so the manager can
-          read it back and confirm it is right. See ReviewSheet for why this
+          read it back and confirm it is right. See ReviewDialog for why this
           replaced an interactive simulation of the chef's screen. */}
-      <ReviewSheet
+      <ReviewDialog
         open={previewStage !== null}
         onOpenChange={(o) => {
           if (!o) setPreviewStage(null);

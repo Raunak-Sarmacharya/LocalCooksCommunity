@@ -5,7 +5,7 @@
  * Uses TanStack Table for enterprise-grade table display.
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
@@ -19,18 +19,21 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DateField } from "@/components/ui/date-field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, CheckCircle, Clock, CreditCard, FileText, Plus, RefreshCw, Eye, Send, X, Camera, Receipt, Loader2, Info, Save, Download, MoreHorizontal, ArrowUpDown } from "@/components/ui/manager-icons";
+import { AlertTriangle, CheckCircle, Clock, CreditCard, FileText, Plus, RefreshCw, Eye, Send, X, Camera, Receipt, Loader2, Info, Save, Download, ArrowUpDown } from "@/components/ui/manager-icons";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DamageClaimDetailSheet } from "./DamageClaimDetailSheet";
+import { DamageClaimDetailDialog } from "./DamageClaimDetailDialog";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import { hasRequiredDamageClaimEvidence } from "@shared/damage-claim-evidence";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/ui/smart-image";
 
@@ -122,8 +125,8 @@ function ClaimCard({
   isProcessing: boolean;
   isDownloading: boolean;
 }) {
-  const canSubmit = claim.status === 'draft' && claim.evidence.length >= 2;
-  const canCharge = ['approved', 'partially_approved', 'chef_accepted'].includes(claim.status);
+  const canSubmit = claim.status === 'draft' && hasRequiredDamageClaimEvidence(claim.evidence);
+  const canCharge = ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'escalated'].includes(claim.status);
   const canDownloadInvoice = claim.status === 'charge_succeeded';
   const showChefResponse = claim.chefResponse && claim.chefRespondedAt;
 
@@ -272,11 +275,12 @@ interface PendingEvidence {
   preview?: string;
 }
 
-// Create Claim Sheet - Redesigned for single-step process
-function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
+// Create Claim Dialog - Redesigned for single-step process
+function CreateClaimDialog({ onCreated }: { onCreated: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
   const [step, setStep] = useState<'form' | 'evidence'>('form');
   const [selectedBooking, setSelectedBooking] = useState<RecentBooking | null>(null);
   const [formData, setFormData] = useState({
@@ -299,7 +303,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
   const { uploadFile } = useSessionFileUpload();
 
   // Fetch recent bookings eligible for damage claims
-  const { data: bookingsData, isLoading: loadingBookings } = useQuery({
+  const { data: bookingsData, isLoading: loadingBookings, isError: bookingsError, refetch: retryBookings } = useQuery({
     queryKey: ['/api/manager/damage-claims/recent-bookings'],
     queryFn: async () => {
       const response = await apiRequest('GET', '/api/manager/damage-claims/recent-bookings');
@@ -311,7 +315,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
   const recentBookings: RecentBooking[] = bookingsData?.bookings || [];
   const deadlineDays = bookingsData?.deadlineDays || 14;
 
-  // Reset form when sheet closes
+  // Reset form when dialog closes
   const resetForm = useCallback(() => {
     setStep('form');
     setSelectedBooking(null);
@@ -497,27 +501,35 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
     formData.claimDescription.length >= 50 && 
     parseFloat(formData.claimedAmount) >= 10;
 
+  const hasUnsavedClaim = Boolean(selectedBooking || formData.claimTitle.trim() || formData.claimDescription.trim() || formData.claimedAmount || pendingEvidence.length || selectedDamagedEquipment.size || newEvidenceDescription.trim() || formData.damageDate !== format(new Date(), 'yyyy-MM-dd'));
+  const requestClose = () => {
+    if (isUploading) return;
+    if (hasUnsavedClaim) setConfirmExit(true);
+    else { setOpen(false); resetForm(); }
+  };
+
   return (
-    <Sheet open={open} onOpenChange={(isOpen) => {
-      setOpen(isOpen);
-      if (!isOpen) resetForm();
+    <>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (isOpen) setOpen(true);
+      else requestClose();
     }}>
-      <SheetTrigger asChild>
+      <DialogTrigger asChild>
         <Button>
           <Plus className="w-4 h-4 mr-2" />{mt("newDamageClaim")}</Button>
-      </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>
+      </DialogTrigger>
+      <AppDialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>
             {step === 'form' ? mt("createDamageClaim") : mt("addEvidence")}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {step === 'form' 
               ? mt("fillClaimDetailsDesc")
               : mt("uploadEvidenceDesc")
             }
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         {/* Step indicator */}
         <div className="flex items-center gap-2 my-4">
@@ -538,6 +550,11 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               </p>
               {loadingBookings ? (
                 <Skeleton className="h-10 w-full" />
+              ) : bookingsError ? (
+                <div className="rounded-lg border border-dashed p-5 text-center">
+                  <p className="text-sm text-muted-foreground">{mt("eligibleBookingsLoadFailed")}</p>
+                  <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => retryBookings()}>{mt("retry")}</Button>
+                </div>
               ) : recentBookings.length === 0 ? (
                 <div className="p-4 border rounded-md bg-muted/50 text-center">
                   <p className="text-sm text-muted-foreground">
@@ -703,14 +720,14 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               </div>
             </div>
 
-            <SheetFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>{mt("cancel")}</Button>
+            <DialogFooter className="pt-4">
+              <Button type="button" variant="ghost" onClick={requestClose}>{mt("cancel")}</Button>
               <Button 
                 type="button"
                 onClick={() => setStep('evidence')}
                 disabled={!canProceedToEvidence}
               >{mt("nextAddEvidence")}</Button>
-            </SheetFooter>
+            </DialogFooter>
           </div>
         ) : (
           <div className="space-y-4 mt-4">
@@ -808,7 +825,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               )}
             </div>
 
-            <SheetFooter className="pt-4 flex-col sm:flex-row gap-2">
+            <DialogFooter className="pt-4 flex-col sm:flex-row gap-2">
               <Button 
                 type="button" 
                 variant="outline" 
@@ -840,11 +857,13 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                   )}
                 </Button>
               </div>
-            </SheetFooter>
+            </DialogFooter>
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
+    <UnsavedChangesDialog open={confirmExit} onOpenChange={setConfirmExit} description={mt("damageClaimUnsavedDescription")} onDiscard={() => { setConfirmExit(false); setOpen(false); resetForm(); }} />
+    </>
   );
 }
 
@@ -853,19 +872,15 @@ export function DamageClaimQueue() {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [showAll, setShowAll] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>("action");
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [globalFilter, setGlobalFilter] = useState("");
 
   // Fetch claims
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/manager/damage-claims', showAll],
+    queryKey: ['/api/manager/damage-claims', 'all'],
     queryFn: async () => {
-      const url = showAll 
-        ? '/api/manager/damage-claims?includeAll=true' 
-        : '/api/manager/damage-claims';
-      const response = await apiRequest('GET', url);
+      const response = await apiRequest('GET', '/api/manager/damage-claims?includeAll=true');
       return response.json();
     },
     refetchInterval: 30000,
@@ -906,17 +921,25 @@ export function DamageClaimQueue() {
   const isProcessing = submitMutation.isPending || chargeMutation.isPending;
 
   const [selectedClaimId, setSelectedClaimId] = useState<number | null>(null);
-  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const openedOverviewClaim = useRef<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("claim");
+    if (!id || openedOverviewClaim.current === id || !claims.some((claim) => claim.id === Number(id))) return;
+    openedOverviewClaim.current = id;
+    setSelectedClaimId(Number(id));
+    setDetailDialogOpen(true);
+  }, [claims]);
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
 
   const handleView = (id: number) => {
     setSelectedClaimId(id);
-    setDetailSheetOpen(true);
+    setDetailDialogOpen(true);
   };
 
   // Group claims by status
   const draftClaims = useMemo(() => claims.filter(c => c.status === 'draft'), [claims]);
-  const pendingClaims = useMemo(() => claims.filter(c => ['submitted', 'under_review'].includes(c.status)), [claims]);
+  const pendingClaims = useMemo(() => claims.filter(c => ['submitted', 'chef_disputed', 'under_review', 'charge_pending'].includes(c.status)), [claims]);
   const actionRequiredClaims = useMemo(() => claims.filter(c => 
     ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'escalated'].includes(c.status)
   ), [claims]);
@@ -1042,66 +1065,12 @@ export function DamageClaimQueue() {
       header: "",
       cell: ({ row }) => {
         const claim = row.original;
-        const canSubmit = claim.status === 'draft' && claim.evidence.length >= 2;
-        const canCharge = ['approved', 'partially_approved', 'chef_accepted'].includes(claim.status);
-        const canDownloadInvoice = claim.status === 'charge_succeeded';
-        const isDownloading = downloadingInvoiceId === claim.id;
-
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleView(claim.id)}>
-                <Eye className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
-
-              {canSubmit && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={() => submitMutation.mutate(claim.id)}
-                    disabled={isProcessing}
-                  >
-                    <Send className="h-4 w-4 mr-2" />{mt("submitToChef")}</DropdownMenuItem>
-                </>
-              )}
-
-              {canCharge && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={() => chargeMutation.mutate(claim.id)}
-                    disabled={isProcessing}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />{mt("chargeChef")}</DropdownMenuItem>
-                </>
-              )}
-
-              {canDownloadInvoice && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={() => handleDownloadInvoice(claim.id)}
-                    disabled={isDownloading}
-                  >
-                    {isDownloading ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" />
-                    )}
-                    {mt("downloadInvoice")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="outline" size="sm" onClick={() => handleView(claim.id)}>{mt("viewDetails")}</Button>
         );
       },
     },
-  ], [downloadingInvoiceId, isProcessing, submitMutation, chargeMutation]);
+  ], []);
 
   // TanStack Table instance
   const table = useReactTable({
@@ -1146,19 +1115,22 @@ export function DamageClaimQueue() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-48 w-full" />
+      <div className="space-y-4" aria-label={mt("navDamageClaims")}>
+        <Skeleton className="h-16 w-2/3" />
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <Card className="border-destructive">
-        <CardContent className="pt-6">
-          <p className="text-destructive">Error loading damage claims: {(error as Error).message}</p>
-          <Button onClick={() => refetch()} className="mt-4">
+      <Card className="border-border shadow-sm">
+        <CardContent className="py-12 text-center">
+          <AlertTriangle className="mx-auto mb-4 h-8 w-8 text-muted-foreground" />
+          <h3 className="font-semibold">{mt("damageClaimsLoadFailed")}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{mt("damageClaimsLoadFailedHelp")}</p>
+          <Button onClick={() => refetch()} className="mt-5" variant="outline">
             <RefreshCw className="w-4 h-4 mr-2" />{mt("retry")}</Button>
         </CardContent>
       </Card>
@@ -1170,24 +1142,28 @@ export function DamageClaimQueue() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold">{mt("navDamageClaims")}</h2>
-          <p className="text-muted-foreground">{mt("fileAndManageDamageClaimsAgainstChefBookings")}</p>
+          <h2 className="text-2xl font-semibold tracking-tight">{mt("navDamageClaims")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{mt("damageClaimsPageDescription")}</p>
         </div>
         <div className="flex gap-2">
-          <CreateClaimSheet onCreated={() => refetch()} />
-          <Button 
-            variant={showAll ? "default" : "outline"} 
-            onClick={() => setShowAll(!showAll)}
-          >
-            {showAll ? mt("hideResolved") : mt("showResolved")}
-          </Button>
-          <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />{mt("refresh")}</Button>
+          <CreateClaimDialog onCreated={() => refetch()} />
         </div>
       </div>
 
       {/* Search + Tabs */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      {claims.length > 0 && <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          [mt("actionRequired"), actionRequiredClaims.length, "action"],
+          [mt("drafts"), draftClaims.length, "drafts"],
+          [mt("pendingResponse"), pendingClaims.length, "pending"],
+          [mt("resolved"), resolvedClaims.length, "resolved"],
+        ].map(([label, count, tab]) => <button key={tab} type="button" onClick={() => setActiveTab(String(tab))} className="rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="mt-2 text-2xl font-semibold tabular-nums">{count}</p>
+        </button>)}
+      </div>}
+
+      {claims.length > 0 && <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <Input
           placeholder={mt("searchClaims")}
           value={globalFilter}
@@ -1207,17 +1183,19 @@ export function DamageClaimQueue() {
             <TabsTrigger value="all" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("filterAll")}</TabsTrigger>
           </TabsList>
         </Tabs>
-      </div>
+      </div>}
 
       {/* TanStack Table */}
       {filteredClaims.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">{mt("noClaimsInThisCategory")}</h3>
-            <p className="text-muted-foreground">
-              {activeTab === "all" ? mt("noDamageClaimsYet") : mt("noTabClaimsFound", { tab: activeTab === "action" ? mt("action") : activeTab === "drafts" ? mt("drafts") : activeTab === "pending" ? mt("pending") : mt("resolved") })}
+        <Card className="border-dashed shadow-none">
+          <CardContent className="flex flex-col items-center py-14 text-center">
+            <FileText className="mb-4 h-9 w-9 text-muted-foreground/60" />
+            <h3 className="text-lg font-semibold">{claims.length === 0 ? mt("noDamageClaimsYetTitle") : globalFilter ? mt("noResults") : mt("noClaimsInThisCategory")}</h3>
+            <p className="mt-2 max-w-md text-sm text-muted-foreground">
+              {claims.length === 0 ? mt("noDamageClaimsYetHelp") : globalFilter ? mt("damageClaimsClearSearchHelp") : mt("noTabClaimsFound", { tab: activeTab === "action" ? mt("action") : activeTab === "drafts" ? mt("drafts") : activeTab === "pending" ? mt("pending") : mt("resolved") })}
             </p>
+            {globalFilter && <Button variant="outline" size="sm" className="mt-5" onClick={() => setGlobalFilter("")}>{mt("clearSearch")}</Button>}
+            {claims.length > 0 && !globalFilter && activeTab !== "all" && <Button variant="outline" size="sm" className="mt-5" onClick={() => setActiveTab("all")}>{mt("allClaims")}</Button>}
           </CardContent>
         </Card>
       ) : (
@@ -1233,7 +1211,8 @@ export function DamageClaimQueue() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <MobileTableCards rows={table.getRowModel().rows} onRowClick={(claim) => handleView(claim.id)} />
+            <div className="hidden rounded-md border overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   {table.getHeaderGroups().map((headerGroup) => (
@@ -1271,12 +1250,16 @@ export function DamageClaimQueue() {
         </Card>
       )}
 
-      {/* Detail Sheet for viewing claim and uploading evidence */}
-      <DamageClaimDetailSheet
+      {/* Detail Dialog for viewing claim and uploading evidence */}
+      <DamageClaimDetailDialog
         claimId={selectedClaimId}
-        open={detailSheetOpen}
-        onOpenChange={setDetailSheetOpen}
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
         onClaimUpdated={() => refetch()}
+        onSubmit={(id) => submitMutation.mutate(id)}
+        onCharge={(id) => chargeMutation.mutate(id)}
+        onDownloadInvoice={handleDownloadInvoice}
+        isProcessing={isProcessing || downloadingInvoiceId !== null}
       />
     </div>
   );

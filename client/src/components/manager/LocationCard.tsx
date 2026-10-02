@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { mt } from "@/i18n/manager";
-import { Building2, MapPin, Calendar, Clock, CheckCircle, AlertCircle, XCircle, Edit, Eye, ArrowRight, Info, Image as ImageIcon } from "@/components/ui/manager-icons";
+import { Building2, MapPin, Calendar, Clock, CheckCircle, AlertCircle, XCircle, Edit, Eye, ChevronRight, Info, Image as ImageIcon } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -230,7 +230,7 @@ export default function LocationCard({
               onClick={() => onManage(location)}
               className="flex-1 gap-1.5"
               disabled={location.kitchenLicenseStatus !== 'approved'}
-            >{mt("manage")}<ArrowRight className="w-4 h-4" />
+            >{mt("manage")}<ChevronRight className="w-4 h-4" />
             </Button>
           </div>
         </CardFooter>

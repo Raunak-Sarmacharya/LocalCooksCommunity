@@ -1,4 +1,5 @@
-import { Building, BookOpen, Calendar, CreditCard, FileText, Shield } from "lucide-react";
+import { BookOpen, Calendar, CreditCard, FileText, Shield } from "lucide-react";
+import { CalendarDays } from "@/components/ui/manager-icons";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -49,7 +50,7 @@ export default function ChefSupportPage({
     },
     {
       category: t("supportCategoryKitchenBookings", "Kitchen bookings"),
-      icon: Building,
+      icon: CalendarDays,
       questions: [
         {
           q: t("supportFaqKitchenBookingsQ1", "How do I book a commercial kitchen?"),

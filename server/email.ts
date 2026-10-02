@@ -7,6 +7,8 @@ import { dirname, join } from 'path';
 import { tEmail } from "./i18n/outbound";
 import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
 import { matchingLocalInstants } from '@shared/booking-dst';
+import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
+import { formatTourDate, formatTourClock, formatTourSlotRange } from '@shared/tour-time';
 
 // Dynamic import for timezone-utils to handle Vercel serverless path resolution
 // Use a cached function that falls back to a local implementation if import fails
@@ -101,7 +103,7 @@ const recentEmails = new Map<string, number>();
 const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
 
 // Create a transporter with enhanced configuration for Vercel serverless
-const createTransporter = (config: EmailConfig) => {
+const createTransporter = (config: EmailConfig, durableDelivery = false) => {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
   return nodemailer.createTransport({
@@ -118,9 +120,9 @@ const createTransporter = (config: EmailConfig) => {
       minVersion: 'TLSv1.2' // Use modern TLS (SSLv3 is deprecated and rejected by most servers)
     },
     // Reduced timeouts for serverless functions (max 10s execution time)
-    connectionTimeout: isProduction ? 15000 : 60000, // 15s production, 60s development
-    greetingTimeout: isProduction ? 10000 : 30000, // 10s production, 30s development
-    socketTimeout: isProduction ? 15000 : 60000, // 15s production, 60s development
+    connectionTimeout: durableDelivery ? 8000 : isProduction ? 15000 : 60000,
+    greetingTimeout: durableDelivery ? 8000 : isProduction ? 10000 : 30000,
+    socketTimeout: durableDelivery ? 8000 : isProduction ? 15000 : 60000,
     // Let nodemailer auto-negotiate the best auth method
     // authMethod: 'PLAIN', // Removed - let server choose (Hostinger prefers LOGIN)
     // Enable debug for troubleshooting in development only
@@ -174,7 +176,7 @@ async function persistEmailLog(params: {
 }
 
 // Enhanced send email function with Vercel serverless optimizations
-export const sendEmail = async (content: EmailContent, options?: { trackingId?: string; emailType?: string; retryOfId?: number }): Promise<boolean> => {
+export const sendEmail = async (content: EmailContent, options?: { trackingId?: string; emailType?: string; retryOfId?: number; durableDelivery?: boolean }): Promise<boolean> => {
   const startTime = Date.now();
   let transporter: any = null;
 
@@ -201,7 +203,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     }
 
     // Check for duplicate emails if trackingId is provided
-    if (options?.trackingId) {
+    if (options?.trackingId && !options.durableDelivery) {
       const lastSent = recentEmails.get(options.trackingId);
       const now = Date.now();
 
@@ -277,14 +279,14 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       }
     });
 
-    transporter = createTransporter(config);
+    transporter = createTransporter(config, options?.durableDelivery);
 
     // Enhanced from address with proper formatting using Vercel environment variables
     const fromName = getOrganizationName();
     const fromEmail = process.env.EMAIL_FROM || `${fromName} <${config.auth.user}>`;
 
     // Verify SMTP connection (skip in production for faster execution)
-    if (!isProduction) {
+    if (!isProduction && !options?.durableDelivery) {
       try {
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
@@ -348,7 +350,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     // Send the email with enhanced timeout protection and retry logic (critical for serverless)
     let info;
     let attempts = 0;
-    const maxAttempts = 2; // Allow one retry for better reliability
+    const maxAttempts = options?.durableDelivery ? 1 : 2; // Tour retries are owned by the durable ledger.
 
     while (attempts < maxAttempts) {
       attempts++;
@@ -357,7 +359,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       try {
         const emailPromise = transporter.sendMail(mailOptions);
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Email sending timeout - exceeded 25 seconds')), 25000); // Increased timeout
+          setTimeout(() => reject(new Error('Email sending timeout')), options?.durableDelivery ? 8000 : 25000);
         });
 
         info = await Promise.race([emailPromise, timeoutPromise]);
@@ -3460,7 +3462,7 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
   const chefFirstName = bookingData.chefName.split(' ')[0];
   const chefLastName = bookingData.chefName.includes(' ') ? bookingData.chefName.split(' ').slice(1).join(' ') : '';
   const subject = `New Booking Request from ${chefFirstName}${chefLastName ? ' ' + chefLastName : ''}`;
-  const timezone = bookingData.timezone || 'America/St_Johns';
+  const timezone = DEFAULT_TIMEZONE;
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const bookingDetailsUrl = `${getSubdomainUrl('kitchen')}/manager/booking/${bookingData.bookingId}`;
   const dashboardUrl = getDashboardUrl('kitchen');
@@ -3739,7 +3741,7 @@ The Local Cooks Team
 // Booking confirmed notification email for managers (when manager confirms a booking)
 export const generateBookingStatusChangeNotificationEmail = (bookingData: { managerEmail: string; managerName?: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; status: string; timezone?: string; locationName?: string; addons?: string; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown }): EmailContent => {
   const chefFirstName = bookingData.chefName.split(' ')[0];
-  const timezone = bookingData.timezone || 'America/St_Johns';
+  const timezone = DEFAULT_TIMEZONE;
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const dashboardUrl = getDashboardUrl('kitchen');
   const managerFirstName = bookingData.managerName ? bookingData.managerName.split(' ')[0] : bookingData.managerEmail.split('@')[0];
@@ -3869,7 +3871,7 @@ The Local Cooks Team
 
 export const generateBookingRequestEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; operatingWindowStartTime?: string | null; selectedSlots?: unknown }): EmailContent => {
   const subject = `Your Booking Request Has Been Submitted`;
-  const timezone = bookingData.timezone || 'America/St_Johns';
+  const timezone = DEFAULT_TIMEZONE;
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const dashboardUrl = getDashboardUrl();
   const firstName = bookingData.chefName.split(' ')[0];
@@ -3979,7 +3981,7 @@ ${new Date().getFullYear()} Local Cooks
 };
 
 export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown }): EmailContent => {
-  const timezone = bookingData.timezone || 'America/St_Johns';
+  const timezone = DEFAULT_TIMEZONE;
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const dashboardUrl = getDashboardUrl();
   const firstName = bookingData.chefName.split(' ')[0];
@@ -5116,7 +5118,7 @@ export const generatePenaltyApprovedEmail = (data: {
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Penalty Amount:</span> <strong style="color: #dc2626;">$${penaltyAmount} CAD</strong></p>
       </div>
       <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
-        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">This penalty will be charged to your saved payment method. If the charge requires additional verification, you will receive a separate email with a payment link.</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">You can dispute this final amount from your bookings dashboard during the configured response window. Collection waits until that window ends and any dispute has been reviewed by an admin.</p>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
@@ -5144,7 +5146,7 @@ Storage: ${data.storageName}
 Days Overdue: ${data.daysOverdue}
 Penalty Amount: $${penaltyAmount} CAD
 
-This penalty will be charged to your saved payment method. If additional verification is required, you will receive a payment link.
+You can dispute this final amount from your bookings dashboard during the configured response window. Collection waits until that window ends and any dispute has been reviewed by an admin.
 
 View bookings: ${dashboardUrl}
 
@@ -7673,7 +7675,7 @@ The Local Cooks Team
 
 export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; timezone?: string }): EmailContent => {
   const styles = getUniformEmailStyles();
-  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+  const dateStr = formatTourDate(new Date(data.tourDate));
 
   const html = `
     <!DOCTYPE html>
@@ -7694,7 +7696,7 @@ export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefNa
           <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
             <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
             <p><strong>Date:</strong> ${dateStr}</p>
-            <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
+            <p><strong>Time:</strong> ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE})</p>
           </div>
           
           <p class="message">Local Cooks will review your request first. If approved, it will be sent to the kitchen manager for final confirmation.</p>
@@ -7712,12 +7714,12 @@ export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefNa
 };
 
 export const generateTourRequestedLocalCooksEmail = (data: { recipientEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; timezone?: string }): EmailContent => {
-  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+  const dateStr = formatTourDate(new Date(data.tourDate));
   return {
     to: data.recipientEmail,
     subject: `Kitchen tour request awaiting Local Cooks review - ${data.chefName}`,
-    text: `${data.chefName} requested a tour of ${data.kitchenName} on ${dateStr} at ${data.startTime}${data.timezone ? ` (${data.timezone})` : ''}. Review the request: ${getSubdomainUrl('admin')}/admin?section=tour-requests`,
-    html: `<p><strong>${data.chefName}</strong> requested a tour of <strong>${data.kitchenName}</strong>.</p><p>${dateStr} at ${data.startTime}${data.timezone ? ` (${data.timezone})` : ''}</p><p><a href="${getSubdomainUrl('admin')}/admin?section=tour-requests">Review tour request</a></p>${getUniformEmailFooter()}`,
+    text: `${data.chefName} requested a tour of ${data.kitchenName} on ${dateStr} at ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE}). Review the request: ${getSubdomainUrl('admin')}/admin?section=tour-requests`,
+    html: `<p><strong>${data.chefName}</strong> requested a tour of <strong>${data.kitchenName}</strong>.</p><p>${dateStr} at ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE})</p><p><a href="${getSubdomainUrl('admin')}/admin?section=tour-requests">Review tour request</a></p>${getUniformEmailFooter()}`,
   };
 };
 
@@ -7729,7 +7731,7 @@ export const generateTourDeclinedByLocalCooksEmail = (data: { chefEmail: string;
 });
 
 export const generateTourManagerChangeEmail = (data: { managerEmail: string; chefName: string; kitchenName: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string }): EmailContent => {
-  const formatTime = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: data.timezone, dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  const formatTime = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE, dateStyle: 'medium', timeStyle: 'short' }).format(date);
   const title = data.kind === 'cancelled' ? 'Kitchen tour cancelled by chef' : 'Kitchen tour time change requested';
   const details = data.kind === 'cancelled'
     ? `${data.chefName} cancelled their tour at ${data.kitchenName}, previously scheduled for ${formatTime(data.scheduledAt)}.`
@@ -7746,7 +7748,7 @@ export const generateTourManagerChangeEmail = (data: { managerEmail: string; che
 
 export const generateTourRequestedManagerEmail = (data: { managerEmail: string; managerName: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; chefNotes?: string; timezone?: string }): EmailContent => {
   const styles = getUniformEmailStyles();
-  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+  const dateStr = formatTourDate(new Date(data.tourDate));
 
   const html = `
     <!DOCTYPE html>
@@ -7767,7 +7769,7 @@ export const generateTourRequestedManagerEmail = (data: { managerEmail: string; 
           <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
             <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
             <p><strong>Date:</strong> ${dateStr}</p>
-            <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
+            <p><strong>Time:</strong> ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE})</p>
             ${data.chefNotes ? `<p><strong>Notes from Chef:</strong> ${data.chefNotes}</p>` : ''}
           </div>
           
@@ -7789,24 +7791,17 @@ export const generateTourRequestedManagerEmail = (data: { managerEmail: string; 
   };
 };
 
-export const generateTourConfirmedEmail = (data: { isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; startTime: string; endTime: string; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[] }): EmailContent => {
+export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[] }): EmailContent => {
   const styles = getUniformEmailStyles();
-  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
-  const title = `Kitchen Tour: ${data.otherPartyName} @ ${data.kitchenName}`;
-  
-  // Note: we're using a single start date/time block but calculating a nominal end time if it isn't provided or we just use 30 minutes later for the .ics
-  let startDateTimeObj: Date;
-  let endDateTimeObj: Date;
-  
-  try {
-    const bookingDateStr = data.tourDate instanceof Date ? data.tourDate.toISOString().split('T')[0] : String(data.tourDate).split('T')[0];
-    startDateTimeObj = createBookingDateTime(bookingDateStr, data.startTime, data.timezone || 'America/St_Johns');
-    endDateTimeObj = createBookingDateTime(bookingDateStr, data.endTime, data.timezone || 'America/St_Johns');
-  } catch (err) {
-    logger.error('Error calculating viewing .ics dates, using fallback', err);
-    startDateTimeObj = new Date();
-    endDateTimeObj = new Date(startDateTimeObj.getTime() + 30 * 60000);
+  const startDateTimeObj = new Date(data.tourDate);
+  const endDateTimeObj = new Date(startDateTimeObj.getTime() + data.durationMinutes * 60_000);
+  if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(startDateTimeObj.getTime())
+    || !Number.isFinite(endDateTimeObj.getTime()) || !Number.isFinite(data.durationMinutes) || data.durationMinutes <= 0) {
+    throw new Error('Invalid tour calendar details');
   }
+  const dateStr = formatTourDate(startDateTimeObj);
+  const startTime = formatTourSlotRange(startDateTimeObj, data.durationMinutes);
+  const title = `Kitchen Tour: ${data.otherPartyName} @ ${data.kitchenName}`;
 
   const icsContent = generateIcsFile(
     title,
@@ -7815,7 +7810,8 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
     data.locationAddress,
     `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
     data.organizerEmail,
-    data.attendeeEmails
+    data.attendeeEmails,
+    `tour-${data.tourId}@localcooks.com`
   );
 
   const googleCalendarUrl = generateGoogleCalendarUrl(
@@ -7846,11 +7842,11 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
             <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
             <p><strong>Meeting with:</strong> ${data.otherPartyName}</p>
             <p><strong>Date:</strong> ${dateStr}</p>
-            <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
+            <p><strong>Time:</strong> ${startTime} (${DEFAULT_TIMEZONE})</p>
             <p><strong>Address:</strong> ${data.locationAddress}</p>
             ${data.notes ? `<p><strong>Notes:</strong> ${data.notes}</p>` : ''}
           </div>
-          <p class="message" style="margin-bottom: 24px;">A calendar invitation is attached to this email. You can also add it directly to your Google Calendar:</p>
+          <p class="message" style="margin-bottom: 24px;">A calendar file is attached. Saved calendar events do not update automatically when a tour changes. You can also add this tour to Google Calendar:</p>
           <div style="margin: 16px 0 32px 0;">
             <a href="${googleCalendarUrl}" target="_blank" class="cta-button" style="display: inline-block; padding: 10px 24px; background: #4285F4; color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Add to Google Calendar</a>
           </div>
@@ -7867,16 +7863,17 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
     attachments: [
       {
         filename: 'kitchen-tour.ics',
-        contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+        contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
         content: icsContent
       }
     ]
   };
 };
 
-export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; cancellationReason?: string; managerNotes?: string; timezone?: string }): EmailContent => {
+export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; cancellationReason?: string; managerNotes?: string; timezone?: string; cancelled?: boolean; reviewer?: 'Local Cooks' | 'Manager' }): EmailContent => {
   const styles = getUniformEmailStyles();
-  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+  const dateStr = formatTourDate(new Date(data.tourDate));
+  const reviewer = data.reviewer || 'Manager';
 
   const html = `
     <!DOCTYPE html>
@@ -7892,17 +7889,17 @@ export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefNam
         </div>
         <div class="content">
           <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
-          <p class="message">Unfortunately, the manager at <strong>${data.kitchenName}</strong> was unable to accept your kitchen tour request for ${dateStr} at ${data.startTime}.</p>
+          <p class="message">Your ${data.cancelled ? 'confirmed kitchen tour' : 'kitchen tour request'} at <strong>${data.kitchenName}</strong> for ${dateStr} at ${formatTourClock(new Date(data.tourDate))} was ${data.cancelled ? 'cancelled' : 'declined'} by ${reviewer === 'Manager' ? 'the manager' : reviewer}.</p>
           
           ${(data.cancellationReason || data.managerNotes) ? `
           <div class="info-box">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Message from Manager</h3>
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Message from ${reviewer}</h3>
             ${data.cancellationReason ? `<p><strong>Reason:</strong> ${data.cancellationReason}</p>` : ''}
             ${data.managerNotes ? `<p>${data.managerNotes}</p>` : ''}
           </div>
           ` : ''}
           
-          <p class="message">We encourage you to log back in and request a tour for a different time that works for the manager, or explore other available kitchens in your area.</p>
+          <p class="message">Open My Tours for the current status. You can request another time or explore other kitchens.${data.cancelled ? ' Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : ''}</p>
           
           <div style="text-align: center;">
             <a href="${getSubdomainUrl('chef')}/book-kitchen" class="cta-button">Find Kitchens</a>
@@ -7915,7 +7912,7 @@ export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefNam
 
   return {
     to: data.chefEmail,
-    subject: `Kitchen Tour Request Declined - ${data.kitchenName}`,
+    subject: `${data.cancelled ? 'Kitchen Tour Cancelled' : 'Kitchen Tour Request Declined'} - ${data.kitchenName}`,
     html,
   };
 };

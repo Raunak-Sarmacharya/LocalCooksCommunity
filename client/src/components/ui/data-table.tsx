@@ -16,6 +16,12 @@ export interface DataTableColumnMeta {
     mobileLabel?: string
     /** Drop this column from the mobile card view entirely (e.g. a desktop-only audit column). */
     mobileHidden?: boolean
+    /**
+     * How much of the mobile card's two-column grid this field takes. Default `"half"`. Use
+     * `"full"` for a value that is too wide to read at half width (a row of chips, a progress
+     * rail). Ignored for the FIRST detail column, which is always the card's full-width identity row.
+     */
+    mobileSpan?: "half" | "full"
 }
 
 interface DataTableProps<TData> {
@@ -90,20 +96,27 @@ export function DataTable<TData>({
     const rows = table.getRowModel().rows
     const activateRow = (row: TData) => onRowClick?.(row)
 
+    // A filter box that cannot filter is worse than no box. `filterColumn`
+    // defaults to "name", which most tables do not have, so the input silently
+    // swallowed keystrokes and looked like a second, broken search field.
+    const filterableColumn = table.getColumn(filterColumn)
+
     return (
         <div className="w-full space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center py-2 sm:py-4 w-full sm:w-auto">
-                    <Input
-                        placeholder={resolvedFilterPlaceholder}
-                        value={(table.getColumn(filterColumn)?.getFilterValue() as string) ?? ""}
-                        onChange={(event) =>
-                            table.getColumn(filterColumn)?.setFilterValue(event.target.value)
-                        }
-                        className="w-full sm:max-w-sm"
-                    />
+            {filterableColumn && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center py-2 sm:py-4 w-full sm:w-auto">
+                        <Input
+                            placeholder={resolvedFilterPlaceholder}
+                            value={(filterableColumn.getFilterValue() as string) ?? ""}
+                            onChange={(event) =>
+                                filterableColumn.setFilterValue(event.target.value)
+                            }
+                            className="w-full sm:max-w-sm"
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Desktop / tablet: the table. Hidden below md, where it would only scroll sideways. */}
             <div data-testid="data-table-desktop" className="hidden md:block rounded-md border overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
@@ -170,20 +183,32 @@ export function DataTable<TData>({
                 </Table>
             </div>
 
-            {/* Mobile: one card per row, label/value pairs. A data table cannot be read at 375px. */}
-            <div data-testid="data-table-mobile" className="md:hidden space-y-4">
+            {/*
+              On a phone each record is a readable card: the first column is the record identity
+              (its own full-width row, emphasised), and the remaining fields sit in a compact
+              TWO-column grid instead of one labelled field per line. A seven-column table stacked
+              one field per line produced a card taller than the phone for a single record; two
+              columns halves it while keeping every label attached to its value. A field that is
+              genuinely too wide for half (a row of chips, a progress rail) opts into the full row
+              with `meta.mobileSpan = "full"`.
+            */}
+            <div data-testid="data-table-mobile" className="space-y-3 md:hidden">
                 {rows?.length ? (
                     rows.map((row) => {
                         const cells = row
                             .getVisibleCells()
                             .filter((cell) => !readColumnMeta(cell.column.columnDef).mobileHidden)
+                        const actionCells = cells.filter((cell) => cell.column.id === "actions")
+                        const detailCells = cells.filter((cell) => cell.column.id !== "actions")
+                        const [identityCell, ...restCells] = detailCells
+                        const identityLabel = identityCell ? mobileLabelFor(identityCell.column.columnDef) : undefined
                         return (
                             <div
                                 key={row.id}
                                 data-state={row.getIsSelected() && "selected"}
                                 tabIndex={onRowClick ? 0 : undefined}
                                 className={cn(
-                                    "rounded-lg border bg-card p-4 space-y-3",
+                                    "data-table-mobile-card min-w-0 space-y-3 rounded-xl border bg-card p-4 shadow-sm",
                                     onRowClick &&
                                         "cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 )}
@@ -199,24 +224,41 @@ export function DataTable<TData>({
                                     }
                                 }}
                             >
-                                {cells.map((cell) => {
-                                    const label = mobileLabelFor(cell.column.columnDef)
-                                    return (
-                                        <div key={cell.id} className="flex items-start justify-between gap-3">
-                                            {label ? (
-                                                <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                                                    {label}
-                                                </span>
-                                            ) : null}
-                                            <span className="min-w-0 flex-1 text-sm text-right">
-                                                {flexRender(
-                                                    cell.column.columnDef.cell,
-                                                    cell.getContext()
-                                                )}
+                                {identityCell ? (
+                                    <div className="min-w-0 border-b pb-3">
+                                        {identityLabel ? (
+                                            <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                                                {identityLabel}
                                             </span>
+                                        ) : null}
+                                        <div className="min-w-0 break-words text-base font-semibold [overflow-wrap:anywhere]">
+                                            {flexRender(identityCell.column.columnDef.cell, identityCell.getContext())}
                                         </div>
-                                    )
-                                })}
+                                    </div>
+                                ) : null}
+                                {restCells.length > 0 ? (
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                        {restCells.map((cell) => {
+                                            const label = mobileLabelFor(cell.column.columnDef)
+                                            const fullWidth = readColumnMeta(cell.column.columnDef).mobileSpan === "full"
+                                            return (
+                                                <div key={cell.id} className={cn("min-w-0", fullWidth && "col-span-2")}>
+                                                    {label ? (
+                                                        <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                                                            {label}
+                                                        </span>
+                                                    ) : null}
+                                                    <div className="min-w-0 break-words text-sm [overflow-wrap:anywhere]">
+                                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                ) : null}
+                                {actionCells.length > 0 && <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 border-t pt-3">
+                                    {actionCells.map((cell) => <div key={cell.id} className="min-w-0">{flexRender(cell.column.columnDef.cell, cell.getContext())}</div>)}
+                                </div>}
                             </div>
                         )
                     })
@@ -227,7 +269,7 @@ export function DataTable<TData>({
                 )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 py-4">
+            {table.getPageCount() > 1 && <div className="flex items-center justify-end gap-3 py-4">
                 <div className="flex items-center gap-2">
                     <Button
                         variant="outline"
@@ -246,7 +288,7 @@ export function DataTable<TData>({
                         {t("next")}
                     </Button>
                 </div>
-            </div>
+            </div>}
         </div>
     )
 }

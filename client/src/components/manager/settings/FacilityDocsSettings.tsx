@@ -21,6 +21,7 @@ import { auth } from "@/lib/firebase";
 import { SettingsFileUpload } from "./SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
 import { ChefPageHeader } from "@/components/chef/ui";
+import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
 
 interface Location {
   id: number;
@@ -171,14 +172,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
   );
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">{mt("loadingFacilityDocuments")}</p>
-        </div>
-      </div>
-    );
+    return <SettingsContentSkeleton rows={3} />;
   }
 
   return (

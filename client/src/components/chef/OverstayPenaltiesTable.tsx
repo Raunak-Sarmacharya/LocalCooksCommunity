@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 /**
  * Overstay Penalties Table Component
@@ -17,15 +18,21 @@ import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, CheckCircle, Clock, CreditCard, RefreshCw, Building2, Package, DollarSign, ArrowUpDown, Calendar } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, CreditCard, RefreshCw, Building2, DollarSign, ArrowUpDown, Calendar } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ct } from "@/i18n/chef-ns";
+import { overstayCollectionError } from '@shared/overstay-collection';
 
 // Types
 interface OverstayPenalty {
+  itemsRemovedAt: string | null;
+  chefDisputeDeadline: string | null;
+  chefDisputedAt: string | null;
+  disputeReviewedAt: string | null;
   id?: number;
   referenceCode?: string | null;
   bookingId?: number | null;
@@ -240,7 +247,7 @@ function getOverstayPenaltyColumns(t: any,
       header: "",
       cell: ({ row }) => {
         const penalty = row.original;
-        const canPay = !penalty.isResolved && !penalty.isPaid && !penalty.chargeSucceededAt;
+        const canPay = !penalty.isResolved && !penalty.isPaid && !penalty.chargeSucceededAt && !overstayCollectionError(penalty);
 
         if (!canPay) {
           return null;
@@ -406,10 +413,6 @@ export function OverstayPenaltiesTable() {
                 {t("rcOfClaims", "{filtered} of {total} claims", { filtered: table.getFilteredRowModel().rows.length, total: penalties.length })}
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {t("rcRefreshBtn", "Refresh")}
-            </Button>
           </div>
         </CardHeader>
 
@@ -433,7 +436,8 @@ export function OverstayPenaltiesTable() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <MobileTableCards rows={table.getRowModel().rows} />
+          <div className="hidden rounded-xl border overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (

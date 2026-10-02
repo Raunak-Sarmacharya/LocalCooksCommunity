@@ -44,12 +44,17 @@ describe("seller certifications", () => {
     expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[index]).toHaveAttribute("aria-checked", "false");
   });
 
-  it.each([copy.sellerApp_aboutFoodSafety, copy.sellerApp_aboutFoodEst])("keeps %s help concise with a Learn more link", async title => {
+  it.each([
+    [copy.sellerApp_aboutFoodSafety, 'Visit SkillsPass NL', 'https://skillspassnl.com'],
+    [copy.sellerApp_aboutFoodEst, 'Visit Gov.nl.ca Food Safety', 'https://www.gov.nl.ca/dgsnl/licences/env-health/food/'],
+  ])("keeps %s help concise with an official resource link", async (title, label, href) => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: title }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("link", { name: /Learn more/ })).toHaveAttribute("target", "_blank");
-    expect(within(dialog).getByRole("link")).toHaveAttribute("rel", "noopener noreferrer");
+    const link = within(dialog).getByRole("link", { name: label });
+    expect(link).toHaveAttribute("href", href);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
     const sentences = Array.from(dialog.querySelectorAll("p")).flatMap(p => p.textContent?.match(/[^.!?]+[.!?]+/g) || []);
     expect(sentences.length).toBeLessThanOrEqual(3);
   });
@@ -63,12 +68,14 @@ describe("seller certifications", () => {
     expect(mocks.upload).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("progressbar")).toHaveAttribute("aria-valuenow", "45");
     expect(screen.getByRole("button", { name: copy.sellerApp_back, hidden: true })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     await act(async () => finish({ success: true, url: "https://example.com/license.pdf" }));
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[0]).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
+    expect(within(screen.getByTestId("seller-food-safety-yes")).getByRole("radio")).toHaveAttribute("aria-checked", "true");
   });
 
   it("reverts a failed upload on dismissal", async () => {
@@ -78,16 +85,17 @@ describe("seller certifications", () => {
     fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "certificate.pdf", { type: "application/pdf" })] } });
     await waitFor(() => expect(mocks.upload).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
     expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[1]).toHaveAttribute("aria-checked", "false");
   });
 
-  it("does not retain Yes for a whitespace-only document URL", async () => {
+  it("does not retain Yes when an upload returns a whitespace-only document URL", async () => {
+    mocks.upload.mockResolvedValue({ success: true, url: '   ' });
     mount();
-    await openUpload();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: copy.sellerApp_provideUrl }), { button: 0, ctrlKey: false });
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    const dialog = await openUpload();
+    fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'license.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(screen.getByText('license.pdf')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
     expect(screen.getAllByRole("radio", { name: copy.sellerApp_yes })[0]).toHaveAttribute("aria-checked", "false");
   });
 
@@ -99,7 +107,7 @@ describe("seller certifications", () => {
     const dialog = await openUpload();
     fireEvent.change(dialog.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "license.pdf", { type: "application/pdf" })] } });
     await waitFor(() => expect(screen.getByText("license.pdf")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
     const noRadios = screen.getAllByRole("radio", { name: copy.sellerApp_no });
     if (answer === "no") fireEvent.click(noRadios[0]);
     fireEvent.click(noRadios[1]);

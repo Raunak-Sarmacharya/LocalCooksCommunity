@@ -1,15 +1,7 @@
+import { EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import {
-  Wrench,
-  Plus,
-  Pencil,
-  Trash2,
-  ChevronLeft,
-  Check,
-  CheckCircle,
-  DollarSign,
-} from "@/components/ui/manager-icons";
+import { Plus, Pencil, Trash2, ChevronLeft, Check, CheckCircle, DollarSign } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -749,6 +741,17 @@ export function EquipmentListingContent({
     setView('edit');
   }, [kitchens]);
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const itemId = Number(url.searchParams.get("itemId"));
+    if (!Number.isSafeInteger(itemId) || itemId <= 0) return;
+    const match = listings.find((listing) => listing.id === itemId);
+    if (!match) return;
+    openEdit(match, matchSource);
+    url.searchParams.delete("itemId");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [listings, matchSource, openEdit]);
+
   const closePage = useCallback(() => {
     setView('list');
     setForm(null);
@@ -1069,7 +1072,7 @@ export function EquipmentListingContent({
      */
     const pageActions = (
       <div className="flex shrink-0 items-center gap-2">
-        <Button variant="outline" onClick={() => requestExit()} disabled={isSaving || isCreating}>
+        <Button variant="ghost" onClick={() => requestExit()} disabled={isSaving || isCreating}>
           {mt("cancel")}
         </Button>
         {isAdd ? (

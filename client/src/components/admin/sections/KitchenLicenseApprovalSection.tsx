@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -140,24 +141,13 @@ export function KitchenLicenseApprovalSection() {
                   <TabsTrigger value="all">All</TabsTrigger>
                 </TabsList>
               </Tabs>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => refetch()}
-                disabled={isLoading}
-                className="ml-auto sm:ml-0"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-12">
-              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">Loading licenses...</p>
+            <div className="space-y-3 py-4" role="status" aria-label="Loading kitchen licenses">
+              {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
             </div>
           ) : licenses.length === 0 ? (
             <div className="text-center py-12 border rounded-lg border-dashed">

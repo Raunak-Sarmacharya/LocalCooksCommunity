@@ -3,6 +3,13 @@ import { users, applications, chefKitchenApplications } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../logger";
 
+/** Resolve each chef once per response; never use an email as a display label. */
+export async function withChefDisplayNames<T extends { chefId?: number | null; chefName?: string | null }>(records: T[]) {
+    const ids = Array.from(new Set(records.flatMap(record => record.chefId && (!record.chefName?.trim() || record.chefName.includes("@")) ? [record.chefId] : [])));
+    const names = new Map(await Promise.all(ids.map(async id => [id, await getUserDisplayName(id, 'chef')] as const)));
+    return records.map(record => ({ ...record, chefName: record.chefName?.trim() && !record.chefName.includes('@') ? record.chefName.trim() : record.chefId ? names.get(record.chefId) || 'A chef' : 'A chef' }));
+}
+
 export async function getUserDisplayName(userId: number, role: 'chef' | 'manager' = 'chef'): Promise<string> {
     if (!userId) return role === 'chef' ? 'A chef' : 'Manager';
     try {

@@ -1,0 +1,1131 @@
+import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
+import { useState, useMemo, useCallback } from "react";
+import { mt } from "@/i18n/manager";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { Label } from "@/components/ui/label";
+import { CheckCircle2, XCircle, Loader2, Calendar, Clock, MapPin, DollarSign, AlertTriangle, Info, Pencil, Settings2, Ban, RotateCcw, ShieldAlert } from "@/components/ui/manager-icons";
+import { cn } from "@/lib/utils";
+import { TruncatedText } from "@/components/common/TruncatedText";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface StorageItemForManagement {
+  id: number;
+  storageBookingId: number;
+  name: string;
+  storageType: string;
+  totalPrice: number; // cents
+  startDate?: string;
+  endDate?: string;
+  status?: string; // confirmed, cancellation_requested, cancelled
+  cancellationRequested?: boolean;
+  cancellationReason?: string;
+}
+
+export interface EquipmentItemForManagement {
+  id: number;
+  equipmentBookingId: number;
+  name: string;
+  totalPrice: number; // cents
+  status?: string;
+}
+
+export interface BookingForManagement {
+  id: number;
+  kitchenName?: string;
+  chefName?: string;
+  locationName?: string;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
+  operatingWindowStartTime?: string | null;
+  totalPrice?: number; // kitchen-only in cents
+  status: string;
+  paymentStatus?: string;
+
+  // Payment/transaction info
+  transactionId?: number;
+  fullRefundRequest?: FullRefundRequest | null;
+  transactionAmount?: number;
+  stripeProcessingFee?: number;
+  managerRevenue?: number;
+  /** Local Cooks platform fee in cents (from payment_transactions). */
+  serviceFee?: number;
+  taxRatePercent?: number;
+  refundableAmount?: number;
+  managerRemainingBalance?: number;
+  refundAmount?: number;
+
+  // Cancellation request info
+  cancellationRequested?: boolean;
+  cancellationReason?: string;
+
+  // Add-ons
+  storageItems?: StorageItemForManagement[];
+  equipmentItems?: EquipmentItemForManagement[];
+}
+
+type ItemDecision = "keep" | "cancel";
+
+export interface ManagementSubmitParams {
+  bookingId: number;
+  action:
+    | "cancel-booking"          // Cancel entire booking (kitchen cancel)
+    | "cancel-booking-refund"   // Cancel entire booking + auto-refund
+    | "partial-cancel"          // Cancel only addons, keep kitchen
+    | "partial-cancel-refund"   // Cancel addons + manual refund
+    | "refund-only"             // Refund without cancelling
+    | "request-full-refund"     // Request admin approval for full refund
+    | "accept-cancellation"     // Accept chef's kitchen cancellation request
+    | "decline-cancellation"    // Decline chef's kitchen cancellation request
+    | "accept-storage-cancel"   // Accept storage cancellation
+    | "decline-storage-cancel"; // Decline storage cancellation
+  storageActions?: Array<{ storageBookingId: number; action: string }>;
+  equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
+  refundAmountCents?: number;
+  storageCancellationId?: number; // For accept/decline storage cancel
+}
+
+interface BookingManagementDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  booking: BookingForManagement | null;
+  isProcessing?: boolean;
+  onSubmit: (params: ManagementSubmitParams) => void;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+const formatTime = (time: string) => {
+  if (!time) return "";
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+};
+
+const formatStorageDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+// ─── Component Wrapper ───────────────────────────────────────────────────────
+
+export function BookingManagementDialog({
+  open,
+  onOpenChange,
+  booking,
+  isProcessing = false,
+  onSubmit,
+}: BookingManagementDialogProps) {
+  
+  const dialogKey = booking ? `mgmt-${booking.id}` : "empty";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open && booking ? (
+        <BookingManagementContent
+          key={dialogKey}
+          booking={booking}
+          isProcessing={isProcessing}
+          onSubmit={onSubmit}
+          onClose={() => onOpenChange(false)}
+        />
+      ) : open ? (
+        <AppDialogContent className="space-y-4 p-6 sm:max-w-[520px]" aria-label={mt("loadingBookingDetails")}>
+          <Skeleton className="h-8 w-2/3" />
+          {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
+        </AppDialogContent>
+      ) : null}
+    </Dialog>
+  );
+}
+
+// ─── Content ─────────────────────────────────────────────────────────────────
+
+function BookingManagementContent({
+  booking,
+  isProcessing,
+  onSubmit,
+  onClose,
+}: {
+  booking: BookingForManagement;
+  isProcessing: boolean;
+  onSubmit: BookingManagementDialogProps["onSubmit"];
+  onClose: () => void;
+}) {
+  // ── State ────────────────────────────────────────────────────────────────
+  const [kitchenDecision, setKitchenDecision] = useState<ItemDecision>("keep");
+
+  const [storageDecisions, setStorageDecisions] = useState<Map<number, ItemDecision>>(() => {
+    const defaults = new Map<number, ItemDecision>();
+    if (booking.storageItems) {
+      for (const item of booking.storageItems) {
+        if (item.status !== "cancelled") {
+          defaults.set(item.storageBookingId, "keep");
+        }
+      }
+    }
+    return defaults;
+  });
+
+  const [equipmentDecisions, setEquipmentDecisions] = useState<Map<number, ItemDecision>>(() => {
+    const defaults = new Map<number, ItemDecision>();
+    if (booking.equipmentItems) {
+      for (const item of booking.equipmentItems) {
+        if (item.status !== "cancelled") {
+          defaults.set(item.equipmentBookingId, "keep");
+        }
+      }
+    }
+    return defaults;
+  });
+
+  const [refundMode, setRefundMode] = useState(false);
+  const [isEditingRefund, setIsEditingRefund] = useState(false);
+  const [customRefundInput, setCustomRefundInput] = useState("");
+
+  // ── Derived data ─────────────────────────────────────────────────────────
+  const activeStorageItems = useMemo(() => booking.storageItems?.filter(i => i.status !== "cancelled") || [], [booking.storageItems]);
+  const cancelledStorageItems = useMemo(() => booking.storageItems?.filter(i => i.status === "cancelled") || [], [booking.storageItems]);
+
+  const activeEquipmentItems = useMemo(() => booking.equipmentItems?.filter(i => i.status !== "cancelled") || [], [booking.equipmentItems]);
+  const cancelledEquipmentItems = useMemo(() => booking.equipmentItems?.filter(i => i.status === "cancelled") || [], [booking.equipmentItems]);
+
+  const hasStorage = (booking.storageItems?.length || 0) > 0;
+  const hasEquipment = (booking.equipmentItems?.length || 0) > 0;
+  const hasAddons = activeStorageItems.length > 0 || activeEquipmentItems.length > 0;
+
+  const isKitchenCancellationRequested = booking.cancellationRequested || booking.status === "cancellation_requested";
+  const kitchenIsCancelling = kitchenDecision === "cancel";
+
+  // ── Toggle handlers ──────────────────────────────────────────────────────
+  const toggleKitchenDecision = useCallback(() => {
+    setKitchenDecision(prev => {
+      const next = prev === "keep" ? "cancel" : "keep";
+      // Kitchen cancel → all addons must cancel too
+      if (booking.storageItems) {
+        setStorageDecisions(sd => {
+          const updated = new Map(sd);
+          for (const item of booking.storageItems!) {
+            if (item.status !== "cancelled") {
+              updated.set(item.storageBookingId, next);
+            }
+          }
+          return updated;
+        });
+      }
+      if (booking.equipmentItems) {
+        setEquipmentDecisions(ed => {
+          const updated = new Map(ed);
+          for (const item of booking.equipmentItems!) {
+            if (item.status !== "cancelled") {
+              updated.set(item.equipmentBookingId, next);
+            }
+          }
+          return updated;
+        });
+      }
+      return next;
+    });
+  }, [booking.storageItems, booking.equipmentItems]);
+
+  const toggleStorageDecision = useCallback((storageBookingId: number) => {
+    if (kitchenIsCancelling) return; // Can't toggle addons when kitchen is cancelled
+    setStorageDecisions(prev => {
+      const next = new Map(prev);
+      const current = next.get(storageBookingId);
+      next.set(storageBookingId, current === "keep" ? "cancel" : "keep");
+      return next;
+    });
+  }, [kitchenIsCancelling]);
+
+  const toggleEquipmentDecision = useCallback((equipmentBookingId: number) => {
+    if (kitchenIsCancelling) return;
+    setEquipmentDecisions(prev => {
+      const next = new Map(prev);
+      const current = next.get(equipmentBookingId);
+      next.set(equipmentBookingId, current === "keep" ? "cancel" : "keep");
+      return next;
+    });
+  }, [kitchenIsCancelling]);
+
+  // ── Refund Calculation ───────────────────────────────────────────────────
+  const refundCalc = useMemo(() => {
+    const kitchenPriceCents = booking.totalPrice || 0;
+    const transactionAmount = booking.transactionAmount || 0;
+    const stripeFee = booking.stripeProcessingFee || 0;
+    const managerRevenue = booking.managerRevenue || 0;
+    const taxRatePercent = booking.taxRatePercent || 0;
+    const alreadyRefunded = booking.refundAmount || 0;
+
+    // Sum cancelled items
+    let cancelledKitchenCents = 0;
+    if (kitchenDecision === "cancel") cancelledKitchenCents = kitchenPriceCents;
+
+    let cancelledStorageCents = 0;
+    let cancelledStorageCount = 0;
+    for (const item of activeStorageItems) {
+      const decision = storageDecisions.get(item.storageBookingId) || "keep";
+      if (decision === "cancel") {
+        cancelledStorageCents += item.totalPrice;
+        cancelledStorageCount++;
+      }
+    }
+
+    let cancelledEquipmentCents = 0;
+    let cancelledEquipmentCount = 0;
+    for (const item of activeEquipmentItems) {
+      const decision = equipmentDecisions.get(item.equipmentBookingId) || "keep";
+      if (decision === "cancel") {
+        cancelledEquipmentCents += item.totalPrice;
+        cancelledEquipmentCount++;
+      }
+    }
+
+    const totalCancelledSubtotal = cancelledKitchenCents + cancelledStorageCents + cancelledEquipmentCents;
+    const proportionalTax = Math.round((totalCancelledSubtotal * taxRatePercent) / 100);
+    // Managers refund only their own payout share. Platform service fees are
+    // available solely through the admin-approved full-refund flow.
+    const grossRefund = totalCancelledSubtotal + proportionalTax;
+
+    // Proportional Stripe fee (sunk)
+    const proportionalStripeFee = transactionAmount > 0
+      ? Math.round(stripeFee * (grossRefund / transactionAmount))
+      : 0;
+
+    const netRefund = Math.max(0, grossRefund - proportionalStripeFee);
+
+    // Direct manager refunds are capped at the remaining manager share.
+    const availableBalance = Math.max(
+      0,
+      booking.managerRemainingBalance ?? managerRevenue,
+    );
+    const autoRefundAmount = Math.min(netRefund, availableBalance);
+
+    const hasCancellations = totalCancelledSubtotal > 0;
+    const isFullCancellation = kitchenDecision === "cancel";
+
+    return {
+      transactionAmount,
+      stripeFee,
+      managerRevenue,
+      alreadyRefunded,
+      availableBalance,
+      taxRatePercent,
+      cancelledKitchenCents,
+      cancelledStorageCents,
+      cancelledEquipmentCents,
+      cancelledStorageCount,
+      cancelledEquipmentCount,
+      totalCancelledSubtotal,
+      proportionalTax,
+      grossRefund,
+      proportionalStripeFee,
+      netRefund,
+      autoRefundAmount,
+      hasCancellations,
+      isFullCancellation,
+    };
+  }, [kitchenDecision, storageDecisions, equipmentDecisions, booking, activeStorageItems, activeEquipmentItems]);
+
+  // Effective refund amount (user-editable)
+  const effectiveRefundAmount = useMemo(() => {
+    if (isEditingRefund && customRefundInput !== "") {
+      const customCents = Math.round(parseFloat(customRefundInput) * 100);
+      if (!isNaN(customCents) && customCents >= 0) {
+        return Math.min(customCents, refundCalc.availableBalance);
+      }
+    }
+    if (refundMode) {
+      // In refund-only mode, default to max available
+      return refundCalc.availableBalance;
+    }
+    return refundCalc.autoRefundAmount;
+  }, [isEditingRefund, customRefundInput, refundCalc, refundMode]);
+
+  // ── Submit Handler ───────────────────────────────────────────────────────
+  const handleSubmit = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!booking || isProcessing) return;
+
+    // Refund-only mode
+    if (refundMode && !refundCalc.hasCancellations) {
+      if (booking.transactionId && effectiveRefundAmount > 0) {
+        onSubmit({
+          bookingId: booking.id,
+          action: "refund-only",
+          refundAmountCents: effectiveRefundAmount,
+        });
+      }
+      return;
+    }
+
+    // Build addon action arrays
+    const storageActions = activeStorageItems.length > 0
+      ? activeStorageItems.map(item => ({
+          storageBookingId: item.storageBookingId,
+          action: storageDecisions.get(item.storageBookingId) === "cancel" ? "cancelled" : "confirmed",
+        }))
+      : undefined;
+
+    const equipmentActions = activeEquipmentItems.length > 0
+      ? activeEquipmentItems.map(item => ({
+          equipmentBookingId: item.equipmentBookingId,
+          action: equipmentDecisions.get(item.equipmentBookingId) === "cancel" ? "cancelled" : "confirmed",
+        }))
+      : undefined;
+
+    if (kitchenDecision === "cancel") {
+      // Full booking cancel
+      const wantsRefund = effectiveRefundAmount > 0;
+      onSubmit({
+        bookingId: booking.id,
+        action: wantsRefund ? "cancel-booking-refund" : "cancel-booking",
+        storageActions,
+        equipmentActions,
+        refundAmountCents: wantsRefund ? effectiveRefundAmount : undefined,
+      });
+    } else if (refundCalc.hasCancellations) {
+      // Partial cancel (only addons)
+      const wantsRefund = effectiveRefundAmount > 0;
+      onSubmit({
+        bookingId: booking.id,
+        action: wantsRefund ? "partial-cancel-refund" : "partial-cancel",
+        storageActions,
+        equipmentActions,
+        refundAmountCents: wantsRefund ? effectiveRefundAmount : undefined,
+      });
+    }
+  }, [booking, isProcessing, refundMode, refundCalc, effectiveRefundAmount, kitchenDecision, storageDecisions, equipmentDecisions, activeStorageItems, activeEquipmentItems, onSubmit]);
+
+  const handleFullRefundRequest = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!booking.transactionId || isProcessing) return;
+    onSubmit({ bookingId: booking.id, action: "request-full-refund" });
+  }, [booking.id, booking.transactionId, isProcessing, onSubmit]);
+
+  // Cancellation request handlers
+  const handleCancellationAction = useCallback((action: "accept" | "decline", e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (isProcessing) return;
+    onSubmit({
+      bookingId: booking.id,
+      action: action === "accept" ? "accept-cancellation" : "decline-cancellation",
+    });
+  }, [booking.id, isProcessing, onSubmit]);
+
+  const handleStorageCancellationAction = useCallback((storageBookingId: number, action: "accept" | "decline", e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (isProcessing) return;
+    onSubmit({
+      bookingId: booking.id,
+      action: action === "accept" ? "accept-storage-cancel" : "decline-storage-cancel",
+      storageCancellationId: storageBookingId,
+    });
+  }, [booking.id, isProcessing, onSubmit]);
+
+  // Count summary
+  const cancelCount = (kitchenDecision === "cancel" ? 1 : 0) +
+    activeStorageItems.filter(i => storageDecisions.get(i.storageBookingId) === "cancel").length +
+    activeEquipmentItems.filter(i => equipmentDecisions.get(i.equipmentBookingId) === "cancel").length;
+  const keepCount = (kitchenDecision === "keep" ? 1 : 0) +
+    activeStorageItems.filter(i => storageDecisions.get(i.storageBookingId) !== "cancel").length +
+    activeEquipmentItems.filter(i => equipmentDecisions.get(i.equipmentBookingId) !== "cancel").length;
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  return (
+    <AppDialogContent className="sm:max-w-[520px] flex flex-col p-0 gap-0 max-h-[90vh] overflow-hidden">
+      {/* Header */}
+      <DialogHeader className="px-6 pt-6 pb-4 border-b bg-muted/30 shrink-0">
+        <DialogTitle className="flex items-center gap-2 text-lg">
+          <Settings2 className="h-5 w-5 text-primary" />{mt("manageBooking")}</DialogTitle>
+        <DialogDescription className="text-sm">
+          {mt("manageBookingDesc")}{" "}
+          {mt("manageBookingStripeFeeNote")}
+        </DialogDescription>
+      </DialogHeader>
+
+      {/* Scrollable Body */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+        {/* Booking Summary */}
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="flex-1 min-w-0">
+            <TruncatedText as="p" className="font-semibold text-sm truncate">
+              {booking.kitchenName || mt("kitchenBooking")}
+            </TruncatedText>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+              {booking.chefName && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {booking.chefName}
+                </span>
+              )}
+              {booking.locationName && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {booking.locationName}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {formatDate(booking.bookingDate)}
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {kitchenBookingBlocks(booking).map(block =>
+                  `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
+              </span>
+            </div>
+          </div>
+          {booking.transactionAmount != null && booking.transactionAmount > 0 && (
+            <Badge variant="secondary" className="shrink-0 font-mono text-xs">
+              <DollarSign className="h-3 w-3 mr-0.5" />
+              {formatPrice(booking.transactionAmount)}
+            </Badge>
+          )}
+        </div>
+
+        {/* Chef Cancellation Request Banner */}
+        {isKitchenCancellationRequested && (
+          <div className="p-3 rounded-lg border border-amber-200 bg-amber-50/50 space-y-2">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-amber-600" />
+              <p className="text-sm font-semibold text-amber-800">{mt("chefCancellationRequest")}</p>
+            </div>
+            {booking.cancellationReason && (
+              <p className="text-xs text-amber-700">
+                <strong>{mt("reason2")}</strong> {booking.cancellationReason}
+              </p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                disabled={isProcessing}
+                onClick={(e) => handleCancellationAction("accept", e)}
+              >
+                {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
+                Accept &amp; Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-destructive/30 text-destructive hover:bg-destructive/5"
+                disabled={isProcessing}
+                onClick={(e) => handleCancellationAction("decline", e)}
+              >
+                <XCircle className="h-3.5 w-3.5 mr-1" />{mt("decline")}</Button>
+            </div>
+          </div>
+        )}
+
+        <Separator />
+
+        {/* ── Kitchen Session ── */}
+        <RefundRequestStatus request={booking.fullRefundRequest} />
+        {booking.transactionId && ["paid", "succeeded", "partially_refunded"].includes(booking.paymentStatus || "") && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Request a full refund for Local Cooks approval.</p>
+            <Button type="button" variant="outline" size="sm" onClick={handleFullRefundRequest} disabled={isProcessing || booking.fullRefundRequest?.status === "pending"}>
+              Request full refund from Local Cooks
+            </Button>
+          </div>
+        )}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />{mt("kitchenSession")}</p>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); toggleKitchenDecision(); }}
+            disabled={isProcessing || isKitchenCancellationRequested}
+            className={cn(
+              "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left",
+              "hover:shadow-sm",
+              isKitchenCancellationRequested && "opacity-60 cursor-not-allowed",
+              kitchenDecision === "keep"
+                ? "bg-green-50/50 border-green-200 hover:border-green-300"
+                : "bg-red-50/50 border-red-200 hover:border-red-300",
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className={cn(
+                "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                kitchenDecision === "keep" ? "bg-green-100" : "bg-red-100",
+              )}>
+                <Calendar className={cn("h-4 w-4", kitchenDecision === "keep" ? "text-green-600" : "text-red-600")} />
+              </div>
+              <div>
+                <p className="text-sm font-medium">{mt("kitchenBooking")}</p>
+                <p className="text-xs text-muted-foreground">
+                  {kitchenBookingBlocks(booking).map(block =>
+                    `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {booking.totalPrice != null && booking.totalPrice > 0 && (
+                <span className="text-xs font-mono text-muted-foreground">{formatPrice(booking.totalPrice)}</span>
+              )}
+              <Badge className={cn(
+                "text-[10px] transition-colors",
+                kitchenDecision === "keep"
+                  ? "border-success/30 text-success bg-success/10"
+                  : "border-destructive/30 text-destructive bg-destructive/10",
+              )}>
+                {kitchenDecision === "keep" ? (
+                  <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("active")}</>
+                ) : (
+                  <><Ban className="h-2.5 w-2.5 mr-0.5" />{mt("cancel")}</>
+                )}
+              </Badge>
+            </div>
+          </button>
+        </div>
+
+        {/* ── Storage Items ── */}
+        {hasStorage && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Boxes className="h-3.5 w-3.5" />{mt("storageRentals")}</p>
+
+              {/* Active storage items — toggleable */}
+              {activeStorageItems.map((item) => {
+                const decision = storageDecisions.get(item.storageBookingId) || "keep";
+                const isKeeping = decision === "keep";
+                const isDisabled = kitchenIsCancelling || isProcessing;
+                const hasCancelRequest = item.cancellationRequested;
+                const dateRange = item.startDate && item.endDate
+                  ? item.startDate === item.endDate
+                    ? formatStorageDate(item.startDate)
+                    : `${formatStorageDate(item.startDate)} – ${formatStorageDate(item.endDate)}`
+                  : "";
+
+                return (
+                  <div key={item.storageBookingId} className="space-y-1.5">
+                    {/* Storage cancellation request banner */}
+                    {hasCancelRequest && (
+                      <div className="flex items-center justify-between p-2 rounded-md border border-amber-200 bg-amber-50/50 text-xs">
+                        <span className="text-amber-700 flex items-center gap-1">
+                          <ShieldAlert className="h-3 w-3" />
+                          Chef requested cancellation
+                          {item.cancellationReason && `: "${item.cancellationReason}"`}
+                        </span>
+                        <div className="flex gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="default"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={isProcessing}
+                            onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "accept", e)}
+                          >{mt("accept")}</Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px] border-destructive/30 text-destructive"
+                            disabled={isProcessing}
+                            onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "decline", e)}
+                          >{mt("decline")}</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleStorageDecision(item.storageBookingId); }}
+                      disabled={isDisabled}
+                      className={cn(
+                        "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left",
+                        isDisabled ? "opacity-60 cursor-not-allowed" : "hover:shadow-sm",
+                        isKeeping
+                          ? "bg-green-50/50 border-green-200 hover:border-green-300"
+                          : "bg-red-50/50 border-red-200 hover:border-red-300",
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                          isKeeping ? "bg-green-100" : "bg-red-100",
+                        )}>
+                          <Boxes className={cn("h-4 w-4", isKeeping ? "text-green-600" : "text-red-600")} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{item.storageType}</span>
+                            {dateRange && <><span>·</span><span>{dateRange}</span></>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.totalPrice > 0 && (
+                          <span className="text-xs font-mono text-muted-foreground">{formatPrice(item.totalPrice)}</span>
+                        )}
+                        <Badge className={cn(
+                          "text-[10px] transition-colors",
+                          isKeeping
+                            ? "border-success/30 text-success bg-success/10"
+                            : "border-destructive/30 text-destructive bg-destructive/10",
+                        )}>
+                          {isKeeping ? (
+                            <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("active")}</>
+                          ) : (
+                            <><Ban className="h-2.5 w-2.5 mr-0.5" />{mt("cancel")}</>
+                          )}
+                        </Badge>
+                      </div>
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Already cancelled storage items — read-only */}
+              {cancelledStorageItems.map((item) => (
+                <div
+                  key={item.storageBookingId}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border bg-gray-50/50 border-gray-200 opacity-60"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
+                      <Boxes className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate line-through text-gray-500">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.storageType}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("cancelled")}</Badge>
+                  </div>
+                </div>
+              ))}
+
+              {activeStorageItems.length > 0 && !kitchenIsCancelling && (
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachItemToToggleBetweenActiveAndCancel")}</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── Equipment Items ── */}
+        {hasEquipment && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Package className="h-3.5 w-3.5" />{mt("equipmentRentals")}</p>
+
+              {activeEquipmentItems.map((item) => {
+                const decision = equipmentDecisions.get(item.equipmentBookingId) || "keep";
+                const isKeeping = decision === "keep";
+                const isDisabled = kitchenIsCancelling || isProcessing;
+
+                return (
+                  <button
+                    key={item.equipmentBookingId}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleEquipmentDecision(item.equipmentBookingId); }}
+                    disabled={isDisabled}
+                    className={cn(
+                      "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left",
+                      isDisabled ? "opacity-60 cursor-not-allowed" : "hover:shadow-sm",
+                      isKeeping
+                        ? "bg-green-50/50 border-green-200 hover:border-green-300"
+                        : "bg-red-50/50 border-red-200 hover:border-red-300",
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                        isKeeping ? "bg-green-100" : "bg-red-100",
+                      )}>
+                        <Package className={cn("h-4 w-4", isKeeping ? "text-green-600" : "text-red-600")} />
+                      </div>
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.totalPrice > 0 && (
+                        <span className="text-xs font-mono text-muted-foreground">{formatPrice(item.totalPrice)}</span>
+                      )}
+                      <Badge className={cn(
+                        "text-[10px] transition-colors",
+                        isKeeping
+                          ? "border-success/30 text-success bg-success/10"
+                          : "border-destructive/30 text-destructive bg-destructive/10",
+                      )}>
+                        {isKeeping ? (
+                          <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("active")}</>
+                        ) : (
+                          <><Ban className="h-2.5 w-2.5 mr-0.5" />{mt("cancel")}</>
+                        )}
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {/* Already cancelled equipment — read-only */}
+              {cancelledEquipmentItems.map((item) => (
+                <div
+                  key={item.equipmentBookingId}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border bg-gray-50/50 border-gray-200 opacity-60"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
+                      <Package className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <p className="text-sm font-medium truncate line-through text-gray-500">{item.name}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("cancelled")}</Badge>
+                  </div>
+                </div>
+              ))}
+
+              {activeEquipmentItems.length > 0 && !kitchenIsCancelling && (
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachItemToToggleBetweenActiveAndCancel")}</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── Kitchen Cancelled + Has Addons Warning ── */}
+        {kitchenIsCancelling && hasAddons && (
+          <>
+            <Separator />
+            <div className="p-4 rounded-lg border border-red-200 bg-red-50/50 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <p className="text-sm font-semibold text-red-800">{mt("entireBookingWillBeCancelled")}</p>
+              </div>
+              <p className="text-xs text-red-700">{mt("cancellingTheKitchenSessionCancelsThe")}<strong>{mt("entireBookingStrong")}</strong> {mt("includingAllAddons")}
+                {mt("refundFromAvailableBalance")}
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Refund Breakdown (when cancellations exist) ── */}
+        {refundCalc.hasCancellations && (
+          <>
+            <Separator />
+            <div className="space-y-3 p-4 rounded-lg border border-amber-200 bg-amber-50/50">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-amber-600" />
+                <p className="text-sm font-semibold text-amber-800">{mt("refundPreview")}</p>
+              </div>
+
+              {/* Transaction Breakdown */}
+              {refundCalc.transactionAmount > 0 && (
+                <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
+                  <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">{mt("transactionSummary")}</p>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("totalCharged3")}</span>
+                    <span className="font-mono">{formatPrice(refundCalc.transactionAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("stripeFeeCustomerAbsorbs")}</span>
+                    <span className="font-mono text-red-600">-{formatPrice(refundCalc.stripeFee)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium text-foreground">
+                    <span>{mt("yourAvailableBalance")}</span>
+                    <span className="font-mono">{formatPrice(refundCalc.availableBalance)}</span>
+                  </div>
+                  {refundCalc.alreadyRefunded > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>{mt("alreadyRefunded3")}</span>
+                      <span className="font-mono text-orange-600">-{formatPrice(refundCalc.alreadyRefunded)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Cancelled Items Breakdown */}
+              <div className="space-y-1.5 text-xs">
+                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">{mt("cancellationBreakdown")}</p>
+                {refundCalc.cancelledKitchenCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("kitchenSession2")}</span>
+                    <span className="font-mono">{formatPrice(refundCalc.cancelledKitchenCents)}</span>
+                  </div>
+                )}
+                {refundCalc.cancelledStorageCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("storageItemsCount", { count: refundCalc.cancelledStorageCount })}</span>
+                    <span className="font-mono">{formatPrice(refundCalc.cancelledStorageCents)}</span>
+                  </div>
+                )}
+                {refundCalc.cancelledEquipmentCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("equipmentItemsCount", { count: refundCalc.cancelledEquipmentCount })}</span>
+                    <span className="font-mono">{formatPrice(refundCalc.cancelledEquipmentCents)}</span>
+                  </div>
+                )}
+                {refundCalc.proportionalTax > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("taxPercentLabel", { percent: refundCalc.taxRatePercent })}</span>
+                    <span className="font-mono">+{formatPrice(refundCalc.proportionalTax)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-muted-foreground">
+                  <span>{mt("stripeFeeProportional")}</span>
+                  <span className="font-mono text-red-600">-{formatPrice(refundCalc.proportionalStripeFee)}</span>
+                </div>
+                <Separator className="my-1" />
+                <div className="flex justify-between font-semibold text-sm">
+                  <span>{mt("customerReceives2")}</span>
+                  <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
+                </div>
+              </div>
+
+              {/* Editable refund amount */}
+              <div className="space-y-2">
+                {!isEditingRefund ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); setIsEditingRefund(true); setCustomRefundInput((refundCalc.autoRefundAmount / 100).toFixed(2)); }}
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground px-2"
+                  >
+                    <Pencil className="h-3 w-3 mr-1" />{mt("modifyRefundAmount")}</Button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-amber-700">{mt("customRefundAmount")}</Label>
+                    <div className="flex items-center gap-2">
+                      <CurrencyInput
+                        size="sm"
+                        value={customRefundInput}
+                        onValueChange={setCustomRefundInput}
+                        placeholder="0.00"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); setIsEditingRefund(false); setCustomRefundInput(""); }}
+                        className="h-8 text-xs px-2"
+                      >{mt("reset")}</Button>
+                    </div>
+                    <p className="text-[10px] text-amber-600">
+                      {mt("maxAvailableBalance", { amount: formatPrice(refundCalc.availableBalance) })}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-start gap-1.5 text-[10px] text-amber-600">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>{mt("stripeFeeTaxProportionalCancel")} <a href="/terms#refund-policy" target="_blank" rel="noreferrer" className="font-medium underline">{mt("viewRefundPolicy")}</a></span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Refund Only Section (no cancellations) ── */}
+        {!refundCalc.hasCancellations && (
+          <>
+            <Separator />
+            <div className="space-y-3 p-4 rounded-lg border border-blue-200 bg-blue-50/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4 text-blue-600" />
+                  <p className="text-sm font-semibold text-blue-800">{mt("issueRefund")}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant={refundMode ? "default" : "outline"}
+                  size="sm"
+                  className={cn("h-8 px-3 text-xs")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRefundMode(!refundMode);
+                    if (!refundMode) {
+                      setIsEditingRefund(true);
+                      setCustomRefundInput((refundCalc.availableBalance / 100).toFixed(2));
+                    } else {
+                      setIsEditingRefund(false);
+                      setCustomRefundInput("");
+                    }
+                  }}
+                >
+                  {refundMode ? mt("cancelRefundButton") : mt("issueRefund")}
+                </Button>
+              </div>
+
+              {refundMode && (
+                <div className="space-y-3">
+                  <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-blue-100">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>{mt("availableToRefund2")}</span>
+                      <span className="font-mono font-medium">{formatPrice(refundCalc.availableBalance)}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-blue-700">{mt("refundAmount2")}</Label>
+                    <CurrencyInput
+                      value={customRefundInput}
+                      onValueChange={setCustomRefundInput}
+                      placeholder="0.00"
+                    />
+                    <p className="text-[10px] text-blue-600">
+                      {mt("maxDebitedFromStripe", { amount: formatPrice(refundCalc.availableBalance) })}{" "}
+                      <a href="/terms#refund-policy" target="_blank" rel="noreferrer" className="font-medium underline">{mt("viewRefundPolicy")}</a>
+                    </p>
+                  </div>
+
+                  {effectiveRefundAmount > 0 && (
+                    <div className="flex justify-between text-xs p-2 rounded-md bg-white/60 border border-blue-100 font-medium">
+                      <span className="text-blue-700">{mt("customerReceives2")}</span>
+                      <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!refundMode && (
+                <p className="text-xs text-blue-600">{mt("issueARefundWithoutCancellingAnyItemsUsefulForPartialRefunds")}</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* No changes info */}
+        {!refundCalc.hasCancellations && !refundMode && (
+          <>
+            <Separator />
+            <div className="p-3 rounded-lg border border-green-200 bg-green-50/50">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <p className="text-sm font-medium text-green-800">
+                  {mt("allItemsActiveNoChanges")}
+                </p>
+              </div>
+              <p className="text-xs text-green-600 mt-1">{mt("toggleItemsAboveToCancelOrUseTheRefundSectionToIssueARefund")}</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <DialogFooter className="px-6 py-4 border-t bg-muted/30 shrink-0 !flex-col !space-x-0 gap-3">
+        {/* Summary badges */}
+        <div className="flex items-center gap-2 w-full flex-wrap">
+          {keepCount > 0 && (
+            <Badge variant="success" className="text-xs">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              {keepCount} active
+            </Badge>
+          )}
+          {cancelCount > 0 && (
+            <Badge variant="outline" className="text-xs text-destructive border-destructive/30">
+              <Ban className="h-3 w-3 mr-1" />
+              {cancelCount} cancelling
+            </Badge>
+          )}
+          {(refundCalc.hasCancellations || refundMode) && effectiveRefundAmount > 0 && (
+            <Badge variant="warning" className="text-xs ml-auto">
+              <DollarSign className="h-3 w-3 mr-0.5" />
+              {mt("refundBadgeAmount", { amount: formatPrice(effectiveRefundAmount) })}
+            </Badge>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center justify-end w-full gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            disabled={isProcessing}
+            className="h-9 px-4"
+          >
+            {refundCalc.hasCancellations || refundMode ? mt("discardChanges") : mt("close")}
+          </Button>
+
+          {/* Refund Only */}
+          {refundMode && !refundCalc.hasCancellations && (
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isProcessing || effectiveRefundAmount <= 0 || !booking.transactionId}
+              className="h-9 px-4"
+            >
+              {isProcessing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RotateCcw className="h-4 w-4 mr-2" />
+              )}
+              {isProcessing ? mt("processingUnicode") : mt("refundAmountButton", { amount: formatPrice(effectiveRefundAmount) })}
+            </Button>
+          )}
+
+          {/* Cancel (with or without refund) */}
+          {refundCalc.hasCancellations && (
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isProcessing}
+              variant="destructive"
+              className="h-9 px-4"
+            >
+              {isProcessing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Ban className="h-4 w-4 mr-2" />
+              )}
+              {isProcessing
+                ? mt("processingUnicode")
+                : kitchenIsCancelling
+                ? (effectiveRefundAmount > 0 ? mt("cancelAndRefundAmount", { amount: formatPrice(effectiveRefundAmount) }) : mt("cancelBooking"))
+                : (effectiveRefundAmount > 0 ? mt("cancelItemsAndRefundAmount", { amount: formatPrice(effectiveRefundAmount) }) : mt("cancelItems"))}
+            </Button>
+          )}
+        </div>
+      </DialogFooter>
+    </AppDialogContent>
+  );
+}

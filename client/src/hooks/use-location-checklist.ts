@@ -52,10 +52,10 @@ export interface LocationChecklist {
  * Fetches the manager-defined checklist for a location.
  * Used by chef-side check-in/check-out components.
  */
-export function useLocationChecklist(locationId: number | null | undefined) {
+export function useLocationChecklist(locationId: number | null | undefined, kitchenId?: number) {
   return useQuery<LocationChecklist>({
-    queryKey: ["location-checklist", locationId],
-    queryFn: () => apiGet(`/chef/locations/${locationId}/checklist`),
+    queryKey: ["location-checklist", locationId, kitchenId],
+    queryFn: () => apiGet(`/chef/locations/${locationId}/checklist${kitchenId ? `?kitchenId=${kitchenId}` : ""}`),
     enabled: !!locationId && locationId > 0,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes — checklists don't change often
   });

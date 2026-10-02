@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import i18n from "@/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +9,7 @@ import { auth } from "@/lib/firebase";
 import { updateProfile } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Loader2, KeyRound } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
@@ -112,6 +114,15 @@ export default function ManagerProfileSettings({
         return tab && (KNOWN_TABS as readonly string[]).includes(tab) ? tab : "profile";
     });
 
+    useEffect(() => {
+        const syncTabFromUrl = () => {
+            const tab = new URLSearchParams(window.location.search).get("tab");
+            setActiveTab(tab && (KNOWN_TABS as readonly string[]).includes(tab) ? tab : "profile");
+        };
+        window.addEventListener("popstate", syncTabFromUrl);
+        return () => window.removeEventListener("popstate", syncTabFromUrl);
+    }, []);
+
     // Fetch manager profile
     const { data: user, isLoading: isLoadingProfile } = useQuery({
         queryKey: ["/api/user/profile", firebaseUser?.uid],
@@ -210,7 +221,7 @@ export default function ManagerProfileSettings({
             phone?: string;
         }) => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error(mt("notAuthenticated"));
+            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
 
             // IMPORTANT: Update Firebase Auth displayName if it changed
             if (profileData.displayName) {
@@ -236,7 +247,7 @@ export default function ManagerProfileSettings({
                 body: JSON.stringify(profileData),
             });
 
-            if (!response.ok) throw new Error(mt("failedToUpdateProfile"));
+            if (!response.ok) throw new Error(tt("failedToUpdateProfile"));
             return response.json();
         },
         onSuccess: () => {
@@ -295,11 +306,9 @@ export default function ManagerProfileSettings({
 
     if (isLoadingProfile || isLoadingDetails) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-                    <p className="text-sm text-muted-foreground">{mt("loadingYourProfile")}</p>
-                </div>
+            <div className="space-y-4 py-4" role="status" aria-label={mt("loadingYourProfile")}>
+                <Skeleton className="h-8 w-1/2" />
+                {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
             </div>
         );
     }

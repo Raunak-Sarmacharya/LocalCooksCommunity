@@ -1,8 +1,9 @@
+import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { HelpCircle, BookOpen, FileText, Settings, Building2, Package, Wrench, CheckCircle, X, ChevronRight, ChevronLeft, ClipboardList, Info, AlertCircle, Upload } from "@/components/ui/manager-icons";
+import { HelpCircle, BookOpen, FileText, Settings, Building2, CheckCircle, X, ChevronRight, ChevronLeft, ClipboardList, Info, AlertCircle, Upload } from "@/components/ui/manager-icons";
 
 interface HelpCenterProps {
   isOpen: boolean;

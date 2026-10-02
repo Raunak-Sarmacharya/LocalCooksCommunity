@@ -29,11 +29,11 @@ export class LocationService {
 
       if (validatedData.managerId) {
         const locationCount = await this.locationRepo.countByManagerId(validatedData.managerId);
-        if (locationCount >= 10) {
+        if (locationCount >= 1) {
           throw new DomainError(
             LocationErrorCodes.NO_MANAGER_ASSIGNED,
-            'Manager cannot have more than 10 locations',
-            400
+            'Manager already has a location',
+            409
           );
         }
       }

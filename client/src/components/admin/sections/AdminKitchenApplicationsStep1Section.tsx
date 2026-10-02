@@ -9,6 +9,7 @@ import { getAdminConversationForApplication, getLiveChatParticipants } from "@/s
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -477,10 +478,8 @@ export function AdminKitchenApplicationsStep1Section({
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-8">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          </div>
+        <CardContent className="space-y-3 p-6" role="status" aria-label="Loading chef applications">
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
         </CardContent>
       </Card>
     );

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useNumberInputDraft } from "./use-number-input-draft"
 
 /**
  * NumericInput — Enterprise-grade numeric input following shadcn patterns.
@@ -24,19 +25,23 @@ export interface NumericInputProps
 }
 
 const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps>(
-  ({ className, onValueChange, allowDecimals = false, suffix, ...props }, ref) => {
+  ({ className, onValueChange, allowDecimals = false, suffix, value, defaultValue, onFocus, onBlur, ...props }, ref) => {
+    const { setDraft, inputProps } = useNumberInputDraft({ value, defaultValue, onFocus, onBlur })
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value
       if (raw === "") {
+        setDraft(raw)
         onValueChange?.(raw)
         return
       }
       if (allowDecimals) {
         if (/^\d*\.?\d{0,2}$/.test(raw)) {
+          setDraft(raw)
           onValueChange?.(raw)
         }
       } else {
         if (/^\d*$/.test(raw)) {
+          setDraft(raw)
           onValueChange?.(raw)
         }
       }
@@ -68,6 +73,7 @@ const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps>(
             onKeyDown={handleKeyDown}
             className="min-w-0 flex-1 h-full bg-transparent border-0 outline-none px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-0 tabular-nums"
             {...props}
+            {...inputProps}
           />
           <span className="flex items-center justify-center border-l border-input bg-muted text-muted-foreground text-xs select-none shrink-0 h-full px-2.5">
             {suffix}
@@ -89,6 +95,7 @@ const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps>(
           className
         )}
         {...props}
+        {...inputProps}
       />
     )
   }

@@ -100,14 +100,14 @@ export default function LocationSettings({ location, onSave, embedded = false }:
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end">
+          {(isDirty || saveAction.status !== 'idle') && <div className="pt-4 flex justify-end">
             <StatusButton
               status={saveAction.status}
               onClick={saveAction.execute}
               disabled={!isDirty || !name.trim() || !address.trim() || isUploading}
               labels={{ idle: mt("saveSettings"), loading: mt("savingShort"), success: mt("saved") }}
             />
-          </div>
+          </div>}
         </CardContent>
       </Card>
     </div>

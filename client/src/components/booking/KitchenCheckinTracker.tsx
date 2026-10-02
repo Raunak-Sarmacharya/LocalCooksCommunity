@@ -2,7 +2,7 @@
  * KitchenCheckinTracker
  *
  * Notion-style vertical step tracker showing kitchen check-in/checkout
- * progress to chefs. Renders as a Sheet (side panel).
+ * progress to chefs. Renders as a Dialog (side panel).
  *
  * Steps:
  * 1. Check In — chef arrives at kitchen
@@ -16,10 +16,12 @@ import { useTranslation } from "react-i18next"
 import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, FileWarning, LogIn, LogOut, Calendar, XCircle, Lock, Info } from "lucide-react"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { cn } from "@/lib/utils"
 import { FormLegend } from "@/components/ui/form-legend"
 import { format } from "date-fns"
@@ -139,7 +141,7 @@ export function KitchenCheckinTracker({
   } = useKitchenCheckin(open ? bookingId : null, selectedVisitId)
 
   // Fetch manager-defined checklist for this location
-  const { data: checklist } = useLocationChecklist(data?.locationId)
+  const { data: checklist } = useLocationChecklist(data?.locationId, data?.kitchenId)
 
   const [checkinNotes, setCheckinNotes] = useState("")
   const [checkoutNotes, setCheckoutNotes] = useState("")
@@ -257,17 +259,17 @@ export function KitchenCheckinTracker({
       : undefined
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-muted-foreground" />
             {t("kciDialogTitle", "Kitchen Check-In")}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {kitchenName || t("kitchenDefault", "Kitchen")} {timeLabel && `— ${timeLabel}`}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         {data?.visits && data.visits.length > 1 && (
           <div className="mt-5 space-y-2" aria-label="Booking visits">
@@ -315,8 +317,8 @@ export function KitchenCheckinTracker({
               canCheckin
                 ? t("bdCheckInBody")
                 : t(
-                    "kciWindowNotOpenBody",
-                    "Check-in opens at the time below. Arrive on time — a no-show may be recorded after the grace period.",
+                    "baCheckinWindowBody",
+                    "Check-in opens at the time below. Missing check-in does not establish non-attendance. No-shows require an explicit report after the whole booking ends.",
                   )
             }
           />
@@ -358,8 +360,8 @@ export function KitchenCheckinTracker({
 
         <div className="py-6">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="space-y-4 py-3" role="status" aria-label="Loading kitchen check-in status">
+              {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
             </div>
           ) : (
             <>
@@ -370,11 +372,11 @@ export function KitchenCheckinTracker({
                     <XCircle className="h-5 w-5 text-destructive" />
                     <div>
                       <p className="text-sm font-medium text-destructive">
-                        No-Show Detected
+                        No-Show Recorded
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        You did not check in within the grace period. Contact
-                        the kitchen manager if this is an error.
+                        Review the attendance report in booking details. Contact
+                        Local Cooks Support if the record is incorrect. Older records may lack explicit report history.
                       </p>
                     </div>
                   </div>
@@ -570,7 +572,8 @@ export function KitchenCheckinTracker({
                     disabled={isCheckingIn}
                   />
 
-                  <Textarea
+                  <Label htmlFor="chef-checkin-message">{t('bookingAttendanceChefMessage')}</Label>
+                  <Textarea id="chef-checkin-message"
                     placeholder={bt("optionalCheckinNotesPlaceholder")}
                     value={checkinNotes}
                     onChange={(e) => setCheckinNotes(e.target.value)}
@@ -673,7 +676,8 @@ export function KitchenCheckinTracker({
                     disabled={isCheckingOut}
                   />
 
-                  <Textarea
+                  <Label htmlFor="chef-checkout-message">{t('bookingAttendanceChefMessage')}</Label>
+                  <Textarea id="chef-checkout-message"
                     placeholder={bt("checkoutNotesPlaceholder")}
                     value={checkoutNotes}
                     onChange={(e) => setCheckoutNotes(e.target.value)}
@@ -719,8 +723,8 @@ export function KitchenCheckinTracker({
             </>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   )
 }
 

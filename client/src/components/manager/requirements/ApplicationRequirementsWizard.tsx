@@ -15,6 +15,7 @@ import { tt } from "@/i18n/common-ns";
 import { useState, useEffect, useCallback, useImperativeHandle, useMemo, useRef, forwardRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StatusButton } from "@/components/ui/status-button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +24,10 @@ import { auth } from "@/lib/firebase";
 
 import { RequirementsStepTwo } from "./RequirementsStepTwo";
 import { LocationRequirements } from "./types";
+import { hasAnyApplicationRequirement } from "@shared/kitchen-listing-readiness";
+import { useListingImpactConfirm } from "@/components/manager/ListingImpactConfirm";
+import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
+import { apiGet } from "@/lib/api";
 
 /**
  * Structural equality.
@@ -87,6 +92,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const listingImpact = useListingImpactConfirm();
 
   const [requirements, setRequirements] = useState<Partial<LocationRequirements>>({});
   /**
@@ -173,6 +179,9 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     onSuccess: (_result, updates) => {
       queryClient.invalidateQueries({ queryKey: [`/api/manager/locations/${locationId}/requirements`] });
       queryClient.invalidateQueries({ queryKey: [`location-${locationId}`], exact: false });
+      void apiGet(`/manager/kitchens/${locationId}`).then((kitchens: Array<{ id: number }>) => {
+        kitchens.forEach(({ id }) => invalidateKitchenListingState(queryClient, id, locationId));
+      }).catch(() => {});
       // Advance the baseline to what was just persisted, so the save button
       // clears immediately instead of flickering until the refetch lands.
       setBaseline(prev => ({ ...prev, ...updates }));
@@ -195,30 +204,24 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     setRequirements(prev => ({ ...prev, ...updates }));
   }, []);
 
-  const handleSave = useCallback(() => {
-    saveMutation.mutate(requirements);
-  }, [saveMutation, requirements]);
+  const saveRequirements = useCallback(async () => {
+    const removesLastAsk = !hasAnyApplicationRequirement(requirements);
+    if (!await listingImpact.confirmLocation(locationId, removesLastAsk)) throw new Error("Save cancelled");
+    await saveMutation.mutateAsync(requirements);
+  }, [requirements, listingImpact.confirmLocation, locationId, saveMutation]);
+  const handleSave = useCallback(() => { void saveRequirements().catch(() => {}); }, [saveRequirements]);
 
   // Expose save trigger to parent via ref
   useImperativeHandle(ref, () => ({
-    save: () => {
-      return new Promise<void>((resolve, reject) => {
-        saveMutation.mutate(requirements, {
-          onSuccess: () => resolve(),
-          onError: (err) => reject(err),
-        });
-      });
-    },
+    save: saveRequirements,
     hasUnsavedChanges: isDirty,
-  }), [saveMutation, requirements, isDirty]);
+  }), [saveRequirements, isDirty]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">{mt("loadingRequirements")}</p>
-        </div>
+      <div className="space-y-4" role="status" aria-label={mt("loadingRequirements")}>
+        <Skeleton className="h-12 w-full rounded-xl" />
+        {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-24 w-full rounded-xl" />)}
       </div>
     );
   }
@@ -252,6 +255,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
           />
         </div>
       )}
+      {listingImpact.dialog}
     </div>
   );
 });

@@ -1,36 +1,26 @@
-import { useState, useEffect } from "react";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { useLocation, useSearch } from "wouter";
-import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Menu, Building2, UtensilsCrossed } from "@/components/ui/manager-icons";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import { mt } from "@/i18n/manager";
+import { ManagerShell, type ManagerShellScope } from "@/layouts/ManagerShell"
 
+/**
+ * ManagerPageLayout — legacy adapter over `ManagerShell`.
+ *
+ * This used to be a SECOND manager shell: a `ResizablePanelGroup` with its own `Sheet` drawer, its
+ * own `md:hidden` header, and its own location/kitchen picker. Two navigation models in one app
+ * meant two sets of mobile bugs, so the shell now lives in `layouts/ManagerShell.tsx` and this file
+ * only keeps the render-prop contract its callers were written against.
+ *
+ * `showScopePicker` is on because that picker is the one thing these routes genuinely had and the
+ * sidebar does not provide — `AppSidebar` takes `locations`/`selectedLocation` but ignores them.
+ *
+ * Kept rather than deleted because four call sites still import it; the two that are reachable
+ * (`/manager/applications`) and the ones that are dead legacy defaults can be inlined in a follow-up.
+ */
 interface ManagerPageLayoutProps {
-  children: (props: {
-    selectedLocationId: number | null;
-    selectedKitchenId: number | null;
-    /**
-     * The selected location's hourly booking ceiling, or null when no location is selected.
-     *
-     * Exposed because it is a policy the KITCHEN pricing page has to reason about: a day rate
-     * below `dailyBookingLimit × hourlyRate` is cheaper than the longest hourly booking, so the
-     * day rate stops being a discount and starts undercutting the hourly one.
-     */
-    dailyBookingLimit: number | null;
-    isLoading: boolean;
-  }) => React.ReactNode;
+  children: (props: ManagerShellScope) => React.ReactNode;
   title?: string;
   description?: string;
   showKitchenSelector?: boolean;
+  /** Nav key to highlight. Defaults to `kitchens`, which is where pricing/equipment/storage live. */
+  activeView?: string;
 }
 
 export function ManagerPageLayout({
@@ -38,300 +28,19 @@ export function ManagerPageLayout({
   title,
   description,
   showKitchenSelector = true,
+  activeView = "kitchens",
 }: ManagerPageLayoutProps) {
-  const [location, setLocation] = useLocation();
-  const searchString = useSearch();
-  const searchParams = new URLSearchParams(searchString);
-
-  const { locations, isLoadingLocations, kitchens, isLoadingKitchens } = useManagerDashboard();
-
-  // URL State Management
-  const urlLocationId = searchParams.get("loc") ? parseInt(searchParams.get("loc")!) : null;
-  const urlKitchenId = searchParams.get("kit") ? parseInt(searchParams.get("kit")!) : null;
-
-  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
-  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(urlKitchenId);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const isMobile = useIsMobile();
-
-  // Sync state with URL
-  useEffect(() => {
-    const params = new URLSearchParams(searchString);
-    let updated = false;
-
-    if (selectedLocationId && selectedLocationId !== urlLocationId) {
-      params.set("loc", selectedLocationId.toString());
-      updated = true;
-    } else if (!selectedLocationId && params.has("loc")) {
-      params.delete("loc");
-      updated = true;
-    }
-
-    if (selectedKitchenId && selectedKitchenId !== urlKitchenId) {
-      params.set("kit", selectedKitchenId.toString());
-      updated = true;
-    } else if (!selectedKitchenId && params.has("kit")) {
-      params.delete("kit");
-      updated = true;
-    }
-
-    if (updated) {
-      const newSearch = params.toString();
-      const newUrl = location + (newSearch ? `?${newSearch}` : "");
-      window.history.replaceState(null, "", newUrl);
-    }
-  }, [selectedLocationId, selectedKitchenId, location, searchString, urlLocationId, urlKitchenId]);
-
-
-  // Sync state with URL only on init or when URL changes
-  useEffect(() => {
-    if (urlLocationId !== selectedLocationId) setSelectedLocationId(urlLocationId);
-  }, [urlLocationId]);
-
-  useEffect(() => {
-    if (urlKitchenId !== selectedKitchenId) setSelectedKitchenId(urlKitchenId);
-  }, [urlKitchenId]);
-
-
-  /**
-   * Select a location as soon as one exists — the FIRST one, not only when there is exactly one.
-   *
-   * The `=== 1` this replaces left a manager with two or more locations unselected until they chose,
-   * and the dashboard had the identical condition and the identical problem. The wizard resolves it
-   * this way already ("Auto-select first kitchen … works for 1 kitchen (obvious) and 2+ kitchens
-   * (gives a starting point)"), so all three now agree.
-   *
-   * What matters is what `null` MEANS afterwards: with this, an unselected location is no longer
-   * "has not chosen yet" — it is "has none". That is the only reading the pages under this layout
-   * can act on, and it is what lets their empty states say one thing.
-   */
-  useEffect(() => {
-    if (!isLoadingLocations && locations.length > 0 && !selectedLocationId) {
-      setSelectedLocationId(locations[0].id);
-    }
-  }, [isLoadingLocations, locations, selectedLocationId]);
-
-  /**
-   * Select a kitchen for the same reason, and this one was missing entirely.
-   *
-   * Without it `selectedKitchenId` stayed null for a manager who HAD a kitchen but had not picked
-   * one, so every page under this layout — equipment, storage, pricing — fell through to its own
-   * "select a location and kitchen from the sidebar" copy, naming an action the sidebar cannot
-   * perform. A URL `?kit=` still wins: this only runs while nothing is selected.
-   */
-  useEffect(() => {
-    if (selectedKitchenId) return;
-    const first = kitchens.find((kitchen) => kitchen.locationId === selectedLocationId);
-    if (first) setSelectedKitchenId(first.id);
-  }, [kitchens, selectedLocationId, selectedKitchenId]);
-
-  // Derived state
-  const availableKitchens = kitchens.filter(k => k.locationId === selectedLocationId);
-  const dailyBookingLimit =
-    locations.find(l => l.id === selectedLocationId)?.defaultDailyBookingLimit ?? null;
-
-  // Filtering Logic Handlers
-  const handleLocationChange = (val: string) => {
-    const id = parseInt(val);
-    setSelectedLocationId(id);
-    setSelectedKitchenId(null);
-    if (isMobile) {
-      setSidebarOpen(false);
-    }
-  };
-
-  const handleKitchenChange = (val: string) => {
-    setSelectedKitchenId(parseInt(val));
-    if (isMobile) {
-      setSidebarOpen(false);
-    }
-  };
-
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
-      {/* Mobile Header with Sidebar Trigger */}
-      <div className="md:hidden flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-2">
-          {title && <h1 className="font-semibold text-lg">{title}</h1>}
-        </div>
-        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="-mr-2">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[80%] max-w-[300px] p-0">
-            <SidebarContent
-              isLoadingLocations={isLoadingLocations}
-              locations={locations}
-              selectedLocationId={selectedLocationId}
-              handleLocationChange={handleLocationChange}
-              showKitchenSelector={showKitchenSelector}
-              isLoadingKitchens={isLoadingKitchens}
-              availableKitchens={availableKitchens}
-              selectedKitchenId={selectedKitchenId}
-              handleKitchenChange={handleKitchenChange}
-            />
-          </SheetContent>
-        </Sheet>
-      </div>
-
-
-      <ResizablePanelGroup direction="horizontal" className="h-full min-w-0 items-stretch">
-        <ResizablePanel
-          defaultSize={20}
-          minSize={15}
-          maxSize={30}
-          className="hidden md:flex flex-col border-r bg-muted/30 sticky top-0 h-full"
-        >
-          <ScrollArea className="h-full">
-            <div className="flex flex-col h-full">
-              <SidebarContent
-                isLoadingLocations={isLoadingLocations}
-                locations={locations}
-                selectedLocationId={selectedLocationId}
-                handleLocationChange={handleLocationChange}
-                showKitchenSelector={showKitchenSelector}
-                isLoadingKitchens={isLoadingKitchens}
-                availableKitchens={availableKitchens}
-                selectedKitchenId={selectedKitchenId}
-                handleKitchenChange={handleKitchenChange}
-              />
-              <div className="mt-auto px-6 py-4 border-t bg-muted/20">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold opacity-50">{mt("localCooksCommunity")}</p>
-              </div>
-            </div>
-          </ScrollArea>
-        </ResizablePanel>
-
-        <ResizableHandle withHandle className="hidden md:flex" />
-
-        <ResizablePanel defaultSize={80} className="flex flex-col min-w-0">
-          <ScrollArea className="flex-1">
-            <div className="p-4 md:p-8 min-w-0">
-              <div className="max-w-6xl mx-auto space-y-6 min-w-0">
-                {(title || description) && (
-                  <div className="hidden md:block mb-6 space-y-1.5 border-b pb-4">
-                    {title && <h2 className="text-2xl font-bold tracking-tight">{title}</h2>}
-                    {description && <p className="text-muted-foreground">{description}</p>}
-                  </div>
-                )}
-
-                {children({
-                  selectedLocationId,
-                  selectedKitchenId,
-                  dailyBookingLimit,
-                  isLoading: isLoadingLocations || isLoadingKitchens
-                })}
-              </div>
-            </div>
-          </ScrollArea>
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </div>
-  );
+    <ManagerShell
+      activeView={activeView}
+      title={title}
+      description={description}
+      showScopePicker
+      showKitchenSelector={showKitchenSelector}
+    >
+      {children}
+    </ManagerShell>
+  )
 }
 
-// Sub-component declared outside to avoid re-renders and lint errors
-interface SidebarContentProps {
-  isLoadingLocations: boolean;
-  locations: any[];
-  selectedLocationId: number | null;
-  handleLocationChange: (val: string) => void;
-  showKitchenSelector: boolean;
-  isLoadingKitchens: boolean;
-  availableKitchens: any[];
-  selectedKitchenId: number | null;
-  handleKitchenChange: (val: string) => void;
-}
-
-function SidebarContent({
-  isLoadingLocations,
-  locations,
-  selectedLocationId,
-  handleLocationChange,
-  showKitchenSelector,
-  isLoadingKitchens,
-  availableKitchens,
-  selectedKitchenId,
-  handleKitchenChange
-}: SidebarContentProps) {
-  return (
-    <div className="flex flex-col h-full space-y-4 py-8">
-      <div className="px-6 pb-2">
-        <h1 className="text-xl font-bold tracking-tight">{mt("managerDashboard")}</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">{mt("controlYourInventoryAndBookings")}</p>
-      </div>
-
-      <Separator orientation="horizontal" className="mx-6 w-auto" />
-
-      <div className="flex-1 px-6 space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold mb-1 tracking-tight">{mt("filters")}</h3>
-          <p className="text-xs text-muted-foreground">{mt("manageYourViewSelection")}</p>
-        </div>
-
-        {/* Location Selector */}
-        <div className="space-y-2">
-          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-            <Building2 className="w-3 h-3" /> {mt("location")}
-          </Label>
-          {isLoadingLocations ? (
-            <Skeleton className="h-10 w-full" />
-          ) : (
-            <Select
-              value={selectedLocationId?.toString() || ""}
-              onValueChange={handleLocationChange}
-            >
-              <SelectTrigger className="w-full bg-background transition-all hover:bg-accent/50">
-                <SelectValue placeholder={mt("shellSelectLocation")} />
-              </SelectTrigger>
-              <SelectContent>
-                {locations.map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id.toString()}>
-                    {loc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-
-        {/* Kitchen Selector */}
-        {showKitchenSelector && (
-          <div className={cn("space-y-2 transition-opacity duration-200", !selectedLocationId ? "opacity-50 pointer-events-none" : "opacity-100")}>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-              <UtensilsCrossed className="w-3 h-3" /> {mt("kitchen")}
-            </Label>
-            {isLoadingKitchens ? (
-              <Skeleton className="h-10 w-full" />
-            ) : availableKitchens.length === 0 && selectedLocationId ? (
-              <div className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md border border-destructive/20">
-                {mt("noKitchensFoundHere")}
-              </div>
-            ) : (
-              <Select
-                value={selectedKitchenId?.toString() || ""}
-                onValueChange={handleKitchenChange}
-                disabled={!selectedLocationId || availableKitchens.length === 0}
-              >
-                <SelectTrigger className="w-full bg-background transition-all hover:bg-accent/50">
-                  <SelectValue placeholder={selectedLocationId ? mt("selectKitchen") : mt("chooseLocationFirst")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableKitchens.map((kitchen) => (
-                    <SelectItem key={kitchen.id} value={kitchen.id.toString()}>
-                      {kitchen.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-auto pt-6"></div>
-    </div>
-  );
-}
+export default ManagerPageLayout

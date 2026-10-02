@@ -11,11 +11,12 @@
  * configuration — replacing the legacy checkout-only page.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useImperativeHandle, type Ref } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertTriangle, Info } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
+import { Button } from "@/components/ui/button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -24,8 +25,10 @@ import type {
   ChecklistItem,
   PhotoRequirement,
 } from "./shared/ChecklistEditor";
-import { StorageCheckinCheckoutEditor, unifyStorageInspectionItems, storageInspectionItemsToArrays, validateStorageInspectionItems, type UnifiedStorageInspectionItem } from "./StorageCheckinCheckoutEditor";
+import { unifyStorageInspectionItems, storageInspectionItemsToArrays, validateStorageInspectionItems, type UnifiedStorageInspectionItem } from "./StorageCheckinCheckoutEditor";
+import { KitchenCheckinCheckoutEditor } from "./KitchenCheckinCheckoutEditor";
 import { ChefPageHeader } from "@/components/chef/ui";
+import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +48,8 @@ interface StorageCheckinCheckoutSettingsData {
 }
 
 interface StorageCheckinCheckoutSettingsProps {
+  onDirtyChange?: (dirty: boolean) => void;
+  saveRef?: Ref<{ saveAllChanges: () => Promise<boolean> }>;
   location: {
     id: number;
     name: string;
@@ -55,6 +60,8 @@ interface StorageCheckinCheckoutSettingsProps {
 
 export default function StorageCheckinCheckoutSettings({
   location,
+  onDirtyChange,
+  saveRef,
 }: StorageCheckinCheckoutSettingsProps) {
   
   const { toast } = useToast();
@@ -62,7 +69,7 @@ export default function StorageCheckinCheckoutSettings({
 
   // Fetch existing settings from the shared endpoint that also powers the
   // Kitchen Check-In / Check-Out page. We only consume the storage portion.
-  const { data, isLoading } = useQuery<StorageCheckinCheckoutSettingsData>({
+  const { data, isLoading, isError, refetch } = useQuery<StorageCheckinCheckoutSettingsData>({
     queryKey: ["checkin-checkout-settings", location.id],
     queryFn: () =>
       apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
@@ -139,12 +146,13 @@ export default function StorageCheckinCheckoutSettings({
     () => validateStorageInspectionItems(items),
     [items],
   );
+  const dormantCheckin = checkinEnabled ? 0 : items.filter((item) => item.label.trim() && item.requiredOnCheckin).length;
+  const dormantCheckout = checkoutEnabled ? 0 : items.filter((item) => item.label.trim() && item.requiredOnCheckout).length;
 
   // Save — splits the unified list back into the server's legacy four arrays
   // and sends only the storage-related fields. Kitchen fields stay untouched
   // because the server PUT endpoint only updates fields that were provided.
-  const saveAction = useStatusButton(
-    useCallback(async () => {
+  const saveSettings = useCallback(async () => {
       if (validationErrors.length > 0) {
         throw new Error(validationErrors[0]);
       }
@@ -187,27 +195,35 @@ export default function StorageCheckinCheckoutSettings({
       validationErrors,
       queryClient,
       toast,
-    ]),
-  );
+    ]);
+  const saveAction = useStatusButton(saveSettings);
+  useImperativeHandle(saveRef, () => ({ saveAllChanges: async () => {
+    try { await saveSettings(); return true; } catch { return false; }
+  } }), [saveSettings]);
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+  useEffect(() => {
+    if (!isDirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isDirty]);
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <ChefPageHeader title={mt("navStorageCheckinCheckout")} description="Configure the move-in and move-out inspections chefs complete for storage bookings." />
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
-        </div>
+        <ChefPageHeader title={mt("navStorageCheckinCheckout")} description={mt("storageChecklistPageDescription")} />
+        <SettingsContentSkeleton rows={6} />
       </div>
     );
   }
+  if (isError) return <div className="rounded-xl border p-6"><p className="mb-3 text-sm text-destructive">{mt("overviewActivityError")}</p><Button variant="outline" onClick={() => void refetch()}>{mt("retry")}</Button></div>;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <ChefPageHeader
         title={mt("navStorageCheckinCheckout")}
-        description="Define the move-in and move-out inspections chefs must document for storage bookings at this location."
+        description={mt("storageChecklistPageDescription")}
         actions={isDirty ? (
           <Badge
             variant="outline"
@@ -217,8 +233,18 @@ export default function StorageCheckinCheckoutSettings({
       />
 
 
-      {/* Unified Matrix Editor */}
-      <StorageCheckinCheckoutEditor
+      {!validationErrors.length && (dormantCheckin > 0 || dormantCheckout > 0) && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3"><Info className="mt-0.5 size-4 shrink-0 text-amber-600" /><div className="space-y-0.5 text-xs text-amber-900">
+        {dormantCheckin > 0 && <p>{mt("checklistDormantCheckin", { count: dormantCheckin })}</p>}
+        {dormantCheckout > 0 && <p>{mt("checklistDormantCheckout", { count: dormantCheckout })}</p>}
+      </div></div>}
+      <KitchenCheckinCheckoutEditor
+        title={mt("storageCheckInCheckOutChecklists")}
+        smartLockAvailable={false}
+        smartLockInstructions={null}
+        onSmartLockInstructionsChange={() => {}}
+        onFlowToggleMouseDown={(event) => event.preventDefault()}
+        onFlowToggleClick={(event) => (event.currentTarget.closest("[data-stage-panel]") as HTMLElement | null)?.focus({ preventScroll: true })}
+        onFlowToggleKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === " " || event.key === "Enter")) (event.currentTarget.closest("[data-stage-panel]") as HTMLElement | null)?.focus({ preventScroll: true }); }}
         items={items}
         onItemsChange={setItems}
         checkinEnabled={checkinEnabled}
@@ -232,7 +258,7 @@ export default function StorageCheckinCheckoutSettings({
       />
       
       {/* Save Settings Button */}
-      <div className="flex justify-end">
+      {(isDirty || saveAction.status !== 'idle') && <div className="flex justify-end">
         <StatusButton
           status={saveAction.status}
           onClick={saveAction.execute}
@@ -241,7 +267,7 @@ export default function StorageCheckinCheckoutSettings({
           }
           labels={{ idle: mt("saveStorageChecklists"), loading: mt("savingShort"), success: mt("saved") }}
         />
-      </div>
+      </div>}
 
       {/* Validation Errors */}
       {validationErrors.length > 0 && (

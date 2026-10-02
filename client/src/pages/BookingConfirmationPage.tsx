@@ -1,5 +1,6 @@
+import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, DollarSign, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { estimateBookingCheckoutTotal } from "@/lib/booking-price-estimate";
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -134,7 +135,7 @@ export default function BookingConfirmationPage() {
             setKitchenPricing({
               hourlyRate,
               currency: pricing.currency || 'CAD',
-              minimumBookingHours: pricing.minimumBookingHours || 1,
+              minimumBookingHours: pricing.minimumBookingHours ?? 1,
               taxRatePercent: Math.max(0, Number(pricing.taxRatePercent) || 0),
               platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
             });

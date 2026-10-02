@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
-import { Clock, Check, X, Package, ChevronRight, AlertCircle, RefreshCw, ArrowUpDown } from "lucide-react";
+import { Clock, Check, X, ChevronRight, AlertCircle, ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,6 @@ export type StorageTFunction = (key: string, options?: Record<string, unknown>) 
 
 // Column definitions for extension requests table
 const getExtensionColumns = (
-  syncMutation: ReturnType<typeof useMutation<any, Error, number>>,
   t: StorageTFunction
 ): ColumnDef<PendingExtension>[] => [
   {
@@ -205,29 +205,6 @@ const getExtensionColumns = (
       );
     },
   },
-  {
-    id: "actions",
-    header: "",
-    cell: ({ row }) => {
-      const extension = row.original;
-      const isPending = extension.status === 'pending';
-
-      if (!isPending) return null;
-
-      return (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => syncMutation.mutate(extension.id)}
-          disabled={syncMutation.isPending}
-          className="text-xs"
-        >
-          <RefreshCw className={`h-3 w-3 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-          {syncMutation.isPending ? t("sxChecking") : t("sxSync")}
-        </Button>
-      );
-    },
-  },
 ];
 
 export function PendingStorageExtensions() {
@@ -246,6 +223,7 @@ export function PendingStorageExtensions() {
       }
       return response.json() as Promise<PendingExtension[]>;
     },
+    refetchInterval: 60_000,
   });
 
   // Sync mutation for when webhook doesn't fire
@@ -278,11 +256,6 @@ export function PendingStorageExtensions() {
           description: t("sxSessionExpiredDesc"),
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: t("sxStatusCheckedTitle"),
-          description: data.message || t("sxNoChangesNeeded"),
-        });
       }
     },
     onError: (error: Error) => {
@@ -294,6 +267,17 @@ export function PendingStorageExtensions() {
     },
   });
 
+  const pendingKey = extensions?.filter((extension) => extension.status === 'pending')
+    .map((extension) => extension.id).join(',') || '';
+  useEffect(() => {
+    if (!pendingKey) return;
+    const ids = pendingKey.split(',').map(Number);
+    const sync = () => { ids.forEach((id) => syncMutation.mutate(id)); };
+    sync();
+    const interval = window.setInterval(sync, 60_000);
+    return () => window.clearInterval(interval);
+  }, [pendingKey]);
+
   // Filter to show only active extensions
   const activeExtensions = useMemo(() => 
     extensions?.filter(ext => 
@@ -304,8 +288,8 @@ export function PendingStorageExtensions() {
 
   // Column definitions
   const columns = useMemo(
-    () => getExtensionColumns(syncMutation, t),
-    [syncMutation, t]
+    () => getExtensionColumns(t),
+    [t]
   );
 
   // TanStack Table instance

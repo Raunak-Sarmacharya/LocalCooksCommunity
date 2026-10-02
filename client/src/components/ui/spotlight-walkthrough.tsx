@@ -390,7 +390,7 @@ export function SpotlightWalkthrough({
               if (isLast) close();
               else setStepIndex((current) => current + 1);
             }}
-            className="text-[13px] font-semibold text-[#F51042] hover:text-[#d60e39]"
+            className="rounded-md border border-primary/20 px-3 py-1.5 text-[13px] font-semibold text-primary transition-colors duration-200 ease-out motion-reduce:transition-none hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {isLast ? t("done", "Done") : t("next", "Next")}
           </button>

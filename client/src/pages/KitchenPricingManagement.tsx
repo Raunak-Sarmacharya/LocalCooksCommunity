@@ -45,6 +45,7 @@ export interface KitchenPricingHandle {
 }
 
 interface KitchenPricingContentProps {
+  hideMinimumBookingDuration?: boolean;
   selectedLocationId: number | null;
   selectedKitchenId: number | null;
   /**
@@ -106,7 +107,7 @@ export const KitchenPricingContent = forwardRef<
   KitchenPricingHandle,
   KitchenPricingContentProps
 >(function KitchenPricingContent(
-  { selectedLocationId, selectedKitchenId, dailyBookingLimit, onDirtyChange },
+  { selectedLocationId, selectedKitchenId, dailyBookingLimit, onDirtyChange, hideMinimumBookingDuration = false },
   ref,
 ) {
   const { toast } = useToast();
@@ -121,7 +122,7 @@ export const KitchenPricingContent = forwardRef<
     pricing.hourlyRate !== baseline.hourlyRate ||
     pricing.dailyRate !== baseline.dailyRate ||
     pricing.taxRatePercent !== baseline.taxRatePercent ||
-    pricing.minimumBookingHours !== baseline.minimumBookingHours;
+    (!hideMinimumBookingDuration && pricing.minimumBookingHours !== baseline.minimumBookingHours);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -254,7 +255,7 @@ export const KitchenPricingContent = forwardRef<
       currency: CURRENCY,
       pricingModel: pricing.pricingModel || 'hourly',
       taxRatePercent: taxRateNum,
-      minimumBookingHours: pricing.minimumBookingHours,
+      ...(!hideMinimumBookingDuration ? { minimumBookingHours: pricing.minimumBookingHours } : {}),
     };
 
     const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, payload);
@@ -268,7 +269,7 @@ export const KitchenPricingContent = forwardRef<
     queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
 
     toast({ title: mt("success"), description: mt("kitchenPricingUpdatedSuccessfully") });
-  }, [selectedKitchenId, selectedLocationId, pricing, queryClient, toast]);
+  }, [selectedKitchenId, selectedLocationId, pricing, queryClient, toast, hideMinimumBookingDuration]);
 
   useImperativeHandle(
     ref,
@@ -353,7 +354,7 @@ export const KitchenPricingContent = forwardRef<
           />
         </SettingsRow>
 
-        <SettingsRow
+        {!hideMinimumBookingDuration && <SettingsRow
           id="minimum-booking"
           label={mt("minimumBookingDuration")}
           hint={mt("zeroMeansNoMinimum")}
@@ -372,7 +373,7 @@ export const KitchenPricingContent = forwardRef<
             }}
             className="w-36"
           />
-        </SettingsRow>
+        </SettingsRow>}
       </CardContent>
     </Card>
   );

@@ -1,3 +1,4 @@
+import { EQUIPMENT_ICON_NAME, STORAGE_ICON_NAME } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
@@ -1279,11 +1280,8 @@ export default function KitchenBookingFlow({
     // Loading State
     if (isLoadingKitchens) {
       return (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Icon icon="mdi:loading" className="h-6 w-6 animate-spin text-primary mx-auto mb-3" aria-hidden />
-            <p className="text-sm text-muted-foreground">{t("sheetLoadingKitchens", "Loading kitchens...")}</p>
-          </div>
+        <div className="grid flex-1 gap-4 p-4 sm:grid-cols-2" role="status" aria-label={t("sheetLoadingKitchens", "Loading kitchens...")}>
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-32 w-full rounded-xl" />)}
         </div>
       );
     }
@@ -1305,11 +1303,8 @@ export default function KitchenBookingFlow({
     // Waiting for kitchen auto-select + restore (date/slots) so we don't flash Date.
     if (!selectedKitchen || !isFlowReady) {
       return (
-        <div className="flex-1 flex items-center justify-center py-16">
-          <div className="text-center">
-            <Icon icon="mdi:loading" className="h-6 w-6 animate-spin text-primary mx-auto mb-3" aria-hidden />
-            <p className="text-sm text-muted-foreground">{t("sheetLoadingKitchens", "Loading kitchens...")}</p>
-          </div>
+        <div className="grid flex-1 gap-4 p-4 sm:grid-cols-2" role="status" aria-label={t("sheetLoadingKitchens", "Loading kitchens...")}>
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-32 w-full rounded-xl" />)}
         </div>
       );
     }
@@ -1556,7 +1551,7 @@ export default function KitchenBookingFlow({
               }}
               disabled={equipmentListings.rental.length === 0}
             >
-              <Icon icon="solar:oven-mitts-minimalistic-outline" width={17} height={17} className="mr-1.5" aria-hidden />
+              <Icon icon={EQUIPMENT_ICON_NAME} width={17} height={17} className="mr-1.5" aria-hidden />
               {selectedEquipmentIds.length > 0 ? `Edit (${selectedEquipmentIds.length})` : t("sheetSelectEquipment", "Select equipment")}
             </Button>
           </div>
@@ -1648,7 +1643,7 @@ export default function KitchenBookingFlow({
               className={chefPrimaryCtaClass("shrink-0")}
               onClick={() => setStorageModalOpen(true)}
             >
-              <Icon icon="mdi:archive-plus-outline" width={17} height={17} className="mr-1.5" aria-hidden />
+              <Icon icon={STORAGE_ICON_NAME} width={17} height={17} className="mr-1.5" aria-hidden />
               {selectedStorage.length > 0 ? `Edit (${selectedStorage.length})` : t("sheetSelectStorage", "Select storage")}
             </Button>
           </div>

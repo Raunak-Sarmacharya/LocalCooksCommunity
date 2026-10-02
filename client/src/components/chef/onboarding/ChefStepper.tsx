@@ -1,13 +1,14 @@
+import { ChefApplicationIcon } from "@/components/ui/application-icons";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useChefOnboarding } from "./ChefOnboardingContext";
 import { BookOpen, Building, Check, Calendar, ClipboardCheck, Compass, FileText, PartyPopper, Store } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-const STEP_ICONS: Record<string, LucideIcon> = {
+const STEP_ICONS: Record<string, LucideIcon | typeof ChefApplicationIcon> = {
   welcome: Calendar,
   "path-selection": Compass,
-  "localcooks-application": FileText,
+  "localcooks-application": ChefApplicationIcon,
   "food-safety-training": BookOpen,
   "browse-kitchens": Building,
   summary: ClipboardCheck,

@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ResponsiveTable from "@/components/ui/responsive-table";
 import { AlertCircle, BarChart3, DollarSign, Eye, Loader2, TrendingUp, Users } from "lucide-react";
@@ -118,8 +119,8 @@ export function ManagerRevenuesSection({ getFirebaseToken }: ManagerRevenuesSect
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="grid gap-4 sm:grid-cols-3" role="status" aria-label="Loading manager revenue">
+          {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}
         </div>
       ) : error ? (
         <Card>

@@ -13,7 +13,10 @@ export function isPublicLocalizedPath(pathname: string): boolean {
   return (
     clean.startsWith("/kitchen-requirements/") ||
     clean.startsWith("/resources/") ||
-    clean.startsWith("/kitchen-preview/")
+    clean.startsWith("/kitchen-preview/") ||
+    clean.startsWith("/apply-kitchen/") ||
+    clean.startsWith("/request-tour/") ||
+    clean.startsWith("/kitchen/")
   );
 }
 

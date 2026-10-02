@@ -1,12 +1,15 @@
+import { KitchenTour } from "@/components/ui/manager-icons";
+import { StorageIcon as Package, EquipmentIcon as CookingPot } from "@/components/ui/inventory-icons";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, CookingPot, Eye, FileCheck2, LayoutDashboard, LockKeyhole, Package, Settings2, Users, Wallet } from "lucide-react";
+import { ArrowRight, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, FileText, FileCheck2, LayoutDashboard, LockKeyhole, Settings2, Wallet } from "lucide-react";
 import { Icon } from "@iconify/react";
-import { navIcons } from "@/assets/mdi-nav-icons";
+import { KITCHEN_ICON_NAME } from "@/components/ui/kitchen-icon";
+import { ChefApplicationIcon } from "@/components/ui/application-icons";
 import { SiStripe } from "react-icons/si";
 
-const kitchenIcon = { ...navIcons.icons["storefront-outline"], width: 24, height: 24 };
+const kitchenIcon = KITCHEN_ICON_NAME;
 
 interface KitchenHeroProps {
   onStart: () => void;
@@ -36,16 +39,16 @@ export default function KitchenHero({ onStart, onHowItWorks }: KitchenHeroProps)
   const navigation = [
     { key: "heroHostOverview", icon: LayoutDashboard },
     { key: "heroHostBookings", icon: CalendarDays },
-    { key: "heroHostApplications", icon: Users },
-    { key: "heroHostTours", icon: Eye },
+    { key: "heroHostApplications", icon: ChefApplicationIcon },
+    { key: "heroHostTours", icon: KitchenTour },
     { key: "heroStorage", icon: Package },
     { key: "heroEquipment", icon: CookingPot },
     { key: "heroHostPayouts", icon: Wallet },
   ] as const;
   const activity = [
-    { title: "startKitchenTour", detail: "heroHostTourDetail", status: "heroHostConfirmed", icon: Eye, confirmed: true },
+    { title: "startKitchenTour", detail: "heroHostTourDetail", status: "heroHostConfirmed", icon: KitchenTour, confirmed: true },
     { title: "heroHostExtrasBooking", detail: "heroHostExtrasDetail", status: "heroHostReserved", icon: Package, confirmed: true },
-    { title: "startDamageClaims", detail: "heroHostClaimDetail", status: "heroHostUnderReview", icon: FileCheck2, confirmed: false },
+    { title: "startDamageClaims", detail: "heroHostClaimDetail", status: "heroHostUnderReview", icon: FileText, confirmed: false },
   ] as const;
 
   return (

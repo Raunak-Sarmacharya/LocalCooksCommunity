@@ -235,7 +235,7 @@ export default function ManagerLocationsPage({
 
         {/* Status Filter */}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full sm:w-[200px]">
             <Filter className="w-4 h-4 mr-2 text-gray-400" />
             <SelectValue placeholder={mt("filterByStatus")} />
           </SelectTrigger>
@@ -255,15 +255,6 @@ export default function ManagerLocationsPage({
           </SelectContent>
         </Select>
 
-        {/* Refresh Button */}
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={refreshData}
-          className="shrink-0"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </Button>
       </div>
 
       {/* Locations Data Table */}

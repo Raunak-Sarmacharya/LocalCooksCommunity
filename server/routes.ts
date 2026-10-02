@@ -333,6 +333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         returnUrl &&
         typeof returnUrl === 'string' &&
         (returnUrl.includes('/kitchen-preview') ||
+          returnUrl.includes('/kitchen/') ||
           returnUrl.includes('/apply-kitchen') ||
           returnUrl.includes('/book-kitchen'));
 
@@ -1247,6 +1248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // MANAGER ROUTES
   // ===================================
   // All manager routes are now handled in ./routes/manager.ts
+  app.use("/api", (await import("./routes/booking-attendance")).default);
   app.use("/api/manager", (await import("./routes/manager")).default);
 
   // Manager notifications routes

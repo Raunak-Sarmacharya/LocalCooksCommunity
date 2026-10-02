@@ -12,7 +12,7 @@ export type InfoChipVariant = StatusVariant | "info" | "count" | "brand";
  * White background, pill shape, compact type, light shadow (no filled color backgrounds).
  */
 export const infoChipClassName =
-  "inline-flex h-6 items-center gap-1 rounded-full bg-white px-2.5 text-xs font-medium leading-none text-[#1A1A1A] shadow-sm";
+  "inline-flex h-6 max-w-full items-center gap-1 rounded-full bg-white px-2.5 text-xs font-medium leading-none text-[#1A1A1A] shadow-sm";
 
 /** Icon color by semantic tone — green / yellow / red from theme tokens. */
 export function infoChipIconClass(tone: StatusTone): string {
@@ -148,7 +148,7 @@ export function InfoChip({
       >
         {leading}
       </span>
-      {children}
+      <span className="mobile-keep-truncate min-w-0 truncate" title={typeof children === "string" ? children : undefined}>{children}</span>
     </span>
   );
 }

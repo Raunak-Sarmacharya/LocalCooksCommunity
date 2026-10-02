@@ -11,6 +11,7 @@ import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query"
 import { useMemo, useState } from "react"
 import { auth } from "@/lib/firebase"
+import { useFirebaseAuth } from "@/hooks/use-auth"
 import type {
     RevenueMetrics,
     RevenueByLocation,
@@ -45,8 +46,9 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 export function useDateRangeParams(dateRange: DateRange) {
     return useMemo(() => {
-        const startDate = dateRange.from ? dateRange.from.toISOString().split('T')[0] : undefined
-        const endDate = dateRange.to ? dateRange.to.toISOString().split('T')[0] : undefined
+        const localDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+        const startDate = dateRange.from ? localDate(dateRange.from) : undefined
+        const endDate = dateRange.to ? localDate(dateRange.to) : undefined
         return { startDate, endDate }
     }, [dateRange.from, dateRange.to])
 }
@@ -334,8 +336,9 @@ export function usePayouts(enabled: boolean = true) {
 // ═══════════════════════════════════════════════════════════════════════
 
 export function useStripeConnectStatus(enabled: boolean = true) {
+    const { user } = useFirebaseAuth()
     return useQuery({
-        queryKey: ['/api/manager/stripe-connect/status'],
+        queryKey: ['/api/manager/stripe-connect/status', user?.uid],
         queryFn: async () => {
             const headers = await getAuthHeaders()
             const response = await fetch('/api/manager/stripe-connect/status', {
@@ -346,7 +349,7 @@ export function useStripeConnectStatus(enabled: boolean = true) {
             if (!response.ok) throw new Error(mt("failedToFetchStripeConnectStatus"))
             return response.json() as Promise<StripeConnectStatus>
         },
-        enabled,
+        enabled: enabled && !!user,
         staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     })
 }

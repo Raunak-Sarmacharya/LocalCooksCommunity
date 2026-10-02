@@ -14,11 +14,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * `const` declared below it.
  */
 const { state } = vi.hoisted(() => ({
-  state: { rows: [] as Array<Record<string, unknown>>, orderArgs: [] as unknown[] },
+  state: { rows: [] as Array<Record<string, unknown>>, orderArgs: [] as unknown[], updatePatch: {} as Record<string, unknown> },
 }));
 
 vi.mock("../../db", () => ({
   db: {
+    update: () => ({ set: (patch: Record<string, unknown>) => {
+      state.updatePatch = patch;
+      return { where: () => ({ returning: async () => [{ ...kitchenRow("active"), ...patch }] }) };
+    } }),
     select: () => ({
       from: () => {
         // `findAllActive` / `findByLocationId` await `orderBy(...)` directly — there is no
@@ -136,6 +140,28 @@ describe("KitchenRepository.mapToDTO — listingStatus", () => {
     });
 
     expect(await new KitchenRepository().findAllActive()).toHaveLength(1);
+  });
+});
+
+describe("KitchenRepository required listing edits", () => {
+  it("drafts the kitchen in the same update that clears its description", async () => {
+    await new KitchenRepository().update(1, { id: 1, description: "" });
+    expect(state.updatePatch).toMatchObject({ description: "", listingStatus: "draft" });
+  });
+
+  it("keeps the listing state when a required description remains", async () => {
+    await new KitchenRepository().update(1, { id: 1, description: "Still bookable" });
+    expect(state.updatePatch.listingStatus).toBeUndefined();
+  });
+
+  it("also drafts when a client sends a null description", async () => {
+    await new KitchenRepository().update(1, { id: 1, description: null });
+    expect(state.updatePatch.listingStatus).toBe("draft");
+  });
+
+  it("drafts the kitchen in the same update that removes its cover", async () => {
+    await new KitchenRepository().updateImage(1, null);
+    expect(state.updatePatch).toMatchObject({ imageUrl: null, listingStatus: "draft" });
   });
 });
 

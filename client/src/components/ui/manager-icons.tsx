@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { addCollection, Icon, type IconProps } from "@iconify/react";
+import { addCollection, addIcon, Icon, type IconProps } from "@iconify/react";
 import { icons as mdiIcons } from "@iconify-json/mdi";
 import { icons as famiconsIcons } from "@iconify-json/famicons";
 
@@ -70,6 +70,13 @@ export const Edit = managerIcon("mdi:pencil-outline");
 export const Edit2 = Edit;
 export const Edit3 = Edit;
 export const ExternalLink = managerIcon("mdi:open-in-new");
+export const KITCHEN_TOUR_ICON_NAME = "mingcute:user-visible-line";
+addIcon(KITCHEN_TOUR_ICON_NAME, {
+  width: 24,
+  height: 24,
+  body: '<path fill="currentColor" d="M17.996 17.913a.667.667 0 0 1-.91-.91L17.001 17a1 1 0 1 0 .996.913"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.273 14.023C6.195 14.283 3 16.674 3 18.5c0 1.688 2.73 2.334 6.365 2.47M15 7a4 4 0 1 1-8 0a4 4 0 0 1 8 0m6 11c0 1.11-1.79 3.11-4 3.11s-4-2-4-3.11c0-1.111 1.79-3.111 4-3.111s4 2 4 3.11"/>',
+});
+export const KitchenTour = managerIcon(KITCHEN_TOUR_ICON_NAME);
 export const Eye = managerIcon("mdi:eye-outline");
 export const EyeOff = managerIcon("mdi:eye-off-outline");
 export const File = managerIcon("mdi:file-outline");

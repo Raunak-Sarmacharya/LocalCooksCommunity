@@ -1,3 +1,4 @@
+import { CHEF_APPLICATION_ICON } from "@/components/ui/application-icons";
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -9,7 +10,8 @@ import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards
 import { documentToneFromLabel, getKitchenDisplayStatus, toneToBadgeVariant, type StatusTone } from "@/components/chef/applications/status";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
-import { ArrowRight, Building, Store } from "lucide-react";
+import { ChevronRight, Store } from "lucide-react";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
@@ -211,7 +213,7 @@ export default function SellerApplicationTabContent({
           : t("apSubtitleKitchenOnly");
 
   return (
-    <div className="space-y-8">
+    <div className="min-w-0 space-y-6 sm:space-y-8">
       <ChefPageHeader title={t("apMyApplication")} description={subtitle} />
 
       {/* Two tiles, not four.
@@ -223,7 +225,7 @@ export default function SellerApplicationTabContent({
           number for one application next to a total for many, which is the
           inconsistency worth removing.
           Track at 2 columns so the pair keeps the old 4-up size. */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="hidden grid-cols-2 gap-3 lg:grid">
         <StatTile
           label={t("apStatSeller")}
           value={statusLabel}
@@ -233,8 +235,8 @@ export default function SellerApplicationTabContent({
         <StatTile label={t("apStatKitchens")} value={kitchenValue} hint={kitchenHint} tone={kitchenTone} />
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <section className="flex min-h-full flex-col">
+      <div className="grid min-w-0 grid-cols-1 items-start gap-6 md:grid-cols-2 md:gap-4">
+        <section className="flex min-w-0 flex-col">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">{t("apSectionSeller")}</h3>
@@ -247,7 +249,7 @@ export default function SellerApplicationTabContent({
             ) : null}
           </div>
           {current ? (
-            <Card className="flex flex-1 flex-col shadow-none" data-testid="seller-application-card">
+            <Card className="flex min-w-0 flex-1 flex-col shadow-none" data-testid="seller-application-card">
               <CardContent className="flex-1 pt-4">
                 {foodSafety && establishment ? (
                   <div className="space-y-4">
@@ -274,16 +276,16 @@ export default function SellerApplicationTabContent({
                       </div>
                     </dl>
                     <div className="grid grid-cols-1 gap-2">
-                      <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
-                        <span className="text-sm">{t("apFoodSafetyLicense")}</span>
-                        <InfoChip variant={foodSafety.variant}>
+                      <div className="flex flex-col items-start gap-2 rounded-xl border px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+                        <span className="min-w-0 text-sm">{t("apFoodSafetyLicense")}</span>
+                        <InfoChip variant={foodSafety.variant} className="shrink-0">
                           {foodSafety.label}
                         </InfoChip>
                       </div>
                       {(current.foodEstablishmentCert === "yes" || current.foodEstablishmentCertUrl) ? (
-                        <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
-                          <span className="text-sm">{t("apEstablishmentCert")}</span>
-                          <InfoChip variant={establishment.variant}>
+                        <div className="flex flex-col items-start gap-2 rounded-xl border px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+                          <span className="min-w-0 text-sm">{t("apEstablishmentCert")}</span>
+                          <InfoChip variant={establishment.variant} className="shrink-0">
                             {establishment.label}
                           </InfoChip>
                         </div>
@@ -312,29 +314,29 @@ export default function SellerApplicationTabContent({
                   </p>
                 )}
               </CardContent>
-              <CardFooter className="mt-auto w-full flex-row justify-between gap-2">
+              <CardFooter className="mt-auto flex w-full min-w-0 flex-col-reverse items-stretch gap-2 border-t pt-4 sm:flex-col-reverse sm:items-stretch sm:gap-2 lg:flex-row lg:items-center lg:justify-between lg:border-t-0 lg:pt-0">
                 {canCancel ? (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-muted-foreground"
+                    className="self-end text-muted-foreground lg:self-auto"
                     onClick={() => onCancelApplication("chef", current.id)}
           >
             <Icon icon="mdi:close-circle-outline" className="size-4" aria-hidden />
-            {t("apCancelBtn")}
+            {t("cancelApplication", "Cancel application")}
                   </Button>
                 ) : (
                   <span />
                 )}
                 {canManageDocs ? (
                   <Button
-                    className="ml-auto"
+                    className="w-full lg:ml-auto lg:w-auto"
                     variant={docsNeedAction ? "default" : "outline"}
                     onClick={onManageDocuments}
         >
-          <Icon icon="mdi:file-document-edit-outline" className="size-4" aria-hidden />
+          <Icon icon={CHEF_APPLICATION_ICON} className="size-4" aria-hidden />
           {docsNeedAction ? t("apUpdateDocuments") : t("apManageDocuments")}
-                    <ArrowRight />
+                    <ChevronRight />
                   </Button>
                 ) : null}
               </CardFooter>
@@ -347,20 +349,20 @@ export default function SellerApplicationTabContent({
           )}
         </section>
 
-        <section className="flex min-h-full flex-col">
+        <section className="flex min-w-0 flex-col">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">{t("apSectionKitchens")}</h3>
               <p className="text-xs text-muted-foreground">{t("apSectionKitchensDesc")}</p>
             </div>
             {hasKitchens ? (
-              <InfoChip tone={kitchenTone} className="shrink-0">
+              <InfoChip tone={kitchenTone} className="hidden shrink-0 lg:inline-flex">
                 {kitchenValue}
               </InfoChip>
             ) : null}
           </div>
           {hasKitchens ? (
-            <div className="flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {kitchenApplications.map((app) => {
                 const kitchenData = publicKitchens?.find((k) => k.locationId === app.locationId);
                 return (
@@ -373,10 +375,10 @@ export default function SellerApplicationTabContent({
                   />
                 );
               })}
-              <Button variant="outline" className="mt-auto w-full" onClick={onDiscoverKitchens}>
-                <Building />
+              <Button variant="outline" className="w-full" onClick={onDiscoverKitchens}>
+                <KitchenIcon />
                 {t("apDiscoverMoreKitchens")}
-                <ArrowRight />
+                <ChevronRight />
               </Button>
             </div>
           ) : (

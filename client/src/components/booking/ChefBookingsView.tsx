@@ -1,12 +1,14 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react"
 import { useLocation } from "wouter"
 import { ColumnDef, ColumnFiltersState, SortingState, VisibilityState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table"
-import { Calendar, Clock, MapPin, CheckCircle, XCircle, ChevronDown, Search, ArrowUpDown, Loader2, FileText, CalendarDays, MoreHorizontal, Eye, Download, AlertTriangle, Ban, X, Package, CalendarPlus, LogIn, LogOut, Building2 } from "lucide-react"
+import { Calendar, Clock, MapPin, CheckCircle, XCircle, ChevronDown, Search, ArrowUpDown, Loader2, FileText, CalendarDays, MoreHorizontal, Eye, Download, AlertTriangle, Ban, X, CalendarPlus, LogIn, LogOut, Building2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DEFAULT_TIMEZONE, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils"
+import { BookingOperationsStatus } from './BookingOperationsStatus';
 import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from "@shared/operating-hours"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { StorageExtensionDialog } from "./StorageExtensionDialog"
@@ -26,7 +29,7 @@ import { CheckoutStatusTracker } from "./CheckoutStatusTracker"
 import { CheckinStatusTracker } from "./CheckinStatusTracker"
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
-import { CancellationRequestSheet, type CancellationTarget } from "./CancellationRequestSheet"
+import { CancellationRequestDialog, type CancellationTarget } from "./CancellationRequestDialog"
 import { KitchenCheckinTracker } from "./KitchenCheckinTracker"
 import { STRIPE_PROCESSING_FEE_REFUND_DOCS, stripeLinkClassName } from "@/lib/stripe-brand"
 import { auth } from "@/lib/firebase"
@@ -84,6 +87,7 @@ interface Booking {
 }
 
 interface StorageBooking {
+  cancellationAcceptedAt?: string | null
   id: number
   referenceCode?: string | null
   storageListingId?: number
@@ -230,7 +234,7 @@ const canCancelBooking = (booking: Booking, now: Date): boolean => {
     // Resolve the booking start in the LOCATION's timezone — the kitchen's
     // wall-clock time is what the cancellation policy is measured against,
     // not the chef's browser timezone.
-    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+    const timezone = DEFAULT_TIMEZONE
     const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) return false
@@ -327,10 +331,12 @@ const getChefBookingColumns = ({
           icon = <XCircle className="h-3 w-3 mr-1" />
           label = t("bkStatusCancelled")
         } else if (booking.paymentStatus === 'refunded') {
-          // Cancelled and fully refunded
+          // Cancelled AND refunded. The status stays "Cancelled" for the same reason as the
+          // manager's row: a refund is a PAYMENT fact, stated by the payment column, so labelling
+          // the status "Refunded" as well printed the same word twice across the row.
           variant = "outline"
           icon = <XCircle className="h-3 w-3 mr-1" />
-          label = t("bkStatusRefunded")
+          label = t("bkStatusCancelled")
         } else {
           // Manager declined the booking
           variant = "destructive"
@@ -356,7 +362,7 @@ const getChefBookingColumns = ({
         const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
         // Resolve booking start in the location's timezone so "time until
         // booking" is measured against the kitchen's clock, not the chef's.
-        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+        const timezone = DEFAULT_TIMEZONE
         const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
         if (!isNaN(bookingDateTime.getTime())) {
           const isUpcoming = bookingDateTime >= now
@@ -418,6 +424,7 @@ const getChefBookingColumns = ({
               {checkinBadge.label}
             </InfoChip>
           )}
+          <BookingOperationsStatus booking={booking} />
           {isVoided && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
               <XCircle className="h-2.5 w-2.5" />
@@ -447,11 +454,11 @@ const getChefBookingColumns = ({
               {t("storagePendingCount", { count: pendingStorageCount })}
             </InfoChip>
           )}
-          {status === 'cancelled' && booking.paymentStatus === 'partially_refunded' && (
-            <InfoChip variant="warning" icon={<AlertTriangle className="h-2.5 w-2.5" />} className="w-fit">
-              {t("partialRefund")}
-            </InfoChip>
-          )}
+          {/*
+            No partial-refund chip here, deliberately: the payment column already reads
+            "Partial Refund" for this same booking, so this repeated it word for word. Same reason
+            the status label above stays "Cancelled" instead of "Refunded".
+          */}
         </div>
       )
     },
@@ -1048,7 +1055,7 @@ const getStorageBookingColumns = ({
       const isCompleted = storageBooking.status === 'completed'
       const isCancellationRequested = storageBooking.status === 'cancellation_requested'
       const canCancel = (isConfirmed || storageBooking.status === 'pending') && !isCancellationRequested
-      const checkoutStatusActive = storageBooking.checkoutStatus === 'active'
+      const checkoutStatusActive = !storageBooking.checkoutStatus || storageBooking.checkoutStatus === 'active'
       const bookingEndDate = new Date(storageBooking.endDate)
       bookingEndDate.setHours(0, 0, 0, 0)
       const todayStart = new Date()
@@ -1071,11 +1078,10 @@ const getStorageBookingColumns = ({
 
       // Storage Check-Out: only available AFTER check-in is completed.
       // You cannot check out of a storage unit you haven't checked into.
-      const canCheckout =
-        isConfirmed &&
-        checkoutStatusActive &&
-        checkinCompleted &&
-        storageBooking.storageCheckoutEnabled === true
+      const canCheckout = checkoutStatusActive && (
+        Boolean(storageBooking.cancellationAcceptedAt) ||
+        (isConfirmed && checkinCompleted && storageBooking.storageCheckoutEnabled === true)
+      )
 
       const canExtend = isConfirmed && checkoutStatusActive && !isCompleted && !isExpired
 
@@ -1126,7 +1132,7 @@ const getStorageBookingColumns = ({
               </>
             )}
 
-            {isConfirmed && canCheckout && (
+            {canCheckout && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onCheckout(storageBooking.id)}>
@@ -1252,7 +1258,7 @@ export default function ChefBookingsView({
       if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return
 
       try {
-        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+        const timezone = DEFAULT_TIMEZONE
         const bookingDateStr = booking.bookingDate.split('T')[0]
 
         if (isBookingPast(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)) {
@@ -1494,7 +1500,7 @@ export default function ChefBookingsView({
     const dateStr = booking.bookingDate.split('T')[0]
     // Resolve in the location's timezone so the cancellation-window math
     // agrees with the server (which measures against the kitchen's wall clock).
-    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+    const timezone = DEFAULT_TIMEZONE
     const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) {
@@ -1655,9 +1661,9 @@ export default function ChefBookingsView({
 
   const needsStorageCheckout = useMemo(() => {
     return (storageBookings as StorageBooking[]).filter(sb => {
-      if (sb.status !== 'confirmed') return false
-      if (sb.storageCheckoutEnabled !== true) return false
-      return sb.checkinStatus === 'checkin_completed' && (!sb.checkoutStatus || sb.checkoutStatus === 'active')
+      const active = !sb.checkoutStatus || sb.checkoutStatus === 'active'
+      if (sb.cancellationAcceptedAt) return active
+      return sb.status === 'confirmed' && sb.storageCheckoutEnabled === true && sb.checkinStatus === 'checkin_completed' && active
     })
   }, [storageBookings])
 
@@ -1691,6 +1697,7 @@ export default function ChefBookingsView({
                     <Button
                       key={b.id}
                       size="sm"
+                      className="max-w-full whitespace-normal text-left"
                       onClick={() => setCheckinTrackerBookingId(b.id)}
                     >
                       <LogIn className="h-3.5 w-3.5 mr-1.5" />
@@ -1727,6 +1734,7 @@ export default function ChefBookingsView({
                       key={b.id}
                       size="sm"
                       variant="outline"
+                      className="max-w-full whitespace-normal text-left"
                       onClick={() => setCheckinTrackerBookingId(b.id)}
                     >
                       <LogOut className="h-3.5 w-3.5 mr-1.5" />
@@ -1759,6 +1767,7 @@ export default function ChefBookingsView({
                   <Button
                     key={`checkin-${sb.id}`}
                     size="sm"
+                    className="max-w-full whitespace-normal text-left"
                     onClick={() => setCheckinDialogOpen(sb.id)}
                   >
                     <LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bkCheckIn")} — {sb.storageName || `Storage #${sb.id}`}
@@ -1790,6 +1799,7 @@ export default function ChefBookingsView({
                     key={`checkout-${sb.id}`}
                     size="sm"
                     variant="outline"
+                    className="max-w-full whitespace-normal text-left"
                     onClick={() => setCheckoutDialogOpen(sb.id)}
                   >
                     <LogOut className="h-3.5 w-3.5 mr-1.5" />
@@ -1839,20 +1849,20 @@ export default function ChefBookingsView({
 
         <CardContent className="space-y-4">
           {/* View Type Tabs */}
-          <Tabs value={viewType} onValueChange={(v) => setViewType(v as ViewType)} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="upcoming" className="gap-2">
-                <CalendarDays className="h-4 w-4" />
+          <Tabs value={viewType} onValueChange={(v) => setViewType(v as ViewType)} className="min-w-0 w-full">
+            <TabsList className="grid w-full min-w-0 grid-cols-3">
+              <TabsTrigger value="upcoming" className="min-w-0 gap-1 px-1 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+                <CalendarDays className="hidden h-4 w-4 sm:block" />
                 {t("bkTabUpcoming")}
-                <Badge variant="count" className="ml-1">{upcomingBookings.length}</Badge>
+                <Badge variant="count" className="ml-1 hidden sm:inline-flex">{upcomingBookings.length}</Badge>
               </TabsTrigger>
-              <TabsTrigger value="past" className="gap-2">
+              <TabsTrigger value="past" className="min-w-0 gap-1 px-1 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                 {t("bkTabPast")}
-                <Badge variant="count" className="ml-1">{pastBookings.length}</Badge>
+                <Badge variant="count" className="ml-1 hidden sm:inline-flex">{pastBookings.length}</Badge>
               </TabsTrigger>
-              <TabsTrigger value="all" className="gap-2">
+              <TabsTrigger value="all" className="min-w-0 gap-1 px-1 text-xs sm:gap-2 sm:px-3 sm:text-sm">
                 {t("bkTabAll")}
-                <Badge variant="count" className="ml-1">{allBookings.length}</Badge>
+                <Badge variant="count" className="ml-1 hidden sm:inline-flex">{allBookings.length}</Badge>
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1930,14 +1940,7 @@ export default function ChefBookingsView({
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="h-48 text-center">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">{t("bkLoadingBookings")}</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  Array.from({ length: 4 }, (_, index) => <TableRow key={index}><TableCell colSpan={columns.length}><Skeleton className="h-12 w-full rounded-lg" /></TableCell></TableRow>)
                 ) : table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
                     <TableRow
@@ -2177,7 +2180,7 @@ export default function ChefBookingsView({
       )}
 
       {/* Cancellation Request / Confirm Sheet */}
-      <CancellationRequestSheet
+      <CancellationRequestDialog
         open={cancellationTarget !== null}
         onOpenChange={(open) => { if (!open) setCancellationTarget(null) }}
         target={cancellationTarget}

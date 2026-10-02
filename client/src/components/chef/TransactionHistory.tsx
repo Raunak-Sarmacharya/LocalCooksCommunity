@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Transaction History Component
  * 
@@ -18,9 +19,10 @@ import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Building2, Package, DollarSign, ArrowUpDown, Calendar, Receipt, Search, X, Hash } from "lucide-react";
+import { RefreshCw, Building2, DollarSign, ArrowUpDown, Calendar, Receipt, Search, X, Hash } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { ChefPageHeader, StatTile } from "@/components/chef/ui";
@@ -470,10 +472,6 @@ export function TransactionHistory() {
                   <SelectItem value="equipment">{t("billingEquipmentOption", "Equipment")}</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={() => refetch()} disabled={isLoading} className="w-full sm:w-auto">
-                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                {t("billingRefresh", "Refresh")}
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -511,7 +509,8 @@ export function TransactionHistory() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <MobileTableCards rows={table.getRowModel().rows} emptyMessage={t("billingNoTransactionsTitle", "No Transactions")} />
+          <div className="hidden rounded-xl border overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (

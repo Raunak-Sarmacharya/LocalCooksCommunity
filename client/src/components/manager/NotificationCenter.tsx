@@ -1,14 +1,14 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { resolveNotificationHref } from "@shared/notification-deep-links";
+import { resolveNotificationHref, type NotificationRole } from "@shared/notification-deep-links";
 import { navigateNotificationHref } from "@/lib/navigate-notification-href";
 /**
  * Enterprise-Grade Notification Center Component
  * 
  * A popout notification panel for the manager portal featuring:
  * - Real-time unread count badge with polling
- * - Grouped notifications by priority and time
+ * - Notifications ordered by their creation time
  * - Mark as read / archive / delete functionality
  * - Filtering by type and status
  * - Optimistic updates with rollback on error
@@ -222,24 +222,16 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
   );
 }
 
-// Group notifications by status
-function groupNotificationsByStatus(notifications: Notification[]) {
-  const groups: { label: string; notifications: Notification[] }[] = [];
-  const unread: Notification[] = [];
-  const earlier: Notification[] = [];
-
-  notifications.forEach((notification) => {
-    if (!notification.is_read) {
-      unread.push(notification);
-    } else {
-      earlier.push(notification);
-    }
-  });
-
-  if (unread.length > 0) groups.push({ label: mt("groupUnread"), notifications: unread });
-  if (earlier.length > 0) groups.push({ label: mt("groupEarlier"), notifications: earlier });
-
-  return groups;
+// Keep date sections chronological; unread state changes must never move a notification.
+function groupNotificationsByDate(notifications: Notification[]) {
+  const groups = new Map<string, Notification[]>();
+  for (const notification of [...notifications].sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || b.id - a.id
+  )) {
+    const label = format(new Date(notification.created_at), "MMM d, yyyy");
+    groups.set(label, [...(groups.get(label) || []), notification]);
+  }
+  return Array.from(groups.entries()).map(([label, items]) => ({ label, notifications: items }));
 }
 
 // Single notification item with full accessibility
@@ -251,7 +243,8 @@ function NotificationItem({
   onDelete,
   onActivate,
   isSelected,
-  _onSelect
+  _onSelect,
+  linkRole,
 }: { 
   notification: Notification;
   onMarkRead: (id: number) => Promise<void>;
@@ -261,13 +254,33 @@ function NotificationItem({
   onActivate?: () => void;
   isSelected: boolean;
   _onSelect: (id: number) => void;
+  linkRole: NotificationRole | null;
 }) {
-  const href = resolveNotificationHref({
-    role: "manager",
-    type: notification.type,
-    actionUrl: notification.action_url,
-    metadata: notification.metadata,
-  });
+  const href = linkRole
+    ? resolveNotificationHref({
+        role: linkRole,
+        type: notification.type,
+        actionUrl: notification.action_url,
+        metadata: notification.metadata,
+      })
+    : notification.action_url || null;
+
+  // Render stored kitchen alerts in the manager's language, including alerts saved before the copy change.
+  const chefName = notification.metadata.chefName;
+  const isKitchenAccessNotification = linkRole === "manager"
+    && typeof chefName === "string"
+    && href?.startsWith("/manager")
+    && (notification.type === "application_new" || notification.type === "application_approved");
+  const isAccessApproved = notification.type === "application_approved";
+  const isDocumentsSubmitted = notification.metadata.step === 2;
+  const notificationTitle = isKitchenAccessNotification
+    ? mt(isAccessApproved ? "notificationAccessApproved" : isDocumentsSubmitted ? "notificationAccessDocumentsSubmitted" : "notificationAccessRequestNew")
+    : notification.title;
+  const notificationMessage = isKitchenAccessNotification
+    ? mt(isAccessApproved ? "notificationAccessApprovedBody" : isDocumentsSubmitted ? "notificationAccessDocumentsBody" : "notificationAccessRequestBody", {
+        chef: notification.metadata.chefEmail ? `${chefName} (${notification.metadata.chefEmail})` : chefName,
+      })
+    : notification.message;
 
   const openNotification = async () => {
     // Close before the async read mutation/navigation so the old overlay never
@@ -311,7 +324,7 @@ function NotificationItem({
         <div className="flex flex-col min-w-0 pr-2">
           <AlertTitle className="flex justify-between items-center gap-2 min-w-0 h-auto">
             <span className={cn("text-sm truncate flex-1 min-w-0", notification.is_read ? "font-normal text-foreground" : "font-semibold text-foreground")}>
-              {notification.title}
+              {notificationTitle}
             </span>
             <span className="text-[10px] text-muted-foreground whitespace-nowrap font-normal shrink-0">
               {formatNotificationTime(notification.created_at)}
@@ -320,7 +333,7 @@ function NotificationItem({
           
           <AlertDescription className="mt-0 min-w-0 block w-full">
             <p className="text-xs text-foreground/80 truncate w-full">
-              {notification.message}
+              {notificationMessage}
             </p>
           </AlertDescription>
         </div>
@@ -337,13 +350,31 @@ type NotificationCenterProps = {
   locationId?: number;
   variant?: "popover" | "page";
   onViewAll?: () => void;
+  /**
+   * API base path for the notification endpoints. The same router is mounted at
+   * `/api/manager/notifications` and `/api/admin/notifications`, so the admin
+   * portal renders this component with its own base instead of a second, thinner
+   * implementation that drifts out of parity.
+   */
+  endpoint?: string;
+  /**
+   * How a notification's destination is resolved. `"manager"` / `"chef"` infer a
+   * fallback href from the notification type; `null` navigates only when the
+   * notification carries an `action_url`. The admin portal needs `null` - it has
+   * no per-type pages, and inferring a manager href there would drop an admin
+   * into the manager portal.
+   */
+  linkRole?: NotificationRole | null;
 };
 
 export default function NotificationCenter({
   locationId,
   variant = "popover",
   onViewAll,
+  endpoint = "/api/manager/notifications",
+  linkRole = "manager",
 }: NotificationCenterProps) {
+  const api = endpoint;
   
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
@@ -352,12 +383,12 @@ export default function NotificationCenter({
 
   // Fetch unread count - poll more frequently when popover is open
   const { data: unreadData, isError: unreadError } = useQuery({
-    queryKey: ["/api/manager/notifications/unread-count", locationId],
+    queryKey: [`${api}/unread-count`, locationId],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const url = locationId 
-        ? `/api/manager/notifications/unread-count?locationId=${locationId}`
-        : "/api/manager/notifications/unread-count";
+        ? `${api}/unread-count?locationId=${locationId}`
+        : `${api}/unread-count`;
       const res = await fetch(url, { headers });
       if (!res.ok) {
         throw new Error(`Failed to fetch unread count: ${res.status}`);
@@ -371,12 +402,12 @@ export default function NotificationCenter({
 
   // Fetch notifications
   const { data: notificationsData, isLoading, isError: notificationsError, refetch } = useQuery<NotificationResponse>({
-    queryKey: ["/api/manager/notifications", filter, locationId],
+    queryKey: [`${api}`, filter, locationId],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ filter });
       if (locationId) params.append("locationId", String(locationId));
-      const url = `/api/manager/notifications?${params}`;
+      const url = `${api}?${params}`;
       const res = await fetch(url, { headers });
       if (!res.ok) {
         throw new Error(`Failed to fetch notifications: ${res.status}`);
@@ -392,7 +423,7 @@ export default function NotificationCenter({
   const markReadMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/mark-read", {
+      const res = await fetch(`${api}/mark-read`, {
         method: "POST",
         headers,
         body: JSON.stringify({ notificationIds: ids }),
@@ -403,16 +434,16 @@ export default function NotificationCenter({
     // Optimistic update: immediately mark as read in the UI
     onMutate: async (ids: number[]) => {
       // Cancel any outgoing refetches to avoid overwriting optimistic update
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
 
       // Snapshot the previous values
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
 
       // Optimistically update notifications
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n =>
             ids.includes(n.id) ? { ...n, is_read: true, read_at: new Date().toISOString() } : n
@@ -423,7 +454,7 @@ export default function NotificationCenter({
       // Optimistically update unread count
       if (previousUnreadCount) {
         const newCount = Math.max(0, previousUnreadCount.count - ids.length);
-        queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], { count: newCount });
+        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], { count: newCount });
       }
 
       return { previousNotifications, previousUnreadCount };
@@ -432,17 +463,17 @@ export default function NotificationCenter({
     onError: (err, ids, context) => {
       logger.error("[NotificationCenter] Failed to mark as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
       }
       toast.error(tt("failedToMarkAsRead"));
     },
     // Always refetch after error or success to ensure consistency
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: [`${api}`] });
+      queryClient.invalidateQueries({ queryKey: [`${api}/unread-count`] });
     },
   });
 
@@ -450,7 +481,7 @@ export default function NotificationCenter({
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/mark-all-read", {
+      const res = await fetch(`${api}/mark-all-read`, {
         method: "POST",
         headers,
         body: JSON.stringify({ locationId }),
@@ -460,32 +491,32 @@ export default function NotificationCenter({
     },
     // Optimistic update: immediately mark all as read
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
 
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
 
       // Optimistically mark all as read
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
         });
       }
 
       // Set unread count to 0
-      queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], { count: 0 });
+      queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], { count: 0 });
 
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _, context) => {
       logger.error("[NotificationCenter] Failed to mark all as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
       }
       toast.error(tt("failedToMarkAllAsRead"));
     },
@@ -493,8 +524,8 @@ export default function NotificationCenter({
       toast.success(tt("allNotificationsMarkedAsRead"));
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: [`${api}`] });
+      queryClient.invalidateQueries({ queryKey: [`${api}/unread-count`] });
     },
   });
 
@@ -502,7 +533,7 @@ export default function NotificationCenter({
   const archiveMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/archive", {
+      const res = await fetch(`${api}/archive`, {
         method: "POST",
         headers,
         body: JSON.stringify({ notificationIds: ids }),
@@ -511,11 +542,11 @@ export default function NotificationCenter({
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
       
       // Count how many unread notifications are being archived
       const unreadBeingArchived = previousNotifications?.notifications.filter(
@@ -524,7 +555,7 @@ export default function NotificationCenter({
       
       // Optimistically remove archived notifications from the list
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
         });
@@ -532,7 +563,7 @@ export default function NotificationCenter({
       
       // Update unread count if any unread notifications were archived
       if (previousUnreadCount && unreadBeingArchived > 0) {
-        queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], {
+        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], {
           count: Math.max(0, previousUnreadCount.count - unreadBeingArchived)
         });
       }
@@ -542,10 +573,10 @@ export default function NotificationCenter({
     onError: (err, ids, context) => {
       logger.error("[NotificationCenter] Failed to archive:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
       }
       toast.error(tt("failedToArchiveNotification"));
     },
@@ -553,8 +584,8 @@ export default function NotificationCenter({
       toast.success(tt("notificationArchived"));
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: [`${api}`] });
+      queryClient.invalidateQueries({ queryKey: [`${api}/unread-count`] });
     },
   });
 
@@ -562,7 +593,7 @@ export default function NotificationCenter({
   const unarchiveMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/unarchive", {
+      const res = await fetch(`${api}/unarchive`, {
         method: "POST",
         headers,
         body: JSON.stringify({ notificationIds: ids }),
@@ -571,13 +602,13 @@ export default function NotificationCenter({
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
       
       // Optimistically remove unarchived notifications from the archived list
       if (previousNotifications && filter === "archived") {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
         });
@@ -588,7 +619,7 @@ export default function NotificationCenter({
     onError: (err, ids, context) => {
       logger.error("[NotificationCenter] Failed to unarchive:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
       }
       toast.error(tt("failedToUnarchiveNotification"));
     },
@@ -596,8 +627,8 @@ export default function NotificationCenter({
       toast.success(tt("notificationRestored"));
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: [`${api}`] });
+      queryClient.invalidateQueries({ queryKey: [`${api}/unread-count`] });
     },
   });
 
@@ -605,7 +636,7 @@ export default function NotificationCenter({
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/manager/notifications/${id}`, {
+      const res = await fetch(`${api}/${id}`, {
         method: "DELETE",
         headers,
       });
@@ -613,18 +644,18 @@ export default function NotificationCenter({
       return res.json();
     },
     onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
       
       // Find the notification to check if it was unread
       const deletedNotification = previousNotifications?.notifications.find(n => n.id === id);
       
       // Optimistically remove deleted notification from the list
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => n.id !== id),
         });
@@ -632,7 +663,7 @@ export default function NotificationCenter({
       
       // Update unread count if the deleted notification was unread
       if (previousUnreadCount && deletedNotification && !deletedNotification.is_read) {
-        queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], {
+        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], {
           count: Math.max(0, previousUnreadCount.count - 1)
         });
       }
@@ -642,10 +673,10 @@ export default function NotificationCenter({
     onError: (err, id, context) => {
       logger.error("[NotificationCenter] Failed to delete:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
       }
       toast.error(tt("failedToDeleteNotification"));
     },
@@ -653,8 +684,8 @@ export default function NotificationCenter({
       toast.success(tt("notificationDeleted"));
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: [`${api}`] });
+      queryClient.invalidateQueries({ queryKey: [`${api}/unread-count`] });
     },
   });
 
@@ -692,7 +723,7 @@ export default function NotificationCenter({
 
   const unreadCount = unreadData?.count || 0;
   const notifications = notificationsData?.notifications || [];
-  const groupedNotifications = groupNotificationsByStatus(notifications);
+  const groupedNotifications = groupNotificationsByDate(notifications);
 
   // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N to avoid browser conflicts)
   useEffect(() => {
@@ -731,10 +762,6 @@ export default function NotificationCenter({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-                <RefreshCw className={cn("mr-1 size-4", isLoading && "animate-spin")} aria-hidden="true" />
-                {tt("refreshNotifications")}
-              </Button>
               {unreadCount > 0 && (
                 <Button size="sm" onClick={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending}>
                   <CheckCheck className="mr-1 size-4" aria-hidden="true" />
@@ -778,6 +805,7 @@ export default function NotificationCenter({
                         onUnarchive={handleUnarchive}
                         onDelete={handleDelete}
                         isSelected={selectedIds.has(notification.id)}
+                        linkRole={linkRole}
                         _onSelect={handleSelect}
                       />
                     ))}
@@ -834,16 +862,6 @@ export default function NotificationCenter({
             </p>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-full"
-              onClick={() => refetch()}
-              disabled={isLoading}
-              aria-label={isLoading ? tt("refreshingNotifications") : tt("refreshNotifications")}
-            >
-              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
-            </Button>
             {unreadCount > 0 && (
               <Button
                 variant="ghost"
@@ -902,6 +920,7 @@ export default function NotificationCenter({
                         onDelete={handleDelete}
                         onActivate={() => setIsOpen(false)}
                         isSelected={selectedIds.has(notification.id)}
+                        linkRole={linkRole}
                         _onSelect={handleSelect}
                       />
                     ))}
@@ -913,7 +932,6 @@ export default function NotificationCenter({
         </ScrollArea>
 
         {/* Footer */}
-        {notifications.length > 0 && (
           <div className="p-3 border-t bg-gray-50 text-center">
             <Button 
               variant="link" 
@@ -924,10 +942,9 @@ export default function NotificationCenter({
                 onViewAll?.();
               }}
             >
-              {mt("navNotifications")}{notificationsData?.pagination?.total ? ` (${notificationsData.pagination.total})` : ""}
+              {mt("viewAll")}{notificationsData?.pagination?.total ? ` (${notificationsData.pagination.total})` : ""}
             </Button>
           </div>
-        )}
       </PopoverContent>
     </Popover>
   );

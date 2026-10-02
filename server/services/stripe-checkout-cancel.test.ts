@@ -51,7 +51,7 @@ describe('kitchen Checkout session', () => {
     });
     const request = stripeSessions.create.mock.calls[0][0];
     expect(request.line_items.reduce((sum: number, item: any) => sum + item.price_data.unit_amount, 0)).toBe(total);
-    expect(request.metadata).toMatchObject({ pricing_mode: mode, hold_id: 'hold-test', window_start_time: '08:00' });
+    expect(request.metadata).toMatchObject({ fee_model: 'separate-charge-commission-v1', pricing_mode: mode, hold_id: 'hold-test', window_start_time: '08:00' });
     expect(request.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000) + 30 * 60);
   });
 });

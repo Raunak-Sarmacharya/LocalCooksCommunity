@@ -1,3 +1,4 @@
+import { CHEF_APPLICATION_ICON } from "@/components/ui/application-icons";
 import { useTranslation } from "react-i18next";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -145,7 +146,7 @@ export function SellerPathEmptyCard({
       steps={SELLER_STEPS}
       ctaLabel={t("applyToSell", "Apply to sell")}
       ctaTestId="seller-application-start"
-      ctaIcon="mdi:file-document-edit-outline"
+      ctaIcon={CHEF_APPLICATION_ICON}
       onCta={onApply}
       loading={loading}
       compact={compact}

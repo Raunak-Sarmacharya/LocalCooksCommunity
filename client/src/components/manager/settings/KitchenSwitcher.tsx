@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronsUpDown,
@@ -8,7 +9,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,8 @@ import { mt } from "@/i18n/manager";
 export interface SwitchableKitchen {
   id: number;
   name: string;
+  listingStatus?: "active" | "draft";
+  isActive?: boolean;
 }
 
 interface KitchenSwitcherProps {
@@ -29,15 +31,11 @@ interface KitchenSwitcherProps {
 }
 
 /**
- * The kitchen switcher, worn as the IDENTITY inside the listing-status banner.
+ * A visible Add Kitchen action beside the current-kitchen selector.
  *
- * WHY IT LOOKS LIKE A FIELD
- *
- * The banner states one kitchen and its publish state, so the switcher has to read as a CONTROL and
- * the state as STATUS. The first version dressed the control as plain text — a borderless button
- * with a 14px grey chevron — which made it indistinguishable from the label beside it; a manager had
- * no reason to believe the kitchen name was interactive, so the menu (and the "Add Kitchen" command
- * that only lives inside it) was never found.
+ * Creation is a primary task on this page, so managers can see it without opening
+ * the selector. The adjacent controls share one frame but retain separate targets:
+ * the plus starts creation, and the kitchen name opens the list when there is a choice.
  *
  * NN/g, *Dropdowns: Design Guidelines*: a control that reveals a list "has a dropdown arrow next to
  * them" and "tends to be supported by a field label or a title". So it is bordered and field-like at
@@ -53,7 +51,7 @@ interface KitchenSwitcherProps {
  * layer either way.
  */
 const TRIGGER =
-  "group inline-flex h-9 max-w-[22rem] items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-sm transition-colors hover:bg-muted/60 data-[state=open]:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";
+  "group inline-flex !min-h-0 h-full min-w-0 max-w-[18rem] items-center gap-2 px-3 text-sm transition-colors hover:bg-muted/60 data-[state=open]:bg-muted focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 
 /** The item's check column. Held open when unselected so every name starts on the same x. */
 const CHECK = "h-4 w-4 shrink-0 text-primary";
@@ -65,7 +63,7 @@ const CHECK = "h-4 w-4 shrink-0 text-primary";
  * `--popover` — so the shipped highlight is invisible on this menu.
  */
 const ITEM =
-  "gap-2 focus:bg-muted focus:text-foreground data-[highlighted]:bg-muted data-[highlighted]:text-foreground";
+  "gap-3 rounded-xl px-3 py-2.5 focus:bg-muted focus:text-foreground data-[highlighted]:bg-muted data-[highlighted]:text-foreground";
 
 export function KitchenSwitcher({
   kitchens,
@@ -74,66 +72,88 @@ export function KitchenSwitcher({
   onAddKitchen,
 }: KitchenSwitcherProps) {
   const active = kitchens.find((kitchen) => kitchen.id === activeKitchenId);
+  const controlRef = useRef<HTMLDivElement>(null);
+  const [controlWidth, setControlWidth] = useState<number>();
+  useEffect(() => {
+    const control = controlRef.current;
+    if (!control || kitchens.length < 2) return;
+    const measure = () => setControlWidth(control.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(control);
+    return () => observer.disconnect();
+  }, [Boolean(active), kitchens.length > 1]);
   if (!active) return null;
 
+  const identity = <>
+    <span
+      aria-hidden="true"
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 text-[11px] font-semibold text-primary"
+    >
+      {active.name.trim().charAt(0).toUpperCase()}
+    </span>
+    <span className="min-w-0 truncate font-medium">{active.name}</span>
+  </>;
+
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <button type="button" className={TRIGGER}>
-          <span
-            aria-hidden="true"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 text-[11px] font-semibold text-primary"
-          >
-            {active.name.trim().charAt(0).toUpperCase()}
-          </span>
-          <span className="truncate font-medium">{active.name}</span>
-          <ChevronsUpDown
-            aria-hidden="true"
-            className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-data-[state=open]:text-foreground"
-          />
-        </button>
-      </DropdownMenuTrigger>
-
-      {/*
-       * `align="start"` because the trigger sits at the start of the banner; Radix flips it when
-       * there is no room. The label stays in the open menu on purpose — NN/g: "Keep the menu label
-       * or description in view when the dropdown is open", so the reader is never asked to remember
-       * what they are choosing between.
-       */}
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>{mt("kitchen")}</DropdownMenuLabel>
-        {kitchens.map((kitchen) => (
-          <DropdownMenuItem
-            key={kitchen.id}
-            onSelect={() => onSelect(kitchen.id)}
-            className={ITEM}
-          >
-            <Check
+    <div ref={controlRef} className="inline-flex h-11 w-80 min-w-0 max-w-full items-stretch overflow-hidden rounded-xl border border-border bg-card shadow-[0_2px_8px_-6px_rgba(15,23,42,0.25)]">
+      <button type="button" onClick={onAddKitchen}
+        className="inline-flex !min-h-0 h-full shrink-0 items-center gap-2 border-r border-border px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+        <Plus aria-hidden="true" className="h-4 w-4" />
+        {mt("addKitchen")}
+      </button>
+      {kitchens.length === 1 ? (
+        <div className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-sm">
+          {identity}
+        </div>
+      ) : (
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={cn(TRIGGER, "flex-1 justify-between")}>
+            {identity}
+            <ChevronsUpDown
               aria-hidden="true"
-              className={cn(CHECK, kitchen.id !== activeKitchenId && "opacity-0")}
+              className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-data-[state=open]:text-foreground"
             />
-            {/*
-             * The current kitchen is marked by the check AND by the weight of its name, so the
-             * selection is legible at a glance rather than only by spotting a small tick.
-             */}
-            <span className={cn("truncate", kitchen.id === activeKitchenId && "font-medium")}>
-              {kitchen.name}
-            </span>
-          </DropdownMenuItem>
-        ))}
+          </button>
+        </DropdownMenuTrigger>
 
-        {/*
-         * Rendered for EVERY kitchen count, including one. With a single kitchen this is the only
-         * command in the menu, and it is the page's only route to creating a second one — hiding it
-         * would strand a manager who has exactly one kitchen.
-         */}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onAddKitchen} className={ITEM}>
-          <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
-          {mt("addKitchen")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        {/* Keep the menu aligned to the selector's right edge; Radix flips it near the viewport edge. */}
+        <DropdownMenuContent align="end" style={controlWidth ? { width: controlWidth } : undefined} className="w-80 overflow-hidden rounded-[1.25rem] border-border/80 p-2 shadow-[0_18px_42px_-20px_rgba(15,23,42,0.42)]">
+          <DropdownMenuLabel className="px-3 pb-2 pt-1 text-xs font-medium text-muted-foreground">{mt("kitchen")}</DropdownMenuLabel>
+          <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: "min(50vh, max(0px, calc(var(--radix-dropdown-menu-content-available-height) - 6rem)))" }}>
+            {kitchens.map((kitchen) => {
+              const status = kitchen.isActive === false
+                ? mt("listingStatusHiddenLabel")
+                : kitchen.listingStatus === "active"
+                  ? mt("listingStatusLiveLabel")
+                  : mt("listingStatusDraftLabel");
+              return (
+                <DropdownMenuItem
+                  key={kitchen.id}
+                  aria-label={`${kitchen.name}, ${status}`}
+                  onSelect={() => onSelect(kitchen.id)}
+                  className={ITEM}
+                >
+                  <Check
+                    aria-hidden="true"
+                    className={cn(CHECK, kitchen.id !== activeKitchenId && "opacity-0")}
+                  />
+                  <span className={cn("min-w-0 flex-1 truncate", kitchen.id === activeKitchenId && "font-medium")}>
+                    {kitchen.name}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", kitchen.isActive === false ? "bg-amber-600" : kitchen.listingStatus === "active" ? "bg-emerald-600" : "bg-muted-foreground/50")} />
+                    {status}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      )}
+    </div>
   );
 }
 

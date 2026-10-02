@@ -14,6 +14,7 @@ import { bookingService } from "../domains/bookings/booking.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 import { calendarDateForOperatingTime } from "@shared/operating-hours";
+import { resolveKitchenBookingPolicies } from "@shared/kitchen-booking-policies";
 const router = Router();
 
 // ===============================
@@ -424,7 +425,11 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
 
         // Get location to check minimum booking window
         const location = await locationService.getLocationById(userLocationId);
-        const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
+        const policies = resolveKitchenBookingPolicies(kitchen, location);
+        const minimumBookingWindowHours = policies.minimumBookingWindowHours;
+        if (kitchen.pricingModel !== 'daily' && (availabilityCheck.slots?.length ?? 0) > policies.defaultDailyBookingLimit) {
+            return res.status(400).json({ error: `Select no more than ${policies.defaultDailyBookingLimit} hourly slots` });
+        }
         const locationTimezone = (location as any)?.timezone || 'America/St_Johns';
 
         // Timezone-aware booking window enforcement (works for today AND future dates)

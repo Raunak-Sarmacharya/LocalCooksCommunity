@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { kitchenPreviewPath } from "@/lib/discover-location-groups";
+import { kitchenPreviewHref } from "@/lib/kitchen-preview-url";
+import { Skeleton } from "@/components/ui/skeleton";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
@@ -37,6 +39,7 @@ interface EquipmentSummary {
 interface PublicKitchen {
   id: number;
   name: string;
+  slug?: string | null;
   description?: string | null;
   imageUrl?: string | null;
   galleryImages?: string[];
@@ -161,10 +164,8 @@ export default function KitchenDiscovery({
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-8">
-          <div className="flex items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-foreground" />
-          </div>
+        <CardContent className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Loading kitchens">
+          {Array.from({ length: 6 }, (_, index) => <div key={index} className="space-y-3"><Skeleton className="aspect-[4/3] w-full rounded-xl" /><Skeleton className="h-5 w-3/4" /><Skeleton className="h-4 w-1/2" /></div>)}
         </CardContent>
       </Card>
     );
@@ -309,7 +310,7 @@ export default function KitchenDiscovery({
                 const application = applicationByLocationId.get(kitchen.locationId);
                 const display = application ? getKitchenDisplayStatus(application, tChef) : null;
                 const showBook = display?.actionKind === "book";
-                const previewHref = `${kitchenPreviewPath(kitchen.locationId, kitchen.locationSlug)}?kitchenId=${kitchen.id}`;
+                const previewHref = kitchenPreviewHref(kitchen.locationSlug || kitchen.locationId, kitchen);
                 const openPreview = () => navigate(previewHref);
 
                 const overlayChip = display ? (

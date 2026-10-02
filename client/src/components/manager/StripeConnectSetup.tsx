@@ -1,3 +1,4 @@
+import { getManagerStripeDashboardLink } from "@/lib/manager-stripe-dashboard";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 /**
@@ -10,6 +11,7 @@ import { mt } from "@/i18n/manager";
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, CreditCard, ExternalLink, Clock, ShieldAlert } from "@/components/ui/manager-icons";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -119,26 +121,6 @@ export default function StripeConnectSetup() {
     : (stripeStatus?.hasAccount || !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id);
   const isOnboardingComplete = stripeStatus?.status === 'complete' && stripeStatus?.chargesEnabled && stripeStatus?.payoutsEnabled;
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        logger.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeePercentage = serviceFeeRateData?.percentage ;
-
   // [NEW] Listen for cross-tab completion events
   useEffect(() => {
     const channel = new BroadcastChannel('stripe_onboarding_channel');
@@ -179,28 +161,6 @@ export default function StripeConnectSetup() {
       channel.close();
     };
   }, [queryClient, toast, firebaseUser?.uid]);
-
-  // [INDUSTRY STANDARD] Auto-refresh status when user returns to tab
-  // This handles the case where user completes Stripe in another tab and comes back
-  useEffect(() => {
-    let lastHiddenTime = 0;
-    
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        lastHiddenTime = Date.now();
-      } else {
-        // Only refresh if tab was hidden for at least 3 seconds (user likely went to Stripe)
-        const wasHiddenLongEnough = Date.now() - lastHiddenTime > 3000;
-        if (wasHiddenLongEnough && hasStripeAccount && !isOnboardingComplete) {
-          logger.info('[Stripe] Tab visible again, checking status...');
-          queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [queryClient, hasStripeAccount, isOnboardingComplete]);
 
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
@@ -301,26 +261,7 @@ export default function StripeConnectSetup() {
   const getDashboardLinkMutation = useMutation({
     mutationFn: async () => {
       if (!firebaseUser) throw new Error(tt("notAuthenticated"));
-      const token = await auth.currentUser?.getIdToken();
-      // Check if we're in the setup flow
-      const isSetupFlow = window.location.pathname.includes('/manager/setup');
-      const fromParam = isSetupFlow ? '?from=setup' : '';
-      const response = await fetch(`/api/manager/stripe-connect/dashboard-link${fromParam}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to get dashboard link');
-      }
-      const data = await response.json();
-      if (!data.url) {
-        throw new Error(tt("dashboardLinkNotProvided"));
-      }
-      // Return both URL and whether onboarding is required
-      return { url: data.url, requiresOnboarding: data.requiresOnboarding || false };
+      return getManagerStripeDashboardLink(window.location.pathname.includes("/manager/setup"));
     },
     onSuccess: (data: { url: string; requiresOnboarding: boolean }) => {
       // Open Stripe Dashboard or Onboarding in a new tab
@@ -393,6 +334,18 @@ export default function StripeConnectSetup() {
     }
   });
 
+  useEffect(() => {
+    let lastHiddenTime = 0;
+    const handleVisibilityChange = () => {
+      if (document.hidden) lastHiddenTime = Date.now();
+      else if (lastHiddenTime && Date.now() - lastHiddenTime > 3000 && hasStripeAccount && !isOnboardingComplete) {
+        checkStatusMutation.mutate();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [hasStripeAccount, isOnboardingComplete, checkStatusMutation.mutate]);
+
   const handleAccessDashboard = () => {
     getDashboardLinkMutation.mutate();
   };
@@ -404,20 +357,15 @@ export default function StripeConnectSetup() {
       <p className="text-xs font-medium text-foreground">{mt("howPayoutsWork")}</p>
       <p className="text-xs text-muted-foreground">
         {mt("howPayoutsWorkBody")}
-        {serviceFeePercentage
-          ? ` ${mt("howPayoutsWorkServiceFeeNote", { percent: serviceFeePercentage })}`
-          : ""}
       </p>
     </div>
   );
 
   if (isLoading) {
-    // Bare spinner, not a Card: BOTH hosts already supply the card (the onboarding
-    // wizard via `PaymentSetupStep`, the profile tab via its own shell), so this used
-    // to render a card inside a card.
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-3 py-4" role="status" aria-label="Loading payment setup">
+        <Skeleton className="h-6 w-1/2" />
+        <Skeleton className="h-12 w-full rounded-lg" />
       </div>
     );
   }
@@ -612,20 +560,6 @@ export default function StripeConnectSetup() {
             <p className="mt-2 text-xs text-muted-foreground">{config.helpText}</p>
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className={CARD_ACTION_QUIET}
-            onClick={() => checkStatusMutation.mutate()}
-            disabled={checkStatusMutation.isPending}
-          >
-            {checkStatusMutation.isPending ? (
-              <>
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{mt("checking")}</>
-            ) : (
-              mt("alreadyCompletedRefreshStatus")
-            )}
-          </Button>
         </div>
       );
     }

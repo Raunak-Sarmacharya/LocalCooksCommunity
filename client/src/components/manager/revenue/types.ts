@@ -122,8 +122,12 @@ export interface RevenueByLocation {
 // Revenue by date for trend charts
 export interface RevenueByDate {
     date: string;
-    totalRevenue: number;          // In cents
-    managerRevenue: number;        // In cents
+    totalRevenue: number;          // Customer charges minus refunds on this date, in cents
+    grossRevenue?: number;         // Paid customer charges on this date, in cents
+    refundedAmount?: number;       // Customer refunds issued on this date, in cents
+    paidEarnings?: number;         // Manager payout credited on this date, in cents
+    refundDebit?: number;          // Manager payout reversed on this date, in cents
+    managerRevenue: number;        // Net manager payout movement, in cents
     platformFee: number;           // In cents
     bookingCount: number;
 }

@@ -24,7 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, CheckCircle, Calendar, Shield, AlertCircle, MessageCircle, CreditCard, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
@@ -91,6 +91,7 @@ export default function ApplicantDashboard() {
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const subdomain = useSubdomain();
   const [location, navigate] = useLocation();
+  const dashboardSearch = useSearch();
 
   // Parse view from URL query parameter (e.g., /dashboard?view=messages)
   const getInitialTab = () => {
@@ -212,7 +213,7 @@ export default function ApplicantDashboard() {
     syncFromUrl();
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);
-  }, [location]);
+  }, [location, dashboardSearch]);
 
   // Get chef applications for chat access
   const { applications: kitchenApplications } = useChefKitchenApplications();
@@ -785,7 +786,7 @@ export default function ApplicantDashboard() {
 
   const messagesTabContent = (
     <div className="h-[calc(100vh-8rem)]">
-      <UnifiedChatView userId={chefId} role="chef" initialConversationId={deepLinkConversationId} />
+      <UnifiedChatView userId={chefId} role="chef" initialConversationId={deepLinkConversationId} onNavigate={setActiveTab} chefHasApplications={kitchenApplications.length > 0} />
     </div>
   );
 

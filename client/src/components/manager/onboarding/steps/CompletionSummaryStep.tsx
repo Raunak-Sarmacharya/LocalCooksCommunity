@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { useMemo, useState, useCallback } from "react";
 import { useLocation } from "wouter";
-import { CheckCircle2, Circle, Clock, ArrowRight, Loader2, Mail, MessageCircle } from "@/components/ui/manager-icons";
+import { CheckCircle2, Circle, Clock, Loader2, Mail, MessageCircle } from "@/components/ui/manager-icons";
 import { emailProviderFor } from "@/lib/email-provider";
 import { EmailProviderBrandIcon } from "@/components/ui/email-provider-icon";
 import { Button } from "@/components/ui/button";
@@ -418,7 +418,6 @@ export default function CompletionSummaryStep() {
                             {isFullyReady || isOnboardingComplete
                                 ? mt("goToDashboard")
                                 : mt("continueToDashboard")}
-                            <ArrowRight className="w-4 h-4" />
                         </>
                     )}
                 </Button>

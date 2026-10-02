@@ -185,9 +185,9 @@ export async function buildKitchenReadiness(
         ? new Date(location.kitchenTermsUploadedAt).toISOString()
         : null,
       toursEnabled: Boolean(viewingSettings[0]?.isActive),
-      cancellationPolicyHours: location?.cancellationPolicyHours ?? 24,
-      dailyBookingLimit: location?.defaultDailyBookingLimit ?? 2,
-      minimumBookingWindowHours: location?.minimumBookingWindowHours ?? 1,
+      cancellationPolicyHours: kitchen.cancellationPolicyHours ?? location?.cancellationPolicyHours ?? 24,
+      dailyBookingLimit: kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? 2,
+      minimumBookingWindowHours: kitchen.minimumBookingWindowHours ?? location?.minimumBookingWindowHours ?? 1,
       minimumBookingHours: kitchen.minimumBookingHours ?? 1,
     },
     listingStatus: kitchen.listingStatus === "active" ? "active" : "draft",

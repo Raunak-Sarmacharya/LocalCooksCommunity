@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollEdgeFade, useScrollEdges } from "@/components/ui/scroll-edge-fade";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from "react";
@@ -45,6 +46,8 @@ import { kt } from "@/i18n/kitchen-ns";
 import { evaluateTypedKitchenDate, parseLocalDateInput } from "@/lib/kitchen-typed-date";
 import { fitDescriptionPreview } from "@/lib/fit-description-preview";
 import { resolvePreviewApplicationRoute, resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
+import { canonicalKitchenHref, chefKitchenShareUrl, kitchenPathSlug, shareKitchenLink } from "@/lib/kitchen-preview-url";
+import { useToast } from "@/hooks/use-toast";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -421,6 +424,8 @@ interface StorageListing {
 }
 
 interface PublicKitchen {
+  slug?: string | null;
+  cancellationPolicyHours?: number | null;
   latitude?: number | null;
   longitude?: number | null;
   id: number;
@@ -459,27 +464,19 @@ function formatHourLabel(time: string): string {
 
 function PreviewScroll({ children, className, axis = "x" }: { children: ReactNode; className?: string; axis?: "x" | "y" }) {
   const viewport = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ before: false, after: false });
-  const check = useCallback(() => {
+  // Shared with the scrollable TabsList so a scrollable row behaves identically everywhere.
+  const { edges, check } = useScrollEdges(viewport, axis);
+  const step = useCallback((direction: -1 | 1) => {
     const node = viewport.current;
     if (!node) return;
-    const position = axis === "x" ? node.scrollLeft : node.scrollTop;
-    const size = axis === "x" ? node.clientWidth : node.clientHeight;
-    const total = axis === "x" ? node.scrollWidth : node.scrollHeight;
-    setEdges({ before: position > 2, after: position + size < total - 2 });
+    node.scrollBy({
+      [axis === "x" ? "left" : "top"]: direction * (axis === "x" ? node.clientWidth : node.clientHeight) * 0.75,
+      behavior: "smooth",
+    });
   }, [axis]);
-  useEffect(() => {
-    const node = viewport.current;
-    if (!node) return;
-    const observer = new ResizeObserver(check);
-    observer.observe(node);
-    Array.from(node.children).forEach(child => observer.observe(child));
-    check();
-    return () => observer.disconnect();
-  }, [check, children]);
   return <div className="relative min-w-0">
     <div ref={viewport} onScroll={check} tabIndex={0} className={cn("scrollbar-none", axis === "x" ? "overflow-x-auto" : "overflow-y-auto", className)}>{children}</div>
-    {(["before", "after"] as const).map(edge => edges[edge] && <button key={edge} type="button" aria-label={`Scroll ${axis === "x" ? edge === "before" ? "left" : "right" : edge === "before" ? "up" : "down"}`} onClick={() => viewport.current?.scrollBy({ [axis === "x" ? "left" : "top"]: (edge === "before" ? -1 : 1) * (axis === "x" ? viewport.current.clientWidth : viewport.current.clientHeight) * 0.75, behavior: "smooth" })} className={cn("absolute z-10 flex items-center justify-center text-muted-foreground", axis === "x" ? "inset-y-0 w-8" : "inset-x-0 h-8", axis === "x" ? edge === "before" ? "left-0 bg-gradient-to-r from-background to-transparent" : "right-0 bg-gradient-to-l from-background to-transparent" : edge === "before" ? "top-0 bg-gradient-to-b from-background to-transparent" : "bottom-0 bg-gradient-to-t from-background to-transparent")}><PreviewIcon icon={`mdi:chevron-${axis === "x" ? edge === "before" ? "left" : "right" : edge === "before" ? "up" : "down"}`} /></button>)}
+    <ScrollEdgeFade edges={edges} axis={axis} onStep={step} />
   </div>;
 }
 
@@ -1970,21 +1967,29 @@ function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
             {isLoading ? t("scheduleLoading", "Loading hours…") : isError ? t("scheduleUnavailable", "Hours unavailable") : statusDetail}
           </span>
         </div>
-        {schedule && <button type="button" onClick={() => setModalOpen(true)} className="inline-flex min-h-8 shrink-0 items-center gap-1 text-sm font-semibold text-[#C8103B] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]">
+        {schedule && <button type="button" onClick={() => setModalOpen(true)} className="inline-flex min-h-8 shrink-0 items-center gap-1 text-sm font-semibold text-[#F51042] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]">
           {t("viewFullSchedule", "View full schedule")} <PreviewIcon icon="mdi:chevron-right" size={16} />
         </button>}
       </div>
       {schedule && today ? <>
         <PreviewScroll key={`${kitchenId}-${today}`} className="mt-3 px-1 pb-1">
-          <div className="grid min-w-[700px] grid-cols-7 gap-2">
+          {/*
+            Seven days must fit the phone. This used to be `min-w-[700px] grid-cols-7`, i.e. seven
+            93px columns inside a 358px viewport: the strip overflowed by 2x, the fourth day was
+            sliced in half at the screen edge, and every day card is itself a vertical stack
+            (weekday / date / open-closed) so the whole thing read as a table whose rows had been
+            turned into narrow columns. `min-w-0` + `truncate` on the cells means a longer locale
+            label ellipsises instead of widening the grid, so the week can never overflow again.
+          */}
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
               const date = scheduleDateKey(today, offset);
               const day = byDate.get(date);
               const weekday = scheduleDate(date, 0).getUTCDay();
-              return <div key={date} aria-current={offset === 0 ? "date" : undefined} aria-label={`${t(DAY_LABELS[weekday])}, ${shortDate(date)}: ${day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}`} className={cn("flex flex-col items-center rounded-lg border bg-white px-2 py-2 text-center", offset === 0 ? "border-[#F51042] bg-[#FFF8F9]" : "border-gray-200")}>
-                <span className={cn("text-xs font-medium", offset === 0 ? "text-[#C8103B]" : "text-gray-600")}>{t(DAY_SHORT[weekday])}</span>
-                <span className="mt-0.5 text-base font-semibold tabular-nums text-gray-900">{scheduleDate(date, 0).getUTCDate()}</span>
-                <span className={cn("mt-0.5 text-xs", day?.isOpen ? "font-medium text-gray-700" : "text-gray-500")}>{day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}</span>
+              return <div key={date} aria-current={offset === 0 ? "date" : undefined} aria-label={`${t(DAY_LABELS[weekday])}, ${shortDate(date)}: ${day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}`} className={cn("flex min-w-0 flex-col items-center rounded-lg border bg-white px-0.5 py-2 text-center sm:px-2", offset === 0 ? "border-[#F51042] bg-[#FFF8F5]" : "border-gray-200")}>
+                <span className={cn("w-full truncate text-[11px] font-medium sm:text-xs", offset === 0 ? "text-[#F51042]" : "text-gray-600")}>{t(DAY_SHORT[weekday])}</span>
+                <span className="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 sm:text-base">{scheduleDate(date, 0).getUTCDate()}</span>
+                <span className={cn("mt-0.5 w-full truncate text-[11px] sm:text-xs", day?.isOpen ? "font-medium text-gray-700" : "text-gray-500")}>{day?.isOpen ? t("scheduleOpen", "Open") : t("scheduleClosed", "Closed")}</span>
               </div>;
             })}
           </div>
@@ -2002,7 +2007,7 @@ function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
                 const day = byDate.get(date);
                 const weekday = scheduleDate(date, 0).getUTCDay();
                 return <div key={date} className={cn("flex items-center justify-between gap-4 py-2.5 text-sm", date === today && "font-semibold")}>
-                  <span className="flex items-center gap-2 text-gray-900">{t(DAY_LABELS[weekday])} <span className="text-xs font-normal text-gray-500">{shortDate(date)}</span>{date === today && <span className="rounded-full bg-[#FFF1F3] px-2 py-0.5 text-xs font-semibold text-[#C8103B]">{t("scheduleToday", "Today")}</span>}</span>
+                  <span className="flex items-center gap-2 text-gray-900">{t(DAY_LABELS[weekday])} <span className="text-xs font-normal text-gray-500">{shortDate(date)}</span>{date === today && <span className="rounded-full bg-[#FFF1F3] px-2 py-0.5 text-xs font-semibold text-[#F51042]">{t("scheduleToday", "Today")}</span>}</span>
                   <span className={cn("text-right tabular-nums", day?.isOpen ? "text-gray-900" : "text-gray-500")}>{day?.isOpen ? <>{formatHourLabel(day.startTime!)} – {formatHourLabel(day.endTime!)}{scheduleMinutes(day.endTime!) <= scheduleMinutes(day.startTime!) ? <span className="block text-xs font-normal text-gray-500">{t("scheduleNextDay", "Next day")}</span> : null}</> : t("scheduleClosed", "Closed")}</span>
                 </div>;
               })}
@@ -2789,8 +2794,9 @@ function GuestHoursCard({
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-none">
           <div className="relative mt-2 rounded-lg border border-gray-300 bg-gray-50/30 p-1">
             {availabilityLoading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg">
-                <PreviewIcon icon="mdi:loading" size={20} className="animate-spin text-[#F51042]" />
+              <div className="absolute inset-0 z-10 space-y-3 rounded-lg bg-white/95 p-4" role="status" aria-label={t("loadingAvailability", "Loading availability")}>
+                <Skeleton className="h-7 w-2/3" />
+                <div className="grid grid-cols-7 gap-2">{Array.from({ length: 35 }, (_, index) => <Skeleton key={index} className="aspect-square rounded-md" />)}</div>
               </div>
             )}
             <UICalendar
@@ -3275,6 +3281,7 @@ function KitchenPreviewDockNav({
 
 export default function KitchenPreviewPage() {
   const { t } = useTranslation("kitchen");
+  const { toast } = useToast();
   const { t: tChef } = useTranslation("chef");
   const [locationPath, navigate] = useLocation();
   const { user, loading: authLoading } = useFirebaseAuth();
@@ -3283,8 +3290,9 @@ export default function KitchenPreviewPage() {
   const staticSiteHeader = !isAuthenticated;
   const reduceMotion = useReducedMotion();
 
-  const locationIdMatch = locationPath.match(/\/kitchen-preview\/(.+)/);
-  const identifier = locationIdMatch ? locationIdMatch[1] : null;
+  const previewPathMatch = locationPath.match(/\/(?:kitchen-preview|kitchen)\/([^/]+)(?:\/([^/]+))?\/?$/);
+  const identifier = previewPathMatch?.[1] ?? null;
+  const requestedKitchenSlug = previewPathMatch?.[2] ? decodeURIComponent(previewPathMatch[2]) : null;
 
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
   const [kitchenEquipment, setKitchenEquipment] = useState<{ included: EquipmentListing[]; rental: EquipmentListing[] } | null>(null);
@@ -3347,19 +3355,21 @@ export default function KitchenPreviewPage() {
   const locationId = locationData?.id;
   const previewSlug = locationData?.slug || identifier;
 
-  // Canonicalize numeric IDs (e.g. /kitchen-preview/94) to the location slug.
+  // Resolve legacy numeric and query links to a kitchen-specific, shareable path.
   useEffect(() => {
-    if (!identifier || !locationData?.slug) return;
-    let current = identifier;
-    try {
-      current = decodeURIComponent(identifier);
-    } catch {
-      // keep raw identifier
+    if (!locationData?.slug || !selectedKitchen) return;
+    const requestedId = new URLSearchParams(window.location.search).get("kitchenId");
+    if (requestedId && String(selectedKitchen.id) !== requestedId) return;
+    if (requestedKitchenSlug) {
+      const requested = locationData.kitchens.find((kitchen) =>
+        (kitchen.slug || kitchenPathSlug(kitchen.name)) === requestedKitchenSlug ||
+        (locationPath.includes('/kitchen-preview/') && requestedKitchenSlug.endsWith(`-${kitchen.id}`)));
+      if (!requested) return;
+      if (requested && requested.id !== selectedKitchen.id) return;
     }
-    if (current !== locationData.slug) {
-      navigate(`/kitchen-preview/${locationData.slug}`, { replace: true });
-    }
-  }, [identifier, locationData?.slug, navigate]);
+    const canonical = canonicalKitchenHref(locationPath, locationData.slug, selectedKitchen, window.location.search, window.location.hash);
+    if (`${locationPath}${window.location.search}${window.location.hash}` !== canonical) navigate(canonical, { replace: true });
+  }, [locationData?.slug, selectedKitchen, requestedKitchenSlug, locationPath, navigate]);
 
   const { data: tourStatus, isLoading: tourStatusLoading } = useQuery<{
     isActive?: boolean;
@@ -3494,7 +3504,12 @@ export default function KitchenPreviewPage() {
     () => new URLSearchParams(locationSearch).get("kitchenId"),
     [locationSearch],
   );
-  /** The last `?kitchenId=` this effect acted on, so a stale one is never re-applied. */
+  const requestedKitchenKey = requestedKitchenSlug ?? requestedKitchenId;
+  const requestedKitchenUnavailable = Boolean(locationData && requestedKitchenKey && !locationData.kitchens.some((kitchen) =>
+    String(kitchen.id) === requestedKitchenKey ||
+    (kitchen.slug || kitchenPathSlug(kitchen.name)) === requestedKitchenKey ||
+    (locationPath.includes('/kitchen-preview/') && requestedKitchenKey.endsWith(`-${kitchen.id}`))));
+  /** The last URL kitchen selection this effect acted on, so a stale one is never re-applied. */
   const honouredKitchenIdRef = useRef<string | null>(null);
 
   // Keep selection on the current kitchen when switching units at this location;
@@ -3515,10 +3530,10 @@ export default function KitchenPreviewPage() {
      * honoured value means the URL is obeyed when it CHANGES (a fresh navigation) but the chef's
      * own picker clicks are still not undone by a URL that still names the old kitchen.
      */
-    if (requestedKitchenId !== honouredKitchenIdRef.current) {
-      honouredKitchenIdRef.current = requestedKitchenId;
-      const requested = requestedKitchenId
-        ? kitchens.find((k) => String(k.id) === requestedKitchenId)
+    if (requestedKitchenKey !== honouredKitchenIdRef.current) {
+      honouredKitchenIdRef.current = requestedKitchenKey;
+      const requested = requestedKitchenKey
+        ? kitchens.find((k) => String(k.id) === requestedKitchenKey || (k.slug || kitchenPathSlug(k.name)) === requestedKitchenKey || (locationPath.includes('/kitchen-preview/') && requestedKitchenKey.endsWith(`-${k.id}`)))
         : null;
       if (requested) {
         setSelectedKitchen(requested);
@@ -3530,7 +3545,7 @@ export default function KitchenPreviewPage() {
       if (prev && kitchens.some((k) => k.id === prev.id)) return prev;
       return kitchens[0];
     });
-  }, [locationData?.id, locationData?.kitchens, requestedKitchenId]);
+  }, [locationData?.id, locationData?.kitchens, requestedKitchenKey, locationPath]);
 
   useEffect(() => {
     let raf = 0;
@@ -3804,12 +3819,12 @@ export default function KitchenPreviewPage() {
   const loadingContent = (
     <div className="space-y-6">
       <Skeleton className="h-20 w-full rounded-xl" />
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-3 space-y-4">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+        <div className="space-y-4 md:col-span-3">
           <Skeleton className="h-48 w-full rounded-xl" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
-        <div className="col-span-9">
+        <div className="md:col-span-9">
           <Skeleton className="h-[500px] w-full rounded-xl" />
         </div>
       </div>
@@ -3822,8 +3837,8 @@ export default function KitchenPreviewPage() {
       <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
         <PreviewIcon icon="mdi:image-off" size={32} className="text-muted-foreground" />
       </div>
-      <h1 className="text-xl sm:text-2xl font-bold text-foreground mb-2">{t("locationNotFound", "Location Not Found")}</h1>
-      <p className="text-sm sm:text-base text-muted-foreground mb-6">{t("locationNotFoundDesc", "This kitchen location doesn't exist or has been removed.")}</p>
+      <h1 className="text-xl sm:text-2xl font-bold text-foreground mb-2">{requestedKitchenUnavailable ? t("kitchenNotAvailable", "Kitchen Not Available") : t("locationNotFound", "Location Not Found")}</h1>
+      <p className="text-sm sm:text-base text-muted-foreground mb-6">{requestedKitchenUnavailable ? t("kitchenNotAvailableDesc", "This kitchen is not currently listed.") : t("locationNotFoundDesc", "This kitchen location doesn't exist or has been removed.")}</p>
       <Button
         onClick={() => isAuthenticated ? navigate('/dashboard?view=discover-kitchens') : navigate('/')}
         variant="default"
@@ -4144,7 +4159,7 @@ export default function KitchenPreviewPage() {
                   Nothing listed is its own answer, and NOT "Coming Soon": that chip means
                   "not finished yet", which is a different thing from a manager who has taken
                   the listing down. */}
-            <div className="col-start-1 row-start-3 mt-1 justify-self-start sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-self-end">
+            <div className="col-start-1 row-start-3 mt-1 flex items-center gap-2 justify-self-start sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-self-end">
               {kitchens.length === 0 ? (
                 <InfoChip tone="warning">
                   {t("kitchenNotTakingBookingsShort", "Not taking bookings")}
@@ -4161,6 +4176,15 @@ export default function KitchenPreviewPage() {
                   {t("licensedKitchenBadge", "Licensed kitchen")}
                 </InfoChip>
               ) : null}
+              {selectedKitchen && locationData?.slug && <Button variant="outline" size="sm" onClick={async () => {
+                try {
+                  const path = canonicalKitchenHref(locationPath, locationData.slug!, selectedKitchen);
+                  const result = await shareKitchenLink(chefKitchenShareUrl(path, window.location, i18n.language), selectedKitchen.name);
+                  if (result === 'copied') toast({ title: t("kitchenLinkCopied", "Kitchen link copied") });
+                } catch {
+                  toast({ title: t("kitchenShareFailed", "Could not share this kitchen"), variant: "destructive" });
+                }
+              }}><PreviewIcon icon="mdi:share-variant-outline" size={16} className="mr-1.5" />{t("shareKitchen", "Share")}</Button>}
             </div>
           </div>
         </div>
@@ -4247,7 +4271,20 @@ export default function KitchenPreviewPage() {
                               className="min-w-0 max-w-[9.5rem] sm:max-w-[11rem]"
                             />
                           ) : null}
-                          <DockCtaChip show={showDateGatedApplyCta} reduceMotion={reduceMotion} className="shrink-0">
+                          {/*
+                            When the tour chip is present the two actions sit side by side and both
+                            keep their natural width. When Apply is the ONLY action in the bar it must
+                            fill it: `justify-end` otherwise strands a small pill against the right
+                            edge of a 60px-tall empty bar, which is what the mobile dock had been
+                            doing. This mirrors the tour chip's own treatment below
+                            (`!showDockApply ? "min-w-0 flex-1" : "shrink-0"`), which was already
+                            right — the Apply side had simply been missed.
+                          */}
+                          <DockCtaChip
+                            show={showDateGatedApplyCta}
+                            reduceMotion={reduceMotion}
+                            className={showDockTour ? "shrink-0" : "min-w-0 !flex-1 [&>button]:w-full"}
+                          >
                             {applyCtaButton}
                           </DockCtaChip>
                         </>
@@ -4306,7 +4343,10 @@ export default function KitchenPreviewPage() {
                       <button
                         key={kitchen.id}
                         type="button"
-                        onClick={() => setSelectedKitchen(kitchen)}
+                        onClick={() => {
+                          setSelectedKitchen(kitchen);
+                          navigate(canonicalKitchenHref(locationPath, String(locationData?.slug || identifier), kitchen, window.location.search, window.location.hash));
+                        }}
                         className={cn(
                           "shrink-0 rounded-xl border px-3 py-2 text-left transition-colors",
                           selected
@@ -4422,7 +4462,7 @@ export default function KitchenPreviewPage() {
                   hideOverview
                   inventoryModal={inventoryModal}
                   onInventoryModalChange={setInventoryModal}
-                  cancellationPolicyHours={location.cancellationPolicyHours}
+                  cancellationPolicyHours={selectedKitchen.cancellationPolicyHours ?? location.cancellationPolicyHours}
                   cancellationPolicyMessage={location.cancellationPolicyMessage}
                   kitchenTermsUrl={location.kitchenTermsUrl}
                 />
@@ -4457,7 +4497,7 @@ export default function KitchenPreviewPage() {
         </div>
 
         <ThingsToKnowSection
-          cancellationPolicyHours={location.cancellationPolicyHours}
+          cancellationPolicyHours={selectedKitchen?.cancellationPolicyHours ?? location.cancellationPolicyHours}
           cancellationPolicyMessage={location.cancellationPolicyMessage}
           kitchenTermsUrl={location.kitchenTermsUrl}
         />
@@ -4473,7 +4513,7 @@ export default function KitchenPreviewPage() {
   // Determine what content to show
   const getContent = () => {
     if (isLoading || authLoading) return loadingContent;
-    if (error || !locationData) return notFoundContent;
+    if (error || !locationData || requestedKitchenUnavailable) return notFoundContent;
     return mainContent(locationData);
   };
 
@@ -4532,16 +4572,16 @@ export default function KitchenPreviewPage() {
 
   if (isLoading || authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="text-center">
-          <PreviewIcon icon="mdi:loading" size={40} className="mx-auto mb-3 animate-spin text-[#F51042]" />
-          <p className="text-sm sm:text-base text-gray-600">{t("loadingKitchens", "Loading kitchens...")}</p>
-        </div>
+      <div className="flex min-h-screen flex-col bg-gray-50">
+        <Header hideHowItWorks />
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6" aria-label={t("loadingKitchens", "Loading kitchens...")}>
+          {loadingContent}
+        </main>
       </div>
     );
   }
 
-  if (error || !locationData) {
+  if (error || !locationData || requestedKitchenUnavailable) {
     return (
       <div className="min-h-screen flex flex-col">
         {/* `hideHowItWorks` matches the other chef public pages. This page has no `how-it-works`

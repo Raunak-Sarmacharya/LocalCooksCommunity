@@ -1,4 +1,12 @@
 import { Router, Request, Response } from "express";
+import { bookingAttendancePrivacy } from '../middleware/booking-attendance-privacy';
+import { bookingItemPriceCents } from '@shared/booking-item-price';
+import { cancelLinkedBookingDates, cancelledStorageStatus } from '../services/booking-linked-cancellation';
+import { cancelBookingItem, BookingItemCancellationError } from '../services/booking-item-cancellation';
+import { createLifecycleTaskRunner } from '../services/lifecycle-task-runner';
+import { resolveKitchenBookingPolicies } from "@shared/kitchen-booking-policies";
+import { resolveKitchenTracking } from "@shared/kitchen-tracking";
+import { getKitchenTrackingState } from "../services/checkin-checkout-checklist";
 import { db, pool } from "../db";
 import {
     kitchenBookings,
@@ -12,7 +20,7 @@ import {
     paymentTransactions,
     checkinCheckoutChecklists,
 } from "@shared/schema";
-import { eq, and, or, desc, inArray } from "drizzle-orm";
+import { eq, and, or, desc, inArray, sql } from "drizzle-orm";
 import { logger } from "../logger";
 import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
@@ -49,95 +57,11 @@ import { notificationService } from "../services/notification.service";
 import { generateDamageClaimInvoicePDF } from "../services/invoice-service";
 
 const router = Router();
+router.use(bookingAttendancePrivacy);
 
-// Create Stripe Checkout session for booking
-router.post("/bookings/checkout", async (req: Request, res: Response) => {
-    try {
-        const { bookingId, managerStripeAccountId, bookingPrice, customerEmail } = req.body;
-
-        // Validate required inputs
-        if (!bookingId || !managerStripeAccountId || !bookingPrice || !customerEmail) {
-            return res.status(400).json({
-                error: "Missing required fields: bookingId, managerStripeAccountId, bookingPrice, and customerEmail are required",
-            });
-        }
-
-        // Validate bookingPrice is a positive number
-        const bookingPriceNum = parseFloat(bookingPrice);
-        if (isNaN(bookingPriceNum) || bookingPriceNum <= 0) {
-            return res.status(400).json({
-                error: "bookingPrice must be a positive number",
-            });
-        }
-
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(customerEmail)) {
-            return res.status(400).json({
-                error: "Invalid email format",
-            });
-        }
-
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
-        // Verify booking exists
-        const [booking] = await db
-            .select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId })
-            .from(kitchenBookings)
-            .where(eq(kitchenBookings.id, bookingId))
-            .limit(1);
-
-        if (!booking) {
-            return res.status(404).json({ error: "Booking not found" });
-        }
-
-        // Calculate fees using database-driven configuration (admin-configurable)
-        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = await calculateCheckoutFeesAsync(Math.round(bookingPriceNum * 100));
-
-        // Get base URL for success/cancel URLs
-        const baseUrl = getBaseUrl(req);
-
-        // Create Stripe Checkout session
-        const { createCheckoutSession } = await import('../services/stripe-checkout-service');
-        const checkoutSession = await createCheckoutSession({
-            bookingPriceInCents: feeCalculation.bookingPriceInCents,
-            platformFeeInCents: feeCalculation.platformCommissionInCents,
-            managerStripeAccountId,
-            customerEmail,
-            bookingId,
-            currency: 'cad',
-            successUrl: `${baseUrl}/booking-success?session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${baseUrl}/booking-cancel?booking_id=${bookingId}`,
-            metadata: {
-                booking_id: bookingId.toString(),
-                kitchen_id: (booking.kitchenId || '').toString(),
-            },
-        });
-
-        // DEPRECATED: This legacy endpoint expects booking to already exist
-        // The new enterprise-grade flow is /chef/bookings/checkout which creates booking in webhook
-        // payment_transactions will be created in webhook when payment succeeds
-        logger.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
-
-        // Return response
-        res.json({
-            sessionUrl: checkoutSession.sessionUrl,
-            sessionId: checkoutSession.sessionId,
-            booking: {
-                price: bookingPriceNum,
-                platformFee: feeCalculation.platformCommissionInCents / 100,
-                total: feeCalculation.totalChargeInCents / 100,
-            },
-        });
-    } catch (error: any) {
-        logger.error('Error creating checkout session:', error);
-        res.status(500).json({
-            error: error.message || 'Failed to create checkout session',
-        });
-    }
+// Retired: this legacy checkout trusted client-supplied price and destination.
+router.post("/bookings/checkout", requireFirebaseAuthWithUser, requireChef, (_req, res) => {
+    res.status(410).json({ error: 'Use the chef booking checkout flow', checkoutPath: '/api/chef/bookings/checkout' });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -179,12 +103,10 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
-                    isNumeric ? eq(kitchenBookings.id, parsedId!) :
-                    isAdmin
-                        ? eq(kitchenBookings.referenceCode, code)
-                        : isManager
-                            ? and(eq(kitchenBookings.referenceCode, code), eq(locations.managerId, user.id))
-                            : and(eq(kitchenBookings.referenceCode, code), eq(kitchenBookings.chefId, user.id))
+                    and(
+                        isNumeric ? eq(kitchenBookings.id, parsedId!) : eq(kitchenBookings.referenceCode, code),
+                        isAdmin ? undefined : isManager ? eq(locations.managerId, user.id) : eq(kitchenBookings.chefId, user.id),
+                    )
                 )
                 .limit(1);
             const [booking] = await query;
@@ -208,12 +130,10 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
-                    isNumeric ? eq(sb.id, parsedId!) :
-                    isAdmin
-                        ? eq(sb.referenceCode, code)
-                        : isManager
-                            ? and(eq(sb.referenceCode, code), eq(locations.managerId, user.id))
-                            : and(eq(sb.referenceCode, code), eq(sb.chefId, user.id))
+                    and(
+                        isNumeric ? eq(sb.id, parsedId!) : eq(sb.referenceCode, code),
+                        isAdmin ? undefined : isManager ? eq(locations.managerId, user.id) : eq(sb.chefId, user.id),
+                    )
                 )
                 .limit(1);
             if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : `/dashboard` });
@@ -226,12 +146,10 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
-                    isNumeric ? eq(pendingStorageExtensions.id, parsedId!) :
-                    isAdmin
-                        ? eq(pendingStorageExtensions.referenceCode, code)
-                        : isManager
-                            ? and(eq(pendingStorageExtensions.referenceCode, code), eq(locations.managerId, user.id))
-                            : and(eq(pendingStorageExtensions.referenceCode, code), eq(sb.chefId, user.id))
+                    and(
+                        isNumeric ? eq(pendingStorageExtensions.id, parsedId!) : eq(pendingStorageExtensions.referenceCode, code),
+                        isAdmin ? undefined : isManager ? eq(locations.managerId, user.id) : eq(sb.chefId, user.id),
+                    )
                 )
                 .limit(1);
             if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${ext.referenceCode}` : `/dashboard` });
@@ -244,12 +162,10 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
-                    isNumeric ? eq(storageOverstayRecords.id, parsedId!) :
-                    isAdmin
-                        ? eq(storageOverstayRecords.referenceCode, code)
-                        : isManager
-                            ? and(eq(storageOverstayRecords.referenceCode, code), eq(locations.managerId, user.id))
-                            : and(eq(storageOverstayRecords.referenceCode, code), eq(sb.chefId, user.id))
+                    and(
+                        isNumeric ? eq(storageOverstayRecords.id, parsedId!) : eq(storageOverstayRecords.referenceCode, code),
+                        isAdmin ? undefined : isManager ? eq(locations.managerId, user.id) : eq(sb.chefId, user.id),
+                    )
                 )
                 .limit(1);
             if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: isAdmin ? `/admin?section=overstay-penalties-history&search=${record.referenceCode}` : `/dashboard` });
@@ -258,12 +174,10 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
             const [claim] = await db.select({ id: damageClaims.id, referenceCode: damageClaims.referenceCode })
                 .from(damageClaims)
                 .where(
-                    isNumeric ? eq(damageClaims.id, parsedId!) :
-                    isAdmin
-                        ? eq(damageClaims.referenceCode, code)
-                        : isManager
-                            ? and(eq(damageClaims.referenceCode, code), eq(damageClaims.managerId, user.id))
-                            : and(eq(damageClaims.referenceCode, code), eq(damageClaims.chefId, user.id))
+                    and(
+                        isNumeric ? eq(damageClaims.id, parsedId!) : eq(damageClaims.referenceCode, code),
+                        isAdmin ? undefined : isManager ? eq(damageClaims.managerId, user.id) : eq(damageClaims.chefId, user.id),
+                    )
                 )
                 .limit(1);
             if (claim) return res.json({ type: 'damage_claim', id: claim.id, referenceCode: claim.referenceCode, url: isAdmin ? `/admin?section=damage-claims&search=${claim.referenceCode}` : `/dashboard` });
@@ -373,6 +287,18 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 // Tier 1: pending/authorized → immediate cancel (void auth if applicable)
 // Tier 2: confirmed/paid → cancellation REQUEST sent to manager for review
 // ═══════════════════════════════════════════════════════════════════════════
+router.put('/chef/equipment-bookings/:id/cancel', requireChef, async (req, res) => {
+    const id = Number(req.params.id), reason = req.body?.reason;
+    if (!Number.isSafeInteger(id) || id <= 0 || (reason !== undefined && (typeof reason !== 'string' || reason.length > 2000)))
+        return res.status(400).json({ error: 'Invalid equipment cancellation request' });
+    try { res.json(await cancelBookingItem('equipment', id, req.neonUser!.id, reason)); }
+    catch (error) {
+        if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
+        logger.error('Equipment cancellation unavailable', error);
+        res.status(503).json({ error: 'Cancellation could not be saved; refresh before retrying.' });
+    }
+});
+
 router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);
@@ -393,6 +319,7 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
                 storageListingId: storageBookings.storageListingId,
                 paymentStatus: storageBookings.paymentStatus,
                 paymentIntentId: storageBookings.paymentIntentId,
+                kitchenBookingId: storageBookings.kitchenBookingId,
                 startDate: storageBookings.startDate,
                 endDate: storageBookings.endDate,
                 locationId: locations.id,
@@ -418,6 +345,26 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
         }
 
         const booking = rows[0];
+        if (booking.kitchenBookingId) {
+            if (reason !== undefined && (typeof reason !== 'string' || reason.length > 2000))
+                return res.status(400).json({ error: 'Invalid cancellation message' });
+            return res.json(await cancelBookingItem('storage', id, req.neonUser!.id, reason));
+        }
+
+        if (booking.kitchenBookingId) {
+            const [parent] = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.id, booking.kitchenBookingId),
+                eq(kitchenBookings.chefId, req.neonUser!.id))).limit(1);
+            if (!parent) return res.status(409).json({ error: 'Local Cooks must review the linked kitchen booking.' });
+            if ((parent.paymentDecision as { state?: string } | null)?.state === 'pending')
+                return res.status(409).json({ error: 'A payment decision is being reconciled. Local Cooks must review this booking before changing its items.' });
+            const { createBookingDateTime } = await import('@shared/timezone-utils');
+            const operatingDate = parent.bookingDate.toISOString().slice(0, 10);
+            const calendarDate = parent.operatingWindowStartTime
+                ? calendarDateForOperatingTime(operatingDate, parent.startTime, parent.operatingWindowStartTime) : operatingDate;
+            const deadline = createBookingDateTime(calendarDate, parent.startTime, 'America/St_Johns').getTime()
+                - (parent.cancellationPolicyHours ?? 24) * 3600000;
+            if (Date.now() > deadline) return res.status(400).json({ error: 'The agreed kitchen booking cancellation deadline has passed.' });
+        }
 
         if (booking.status === 'cancelled') {
             return res.status(400).json({ error: "Storage booking is already cancelled" });
@@ -430,8 +377,8 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
         }
 
         // ── TIER 1: Pending or Authorized → Immediate cancel ──────────────────
-        if (booking.status === 'pending' || booking.paymentStatus === 'authorized') {
-            if (booking.paymentIntentId && booking.paymentStatus === 'authorized') {
+        if (['pending', 'authorized'].includes(booking.paymentStatus || '') && booking.status === 'pending') {
+            if (!booking.kitchenBookingId && booking.paymentIntentId && booking.paymentStatus === 'authorized') {
                 try {
                     const { cancelPaymentIntent } = await import('../services/stripe-service');
                     await cancelPaymentIntent(booking.paymentIntentId);
@@ -441,12 +388,22 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
                         .where(eq(storageBookings.id, id));
                 } catch (voidError) {
                     logger.error(`[Cancel Storage] Error voiding auth for storage booking ${id}:`, voidError);
+                    return res.status(409).json({ error: 'The payment hold could not be verified as released. Local Cooks must review this cancellation.' });
                 }
             }
 
-            await db.update(storageBookings)
-                .set({ status: 'cancelled', updatedAt: new Date() })
-                .where(eq(storageBookings.id, id));
+            await db.transaction(async tx => {
+                if (booking.kitchenBookingId) {
+                    const [parent] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, booking.kitchenBookingId)).limit(1).for('update');
+                    if ((parent?.paymentDecision as { state?: string } | null)?.state === 'pending')
+                        throw new Error('Payment reconciliation is in progress. Local Cooks must review this booking.');
+                }
+                const [changed] = await tx.update(storageBookings)
+                    .set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(and(eq(storageBookings.id, id), eq(storageBookings.chefId, req.neonUser!.id), eq(storageBookings.status, 'pending')))
+                    .returning({ id: storageBookings.id });
+                if (!changed) throw new Error('Storage booking changed; refresh before cancelling');
+            });
 
             // Notify manager (fire-and-forget)
             sendStorageCancellationNotification(booking, id, 'cancelled').catch(err =>
@@ -494,6 +451,7 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
 
         res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled.' });
     } catch (error) {
+        if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
         logger.error("Error cancelling storage booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel storage booking" });
     }
@@ -710,54 +668,21 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
 
         for (const booking of expiredRequests) {
             try {
-                await db.transaction(async tx => {
+                const accepted = await db.transaction(async tx => {
                     const { storageBookings: sbT, equipmentBookings: ebT } = await import("@shared/schema");
                     const { ne: neOp } = await import("drizzle-orm");
-                    await tx.update(kitchenBookings)
+                    const [updated] = await tx.update(kitchenBookings)
                         .set({ status: 'cancelled', updatedAt: new Date() })
-                        .where(eq(kitchenBookings.id, booking.id));
-                    await tx.update(sbT)
-                        .set({ status: "cancelled", updatedAt: new Date() })
-                        .where(and(eq(sbT.kitchenBookingId, booking.id), neOp(sbT.status, "cancelled")));
-                    await tx.update(ebT)
-                        .set({ status: "cancelled", updatedAt: new Date() })
-                        .where(and(eq(ebT.kitchenBookingId, booking.id), neOp(ebT.status, "cancelled")));
+                        .where(and(eq(kitchenBookings.id, booking.id), eq(kitchenBookings.status, 'cancellation_requested'), lte(kitchenBookings.cancellationRequestedAt, cutoffDate)))
+                        .returning({ id: kitchenBookings.id });
+                    if (!updated) return false;
+                    await cancelLinkedBookingDates(tx, booking.id);
+                    const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
+                    await queueBookingLifecycleEvent(tx, booking.id, 'cancellation_reviewed', 'Kitchen cancellation auto-accepted',
+                        'The kitchen cancellation was automatically accepted. Occupied storage remains reserved until removal is confirmed. Any refund is handled separately.');
+                    return true;
                 });
-
-                // ── JSONB SYNC: Mark all items as rejected ──
-                try {
-                    const [currentKb] = await db
-                        .select({ storageItems: kitchenBookings.storageItems, equipmentItems: kitchenBookings.equipmentItems })
-                        .from(kitchenBookings)
-                        .where(eq(kitchenBookings.id, booking.id));
-                    if (currentKb) {
-                        const updatedStorage = (Array.isArray(currentKb.storageItems) ? currentKb.storageItems : [])
-                            .map((item: any) => ({ ...item, rejected: true, status: 'cancelled', cancellationRequested: false }));
-                        const updatedEquip = (Array.isArray(currentKb.equipmentItems) ? currentKb.equipmentItems : [])
-                            .map((item: any) => ({ ...item, rejected: true }));
-                        await db.update(kitchenBookings)
-                            .set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: new Date() })
-                            .where(eq(kitchenBookings.id, booking.id));
-                    }
-                } catch (jsonbErr: any) {
-                    logger.warn(`[Cron] JSONB sync failed for auto-accepted booking ${booking.id}:`, jsonbErr);
-                }
-
-                // Notify chef
-                if (booking.chefId) {
-                    try {
-                        await notificationService.create({
-                            userId: booking.chefId,
-                            target: 'chef',
-                            type: 'booking_cancellation_accepted',
-                            title: 'Cancellation Auto-Accepted',
-                            message: 'Your cancellation request was automatically accepted. Cancellation does not confirm a refund. Any refund is handled separately.',
-                            metadata: { bookingId: booking.id },
-                        });
-                    } catch (notifErr) {
-                        logger.error(`[Cron] Notification error for auto-accepted booking ${booking.id}:`, notifErr);
-                    }
-                }
+                if (!accepted) continue;
 
                 results.accepted++;
                 logger.info(`[Cron] Auto-accepted cancellation request for kitchen booking ${booking.id}`);
@@ -770,11 +695,12 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
         // ── Storage bookings with expired cancellation requests ──────────────
         const { storageBookings: storageBookingsTable } = await import("@shared/schema");
         const expiredStorageRequests = await db
-            .select({ id: storageBookingsTable.id, chefId: storageBookingsTable.chefId })
+            .select({ id: storageBookingsTable.id, chefId: storageBookingsTable.chefId, kitchenBookingId: storageBookingsTable.kitchenBookingId })
             .from(storageBookingsTable)
             .where(
                 and(
                     eq(storageBookingsTable.status, 'cancellation_requested'),
+                    sql`${storageBookingsTable.cancellationAcceptedAt} IS NULL`,
                     isNotNull(storageBookingsTable.cancellationRequestedAt),
                     lte(storageBookingsTable.cancellationRequestedAt, cutoffDate),
                 )
@@ -784,13 +710,31 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
 
         for (const sb of expiredStorageRequests) {
             try {
-                await db.update(storageBookingsTable)
-                    .set({ status: 'cancelled', updatedAt: new Date() })
-                    .where(eq(storageBookingsTable.id, sb.id));
+                const changed = await db.transaction(async tx => {
+                    const [parent] = sb.kitchenBookingId ? await tx.select().from(kitchenBookings)
+                        .where(eq(kitchenBookings.id, sb.kitchenBookingId)).limit(1).for('update') : [];
+                    const [item] = await tx.update(storageBookingsTable)
+                        .set({ status: cancelledStorageStatus, cancellationAcceptedAt: new Date(), updatedAt: new Date() })
+                        .where(and(eq(storageBookingsTable.id, sb.id), eq(storageBookingsTable.status, 'cancellation_requested'),
+                            sql`${storageBookingsTable.cancellationAcceptedAt} IS NULL`, lte(storageBookingsTable.cancellationRequestedAt, cutoffDate))).returning();
+                    if (!item) return null;
+                    if (parent) {
+                        await tx.update(kitchenBookings).set({ storageItems: (parent.storageItems as any[] || []).map(entry =>
+                            (entry.storageBookingId ?? entry.id) === sb.id ? { ...entry, status: item.status, rejected: true } : entry), updatedAt: new Date() })
+                            .where(eq(kitchenBookings.id, parent.id));
+                        const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
+                        await queueBookingLifecycleEvent(tx, parent.id, 'storage_cancellation_reviewed', 'Storage cancellation auto-accepted',
+                            `Storage cancellation for booking #${parent.id}, item #${sb.id} was auto-accepted. Occupied storage remains reserved until removal is confirmed. Any refund is handled separately.`,
+                            undefined, { storageBookingId: sb.id });
+                    }
+                    return item;
+                });
+                if (!changed) continue;
+                if (sb.kitchenBookingId) { results.accepted++; continue; }
 
                 // Sync JSONB on parent kitchen booking
                 try {
-                    await syncStorageItemStatusInKitchenBooking(sb.id, 'cancelled');
+                    await syncStorageItemStatusInKitchenBooking(sb.id, changed.status);
                 } catch (syncErr: any) {
                     logger.warn(`[Cron] JSONB sync failed for auto-accepted storage booking ${sb.id}:`, syncErr);
                 }
@@ -835,7 +779,7 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
  * 
  * 2. DAMAGE CLAIM DEADLINE PROCESSING:
  *    - Finds claims where chef didn't respond by deadline
- *    - Auto-approves them (industry standard: silence = acceptance)
+ *    - Escalates them to admin review without charging
  *    - Notifies both chef and manager
  * 
  * 3. EXPIRED AUTHORIZATION CANCELLATION:
@@ -845,7 +789,7 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
  * 
  * Security: Uses Vercel cron secret for authentication
  */
-router.post("/detect-overstays", async (req: Request, res: Response) => {
+const runScheduledLifecycleTasks = async (req: Request, res: Response) => {
     try {
         // HIGH-5 Security: Verify cron secret — reject ALL requests when CRON_SECRET is missing
         const cronSecret = process.env.CRON_SECRET;
@@ -857,10 +801,11 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         }
 
         logger.info("[Cron] Starting daily scheduled tasks...");
+        const tasks = createLifecycleTaskRunner();
         
         // Task 1: Detect overstays
         logger.info("[Cron] Task 1: Detecting overstays...");
-        const overstayResults = await overstayPenaltyService.detectOverstays();
+        const overstayResults = await tasks.run('overstays', () => overstayPenaltyService.detectOverstays(), []);
         
         const overstaySummary = {
             total: overstayResults.length,
@@ -872,17 +817,21 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
 
         // Task 2: Process expired damage claims
         logger.info("[Cron] Task 2: Processing expired damage claims...");
-        const expiredClaimResults = await damageClaimService.processExpiredClaims();
+        const expiredClaimResults = await tasks.run('expiredClaims', () => damageClaimService.processExpiredClaims(), []);
         
         const claimSummary = {
             total: expiredClaimResults.length,
-            autoApproved: expiredClaimResults.filter(r => r.action === 'auto_approved').length,
+            escalatedToAdmin: expiredClaimResults.filter(r => r.action === 'escalated_to_admin').length,
         };
         logger.info("[Cron] Expired claims processing complete:", claimSummary);
 
         // Task 3: Cancel expired payment authorizations (24-hour hold window)
+        const { recoverPendingBookingDecisions } = await import('../services/booking-payment-decision');
+        await tasks.run('bookingPaymentRecovery', () => recoverPendingBookingDecisions(), { recovered: 0, pending: 0 });
+        const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
+        await tasks.run('bookingLifecycleDelivery', () => deliverBookingLifecycleEvents(), { completed: 0 });
         logger.info("[Cron] Task 3: Cancelling expired payment authorizations...");
-        const authExpiryResults = await processExpiredAuthorizations();
+        const authExpiryResults = await tasks.run('expiredAuthorizations', () => processExpiredAuthorizations(), []);
         
         const authExpirySummary = {
             total: authExpiryResults.length,
@@ -895,8 +844,9 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
 
         // Task 4: Auto-clear expired storage checkout review windows
         logger.info("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
-        const { processExpiredCheckoutReviews } = await import("../services/storage-checkout-service");
-        const checkoutAutoClearResults = await processExpiredCheckoutReviews();
+        const checkoutAutoClearResults = await tasks.run('storageCheckout', async () =>
+          (await import('../services/storage-checkout-service')).processExpiredCheckoutReviews(),
+          { processed: 0, cleared: 0, errors: 1 });
         
         const checkoutAutoClearSummary = {
             processed: checkoutAutoClearResults.processed,
@@ -907,32 +857,34 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
 
         // Task 5: Auto-accept expired chef cancellation requests
         logger.info("[Cron] Task 5: Auto-accepting expired cancellation requests...");
-        const cancellationAutoAcceptResults = await processExpiredCancellationRequests();
+        const cancellationAutoAcceptResults = await tasks.run('cancellations', () => processExpiredCancellationRequests(),
+          { processed: 0, accepted: 0, errors: 1 });
         logger.info("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
 
         // Task 6: Auto-clear expired kitchen checkout review windows
         logger.info("[Cron] Task 6: Auto-clearing expired kitchen checkout reviews...");
-        const { processExpiredKitchenCheckoutReviews } = await import("../services/kitchen-checkout-service");
-        const kitchenCheckoutAutoClearResults = await processExpiredKitchenCheckoutReviews();
+        const kitchenCheckoutAutoClearResults = await tasks.run('kitchenCheckout', async () =>
+          (await import('../services/kitchen-checkout-service')).processExpiredKitchenCheckoutReviews(),
+          { processed: 0, cleared: 0, errors: 1 });
         logger.info("[Cron] Kitchen checkout auto-clear complete:", kitchenCheckoutAutoClearResults);
-        const { autoClearKitchenVisits } = await import('../services/kitchen-visit-lifecycle');
-        const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
-        const visitAutoCleared = await autoClearKitchenVisits((await getCheckinSettings()).checkoutReviewWindowMinutes);
+        const visitAutoCleared = await tasks.run('visitCheckout', async () => {
+          const { autoClearKitchenVisits } = await import('../services/kitchen-visit-lifecycle');
+          const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
+          return autoClearKitchenVisits((await getCheckinSettings()).checkoutReviewWindowMinutes);
+        }, 0);
         logger.info('[Cron] Kitchen visit checkout auto-clear complete:', visitAutoCleared);
 
-        // Task 7: Detect kitchen booking no-shows
-        logger.info("[Cron] Task 7: Detecting kitchen booking no-shows...");
-        const { detectKitchenNoShows } = await import("../services/kitchen-checkout-service");
-        const noShowResults = await detectKitchenNoShows();
-        logger.info("[Cron] Kitchen no-show detection complete:", noShowResults);
-        const { detectKitchenVisitNoShows } = await import('../services/kitchen-visit-lifecycle');
-        const visitNoShows = await detectKitchenVisitNoShows();
-        logger.info('[Cron] Kitchen visit no-show detection complete:', visitNoShows);
+        // Compatibility response: no-show classification requires an explicit report.
+        const noShowResults = { processed: 0, marked: 0, errors: 0 };
+        const visitNoShows = 0;
 
         // Task 8: Expire access codes past their validity window
         logger.info("[Cron] Task 8: Expiring access codes past validity window...");
-        const { expireAccessCodes } = await import("../services/kitchen-checkout-service");
-        const accessCodeExpiryResults = await expireAccessCodes();
+        const accessCodeExpiryResults = await tasks.run('accessCodeExpiry', async () =>
+          (await import('../services/kitchen-checkout-service')).expireAccessCodes(),
+          { processed: 0, expired: 0, errors: 1 });
+        const tourOutcomeResults = await tasks.run('tourOutcomes', async () =>
+          (await import('../services/tour-outcome-service')).remindUnrecordedTourOutcomes(), { reminded: 0, errors: 1 });
         logger.info("[Cron] Access code expiry complete:", accessCodeExpiryResults);
 
         // Task 9: Send check-in reminders for today's confirmed bookings
@@ -1131,9 +1083,10 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
 
         logger.info("[Cron] All daily scheduled tasks complete");
 
-        res.json({
-            success: true,
-            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared, ${cancellationAutoAcceptResults.accepted} cancellation requests auto-accepted`,
+        if (tasks.failures.length) logger.error('[Cron] Scheduled tasks failed', tasks.failures);
+        res.status(tasks.failures.length ? 500 : 200).json({
+            success: tasks.failures.length === 0,
+            message: `Daily tasks processed: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared, ${cancellationAutoAcceptResults.accepted} cancellation requests auto-accepted`,
             overstays: {
                 summary: overstaySummary,
                 results: overstayResults.map(r => ({
@@ -1174,6 +1127,8 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
             accessCodeExpiry: {
                 summary: accessCodeExpiryResults,
             },
+            taskFailures: tasks.failures,
+            tourOutcomes: tourOutcomeResults,
             checkinReminders: {
                 summary: checkinReminderResults,
             },
@@ -1183,7 +1138,11 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         logger.error("[Cron] Error running daily tasks:", error);
         res.status(500).json({ error: errorMessage });
     }
-});
+};
+
+// Vercel cron invokes GET; retain POST for existing authenticated callers.
+router.get("/detect-overstays", runScheduledLifecycleTasks);
+router.post("/detect-overstays", runScheduledLifecycleTasks);
 
 // DEPRECATED: Old penalty processing endpoint - kept for backward compatibility
 // Use the new manager-controlled workflow instead
@@ -1258,7 +1217,7 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, require
                 .from(storageOverstayRecords)
                 .where(and(
                     eq(storageOverstayRecords.storageBookingId, id),
-                    inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
+                    inArray(storageOverstayRecords.status, ['pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
                 ))
                 .limit(1);
 
@@ -1377,7 +1336,7 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
                 .from(storageOverstayRecords)
                 .where(and(
                     eq(storageOverstayRecords.storageBookingId, id),
-                    inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
+                    inArray(storageOverstayRecords.status, ['pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
                 ))
                 .limit(1);
 
@@ -2088,10 +2047,9 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 .where(eq(locations.id, locationId))
                 .limit(1);
             if (locationData) {
-                location = locationData;
+                location = { ...locationData, cancellationPolicyHours: booking.cancellationPolicyHours ?? 24 };
                 // Add the checkin flags directly to the booking object for the frontend to consume
-                (booking as any).checkinEnabled = locationData.checkinEnabled ?? false;
-                (booking as any).checkoutEnabled = locationData.checkoutEnabled ?? false;
+                Object.assign(booking, await getKitchenTrackingState(kitchen.id, booking.checkinStatus, booking.id));
             }
         }
 
@@ -2450,8 +2408,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
                     ...sb,
                     startDate: originalDates.startDate,
                     endDate: originalDates.endDate,
-                    // Calculate base price from original days × daily rate
-                    totalPrice: (sb.listingBasePrice || sb.basePrice || 0) * originalDates.days,
+                    totalPrice: bookingItemPriceCents(sb.id, sb.totalPrice, booking.storageItems),
                     _originalDays: originalDates.days
                 };
             }
@@ -2632,7 +2589,9 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                 chefId: kitchenBookings.chefId,
                 paymentIntentId: kitchenBookings.paymentIntentId,
                 paymentStatus: kitchenBookings.paymentStatus,
-                cancellationPolicyHours: locations.cancellationPolicyHours,
+                cancellationPolicyHours: kitchenBookings.cancellationPolicyHours,
+                paymentDecision: kitchenBookings.paymentDecision,
+                updatedAt: kitchenBookings.updatedAt,
                 locationTimezone: locations.timezone,
                 cancellationPolicyMessage: locations.cancellationPolicyMessage,
                 locationId: locations.id,
@@ -2658,6 +2617,8 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         const booking = rows[0];
 
         // Block cancellation for already-cancelled or cancellation-requested bookings
+        if ((booking.paymentDecision as { state?: string } | null)?.state === 'pending')
+            return res.status(409).json({ error: 'A payment decision is being reconciled. Local Cooks must review this booking before cancellation.' });
         if (booking.status === 'cancelled') {
             return res.status(400).json({ error: "Booking is already cancelled" });
         }
@@ -2673,10 +2634,10 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         const operatingDate = booking.bookingDate.toISOString().slice(0, 10);
         const calendarDate = booking.operatingWindowStartTime
             ? calendarDateForOperatingTime(operatingDate, booking.startTime, booking.operatingWindowStartTime) : operatingDate;
-        const bookingDateTime = createBookingDateTime(calendarDate, booking.startTime, booking.locationTimezone || 'America/St_Johns');
+        const bookingDateTime = createBookingDateTime(calendarDate, booking.startTime, 'America/St_Johns');
         const now = new Date();
         const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        const cancellationHours = booking.cancellationPolicyHours || 24;
+        const cancellationHours = booking.cancellationPolicyHours ?? 24;
 
         if (hoursUntilBooking < cancellationHours) {
             const policyMessage = (booking.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.")
@@ -2684,70 +2645,47 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             return res.status(400).json({ error: policyMessage });
         }
 
+        if (booking.status === 'pending' && booking.paymentStatus === 'authorized') {
+            const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
+            const result = await decideAuthorizedBooking(id, 'cancelled', [], [], req.neonUser!.id);
+            const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
+            await deliverBookingLifecycleEvents().catch(error => logger.warn('Booking email delivery pending retry', error));
+            return res.json({ ...result, action: 'cancelled', message: 'Booking cancelled. Stripe confirmed the payment authorization was cancelled.' });
+        }
+
         // ── TIER 1: Pending or Authorized → Immediate cancel ──────────────────
         // No money captured yet. Void auth if applicable, cancel booking directly.
-        if (booking.status === 'pending' || booking.paymentStatus === 'authorized') {
-            // Void authorization if payment is held
-            if (booking.paymentIntentId && booking.paymentStatus === 'authorized') {
-                try {
-                    const { cancelPaymentIntent } = await import('../services/stripe-service');
-                    await cancelPaymentIntent(booking.paymentIntentId);
-                    logger.info(`[Cancel Booking] Voided authorization for booking ${id} (PI: ${booking.paymentIntentId})`);
-                    await db.update(kitchenBookings)
-                        .set({ paymentStatus: 'failed', updatedAt: new Date() })
-                        .where(eq(kitchenBookings.id, id));
-                } catch (voidError) {
-                    logger.error(`[Cancel Booking] Error voiding auth for booking ${id}:`, voidError);
-                }
-            }
-
-            // Immediate cancel — no manager approval needed
+        if (booking.status === 'pending' && !booking.paymentIntentId && ['pending', 'failed'].includes(booking.paymentStatus || '')) {
             await db.transaction(async tx => {
-                const { equipmentBookings } = await import("@shared/schema");
-                await tx.update(kitchenBookings)
-                    .set({ status: 'cancelled', updatedAt: new Date() })
-                    .where(eq(kitchenBookings.id, id));
-                await tx.update(storageBookings)
-                    .set({ status: 'cancelled', updatedAt: new Date() })
-                    .where(eq(storageBookings.kitchenBookingId, id));
-                await tx.update(equipmentBookings)
-                    .set({ status: 'cancelled', updatedAt: new Date() })
-                    .where(eq(equipmentBookings.kitchenBookingId, id));
+                const [changed] = await tx.update(kitchenBookings).set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, 'pending'), eq(kitchenBookings.updatedAt, booking.updatedAt))).returning();
+                if (!changed) throw new Error('Booking changed; refresh before cancelling');
+                await cancelLinkedBookingDates(tx, id);
+                const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
+                await queueBookingLifecycleEvent(tx, id, 'cancelled', 'Unpaid kitchen booking cancelled',
+                    'The unpaid kitchen booking was cancelled. No payment was captured.', req.neonUser!.id);
             });
-
-            // Phase 3: Remove access code from smart lock
-            try {
-                const { removeAccessCodeFromLock } = await import('../services/kitchen-checkout-service');
-                await removeAccessCodeFromLock(id, booking.kitchenId);
-            } catch (lockErr: any) {
-                logger.warn(`[Cancel Booking] Smart lock code removal failed for booking ${id}:`, lockErr);
-            }
-
-            // Send notifications (fire-and-forget)
-            sendCancellationNotifications(booking, id, 'cancelled').catch(err =>
-                logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
-            );
-
-            return res.json({ success: true, action: 'cancelled', message: 'Booking cancelled successfully.' });
+            return res.json({ success: true, action: 'cancelled', message: 'Unpaid booking cancelled.' });
         }
 
         // ── TIER 2: Confirmed + Paid → Cancellation Request to Manager ────────
         // Money is captured. Chef cannot self-refund. Manager reviews and uses
         // the existing Issue Refund flow with editable amount.
         if (booking.status === 'confirmed' && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')) {
-            await db.update(kitchenBookings)
+            await db.transaction(async tx => {
+            const [changed] = await tx.update(kitchenBookings)
                 .set({
                     status: 'cancellation_requested',
                     cancellationRequestedAt: new Date(),
                     cancellationRequestReason: reason || null,
                     updatedAt: new Date(),
                 })
-                .where(eq(kitchenBookings.id, id));
-
-            // Notify manager about the cancellation request (fire-and-forget)
-            sendCancellationNotifications(booking, id, 'cancellation_requested').catch(err =>
-                logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
-            );
+                .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.updatedAt, booking.updatedAt))).returning();
+            if (!changed) throw new Error('Booking changed; refresh before requesting cancellation');
+            const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
+            await queueBookingLifecycleEvent(tx, id, 'cancellation_requested', 'Kitchen cancellation requested',
+                `The chef requested cancellation of booking #${id}. The kitchen manager will review the request. Any refund is handled separately.${reason?.trim() ? ` Chef message: ${reason.trim()}` : ''}`, req.neonUser!.id);
+            });
 
             return res.json({
                 success: true,
@@ -2756,25 +2694,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             });
         }
 
-        // Fallback: For any other state, attempt direct cancel
-        await db.transaction(async tx => {
-            const { equipmentBookings } = await import("@shared/schema");
-            await tx.update(kitchenBookings)
-                .set({ status: 'cancelled', updatedAt: new Date() })
-                .where(eq(kitchenBookings.id, id));
-            await tx.update(storageBookings)
-                .set({ status: 'cancelled', updatedAt: new Date() })
-                .where(eq(storageBookings.kitchenBookingId, id));
-            await tx.update(equipmentBookings)
-                .set({ status: 'cancelled', updatedAt: new Date() })
-                .where(eq(equipmentBookings.kitchenBookingId, id));
-        });
-
-        sendCancellationNotifications(booking, id, 'cancelled').catch(err =>
-            logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
-        );
-
-        res.json({ success: true, action: 'cancelled', message: 'Booking cancelled.' });
+        return res.status(409).json({ error: 'The payment outcome needs Local Cooks review before this booking can be cancelled.' });
     } catch (error) {
         logger.error("Error cancelling booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
@@ -2928,17 +2848,17 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
         const visits = await ensureKitchenBookingVisits(id);
 
         // Load location-aware settings so the client can compute the exact
+        const tracking = await getKitchenTrackingState(booking.kitchenId, booking.checkinStatus, booking.id);
         // same check-in window the server enforces (prevents a scenario where
         // the UI shows the button enabled but /checkin POST returns an error).
         const { autoCleanExpiredKitchenCheckout, getCheckinSettings } = await import("../services/kitchen-checkout-service");
         const settings = await getCheckinSettings(booking.locationId);
 
         if (visits.length) {
-            const { autoClearKitchenVisits, detectKitchenVisitNoShows } = await import('../services/kitchen-visit-lifecycle');
+            const { autoClearKitchenVisits } = await import('../services/kitchen-visit-lifecycle');
             await autoClearKitchenVisits(settings.checkoutReviewWindowMinutes, id);
-            await detectKitchenVisitNoShows(id);
             const currentVisits = await ensureKitchenBookingVisits(id);
-            return res.json({ ...booking, visits: currentVisits,
+            return res.json({ ...booking, ...tracking, visits: currentVisits,
                 checkinWindowMinutesBefore: settings.checkinWindowMinutesBefore,
                 noShowGraceMinutes: settings.noShowGraceMinutes });
         }
@@ -2975,6 +2895,7 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
         res.json({
             ...booking,
             visits,
+            ...tracking,
             checkinWindowMinutesBefore: settings.checkinWindowMinutesBefore,
             noShowGraceMinutes: settings.noShowGraceMinutes,
         });
@@ -3005,6 +2926,15 @@ router.get("/chef/locations/:locationId/checklist", requireChef, async (req: Req
             .from(checkinCheckoutChecklists)
             .where(eq(checkinCheckoutChecklists.locationId, locationId));
 
+        let tracking = { checkinEnabled: checklist?.checkinEnabled ?? false, checkoutEnabled: checklist?.checkoutEnabled ?? false };
+        if (req.query.kitchenId !== undefined) {
+            const kitchenId = Number(req.query.kitchenId);
+            if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0) return res.status(400).json({ error: "Invalid kitchen ID" });
+            const kitchen = await kitchenService.getKitchenById(kitchenId);
+            if (!kitchen || kitchen.locationId !== locationId) return res.status(404).json({ error: "Kitchen not found" });
+            tracking = resolveKitchenTracking(kitchen.checkinCheckoutEnabled, checklist);
+        }
+
         if (!checklist) {
             // No checklist configured — return empty defaults
             return res.json({
@@ -3031,11 +2961,11 @@ router.get("/chef/locations/:locationId/checklist", requireChef, async (req: Req
 
         res.json({
             locationId: checklist.locationId,
-            checkinEnabled: checklist.checkinEnabled,
+            checkinEnabled: tracking.checkinEnabled,
             checkinItems: checklist.checkinItems,
             checkinPhotoRequirements: checklist.checkinPhotoRequirements,
             checkinInstructions: checklist.checkinInstructions,
-            checkoutEnabled: checklist.checkoutEnabled,
+            checkoutEnabled: tracking.checkoutEnabled,
             checkoutItems: checklist.checkoutItems,
             checkoutPhotoRequirements: checklist.checkoutPhotoRequirements,
             checkoutInstructions: checklist.checkoutInstructions,
@@ -3186,6 +3116,9 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+            return res.status(404).json({ error: "Kitchen is not available for new bookings" });
+        }
         const access = await chefService.getApplicationStatusForBooking(chefId, kitchen.locationId, kitchenId);
         if (!access.canBook) return res.status(403).json({ error: access.message });
         const availability = await bookingService.validateBookingAvailability(
@@ -3197,16 +3130,17 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             limit: locations.defaultDailyBookingLimit,
             timezone: locations.timezone,
             minimumBookingWindowHours: locations.minimumBookingWindowHours,
+            cancellationPolicyHours: locations.cancellationPolicyHours,
         })
             .from(locations).where(eq(locations.id, kitchen.locationId)).limit(1);
-        if (slotCount < Number(kitchen.minimumBookingHours || 0) || slotCount > (location?.limit ?? 2)) {
+        if (slotCount < Number(kitchen.minimumBookingHours || 0) || slotCount > (kitchen.defaultDailyBookingLimit ?? location?.limit ?? 2)) {
             return res.status(400).json({ error: 'Selected hours do not meet this kitchen’s booking limits' });
         }
         const operatingDate = new Date(bookingDate).toISOString().slice(0, 10);
         const calendarStartDate = calendarDateForOperatingTime(operatingDate, startTime, availability.windowStartTime!);
         const { getHoursUntilBooking } = await import('../date-utils');
-        if (getHoursUntilBooking(calendarStartDate, startTime, location?.timezone || 'America/St_Johns')
-            < (location?.minimumBookingWindowHours ?? 1)) {
+        if (getHoursUntilBooking(calendarStartDate, startTime, 'America/St_Johns')
+            < (kitchen.minimumBookingWindowHours ?? location?.minimumBookingWindowHours ?? 1)) {
             return res.status(400).json({ error: 'Booking time is too soon' });
         }
 
@@ -3219,6 +3153,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             for (const storage of selectedStorage) {
                 try {
                     const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
+                    if (storageListing?.awaitingRemoval) return res.status(409).json({ error: 'This storage is awaiting confirmed removal and cannot be reserved yet.' });
 
                     if (storageListing) {
                         // Parse basePrice as numeric (stored in cents in database)
@@ -3355,6 +3290,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 tax_rate_percent: String(taxRatePercent),
                 platform_fee_cents: String(feeCalculation.platformCommissionInCents),
                 approved_subtotal: String(totalPriceCents),
+                cancellation_policy_hours: String(resolveKitchenBookingPolicies(kitchen, location).cancellationPolicyHours),
                 approved_tax: String(taxCents),
                 has_storage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
                 has_equipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
@@ -3544,7 +3480,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Get kitchen details
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchenDetails) {
+        if (!kitchenDetails || !kitchenDetails.isActive || kitchenDetails.listingStatus !== "active") {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
@@ -3595,6 +3531,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Get location details
         const location = await locationService.getLocationById(kitchenLocationId);
+        Object.assign(location, resolveKitchenBookingPolicies(kitchenDetails, location));
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
         }
@@ -3602,7 +3539,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             return res.status(400).json({ error: `Select no more than ${location.defaultDailyBookingLimit ?? 2} hourly slots` });
         }
 
-        const timezone = (location as any).timezone || "America/St_Johns";
+        const timezone = 'America/St_Johns';
         const minimumBookingWindowHours = (location as any).minimumBookingWindowHours ?? 1;
 
         // Validate booking time
@@ -3660,11 +3597,12 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Calculate storage add-ons — track individual prices for Stripe line items
         const storageIds: number[] = [];
-        const storageLineItems: Array<{ name: string; priceCents: number }> = [];
+        const storageLineItems: Array<{ name: string; priceCents: number; listingId: number }> = [];
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
             for (const storage of selectedStorage) {
                 try {
                     const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
+                    if (storageListing?.awaitingRemoval) return res.status(409).json({ error: 'This storage is awaiting confirmed removal and cannot be reserved yet.' });
                     if (storageListing) {
                         storageIds.push(storage.storageListingId);
                         const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
@@ -3683,6 +3621,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                         }
                         totalPriceCents += storagePrice;
                         storageLineItems.push({
+                            listingId: storage.storageListingId,
                             name: `Storage: ${storageListing.name || storageListing.storageType || 'Storage Unit'}`,
                             priceCents: storagePrice,
                         });
@@ -3694,7 +3633,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         }
 
         // Calculate equipment add-ons — track individual prices for Stripe line items
-        const equipmentLineItems: Array<{ name: string; priceCents: number }> = [];
+        const equipmentLineItems: Array<{ name: string; priceCents: number; listingId: number }> = [];
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
             for (const equipmentListingId of selectedEquipmentIds) {
                 try {
@@ -3703,6 +3642,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                         const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
                         totalPriceCents += sessionRateCents;
                         equipmentLineItems.push({
+                            listingId: equipmentListingId,
                             name: `Equipment: ${equipmentListing.brand ? equipmentListing.brand + ' ' : ''}${equipmentListing.equipmentType || 'Equipment'}`,
                             priceCents: sessionRateCents,
                         });
@@ -3771,6 +3711,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 hourlyRateCents: appliedRateCents,
                 durationHours: effectiveDurationHours,
                 pricingMode: selectedPricingMode,
+                cancellationPolicyHours: location.cancellationPolicyHours ?? 24,
                 holdId,
                 windowStartTime: availabilityCheck.windowStartTime,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
@@ -3837,6 +3778,9 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         // Get the kitchen details
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
         const kitchenLocationId1 = kitchenDetails.locationId;
+        if (!paymentIntentId && (!kitchenDetails.isActive || kitchenDetails.listingStatus !== "active")) {
+            return res.status(409).json({ error: "Kitchen is not accepting new bookings" });
+        }
         if (!kitchenLocationId1) {
             return res.status(400).json({ error: "Kitchen location not found" });
         }
@@ -3885,8 +3829,9 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
 
         if (kitchenLocationId2) {
             location = await locationService.getLocationById(kitchenLocationId2);
+            Object.assign(location, resolveKitchenBookingPolicies(kitchenDetails, location));
             if (location) {
-                timezone = (location as any).timezone || "America/St_Johns";
+                timezone = 'America/St_Johns';
                 // Use manager's setting - allow 0 for same-day bookings
                 const minWindow = (location as any).minimumBookingWindowHours ?? (location as any).minimum_booking_window_hours;
                 if (minWindow !== null && minWindow !== undefined) {
@@ -3927,6 +3872,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
 
         // Verify payment intent if provided
         let paymentIntentStatus: string | undefined;
+        let acceptedCancellationHours = resolveKitchenBookingPolicies(kitchenDetails, location).cancellationPolicyHours;
         if (paymentIntentId) {
             const { getPaymentIntent } = await import('../services/stripe-service');
             const paymentIntent = await getPaymentIntent(paymentIntentId);
@@ -3942,6 +3888,11 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             }
 
             const intentMetadata = paymentIntent.metadata || {};
+            if (intentMetadata.cancellation_policy_hours !== undefined) {
+                const cutoff = Number(intentMetadata.cancellation_policy_hours);
+                if (!Number.isSafeInteger(cutoff) || cutoff < 0) return res.status(400).json({ error: "Invalid payment policy" });
+                acceptedCancellationHours = cutoff;
+            }
             const intendedBaseCents = (pricingMode === 'daily')
                 ? Number(kitchenDetails.dailyRate || 0)
                 : Number(kitchenDetails.hourlyRate || 0) * (availabilityCheck.slots?.length || 0);
@@ -3986,6 +3937,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             paymentStatus: paymentIntentId ? 'paid' : 'pending',
             paymentIntentId,
             specialNotes,
+            cancellationPolicyHours: acceptedCancellationHours,
             selectedStorage: selectedStorage || [], // Pass storage with explicit dates
             selectedEquipmentIds: selectedEquipmentIds || []
         }));
@@ -4056,7 +4008,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     startTime,
                     endTime,
                     specialNotes,
-                    timezone: (location as any)?.timezone || 'America/St_Johns',
+                    timezone: 'America/St_Johns',
                     locationName: (location as any)?.name,
                     operatingWindowStartTime: booking.operatingWindowStartTime,
                     selectedSlots: booking.selectedSlots,
@@ -4347,7 +4299,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 startTime,
                                 endTime,
                                 specialNotes: specialNotes || undefined,
-                                timezone: location.timezone || "America/St_Johns",
+                                timezone: 'America/St_Johns',
                                 locationName: location.name,
                                 bookingId: newBooking.id,
                                 operatingWindowStartTime: newBooking.operatingWindowStartTime,
@@ -4539,6 +4491,34 @@ router.get("/chef/overstay-penalties", requireChef, async (req: Request, res: Re
         logger.error("Error fetching chef overstay penalties:", error);
         res.status(500).json({ error: "Failed to fetch overstay penalties" });
     }
+});
+
+router.post('/chef/overstay-penalties/:id/dispute', requireChef, async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid penalty ID' });
+    try {
+        const { disputeOverstayPenalty } = await import('../services/overstay-penalty-service');
+        const result = await disputeOverstayPenalty(id, req.neonUser!.id, req.body.reason);
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        logger.error('Failed to dispute overstay penalty', error);
+        return res.status(500).json({ error: 'Failed to save dispute' });
+    }
+});
+
+router.post('/chef/damage-claims/:id/evidence', requireChef, async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof req.body.fileUrl !== 'string')
+        return res.status(400).json({ error: 'Valid claim ID and evidence URL are required' });
+    try {
+        const { addChefClaimEvidence } = await import('../services/damage-claim-service');
+        const result = await addChefClaimEvidence(id, req.neonUser!.id, {
+            fileUrl: req.body.fileUrl, fileName: typeof req.body.fileName === 'string' ? req.body.fileName : undefined,
+            mimeType: typeof req.body.mimeType === 'string' ? req.body.mimeType : undefined,
+            description: typeof req.body.description === 'string' ? req.body.description : undefined,
+        });
+        res.status(result.success ? 200 : 400).json(result);
+    } catch (error) { logger.error('Chef evidence upload failed', error); res.status(500).json({ error: 'Failed to attach evidence' }); }
 });
 
 /**

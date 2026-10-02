@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { bookingAddonPrices } from '@shared/booking-addon-prices';
 /**
  * Stripe Checkout Service — Separate Charges and Transfers pattern
  *
@@ -14,6 +15,8 @@ import { logger } from "../logger";
 
 import Stripe from 'stripe';
 import { serializeCheckoutSlots } from './checkout-metadata';
+import { saveStorageOverstayQuote, describeStorageOverstayTerms } from './storage-overstay-terms-service';
+import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -74,6 +77,7 @@ export interface CreatePendingCheckoutSessionParams {
     hourlyRateCents: number;
     durationHours: number;
     pricingMode?: 'hourly' | 'daily';
+    cancellationPolicyHours?: number;
     holdId?: string;
     windowStartTime?: string;
     platform_fee_cents?: number;
@@ -85,8 +89,8 @@ export interface CreatePendingCheckoutSessionParams {
   lineItemBreakdown?: {
     kitchenPriceCents: number;
     kitchenLabel?: string; // e.g. "Kitchen Session (3 hours)"
-    storageItems?: Array<{ name: string; priceCents: number }>;
-    equipmentItems?: Array<{ name: string; priceCents: number }>;
+    storageItems?: Array<{ name: string; priceCents: number; listingId?: number }>;
+    equipmentItems?: Array<{ name: string; priceCents: number; listingId?: number }>;
     taxCents: number;
     taxLabel?: string; // e.g. "Tax (13%)"
     platformCommissionCents?: number;
@@ -142,7 +146,7 @@ export async function createPendingCheckoutSession(
     // Build line items — separate items for kitchen, storage, equipment, tax
     // This gives customers and managers clear visibility in Stripe Dashboard & receipts
     let lineItems: Array<{
-      price_data: { currency: string; product_data: { name: string }; unit_amount: number };
+      price_data: { currency: string; product_data: { name: string; description?: string }; unit_amount: number };
       quantity: number;
     }>;
 
@@ -261,6 +265,7 @@ export async function createPendingCheckoutSession(
     // This data will be used to create the booking in the webhook
     const sessionMetadata: Record<string, string> = {
       type: 'kitchen_booking',
+      fee_model: 'separate-charge-commission-v1',
       kitchen_id: bookingData.kitchenId.toString(),
       chef_id: bookingData.chefId.toString(),
       booking_date: bookingData.bookingDate,
@@ -272,6 +277,7 @@ export async function createPendingCheckoutSession(
       hourly_rate_cents: bookingData.hourlyRateCents.toString(),
       duration_hours: bookingData.durationHours.toString(),
       ...(bookingData.pricingMode ? { pricing_mode: bookingData.pricingMode } : {}),
+      ...(bookingData.cancellationPolicyHours != null ? { cancellation_policy_hours: String(bookingData.cancellationPolicyHours) } : {}),
       ...(bookingData.holdId ? { hold_id: bookingData.holdId } : {}),
       ...(bookingData.windowStartTime ? { window_start_time: bookingData.windowStartTime } : {}),
       booking_price_cents: bookingPriceInCents.toString(),
@@ -282,6 +288,17 @@ export async function createPendingCheckoutSession(
     };
 
     // Store optional fields as JSON strings (Stripe metadata values must be strings)
+    if (lineItemBreakdown) {
+      const prices = { s: (lineItemBreakdown.storageItems || []).map(item => [item.listingId, item.priceCents]),
+        e: (lineItemBreakdown.equipmentItems || []).map(item => [item.listingId, item.priceCents]) };
+      if ([...prices.s, ...prices.e].some(([id, price]) => !Number.isSafeInteger(id) || !Number.isSafeInteger(price)))
+        throw new Error('Checkout item pricing could not be recorded');
+      const snapshot = JSON.stringify(prices);
+      if (snapshot.length > 500) throw new Error('Too many items for one checkout');
+      sessionMetadata.addon_prices = snapshot;
+      bookingAddonPrices(sessionMetadata);
+      if (prices.s.length !== (bookingData.selectedStorage?.length || 0)) throw new Error('Selected storage pricing is incomplete');
+    }
     if (bookingData.specialNotes) {
       sessionMetadata.special_notes = bookingData.specialNotes;
     }
@@ -294,6 +311,14 @@ export async function createPendingCheckoutSession(
     if (selectedSlots) sessionMetadata.selected_slots = selectedSlots;
     if (bookingData.selectedStorage && bookingData.selectedStorage.length > 0) {
       sessionMetadata.selected_storage = JSON.stringify(bookingData.selectedStorage);
+      for (const storage of bookingData.selectedStorage) {
+        const quote = await saveStorageOverstayQuote(storage.storageListingId, bookingData.chefId);
+        sessionMetadata[`storage_quote_${storage.storageListingId}`] = quote.id;
+        const terms = quote.terms;
+        const description = describeStorageOverstayTerms(terms);
+        lineItems.push({ price_data: { currency: currency.toLowerCase(), unit_amount: 0,
+          product_data: { name: 'Storage overstay terms', description } }, quantity: 1 });
+      }
     }
     if (bookingData.selectedEquipmentIds && bookingData.selectedEquipmentIds.length > 0) {
       sessionMetadata.selected_equipment_ids = JSON.stringify(bookingData.selectedEquipmentIds);
@@ -324,6 +349,9 @@ export async function createPendingCheckoutSession(
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
+      ...(bookingData.selectedStorage?.length ? { custom_text: { submit: {
+        message: 'By continuing, you agree to the storage overstay terms displayed in this checkout. Rates are fixed for this booking.',
+      } } } : {}),
       // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
       // Invoices are generated at capture time via payment_intent.succeeded webhook
       // Stripe will send receipt email when payment is actually captured
@@ -415,7 +443,7 @@ export async function createCheckoutSession(
     const lineItems: Array<{
       price_data: {
         currency: string;
-        product_data: { name: string };
+        product_data: { name: string; description?: string };
         unit_amount: number;
       };
       quantity: number;
@@ -440,6 +468,24 @@ export async function createCheckoutSession(
         },
         quantity: 1,
       });
+    }
+
+    // The existing-booking Checkout path must disclose its stored quote too.
+    const { db } = await import('../db');
+    const { storageBookings, kitchenBookings } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    const [existingBooking] = await db.select({ chefId: kitchenBookings.chefId, paymentStatus: kitchenBookings.paymentStatus })
+      .from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+    const storedStorage = existingBooking?.paymentStatus === 'pending' ? await db.select().from(storageBookings)
+      .where(eq(storageBookings.kitchenBookingId, bookingId)) : [];
+    const overstayQuoteMetadata: Record<string, string> = {};
+    for (const storage of storedStorage) {
+      if (existingBooking?.chefId == null) throw new Error('Storage booking has no chef');
+      if (!isStorageOverstayTerms(storage.overstayTerms) || storage.overstayTerms.acceptedAt) continue;
+      const quote = await saveStorageOverstayQuote(storage.storageListingId, existingBooking.chefId, storage.overstayTerms);
+      overstayQuoteMetadata[`storage_booking_quote_${storage.id}`] = quote.id;
+      lineItems.push({ price_data: { currency: currency.toLowerCase(), unit_amount: 0,
+        product_data: { name: 'Storage overstay terms', description: describeStorageOverstayTerms(quote.terms) } }, quantity: 1 });
     }
 
     // ARCHITECTURE — Separate Charges and Transfers:
@@ -477,8 +523,12 @@ export async function createCheckoutSession(
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
+      ...(Object.keys(overstayQuoteMetadata).length ? { custom_text: { submit: {
+        message: 'By continuing, you agree to the storage overstay terms displayed in this checkout. Rates are fixed for this booking.',
+      } } } : {}),
       metadata: {
         booking_id: bookingId.toString(),
+        ...overstayQuoteMetadata,
         booking_price_cents: bookingPriceInCents.toString(),
         platform_fee_cents: platformFeeInCents.toString(),
         total_cents: totalAmountInCents.toString(),

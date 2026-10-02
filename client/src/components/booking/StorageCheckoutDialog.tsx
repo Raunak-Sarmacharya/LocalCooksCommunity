@@ -20,7 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Badge } from "@/components/ui/badge";
 import { FormLegend } from "@/components/ui/form-legend";
 import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded } from "./PhotoRequirementUploader";
@@ -143,17 +144,17 @@ export function StorageCheckoutDialog({
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-muted-foreground" />
             {t("coDialogTitle")}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {t("coDialogDesc")}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         {(storageCheckoutItems.some((item) => item.required) ||
           storageCheckoutPhotoReqs.some((item) => item.required)) && (
@@ -241,7 +242,7 @@ export function StorageCheckoutDialog({
           <StorageCheckoutInfo />
         </div>
 
-        <SheetFooter className="mt-6">
+        <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("bkCommonCancel")}
           </Button>
@@ -261,9 +262,9 @@ export function StorageCheckoutDialog({
               </>
             )}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 

@@ -14,6 +14,7 @@ export type GlobalSearchResult = {
   view?: string;
   breadcrumb: SearchBreadcrumb[];
   score: number;
+  fuzzy?: boolean;
 };
 
 export type GlobalSearchResponse = {

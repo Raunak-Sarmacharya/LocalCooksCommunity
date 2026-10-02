@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MapPin, User } from "@/components/ui/manager-icons";
+import { ArrowUpDown, MapPin, Search, User, X } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthHeaders } from "@/lib/api";
-import { filterManagerStorageBookings, type ManagerStorageBooking } from "@/lib/manager-storage-bookings";
+import { filterManagerStorageBookings, inheritStorageChef, type ManagerStorageBooking } from "@/lib/manager-storage-bookings";
 import { mt } from "@/i18n/manager";
+import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 
 const statusClass: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 border-amber-300",
@@ -19,10 +22,22 @@ const statusClass: Record<string, string> = {
   cancellation_requested: "bg-orange-100 text-orange-800 border-orange-300",
 };
 
-export default function ManagerStorageBookingsPage() {
+interface ManagerStorageBookingsPageProps {
+  onOpenOverstays: () => void;
+  onOpenInspections: () => void;
+}
+
+export default function ManagerStorageBookingsPage({ onOpenOverstays, onOpenInspections }: ManagerStorageBookingsPageProps) {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [locationFilter, setLocationFilter] = useState("all");
-  const { data: bookings = [], isLoading, error } = useQuery<ManagerStorageBooking[]>({
+  const [searchQuery, setSearchQuery] = useState("");
+  const [focusedBookingId, setFocusedBookingId] = useState(() => Number(new URLSearchParams(window.location.search).get("storageBooking")) || null);
+  useEffect(() => {
+    const sync = () => setFocusedBookingId(Number(new URLSearchParams(window.location.search).get("storageBooking")) || null);
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const { bookings: parentBookings, isLoadingBookings: loadingParents } = useManagerDashboard();
+  const { data: storageRows = [], isLoading, error, refetch } = useQuery<ManagerStorageBooking[]>({
     queryKey: ["/api/manager/storage-bookings"],
     queryFn: async () => {
       const response = await fetch("/api/manager/storage-bookings", {
@@ -33,24 +48,40 @@ export default function ManagerStorageBookingsPage() {
       return response.json();
     },
   });
+  const bookings = useMemo(() => inheritStorageChef(storageRows, parentBookings), [storageRows, parentBookings]);
+  const { data: availableActions } = useQuery({
+    queryKey: ["/api/manager/storage-operations-availability"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const paths = [
+        "/api/manager/overstays?includeAll=true",
+        "/api/manager/storage-checkouts/pending",
+        "/api/manager/storage-checkouts/history?limit=1",
+        "/api/manager/storage-checkins/history?limit=1",
+      ];
+      const responses = await Promise.all(paths.map((path) => fetch(path, { headers, credentials: "include" })));
+      if (responses.some((response) => !response.ok)) throw new Error("Unable to load storage actions");
+      const [penalties, pending, checkoutHistory, checkinHistory] = await Promise.all(responses.map((response) => response.json()));
+      return {
+        overstays: (penalties.overstays?.length ?? 0) + (penalties.pastOverstays?.length ?? 0) > 0,
+        inspections: (pending.pendingCheckouts?.length ?? 0) + (checkoutHistory.checkoutHistory?.length ?? 0) + (checkinHistory.checkinHistory?.length ?? 0) > 0,
+      };
+    },
+    staleTime: 30_000,
+  });
 
-  const locations = useMemo(
-    () => Array.from(new Set(bookings.map(({ locationName }) => locationName))).sort(),
-    [bookings],
-  );
-  const filteredBookings = useMemo(
-    () => filterManagerStorageBookings(bookings, statusFilter, locationFilter),
-    [bookings, statusFilter, locationFilter],
-  );
+  const filteredBookings = useMemo(() => {
+    const inStatus = filterManagerStorageBookings(bookings, statusFilter, "all").filter((booking) => !focusedBookingId || booking.id === focusedBookingId);
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return inStatus;
+    return inStatus.filter((booking) => [
+      booking.referenceCode, booking.id, booking.storageName, booking.storageType,
+      booking.kitchenName, booking.locationName, booking.chefName,
+    ].join(" ").toLowerCase().includes(query));
+  }, [bookings, statusFilter, searchQuery, focusedBookingId]);
   const columns = useMemo<ColumnDef<ManagerStorageBooking>[]>(() => [
     {
       accessorKey: "createdAt",
-      header: () => null,
-      cell: () => null,
-    },
-    {
-      id: "search",
-      accessorFn: (row) => [row.referenceCode, row.storageName, row.storageType, row.kitchenName, row.locationName, row.chefName].join(" "),
       header: () => null,
       cell: () => null,
     },
@@ -108,52 +139,85 @@ export default function ManagerStorageBookingsPage() {
     },
   ], []);
 
-  if (error) {
-    return <Card className="border-destructive/40"><CardContent className="py-10 text-center text-destructive">{error.message}</CardContent></Card>;
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <label className="sr-only" htmlFor="storage-location-filter">{mt("location2")}</label>
-        <select
-          id="storage-location-filter"
-          value={locationFilter}
-          onChange={(event) => setLocationFilter(event.target.value)}
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm sm:w-56"
-        >
-          <option value="all">{mt("cmdAllLocations")}</option>
-          {locations.map((location) => <option key={location} value={location}>{location}</option>)}
-        </select>
+      {(availableActions?.overstays || availableActions?.inspections) && (
+        <div className="flex flex-wrap gap-2">
+          {availableActions.overstays && <Button variant="outline" size="sm" onClick={onOpenOverstays}>{mt("navOverstayPenalties")}</Button>}
+          {availableActions.inspections && <Button variant="outline" size="sm" onClick={onOpenInspections}>{mt("navStorageInspections")}</Button>}
+        </div>
+      )}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+        {focusedBookingId && <Button variant="outline" size="sm" onClick={() => {
+          setFocusedBookingId(null);
+          const url = new URL(window.location.href); url.searchParams.delete("storageBooking"); window.history.replaceState({}, "", url);
+        }}>{mt("viewAll")}<X className="ml-2 size-3" /></Button>}
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder={mt("searchStorageBookings")}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="pl-9 pr-8"
+          />
+          {searchQuery && <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-0 top-1/2 h-7 w-7 -translate-y-1/2"
+            onClick={() => setSearchQuery("")}
+            aria-label={mt("clearSearch")}
+          ><X className="h-3 w-3" /></Button>}
+        </div>
       </div>
-      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-5">
-          {[
-            ["all", mt("filterAll")],
-            ["upcoming", mt("upcoming")],
-            ["past", mt("past")],
-            ["pending", mt("pending")],
-            ["cancelled", mt("cancelled")],
-          ].map(([value, label]) => (
-            <TabsTrigger key={value} value={value} className="rounded-lg py-2 text-xs sm:text-sm">
-              {label}<Badge variant="count" className="ml-1">{filterManagerStorageBookings(bookings, value, locationFilter).length}</Badge>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      {isLoading ? (
-        <div className="flex justify-center py-16"><div className="h-10 w-10 animate-spin rounded-full border-b-2 border-primary" /></div>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {[
+          ["all", mt("filterAll")],
+          ["upcoming", mt("upcoming")],
+          ["past", mt("past")],
+          ["pending", mt("pending")],
+          ["cancelled", mt("cancelled")],
+        ].map(([value, label]) => {
+          const isActive = statusFilter === value;
+          return <button
+            key={value}
+            type="button"
+            onClick={() => setStatusFilter(value)}
+            aria-pressed={isActive}
+            className={isActive
+              ? "rounded-xl border border-primary bg-primary/[0.04] p-4 text-left transition-colors"
+              : "rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"}
+          >
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{filterManagerStorageBookings(bookings, value, "all").length}</p>
+          </button>;
+        })}
+      </div>
+      {error ? (
+        <Card className="border-destructive/40"><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+          <p className="text-sm text-destructive">{error.message}</p>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>{mt("retry")}</Button>
+        </CardContent></Card>
+      ) : isLoading || loadingParents ? (
+        <div className="space-y-3" role="status" aria-label="Loading storage bookings">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-xl" />)}
+        </div>
+      ) : bookings.length === 0 ? (
+        <Card><CardContent className="py-10 text-center">
+          <p className="font-medium">{mt("storageBookingsEmptyTitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{mt("storageBookingsEmptyBody")}</p>
+        </CardContent></Card>
       ) : (
         <DataTable
           columns={columns}
           data={filteredBookings}
-          filterColumn="search"
-          filterPlaceholder={mt("searchStorageBookings")}
           defaultSorting={[{ id: "createdAt", desc: true }]}
-          initialColumnVisibility={{ createdAt: false, search: false }}
+          initialColumnVisibility={{ createdAt: false }}
           pageSize={15}
         />
       )}
+      <StorageExtensionApprovals />
     </div>
   );
 }

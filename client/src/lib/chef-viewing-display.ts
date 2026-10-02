@@ -1,8 +1,12 @@
 /** Pure helpers for chef kitchen-tour list / table. */
+import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
+import { formatTourDate, formatTourSlotRange } from '@shared/tour-time';
+import { publicTour } from '@shared/tour-outcome';
 
 export type ViewingStatusBadge = {
   variant: "warning" | "success" | "destructive" | "outline" | "secondary" | "info";
-  labelKey: string;
+  labelKey: 'tourStatusDisrupted' | 'tourStatusRejected' | 'tourStatusPending' | 'tourStatusConfirmed'
+    | 'tourStatusCompleted' | 'tourStatusCancelled' | 'tourStatusNoShow' | 'tourStatusUnknown';
   defaultLabel: string;
 };
 
@@ -23,10 +27,12 @@ export type ChefTourRow = {
   requestedRescheduleAt: string | null;
   durationMinutes: number | null;
   chefNotes: string | null;
-  managerNotes: string | null;
+  sharedManagerNotes: string | null;
   cancellationReason: string | null;
   adminReviewReason: string | null;
   noShowReason: string | null;
+  disruptionReason: string | null;
+  outcomeHistory: Array<{ from: string; to: string; actorRole: string; recordedAt: string; sharedNotes?: string | null }>;
   adminReviewedAt: string | null;
   cancelledAt: string | null;
   completedAt: string | null;
@@ -38,7 +44,8 @@ export type ChefTourRow = {
   intakeEntries: [string, unknown][];
 };
 
-export function viewingStatusBadge(status: string, adminReviewDecision?: string | null, cancelledBy?: string | null): ViewingStatusBadge {
+export function viewingStatusBadge(status: string, adminReviewDecision?: string | null, cancelledBy?: string | null, disruptionReason?: string | null): ViewingStatusBadge {
+  if (disruptionReason) return { variant: "destructive", labelKey: "tourStatusDisrupted", defaultLabel: "Disrupted" };
   if (status === "cancelled" && (adminReviewDecision === "denied" || cancelledBy === "manager_declined")) {
     return { variant: "destructive", labelKey: "tourStatusRejected", defaultLabel: "Rejected" };
   }
@@ -63,11 +70,11 @@ export function viewingStatusBadge(status: string, adminReviewDecision?: string 
 export function formatTourWhen(
   scheduledAt: string,
   durationMinutes: number | null | undefined,
-  timeZone: string
+  _timeZone: string
 ): string {
   const start = new Date(scheduledAt);
   const opts: Intl.DateTimeFormatOptions = {
-    timeZone,
+    timeZone: DEFAULT_TIMEZONE,
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -77,14 +84,7 @@ export function formatTourWhen(
   };
   const startLabel = start.toLocaleString("en-US", opts);
   if (!durationMinutes || durationMinutes <= 0) return startLabel;
-  const end = new Date(start.getTime() + durationMinutes * 60_000);
-  const endLabel = end.toLocaleString("en-US", {
-    timeZone,
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-  return `${startLabel} – ${endLabel}`;
+  return `${formatTourDate(start)}, ${formatTourSlotRange(start, durationMinutes)}`;
 }
 
 export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
@@ -117,10 +117,12 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     requestedRescheduleAt: viewing.requestedRescheduleAt ?? null,
     durationMinutes: viewing.durationMinutes ?? null,
     chefNotes: viewing.chefNotes ?? null,
-    managerNotes: viewing.managerNotes ?? null,
+    sharedManagerNotes: viewing.sharedManagerNotes ?? null,
     cancellationReason: viewing.cancellationReason ?? null,
     adminReviewReason: viewing.adminReviewReason ?? null,
     noShowReason: viewing.noShowReason ?? null,
+    disruptionReason: viewing.disruptionReason ?? null,
+    outcomeHistory: publicTour(viewing).outcomeHistory,
     adminReviewedAt: viewing.adminReviewedAt ?? null,
     cancelledAt: viewing.cancelledAt ?? null,
     completedAt: viewing.completedAt ?? null,
@@ -137,7 +139,7 @@ export function chefTourRowHasDetails(row: ChefTourRow): boolean {
   return Boolean(
     row.submittedAt ||
     row.chefNotes?.trim() ||
-      row.managerNotes?.trim() ||
+      row.sharedManagerNotes?.trim() ||
       row.cancellationReason?.trim() ||
       row.adminReviewReason?.trim() ||
       row.noShowReason?.trim() ||

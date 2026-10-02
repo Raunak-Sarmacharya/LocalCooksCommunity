@@ -29,8 +29,4 @@ export {
 export { RevenueMetricCards } from './components/RevenueMetricCards'
 export { TransactionTable } from './components/TransactionTable'
 export { DateRangePicker } from './components/DateRangePicker'
-export {
-    RevenueTrendChart,
-    RevenueByLocationChart,
-    PaymentStatusChart,
-} from './components/RevenueCharts'
+export { RevenueTrendChart } from './components/RevenueCharts'

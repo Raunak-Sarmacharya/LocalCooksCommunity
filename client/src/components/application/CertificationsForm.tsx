@@ -324,7 +324,7 @@ export default function CertificationsForm() {
                 {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
                 
                 <DialogFooter className="mt-2 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 gap-2 sm:gap-0">
-                  <Button variant="outline" type="button" onClick={() => {
+                  <Button variant="outline" type="button" disabled={isUploading} onClick={() => {
                       handleFileUpload("foodSafetyLicense", null);
                       setDocumentUrls(prev => ({ ...prev, foodSafetyLicenseUrl: "" }));
                       form.setValue("foodSafetyLicense", "no", { shouldValidate: true, shouldDirty: true });
@@ -333,7 +333,7 @@ export default function CertificationsForm() {
                   }} className="rounded-xl">
                     Remove
                   </Button>
-                  <Button type="button" onClick={() => closeUploadDialog("foodSafetyLicense")} className="rounded-xl">
+                  <Button type="button" disabled={isUploading} onClick={() => closeUploadDialog("foodSafetyLicense")} className="rounded-xl">
                     Done
                   </Button>
                 </DialogFooter>
@@ -424,7 +424,7 @@ export default function CertificationsForm() {
                 {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
                 
                 <DialogFooter className="mt-2 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 gap-2 sm:gap-0">
-                  <Button variant="outline" type="button" onClick={() => {
+                  <Button variant="outline" type="button" disabled={isUploading} onClick={() => {
                       handleFileUpload("foodEstablishmentCert", null);
                       setDocumentUrls(prev => ({ ...prev, foodEstablishmentCertUrl: "" }));
                       form.setValue("foodEstablishmentCert", "no", { shouldValidate: true, shouldDirty: true });
@@ -433,7 +433,7 @@ export default function CertificationsForm() {
                   }} className="rounded-xl">
                     Remove
                   </Button>
-                  <Button type="button" onClick={() => closeUploadDialog("foodEstablishmentCert")} className="rounded-xl">
+                  <Button type="button" disabled={isUploading} onClick={() => closeUploadDialog("foodEstablishmentCert")} className="rounded-xl">
                     Done
                   </Button>
                 </DialogFooter>

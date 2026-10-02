@@ -35,6 +35,7 @@ export async function generateInvoicePDF(
   let managerRevenueCents = 0;
   let storedTaxAmountCents = 0;
   let refundAmountCents = 0;
+  let managerRefundDebitCents = 0;
   let ptMetadata: Record<string, unknown> = {};
   let transactionStatus = String(booking.paymentStatus || booking.payment_status || 'paid');
 
@@ -61,6 +62,14 @@ export async function generateInvoicePDF(
             ? JSON.parse(paymentTransaction.metadata)
             : (paymentTransaction.metadata as Record<string, unknown>))
           : {};
+        const refundEntries = Array.isArray(ptMetadata.refunds) ? ptMetadata.refunds : [];
+        managerRefundDebitCents = refundEntries.length > 0
+          ? refundEntries.reduce((sum: number, entry: any) =>
+              sum + Math.max(0, Number(entry?.managerDebited ?? entry?.customerReceived ?? 0)), 0)
+          : refundAmountCents;
+        if (transactionStatus === 'refunded') {
+          managerRefundDebitCents = Math.max(managerRefundDebitCents, managerRevenueCents);
+        }
         if (storedTaxAmountCents <= 0 && ptMetadata.approvedTax != null) {
           storedTaxAmountCents = parseInt(String(ptMetadata.approvedTax)) || 0;
         }
@@ -530,20 +539,24 @@ export async function generateInvoicePDF(
         });
 
         let stripeProcessingFee: number;
-        let stripeNetPayout: number;
+        let originalNetPayout: number;
 
         if (managerRevenueCents > 0 || stripeProcessingFeeCents > 0) {
           stripeProcessingFee = stripeProcessingFeeCents / 100;
-          stripeNetPayout =
+          originalNetPayout =
             managerRevenueCents > 0 ? managerRevenueCents / 100 : payout.kitchenNetPayoutCents / 100;
         } else if (stripeDataForManager) {
           stripeProcessingFee = stripeDataForManager.stripeProcessingFee;
-          stripeNetPayout =
+          originalNetPayout =
             managerRevenueCents > 0 ? managerRevenueCents / 100 : stripeDataForManager.stripeNetPayout;
         } else {
           stripeProcessingFee = 0;
-          stripeNetPayout = payout.kitchenNetPayoutCents / 100;
+          originalNetPayout = payout.kitchenNetPayoutCents / 100;
         }
+        const payoutRefundDollars = transactionStatus === 'refunded'
+          ? originalNetPayout
+          : Math.min(originalNetPayout, managerRefundDebitCents / 100);
+        const stripeNetPayout = Math.max(0, originalNetPayout - payoutRefundDollars);
 
         const chefPaid = (payout.kitchenGrossCollectedCents + payout.platformFeeAmountCents) / 100;
 
@@ -574,6 +587,9 @@ export async function generateInvoicePDF(
         }
         if (stripeProcessingFee > 0) {
           addRow('Processing fee', stripeProcessingFee, { negative: true });
+        }
+        if (payoutRefundDollars > 0) {
+          addRow('Refund deducted from payout', payoutRefundDollars, { negative: true });
         }
 
         doc.rect(labelCol, yPos, 230, 1).fill('#000000');

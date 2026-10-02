@@ -54,8 +54,8 @@ export interface UpdateKitchenDTO {
   id: number;
   locationId?: number;
   name?: string;
-  description?: string;
-  imageUrl?: string;
+  description?: string | null;
+  imageUrl?: string | null;
   galleryImages?: string[];
   amenities?: string[];
   isActive?: boolean;
@@ -78,6 +78,7 @@ export interface KitchenDTO {
   id: number;
   locationId: number;
   name: string;
+  slug?: string | null;
   description?: string;
   imageUrl: string | null;
   galleryImages: string[];
@@ -91,6 +92,10 @@ export interface KitchenDTO {
    * `server/services/kitchen-listing-readiness-service.ts` for the gate.
    */
   listingStatus: ListingStatus;
+  cancellationPolicyHours?: number | null;
+  minimumBookingWindowHours?: number | null;
+  defaultDailyBookingLimit?: number | null;
+  checkinCheckoutEnabled?: boolean;
   hourlyRate: number | null;
   dailyRate: number | null;
   currency: string;

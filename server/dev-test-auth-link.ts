@@ -89,6 +89,7 @@ export async function generateDevTestAuthLink(
 
   const isKitchenFlow =
     returnPath.includes("/kitchen-preview") ||
+    returnPath.includes("/kitchen/") ||
     returnPath.includes("/apply-kitchen") ||
     returnPath.includes("/book-kitchen");
   if (isKitchenFlow) userRole = "chef";

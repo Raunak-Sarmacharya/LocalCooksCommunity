@@ -1,4 +1,5 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import * as React from "react"
 import { ChefSidebar } from "@/components/chef/ChefSidebar"
 import { Separator } from "@/components/ui/separator"
@@ -16,6 +17,7 @@ import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
 import { findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
 import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
+import { SCROLL_AREA_FLUID_CONTENT } from "@/lib/scroll-area-classes"
 
 interface ChefDashboardLayoutProps {
     children: React.ReactNode
@@ -100,10 +102,11 @@ export default function ChefDashboardLayout({
             />
             {/* Same scroll shell as DashboardLayout / ManagerBookingLayout — header stays put. */}
             <SidebarInset className="min-w-0 h-svh overflow-hidden">
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+                <header className="flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
-                        <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
+                        <Separator orientation="vertical" className="mr-2 h-4 shrink-0 hidden sm:block" />
+                        <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellOverview")}</span>
                         <Breadcrumb className="min-w-0">
                             <BreadcrumbList className="flex-wrap">
                                 {displayBreadcrumbs.map((crumb, index) => (
@@ -170,11 +173,13 @@ export default function ChefDashboardLayout({
                         <ChefNotificationCenter onViewAll={() => onViewChange("notifications")} />
                     </div>
                 </header>
-                <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-clip bg-muted/30 p-4 md:p-6 lg:p-8">
+                <ScrollArea className={cn("flex-1 min-h-0 min-w-0 bg-muted/30", SCROLL_AREA_FLUID_CONTENT)}>
+                <main className="min-w-0 p-4 md:p-6 lg:p-8">
                     <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>
                 </main>
+                </ScrollArea>
             </SidebarInset>
             <CommandMenu
                 open={isCommandOpen}

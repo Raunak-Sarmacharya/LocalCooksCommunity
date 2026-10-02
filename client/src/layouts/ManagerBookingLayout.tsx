@@ -1,4 +1,5 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import * as React from "react"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
@@ -58,10 +59,11 @@ export default function ManagerBookingLayout({
               and sticky header rides away with the page.
             */}
             <SidebarInset className="min-w-0 h-svh overflow-hidden">
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+                <header className="flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
-                        <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
+                        <Separator orientation="vertical" className="mr-2 h-4 shrink-0 hidden sm:block" />
+                        <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("navBookings")}</span>
                         <Breadcrumb className="min-w-0">
                             <BreadcrumbList className="flex-wrap">
                                 {displayBreadcrumbs.map((crumb, index) => (
@@ -95,12 +97,14 @@ export default function ManagerBookingLayout({
                         </Breadcrumb>
                     </div>
                 </header>
-                <main className="relative flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-muted/10 p-4 md:p-6 lg:p-8">
+                <ScrollArea className="flex-1 min-h-0 min-w-0 bg-muted/10">
+                <main className="relative min-w-0 p-4 md:p-6 lg:p-8">
                     <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
                     <div className="relative z-10 mx-auto w-full max-w-7xl min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>
                 </main>
+                </ScrollArea>
             </SidebarInset>
         </SidebarProvider>
     )

@@ -2,9 +2,12 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import type { AdminSection } from "./AdminSidebar";
-import { AdminNotificationCenter } from "./AdminNotificationCenter";
+// The admin bell IS the manager/chef notification centre, pointed at the admin
+// endpoints. The old bespoke popover here was 81 lines against their ~900 and
+// had no filters, grouping, mark-all-read, archive or delete.
+import NotificationCenter from "@/components/manager/NotificationCenter";
 
 interface AdminHeaderProps {
   activeSection: AdminSection;
@@ -41,7 +44,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "email-log": { category: "Communications", title: "Email Log" },
 };
 
-export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchClick }: AdminHeaderProps) {
+export function AdminHeader({ activeSection, onSearchClick }: AdminHeaderProps) {
   const meta = SECTION_META[activeSection] || { category: "Settings", title: "Unknown Section" };
 
   return (
@@ -60,7 +63,7 @@ export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchCl
         </BreadcrumbList>
       </Breadcrumb>
       <div className="ml-auto flex items-center gap-2">
-        <AdminNotificationCenter />
+        <NotificationCenter endpoint="/api/admin/notifications" linkRole={null} />
         {onSearchClick && (
           <Button
             variant="outline"
@@ -72,18 +75,6 @@ export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchCl
             <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.25rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
               <span className="text-xs">⌘</span>K
             </kbd>
-          </Button>
-        )}
-        {onRefresh && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            className="h-8 w-8"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            <span className="sr-only">Refresh</span>
           </Button>
         )}
       </div>

@@ -2,7 +2,7 @@
 import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, Calendar, Building2, FileText, Clock, Ban } from "@/components/ui/manager-icons"
+import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, Calendar, Building2, Clock, Ban } from "@/components/ui/manager-icons"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
@@ -86,26 +86,26 @@ function DocumentIndicators({ application }: { application: Application }) {
     const tierData = (application.tier_data || {}) as Record<string, any>;
     const hasInsurance = !!tierData.tierFiles?.['tier2_insurance_document'];
 
-    if (!hasFoodSafety && !hasFoodEstablishment && !hasInsurance) {
-        return <span className="text-xs text-gray-400">{mt("noDocuments")}</span>;
+    const documents = [
+        hasFoodSafety && mt("foodSafetyLicense"),
+        hasFoodEstablishment && mt("foodEstablishmentCertificate"),
+        hasInsurance && mt("insuranceDocument"),
+    ].filter((label): label is string => Boolean(label));
+
+    if (!documents.length) {
+        return <span className="text-xs text-muted-foreground">{mt("noDocuments")}</span>;
     }
 
     return (
-        <div className="flex items-center gap-1">
-            {hasFoodSafety && (
-                <span className="inline-flex items-center px-1.5 py-0.5 bg-green-50 text-green-600 rounded text-[10px] font-medium">
-                    <FileText className="h-2.5 w-2.5 mr-0.5" />{mt("cert")}</span>
-            )}
-            {hasFoodEstablishment && (
-                <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-medium">
-                    <FileText className="h-2.5 w-2.5 mr-0.5" />{mt("navLicense")}</span>
-            )}
-            {hasInsurance && (
-                <span className="inline-flex items-center px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded text-[10px] font-medium">
-                    <FileText className="h-2.5 w-2.5 mr-0.5" />{mt("insurance")}</span>
-            )}
+        <div className="flex min-w-0 flex-col gap-1.5 py-1">
+            {documents.map((label) => (
+                <span key={label} className="flex items-start gap-2 text-xs leading-4 text-foreground/80">
+
+                    <span className="whitespace-normal">{label}</span>
+                </span>
+            ))}
         </div>
-    )
+    );
 }
 
 /**
@@ -115,11 +115,11 @@ function StepProgress({ application }: { application: Application }) {
     const tier = application.current_tier ?? 1;
     const hasStep2 = !!application.tier2_completed_at;
     const isFullyApproved = application.status === 'approved' && tier >= 3;
-    
+
     // Calculate progress
     let step1Complete = application.status === 'approved' || tier >= 2;
     let step2Complete = isFullyApproved;
-    
+
     return (
         <div className="flex items-center gap-1">
             <div className={cn(
@@ -224,7 +224,7 @@ export function getApplicationColumnsV2({
                 const app = row.original;
                 const tier = app.current_tier ?? 1;
                 const hasStep2 = !!app.tier2_completed_at;
-                
+
                 switch (value) {
                     case 'pending':
                         return app.status === 'inReview' || (app.status === 'approved' && tier === 2 && hasStep2);
@@ -242,6 +242,8 @@ export function getApplicationColumnsV2({
         {
             id: "documents",
             header: mt("documents"),
+            // Document names use the full mobile card width for readable wrapping.
+            meta: { mobileSpan: "full" },
             cell: ({ row }) => <DocumentIndicators application={row.original} />,
         },
         {
@@ -302,7 +304,7 @@ export function getApplicationColumnsV2({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
                                 <DropdownMenuLabel>{mt("actions")}</DropdownMenuLabel>
-                                
+
                                 <DropdownMenuItem onClick={() => onSelect(app)}>
                                     <Eye className="mr-2 h-4 w-4" />{mt("viewDetails")}</DropdownMenuItem>
 

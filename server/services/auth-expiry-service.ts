@@ -49,6 +49,16 @@ const AUTH_EXPIRY_HOURS = 24;
  * 
  * Returns true if the authorization was expired and cancelled.
  */
+async function expireKitchenAuthorization(bookingId: number, paymentIntentId: string, cutoffTime: Date) {
+  const [current] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+  if ((current?.paymentDecision as { state?: string } | null)?.state === 'pending') return false;
+  if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
+    || current.paymentIntentId !== paymentIntentId || current.createdAt >= cutoffTime) return false;
+  const { decideAuthorizedBooking } = await import('./booking-payment-decision');
+  await decideAuthorizedBooking(bookingId, 'cancelled');
+  return true;
+}
+
 export async function lazyExpireKitchenBookingAuth(booking: {
   id: number;
   paymentStatus: string | null;
@@ -68,46 +78,7 @@ export async function lazyExpireKitchenBookingAuth(booking: {
   try {
     logger.info(`[AuthExpiry] Lazy-expiring kitchen booking ${booking.id} — authorization older than ${AUTH_EXPIRY_HOURS}h`);
 
-    // Cancel the PaymentIntent to release the hold
-    const { cancelPaymentIntent } = await import("./stripe-service");
-    await cancelPaymentIntent(booking.paymentIntentId);
-
-    // Update kitchen booking
-    await db
-      .update(kitchenBookings)
-      .set({
-        status: "cancelled",
-        paymentStatus: "failed",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(kitchenBookings.id, booking.id),
-          eq(kitchenBookings.paymentStatus, "authorized"), // Atomic guard
-        )
-      );
-
-    // Update associated storage bookings
-    await db
-      .update(storageBookingsTable)
-      .set({ paymentStatus: "failed", updatedAt: new Date() })
-      .where(
-        and(
-          eq(storageBookingsTable.kitchenBookingId, booking.id),
-          eq(storageBookingsTable.paymentStatus, "authorized"),
-        ),
-      );
-
-    // Update associated equipment bookings
-    await db
-      .update(equipmentBookingsTable)
-      .set({ paymentStatus: "failed", updatedAt: new Date() })
-      .where(
-        and(
-          eq(equipmentBookingsTable.kitchenBookingId, booking.id),
-          eq(equipmentBookingsTable.paymentStatus, "authorized"),
-        ),
-      );
+    if (!(await expireKitchenAuthorization(booking.id, booking.paymentIntentId, cutoffTime))) return false;
 
     // Update payment_transactions
     try {
@@ -122,13 +93,6 @@ export async function lazyExpireKitchenBookingAuth(booking: {
       }
     } catch (ptErr: any) {
       logger.warn(`[AuthExpiry] Lazy: Could not update PT for booking ${booking.id}:`, ptErr);
-    }
-
-    // Notify the chef (fire-and-forget)
-    try {
-      await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
-    } catch (notifErr: any) {
-      logger.warn(`[AuthExpiry] Lazy: Could not send notification for booking ${booking.id}:`, notifErr);
     }
 
     logger.info(`[AuthExpiry] Lazy-expired kitchen booking ${booking.id} successfully`);
@@ -256,47 +220,7 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
       if (!booking.paymentIntentId) continue;
 
       try {
-        // Cancel the PaymentIntent to release the hold
-        const { cancelPaymentIntent } = await import("./stripe-service");
-        await cancelPaymentIntent(booking.paymentIntentId);
-
-        // Update kitchen booking — reject it and mark payment as failed
-        await db
-          .update(kitchenBookings)
-          .set({
-            status: "cancelled",
-            paymentStatus: "failed",
-            updatedAt: new Date(),
-          })
-          .where(eq(kitchenBookings.id, booking.id));
-
-        // Update associated storage bookings
-        await db
-          .update(storageBookingsTable)
-          .set({
-            paymentStatus: "failed",
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(storageBookingsTable.kitchenBookingId, booking.id),
-              eq(storageBookingsTable.paymentStatus, "authorized"),
-            ),
-          );
-
-        // Update associated equipment bookings
-        await db
-          .update(equipmentBookingsTable)
-          .set({
-            paymentStatus: "failed",
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(equipmentBookingsTable.kitchenBookingId, booking.id),
-              eq(equipmentBookingsTable.paymentStatus, "authorized"),
-            ),
-          );
+        if (!(await expireKitchenAuthorization(booking.id, booking.paymentIntentId, cutoffTime))) continue;
 
         // Update payment_transactions
         try {
@@ -311,13 +235,6 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
           }
         } catch (ptErr: any) {
           logger.warn(`[AuthExpiry] Could not update PT for booking ${booking.id}:`, ptErr);
-        }
-
-        // Notify the chef
-        try {
-          await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
-        } catch (notifErr: any) {
-          logger.warn(`[AuthExpiry] Could not send notification for booking ${booking.id}:`, notifErr);
         }
 
         results.push({

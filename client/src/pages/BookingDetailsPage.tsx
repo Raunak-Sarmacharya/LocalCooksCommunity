@@ -1,3 +1,4 @@
+import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { getHourlySlotStarts, sortTimesInOperatingWindow } from '@shared/operating-hours';
 import { useState, useEffect, useMemo } from "react";
@@ -7,6 +8,7 @@ import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ManagerBookingLayout from "@/layouts/ManagerBookingLayout";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
@@ -14,15 +16,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
-import { ArrowLeft, MapPin, Calendar, Package, Wrench, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, CreditCard, Phone, Mail, Receipt, Hash, Info, LogIn, LogOut, Camera, FileWarning, Clock } from "lucide-react";
+import { ArrowLeft, MapPin, Calendar, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, CreditCard, Phone, Mail, Receipt, Hash, Info, LogIn, LogOut, Camera, FileWarning, Clock } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useQueryClient } from "@tanstack/react-query";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import { BookingActionSheet, type BookingForAction } from "@/components/manager/bookings/BookingActionSheet";
-import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
+import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
+import { BookingManagementDialog, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementDialog";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
+import { BookingAttendancePanel } from "@/components/booking/BookingAttendancePanel";
+import { createBookingDateTime } from '@shared/timezone-utils';
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { ServiceFeeInfoPopover } from "@/components/booking/ServiceFeeInfoPopover";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -31,6 +35,7 @@ import { mt } from "@/i18n/manager";
 import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
 import { CheckinPolicyTimesCard } from "@/components/booking/CheckinPolicyTimesCard";
 import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
+import { CancellationRequestDialog, type CancellationTarget } from '@/components/booking/CancellationRequestDialog';
 
 interface BookingDetails {
   id: number;
@@ -44,6 +49,7 @@ interface BookingDetails {
   selectedSlots?: Array<{ startTime: string; endTime: string }>;
   status: string;
   paymentStatus?: string;
+  paymentDecision?: { state?: string; amount?: number } | null;
   specialNotes?: string;
   totalPrice?: number;
   hourlyRate?: number;
@@ -79,6 +85,7 @@ interface BookingDetails {
     phone?: string;
   };
   storageBookings?: Array<{
+    pricingModel?: string;
     id: number;
     storageListingId: number;
     startDate: string;
@@ -136,13 +143,14 @@ interface BookingDetails {
   checkoutPhotoUrls?: string[] | null;
   checkinNotes?: string | null;
   checkoutNotes?: string | null;
+  checkoutManagerMessage?: string | null;
   checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }> | null;
   checkoutChecklistItems?: Array<{ id: string; label: string; checked: boolean }> | null;
   checkinEnabled?: boolean;
   checkoutEnabled?: boolean;
   checkinWindowMinutesBefore?: number;
   noShowGraceMinutes?: number;
-  visits?: Array<{ id: number; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null }>;
+  visits?: Array<{ id: number; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -180,10 +188,12 @@ export default function BookingDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
-  const [managementSheetOpen, setManagementSheetOpen] = useState(false);
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [managementDialogOpen, setManagementDialogOpen] = useState(false);
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const [checkinTrackerOpen, setCheckinTrackerOpen] = useState(false);
+  const [itemCancellation, setItemCancellation] = useState<CancellationTarget | null>(null);
+  const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const queryClient = useQueryClient();
 
   // When the chef clicks a sidebar tab from this booking-detail sub-page, we
@@ -273,6 +283,38 @@ export default function BookingDetailsPage() {
     } catch (err) {
       logger.error("Error reloading booking details:", err);
     }
+  };
+
+  const cancelItem = async (id: number, reason?: string) => {
+    if (!itemCancellation) return;
+    setItemCancellationPending(true);
+    try {
+      const response = await fetch(`/api/chef/${itemCancellation.type}-bookings/${id}/cancel`, {
+        method: 'PUT', credentials: 'include', headers: await getAuthHeaders(), body: JSON.stringify({ reason }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Cancellation could not be saved');
+      toast({ title: result.action === 'cancelled' ? t('crImmediateCancellation') : t('crManagerReviewRequired'), description: result.message });
+      setItemCancellation(null);
+      await reloadBookingDetails();
+      await queryClient.invalidateQueries({ queryKey: ['/api/chef/bookings'] });
+    } catch (error) { toast({ title: t('crImmediateCancellation'), description: error instanceof Error ? error.message : 'Cancellation unavailable', variant: 'destructive' }); }
+    finally { setItemCancellationPending(false); }
+  };
+
+  const reviewEquipmentCancellation = async (id: number, accept: boolean) => {
+    if (!booking || !isManagerView) return;
+    setItemCancellationPending(true);
+    try {
+      const response = await fetch(`/api/manager/bookings/${booking.id}/status`, {
+        method: 'PUT', credentials: 'include', headers: await getAuthHeaders(),
+        body: JSON.stringify({ status: 'confirmed', equipmentActions: [{ equipmentBookingId: id, action: accept ? 'cancelled' : 'confirmed' }] }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Cancellation review could not be saved');
+      await reloadBookingDetails();
+    } catch (error) { toast({ title: t('crManagerReviewRequired'), description: error instanceof Error ? error.message : 'Review unavailable', variant: 'destructive' }); }
+    finally { setItemCancellationPending(false); }
   };
 
   const handleDownloadInvoice = async () => {
@@ -372,9 +414,9 @@ export default function BookingDetailsPage() {
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "";
     const [hours, minutes] = timeStr.split(":").map(Number);
-    const date = new Date();
-    date.setHours(hours, minutes || 0, 0, 0);
+    const date = createBookingDateTime('2000-01-01', `${hours}:${minutes || 0}`, 'America/St_Johns');
     return new Intl.DateTimeFormat(i18n.language, {
+      timeZone: 'America/St_Johns',
       hour: "numeric",
       minute: "2-digit",
     }).format(date);
@@ -382,8 +424,9 @@ export default function BookingDetailsPage() {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "";
-    const date = new Date(dateStr);
+    const date = new Date(/^\d{4}-\d{2}-\d{2}/.test(dateStr) ? `${dateStr.slice(0, 10)}T12:00:00Z` : dateStr);
     return date.toLocaleDateString(i18n.language, {
+      timeZone: 'America/St_Johns',
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -393,8 +436,9 @@ export default function BookingDetailsPage() {
 
   const formatShortDate = (dateStr: string) => {
     if (!dateStr) return "";
-    const date = new Date(dateStr);
+    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T12:00:00Z` : dateStr);
     return date.toLocaleDateString(i18n.language, {
+      timeZone: 'America/St_Johns',
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -404,7 +448,7 @@ export default function BookingDetailsPage() {
   const formatEventTimestamp = (dateStr: string) => new Intl.DateTimeFormat(i18n.language, {
     dateStyle: 'medium',
     timeStyle: 'short',
-    timeZone: booking?.location?.timezone || 'America/St_Johns',
+    timeZone: 'America/St_Johns',
   }).format(new Date(dateStr));
 
   const formatCurrency = (cents: number | undefined | null) => {
@@ -460,10 +504,12 @@ export default function BookingDetailsPage() {
           </InfoChip>
         );
       case "cancelled": {
-        // Industry standard: distinguish by cause
+        // Distinguish by cause. An EXPIRED authorisation has no payment chip of its own, so the
+        // status is the only place it can be said and keeps its own label. A REFUND does not: the
+        // payment chip rendered beside this one already reads "Refunded", so labelling the status
+        // "Refunded" as well printed the identical chip twice in the same row.
         const isExpired = booking?.paymentStatus === 'failed';
-        const isRefunded = booking?.paymentStatus === 'refunded';
-        const cancelledLabel = isExpired ? t("bdStatusExpired") : isRefunded ? t("bdStatusRefunded") : t("bdStatusCancelled");
+        const cancelledLabel = isExpired ? t("bdStatusExpired") : t("bdStatusCancelled");
         const cancelledIcon = isExpired ? <AlertCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />;
         return (
           <InfoChip variant="outline" icon={cancelledIcon}>
@@ -587,6 +633,7 @@ export default function BookingDetailsPage() {
 
   const paymentMessage = (() => {
     if (!booking) return null;
+    if (booking.paymentDecision?.state === 'pending') return { summary: t('bdPaymentRecovery'), detail: t('bdPaymentRecovery') };
     const status = booking.paymentStatus;
     if (status === 'authorized') return { summary: t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
     if (status === 'failed' && booking.status === 'cancelled') return { summary: t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
@@ -662,9 +709,7 @@ export default function BookingDetailsPage() {
     if (!booking) return null;
     const subtotal = totals.subtotal || 0;
     const serviceFee = totals.serviceFee || booking.paymentTransaction?.serviceFee || 0;
-    // Label the fee with the admin-configured rate. Deriving it from the stored
-    // amount over the displayed subtotal rounds wrong whenever an add-on was
-    // voided after checkout (the fee was charged on the original subtotal).
+    // The API returns the historical rate from the recorded financial split.
     const platformFeeRate =
       booking.platformCommissionRate != null
         ? Number(booking.platformCommissionRate)
@@ -714,12 +759,12 @@ export default function BookingDetailsPage() {
   const rejectedStorageTotal = allStorageBookings.filter(isItemVoided).reduce((sum, s) => sum + (s.totalPrice || 0), 0);
   const rejectedEquipmentTotal = allEquipmentBookings.filter(isItemVoided).reduce((sum, e) => sum + (e.totalPrice || 0), 0);
 
-  const openActionSheet = () => {
-    setActionSheetOpen(true);
+  const openActionDialog = () => {
+    setActionDialogOpen(true);
   };
 
-  const openManagementSheet = () => {
-    setManagementSheetOpen(true);
+  const openManagementDialog = () => {
+    setManagementDialogOpen(true);
   };
 
   const bookingForAction: BookingForAction | null = booking ? {
@@ -738,7 +783,7 @@ export default function BookingDetailsPage() {
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    // Include ALL items with rejected flag so action sheet shows full audit trail
+    // Include ALL items with rejected flag so action dialog shows full audit trail
     // Rejected items appear as read-only, actionable items are toggleable
     storageItems: booking.storageBookings
       ?.map((s) => ({
@@ -837,7 +882,7 @@ export default function BookingDetailsPage() {
           void reloadBookingDetails();
         }, 2500);
         setIsUpdatingStatus(false);
-        setActionSheetOpen(false);
+        setActionDialogOpen(false);
         return;
       }
 
@@ -893,11 +938,11 @@ export default function BookingDetailsPage() {
       });
     } finally {
       setIsUpdatingStatus(false);
-      setActionSheetOpen(false);
+      setActionDialogOpen(false);
     }
   };
 
-  // ── Management Sheet data (for confirmed/paid bookings) ──────────────
+  // ── Management Dialog data (for confirmed/paid bookings) ──────────────
   const bookingForManagement: BookingForManagement | null = booking ? {
     id: booking.id,
     kitchenName: booking.kitchen?.name,
@@ -972,7 +1017,7 @@ export default function BookingDetailsPage() {
           }
           toast({
             title: t("bdBookingCancelledToast"),
-            description: params.action === "cancel-booking-refund" ? 'Full refund sent to admin for approval.' : t("bdBookingCancelledDesc"),
+            description: params.action === "cancel-booking-refund" ? 'Full refund sent to Local Cooks for approval.' : t("bdBookingCancelledDesc"),
           });
           // Reload to get fresh payment status, refund amounts, and item statuses from server
           window.location.reload();
@@ -1054,9 +1099,9 @@ export default function BookingDetailsPage() {
             const d = await requestRes.json().catch(() => ({}));
             throw new Error(d.error || 'Failed to request full refund');
           }
-          toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
+          toast({ title: 'Full refund requested', description: 'Local Cooks will review and control the final refund.' });
           setBooking({ ...booking, paymentTransaction: booking.paymentTransaction ? { ...booking.paymentTransaction, metadata: { ...booking.paymentTransaction.metadata, fullRefundRequest: { status: 'pending' } } } : undefined });
-          setManagementSheetOpen(false);
+          setManagementDialogOpen(false);
           break;
         }
         case "accept-cancellation": {
@@ -1103,7 +1148,7 @@ export default function BookingDetailsPage() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
-      setManagementSheetOpen(false);
+      setManagementDialogOpen(false);
     } catch (error: any) {
       toast({ title: t("bdErrorTitle"), description: error.message || t("bdSomethingWrong"), variant: "destructive" });
     } finally {
@@ -1126,11 +1171,10 @@ export default function BookingDetailsPage() {
 
   // Loading content
   const loadingContent = (
-    <div className="flex items-center justify-center py-20">
-      <div className="text-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">{t("bdLoading")}</p>
-      </div>
+    <div className="space-y-4 py-8" role="status" aria-label={t("bdLoading")}>
+      <Skeleton className="h-8 w-1/2" />
+      <Skeleton className="h-28 w-full rounded-xl" />
+      <Skeleton className="h-56 w-full rounded-xl" />
     </div>
   );
 
@@ -1167,7 +1211,7 @@ export default function BookingDetailsPage() {
         bookingDate={booking.bookingDate}
         startTime={startTime}
         operatingWindowStartTime={booking.operatingWindowStartTime || booking.startTime}
-        timezone={booking.location?.timezone || "America/St_Johns"}
+        timezone="America/St_Johns"
         checkinWindowMinutesBefore={booking.checkinWindowMinutesBefore}
         noShowGraceMinutes={booking.noShowGraceMinutes}
       />
@@ -1216,16 +1260,11 @@ export default function BookingDetailsPage() {
 
           {isManagerView && (booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'cancellation_requested' || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')) || booking.checkinStatus === 'checkout_requested') && (
             <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
-            {booking.status === 'cancelled' && bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '') && (
-              <Button type="button" size="sm" variant="outline" disabled={isManagementProcessing || booking.paymentTransaction?.metadata?.fullRefundRequest?.status === 'pending'} onClick={() => handleManagementSubmit({ bookingId: booking.id, action: 'request-full-refund' })}>
-                Request full refund from Local Cooks
-              </Button>
-            )}
             {booking.status === 'pending' && (
               <Button
                 type="button"
                 size="sm"
-                onClick={openActionSheet}
+                onClick={openActionDialog}
                 disabled={isUpdatingStatus}
               >
                 {isUpdatingStatus ? (
@@ -1238,12 +1277,12 @@ export default function BookingDetailsPage() {
                 )}
               </Button>
             )}
-            {(booking.status === 'confirmed' || booking.status === 'cancellation_requested') && (
+            {(booking.status === 'confirmed' || booking.status === 'cancellation_requested' || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || ''))) && (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={openManagementSheet}
+                onClick={openManagementDialog}
                 disabled={isManagementProcessing}
               >
                 {isManagementProcessing ? (
@@ -1274,9 +1313,11 @@ export default function BookingDetailsPage() {
       </div>
 
       <Separator className="mb-8" />
+      {booking.paymentDecision?.state === 'pending' && <p role="status" className="mb-6 rounded-lg border p-4 text-sm">{t('bdPaymentRecovery')}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
+          <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} />
           {/* ── Schedule ── */}
           <section className="rounded-2xl border bg-card p-5 sm:p-6">
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-5">{t("bdSchedule")}</h2>
@@ -1334,6 +1375,7 @@ export default function BookingDetailsPage() {
                         {visit.checkoutRequestedAt && <p>{t("bdCheckoutRequested")}: {formatEventTimestamp(visit.checkoutRequestedAt)}</p>}
                         {visit.checkedOutAt && <p>{t("bdCheckedOutCleared")}: {formatEventTimestamp(visit.checkedOutAt)}</p>}
                         {visit.checkinStatus === 'checkout_claim_filed' && visit.checkoutApprovedAt && <p>{t("bdCiClaimFiled")}: {formatEventTimestamp(visit.checkoutApprovedAt)}</p>}
+                        {visit.checkoutManagerMessage && <p>{t('bookingAttendanceManagerMessage')}: {visit.checkoutManagerMessage}</p>}
                         {visit.noShowDetectedAt && <p>{t("bdNoShowDetected")}: {formatEventTimestamp(visit.noShowDetectedAt)}</p>}
                       </div>
                       {(visit.checkinStatus === 'not_checked_in' || visit.checkinStatus === 'no_show') && renderChefCheckinPolicy(visit.startTime)}
@@ -1410,17 +1452,18 @@ export default function BookingDetailsPage() {
                 )}
               </div>
               {/* Check-in / checkout notes */}
-              {(booking.checkinNotes || booking.checkoutNotes) && (
+              {(booking.checkinNotes || booking.checkoutNotes || booking.checkoutManagerMessage) && (
                 <div className="mt-3 space-y-2">
                   {booking.checkinNotes && (
                     <div className="p-3 rounded-lg border border-border bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("bdCheckinNotes")}</p>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{booking.checkedInMethod === 'self' ? t('bookingAttendanceChefMessage') : t('bookingAttendanceManagerMessage')}</p>
                       <p className="text-sm whitespace-pre-wrap">{booking.checkinNotes}</p>
                     </div>
                   )}
+                  {booking.checkoutManagerMessage && <div><p className="text-xs text-muted-foreground">{t('bookingAttendanceManagerMessage')}</p><p className="text-sm whitespace-pre-wrap">{booking.checkoutManagerMessage}</p></div>}
                   {booking.checkoutNotes && (
                     <div className="p-3 rounded-lg border border-border bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("bdCheckoutNotes")}</p>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{booking.checkoutNotes.startsWith('Message from kitchen manager: ') ? t('bookingAttendanceManagerMessage') : t('bookingAttendanceChefMessage')}</p>
                       <p className="text-sm whitespace-pre-wrap">{booking.checkoutNotes}</p>
                     </div>
                   )}
@@ -1552,10 +1595,13 @@ export default function BookingDetailsPage() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {storage.storageListing?.storageType}
-                          {storage.startDate && ` · ${formatShortDate(storage.startDate)} – ${formatShortDate(storage.endDate)}`}
+                          {storage.startDate && ` · ${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}`}
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
+                        {!isManagerView && booking.paymentDecision?.state !== 'pending' && ['pending', 'confirmed'].includes(storage.status) && <Button variant="outline" size="sm"
+                          onClick={() => setItemCancellation({ type: 'storage', id: storage.id, name: storage.storageListing?.name || `Storage #${storage.id}`,
+                            sharedAuthorization: true, tier: ['paid', 'partially_refunded'].includes(storage.paymentStatus || '') ? 'request' : 'immediate' })}>{t('crCancelItem')}</Button>}
                         <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {formatCurrency(storage.totalPrice)}
                         </span>
@@ -1622,6 +1668,13 @@ export default function BookingDetailsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
+                        {!isManagerView && ['pending', 'confirmed'].includes(equipment.status) && <Button variant="outline" size="sm"
+                          onClick={() => setItemCancellation({ type: 'equipment', id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.id}`,
+                            sharedAuthorization: true, tier: ['paid', 'partially_refunded'].includes(equipment.paymentStatus || '') ? 'request' : 'immediate' })}>{t('crCancelItem')}</Button>}
+                        {isManagerView && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex gap-2">
+                          <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
+                          <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
+                        </div>}
                         <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {formatCurrency(equipment.totalPrice)}
                         </span>
@@ -1656,6 +1709,8 @@ export default function BookingDetailsPage() {
             </section>
           )}
 
+          <CancellationRequestDialog open={!!itemCancellation} onOpenChange={open => { if (!open) setItemCancellation(null); }}
+            target={itemCancellation} isPending={itemCancellationPending} onConfirm={cancelItem} />
           {/* ── Notes ── */}
           {booking.specialNotes && (
             <section>
@@ -1741,6 +1796,7 @@ export default function BookingDetailsPage() {
               {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
               <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">{t("bdPaymentSection")}</h3>
 
+              {booking.paymentDecision?.state === 'pending' ? <p className="text-sm">{t('bdRecordedDecisionAmount', { amount: formatCurrency(booking.paymentDecision.amount || 0) })}</p> : (
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
@@ -1857,6 +1913,7 @@ export default function BookingDetailsPage() {
                   </div>
                 )}
               </div>
+              )}
 
               {paymentMessage && (
                 <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs">
@@ -1871,7 +1928,7 @@ export default function BookingDetailsPage() {
                   </Popover>
                 </div>
               )}
-              {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded" || booking.paymentStatus === "refunded") && (
+              {booking.paymentDecision?.state !== 'pending' && (booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded" || booking.paymentStatus === "refunded") && (
                 <Button
                   onClick={handleDownloadInvoice}
                   disabled={isDownloading}
@@ -1951,17 +2008,17 @@ export default function BookingDetailsPage() {
         ]}
       >
         {isLoading ? loadingContent : (error || !booking) ? errorContent : bookingContent}
-        <BookingActionSheet
-          open={actionSheetOpen}
-          onOpenChange={setActionSheetOpen}
+        <BookingActionDialog
+          open={actionDialogOpen}
+          onOpenChange={setActionDialogOpen}
           booking={bookingForAction}
           isLoading={isUpdatingStatus}
           onSubmit={handleApprovalSubmit}
         />
-        <BookingManagementSheet
-          open={managementSheetOpen}
+        <BookingManagementDialog
+          open={managementDialogOpen}
           onOpenChange={(open) => {
-            setManagementSheetOpen(open);
+            setManagementDialogOpen(open);
           }}
           booking={bookingForManagement}
           isProcessing={isManagementProcessing}

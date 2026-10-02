@@ -23,6 +23,7 @@ describe("NotificationsSettings", () => {
     );
 
     expect(screen.queryByRole("textbox", { name: /phone|sms/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Notification Settings" })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Email Address"), {
       target: { value: "" },

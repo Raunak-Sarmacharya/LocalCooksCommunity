@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useAdminChefKitchenAccess } from "@/hooks/use-chef-kitchen-access";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Building, User, X, Check, Plus, Search } from "lucide-react";
 import { useState } from "react";
@@ -89,9 +90,8 @@ export default function ChefKitchenAccessManager() {
 
   if (isLoading) {
     return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p className="text-gray-600 mt-4">Loading chef access data...</p>
+      <div className="space-y-3 py-4" role="status" aria-label="Loading chef access">
+        {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-xl" />)}
       </div>
     );
   }

@@ -1,3 +1,4 @@
+import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 /**
  * Storage Checkout Service
  * 
@@ -15,6 +16,7 @@
 
 import { db } from "../db";
 import { 
+  kitchenBookings,
   storageBookings, 
   storageListings,
   kitchens,
@@ -25,7 +27,7 @@ import {
   storageCheckinStatusEnum,
   damageEvidence,
 } from "@shared/schema";
-import { eq, desc, and, or, inArray, lt } from "drizzle-orm";
+import { eq, desc, and, or, inArray, lt, isNull } from "drizzle-orm";
 import { logger } from "../logger";
 
 // ============================================================================
@@ -82,6 +84,7 @@ export interface CheckoutReviewResult {
 export type CheckoutApprovalResult = CheckoutReviewResult;
 
 export interface PendingCheckoutReview {
+  cancellationAcceptedAt?: Date | null;
   storageBookingId: number;
   storageListingId: number;
   storageName: string;
@@ -198,7 +201,7 @@ export async function requestStorageCheckout(
     // Verify check-in has been completed before allowing checkout.
     // You cannot check out of a storage unit you haven't checked into.
     const currentCheckinStatus = (row.checkinStatus ?? 'not_checked_in') as string;
-    if (currentCheckinStatus === 'not_checked_in' || currentCheckinStatus === 'checkin_requested') {
+    if (!row.cancellationAcceptedAt && (currentCheckinStatus === 'not_checked_in' || currentCheckinStatus === 'checkin_requested')) {
       return { success: false, error: 'You must complete check-in before requesting checkout. Please submit your move-in inspection first.' };
     }
 
@@ -216,7 +219,9 @@ export async function requestStorageCheckout(
     }
 
     // Update the booking with checkout request
-    await db
+    await db.transaction(async tx => {
+      if (row.kitchenBookingId) await tx.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id, row.kitchenBookingId)).for('update');
+      const changed = await tx
       .update(storageBookings)
       .set({
         checkoutStatus: 'checkout_requested',
@@ -230,7 +235,10 @@ export async function requestStorageCheckout(
         checkoutDenialReason: null,
         updatedAt: new Date(),
       })
-      .where(eq(storageBookings.id, storageBookingId));
+      .where(and(eq(storageBookings.id, storageBookingId), eq(storageBookings.updatedAt, row.updatedAt))).returning({ id: storageBookings.id });
+      if (!changed.length) throw new Error('Storage changed; refresh before requesting checkout');
+      if (row.kitchenBookingId) await queueBookingLifecycleEvent(tx, row.kitchenBookingId, 'storage_checkout_requested', 'Storage checkout requested', 'The chef requested storage checkout. The kitchen manager must confirm removal before occupied storage is released.', chefId, { storageBookingId });
+    });
 
     logger.info(`[StorageCheckout] Chef ${chefId} requested checkout for storage booking ${storageBookingId}`, {
       hasPhotos: (checkoutPhotoUrls?.length || 0) > 0,
@@ -239,7 +247,7 @@ export async function requestStorageCheckout(
 
     // Send notification to manager
     try {
-      await sendCheckoutRequestNotification(storageBookingId, chefId);
+      if (!row.kitchenBookingId) await sendCheckoutRequestNotification(storageBookingId, chefId);
     } catch (notifyError) {
       logger.error(`[StorageCheckout] Error sending checkout notification:`, notifyError);
       // Don't fail the request if notification fails
@@ -303,6 +311,8 @@ export async function requestStorageCheckin(
 
     const row = booking.booking;
     const locationId = booking.locationId;
+
+    if (row.cancellationAcceptedAt) return { success: false, error: 'Storage cancellation was accepted. Request checkout to confirm removal.' };
 
     // Verify ownership
     if (row.chefId !== chefId) {
@@ -853,6 +863,7 @@ async function processCheckoutClear(
   const [booking] = await db
     .select({
       id: storageBookings.id,
+      kitchenBookingId: storageBookings.kitchenBookingId,
       chefId: storageBookings.chefId,
       checkoutStatus: storageBookings.checkoutStatus,
     })
@@ -877,7 +888,9 @@ async function processCheckoutClear(
   }
 
   // Clear the storage — mark as completed
-  await db
+  await db.transaction(async tx => {
+    if (booking.kitchenBookingId) await tx.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id, booking.kitchenBookingId)).for('update');
+    const changed = await tx
     .update(storageBookings)
     .set({
       checkoutStatus: 'completed',
@@ -889,13 +902,19 @@ async function processCheckoutClear(
       status: 'completed',
       updatedAt: new Date(),
     })
-    .where(eq(storageBookings.id, storageBookingId));
+    .where(and(eq(storageBookings.id, storageBookingId), eq(storageBookings.checkoutStatus, 'checkout_requested'))).returning({ id: storageBookings.id });
+    if (!changed.length) throw new Error('Checkout changed; refresh before reviewing');
+    if (booking.kitchenBookingId) await queueBookingLifecycleEvent(tx, booking.kitchenBookingId, 'storage_removed', 'Storage removal confirmed', 'The kitchen manager confirmed that storage has been cleared.', managerId, { storageBookingId });
+  });
 
   logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} — no issues`);
+  // Freeze accrued overstay time only after the manager confirms physical removal.
+  const { detectOverstays } = await import('./overstay-penalty-service');
+  try { await detectOverstays(); } catch (error) { logger.error('Storage checkout saved; overstay finalization will retry on the scheduler', error); }
 
   // Send notification to chef
   try {
-    await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
+    if (!booking.kitchenBookingId) await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
   } catch (notifyError) {
     logger.error(`[StorageCheckout] Error sending cleared notification:`, notifyError);
   }
@@ -952,21 +971,7 @@ async function processCheckoutStartClaim(
     return { success: false, error: `Cannot start claim from checkout status: ${currentCheckoutStatus || 'active'}` };
   }
 
-  // If already completed, verify we're within the extended claim window
-  if (currentCheckoutStatus === 'completed') {
-    const { getStorageCheckoutSettings } = await import('./damage-claim-limits-service');
-    const settings = await getStorageCheckoutSettings();
-    const checkoutTime = booking.checkoutRequestedAt;
-    if (checkoutTime) {
-      const extendedDeadline = new Date(checkoutTime.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000);
-      if (new Date() > extendedDeadline) {
-        return { 
-          success: false, 
-          error: `Extended claim window has expired. Claims must be filed within ${settings.extendedClaimWindowHours} hours of checkout.` 
-        };
-      }
-    }
-  }
+  // The shared claim service enforces the general filing window from scheduled booking end.
 
   // Validate claim data
   if (!claimData.claimTitle || claimData.claimTitle.trim().length < 5) {
@@ -980,7 +985,7 @@ async function processCheckoutStartClaim(
   }
 
   // Create the damage claim using the existing damage claim engine
-  // submitImmediately: true — creates as 'submitted' atomically, no redundant draft
+  // Save a draft first; submission requires photos and cost evidence.
   const { createDamageClaim } = await import('./damage-claim-service');
   
   const claimResult = await createDamageClaim({
@@ -991,7 +996,7 @@ async function processCheckoutStartClaim(
     claimDescription: claimData.claimDescription.trim(),
     claimedAmountCents: claimData.claimedAmountCents,
     damageDate: claimData.damageDate || new Date().toISOString().split('T')[0],
-    submitImmediately: true,
+    submitImmediately: false,
   });
 
   if (!claimResult.success || !claimResult.claim) {
@@ -1065,13 +1070,10 @@ async function processCheckoutStartClaim(
     .where(eq(storageBookings.id, storageBookingId));
 
   logger.info(`[StorageCheckout] Manager ${managerId} started claim #${claimId} for storage booking ${storageBookingId}`);
+  const { detectOverstays } = await import('./overstay-penalty-service');
+  try { await detectOverstays(); } catch (error) { logger.error('Storage checkout saved; overstay finalization will retry on the scheduler', error); }
 
-  // Send notification to chef about the claim
-  try {
-    await sendCheckoutClaimNotification(storageBookingId, booking.chefId, claimId, claimData.claimTitle);
-  } catch (notifyError) {
-    logger.error(`[StorageCheckout] Error sending claim notification:`, notifyError);
-  }
+  // The chef's response window and notifications start only after evidence-backed submission.
 
   return {
     success: true,
@@ -1115,7 +1117,7 @@ export async function autoCleanExpiredCheckout(
 
   try {
     // Atomically clear only if still in checkout_requested (prevents double-clear race)
-    await db
+    const cleared = await db
       .update(storageBookings)
       .set({
         checkoutStatus: 'completed',
@@ -1128,8 +1130,10 @@ export async function autoCleanExpiredCheckout(
         and(
           eq(storageBookings.id, bookingId),
           eq(storageBookings.checkoutStatus, 'checkout_requested'),
+          isNull(storageBookings.cancellationAcceptedAt),
         )
-      );
+      ).returning({ id: storageBookings.id });
+    if (!cleared.length) return false;
 
     logger.info(`[StorageCheckout] Lazy auto-cleared booking ${bookingId} — review window expired`);
 
@@ -1174,7 +1178,8 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
       .where(
         and(
           eq(storageBookings.checkoutStatus, 'checkout_requested'),
-          lt(storageBookings.checkoutRequestedAt, cutoffTime)
+          lt(storageBookings.checkoutRequestedAt, cutoffTime),
+          isNull(storageBookings.cancellationAcceptedAt)
         )
       );
 
@@ -1190,7 +1195,7 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
     for (const checkout of expiredCheckouts) {
       try {
         // Auto-clear the checkout
-        await db
+        const cleared = await db
           .update(storageBookings)
           .set({
             checkoutStatus: 'completed',
@@ -1199,8 +1204,10 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
             status: 'completed',
             updatedAt: new Date(),
           })
-          .where(eq(storageBookings.id, checkout.id));
+          .where(and(eq(storageBookings.id, checkout.id), eq(storageBookings.checkoutStatus, 'checkout_requested'), isNull(storageBookings.cancellationAcceptedAt)))
+          .returning({ id: storageBookings.id });
 
+        if (!cleared.length) continue;
         result.cleared++;
 
         logger.info(`[StorageCheckout] Auto-cleared booking ${checkout.id} — review window expired`);
@@ -1244,6 +1251,7 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
 
     const query = db
       .select({
+        cancellationAcceptedAt: storageBookings.cancellationAcceptedAt,
         storageBookingId: storageBookings.id,
         storageListingId: storageBookings.storageListingId,
         storageName: storageListings.name,
@@ -1314,6 +1322,7 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
       const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
 
       return {
+        cancellationAcceptedAt: r.cancellationAcceptedAt,
         storageBookingId: r.storageBookingId,
         storageListingId: r.storageListingId,
         storageName: r.storageName || 'Storage',
@@ -1539,6 +1548,7 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
     const [booking] = await db
       .select({
         checkoutStatus: storageBookings.checkoutStatus,
+        endDate: storageBookings.endDate,
         checkoutRequestedAt: storageBookings.checkoutRequestedAt,
         checkoutApprovedAt: storageBookings.checkoutApprovedAt,
         checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
@@ -1553,8 +1563,10 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
     }
 
     // Get review settings for deadline computations
-    const { getStorageCheckoutSettings } = await import('./damage-claim-limits-service');
+    const { getStorageCheckoutSettings, getDamageClaimLimits } = await import('./damage-claim-limits-service');
     const settings = await getStorageCheckoutSettings();
+    const filingLimits = await getDamageClaimLimits();
+    const filingDeadline = new Date(booking.endDate.getTime() + filingLimits.claimSubmissionDeadlineDays * 86400000);
     const now = new Date();
 
     const reviewDeadline = booking.checkoutRequestedAt
@@ -1589,19 +1601,13 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
           checkoutNotes: `Auto-cleared by system — review window (${settings.reviewWindowHours}h) expired with no issues reported`,
           reviewDeadline,
           isReviewExpired: true,
-          extendedClaimDeadline: booking.checkoutRequestedAt
-            ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000)
-            : null,
-          canFileExtendedClaim: booking.checkoutRequestedAt
-            ? now <= new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000)
-            : false,
+          extendedClaimDeadline: filingDeadline,
+          canFileExtendedClaim: now <= filingDeadline,
         };
       }
     }
 
-    const extendedClaimDeadline = booking.checkoutRequestedAt
-      ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000)
-      : null;
+    const extendedClaimDeadline = filingDeadline;
     const canFileExtendedClaim = extendedClaimDeadline ? now <= extendedClaimDeadline : false;
 
     return {

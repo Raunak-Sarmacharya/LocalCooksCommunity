@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createSearchSnippet,
+  isLikelyTypo,
   mergeSearchResults,
   normalizeSearchText,
   scoreStaticDocument,
@@ -25,10 +26,18 @@ describe("global search utilities", () => {
       .toBeGreaterThan(scoreStaticDocument("Dashboard", "book reference", "book"));
   });
 
+  it("offers close title matches without treating unrelated words as typos", () => {
+    expect(isLikelyTypo("Bookings", "bokings")).toBe(true);
+    expect(isLikelyTypo("Bookings", "boookings")).toBe(true);
+    expect(isLikelyTypo("Bookings", "payments")).toBe(false);
+  });
+
   it("merges and caps ranked results", () => {
     const result = (id: string, score: number): GlobalSearchResult => ({
       id, score, title: id, snippet: "", url: "/", type: "navigation", breadcrumb: [],
     });
     expect(mergeSearchResults([result("db", 2)], [result("nav", 5)], 1)[0].id).toBe("nav");
+    expect(mergeSearchResults([result("kitchen:1", 5)], [result("resource:1", 9), result("resource:2", 8), result("resource:3", 7)], 3)
+      .map((item) => item.id)).toEqual(["resource:1", "resource:2", "kitchen:1"]);
   });
 });

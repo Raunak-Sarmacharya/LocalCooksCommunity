@@ -23,6 +23,7 @@ export type KitchenApplicationWithLocation = Omit<ChefKitchenApplication, 'locat
 export interface PublicKitchen {
   id: number;
   name: string;
+  slug?: string | null;
   description?: string | null;
   imageUrl?: string | null;
   galleryImages?: string[];

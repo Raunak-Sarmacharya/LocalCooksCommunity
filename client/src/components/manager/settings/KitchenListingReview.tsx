@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { StatusButton } from "@/components/ui/status-button";
 import {
   AlertTriangle,
-  ArrowRight,
+  ChevronRight,
   CheckCircle,
   ChevronDown,
   Circle,
@@ -257,9 +257,10 @@ export default function KitchenListingReview({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               )}
               <span>
-                {canList
-                  ? mt("listingReviewReadyHeadline")
-                  : mt("listingReviewBlockedHeadline", { count: blockers.length })}
+                {adminHidden
+                  ? mt("listingStatusHiddenDesc")
+                  : mt(canList ? isListed ? "listingSummaryLive" : "listingReviewReadyHeadline" : isListed ? "listingSummaryLiveIncomplete" : "listingReviewBlockedHeadline", { count: blockers.length })}
+                {adminHidden && blockers.length > 0 ? ` ${mt("listingSummaryRequiredUpdates", { count: blockers.length })}` : ""}
                 {openSuggestions.length > 0
                   ? ` ${mt("listingReviewSuggestionHeadline", { count: openSuggestions.length })}`
                   : ""}
@@ -280,11 +281,7 @@ export default function KitchenListingReview({
             }
           />
 
-          {adminHidden ? (
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              {mt("listingStatusHiddenDesc")}
-            </p>
-          ) : null}
+
         </CardContent>
       </Card>
 
@@ -448,10 +445,10 @@ function RowAction({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors duration-200 ease-out motion-reduce:transition-none hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {label}
-      <ArrowRight className="h-3 w-3" aria-hidden="true" />
+      <ChevronRight className="h-3 w-3" aria-hidden="true" />
     </button>
   );
 }

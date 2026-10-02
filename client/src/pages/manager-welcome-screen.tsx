@@ -1,3 +1,4 @@
+import { EQUIPMENT_ICON_NAME, STORAGE_ICON_NAME } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -105,7 +106,7 @@ const NAV_ICONS = [
   "mdi:calendar-month-outline",
   "mdi:account-group-outline",
   "mdi:currency-usd-circle-outline",
-  "mdi:package-variant-closed",
+  STORAGE_ICON_NAME,
 ];
 
 /**
@@ -143,7 +144,7 @@ const RULES = [
     value: "You set the rates",
   },
   {
-    icon: "mdi:package-variant-closed",
+    icon: STORAGE_ICON_NAME,
     key: "welcomeRuleStorage",
     label: "Storage & equipment",
     valueKey: "welcomeRuleStorageValue",

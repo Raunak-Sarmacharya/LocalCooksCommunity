@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Calendar , Clock, CalendarIcon, CheckCircle2, AlertCircle, XCircle, LayoutGrid, List, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, isToday, getHours, getMinutes } from "date-fns";
 import { enCA, frCA, uk as ukLocale } from "date-fns/locale";
 import { formatTime as formatTimeLocale } from "@/lib/formatters";
@@ -561,8 +562,8 @@ export default function BookingCalendarWidget({
             </div>
 
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-rose-500" />
+              <div className="space-y-3 py-4" role="status" aria-label="Loading bookings">
+                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
               </div>
             ) : selectedDateBookings.length === 0 ? (
               <div className="text-center py-8">
@@ -646,4 +647,3 @@ export default function BookingCalendarWidget({
     </Card>
   );
 }
-

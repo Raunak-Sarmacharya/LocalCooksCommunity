@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -224,11 +225,8 @@ function PlayerUI({
     <>
       {/* Loading Overlay */}
       {isLoading && !hasError && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10">
-          <div className="text-center text-white space-y-3">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-white/30 border-t-white mx-auto" />
-            <p className="text-sm font-medium">Loading video...</p>
-          </div>
+        <div className="absolute inset-0 z-10 bg-black/80 p-6" role="status" aria-label="Loading video">
+          <Skeleton className="h-full w-full rounded-xl bg-white/15" />
         </div>
       )}
 

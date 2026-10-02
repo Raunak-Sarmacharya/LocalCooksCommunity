@@ -1,8 +1,11 @@
 
 import { db } from "../../db";
+import { bookingItemPriceCents } from '@shared/booking-item-price';
+import { resolveKitchenTracking } from "@shared/kitchen-tracking";
 import { generateReferenceCode } from "../../reference-code";
 import {
     kitchenBookings,
+    kitchenBookingVisits,
     storageBookings,
     equipmentBookings,
     storageListings,
@@ -110,6 +113,8 @@ export class BookingRepository {
                 transactionRefundAmount: paymentTransactions.refundAmount,
                 // Check-in enabled status
                 checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
+                checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
+                trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${kitchenBookings.id} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -150,7 +155,7 @@ export class BookingRepository {
             return {
                 ...mappedBooking,
                 kitchen: row.kitchen,
-                location: row.location,
+                location: { ...row.location, cancellationPolicyHours: mappedBooking.cancellationPolicyHours ?? row.location.cancellationPolicyHours },
                 kitchenName: row.kitchen.name,
                 locationName: row.location.name,
                 locationTimezone: row.location.timezone,
@@ -162,7 +167,7 @@ export class BookingRepository {
                 // ── Tax-inclusive amount from PT (what chef actually paid/authorized) ──
                 // kb.total_price is pre-tax subtotal; PT.amount is the tax-inclusive charge
                 chargedAmount: rawTransactionAmount, // null if no PT record
-                checkinEnabled: row.checkinEnabled ?? false,
+                ...resolveKitchenTracking(row.kitchen.checkinCheckoutEnabled, row, row.trackingStarted ? "checked_in" : mappedBooking.checkinStatus),
             };
         });
     }
@@ -171,6 +176,13 @@ export class BookingRepository {
         const results = await db
             .select({
                 booking: kitchenBookings,
+                attendanceReviewComplete: sql<boolean>`CASE WHEN EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id})
+                  THEN NOT EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id}
+                    AND v.checkin_status NOT IN ('no_show', 'checked_out', 'checkout_claim_filed')
+                      AND (v.checkin_status = 'checkout_requested' OR COALESCE((SELECT e.action FROM kitchen_booking_attendance_events e WHERE e.booking_id = ${kitchenBookings.id}
+                        AND e.visit_id = v.id ORDER BY e.id DESC LIMIT 1), '') <> 'report_attended'))
+                  ELSE COALESCE((SELECT e.action FROM kitchen_booking_attendance_events e WHERE e.booking_id = ${kitchenBookings.id}
+                    AND e.visit_id IS NULL ORDER BY e.id DESC LIMIT 1), '') = 'report_attended' END`,
                 kitchen: kitchens,
                 location: locations,
                 chef: users,
@@ -190,6 +202,8 @@ export class BookingRepository {
                 transactionRefundAmount: paymentTransactions.refundAmount,
                 transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee,
                 checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
+                checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
+                trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${kitchenBookings.id} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -361,13 +375,15 @@ export class BookingRepository {
             return {
                 ...mappedBooking,
                 totalPrice: isVoidedAuthorization ? 0 : reconciledFinancials.totalPriceCents,
+                attendanceReviewComplete: row.attendanceReviewComplete,
                 kitchen: row.kitchen,
-                location: row.location,
+                location: { ...row.location, cancellationPolicyHours: mappedBooking.cancellationPolicyHours ?? row.location.cancellationPolicyHours },
                 chef: row.chef,
                 // Use full name from chef_kitchen_applications if available, otherwise fall back to username (email)
                 chefName: row.chefFullName || row.chef?.username,
                 kitchenName: row.kitchen.name,
                 locationName: row.location.name,
+                locationId: row.location.id,
                 locationTimezone: row.location.timezone,
                 // Include storage and equipment items from JSONB fields
                 // ENTERPRISE STANDARD: Keep cancelled items visible (with rejected=true for strikethrough)
@@ -381,7 +397,7 @@ export class BookingRepository {
                     .map((item: any) => item.status === 'cancelled' && !item.rejected ? { ...item, rejected: true } : item),
                 // Kitchen's tax rate for revenue calculations (consistent with transaction history)
                 taxRatePercent,
-                checkinEnabled: row.checkinEnabled ?? false,
+                ...resolveKitchenTracking(row.kitchen.checkinCheckoutEnabled, row, row.trackingStarted ? "checked_in" : mappedBooking.checkinStatus),
                 // Use actual Stripe transaction data for accurate payment display
                 transactionId,     // Payment transaction ID (for refunds)
                 transactionAmount, // Actual amount charged (0 for voided auths, captured amount otherwise)
@@ -456,7 +472,9 @@ export class BookingRepository {
     // ===== STORAGE BOOKINGS =====
 
     async createStorageBooking(data: any) {
-        const [booking] = await db.insert(storageBookings).values(data).returning();
+        const { quoteStorageOverstayTerms } = await import('../../services/storage-overstay-terms-service');
+        const overstayTerms = await quoteStorageOverstayTerms(data.storageListingId);
+        const [booking] = await db.insert(storageBookings).values({ ...data, overstayTerms }).returning();
         return this.mapStorageBookingToDTO(booking);
     }
 
@@ -464,6 +482,7 @@ export class BookingRepository {
         const result = await db
             .select({
                 ...getStorageBookingSelection(),
+                agreedItems: kitchenBookings.storageItems,
                 storageName: storageListings.name,
                 storageType: storageListings.storageType,
                 kitchenId: storageListings.kitchenId,
@@ -479,6 +498,7 @@ export class BookingRepository {
                 storageCheckoutEnabled: checkinCheckoutChecklists.storageCheckoutEnabled,
             })
             .from(storageBookings)
+            .leftJoin(kitchenBookings, eq(kitchenBookings.id, storageBookings.kitchenBookingId))
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
@@ -523,20 +543,11 @@ export class BookingRepository {
 
         return result.map(row => {
             const penalty = penaltyMap.get(row.id);
-            // Calculate original booking price from daily rate and booking duration
-            // This avoids showing cumulative total (which includes extension prices)
-            const dailyRateCents = row.basePrice ? parseFloat(row.basePrice.toString()) : 0;
-            const startDate = new Date(row.startDate);
-            const endDate = new Date(row.endDate);
-            const bookingDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-            const minDays = row.minimumBookingDuration || 1;
-            const effectiveDays = Math.max(bookingDays, minDays);
-            // Original booking price = daily rate * days (in dollars)
-            const originalBookingPrice = (dailyRateCents * effectiveDays) / 100;
-            
+            const dailyRateCents = Number(row.basePrice || 0);
+            const originalBookingPrice = bookingItemPriceCents(row.id, row.totalPrice, row.agreedItems) / 100;
             return {
                 ...row,
-                totalPrice: originalBookingPrice, // Show calculated price based on current dates
+                totalPrice: originalBookingPrice, // Preserve recorded original cents (this list uses dollars).
                 serviceFee: 0, // Don't show service fee to chef
                 basePrice: dailyRateCents, // Keep as cents for compatibility
                 minimumBookingDuration: row.minimumBookingDuration || 1,
@@ -587,6 +598,7 @@ export class BookingRepository {
         const rows = await db
             .select({
                 ...getStorageBookingSelection(),
+                agreedItems: kitchenBookings.storageItems,
                 storageName: storageListings.name,
                 storageType: storageListings.storageType,
                 kitchenId: storageListings.kitchenId,
@@ -595,25 +607,17 @@ export class BookingRepository {
                 minimumBookingDuration: storageListings.minimumBookingDuration
             })
             .from(storageBookings)
+            .leftJoin(kitchenBookings, eq(kitchenBookings.id, storageBookings.kitchenBookingId))
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .where(eq(storageBookings.kitchenBookingId, kitchenBookingId));
         
         return rows.map(row => {
-            // Calculate base price from daily rate × days (same as getStorageBookingsByChefId)
-            // This ensures consistent pricing without service fee across all views
-            const dailyRateCents = row.listingBasePrice ? parseFloat(row.listingBasePrice.toString()) : 0;
-            const startDate = new Date(row.startDate);
-            const endDate = new Date(row.endDate);
-            const bookingDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-            const minDays = row.minimumBookingDuration || 1;
-            const effectiveDays = Math.max(bookingDays, minDays);
-            // Base price = daily rate × days (in cents, no service fee)
-            const basePriceCents = dailyRateCents * effectiveDays;
-            
+            const dailyRateCents = Number(row.listingBasePrice || 0);
+            const basePriceCents = bookingItemPriceCents(row.id, row.totalPrice, row.agreedItems);
             return {
                 ...this.mapStorageBookingToDTO(row),
-                totalPrice: basePriceCents, // Override with calculated base price (no service fee)
+                totalPrice: basePriceCents, // Original item amount, independent of current listing rates.
                 serviceFee: 0, // Don't expose service fee
                 storageName: row.storageName,
                 storageType: row.storageType,
@@ -846,6 +850,7 @@ function getKitchenBookingSelection() {
 function getStorageBookingSelection() {
     return {
         id: storageBookings.id,
+        cancellationAcceptedAt: storageBookings.cancellationAcceptedAt,
         referenceCode: storageBookings.referenceCode,
         storageListingId: storageBookings.storageListingId,
         kitchenBookingId: storageBookings.kitchenBookingId,

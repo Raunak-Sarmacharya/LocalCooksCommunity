@@ -1,3 +1,4 @@
+import { ChefApplicationIcon } from "@/components/ui/application-icons";
 import { Link } from "wouter";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,7 +36,7 @@ export function WelcomeStep() {
             description: t("onboardWelcomeItem1Description", "Sell homemade food, book commercial kitchens, or both."),
           },
           {
-            icon: FileText,
+            icon: ChefApplicationIcon,
             title: t("onboardWelcomeItem2Title", "Complete the steps that match your path"),
             description: t(
               "onboardWelcomeItem2Description",

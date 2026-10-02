@@ -204,6 +204,11 @@ router.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (r
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
         // Get all equipment listings for this kitchen
         const allListings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
 
@@ -243,7 +248,7 @@ router.get("/public/kitchens/:kitchenId/equipment-listings", async (req: Request
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchen || !kitchen.isActive) {
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 

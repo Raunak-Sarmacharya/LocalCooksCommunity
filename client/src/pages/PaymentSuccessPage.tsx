@@ -152,7 +152,7 @@ export default function PaymentSuccessPage() {
             try {
               await fetch("/api/webhooks/stripe/manual-process-session", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ sessionId }),
               });
             } catch (manualErr) {

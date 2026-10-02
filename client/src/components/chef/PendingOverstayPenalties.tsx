@@ -1,4 +1,8 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
+import { useState } from 'react';
+import { overstayCollectionError } from '@shared/overstay-collection';
+import { Textarea } from '@/components/ui/textarea';
 /**
  * PendingOverstayPenalties Component
  *
@@ -11,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, CreditCard, Package, Calendar, Building2 } from "lucide-react";
+import { AlertTriangle, CreditCard, Calendar, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
@@ -19,6 +23,10 @@ import { formatCurrency as formatCad } from "@shared/i18n";
 import { ct } from "@/i18n/chef-ns";
 
 interface PendingPenalty {
+  itemsRemovedAt: string | null;
+  chefDisputeDeadline: string | null;
+  chefDisputedAt: string | null;
+  disputeReviewedAt: string | null;
   overstayId: number;
   storageBookingId: number;
   status: string;
@@ -56,10 +64,12 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 export function PendingOverstayPenalties() {
+  const [disputeId, setDisputeId] = useState<number | null>(null);
+  const [disputeReason, setDisputeReason] = useState('');
   const { t, i18n } = useTranslation("chef");
 
   // Fetch pending penalties
-  const { data: penalties = [], isLoading, error } = useQuery<PendingPenalty[]>({
+  const { data: penalties = [], isLoading, error, refetch } = useQuery<PendingPenalty[]>({
     queryKey: ['/api/chef/overstay-penalties'],
     queryFn: async () => {
       const headers = await getAuthHeaders();
@@ -101,6 +111,17 @@ export function PendingOverstayPenalties() {
   });
 
   // Separate pending and resolved penalties
+  const disputeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/chef/overstay-penalties/${id}/dispute`, {
+        method: 'POST', credentials: 'include', headers: await getAuthHeaders(), body: JSON.stringify({ reason: disputeReason }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to dispute penalty');
+    },
+    onSuccess: () => { setDisputeId(null); setDisputeReason(''); refetch(); toast.success('Collection paused for admin review'); },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const pendingPenalties = penalties.filter(p => !p.isResolved);
 
   // Don't render anything if no PENDING penalties (resolved ones show on storage cards)
@@ -197,7 +218,7 @@ export function PendingOverstayPenalties() {
                 <Button
                   size="sm"
                   onClick={() => payMutation.mutate(penalty.overstayId)}
-                  disabled={payMutation.isPending}
+                  disabled={payMutation.isPending || !!overstayCollectionError(penalty)}
                 >
                   <CreditCard className="h-4 w-4 mr-1" />
                   {payMutation.isPending
@@ -207,12 +228,23 @@ export function PendingOverstayPenalties() {
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground border-t pt-2">
+            {overstayCollectionError(penalty) && <p className="text-sm">{overstayCollectionError(penalty)}</p>}
+            {penalty.status === 'penalty_approved' && penalty.chefDisputeDeadline && Date.now() < new Date(penalty.chefDisputeDeadline).getTime() && (
+              <div className="space-y-2">
+                <Button variant="outline" onClick={() => { setDisputeId(penalty.overstayId); setDisputeReason(''); }}>Dispute final amount</Button>
+                {disputeId === penalty.overstayId && <>
+                  <Textarea aria-label="Dispute reason" value={disputeReason} onChange={event => setDisputeReason(event.target.value)} placeholder="Explain why you disagree with this amount" />
+                  <Button disabled={disputeMutation.isPending || disputeReason.trim().length < 10} onClick={() => disputeMutation.mutate(penalty.overstayId)}>Send for admin review</Button>
+                </>}
+              </div>
+            )}
+            {penalty.chefDisputeDeadline && <p className="text-sm">Dispute deadline: {new Date(penalty.chefDisputeDeadline).toLocaleString()}</p>}
+            {penalty.penaltyApprovedAt && <p className="text-xs text-muted-foreground border-t pt-2">
               {t("overstayApprovedOn", {
                 date: format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a"),
                 defaultValue: `Approved on ${format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a")}`,
               })}
-            </p>
+            </p>}
           </div>
         ))}
 

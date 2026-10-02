@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Pending Storage Checkouts Component
  * 
@@ -14,7 +15,7 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
-import { CheckCircle, Clock, Package, User, Image, Loader2, AlertTriangle, MoreHorizontal, ArrowUpDown, MapPin, Eye, RefreshCw, ShieldCheck, FileWarning, Timer } from "@/components/ui/manager-icons";
+import { CheckCircle, Clock, User, Image, Loader2, AlertTriangle, MoreHorizontal, ArrowUpDown, MapPin, Eye, RefreshCw, ShieldCheck, FileWarning, Timer } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -25,10 +26,13 @@ import { DateField } from "@/components/ui/date-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { MobileTableCards } from "@/components/ui/mobile-table-cards";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,6 +68,7 @@ interface PendingCheckout {
   daysUntilEnd: number;
   isOverdue: boolean;
   reviewDeadline: string | null;
+  cancellationAcceptedAt?: string | null;
   isReviewExpired: boolean;
 }
 
@@ -229,6 +234,7 @@ const getCheckoutColumns = ({
     header: mt("reviewWindow"),
     cell: ({ row }) => {
       const checkout = row.original;
+      if (checkout.cancellationAcceptedAt) return <Badge variant="outline">{mt("storageRemovalConfirmationRequired")}</Badge>;
       return (
         <ReviewDeadlineBadge
           deadline={checkout.reviewDeadline}
@@ -253,7 +259,7 @@ const getCheckoutColumns = ({
             <TooltipTrigger asChild>
               <button
                 onClick={() => onViewPhotos(checkout, 0)}
-                className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                className="flex items-center gap-1 cursor-pointer rounded-md border border-transparent px-2 py-1 transition-colors duration-200 ease-out motion-reduce:transition-none hover:border-border hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Image className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">{photos.length}</span>
@@ -446,7 +452,7 @@ export function PendingStorageCheckouts() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCheckout, setSelectedCheckout] = useState<PendingCheckout | null>(null);
-  const [claimSheetOpen, setClaimSheetOpen] = useState(false);
+  const [claimDialogOpen, setClaimDialogOpen] = useState(false);
   const [claimForm, setClaimForm] = useState<ClaimFormData>(INITIAL_CLAIM_FORM);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
@@ -557,7 +563,7 @@ export function PendingStorageCheckouts() {
         description: mt("damageCleaningClaimCreatedTheChefWillBeNotifiedAndCanRespond"),
       });
       invalidateCheckoutQueries();
-      setClaimSheetOpen(false);
+      setClaimDialogOpen(false);
       setClaimForm(INITIAL_CLAIM_FORM);
       setSelectedCheckout(null);
     },
@@ -578,7 +584,7 @@ export function PendingStorageCheckouts() {
   const handleFileClaimClick = (checkout: PendingCheckout) => {
     setSelectedCheckout(checkout);
     setClaimForm(INITIAL_CLAIM_FORM);
-    setClaimSheetOpen(true);
+    setClaimDialogOpen(true);
   };
 
   const handleClaimSubmit = () => {
@@ -649,8 +655,8 @@ export function PendingStorageCheckouts() {
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <CardContent className="space-y-3 py-6" role="status" aria-label="Loading storage inspections">
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
         </CardContent>
       </Card>
     );
@@ -679,8 +685,6 @@ export function PendingStorageCheckouts() {
                   : mt("checkoutsInHistory", { count: checkoutHistory.length })}
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />{mt("refresh")}</Button>
           </div>
         </CardHeader>
 
@@ -707,7 +711,9 @@ export function PendingStorageCheckouts() {
 
           {/* Pending Table */}
           {viewType === 'pending' && (
-            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <>
+            <MobileTableCards rows={pendingTable.getRowModel().rows} />
+            <div className="hidden rounded-md border overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   {pendingTable.getHeaderGroups().map((headerGroup) => (
@@ -755,11 +761,14 @@ export function PendingStorageCheckouts() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
 
           {/* History Table */}
           {viewType === 'history' && (
-            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <>
+            <MobileTableCards rows={historyTable.getRowModel().rows} />
+            <div className="hidden rounded-md border overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   {historyTable.getHeaderGroups().map((headerGroup) => (
@@ -807,18 +816,19 @@ export function PendingStorageCheckouts() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* ─── File Claim Sheet ──────────────────────────────────────────────────── */}
-      <Sheet open={claimSheetOpen} onOpenChange={setClaimSheetOpen}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <FileWarning className="h-5 w-5 text-amber-600" />{mt("fileDamageCleaningClaim")}</SheetTitle>
-            <SheetDescription>{mt("documentTheIssueAndFileAClaimTheChefWillBeNotifiedAndCanResp")}</SheetDescription>
-          </SheetHeader>
+      {/* ─── File Claim Dialog ──────────────────────────────────────────────────── */}
+      <Dialog open={claimDialogOpen} onOpenChange={setClaimDialogOpen}>
+        <AppDialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileWarning className="h-5 w-5 text-amber-600" />{mt("fileDamageCleaningClaim")}</DialogTitle>
+            <DialogDescription>{mt("documentTheIssueAndFileAClaimTheChefWillBeNotifiedAndCanResp")}</DialogDescription>
+          </DialogHeader>
 
           {selectedCheckout && (
             <div className="space-y-4 py-4">
@@ -925,23 +935,23 @@ export function PendingStorageCheckouts() {
             </div>
           )}
 
-          <SheetFooter className="mt-2">
-            <Button variant="outline" onClick={() => setClaimSheetOpen(false)}>{mt("cancel")}</Button>
+          <DialogFooter className="mt-2">
+            <Button variant="ghost" onClick={() => setClaimDialogOpen(false)}>{mt("cancel")}</Button>
             <StatusButton
               onClick={handleClaimSubmit}
               status={startClaimMutation.isPending ? "loading" : "idle"}
               labels={{ idle: mt("fileClaim"), loading: mt("filing"), success: mt("filed") }}
             />
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </AppDialogContent>
+      </Dialog>
 
-      {/* ─── Photo Viewer Sheet ────────────────────────────────────────────────── */}
-      <Sheet open={photoViewerOpen} onOpenChange={setPhotoViewerOpen}>
-        <SheetContent className="w-full sm:max-w-2xl">
-          <SheetHeader>
-            <SheetTitle>{mt("checkoutPhotos")}</SheetTitle>
-          </SheetHeader>
+      {/* ─── Photo Viewer Dialog ────────────────────────────────────────────────── */}
+      <Dialog open={photoViewerOpen} onOpenChange={setPhotoViewerOpen}>
+        <AppDialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{mt("checkoutPhotos")}</DialogTitle>
+          </DialogHeader>
           {selectedCheckout && selectedCheckout.checkoutPhotoUrls.length > 0 && (
             <div className="space-y-4 mt-4">
               <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
@@ -999,8 +1009,8 @@ export function PendingStorageCheckouts() {
               </div>
             </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </AppDialogContent>
+      </Dialog>
     </>
   );
 }

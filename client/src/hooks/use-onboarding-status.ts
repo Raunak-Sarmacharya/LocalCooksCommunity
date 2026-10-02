@@ -413,6 +413,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         : resolveStripeState(stripeConnectStatus).connected;
     
     const hasKitchens = (kitchens?.length || 0) > 0;
+    const hasPublishedKitchen = kitchens?.some((kitchen: any) => kitchen.listingStatus === 'active') ?? false;
     const setupSteps = buildManagerSetupSteps({
         // This row is specifically about the email address, because an unverified
         // address blocks every operational action. Name and phone are handled by
@@ -473,16 +474,20 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         .map((step) => mt(step.labelKey));
 
     const improvementSteps: string[] = [];
-    if (!locationData?.logoUrl && !locationData?.logo_url) improvementSteps.push("Add your location logo");
-    if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.imageUrl)) improvementSteps.push("Add a cover photo to every kitchen");
-    if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.description?.trim())) improvementSteps.push("Describe every kitchen");
+    // This is account onboarding guidance. Once a kitchen is published, a second
+    // draft's optional details belong on that kitchen's page, not in a global banner.
+    if (!hasPublishedKitchen) {
+        if (!locationData?.logoUrl && !locationData?.logo_url) improvementSteps.push("Add your location logo");
+        if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.imageUrl)) improvementSteps.push("Add a cover photo to every kitchen");
+        if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.description?.trim())) improvementSteps.push("Describe every kitchen");
+    }
 
     const showOnboardingModal =
         !userData?.managerOnboardingCompleted &&
         !userData?.has_seen_welcome;
 
     // Show setup banner only if onboarding is NOT complete (DB flag not set)
-    const showSetupBanner = !isOnboardingMarkedComplete && !isOnboardingComplete;
+    const showSetupBanner = !hasPublishedKitchen && !isOnboardingMarkedComplete && !isOnboardingComplete;
     
     // Show license review banner if onboarding is complete but license is pending
     // This banner still shows even after onboarding is marked complete in DB

@@ -1,3 +1,4 @@
+import { KITCHEN_ICON_NAME } from "@/components/ui/kitchen-icon";
 import { logger } from "@/lib/logger";
 import { motion } from "framer-motion";
 import { Icon } from "@iconify/react";
@@ -7,6 +8,7 @@ import { SmartImage } from "@/components/ui/smart-image";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import { useTranslation } from "react-i18next";
+import { kitchenPreviewHref } from "@/lib/kitchen-preview-url";
 
 // Define interface matching the data structure in ChefLanding
 export interface KitchenLocation {
@@ -23,7 +25,7 @@ export interface KitchenLocation {
      * The published kitchen this card represents. `null`/absent on a response that predates the
      * field, in which case the card falls back to the location's own name.
      */
-    featuredKitchen?: { id: number; name: string } | null;
+    featuredKitchen?: { id: number; name: string; slug?: string | null } | null;
 }
 
 interface KitchenLocationCardProps {
@@ -44,14 +46,14 @@ export function KitchenLocationCard({ location, navigate, index = 0 }: KitchenLo
      * promising availability the address no longer had. The kitchen is the bookable unit, so it names
      * the card.
      *
-     * The link carries `?kitchenId=`, so the preview page opens on the same kitchen the card described
+     * The link names the kitchen, so the preview page opens on the same kitchen the card described
      * instead of on whichever one happens to sort first. The address line still shows the location, and
      * the "N Kitchens" badge still tells the chef there is more than one kitchen here.
      */
     const kitchenName = location.featuredKitchen?.name?.trim() || location.name;
-    const previewHref = `/kitchen-preview/${location.slug || location.id}${
-        location.featuredKitchen ? `?kitchenId=${location.featuredKitchen.id}` : ""
-    }`;
+    const previewHref = location.featuredKitchen
+        ? kitchenPreviewHref(location.slug || location.id, location.featuredKitchen)
+        : `/kitchen-preview/${location.slug || location.id}`;
 
     // Logic to determine which image URL to use
     const rawImageUrl = (location.mainImage || location.featuredKitchenImage || '').trim();
@@ -111,7 +113,7 @@ export function KitchenLocationCard({ location, navigate, index = 0 }: KitchenLo
 
                     {location.kitchenCount > 1 && (
                         <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.3)] backdrop-blur">
-                            <Icon icon="mdi:silverware-fork-knife" className="h-3.5 w-3.5 text-[#F51042]" aria-hidden />
+                            <Icon icon={KITCHEN_ICON_NAME} className="h-3.5 w-3.5 text-[#F51042]" aria-hidden />
                             <span className="text-[0.72rem] font-semibold text-[#1F1F1F]">
                                 {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
                             </span>

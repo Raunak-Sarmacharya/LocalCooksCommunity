@@ -147,13 +147,7 @@ async function getNotifications(
       ${filterCondition}
       ${typeCondition}
       ${locationCondition}
-    ORDER BY 
-      is_read ASC,
-      CASE WHEN priority = 'urgent' THEN 0
-           WHEN priority = 'high' THEN 1
-           WHEN priority = 'normal' THEN 2
-           ELSE 3 END,
-      created_at DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT ${limit}
     OFFSET ${offset}
   `);

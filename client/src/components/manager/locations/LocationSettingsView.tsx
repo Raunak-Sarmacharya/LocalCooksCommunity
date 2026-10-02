@@ -25,6 +25,8 @@ import { FormLegend } from "@/components/ui/form-legend";
 
 import { KitchenGalleryImages } from "../kitchen/KitchenGalleryImages";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
+import { useListingImpactConfirm } from "@/components/manager/ListingImpactConfirm";
+import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 
 // Type definitions to ensure safety
 interface Location {
@@ -70,17 +72,18 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
   
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const listingImpact = useListingImpactConfirm();
 
     // Tab state
     const [activeTab, setActiveTab] = useState<string>('setup');
 
     // Form State - Controlled by local state, updated when location prop changes
-    const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
+    const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
     const [cancellationMessage, setCancellationMessage] = useState(
         location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage")
     );
     const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
-    const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
+    const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours ?? 1);
     const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
     const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
     const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
@@ -105,12 +108,12 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
 
     // Sync state when location prop updates
     useEffect(() => {
-        setCancellationHours(location.cancellationPolicyHours || 24);
+        setCancellationHours(location.cancellationPolicyHours ?? 24);
         setCancellationMessage(
             location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage")
         );
         setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-        setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+        setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
         setNotificationEmail(location.notificationEmail || '');
         setNotificationPhone(location.notificationPhone || '');
         setLogoUrl(location.logoUrl || '');
@@ -365,7 +368,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                         disabled={isUploadingLicense}
                                                     />
                                                     <label htmlFor="license-upload-input" className="cursor-pointer flex flex-col items-center gap-2">
-                                                        {isUploadingLicense ? <Loader2 className="h-8 w-8 animate-spin text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
+                                                  {isUploadingLicense ? <Upload className="h-8 w-8 text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
                                                         <span className="text-sm font-medium">{licenseFile ? licenseFile.name : mt("clickToUpload")}</span>
                                                         <span className="text-xs text-muted-foreground">{mt("pDFJPGPNGMax10MB")}</span>
                                                     </label>
@@ -429,7 +432,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                     disabled={isUploadingTerms}
                                                 />
                                                 <label htmlFor="terms-upload-input" className="cursor-pointer flex flex-col items-center gap-2">
-                                                    {isUploadingTerms ? <Loader2 className="h-8 w-8 animate-spin text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
+                                                  {isUploadingTerms ? <Upload className="h-8 w-8 text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
                                                     <span className="text-sm font-medium">{termsFile ? termsFile.name : mt("clickToUpload")}</span>
                                                     <span className="text-xs text-muted-foreground">{mt("pDFJPGPNGDOCMax10MB")}</span>
                                                 </label>
@@ -513,7 +516,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                     status={isCreatingKitchen ? "loading" : "idle"}
                                                     labels={{ idle: mt("createBtn"), loading: mt("creating"), success: mt("created") }}
                                                 />
-                                                <Button variant="outline" onClick={() => setShowCreateKitchen(false)}>{mt("cancel")}</Button>
+                                                <Button variant="ghost" onClick={() => setShowCreateKitchen(false)}>{mt("cancel")}</Button>
                                             </div>
                                         </div>
                                     )}
@@ -530,12 +533,21 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                             onChange={e => setKitchenDescriptions(prev => ({ ...prev, [kitchen.id]: e.target.value }))}
                                                             onBlur={async (e) => {
                                                                 if (e.target.value !== kitchen.description) {
+                                                                    const description = e.target.value.trim();
+                                                                    try {
+                                                                    if (!await listingImpact.confirm(kitchen.id, !description)) {
+                                                                        setKitchenDescriptions(prev => ({ ...prev, [kitchen.id]: kitchen.description ?? '' }));
+                                                                        return;
+                                                                    }
                                                                     const token = await auth.currentUser?.getIdToken();
-                                                                    await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
+                                                                    const response = await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
                                                                         method: 'PUT',
                                                                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                                                        body: JSON.stringify({ description: e.target.value })
+                                                                        body: JSON.stringify({ description })
                                                                     });
+                                                                    if (!response.ok) throw new Error(tt('failedToUpdateKitchenDescription'));
+                                                                    invalidateKitchenListingState(queryClient, kitchen.id, location.id);
+                                                                    } catch (error) { toast({ title: mt('error'), description: error instanceof Error ? error.message : tt('failedToUpdateKitchenDescription'), variant: 'destructive' }); }
                                                                 }
                                                             }}
                                                         />
@@ -546,13 +558,17 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                     <ImageWithReplace
                                                         imageUrl={(kitchen as any).imageUrl}
                                                         onImageChange={async url => {
+                                                            try {
+                                                            if (!await listingImpact.confirm(kitchen.id, !url)) return;
                                                             const token = await auth.currentUser?.getIdToken();
-                                                            await fetch(`/api/manager/kitchens/${kitchen.id}/image`, {
+                                                            const response = await fetch(`/api/manager/kitchens/${kitchen.id}/image`, {
                                                                 method: 'PUT',
                                                                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                                                                 body: JSON.stringify({ imageUrl: url })
                                                             });
-                                                            queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                                                            if (!response.ok) throw new Error(tt('failedToUpdateKitchenImage'));
+                                                            invalidateKitchenListingState(queryClient, kitchen.id, location.id);
+                                                            } catch (error) { toast({ title: mt('error'), description: error instanceof Error ? error.message : tt('failedToUpdateKitchenImage'), variant: 'destructive' }); }
                                                         }}
                                                         className="h-32 object-cover rounded-lg"
                                                         aspectRatio="16/9"
@@ -687,6 +703,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                         </TabsContent>
 
                     </Tabs>
+                    {listingImpact.dialog}
                 </div>
             </div>
         </div>

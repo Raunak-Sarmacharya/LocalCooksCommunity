@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, RefreshCw } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -20,7 +21,8 @@ import { saveAuthIntentFromCurrentPage, getAuthIntent, resolveVerificationReturn
 import { isPendingGoogleRegistration } from "@/lib/pending-google-registration";
 import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-application/KitchenJourneyLayout";
 import { journeyCalendarClassNames, journeyCalendarContainer } from "@/components/kitchen-application/journey-calendar-style";
-import KitchenJourneyTimeSlot, { formatJourneyClock } from "@/components/kitchen-application/KitchenJourneyTimeSlot";
+import KitchenJourneyTimeSlot from "@/components/kitchen-application/KitchenJourneyTimeSlot";
+import { formatTourSlotRange } from '@shared/tour-time';
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
@@ -33,10 +35,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
 import { ct } from "@/i18n/chef-ns";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { tourAvailableDate } from "@/lib/tour-available-date";
+import { tourAvailableDate, tourToday } from "@/lib/tour-available-date";
 
 async function getAuthHeaders(forceRefresh = false): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
@@ -287,13 +289,14 @@ export function ScheduleViewingWidget({
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setStep("success");
       localStorage.removeItem(storageKey);
       sessionStorage.removeItem(storageKey);
       queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] });
       queryClient.invalidateQueries({ queryKey: ["/api/viewings", "chef"] });
-      toast.success(t("kitchenTourBookedSuccess", "Tour request sent"));
+      if (data.notificationDeliveryFailed) toast.warning(t("tourSavedDeliveryFailed", "Your tour request is saved, but some notifications could not be delivered."));
+      else toast.success(t("kitchenTourBookedSuccess", "Tour request sent"));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -304,7 +307,7 @@ export function ScheduleViewingWidget({
     },
   });
 
-  const today = startOfDay(new Date());
+  const today = tourToday();
 
   const handleDateSelect = useCallback((date: Date | undefined) => {
     setSelectedDate(date);
@@ -529,11 +532,8 @@ export function ScheduleViewingWidget({
       </div>
 
       {slotsLoading || slotsFetching ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">
-            {t("loadingAvailableTimes", "Loading available times...")}
-          </span>
+        <div className="grid grid-cols-2 gap-3 py-4 sm:grid-cols-3" role="status" aria-label={t("loadingAvailableTimes", "Loading available times...")}>
+          {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-11 w-full rounded-xl" />)}
         </div>
       ) : slotsError ? (
         <div className="rounded-xl border border-border p-5 text-center">
@@ -556,7 +556,7 @@ export function ScheduleViewingWidget({
           {availability?.slots.map((slot) => (
             <KitchenJourneyTimeSlot
               key={slot.scheduledAt}
-              label={`${formatJourneyClock(slot.startTime)} – ${formatJourneyClock(slot.endTime)}`}
+              label={formatTourSlotRange(slot.scheduledAt, availability.settings?.defaultDurationMinutes ?? 30)}
               selected={selectedSlot?.scheduledAt === slot.scheduledAt}
               onClick={() => continueAfterSlot(slot)}
             />
@@ -690,7 +690,7 @@ export function ScheduleViewingWidget({
                 {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
               </p>
               <p className="text-xs text-muted-foreground">
-                {selectedSlot && `${formatJourneyClock(selectedSlot.startTime)} – ${formatJourneyClock(selectedSlot.endTime)}`}
+                {selectedSlot && formatTourSlotRange(selectedSlot.scheduledAt, availability?.settings?.defaultDurationMinutes ?? 30)}
               </p>
             </div>
           </div>
@@ -777,7 +777,7 @@ export function ScheduleViewingWidget({
           <p>
             <span className="text-muted-foreground">{t("timeLabel", "Time:")}</span>{" "}
             <span className="font-medium">
-              {selectedSlot && `${formatJourneyClock(selectedSlot.startTime)} – ${formatJourneyClock(selectedSlot.endTime)}`}
+              {selectedSlot && formatTourSlotRange(selectedSlot.scheduledAt, availability?.settings?.defaultDurationMinutes ?? 30)}
             </span>
           </p>
         </CardContent>
@@ -842,7 +842,7 @@ export function ScheduleViewingWidget({
                 <span className="sm:hidden">{format(selectedDate, "MMM d")}</span>
                 <span className="hidden sm:inline">{format(selectedDate, "EEE, MMM d, yyyy")}</span>
                 <span aria-hidden className="text-muted-foreground/60">·</span>
-                <span className="font-medium text-foreground">{formatJourneyClock(selectedSlot.startTime)}–{formatJourneyClock(selectedSlot.endTime)}</span>
+                <span className="font-medium text-foreground">{formatTourSlotRange(selectedSlot.scheduledAt, availability?.settings?.defaultDurationMinutes ?? 30)}</span>
               </p>
               {(step === "account" || step === "verify") && <Button variant="ghost" size="sm" className="shrink-0 px-1 text-xs text-primary sm:px-3 sm:text-sm" onClick={() => setStep("time")}>Change time</Button>}
             </div>}
@@ -863,7 +863,6 @@ export function ScheduleViewingWidget({
         }}
       >
         <DialogContent
-          showCloseButton={step === "success" || !isDataTaking}
           className={cn(
             "p-0 !overflow-hidden bg-background max-h-[90vh] flex flex-col sm:flex-row sm:max-w-[820px]"
           )}

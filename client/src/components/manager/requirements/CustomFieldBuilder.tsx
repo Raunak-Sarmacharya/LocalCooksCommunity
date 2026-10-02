@@ -201,18 +201,18 @@ export function CustomFieldBuilder({
   };
 
   return (
-    <div className={className}>
+    <div className={`space-y-4 p-4 sm:p-5 ${className}`}>
       {/* Actions — the hosting card already carries the section title. */}
-      <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-4">
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
         <Popover>
           <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="gap-1.5">
+            <Button type="button" variant="ghost" size="sm" className="w-full gap-1.5 sm:w-auto">
               <PlaylistPlus className="h-4 w-4" />
               {mt("chooseFromCommon")}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-auto p-1.5">
-            <div className="min-w-[260px] space-y-1">
+          <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-1.5">
+            <div className="space-y-1">
               <p className="px-1.5 pb-1 pt-0.5 text-[11px] font-medium text-muted-foreground">
                 {mt("commonRequirementFieldsHint")}
               </p>
@@ -240,7 +240,7 @@ export function CustomFieldBuilder({
           </PopoverContent>
         </Popover>
 
-        <Button onClick={openAddDialog} variant="outline" size="sm" className="gap-1.5">
+        <Button onClick={openAddDialog} variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto">
           <Plus className="h-4 w-4" />
           {mt("addField")}
         </Button>
@@ -248,12 +248,12 @@ export function CustomFieldBuilder({
 
       {/* Existing Fields List */}
       {fields.length > 0 ? (
-        <div className="divide-y divide-border">
+        <div className="space-y-2">
           {fields.map((field) => (
-            <div key={field.id} className="group flex items-center gap-3 px-4 py-3">
+            <div key={field.id} className="group flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3.5 sm:px-5">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-foreground">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="break-words text-sm font-medium text-foreground">
                     {field.label}
                   </span>
                   {field.required && (
@@ -266,7 +266,7 @@ export function CustomFieldBuilder({
                 </p>
               </div>
 
-              <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+              <div className="flex shrink-0 items-center gap-1 sm:opacity-0 sm:transition-opacity sm:focus-within:opacity-100 sm:group-hover:opacity-100">
                 <Button
                   onClick={() => openEditDialog(field)}
                   variant="ghost"
@@ -290,7 +290,7 @@ export function CustomFieldBuilder({
           ))}
         </div>
       ) : (
-        <div className="m-4 rounded-xl border border-dashed border-border px-6 py-8 text-center">
+        <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center sm:px-6">
           <p className="text-sm font-medium text-foreground">{mt("noCustomFieldsYet")}</p>
           <p className="mx-auto mt-1 max-w-xs text-xs text-muted-foreground">
             {mt("addCustomFieldsToCollectSpecificInformationUniqueToYourKitch")}
@@ -457,7 +457,7 @@ export function CustomFieldBuilder({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>{mt("cancel")}</Button>
+            <Button variant="ghost" onClick={closeDialog}>{mt("cancel")}</Button>
             <Button onClick={handleSave}>
               {editor.editingField ? 'Update Field' : 'Add Field'}
             </Button>

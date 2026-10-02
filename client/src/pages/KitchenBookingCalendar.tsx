@@ -1,5 +1,6 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, Lock, FileText, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Wrench, DollarSign, Lock, FileText, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { estimateBookingCheckoutTotal, estimateKitchenBookingPrice, type BookingPriceEstimate } from "@/lib/booking-price-estimate";
 import { BookingPriceSummary } from "@/components/kitchen-application/BookingPriceSummary";
@@ -665,11 +666,11 @@ export default function KitchenBookingCalendar() {
         setKitchenPricing({
           hourlyRate: hourlyRateCents,
           currency: pricing.currency || 'CAD',
-          minimumBookingHours: pricing.minimumBookingHours || 1,
+          minimumBookingHours: pricing.minimumBookingHours ?? 1,
           taxRatePercent: Math.max(0, Number(pricing.taxRatePercent) || 0),
           platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
         });
-        logger.info('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1, taxRatePercent: pricing.taxRatePercent, platformCommissionRate: pricing.platformCommissionRate });
+        logger.info('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours ?? 1, taxRatePercent: pricing.taxRatePercent, platformCommissionRate: pricing.platformCommissionRate });
       } else if (response.status === 404) {
         // No pricing set yet - this is expected
         logger.info('ℹ️ No pricing set for kitchen:', kitchen.id);
@@ -1042,9 +1043,8 @@ export default function KitchenBookingCalendar() {
 
           {/* Loading State */}
           {isLoadingKitchens && (
-            <div className="text-center py-12" data-testid="booking-kitchens-loading">
-              <Loader2 className="h-12 w-12 animate-spin text-muted-foreground inline-block" />
-              <p className="text-gray-600 mt-4">{t("kbcLoadingKitchens")}</p>
+            <div className="grid gap-4 py-4 sm:grid-cols-2" data-testid="booking-kitchens-loading" role="status" aria-label={t("kbcLoadingKitchens")}>
+              {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-32 w-full rounded-xl" />)}
             </div>
           )}
 
@@ -1472,11 +1472,9 @@ export default function KitchenBookingCalendar() {
 
                       {/* Loading overlay while checking application */}
                       {selectedLocationId && isLoadingApplication && (
-                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
-                          <div className="text-center">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-gray-600">{t("kbcCheckingApplication")}</p>
-                          </div>
+                        <div className="absolute inset-0 z-10 space-y-4 rounded-xl bg-white/95 p-6" role="status" aria-label={t("kbcCheckingApplication")}>
+                          <Skeleton className="h-6 w-1/2" />
+                          {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 w-full rounded-lg" />)}
                         </div>
                       )}
                     </div>

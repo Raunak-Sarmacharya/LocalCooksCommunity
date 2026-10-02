@@ -1,3 +1,4 @@
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { needsWelcomeScreen } from "@/lib/manager-welcome";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
-import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "@/components/ui/manager-icons";
+import { Loader2, Lock, ArrowRight, CalendarDays, Users, CalendarClock } from "@/components/ui/manager-icons";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,7 +99,7 @@ export default function ManagerLanding() {
           <FadeInSection>
             <div className="max-w-4xl mx-auto text-center mb-16">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-8 backdrop-blur-sm">
-                <Building2 className="h-10 w-10 text-white" />
+                <KitchenIcon className="h-10 w-10 text-white" />
               </div>
               <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 leading-tight">{t("manageYourCommercialKitchen")}</h2>
             <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto mb-10 leading-relaxed font-medium">{t("accessYourDashboardToManageBookingsAvailabilityChefProfilesA")}</p>
@@ -120,7 +121,7 @@ export default function ManagerLanding() {
                 
                 <CardHeader className="relative z-10">
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <Calendar className="h-8 w-8 text-white" />
+                    <CalendarDays className="h-8 w-8 text-white" />
                   </div>
                   <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">{t("manageBookings")}</CardTitle>
                   <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">{t("viewAndManageAllKitchenBookingsFromThirdPartyUsersAndChefs")}</CardDescription>
@@ -132,7 +133,7 @@ export default function ManagerLanding() {
                 
                 <CardHeader className="relative z-10">
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <Settings className="h-8 w-8 text-white" />
+                    <CalendarClock className="h-8 w-8 text-white" />
                   </div>
                   <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">{t("setAvailability")}</CardTitle>
                   <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">{t("configureKitchenAvailabilityTimeSlotsAndBookingPolicies")}</CardDescription>

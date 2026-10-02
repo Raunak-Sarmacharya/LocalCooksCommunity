@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { chefNavSections, findChefNavItem, sidebarBranchForView, type ChefBreadcrumb } from "./chef-nav-sections";
+import { getIcon } from "@iconify/react";
+import { KITCHEN_ICON_NAME } from "@/components/ui/kitchen-icon";
 
 import { describe, it } from "vitest";
 
@@ -18,6 +20,9 @@ describe("chef-nav-sections", () => {
     {
       const kitchens = chefNavSections.flatMap((section) => section.items).find((item) => item.id === "discover-kitchens");
       assert.deepEqual(kitchens?.children?.map((item) => item.id), ["kitchen-requests", "kitchen-applications", "viewings"]);
+      assert.equal(kitchens?.icon, KITCHEN_ICON_NAME);
+      assert.equal(findChefNavItem("kitchen-applications")?.icon, KITCHEN_ICON_NAME);
+      assert.ok(getIcon(KITCHEN_ICON_NAME)?.body, "Kitchen glyph must be available offline");
       assert.equal(findChefNavItem("viewings")?.labelKey, "shellKitchenTours");
     }
 

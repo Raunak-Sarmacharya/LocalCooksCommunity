@@ -113,7 +113,7 @@ function LinkedAccountsSkeleton() {
     <div className="space-y-8 animate-in fade-in duration-300">
       <div>
         <Skeleton className="mb-2 h-8 w-52" />
-        <Skeleton className="h-4 w-80" />
+        <Skeleton className="h-4 w-full max-w-80" />
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -121,7 +121,7 @@ function LinkedAccountsSkeleton() {
             <CardContent className="space-y-2 p-4">
               <Skeleton className="h-3 w-16" />
               <Skeleton className="h-6 w-24" />
-              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-3 w-full max-w-28" />
             </CardContent>
           </Card>
         ))}
@@ -221,8 +221,8 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
       <div className="grid items-stretch gap-4 lg:grid-cols-2">
         <Card className="flex h-full flex-col shadow-none">
           <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <BrandMark>
                   <img src={locoLogo} alt="" className="h-8 w-8 object-contain" />
                 </BrandMark>
@@ -259,8 +259,8 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
 
         <Card className="flex h-full flex-col shadow-none">
           <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <BrandMark>
                   <SiStripe className="h-5 w-5 text-stripe" aria-hidden />
                 </BrandMark>

@@ -21,6 +21,7 @@ function canSearchPortal(req: Request, portal: SearchPortal): boolean {
 }
 
 router.get("/", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  const started = performance.now();
   const parsed = searchQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     return res.status(400).json({ error: "Search requires a query of 2–100 characters and a valid portal." });
@@ -37,11 +38,33 @@ router.get("/", requireFirebaseAuthWithUser, async (req: Request, res: Response)
       locale: resolveLocale(req.neonUser!.preferredLocale ?? req.locale),
       limit: parsed.data.limit,
     });
+    const durationMs = Math.round(performance.now() - started);
+    res.setHeader("Server-Timing", `search;dur=${durationMs}`);
+    logger.operational("[Global search] completed", {
+      portal: parsed.data.portal, resultCount: results.length,
+      closeMatchCount: results.filter((result) => result.fuzzy).length, durationMs,
+    });
     res.json({ query: parsed.data.q, results });
   } catch (error) {
     logger.error("[Global search] Query failed", error);
     res.status(500).json({ error: "Search is temporarily unavailable." });
   }
+});
+
+const clickSchema = z.object({
+  portal: z.enum(["chef", "manager", "admin"]),
+  type: z.enum(["navigation", "location", "kitchen", "storage", "equipment"]),
+  fuzzy: z.boolean(),
+  position: z.number().int().min(0).max(19),
+});
+
+router.post("/click", requireFirebaseAuthWithUser, (req: Request, res: Response) => {
+  const parsed = clickSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid search event." });
+  if (!canSearchPortal(req, parsed.data.portal)) return res.status(403).json({ error: "Forbidden." });
+  // Never log the query or record ID: searches can contain personal information.
+  logger.operational("[Global search] result opened", parsed.data);
+  return res.status(204).end();
 });
 
 export default router;

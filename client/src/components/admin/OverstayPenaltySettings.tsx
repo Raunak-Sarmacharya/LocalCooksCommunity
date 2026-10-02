@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Admin Overstay Penalty & Storage Checkout Settings Component
  * 
@@ -13,18 +14,21 @@ import { auth } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NumericInput } from "@/components/ui/numeric-input";
+import { Switch } from '@/components/ui/switch';
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, Save, RefreshCw, Clock, DollarSign, Shield, RotateCcw, Package, Timer, Zap } from "lucide-react";
+import { AlertTriangle, Save, RefreshCw, Clock, DollarSign, Shield, RotateCcw, Timer, Zap } from "lucide-react";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface OverstaySettings {
+  disputeWindowHours: number;
+  monetaryEnforcementEnabled: boolean;
   gracePeriodDays: number;
   penaltyRatePercent: number;
   maxPenaltyDays: number;
@@ -36,6 +40,8 @@ interface CheckoutSettings {
 }
 
 interface OverstayFormData {
+  disputeWindowHours: string;
+  monetaryEnforcementEnabled: boolean;
   gracePeriodDays: string;
   penaltyRatePercent: string;
   maxPenaltyDays: string;
@@ -95,15 +101,18 @@ export default function OverstayPenaltySettings() {
         gracePeriodDays: String(s.gracePeriodDays),
         penaltyRatePercent: String(s.penaltyRatePercent),
         maxPenaltyDays: String(s.maxPenaltyDays),
+        disputeWindowHours: String(s.disputeWindowHours),
+        monetaryEnforcementEnabled: s.monetaryEnforcementEnabled,
       };
     }
-    return { gracePeriodDays: "3", penaltyRatePercent: "10", maxPenaltyDays: "30" };
+    return { gracePeriodDays: "3", penaltyRatePercent: "10", maxPenaltyDays: "30", disputeWindowHours: "24", monetaryEnforcementEnabled: true };
   }, [overstayData]);
 
   const [overstayForm, setOverstayForm] = useState<OverstayFormData>({
     gracePeriodDays: "3",
     penaltyRatePercent: "10",
     maxPenaltyDays: "30",
+    disputeWindowHours: "24", monetaryEnforcementEnabled: true,
   });
   const [overstayInitialized, setOverstayInitialized] = useState(false);
 
@@ -134,6 +143,8 @@ export default function OverstayPenaltySettings() {
       gracePeriodDays: parseInt(overstayForm.gracePeriodDays),
       penaltyRatePercent: parseFloat(overstayForm.penaltyRatePercent),
       maxPenaltyDays: parseInt(overstayForm.maxPenaltyDays),
+      disputeWindowHours: Number(overstayForm.disputeWindowHours),
+      monetaryEnforcementEnabled: overstayForm.monetaryEnforcementEnabled,
     });
   };
 
@@ -144,6 +155,8 @@ export default function OverstayPenaltySettings() {
         gracePeriodDays: String(s.gracePeriodDays),
         penaltyRatePercent: String(s.penaltyRatePercent),
         maxPenaltyDays: String(s.maxPenaltyDays),
+        disputeWindowHours: String(s.disputeWindowHours),
+        monetaryEnforcementEnabled: s.monetaryEnforcementEnabled,
       });
     }
   };
@@ -151,7 +164,7 @@ export default function OverstayPenaltySettings() {
   // ── Checkout settings ──────────────────────────────────────────────────
   const [checkoutForm, setCheckoutForm] = useState<CheckoutFormData>({
     reviewWindowHours: "2",
-    extendedClaimWindowHours: "48",
+    extendedClaimWindowHours: "336",
   });
   const [checkoutInitialized, setCheckoutInitialized] = useState(false);
 
@@ -193,7 +206,6 @@ export default function OverstayPenaltySettings() {
   const handleCheckoutSave = () => {
     checkoutMutation.mutate({
       reviewWindowHours: parseInt(checkoutForm.reviewWindowHours),
-      extendedClaimWindowHours: parseInt(checkoutForm.extendedClaimWindowHours),
     });
   };
 
@@ -342,6 +354,18 @@ export default function OverstayPenaltySettings() {
 
             {/* Escalation Info */}
             <div className="space-y-2">
+              <Label htmlFor="overstay-enforcement">Monetary enforcement</Label>
+              <Switch id="overstay-enforcement" checked={overstayForm.monetaryEnforcementEnabled}
+                onCheckedChange={value => setOverstayForm({ ...overstayForm, monetaryEnforcementEnabled: value })} />
+              <p className="text-xs text-muted-foreground">Enabled by default. Disabling blocks new collection attempts; detection and review remain available.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="disputeWindowHours">Chef dispute window</Label>
+              <NumericInput id="disputeWindowHours" suffix="hours" value={overstayForm.disputeWindowHours}
+                onValueChange={value => setOverstayForm({ ...overstayForm, disputeWindowHours: value })} className="max-w-40" />
+              <p className="text-xs text-muted-foreground">Time to dispute the final amount after notice. Collection pauses until this window ends or an admin reviews a dispute. Changes apply to new notices; existing deadlines stay fixed.</p>
+            </div>
+            <div className="space-y-2">
               <Label className="flex items-center gap-1.5">
                 <Zap className="h-3.5 w-3.5 text-muted-foreground" />
                 Auto-Escalation
@@ -452,22 +476,18 @@ export default function OverstayPenaltySettings() {
             <div className="space-y-2">
               <Label htmlFor="extendedClaimWindowHours" className="flex items-center gap-1.5">
                 <Timer className="h-3.5 w-3.5 text-muted-foreground" />
-                Extended Claim Window (hours)
+                General Damage Filing Window (hours)
               </Label>
               <NumericInput
                 id="extendedClaimWindowHours"
+                disabled
                 suffix="hours"
                 value={checkoutForm.extendedClaimWindowHours}
                 onValueChange={(val) => setCheckoutForm({ ...checkoutForm, extendedClaimWindowHours: val })}
                 className="max-w-40"
               />
               <p className="text-xs text-muted-foreground">
-                Extended window for filing damage claims after auto-clear (up to 7 days).{" "}
-                {checkoutDefaults && (
-                  <Badge variant="outline" className="text-[10px] ml-1">
-                    Default: {checkoutDefaults.extendedClaimWindowHours}h
-                  </Badge>
-                )}
+                Starts at the scheduled booking end. Change this in Damage Claim Settings.
               </p>
             </div>
           </div>
@@ -486,7 +506,7 @@ export default function OverstayPenaltySettings() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-blue-600">Extended Claim Window</p>
+                    <p className="text-blue-600">General Damage Filing Window</p>
                     <p className="font-bold text-blue-900">
                       {(checkoutData.settings as CheckoutSettings).extendedClaimWindowHours} hours
                     </p>

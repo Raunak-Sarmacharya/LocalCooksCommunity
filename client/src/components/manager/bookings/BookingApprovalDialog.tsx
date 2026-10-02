@@ -1,10 +1,11 @@
+import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin, DollarSign, AlertTriangle } from "@/components/ui/manager-icons";
+import { CheckCircle2, XCircle, Loader2, Calendar, Clock, MapPin, DollarSign, AlertTriangle } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 
@@ -352,7 +353,7 @@ function BookingApprovalDialogContent({
                       }
                       className={cn(
                         "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left group",
-                        "hover:shadow-sm active:scale-[0.99]",
+                        "hover:shadow-sm",
                         isApproved
                           ? "bg-green-50/50 border-green-200 hover:border-green-300"
                           : "bg-red-50/50 border-red-200 hover:border-red-300"
@@ -472,7 +473,7 @@ function BookingApprovalDialogContent({
         <DialogFooter className="px-6 py-4 border-t bg-muted/30">
           <div className="flex items-center justify-between w-full gap-3">
             <Button
-              variant="outline"
+              variant="ghost"
               onClick={onCancel}
               disabled={isLoading}
               className="flex-1 sm:flex-none"

@@ -206,7 +206,7 @@ export class KitchenService {
   /**
    * Update kitchen image
    */
-  async updateKitchenImage(id: number, imageUrl: string): Promise<KitchenDTO> {
+  async updateKitchenImage(id: number, imageUrl: string | null): Promise<KitchenDTO> {
     try {
       const existingKitchen = await this.kitchenRepo.findById(id);
 

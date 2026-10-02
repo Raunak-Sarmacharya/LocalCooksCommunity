@@ -3,6 +3,9 @@ import type { QueryClient } from "@tanstack/react-query";
 export type KitchenSection =
   | "photos"
   | "details"
+  | "availability"
+  | "tours"
+  | "policies"
   | "equipment"
   | "storage";
 
@@ -28,6 +31,8 @@ export type KitchensNavigationTarget =
   | "application-requirements"
   | "tour-availability"
   | "settings-booking-rules"
+  | "settings-checkin-checkout"
+  | "settings-storage-checkin-checkout"
   // The listing-status card sends the manager to the publish review, which is a view of its own.
   | "listing-review"
   // Rows on the review page that are edited on this tab point back here.
@@ -40,14 +45,20 @@ export const DEFAULT_KITCHEN_SECTION: KitchenSection = "details";
 export function kitchenSectionFromParams(params: URLSearchParams): KitchenSection {
   const section = params.get("section");
   const view = params.get("view");
+  if (section === "tours" || view === "tour-availability" || (view === "availability" && params.get("tab") === "tours")) return "tours";
   if (section === "photos") return "photos";
+  if (section === "availability" || view === "availability") return "availability";
+  if (section === "policies" || view === "settings-booking-rules") return "policies";
   if (section === "pricing" || view === "pricing") return "details";
   if (section === "equipment" || view === "equipment-listings") return "equipment";
   if (section === "storage" || view === "storage-listings") return "storage";
   return DEFAULT_KITCHEN_SECTION;
 }
 
-export function legacyKitchenSection(view: string | null): KitchenSection | null {
+export function legacyKitchenSection(view: string | null, tab?: string | null): KitchenSection | null {
+  if (view === "tour-availability") return "tours";
+  if (view === "settings-booking-rules") return "policies";
+  if (view === "availability") return tab === "tours" ? "tours" : "availability";
   if (view === "pricing") return "details";
   if (view === "equipment-listings") return "equipment";
   if (view === "storage-listings") return "storage";
@@ -88,6 +99,9 @@ export function resolveDestination(
 export const kitchenListingReadinessKey = (kitchenId: number) =>
   ["kitchen-listing-readiness", kitchenId] as const;
 
+export const kitchenWorkspaceSettingsKey = (kitchenId: number) =>
+  ["managerKitchenWorkspace", kitchenId] as const;
+
 /**
  * Refresh every cache that reflects a kitchen's publish state.
  *
@@ -111,9 +125,13 @@ export function invalidateKitchenListingState(
 ): void {
   void queryClient.invalidateQueries({ queryKey: kitchenListingReadinessKey(kitchenId) });
   if (locationId != null) {
+    // A listing taken down must lose its cached Share action immediately.
+    queryClient.setQueriesData({ queryKey: ["publicKitchenShare", locationId, kitchenId] }, null);
+    void queryClient.invalidateQueries({ queryKey: ["publicKitchenShare", locationId, kitchenId] });
     void queryClient.invalidateQueries({ queryKey: ["managerKitchens", locationId] });
   }
   // The kitchen pickers and lists that are built from these two.
   void queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
+  void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] });
   void queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 }

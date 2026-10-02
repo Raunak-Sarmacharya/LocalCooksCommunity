@@ -1,10 +1,12 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react";
-import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
+import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils";
@@ -724,9 +726,8 @@ export default function BookingControlPanel({
 
       {/* Loading State */}
       {isLoading ? (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="text-muted-foreground mt-3 text-sm">{t("bkLoadingBookings", "Loading bookings...")}</p>
+        <div className="space-y-3 py-4" role="status" aria-label={t("bkLoadingBookings", "Loading bookings...")}>
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-20 w-full rounded-xl" />)}
         </div>
       ) : (
         <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">

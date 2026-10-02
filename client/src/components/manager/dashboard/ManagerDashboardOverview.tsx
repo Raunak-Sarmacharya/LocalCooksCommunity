@@ -1,9 +1,10 @@
+import { StorageIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, Check, BookOpen, X, MapPin, Calendar, User, Boxes, Package, Eye } from "@/components/ui/manager-icons";
+import { Clock, Check, BookOpen, X, MapPin, Calendar, User, Eye } from "@/components/ui/manager-icons";
 // We will stick to the existing calendar for now to minimize logic breakage, 
 // but encapsulate it better. 
 // Ideally we would move to Shadcn Calendar (react-day-picker) but that requires rewrite of modifiers.
@@ -15,6 +16,7 @@ import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards";
 import type { RevenueMetrics } from "@/components/manager/revenue/types";
@@ -373,11 +375,9 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                 <CardContent>
                     <div className="react-calendar-wrapper">
                         {isLoadingBookings && bookings.length === 0 ? (
-                            <div className="flex items-center justify-center py-12">
-                                <div className="text-center">
-                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                                    <p className="text-muted-foreground">{mt("loadingBookings")}</p>
-                                </div>
+                            <div className="space-y-4 py-4" role="status" aria-label={mt("loadingBookings")}>
+                                <Skeleton className="h-8 w-2/3" />
+                                <Skeleton className="h-72 w-full rounded-xl" />
                             </div>
                         ) : (
                             <CalendarComponent
@@ -451,8 +451,8 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                     </CardHeader>
                     <CardContent>
                         {isLoadingBookings || isLoadingViewings ? (
-                            <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <div className="space-y-3 py-4" role="status" aria-label={mt("loadingBookings")}>
+                                {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
                             </div>
                         ) : getBookingsForDate(selectedDate).length === 0 && getViewingsForDate(selectedDate).length === 0 ? (
                             <div className="text-center py-8">

@@ -6,13 +6,14 @@ import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-appli
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { NeedsLocation } from "@/components/manager/locations/NeedsPrerequisite";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Clock, AlertCircle, Settings, ExternalLink, Search, Filter, Users, FileCheck, Calendar } from "@/components/ui/manager-icons";
+import { ClipboardCheck, Search, X } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChefPageHeader } from "@/components/chef/ui";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -23,7 +24,6 @@ import { getApplicationColumnsV2 } from "@/components/manager/applications/colum
 import { ApplicationDetailPanel } from "@/components/manager/applications/components/ApplicationDetailPanel";
 import { KitchenDocumentApprovalDialog, getKitchenDocumentApprovalPlan, type KitchenDocumentField } from "@/components/common/KitchenDocumentApprovalDialog";
 import { Application } from "@/components/manager/applications/types";
-import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 
 export default function ManagerKitchenApplicationsV2() {
@@ -41,7 +41,6 @@ export default function ManagerKitchenApplicationsV2() {
         </ManagerPageLayout>
     );
 }
-
 export function ManagerKitchenApplicationsContent({
     selectedLocationId,
     isLayoutLoading,
@@ -60,6 +59,8 @@ export function ManagerKitchenApplicationsContent({
     const {
         applications,
         isLoading,
+        error: applicationsError,
+        refetch: refetchApplications,
         updateApplicationStatus,
         verifyDocuments,
         revokeAccess
@@ -369,7 +370,7 @@ export function ManagerKitchenApplicationsContent({
             closeDetailSheet();
         } catch (error: any) {
             toast({ title: mt("error"),
-                description: error.message || "Failed to approve application",
+                description: error.message || "Failed to approve access request",
                 variant: "destructive",
             });
         }
@@ -452,7 +453,7 @@ export function ManagerKitchenApplicationsContent({
             closeDetailSheet();
         } catch (error: any) {
             toast({ title: mt("error"),
-                description: error.message || "Failed to reject application",
+                description: error.message || "Failed to decline access request",
                 variant: "destructive",
             });
         }
@@ -519,6 +520,15 @@ export function ManagerKitchenApplicationsContent({
         );
     }
 
+    if (applicationsError) {
+        return <Card className="border-destructive/40"><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="text-sm text-destructive">{mt("applicationsLoadError")}</p>
+            <Button variant="outline" size="sm" onClick={() => void refetchApplications()}>{mt("retry")}</Button>
+        </CardContent></Card>;
+    }
+
+    if (!selectedLocationId && applications.length === 0) return <NeedsLocation />;
+
     return (
         <div className="space-y-6">
             {selectedApplication ? (
@@ -549,14 +559,11 @@ export function ManagerKitchenApplicationsContent({
                     </div>
                 </div>
             ) : <>
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">{mt("chefApplications")}</h1>
-                    <p className="text-gray-500 text-sm mt-1">{mt("reviewAndManageChefApplicationsToYourKitchenLocations")}</p>
-                </div>
-                <Button
-                    variant="outline"
+            <ChefPageHeader
+                title={mt("chefApplications")}
+                description={mt("reviewAndManageChefApplicationsToYourKitchenLocations").replace(/\s+(?=\S+(?:\s+\S+){0,1}$)/g, "\u00a0")}
+                actions={<Button
+                    variant="ghost"
                     size="sm"
                     onClick={() => {
                         // Use direct view navigation if available (when embedded in dashboard)
@@ -568,115 +575,60 @@ export function ManagerKitchenApplicationsContent({
                             setLocation(`/manager/dashboard?view=application-requirements${locationId ? `&locationId=${locationId}` : ''}`);
                         }
                     }}
-                    className="gap-2"
+                    className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                    <Settings className="h-4 w-4" />{mt("configureRequirements")}<ExternalLink className="h-3 w-3" />
-                </Button>
+                    <ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navApplicationRequirements")}
+                </Button>}
+            />
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative w-full sm:max-w-md">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="text"
+                        placeholder={mt("searchApplicants")}
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        className="pl-9 pr-8"
+                    />
+                    {searchQuery && <Button variant="ghost" size="icon" className="absolute right-0 top-1/2 h-7 w-7 -translate-y-1/2" onClick={() => setSearchQuery("")} aria-label={mt("clearSearch")}><X className="h-3 w-3" /></Button>}
+                </div>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                    title={mt("pendingReview")}
-                    value={stats.pending}
-                    icon={Clock}
-                    color="amber"
-                    onClick={() => setStatusFilter('pending')}
-                    active={statusFilter === 'pending'}
-                />
-                <StatCard
-                    title={mt("awaitingChefSStep2")}
-                    value={stats.awaitingStep2}
-                    icon={Users}
-                    color="blue"
-                    subtitle={mt("chefDocumentsNeeded")}
-                    onClick={() => setStatusFilter('awaiting-step2')}
-                    active={statusFilter === 'awaiting-step2'}
-                />
-                <StatCard
-                    title={mt("approved")}
-                    value={stats.approved}
-                    icon={CheckCircle}
-                    color="emerald"
-                    subtitle={mt("canBookKitchens")}
-                    onClick={() => setStatusFilter('approved')}
-                    active={statusFilter === 'approved'}
-                />
-                <StatCard
-                    title={mt("rejected")}
-                    value={stats.rejected}
-                    icon={XCircle}
-                    color="red"
-                    onClick={() => setStatusFilter('rejected')}
-                    active={statusFilter === 'rejected'}
-                />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                {([
+                    ["all", mt("allApplications"), stats.total],
+                    ["pending", mt("pendingReview"), stats.pending],
+                    ["awaiting-step2", mt("awaitingChefSStep2"), stats.awaitingStep2],
+                    ["approved", mt("approved"), stats.approved],
+                    ["rejected", mt("rejected"), stats.rejected],
+                ] as const).map(([value, label, count]) => {
+                    const active = statusFilter === value;
+                    return <button key={value} type="button" onClick={() => setStatusFilter(value)} aria-pressed={active}
+                        className={active
+                            ? "rounded-xl border border-primary bg-primary/[0.04] p-4 text-left transition-colors"
+                            : "rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"}>
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="mt-2 text-2xl font-semibold tabular-nums">{count}</p>
+                    </button>;
+                })}
             </div>
 
-            {/* Filters & Table */}
-            <Card>
-                <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 flex-1">
-                            <div className="relative flex-1 max-w-sm">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                <Input
-                                    placeholder={mt("searchApplicants")}
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="pl-9"
-                                />
-                            </div>
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="w-[180px]">
-                                    <Filter className="h-4 w-4 mr-2 text-gray-400" />
-                                    <SelectValue placeholder={mt("filterByStatus")} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">{mt("allApplications")}</SelectItem>
-                                    <SelectItem value="pending">{mt("pendingReview")}</SelectItem>
-                                    <SelectItem value="awaiting-step2">{mt("awaitingChefSStep2")}</SelectItem>
-                                    <SelectItem value="approved">{mt("approved")}</SelectItem>
-                                    <SelectItem value="rejected">{mt("rejected")}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="text-sm text-gray-500">
-                            {filteredApplications.length} of {stats.total} applications
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                    {filteredApplications.length > 0 ? (
-                        <DataTable
-                            columns={columns}
-                            data={filteredApplications}
-                            onRowClick={openDetailSheet}
-                            filterColumn="fullName"
-                            filterPlaceholder={mt("filterByName")}
-                        />
-                    ) : (
-                        <div className="flex flex-col items-center justify-center py-16 text-center">
-                            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                                <Calendar className="h-8 w-8 text-gray-400" />
-                            </div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noApplicationsFound")}</h3>
-                            <p className="text-sm text-gray-500 max-w-sm">
-                                {statusFilter !== 'all'
-                                    ? "Try adjusting your filters to see more applications."
-                                    : "Chef applications will appear here when chefs apply to your kitchens."}
-                            </p>
-                            {statusFilter !== 'all' && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setStatusFilter('all')}
-                                    className="mt-4"
-                                >{mt("clearFilters")}</Button>
-                            )}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+            {filteredApplications.length > 0 ? (
+                <DataTable
+                    columns={columns}
+                    data={filteredApplications}
+                    onRowClick={openDetailSheet}
+                    defaultSorting={[{ id: "createdAt", desc: true }]}
+                    pageSize={15}
+                />
+            ) : (
+                <Card><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+                    <p className="font-medium">{mt("noApplicationsFound")}</p>
+                    <p className="max-w-sm text-sm text-muted-foreground">{stats.total === 0 ? mt("overviewWaitingForApplicationsBody") : mt("tryAdjustingYourSearchOrFilterCriteria")}</p>
+                    {statusFilter !== "all" && <Button variant="outline" size="sm" onClick={() => setStatusFilter("all")}>{mt("clearFilters")}</Button>}
+                </CardContent></Card>
+            )}
 
             </>}
             <KitchenDocumentApprovalDialog
@@ -724,54 +676,5 @@ export function ManagerKitchenApplicationsContent({
                 </DialogContent>
             </Dialog>
         </div>
-    );
-}
-
-// Stat Card Component
-function StatCard({
-    title,
-    value,
-    icon: Icon,
-    color, // Kept for prop compatibility
-    subtitle,
-    onClick,
-    active
-}: {
-    title: string;
-    value: number;
-    icon: React.ElementType;
-    color: 'amber' | 'blue' | 'emerald' | 'red';
-    subtitle?: string;
-    onClick?: () => void;
-    active?: boolean;
-}) {
-    return (
-        <Card
-            className={cn(
-                "cursor-pointer transition-all hover:shadow-md border",
-                active 
-                    ? "bg-accent/50 border-primary shadow-sm" 
-                    : "bg-card border-border hover:border-primary/50"
-            )}
-            onClick={onClick}
-        >
-            <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
-                        <p className="text-3xl font-bold mt-1 text-foreground">{value}</p>
-                        {subtitle && (
-                            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-                        )}
-                    </div>
-                    <div className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
-                        active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                    )}>
-                        <Icon className="h-5 w-5" />
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
     );
 }

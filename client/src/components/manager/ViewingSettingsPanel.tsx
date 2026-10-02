@@ -7,10 +7,10 @@
  * Built mobile-first with shadcn/ui components.
  */
 
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Settings, Clock, Calendar as CalendarIcon, Loader2, Plus, Trash2, Save, Eye, EyeOff, Shield, AlertCircle, AlertTriangle, Info } from "@/components/ui/manager-icons"
+import { Calendar as CalendarIcon, Loader2, Plus, Trash2, Save } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -19,16 +19,21 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Calendar } from "@/components/ui/calendar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { SettingsRow } from "./settings/SettingsRow"
 import { cn } from "@/lib/utils"
-import { format, isBefore, startOfDay, isWithinInterval, addDays } from "date-fns"
+import { format, isBefore } from "date-fns"
+import { formatTourDate, tourDateKey } from "@shared/tour-time"
+import { tourToday } from "@/lib/tour-available-date"
+import { AvailabilitySkeleton } from "./AvailabilitySkeleton"
+
+const TAB_TRIGGER = "group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 
@@ -75,10 +80,11 @@ interface Blackout {
   createdAt: string
 }
 
-interface SettingsResponse {
+export interface ViewingSettingsResponse {
   settings: ViewingSettings | null
   availability: AvailabilitySlot[]
   blackouts: Blackout[]
+  timezone?: string
 }
 
 const DAY_NAMES = [
@@ -103,8 +109,10 @@ const DEFAULT_SETTINGS = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface ViewingSettingsPanelProps {
+  hideSaveActions?: boolean
   kitchenId: number
   kitchenName?: string
+  facilityKitchenCount?: number
   onDirtyChange?: (dirty: boolean) => void
 }
 
@@ -112,12 +120,11 @@ export interface ViewingSettingsPanelHandle {
   saveChanges: () => Promise<boolean>
 }
 
-export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, ViewingSettingsPanelProps>(function ViewingSettingsPanel({ kitchenId, kitchenName, onDirtyChange }, ref) {
+export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, ViewingSettingsPanelProps>(function ViewingSettingsPanel({ kitchenId, kitchenName, facilityKitchenCount = 1, onDirtyChange, hideSaveActions = false }, ref) {
   
   const queryClient = useQueryClient()
 
   // Local state for settings form
-  const [isActive, setIsActive] = useState(false)
   const [duration, setDuration] = useState(30)
   const [bufferBefore, setBufferBefore] = useState(0)
   const [bufferAfter, setBufferAfter] = useState(15)
@@ -131,15 +138,34 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, AvailabilitySlot>>({})
   const [savedWeeklySchedule, setSavedWeeklySchedule] = useState('')
   const [savedSettings, setSavedSettings] = useState('')
+  const dirtyFields = useRef({ settings: false, schedule: false })
 
   // Blackout Dialog form
   const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false)
   const [blackoutStart, setBlackoutStart] = useState<Date>()
   const [blackoutEnd, setBlackoutEnd] = useState<Date>()
   const [blackoutReason, setBlackoutReason] = useState("")
+  const [blackoutScope, setBlackoutScope] = useState<"tour-kitchen" | "kitchen" | "facility">("tour-kitchen")
+  const [affectedBookingIds, setAffectedBookingIds] = useState<number[]>([])
+  const scopeChoices: Array<"tour-kitchen" | "kitchen" | "facility"> = facilityKitchenCount > 1
+    ? ["tour-kitchen", "kitchen", "facility"] : ["tour-kitchen", "kitchen"]
+  const scopeSelector = (name: string, removing = false) => (
+    <fieldset className="space-y-2 border-t pt-4">
+      <legend className="text-sm font-medium">{mt("exceptionScopeQuestion")}</legend>
+      <div className="grid gap-2">
+        {scopeChoices.map((scope) => (
+          <label key={scope} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm ${blackoutScope === scope ? "border-primary" : "border-border"}`}>
+            <input type="radio" name={name} checked={blackoutScope === scope} onChange={() => { setBlackoutScope(scope); setAffectedBookingIds([]) }} className="accent-primary" />
+            {mt(scope === "tour-kitchen" ? "tourScopeOnly" : scope === "kitchen" ? "tourScopeKitchen" : "tourScopeFacility")}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">{mt(removing ? "tourScopeRemovalDetail" : "tourScopeDetail")}</p>
+    </fieldset>
+  )
 
   // Fetch current settings
-  const { data, isLoading } = useQuery<SettingsResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ViewingSettingsResponse>({
     queryKey: [`/api/viewings/settings/${kitchenId}`],
     staleTime: 10000,
   })
@@ -154,22 +180,23 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
 
     const source = data.settings ?? DEFAULT_SETTINGS
     const settings = {
-      isActive: source.isActive,
       defaultDurationMinutes: source.defaultDurationMinutes,
       bufferBeforeMinutes: source.bufferBeforeMinutes,
       bufferAfterMinutes: source.bufferAfterMinutes,
       advanceNoticeHours: source.advanceNoticeHours,
       maxAdvanceBookingDays: source.maxAdvanceBookingDays,
     }
-    setIsActive(settings.isActive)
-    setDuration(settings.defaultDurationMinutes)
-    setBufferBefore(settings.bufferBeforeMinutes)
-    setBufferAfter(settings.bufferAfterMinutes)
-    setAdvanceNotice(settings.advanceNoticeHours)
-    setMaxDays(settings.maxAdvanceBookingDays)
-    setSavedSettings(JSON.stringify(settings))
+    // Refetching one section must not discard unsaved edits in the other.
+    if (!dirtyFields.current.settings) {
+      setDuration(settings.defaultDurationMinutes)
+      setBufferBefore(settings.bufferBeforeMinutes)
+      setBufferAfter(settings.bufferAfterMinutes)
+      setAdvanceNotice(settings.advanceNoticeHours)
+      setMaxDays(settings.maxAdvanceBookingDays)
+      setSavedSettings(JSON.stringify(settings))
+    }
 
-    if (data.availability) {
+    if (data.availability && !dirtyFields.current.schedule) {
       const scheduleMap: Record<number, AvailabilitySlot> = {}
       // Pre-fill with defaults
       for (let i = 0; i < 7; i++) {
@@ -196,7 +223,6 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   }, [data, kitchenId])
 
   const currentSettings = {
-    isActive,
     defaultDurationMinutes: duration,
     bufferBeforeMinutes: bufferBefore,
     bufferAfterMinutes: bufferAfter,
@@ -205,6 +231,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   }
   const isSettingsDirty = !!savedSettings && JSON.stringify(currentSettings) !== savedSettings
   const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule
+  dirtyFields.current = { settings: isSettingsDirty, schedule: isScheduleDirty }
 
   // Save settings mutation
   const saveSettingsMutation = useMutation({
@@ -277,7 +304,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
 
   // Add blackout mutation
   const addBlackoutMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (acknowledgedBookingIds?: number[]) => {
       if (!blackoutStart || !blackoutEnd) throw new Error(mt("selectStartAndEndDates"))
       const headers = await getAuthHeaders()
       const response = await fetch(`/api/viewings/blackouts/${kitchenId}`, {
@@ -285,33 +312,45 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
         headers,
         credentials: "include",
         body: JSON.stringify({
-          startDate: blackoutStart.toISOString(),
-          endDate: blackoutEnd.toISOString(),
+          startDate: format(blackoutStart, "yyyy-MM-dd"),
+          endDate: format(blackoutEnd, "yyyy-MM-dd"),
           reason: blackoutReason || undefined,
+          scope: facilityKitchenCount > 1 ? blackoutScope : blackoutScope === "facility" ? "kitchen" : blackoutScope,
+          acknowledgedBookingIds,
         }),
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
+        if (response.status === 409 && err.code === "BOOKINGS_AFFECTED") {
+          throw Object.assign(new Error(err.error), { bookingIds: err.bookingIds })
+        }
         throw new Error(err.error || mt("blackoutAddFailed"))
       }
       return response.json()
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
+    onSuccess: (result: { skippedBookingDates?: number }) => {
+      queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/viewings/settings/") })
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/kitchens/date-overrides"] })
       setIsBlackoutDialogOpen(false)
       setBlackoutStart(undefined)
       setBlackoutEnd(undefined)
       setBlackoutReason("")
-      toast.success(mt("exceptionPeriodAdded"))
+      setAffectedBookingIds([])
+      toast.success(result.skippedBookingDates
+        ? mt("tourExceptionSavedWithSkippedDates")
+        : mt("exceptionPeriodAdded"))
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error & { bookingIds?: number[] }) => {
+      if (Array.isArray(error.bookingIds)) { setAffectedBookingIds(error.bookingIds); return }
+      toast.error(error.message)
+    },
   })
 
   // Delete blackout mutation
   const deleteBlackoutMutation = useMutation({
-    mutationFn: async (blackoutId: number) => {
+    mutationFn: async ({ blackoutId, scope }: { blackoutId: number; scope: "tour-kitchen" | "kitchen" | "facility" }) => {
       const headers = await getAuthHeaders()
-      const response = await fetch(`/api/viewings/blackouts/${blackoutId}`, {
+      const response = await fetch(`/api/viewings/blackouts/${blackoutId}?scope=${scope}`, {
         method: "DELETE",
         headers,
         credentials: "include",
@@ -320,7 +359,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
       return response.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
+      queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/viewings/settings/") })
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/kitchens/date-overrides"] })
       toast.success(mt("exceptionRemoved"))
     },
     onError: (error: Error) => toast.error(error.message),
@@ -329,205 +369,64 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
+  if (isError) {
+    return <Button variant="outline" onClick={() => refetch()}>{mt("retry")}</Button>
+  }
+
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
+    return <AvailabilitySkeleton />
   }
 
   // Determine modifiers for the calendar
   const blackoutModifiers = {
     blackout: (date: Date) => {
       if (!data?.blackouts) return false;
+      const dateKey = format(date, "yyyy-MM-dd")
       return data.blackouts.some((b) => {
-        const start = startOfDay(new Date(b.startDate));
-        const end = startOfDay(new Date(b.endDate));
-        // Add 1 day to end if we want inclusive, but let's assume it's already inclusive
-        return date >= start && date <= end; // inclusive check
+        const start = tourDateKey(new Date(b.startDate))
+        const end = tourDateKey(new Date(b.endDate))
+        return dateKey >= start && dateKey <= end
       });
     }
   }
 
   return (
-    <div className="space-y-4">
-      {/* Section 1: General Settings */}
+    <div className="space-y-6">
+      <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
+          <TabsTrigger value="weekly" className={TAB_TRIGGER}>
+            {mt("weeklySchedule")}
+          </TabsTrigger>
+          <TabsTrigger value="calendar" className={TAB_TRIGGER}>
+            {mt("exceptionsCalendar")}
+          </TabsTrigger>
+          <TabsTrigger value="settings" className={TAB_TRIGGER}>{mt("viewingSettings")}</TabsTrigger>
+        </TabsList>
+
+      <TabsContent value="settings" className="mt-6">
       <Card>
         <CardHeader className="p-4 pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <CardTitle className="text-base sm:text-lg">{mt("viewingSettings")}</CardTitle>
-              <CardDescription className="text-xs sm:text-sm">
-                Configure how chefs can book viewings of {kitchenName || "this kitchen"}
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              {isActive ? (
-                <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                  <Eye className="h-3 w-3 mr-1" />{mt("active")}</Badge>
-              ) : (
-                <Badge variant="secondary">
-                  <EyeOff className="h-3 w-3 mr-1" />{mt("inactive")}</Badge>
-              )}
-              <Switch checked={isActive} onCheckedChange={setIsActive} />
-            </div>
-          </div>
+          <CardTitle className="text-lg">{mt("viewingSettings")}</CardTitle>
+          <CardDescription>{mt("tourSettingsKitchenScope", { kitchen: kitchenName ?? mt("kitchenScopeFallback") })}</CardDescription>
         </CardHeader>
-
-        <CardContent className="space-y-3 p-4 pt-0">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">{mt("viewingDuration")}</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
-                      <Info className="h-4 w-4 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{mt("theLengthOfEachViewingAppointment")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Select
-                value={String(duration)}
-                onValueChange={(v) => setDuration(Number(v))}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[15, 20, 30, 45, 60, 90].map((m) => (
-                    <SelectItem key={m} value={String(m)}>
-                      {m} min
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">{mt("advanceNotice")}</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
-                      <Info className="h-4 w-4 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{mt("theMinimumLeadTimeRequiredBeforeAChefCanBookAViewing")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Select
-                value={String(advanceNotice)}
-                onValueChange={(v) => setAdvanceNotice(Number(v))}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[2, 4, 8, 12, 24, 48, 72].map((h) => (
-                    <SelectItem key={h} value={String(h)}>
-                      {h < 24 ? `${h} hours` : `${h / 24} day${h > 24 ? "s" : ""}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">{mt("bufferBefore")}</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
-                      <Info className="h-4 w-4 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{mt("preparationTimeAutomaticallyBlockedBeforeEachViewing")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Select
-                value={String(bufferBefore)}
-                onValueChange={(v) => setBufferBefore(Number(v))}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 5, 10, 15, 30].map((m) => (
-                    <SelectItem key={m} value={String(m)}>
-                      {m === 0 ? "None" : `${m} min`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">{mt("bufferAfter")}</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
-                      <Info className="h-4 w-4 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{mt("bufferTimeAutomaticallyBlockedAfterEachViewing")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Select
-                value={String(bufferAfter)}
-                onValueChange={(v) => setBufferAfter(Number(v))}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 5, 10, 15, 30].map((m) => (
-                    <SelectItem key={m} value={String(m)}>
-                      {m === 0 ? "None" : `${m} min`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">{mt("maxAdvanceBooking")}</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
-                      <Info className="h-4 w-4 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{mt("howFarInAdvanceViewingsCanBeScheduled")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Select value={String(maxDays)} onValueChange={(v) => setMaxDays(Number(v))}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[7, 14, 30, 60, 90].map((d) => (
-                    <SelectItem key={d} value={String(d)}>{d} days</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex justify-end border-t pt-3">
+        <CardContent className="divide-y p-0">
+          <SettingsRow id="tour-setting-0" label={mt("viewingDuration")} hint={mt("theLengthOfEachViewingAppointment")} help={mt("tourDurationHelp")}>
+            <NumericInput id="tour-setting-0" value={String(duration)} suffix={mt("minutesUnit")} className="w-32" onValueChange={(value) => setDuration(Number(value) || 0)} onBlur={() => setDuration(Math.min(120, Math.max(10, duration)))} />
+          </SettingsRow>
+          <SettingsRow id="tour-setting-1" label={mt("advanceNotice")} hint={mt("theMinimumLeadTimeRequiredBeforeAChefCanBookAViewing")} help={mt("tourAdvanceNoticeHelp")}>
+            <NumericInput id="tour-setting-1" value={String(advanceNotice)} suffix={mt("hoursSuffix")} className="w-32" onValueChange={(value) => setAdvanceNotice(Number(value) || 0)} onBlur={() => setAdvanceNotice(Math.min(168, Math.max(0, advanceNotice)))} />
+          </SettingsRow>
+          <SettingsRow id="tour-setting-2" label={mt("bufferBefore")} hint={mt("preparationTimeAutomaticallyBlockedBeforeEachViewing")} help={mt("tourBufferBeforeHelp")}>
+            <NumericInput id="tour-setting-2" value={String(bufferBefore)} suffix={mt("minutesUnit")} className="w-32" onValueChange={(value) => setBufferBefore(Number(value) || 0)} onBlur={() => setBufferBefore(Math.min(60, Math.max(0, bufferBefore)))} />
+          </SettingsRow>
+          <SettingsRow id="tour-setting-3" label={mt("bufferAfter")} hint={mt("bufferTimeAutomaticallyBlockedAfterEachViewing")} help={mt("tourBufferAfterHelp")}>
+            <NumericInput id="tour-setting-3" value={String(bufferAfter)} suffix={mt("minutesUnit")} className="w-32" onValueChange={(value) => setBufferAfter(Number(value) || 0)} onBlur={() => setBufferAfter(Math.min(60, Math.max(0, bufferAfter)))} />
+          </SettingsRow>
+          <SettingsRow id="tour-setting-4" label={mt("maxAdvanceBooking")} hint={mt("howFarInAdvanceViewingsCanBeScheduled")} help={mt("tourMaxAdvanceHelp")}>
+            <NumericInput id="tour-setting-4" value={String(maxDays)} suffix={mt("daysUnit")} className="w-32" onValueChange={(value) => setMaxDays(Number(value) || 0)} onBlur={() => setMaxDays(Math.min(90, Math.max(1, maxDays)))} />
+          </SettingsRow>
+        </CardContent>
+          {!hideSaveActions && (isSettingsDirty || saveSettingsMutation.isPending) && <div className="flex justify-end border-t p-4">
             <Button
               onClick={() => saveSettingsMutation.mutate()}
               disabled={saveSettingsMutation.isPending || !isSettingsDirty}
@@ -541,25 +440,19 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
               )}
               Save Settings
             </Button>
-          </div>
-        </CardContent>
+          </div>}
+
       </Card>
+      </TabsContent>
 
-      {/* Tabs for Schedule vs Exceptions */}
-      <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="weekly">{mt("weeklySchedule")}</TabsTrigger>
-          <TabsTrigger value="calendar">{mt("exceptionsCalendar")}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="weekly" className="space-y-4 mt-4">
+        <TabsContent value="weekly" className="space-y-6 mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
               <div className="space-y-1">
                 <CardTitle className="text-lg">{mt("recurringWeeklyHours")}</CardTitle>
                 <CardDescription>{mt("defaultHoursAvailableForKitchenViewings")}</CardDescription>
               </div>
-              <Button
+              {!hideSaveActions && (isScheduleDirty || saveAvailabilityMutation.isPending) && <Button
                 onClick={() => saveAvailabilityMutation.mutate()}
                 disabled={saveAvailabilityMutation.isPending || !isScheduleDirty}
               >
@@ -569,91 +462,45 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                   <Save className="h-4 w-4 mr-2" />
                 )}
                 {mt("saveSchedule")}
-              </Button>
+              </Button>}
             </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">{mt("day")}</TableHead>
-                      <TableHead className="w-[100px]">{mt("status")}</TableHead>
-                      <TableHead>{mt("hours")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {DAY_NAMES.map((dayName, index) => {
-                      const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00", dayOfWeek: index, kitchenId };
-                      return (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{dayName}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                checked={schedule.isAvailable}
-                                onCheckedChange={(checked) => {
-                                  setWeeklySchedule((prev) => ({
-                                    ...prev,
-                                    [index]: { ...prev[index], isAvailable: checked },
-                                  }))
-                                }}
-                              />
-                              <Badge
-                                variant={schedule.isAvailable ? "outline" : "secondary"}
-                                className={cn("w-16 justify-center", !schedule.isAvailable && "opacity-50")}
-                              >
-                                {schedule.isAvailable ? mt("open") : mt("closed")}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {schedule.isAvailable ? (
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  type="time"
-                                  className="w-28 h-8 text-sm"
-                                  value={schedule.startTime || "09:00"}
-                                  onChange={(e) => {
-                                    setWeeklySchedule((prev) => ({
-                                      ...prev,
-                                      [index]: { ...prev[index], startTime: e.target.value },
-                                    }))
-                                  }}
-                                />
-                                <span className="text-muted-foreground text-xs">–</span>
-                                <Input
-                                  type="time"
-                                  className="w-28 h-8 text-sm"
-                                  value={schedule.endTime || "17:00"}
-                                  onChange={(e) => {
-                                    setWeeklySchedule((prev) => ({
-                                      ...prev,
-                                      [index]: { ...prev[index], endTime: e.target.value },
-                                    }))
-                                  }}
-                                />
-                              </div>
-                            ) : (
-                              <div className="h-8 flex items-center">
-                                <span className="text-sm text-muted-foreground italic">{mt("unavailable")}</span>
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+            <p className="px-4 pb-3 text-sm text-muted-foreground">{mt("tourHoursOvernightHelp")}</p>
+            <CardContent className="divide-y p-0">
+              {DAY_NAMES.map((dayName, index) => {
+                const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00", dayOfWeek: index, kitchenId };
+                return (
+                  <div key={index} className="grid grid-cols-1 items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[7rem_1fr_auto]">
+                    <Label className="text-sm font-medium text-foreground">{dayName}</Label>
+                    <div className="order-3 col-span-2 flex items-center gap-2 sm:order-2 sm:col-span-1 sm:justify-end">
+                      {schedule.isAvailable ? (
+                        <>
+                          <Input type="time" aria-label={dayName + " " + mt("open")} className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none" value={schedule.startTime || "09:00"}
+                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, startTime: e.target.value } }))} />
+                          <span className="select-none text-muted-foreground" aria-hidden>–</span>
+                          <Input type="time" aria-label={dayName + " " + mt("closed")} className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none" value={schedule.endTime || "17:00"}
+                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, endTime: e.target.value } }))} />
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                          <span className="size-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
+                          {mt("closed")}
+                        </span>
+                      )}
+                    </div>
+                    <Switch className="order-2 justify-self-end sm:order-3 sm:justify-self-auto" aria-label={dayName} checked={schedule.isAvailable}
+                      onCheckedChange={(checked) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, isAvailable: checked } }))} />
+                  </div>
+                )
+              })}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="calendar" className="mt-4">
+        <TabsContent value="calendar" className="mt-6">
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="overflow-hidden flex flex-col justify-between">
-              <CardHeader>
-                <CardTitle>{mt("calendarOverview")}</CardTitle>
+              <CardHeader className="p-4 pb-3">
+                <CardTitle className="text-lg">{mt("calendarOverview")}</CardTitle>
                 <CardDescription>{mt("viewDatesBlockedFromReceivingViewingBookings")}</CardDescription>
               </CardHeader>
               <CardContent className="p-4 flex justify-center items-center">
@@ -672,15 +519,15 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                     <Badge variant="destructive" className="h-2 w-2 p-0 rounded-full" />
                     <span>{mt("exceptionDates")}</span>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setIsBlackoutDialogOpen(true)}>
+                  <Button variant="outline" size="sm" onClick={() => { setBlackoutScope("tour-kitchen"); setAffectedBookingIds([]); setIsBlackoutDialogOpen(true) }}>
                     <Plus className="h-4 w-4 mr-1" />{mt("addException")}</Button>
                 </div>
               </div>
             </Card>
 
             <Card className="flex flex-col h-full">
-              <CardHeader>
-                <CardTitle>{mt("upcomingExceptions")}</CardTitle>
+              <CardHeader className="p-4 pb-3">
+                <CardTitle className="text-lg">{mt("upcomingExceptions")}</CardTitle>
                 <CardDescription>{mt("periodsWhereViewingsAreCompletelyDisabled")}</CardDescription>
               </CardHeader>
               <CardContent className="flex-1 overflow-auto p-0">
@@ -690,7 +537,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                     <p>{mt("noActiveExceptions")}</p>
                   </div>
                 ) : (
-                  <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+                  <div className="w-full overflow-x-auto">
                     <Table>
                     <TableHeader>
                       <TableRow>
@@ -704,7 +551,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                         <TableRow key={blackout.id}>
                           <TableCell className="font-medium whitespace-nowrap">
                             <div className="flex flex-col">
-                              <span>{format(new Date(blackout.startDate), "MMM d")} - {format(new Date(blackout.endDate), "MMM d, yyyy")}</span>
+                              <span>{formatTourDate(new Date(blackout.startDate))} - {formatTourDate(new Date(blackout.endDate))}</span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -717,6 +564,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                                   variant="ghost"
                                   size="sm"
                                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setBlackoutScope("tour-kitchen")}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -726,10 +574,11 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                                   <AlertDialogTitle>{mt("removeException2")}</AlertDialogTitle>
                                   <AlertDialogDescription>{mt("thisWillMakeTheseDatesAvailableForViewingsAgain")}</AlertDialogDescription>
                                 </AlertDialogHeader>
+                                {scopeSelector(`remove-blackout-scope-${blackout.id}`, true)}
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
                                   <AlertDialogAction
-                                    onClick={() => deleteBlackoutMutation.mutate(blackout.id)}
+                                    onClick={() => deleteBlackoutMutation.mutate({ blackoutId: blackout.id, scope: blackoutScope })}
                                     className="bg-destructive hover:bg-destructive/90"
                                   >{mt("remove")}</AlertDialogAction>
                                 </AlertDialogFooter>
@@ -748,26 +597,9 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
         </TabsContent>
       </Tabs>
 
-      {/* Info callout */}
-      <Card className="bg-blue-50/50 border-blue-200">
-        <CardContent className="pt-4">
-          <div className="flex gap-3">
-            <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-xs sm:text-sm text-blue-800 space-y-1">
-              <p className="font-medium">{mt("howItWorks")}</p>
-              <p>
-                {mt("howViewingsWorkBody1")}
-              </p>
-              <p>
-                {mt("howViewingsWorkBody2")}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Exception Dialog */}
-      <Dialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
+      <Dialog open={isBlackoutDialogOpen} onOpenChange={(open) => { setIsBlackoutDialogOpen(open); if (!open) setAffectedBookingIds([]) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{mt("addExceptionPeriod")}</DialogTitle>
@@ -791,8 +623,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                     <Calendar
                       mode="single"
                       selected={blackoutStart}
-                      onSelect={setBlackoutStart}
-                      disabled={(date) => isBefore(date, startOfDay(new Date()))}
+                      onSelect={(value) => { setBlackoutStart(value); if (value && blackoutEnd && value > blackoutEnd) setBlackoutEnd(undefined); setAffectedBookingIds([]) }}
+                      disabled={(date) => isBefore(date, tourToday())}
                       className="w-[280px] p-3"
                     />
                   </PopoverContent>
@@ -815,8 +647,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                     <Calendar
                       mode="single"
                       selected={blackoutEnd}
-                      onSelect={setBlackoutEnd}
-                      disabled={(date) => isBefore(date, blackoutStart || startOfDay(new Date()))}
+                      onSelect={(value) => { setBlackoutEnd(value); setAffectedBookingIds([]) }}
+                      disabled={(date) => isBefore(date, blackoutStart || tourToday())}
                       className="w-[280px] p-3"
                     />
                   </PopoverContent>
@@ -828,17 +660,21 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
               <Label>{mt("reasonOptional")}</Label>
               <Input
                 value={blackoutReason}
-                onChange={(e) => setBlackoutReason(e.target.value)}
+                onChange={(e) => { setBlackoutReason(e.target.value); setAffectedBookingIds([]) }}
                 placeholder={mt("eGHolidayFacilityMaintenance")}
                 maxLength={200}
               />
             </div>
+            {scopeSelector("new-blackout-scope")}
+            {affectedBookingIds.length > 0 && <p role="alert" className="rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-foreground">
+              {mt("exceptionExistingBookingsStay")}
+            </p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsBlackoutDialogOpen(false)}>{mt("cancel")}</Button>
-            <Button onClick={() => addBlackoutMutation.mutate()} disabled={addBlackoutMutation.isPending || !blackoutStart || !blackoutEnd}>
+            <Button variant="ghost" onClick={() => setIsBlackoutDialogOpen(false)}>{mt("cancel")}</Button>
+            <Button onClick={() => addBlackoutMutation.mutate(affectedBookingIds.length ? affectedBookingIds : undefined)} disabled={addBlackoutMutation.isPending || !blackoutStart || !blackoutEnd}>
               {addBlackoutMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Exception
+              {mt(affectedBookingIds.length ? "exceptionConfirmKeepBookings" : "saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>

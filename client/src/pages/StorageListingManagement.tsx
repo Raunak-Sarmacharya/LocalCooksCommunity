@@ -1,7 +1,9 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
+import { StorageTrackingSetup } from "@/components/manager/settings/StorageTrackingSetup";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { Package, Plus, Pencil, Trash2, Thermometer, Snowflake, AlertTriangle, ChevronLeft } from "@/components/ui/manager-icons";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Plus, Pencil, Trash2, Thermometer, Snowflake, AlertTriangle, ChevronLeft, ClipboardCheck } from "@/components/ui/manager-icons";
+import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { NeedsKitchen } from "@/components/manager/locations/NeedsPrerequisite";
@@ -35,6 +37,10 @@ import { FormLegend } from "@/components/ui/form-legend";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, ACCESS_TYPE_LABELS, getDefaultTemperatureRange } from "@/lib/storage-templates";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import type { Ref } from "react";
+import { OverstayPenaltySettings } from "@/components/manager/overstays/OverstayPenaltySettings";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
 /**
  * Storage tab — "My Kitchens".
@@ -56,14 +62,7 @@ import { cn } from "@/lib/utils";
  */
 
 const StorageTypeIcon = ({ type, className }: { type: string; className?: string }) => {
-  switch (type) {
-    case 'cold':
-      return <Thermometer className={className} />;
-    case 'freezer':
-      return <Snowflake className={className} />;
-    default:
-      return <Package className={className} />;
-  }
+  return <Package className={className} />;
 };
 
 interface Kitchen {
@@ -85,9 +84,10 @@ interface StorageListing {
   temperatureRange?: string;
   isActive?: boolean;
   minimumBookingDuration?: number;
-  overstayGracePeriodDays?: number;
-  overstayPenaltyRate?: string;
-  overstayMaxPenaltyDays?: number;
+  inheritOverstayDefaults?: boolean;
+  overstayGracePeriodDays?: number | null;
+  overstayPenaltyRate?: string | null;
+  overstayMaxPenaltyDays?: number | null;
   overstayPolicyText?: string;
 }
 
@@ -100,6 +100,7 @@ interface StorageFormValues {
   totalVolume: number;
   temperatureRange: string;
   basePrice: number;
+  inheritOverstayDefaults: boolean;
   overstayGracePeriodDays: number;
   overstayPenaltyRate: string;
   overstayMaxPenaltyDays: number;
@@ -291,10 +292,14 @@ function StorageFields({
         </SettingsRow>
 
         <SectionBand label={mt("navOverstayPenalties")} hint={mt("penaltiesHint")} />
+        <SettingsRow id="sf-inherit" label="Use location and platform overstay defaults" help="New bookings use the current defaults. Existing bookings keep their agreed terms.">
+          <Switch id="sf-inherit" checked={values.inheritOverstayDefaults} onCheckedChange={(inheritOverstayDefaults) => onChange({ inheritOverstayDefaults })} />
+        </SettingsRow>
 
         <SettingsRow id="sf-grace" label={mt("gracePeriodDays2")} help={mt("helpGraceDays")}>
           <NumericInput
             id="sf-grace"
+            disabled={values.inheritOverstayDefaults}
             className="w-24"
             suffix={mt("daysUnit")}
             value={String(values.overstayGracePeriodDays)}
@@ -305,6 +310,7 @@ function StorageFields({
         <SettingsRow id="sf-pen" label={mt("penaltyRate2")} help={mt("helpPenaltyRate")}>
           <NumericInput
             id="sf-pen"
+            disabled={values.inheritOverstayDefaults}
             className="w-24"
             suffix="%"
             value={String(Math.round(parseFloat(values.overstayPenaltyRate) * 100))}
@@ -315,6 +321,7 @@ function StorageFields({
         <SettingsRow id="sf-max" label={mt("maxPenaltyDays")} help={mt("helpMaxPenaltyDays")}>
           <NumericInput
             id="sf-max"
+            disabled={values.inheritOverstayDefaults}
             className="w-24"
             suffix={mt("daysUnit")}
             value={String(values.overstayMaxPenaltyDays)}
@@ -367,6 +374,9 @@ export function StorageListingContent({
   selectedLocationId,
   selectedKitchenId,
   embedded = false,
+  onConfigureInspections,
+  onPenaltyDirtyChange,
+  penaltySaveRef,
   onListingsChanged
 }: {
   selectedLocationId: number | null,
@@ -379,6 +389,9 @@ export function StorageListingContent({
    * implementation, two placements, so the wizard cannot drift from My Kitchens.
    */
   embedded?: boolean,
+  onConfigureInspections?: () => void,
+  onPenaltyDirtyChange?: (dirty: boolean) => void,
+  penaltySaveRef?: Ref<{ saveAllChanges: () => Promise<boolean> }>,
   /**
    * Called after this page's own list has been re-read following a successful write.
    *
@@ -394,6 +407,12 @@ export function StorageListingContent({
   onListingsChanged?: () => void
 }) {
   const { toast } = useToast();
+  const [storageSection, setStorageSection] = useState("inventory");
+  const penaltySettingsRef = useRef<{ saveAllChanges: () => Promise<boolean> }>(null);
+  useImperativeHandle(penaltySaveRef, () => ({ saveAllChanges: async () => (await penaltySettingsRef.current?.saveAllChanges()) ?? true }));
+  const [penaltySettingsDirty, setPenaltySettingsDirty] = useState(false);
+  const [confirmPenaltyExit, setConfirmPenaltyExit] = useState(false);
+  useEffect(() => { onPenaltyDirtyChange?.(penaltySettingsDirty); }, [penaltySettingsDirty, onPenaltyDirtyChange]);
 
   /** The tab shows either the listings or a full page for one listing. */
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
@@ -515,7 +534,10 @@ export function StorageListingContent({
     if (!selectedLocationId) return;
     try {
       const data = await apiGet(`/manager/locations/${selectedLocationId}/overstay-penalty-defaults`);
-      setLocationDefaults(data.locationDefaults);
+      setLocationDefaults({ ...data.locationDefaults,
+        gracePeriodDays: data.locationDefaults.gracePeriodDays ?? data.platformDefaults?.gracePeriodDays,
+        penaltyRate: data.locationDefaults.penaltyRate ?? data.platformDefaults?.penaltyRate,
+        maxPenaltyDays: data.locationDefaults.maxPenaltyDays ?? data.platformDefaults?.maxPenaltyDays });
     } catch (error: any) {
       logger.error('Failed to load location defaults:', error);
     }
@@ -627,6 +649,7 @@ export function StorageListingContent({
     totalVolume: 0,
     temperatureRange: getDefaultTemperatureRange('dry') || '',
     basePrice: 0,
+    inheritOverstayDefaults: true,
     overstayGracePeriodDays: locationDefaults?.gracePeriodDays ?? 3,
     overstayPenaltyRate: (locationDefaults?.penaltyRate ?? 0.10).toString(),
     overstayMaxPenaltyDays: locationDefaults?.maxPenaltyDays ?? 30,
@@ -656,9 +679,10 @@ export function StorageListingContent({
     totalVolume: listing.totalVolume ?? 0,
     temperatureRange: listing.temperatureRange || '',
     basePrice: listing.basePrice || 0,
-    overstayGracePeriodDays: listing.overstayGracePeriodDays ?? 3,
-    overstayPenaltyRate: listing.overstayPenaltyRate || '0.10',
-    overstayMaxPenaltyDays: listing.overstayMaxPenaltyDays ?? 30,
+    inheritOverstayDefaults: listing.inheritOverstayDefaults ?? (listing.overstayGracePeriodDays == null && listing.overstayPenaltyRate == null && listing.overstayMaxPenaltyDays == null),
+    overstayGracePeriodDays: listing.overstayGracePeriodDays ?? locationDefaults?.gracePeriodDays ?? 3,
+    overstayPenaltyRate: listing.overstayPenaltyRate ?? String(locationDefaults?.penaltyRate ?? 0.10),
+    overstayMaxPenaltyDays: listing.overstayMaxPenaltyDays ?? locationDefaults?.maxPenaltyDays ?? 30,
     description: listing.description || '',
   });
 
@@ -694,6 +718,17 @@ export function StorageListingContent({
     setApplyToKitchenIds([]); // opt-in — never write to another kitchen unasked
     setView('edit');
   }, [kitchens]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const itemId = Number(url.searchParams.get("itemId"));
+    if (!Number.isSafeInteger(itemId) || itemId <= 0) return;
+    const match = listings.find((listing) => listing.id === itemId);
+    if (!match) return;
+    openEdit(match, matchSource);
+    url.searchParams.delete("itemId");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [listings, matchSource, openEdit]);
 
   const closePage = useCallback(() => {
     setView('list');
@@ -781,9 +816,9 @@ export function StorageListingContent({
     bookingDurationUnit: 'daily',
     currency: 'CAD',
     isActive: true,
-    overstayGracePeriodDays: storage.overstayGracePeriodDays,
-    overstayPenaltyRate: storage.overstayPenaltyRate,
-    overstayMaxPenaltyDays: storage.overstayMaxPenaltyDays,
+    overstayGracePeriodDays: storage.inheritOverstayDefaults ? null : storage.overstayGracePeriodDays,
+    overstayPenaltyRate: storage.inheritOverstayDefaults ? null : storage.overstayPenaltyRate,
+    overstayMaxPenaltyDays: storage.inheritOverstayDefaults ? null : storage.overstayMaxPenaltyDays,
   });
 
   /**
@@ -852,9 +887,9 @@ export function StorageListingContent({
     accessType: listing.accessType || undefined,
     temperatureRange: listing.temperatureRange || undefined,
     minimumBookingDuration: listing.minimumBookingDuration || 1,
-    overstayGracePeriodDays: listing.overstayGracePeriodDays,
-    overstayPenaltyRate: listing.overstayPenaltyRate,
-    overstayMaxPenaltyDays: listing.overstayMaxPenaltyDays,
+    overstayGracePeriodDays: listing.inheritOverstayDefaults ? null : listing.overstayGracePeriodDays,
+    overstayPenaltyRate: listing.inheritOverstayDefaults ? null : listing.overstayPenaltyRate,
+    overstayMaxPenaltyDays: listing.inheritOverstayDefaults ? null : listing.overstayMaxPenaltyDays,
     overstayPolicyText: listing.overstayPolicyText,
   });
 
@@ -868,8 +903,7 @@ export function StorageListingContent({
     setIsSaving(true);
     try {
       await apiPut(`/manager/storage-listings/${draft.id}`, {
-        ...draft,
-        basePrice: Math.round((draft.basePrice || 0) * 100), // Convert to cents
+        ...extraKitchenPayload(draft),
       });
 
       const extras = editMatches.filter((m) => applyToKitchenIds.includes(m.kitchenId));
@@ -1034,7 +1068,7 @@ export function StorageListingContent({
      */
     const pageActions = (
       <div className="flex shrink-0 items-center gap-2">
-        <Button variant="outline" onClick={() => requestExit()} disabled={isSaving || isCreating}>
+        <Button variant="ghost" onClick={() => requestExit()} disabled={isSaving || isCreating}>
           {mt("cancel")}
         </Button>
         {isAdd ? (
@@ -1150,7 +1184,13 @@ export function StorageListingContent({
   // ── List page ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <Tabs value={storageSection} onValueChange={(section) => { if (penaltySettingsDirty) setConfirmPenaltyExit(true); else setStorageSection(section); }} className="space-y-4">
+      {!embedded && <TabsList className="h-auto w-full min-w-0 justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground"><TabsTrigger value="inventory" className="group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none">{mt("storageInventory")}</TabsTrigger><TabsTrigger value="penalties" className="group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none">{mt("storagePenaltySettingsTab")}</TabsTrigger></TabsList>}
+      <TabsContent value="penalties" className="mt-0"><Card><div className="p-4 pb-3"><h3 className="font-semibold">{mt("storageOverstayPenaltyDefaults")}</h3><p className="mt-1 text-sm text-muted-foreground">{mt("storagePenaltyBannerBody")}</p></div><CardContent className={penaltySaveRef ? "p-0" : "p-4 pt-0"}>
+        {selectedLocationId && <OverstayPenaltySettings key={selectedLocationId} locationId={selectedLocationId} saveRef={penaltySettingsRef} hideSaveActions={!!penaltySaveRef} onDirtyChange={setPenaltySettingsDirty} />}
+      </CardContent></Card></TabsContent>
+      <TabsContent value="inventory" className="mt-0 space-y-4">
+      {!isLoading && visibleListings.length > 0 && selectedLocationId && onConfigureInspections && <StorageTrackingSetup locationId={selectedLocationId} onConfigure={onConfigureInspections} />}
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b p-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -1294,6 +1334,10 @@ export function StorageListingContent({
       )}
 
       {unsavedDialog}
-    </div>
+      </TabsContent>
+      <UnsavedChangesDialog open={confirmPenaltyExit} onOpenChange={setConfirmPenaltyExit} description={mt("overstaySettingsUnsavedDescription")}
+        onSave={async () => { if (await penaltySettingsRef.current?.saveAllChanges()) { setConfirmPenaltyExit(false); setStorageSection("inventory"); } }}
+        onDiscard={() => { setConfirmPenaltyExit(false); setPenaltySettingsDirty(false); onPenaltyDirtyChange?.(false); setStorageSection("inventory"); }} />
+    </Tabs>
   );
 }

@@ -20,7 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MutableRefObject, Ref } from "react";
 import {
   AlertTriangle,
-  ArrowRight,
+  ChevronRight,
   Calendar,
   Clock,
   Info,
@@ -36,6 +36,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { SettingsRow } from "./SettingsRow";
+import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
 import type { ChecklistItem, PhotoRequirement } from "./shared/ChecklistEditor";
 import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 import {
@@ -440,10 +441,7 @@ export default function CheckinCheckoutSettings({
           title={mt("kitchenCheckInCheckOut")}
           description={mt("configureChecklistsAndPhotoRequirementsForYourKitchens")}
         />
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
-        </div>
+        <SettingsContentSkeleton rows={6} />
       </div>
     );
   }
@@ -665,7 +663,7 @@ export default function CheckinCheckoutSettings({
             {mt("bookingRulesCrossLinkHint")}
           </p>
         </div>
-        <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
       </button>
 
       {/* Pinned action bar.

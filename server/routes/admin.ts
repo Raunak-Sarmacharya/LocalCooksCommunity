@@ -1283,7 +1283,7 @@ router.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: 
             ...loc,
             managerId: loc.managerId || loc.manager_id || null,
             notificationEmail: loc.notificationEmail || loc.notification_email || null,
-            cancellationPolicyHours: loc.cancellationPolicyHours || loc.cancellation_policy_hours || 24,
+            cancellationPolicyHours: loc.cancellationPolicyHours ?? loc.cancellation_policy_hours ?? 24,
             cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit || 2,
             createdAt: loc.createdAt || loc.created_at,
@@ -1492,7 +1492,7 @@ router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req:
             managerId: (location as any).managerId || (location as any).manager_id || null,
             notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
             notificationPhone: (location as any).notificationPhone || (location as any).notification_phone || null,
-            cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+            cancellationPolicyHours: (location as any).cancellationPolicyHours ?? (location as any).cancellation_policy_hours ?? 24,
             cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
             createdAt: (location as any).createdAt || (location as any).created_at,
@@ -1710,7 +1710,7 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
             ...updated,
             managerId: (updated as any).managerId || (updated as any).manager_id || null,
             notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
-            cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours || 24,
+            cancellationPolicyHours: (updated as any).cancellationPolicyHours ?? (updated as any).cancellation_policy_hours ?? 24,
             cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit || 2,
             createdAt: (updated as any).createdAt || (updated as any).created_at,
@@ -2868,6 +2868,19 @@ router.put("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, as
             claimSubmissionDeadlineDays,
         } = req.body;
 
+        for (const value of [maxClaimAmountCents, minClaimAmountCents, maxClaimsPerBooking,
+            chefResponseDeadlineHours, claimSubmissionDeadlineDays]) {
+            if (value !== undefined && !Number.isSafeInteger(value)) {
+                return res.status(400).json({ error: 'Damage claim settings must be whole numbers' });
+            }
+        }
+        const { getDamageClaimLimits } = await import('../services/damage-claim-limits-service');
+        const currentLimits = await getDamageClaimLimits();
+        if ((minClaimAmountCents ?? currentLimits.minClaimAmountCents) >
+            (maxClaimAmountCents ?? currentLimits.maxClaimAmountCents)) {
+            return res.status(400).json({ error: 'Minimum claim amount cannot exceed maximum claim amount' });
+        }
+
         const updates: { key: string; value: string; description: string }[] = [];
 
         if (maxClaimAmountCents !== undefined) {
@@ -2989,28 +3002,18 @@ router.get("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdm
 router.put("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { reviewWindowHours, extendedClaimWindowHours } = req.body;
+        if (extendedClaimWindowHours !== undefined) return res.status(400).json({ error: 'Use the general damage claim filing window; a separate storage window is no longer supported' });
 
         const updates: { key: string; value: string; description: string }[] = [];
 
         if (reviewWindowHours !== undefined) {
-            if (reviewWindowHours < 1 || reviewWindowHours > 24) {
+            if (!Number.isSafeInteger(reviewWindowHours) || reviewWindowHours < 1 || reviewWindowHours > 24) {
                 return res.status(400).json({ error: "Review window must be between 1 and 24 hours" });
             }
             updates.push({
                 key: 'storage_checkout_review_window_hours',
                 value: String(reviewWindowHours),
                 description: 'Hours manager has to review storage after chef checkout before auto-clear',
-            });
-        }
-
-        if (extendedClaimWindowHours !== undefined) {
-            if (extendedClaimWindowHours < 2 || extendedClaimWindowHours > 168) {
-                return res.status(400).json({ error: "Extended claim window must be between 2 and 168 hours (7 days)" });
-            }
-            updates.push({
-                key: 'storage_checkout_extended_claim_window_hours',
-                value: String(extendedClaimWindowHours),
-                description: 'Extended hours after checkout during which manager/admin can still file damage claims for serious issues',
             });
         }
 
@@ -3255,18 +3258,48 @@ router.post("/damage-claims/:id/charge", requireFirebaseAuthWithUser, requireAdm
  * GET /admin/overstay-settings
  * Get current overstay penalty platform defaults + escalation threshold
  */
+router.get('/lifecycle-settings', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { const { getLifecycleSettings } = await import('../services/lifecycle-settings'); res.json(await getLifecycleSettings()); }
+    catch (error) { logger.error('Failed to read lifecycle settings', error); res.status(500).json({ error: 'Failed to read lifecycle settings' }); }
+});
+router.put('/lifecycle-settings', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try { const { saveLifecycleSettings } = await import('../services/lifecycle-settings'); res.json(await saveLifecycleSettings(req.body, req.neonUser!.id)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save lifecycle settings' }); }
+});
+router.get('/historical-visit-reviews', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { const { getHistoricalVisitReviewQueue } = await import('../services/kitchen-visit-lifecycle'); res.json(await getHistoricalVisitReviewQueue()); }
+    catch (error) { logger.error('Failed to read historical visits', error); res.status(500).json({ error: 'Failed to read historical visits' }); }
+});
+router.post('/historical-visit-reviews/:bookingId/:visitId', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    const bookingId = Number(req.params.bookingId), visitId = Number(req.params.visitId);
+    if (!Number.isSafeInteger(bookingId) || bookingId <= 0 || !Number.isSafeInteger(visitId) || visitId < 0) return res.status(400).json({ error: 'Invalid booking or visit ID' });
+    try {
+        const { recordHistoricalVisitOutcome } = await import('../services/kitchen-visit-lifecycle');
+        const result = await recordHistoricalVisitOutcome(bookingId, visitId, req.neonUser!.id, req.body.outcome, req.body.reason);
+        res.status(result.success ? 200 : 400).json(result);
+    } catch (error) { logger.error('Historical visit review failed', error); res.status(500).json({ error: 'Failed to record historical outcome' }); }
+});
+
 router.get("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
     try {
         const { getOverstayPlatformDefaults } = await import('../services/overstay-defaults-service');
         const defaults = await getOverstayPlatformDefaults();
+        const { getOverstayDisputeWindowHours } = await import('../services/overstay-defaults-service');
+        const disputeWindowHours = await getOverstayDisputeWindowHours();
+        const { isOverstayMonetaryEnforcementEnabled } = await import('../services/overstay-defaults-service');
+        const monetaryEnforcementEnabled = await isOverstayMonetaryEnforcementEnabled();
 
         res.json({
             settings: {
+                disputeWindowHours,
+                monetaryEnforcementEnabled,
                 gracePeriodDays: defaults.gracePeriodDays,
                 penaltyRatePercent: defaults.penaltyRate * 100,
                 maxPenaltyDays: defaults.maxPenaltyDays,
             },
             defaults: {
+                disputeWindowHours: 24,
+                monetaryEnforcementEnabled: true,
                 gracePeriodDays: 3,
                 penaltyRatePercent: 10,
                 maxPenaltyDays: 30,
@@ -3284,12 +3317,23 @@ router.get("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, asyn
  */
 router.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { gracePeriodDays, penaltyRatePercent, maxPenaltyDays } = req.body;
+        const { gracePeriodDays, penaltyRatePercent, maxPenaltyDays, disputeWindowHours, monetaryEnforcementEnabled } = req.body;
 
         const updates: { key: string; value: string; description: string }[] = [];
 
+        if (disputeWindowHours !== undefined) {
+            if (!Number.isSafeInteger(disputeWindowHours) || disputeWindowHours < 1 || disputeWindowHours > 168)
+                return res.status(400).json({ error: 'Overstay dispute window must be between 1 and 168 whole hours' });
+            updates.push({ key: 'overstay_dispute_window_hours', value: String(disputeWindowHours),
+                description: 'Hours chefs have to dispute a final overstay penalty before collection' });
+        }
+        if (monetaryEnforcementEnabled !== undefined) {
+            if (typeof monetaryEnforcementEnabled !== 'boolean') return res.status(400).json({ error: 'Monetary enforcement must be true or false' });
+            updates.push({ key: 'overstay_monetary_enforcement_enabled', value: String(monetaryEnforcementEnabled), description: 'Allow collection of reviewed overstay penalties' });
+        }
+
         if (gracePeriodDays !== undefined) {
-            if (gracePeriodDays < 0 || gracePeriodDays > 14) {
+            if (!Number.isSafeInteger(gracePeriodDays) || gracePeriodDays < 0 || gracePeriodDays > 14) {
                 return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
             }
             updates.push({
@@ -3300,8 +3344,8 @@ router.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, asyn
         }
 
         if (penaltyRatePercent !== undefined) {
-            if (penaltyRatePercent < 1 || penaltyRatePercent > 100) {
-                return res.status(400).json({ error: "Penalty rate must be between 1% and 100%" });
+            if (!Number.isFinite(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
+                return res.status(400).json({ error: "Penalty rate must be between 0% and 100%" });
             }
             updates.push({
                 key: 'overstay_penalty_rate',
@@ -3311,7 +3355,7 @@ router.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, asyn
         }
 
         if (maxPenaltyDays !== undefined) {
-            if (maxPenaltyDays < 1 || maxPenaltyDays > 90) {
+            if (!Number.isSafeInteger(maxPenaltyDays) || maxPenaltyDays < 1 || maxPenaltyDays > 90) {
                 return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
             }
             updates.push({
@@ -3378,6 +3422,9 @@ router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, as
                 sor.calculated_penalty_cents as "calculatedPenaltyCents",
                 sor.final_penalty_cents as "finalPenaltyCents",
                 sor.charge_failure_reason as "chargeFailureReason",
+                sor.chef_dispute_reason as "chefDisputeReason",
+                sor.chef_disputed_at as "chefDisputedAt",
+                sor.dispute_reviewed_at as "disputeReviewedAt",
                 sor.detected_at as "detectedAt",
                 sor.resolved_at as "resolvedAt",
                 sl.name as "storageName",
@@ -3988,6 +4035,19 @@ router.get("/overstay-penalties", requireFirebaseAuthWithUser, requireAdmin, asy
  * GET /admin/overstay-penalties/:id/history
  * Full audit trail for a single overstay penalty record.
  */
+router.post('/overstay-penalties/:id/review-dispute', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid penalty ID' });
+    try {
+        const { reviewOverstayDispute } = await import('../services/overstay-penalty-service');
+        const result = await reviewOverstayDispute(id, req.neonUser!.id, req.body.amountCents, req.body.reason);
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        logger.error('Failed to review overstay dispute', error);
+        return res.status(500).json({ error: 'Failed to review dispute' });
+    }
+});
+
 router.get("/overstay-penalties/:id/history", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const overstayId = parseInt(req.params.id);

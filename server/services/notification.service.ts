@@ -147,7 +147,7 @@ interface CreateChefNotificationParams {
  * Unified notification creation - supports both managers and chefs
  * Uses the appropriate table based on target type
  */
-async function createNotification(params: CreateNotificationParams) {
+async function createNotification(params: CreateNotificationParams, connection: Pick<typeof db, 'execute'> = db) {
   const {
     userId,
     target,
@@ -176,7 +176,7 @@ async function createNotification(params: CreateNotificationParams) {
     
     if (target === 'manager') {
       // Insert into manager_notifications table
-      result = await db.execute(sql`
+      result = await connection.execute(sql`
         INSERT INTO manager_notifications 
         (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
         VALUES (
@@ -196,7 +196,7 @@ async function createNotification(params: CreateNotificationParams) {
       logger.info(`[NotificationService] Created ${type} notification for manager ${userId}`);
     } else {
       // Insert into chef_notifications table
-      result = await db.execute(sql`
+      result = await connection.execute(sql`
         INSERT INTO chef_notifications 
         (chef_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
         VALUES (
@@ -225,7 +225,7 @@ async function createNotification(params: CreateNotificationParams) {
 /**
  * Legacy function for backward compatibility - creates manager notification
  */
-async function createManagerNotification(params: CreateManagerNotificationParams) {
+async function createManagerNotification(params: CreateManagerNotificationParams, connection: Pick<typeof db, 'execute'> = db) {
   return createNotification({
     userId: params.managerId,
     target: 'manager',
@@ -238,13 +238,13 @@ async function createManagerNotification(params: CreateManagerNotificationParams
     actionUrl: params.actionUrl,
     actionLabel: params.actionLabel,
     expiresAt: params.expiresAt
-  });
+  }, connection);
 }
 
 /**
  * Create chef notification
  */
-async function createChefNotification(params: CreateChefNotificationParams) {
+async function createChefNotification(params: CreateChefNotificationParams, connection: Pick<typeof db, 'execute'> = db) {
   return createNotification({
     userId: params.chefId,
     target: 'chef',
@@ -256,7 +256,7 @@ async function createChefNotification(params: CreateChefNotificationParams) {
     actionUrl: params.actionUrl,
     actionLabel: params.actionLabel,
     expiresAt: params.expiresAt
-  });
+  }, connection);
 }
 
 // ===================================
@@ -411,15 +411,15 @@ async function notifyNewApplication(data: ApplicationNotificationData) {
     locationId: data.locationId,
     type: 'application_new',
     priority: 'high',
-    title: 'New Chef Application',
-    message: `${data.chefName} (${data.chefEmail}) has applied to use your kitchen. Review their application to approve or reject.`,
+    title: 'New Access Request',
+    message: `${data.chefName} (${data.chefEmail}) requested kitchen access. Review their request to approve or decline.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName,
       chefEmail: data.chefEmail
     },
     actionUrl: managerDashboardView('applications'),
-    actionLabel: 'Review Application'
+    actionLabel: 'Review Request'
   });
 }
 
@@ -429,8 +429,8 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
     locationId: data.locationId,
     type: 'application_new',
     priority: 'high',
-    title: 'Chef Application Requirements Submitted',
-    message: `${data.chefName} (${data.chefEmail}) submitted their Chef Application Requirements${data.locationName ? ` for ${data.locationName}` : ''}. Review the Chef Application Requirements to approve full booking access.`,
+    title: 'Kitchen Access Documents Submitted',
+    message: `${data.chefName} (${data.chefEmail}) submitted their kitchen access documents${data.locationName ? ` for ${data.locationName}` : ''}. Review the documents to approve booking access.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName,
@@ -439,7 +439,7 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
       step: 2
     },
     actionUrl: managerDashboardView('applications'),
-    actionLabel: 'Review Chef Application Requirements'
+    actionLabel: 'Review Access Documents'
   });
 }
 
@@ -449,14 +449,14 @@ async function notifyApplicationApproved(data: ApplicationNotificationData) {
     locationId: data.locationId,
     type: 'application_approved',
     priority: 'normal',
-    title: 'Application Approved',
-    message: `You approved ${data.chefName}'s application. They can now book your kitchen.`,
+    title: 'Kitchen Access Approved',
+    message: `You approved ${data.chefName}'s kitchen access request. They can now book your kitchen.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName
     },
     actionUrl: managerDashboardView('applications'),
-    actionLabel: 'View Applications'
+    actionLabel: 'View Access Requests'
   });
 }
 
@@ -649,7 +649,7 @@ async function notifyChefBookingConfirmed(data: ChefBookingNotificationData) {
     type: 'booking_confirmed',
     priority: 'high',
     title: 'Booking Confirmed!',
-    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed. Remember to check in when you arrive and check out when you're done — both are required for every session.`,
+    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed. See your booking details for the applicable check-in and checkout requirements.`,
     metadata: {
       bookingId: data.bookingId,
       kitchenName: data.kitchenName,
@@ -1099,14 +1099,14 @@ async function notifyManagerOverstayPendingReview(data: { managerId: number; loc
 }
 
 // Chef: Penalty approved by manager
-async function notifyChefPenaltyApproved(data: { chefId: number } & OverstayNotificationData) {
+async function notifyChefPenaltyApproved(data: { chefId: number; disputeDeadline?: string } & OverstayNotificationData) {
   const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
   return createChefNotification({
     chefId: data.chefId,
     type: 'overstay_penalty_approved',
     priority: 'urgent',
     title: 'Overstay Penalty Approved',
-    message: `A $${formattedAmount} penalty for your storage "${data.storageName}" (${data.daysOverdue} days overdue) has been approved. Payment will be charged to your saved card.`,
+    message: `A $${formattedAmount} penalty for your storage "${data.storageName}" (${data.daysOverdue} days overdue) has been approved. ${data.disputeDeadline ? `You may dispute it until ${data.disputeDeadline}. ` : ''}Collection waits for the dispute window and any admin review.`,
     metadata: {
       overstayId: data.overstayId,
       storageName: data.storageName,

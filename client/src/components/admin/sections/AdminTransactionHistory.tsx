@@ -1,3 +1,4 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 /**
  * Admin Transaction History Section
  * 
@@ -19,11 +20,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AppDialogContent } from "@/components/ui/app-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Search, Download, ChevronDown, RefreshCw, CreditCard, Receipt, CheckCircle, DollarSign, ArrowUpDown, Calendar, Building2, Package, Copy, ExternalLink, AlertTriangle, Eye, Hash } from "lucide-react";
+import { Search, Download, ChevronDown, RefreshCw, CreditCard, Receipt, CheckCircle, DollarSign, ArrowUpDown, Calendar, Building2, Copy, ExternalLink, AlertTriangle, Eye, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BookingPaymentRecovery } from '../BookingPaymentRecovery';
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime, formatCurrency as sharedFormatCurrency, formatPrice, downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
 
 // Types
@@ -289,8 +292,8 @@ function StripeIdCell({ label, value }: { label: string; value: string | null })
   );
 }
 
-// Detail Sheet
-function TransactionDetailSheet({
+// Detail Dialog
+function TransactionDetailDialog({
   transaction,
   open,
   onOpenChange,
@@ -317,21 +320,21 @@ function TransactionDetailSheet({
   ];
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <AppDialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
             Transaction #{tx.id}
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             {getBookingTypeLabel(tx.bookingType, tx.metadata)} — {tx.referenceCode ? (
               <span className="font-mono font-semibold text-primary">{tx.referenceCode}</span>
             ) : (
               <>Booking #{tx.bookingId}</>
             )}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="mt-6 space-y-6">
           {(tx.metadata as any)?.fullRefundRequest?.status === 'pending' && (
@@ -620,8 +623,8 @@ function TransactionDetailSheet({
             </details>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </AppDialogContent>
+    </Dialog>
   );
 }
 
@@ -863,7 +866,7 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
   });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [selectedTransaction, setSelectedTransaction] = useState<AdminTransaction | null>(null);
-  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   // Debounce search
   const handleSearchChange = useCallback((value: string) => {
@@ -941,7 +944,7 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
 
   const handleViewDetails = useCallback((tx: AdminTransaction) => {
     setSelectedTransaction(tx);
-    setDetailSheetOpen(true);
+    setDetailDialogOpen(true);
   }, []);
 
   const refundDecisionMutation = useMutation({
@@ -960,7 +963,7 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
     },
     onSuccess: (data) => {
       toast({ title: data.decision === 'approved' ? 'Refund approved' : 'Refund request rejected' });
-      setDetailSheetOpen(false);
+      setDetailDialogOpen(false);
       setSelectedTransaction(null);
       queryClient.invalidateQueries({ queryKey: ['/api/admin/transactions'] });
     },
@@ -1025,6 +1028,7 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
 
   return (
     <div className="space-y-6">
+      <BookingPaymentRecovery />
       {/* Header */}
       <div className="flex items-center gap-3">
         <CreditCard className="h-5 w-5 text-indigo-600" />
@@ -1189,10 +1193,6 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
                 CSV
               </Button>
 
-              {/* Refresh */}
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -1323,11 +1323,11 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
         </CardContent>
       </Card>
 
-      {/* Detail Sheet */}
-      <TransactionDetailSheet
+      {/* Detail Dialog */}
+      <TransactionDetailDialog
         transaction={selectedTransaction}
-        open={detailSheetOpen}
-        onOpenChange={setDetailSheetOpen}
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
         onRefundDecision={(transactionId, decision) => refundDecisionMutation.mutate({ transactionId, decision })}
         isRefundDecisionPending={refundDecisionMutation.isPending}
       />

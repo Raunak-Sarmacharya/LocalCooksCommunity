@@ -5,7 +5,7 @@ import { ApplicationSubmissionSummary } from "@/components/kitchen-application/A
 import { useGlobalMyApplications, useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { Building2, Loader2 } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -276,7 +276,7 @@ export default function ApplyToKitchen() {
 
   // Keep the journey mounted while a Google popup or email sign-in is pending.
   if (authLoading || locationLoading || kitchensLoading) {
-    return <main className="flex min-h-[50vh] items-center justify-center gap-3" role="status"><Loader2 className="h-5 w-5 animate-spin" />{authLoading ? "Restoring your account…" : "Loading this kitchen…"}</main>;
+    return <main className="mx-auto w-full max-w-3xl px-4 py-12" role="status">{loadingContent}</main>;
   }
 
   const requestJourney = !user || !emailVerified;
@@ -320,5 +320,5 @@ export default function ApplyToKitchen() {
     );
   }
 
-  return <main className="flex min-h-[50vh] items-center justify-center gap-3" role="status"><Loader2 className="h-5 w-5 animate-spin" />Restoring your account…</main>;
+  return <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-12" role="status"><Skeleton className="h-10 w-1/2" /><Skeleton className="h-[400px] w-full rounded-xl" /></main>;
 }

@@ -147,6 +147,10 @@
   ],
   "crons": [
     {
+      "path": "/api/viewings/delivery-worker",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/detect-overstays",
       "schedule": "0 6 * * *"
     },

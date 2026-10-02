@@ -1,7 +1,8 @@
+import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, Package, CalendarPlus, X } from "lucide-react";
+import { AlertTriangle, CalendarPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";

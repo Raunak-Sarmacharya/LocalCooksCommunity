@@ -59,7 +59,7 @@ const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
 
 // Kitchen Booking System components
 const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword"));
-const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
+const ManagerAvailabilityPage = lazy(() => import("@/pages/ManagerAvailabilityPage"));
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
 const LegacyKitchenBookingRedirect = lazy(() => import("@/pages/LegacyKitchenBookingRedirect"));
 const KitchenCheckoutCancelPage = lazy(() => import("@/pages/KitchenCheckoutCancelPage"));
@@ -284,7 +284,9 @@ function Router() {
 
         {/* Kitchen Application Routes */}
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
+        {localePublicRoutes("/apply-kitchen/:locationId", ApplyToKitchen)}
         <SubdomainRoute path="/request-tour/:locationId" component={RequestTourPage} subdomain={subdomain} />
+        {localePublicRoutes("/request-tour/:locationId", RequestTourPage)}
         <SubdomainRoute path="/compare-kitchens" component={KitchenComparisonPage} subdomain={subdomain} />
         {localePublicRoutes("/compare-kitchens", KitchenComparisonPage)}
         <SubdomainRoute path="/kitchen-requirements/:locationId" component={KitchenRequirementsPage} subdomain={subdomain} />
@@ -340,7 +342,12 @@ function Router() {
         <Route path="/manager/availability">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
-              <KitchenAvailabilityManagement />
+              {/*
+                Wrapped in `ManagerShell` via this page. The availability screen is a content
+                component that has never owned a shell, so this route used to render with no header
+                and no navigation — stranded on a phone exactly like /manager/bookings was.
+              */}
+              <ManagerAvailabilityPage />
             </ManagerProtectedRoute>
           ) : null}
         </Route>
@@ -396,6 +403,10 @@ function Router() {
         {/* Kitchen Preview Page - Public, no auth required */}
         <Route path="/kitchen-preview/:identifier" component={KitchenPreviewPage} />
         {localePublicRoutes("/kitchen-preview/:identifier", KitchenPreviewPage)}
+        <Route path="/kitchen-preview/:identifier/:kitchenSlug" component={KitchenPreviewPage} />
+        {localePublicRoutes("/kitchen-preview/:identifier/:kitchenSlug", KitchenPreviewPage)}
+        <Route path="/kitchen/:identifier/:kitchenSlug" component={KitchenPreviewPage} />
+        {localePublicRoutes("/kitchen/:identifier/:kitchenSlug", KitchenPreviewPage)}
 
         <Route component={NotFound} />
       </Switch>

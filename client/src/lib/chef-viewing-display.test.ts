@@ -23,6 +23,15 @@ describe("viewingStatusBadge", () => {
 });
 
 describe("formatTourWhen", () => {
+  it('distinguishes the two Newfoundland clocks across the autumn DST change', () => {
+    expect(formatTourWhen('2026-11-01T04:15:00Z', 30, 'Asia/Kolkata')).toContain('1:45 AM NDT – 1:15 AM NST');
+  });
+  it('uses Newfoundland summer/winter clocks regardless of supplied/browser timezone', () => {
+    expect(formatTourWhen('2026-10-08T02:15:00Z', null, 'Asia/Kolkata')).toContain('Oct 7, 2026');
+    expect(formatTourWhen('2026-10-08T02:15:00Z', null, 'Asia/Kolkata')).toContain('11:45 PM');
+    expect(formatTourWhen('2026-01-07T12:30:00Z', null, 'UTC')).toContain('9:00 AM');
+    expect(formatTourWhen('2026-10-08T02:15:00Z', 30, 'UTC')).toContain('Oct 8, 2026');
+  });
   it("appends end time when duration is set", () => {
     const label = formatTourWhen("2026-08-31T12:25:00.000Z", 30, "America/St_Johns");
     expect(label).toContain("–");
@@ -36,6 +45,12 @@ describe("formatTourWhen", () => {
 });
 
 describe("normalizeChefTourRow", () => {
+  it('does not use internal manager notes as chef messages', () => {
+    const row = normalizeChefTourRow({ viewing: { id: 4, scheduledAt: '2026-10-01T12:00:00Z', managerNotes: 'PRIVATE ADMIN', sharedManagerNotes: 'Hello chef' } });
+    expect(row?.sharedManagerNotes).toBe('Hello chef');
+    expect(JSON.stringify(row)).not.toContain('PRIVATE ADMIN');
+    expect(viewingStatusBadge('cancelled', null, 'manager', 'access_unavailable').defaultLabel).toBe('Disrupted');
+  });
   it("flattens nested API rows and drops empty intake", () => {
     const row = normalizeChefTourRow({
       locationName: "Satya Test",
@@ -120,5 +135,11 @@ describe("isPendingOrUpcomingTour", () => {
         now
       )
     ).toBe(0);
+  });
+  it('keeps a confirmed tour current while it is in progress, then moves it to history', () => {
+    const tour = { status: 'confirmed', scheduledAt: '2026-09-05T11:45:00.000Z', durationMinutes: 30 };
+    expect(isPendingOrUpcomingTour(tour, Date.parse('2026-09-05T12:00:00Z'))).toBe(true);
+    expect(isPendingOrUpcomingTour(tour, Date.parse('2026-09-05T12:15:01Z'))).toBe(false);
+    expect(tour.status).toBe('confirmed');
   });
 });

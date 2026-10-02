@@ -4,7 +4,8 @@ import {
     storageListings,
     equipmentListings
 } from "@shared/schema";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, getTableColumns } from "drizzle-orm";
+import { storageListingAwaitingRemoval } from '../../services/booking-linked-cancellation';
 import { InsertStorageListing, InsertEquipmentListing, StorageListing, EquipmentListing } from "./inventory.types";
 
 export class InventoryRepository {
@@ -15,7 +16,7 @@ export class InventoryRepository {
      * Helper to map DB result to DTO with proper numeric type conversions.
      * Postgres numeric columns are returned as strings by node-postgres.
      */
-    private mapStorageToDTO(row: typeof storageListings.$inferSelect) {
+    private mapStorageToDTO(row: typeof storageListings.$inferSelect & { awaitingRemoval?: boolean }) {
         return {
             ...row,
             // Convert numeric string fields to numbers for frontend compatibility
@@ -48,7 +49,7 @@ export class InventoryRepository {
      */
     async getStorageListingsByKitchenId(kitchenId: number) {
         const rows = await db
-            .select()
+            .select({ ...getTableColumns(storageListings), awaitingRemoval: storageListingAwaitingRemoval })
             .from(storageListings)
             .where(eq(storageListings.kitchenId, kitchenId))
             .orderBy(asc(storageListings.id));
@@ -57,7 +58,7 @@ export class InventoryRepository {
 
     async getStorageListingById(id: number) {
         const [listing] = await db
-            .select()
+            .select({ ...getTableColumns(storageListings), awaitingRemoval: storageListingAwaitingRemoval })
             .from(storageListings)
             .where(eq(storageListings.id, id));
         return listing ? this.mapStorageToDTO(listing) : null;

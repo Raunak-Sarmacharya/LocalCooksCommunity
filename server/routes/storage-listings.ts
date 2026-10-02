@@ -6,9 +6,18 @@ import { requireChef } from "./middleware";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
-import { getOverstayLocationDefaults } from "../services/overstay-defaults-service";
 
 const router = Router();
+
+function validateOverstayOverrides(data: Record<string, unknown>): string | undefined {
+    for (const [key, min, max] of [['overstayGracePeriodDays', 0, 14], ['overstayMaxPenaltyDays', 1, 90]] as const) {
+        const value = data[key];
+        if (value != null && (!Number.isSafeInteger(value) || Number(value) < min || Number(value) > max)) return `${key} must be a whole number from ${min} to ${max}, or null to inherit`;
+    }
+    const rate = data.overstayPenaltyRate;
+    if (rate != null && ((typeof rate !== 'number' && typeof rate !== 'string') || String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0 || Number(rate) > 1)) return 'Overstay penalty rate must be between 0 and 1, or null to inherit';
+    if (data.overstayPolicyText != null && typeof data.overstayPolicyText !== 'string') return 'Overstay policy text must be a string';
+}
 
 // ===================================
 // MANAGER STORAGE ENDPOINTS
@@ -79,6 +88,8 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
     try {
         const user = req.neonUser!;
         const { kitchenId, ...listingData } = req.body;
+        const overrideError = validateOverstayOverrides(listingData);
+        if (overrideError) return res.status(400).json({ error: overrideError });
 
         if (!kitchenId || isNaN(parseInt(kitchenId))) {
             return res.status(400).json({ error: "Valid kitchen ID is required" });
@@ -99,25 +110,22 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
         }
 
-        // Fetch location defaults for overstay penalties
-        const locationDefaults = await getOverstayLocationDefaults(kitchen.locationId);
-
-        // Build listing data with location defaults applied
+        // Null overrides inherit live defaults until the booking terms are accepted.
         const listingDataWithDefaults = {
             ...listingData,
             // Only apply location defaults if listing data doesn't already include these values
             overstayGracePeriodDays: listingData.overstayGracePeriodDays !== undefined 
                 ? listingData.overstayGracePeriodDays 
-                : (locationDefaults.gracePeriodDays ?? 3),
+                : null,
             overstayPenaltyRate: listingData.overstayPenaltyRate !== undefined 
                 ? listingData.overstayPenaltyRate 
-                : (locationDefaults.penaltyRate ?? 0.10),
+                : null,
             overstayMaxPenaltyDays: listingData.overstayMaxPenaltyDays !== undefined 
                 ? listingData.overstayMaxPenaltyDays 
-                : (locationDefaults.maxPenaltyDays ?? 30),
+                : null,
             overstayPolicyText: listingData.overstayPolicyText !== undefined 
                 ? listingData.overstayPolicyText 
-                : locationDefaults.policyText,
+                : null,
         };
 
         // Manager-created listings are auto-approved and active
@@ -162,6 +170,11 @@ router.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
             return res.status(403).json({ error: "Access denied to this listing" });
         }
 
+        const overrideError = validateOverstayOverrides(req.body);
+        if (overrideError) return res.status(400).json({ error: overrideError });
+        if (req.body.kitchenId !== undefined && Number(req.body.kitchenId) !== existingListing.kitchenId) {
+            return res.status(400).json({ error: 'A storage listing cannot be moved to another kitchen' });
+        }
         const updated = await inventoryService.updateStorageListing(listingId, req.body);
 
         logger.info(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
@@ -219,6 +232,11 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
         // Get all storage listings for this kitchen
         const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
 
@@ -226,7 +244,7 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
         // Listings with status 'approved' or 'active' AND isActive=true are visible
         const visibleListings = allListings.filter((listing: any) =>
             (listing.status === 'approved' || listing.status === 'active') &&
-            listing.isActive === true
+            listing.isActive === true && !listing.awaitingRemoval
         );
 
         logger.info(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
@@ -250,14 +268,14 @@ router.get("/public/kitchens/:kitchenId/storage-listings", async (req: Request, 
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchen || !kitchen.isActive) {
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
         const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
         const visibleListings = allListings.filter((listing: any) =>
             (listing.status === "approved" || listing.status === "active") &&
-            listing.isActive === true
+            listing.isActive === true && !listing.awaitingRemoval
         );
 
         const sanitized = visibleListings.map((s: any) => ({

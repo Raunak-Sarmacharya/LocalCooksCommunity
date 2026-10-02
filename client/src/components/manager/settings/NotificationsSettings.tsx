@@ -87,14 +87,14 @@ export default function NotificationsSettings({ location, onSave, embedded = fal
             </ul>
           </div>
 
-          <div className="flex justify-end pt-2">
+          {(isDirty || saveAction.status !== 'idle') && <div className="flex justify-end pt-2">
             <StatusButton
               status={saveAction.status}
               onClick={saveAction.execute}
               disabled={!isDirty}
               labels={{ idle: mt("saveNotificationSettings"), loading: mt("savingShort"), success: mt("saved") }}
             />
-          </div>
+          </div>}
         </CardContent>
       </Card>
     </div>

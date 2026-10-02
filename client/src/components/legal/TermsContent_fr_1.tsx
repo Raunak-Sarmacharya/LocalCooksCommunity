@@ -297,7 +297,7 @@ export default function TermsContent_fr_1() {
       </ul>
       <p className="mb-4">Local Cooks peut rejeter ou retourner les réclamations incomplètes ou non justifiées.</p>
 
-      <p className="mb-4"><strong>Notification et réponse du Chef.</strong> Lorsqu'un Propriétaire de cuisine soumet une réclamation pour dommages, Local Cooks en informera le Chef et lui accordera un délai de réponse fixe (par exemple, 72 heures) pour accepter, payer, contester ou fournir des informations supplémentaires. Si le Chef ne répond pas dans le délai imparti, Local Cooks peut considérer la réclamation comme incontestée aux fins de faciliter le paiement, sous réserve de la Loi applicable et des limites de réclamation disponibles.</p>
+      <p className="mb-4"><strong>Notification et réponse du Chef.</strong> Lorsqu'un Propriétaire de cuisine soumet une réclamation pour dommages, Local Cooks en informera le Chef et lui accordera un délai de réponse fixe (défini par Local Cooks) pour accepter, payer, contester ou fournir des informations supplémentaires. Si le Chef ne répond pas dans le délai imparti, Local Cooks examinera la réclamation avant de faciliter tout paiement, sous réserve de la Loi applicable et des limites de réclamation disponibles.</p>
 
       <p className="mb-2"><strong>Examen et décision de la Plateforme.</strong> Local Cooks peut examiner les détails de la Réservation, les messages, les preuves et toute réponse et, à sa discrétion, peut :</p>
       <ul className="list-disc pl-6 mb-4">

@@ -29,6 +29,23 @@ const DEFAULTS: OverstayPlatformDefaults = {
   maxPenaltyDays: 30,
 };
 
+export async function getOverstayDisputeWindowHours(): Promise<number> {
+  const [setting] = await db.select({ value: platformSettings.value }).from(platformSettings)
+    .where(eq(platformSettings.key, 'overstay_dispute_window_hours')).limit(1);
+  if (!setting) return 24;
+  const value = Number(setting.value);
+  if (!Number.isSafeInteger(value) || value < 1 || value > 168) throw new Error('Invalid overstay dispute window setting');
+  return value;
+}
+
+export async function isOverstayMonetaryEnforcementEnabled(): Promise<boolean> {
+  const [setting] = await db.select({ value: platformSettings.value }).from(platformSettings)
+    .where(eq(platformSettings.key, 'overstay_monetary_enforcement_enabled')).limit(1);
+  if (!setting) return true;
+  if (!['true', 'false'].includes(setting.value)) throw new Error('Invalid overstay monetary enforcement setting');
+  return setting.value === 'true';
+}
+
 /**
  * Get platform-wide overstay penalty defaults
  * Fetches from database or returns hardcoded defaults if not configured
@@ -53,14 +70,16 @@ export async function getOverstayPlatformDefaults(): Promise<OverstayPlatformDef
       .where(eq(platformSettings.key, 'overstay_max_penalty_days'))
       .limit(1);
 
-    return {
-      gracePeriodDays: gracePeriodSetting ? parseInt(gracePeriodSetting.value) : DEFAULTS.gracePeriodDays,
-      penaltyRate: penaltyRateSetting ? parseFloat(penaltyRateSetting.value) : DEFAULTS.penaltyRate,
-      maxPenaltyDays: maxDaysSetting ? parseInt(maxDaysSetting.value) : DEFAULTS.maxPenaltyDays,
+    const defaults = {
+      gracePeriodDays: gracePeriodSetting ? Number(gracePeriodSetting.value) : DEFAULTS.gracePeriodDays,
+      penaltyRate: penaltyRateSetting ? Number(penaltyRateSetting.value) : DEFAULTS.penaltyRate,
+      maxPenaltyDays: maxDaysSetting ? Number(maxDaysSetting.value) : DEFAULTS.maxPenaltyDays,
     };
+    if (!Number.isSafeInteger(defaults.gracePeriodDays) || defaults.gracePeriodDays < 0 || !Number.isSafeInteger(defaults.maxPenaltyDays) || defaults.maxPenaltyDays <= 0 || !Number.isFinite(defaults.penaltyRate) || defaults.penaltyRate < 0 || defaults.penaltyRate > 1) throw new Error('Invalid overstay platform settings');
+    return defaults;
   } catch (error) {
     logger.error('[OverstayDefaultsService] Error fetching platform defaults:', error);
-    return DEFAULTS;
+    throw error;
   }
 }
 
@@ -93,7 +112,7 @@ export async function getOverstayLocationDefaults(locationId: number): Promise<O
     };
   } catch (error) {
     logger.error('[OverstayDefaultsService] Error fetching location defaults:', error);
-    return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
+    throw error;
   }
 }
 
@@ -152,6 +171,10 @@ export async function getEffectivePenaltyConfig(
     effectiveConfig.maxPenaltyDays = listingMaxPenaltyDays;
   }
 
+  if (!Number.isSafeInteger(effectiveConfig.gracePeriodDays) || effectiveConfig.gracePeriodDays < 0
+    || !Number.isSafeInteger(effectiveConfig.maxPenaltyDays) || effectiveConfig.maxPenaltyDays < 1
+    || !Number.isFinite(effectiveConfig.penaltyRate) || effectiveConfig.penaltyRate < 0 || effectiveConfig.penaltyRate > 1)
+    throw new Error('Invalid effective overstay settings');
   return effectiveConfig;
 }
 

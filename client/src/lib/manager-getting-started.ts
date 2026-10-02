@@ -107,6 +107,8 @@ export interface GettingStartedStage {
   phoneVerified: boolean;
   /** At least one kitchen is live to cooks (`listing_status === 'active'`). */
   isLive: boolean;
+  /** A booking has reached confirmed or completed, even if the listing is now draft. */
+  hasEverBooked?: boolean;
 }
 
 /**
@@ -146,8 +148,9 @@ export function isItemVisible(id: GettingStartedItemId, stage: GettingStartedSta
     case "tours":
     case "equipment":
     case "storage":
-    case "first-booking":
       return stage.isSetupComplete && stage.isLive;
+    case "first-booking":
+      return stage.isSetupComplete && (stage.isLive || stage.hasEverBooked === true);
   }
 }
 

@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, Clock, ListChecks } from "@/components/ui/manager-icons";
+import { ChevronRight, CheckCircle2, Clock, ListChecks } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { CARD_RADIUS } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -37,11 +37,13 @@ export function OnboardingStatusBanner({
   if (showSetupBanner || (!showLicenseReviewBanner && tasks.length > 0)) {
     const isSetup = showSetupBanner;
     return (
-      <section className={cn(CARD_RADIUS, "mx-4 mt-4 border bg-card p-4 md:mx-6 md:mt-6", className)} aria-label={mt("managerSetupGuidance")}>
+      <section className={cn(CARD_RADIUS, "mx-4 mt-4 border bg-card p-4 md:mx-6 md:mt-6",
+        isSetup && "border-primary/20 border-l-[3px] border-l-primary/80 shadow-[0_16px_42px_-26px_hsl(var(--primary)/0.48),0_6px_20px_-12px_rgba(15,23,42,0.22)]",
+        className)} aria-label={mt("managerSetupGuidance")}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <ListChecks className="size-4 text-muted-foreground" />
+            <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", isSetup ? "border border-primary/20 bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+              <ListChecks className="size-4" />
             </div>
             <div className="min-w-0">
               <h2 className="text-sm font-semibold">{isSetup ? mt("yourNextSetupStep") : mt("improveYourListing")}</h2>
@@ -50,7 +52,7 @@ export function OnboardingStatusBanner({
             </div>
           </div>
           <Button size="sm" variant="outline" onClick={() => isSetup ? onContinueSetup() : onImproveListing?.(tasks[0])} className="shrink-0">
-            {isSetup ? mt("continueSetup") : mt("completeListing")}<ArrowRight className="ml-1.5 size-4" />
+            {isSetup ? mt("continueSetup") : mt("completeListing")}<ChevronRight className="ml-1.5 size-4" />
           </Button>
         </div>
       </section>

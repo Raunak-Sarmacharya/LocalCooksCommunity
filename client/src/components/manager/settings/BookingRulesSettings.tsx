@@ -14,7 +14,7 @@ import { mt } from "@/i18n/manager";
 import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { FileText, ExternalLink, ClipboardCheck, ArrowRight } from "@/components/ui/manager-icons";
+import { FileText, ExternalLink, ClipboardCheck, ChevronRight, RotateCcw, Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
@@ -42,6 +42,12 @@ interface Location {
 }
 
 interface BookingRulesSettingsProps {
+  hideHeader?: boolean;
+  minimumBookingHours?: number;
+  policyOverrides?: { cancellationPolicyHours?: number | null; defaultDailyBookingLimit?: number | null; minimumBookingWindowHours?: number | null };
+  kitchenName?: string;
+  policyUpdating?: boolean;
+  onResetPolicy?: (field: "cancellationPolicyHours" | "defaultDailyBookingLimit" | "minimumBookingWindowHours") => void;
   location: Location;
   onSave: (updates: any) => Promise<unknown>;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
@@ -96,18 +102,20 @@ export interface BookingPoliciesHandle {
 }
 
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
-  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, termsNote }, ref) {
+  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false }, ref) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
     // Cancellation Policy State
-    const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
+    const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
 
     // Daily Booking Limit State
     const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
 
     // Minimum Booking Window State
     const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours ?? 1);
+    const [minimumDuration, setMinimumDuration] = useState(minimumBookingHours ?? 0);
+    useEffect(() => setMinimumDuration(minimumBookingHours ?? 0), [minimumBookingHours]);
 
     // Terms & Conditions State
     const [termsFile, setTermsFile] = useState<File | null>(null);
@@ -120,17 +128,18 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const { data: arrivalSettings } = useQuery<ArrivalTimings>({
       queryKey: ["checkin-checkout-settings", location.id],
       queryFn: () => apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
-      enabled: !!location.id,
+      enabled: !!location.id && !hideArrivalTimings,
     });
 
     const [checkinWindow, setCheckinWindow] = useState<number | null>(null);
     const [noShowGrace, setNoShowGrace] = useState<number | null>(null);
 
-    const isRulesDirty = cancellationHours !== (location.cancellationPolicyHours || 24)
+    const isRulesDirty = cancellationHours !== (location.cancellationPolicyHours ?? 24)
       || dailyBookingLimit !== (location.defaultDailyBookingLimit || 2)
       || minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1)
-      || checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
-      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null);
+      || (minimumBookingHours !== undefined && minimumDuration !== minimumBookingHours)
+      || (!hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
+      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null)));
 
     const hasTerms = Boolean(location.kitchenTermsUrl);
     const showTermsUpload = !hasTerms || isReplacingTerms;
@@ -138,10 +147,21 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     // Suffix follows the value: "1 hour" vs "24 hours". Uses ICU plurals so
     // locales with more than two forms (uk) resolve correctly.
     const hourUnit = (value: number) => mt("hourUnit", { count: value });
+    const resetPolicyControl = (field: keyof NonNullable<BookingRulesSettingsProps["policyOverrides"]>) =>
+      policyOverrides?.[field] != null ? (
+        <div className="flex max-w-56 flex-col items-end gap-1">
+          <Button variant="outline" size="sm" className="!min-h-0 h-8 gap-1.5 px-3 text-xs"
+            disabled={isRulesDirty || policyUpdating} onClick={() => onResetPolicy?.(field)}>
+            {policyUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+            {mt("kitchenPolicyReset")}
+          </Button>
+          {isRulesDirty && <p className="text-right text-xs text-muted-foreground">{mt("kitchenPolicyResetAfterSave")}</p>}
+        </div>
+      ) : null;
 
     // Update state when location changes
     useEffect(() => {
-      setCancellationHours(location.cancellationPolicyHours || 24);
+      setCancellationHours(location.cancellationPolicyHours ?? 24);
       setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
       setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
     }, [location]);
@@ -177,6 +197,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         cancellationPolicyHours: cancellationHours,
         defaultDailyBookingLimit: dailyBookingLimit,
         minimumBookingWindowHours: minimumBookingWindowHours,
+        ...(minimumBookingHours !== undefined ? { minimumBookingHours: minimumDuration } : {}),
         // null clears the per-location override so the platform default applies.
         checkinWindowMinutesBefore: checkinWindow,
         noShowGraceMinutes: noShowGrace,
@@ -190,6 +211,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       cancellationHours,
       dailyBookingLimit,
       minimumBookingWindowHours,
+      minimumBookingHours,
+      minimumDuration,
       checkinWindow,
       noShowGrace,
       queryClient,
@@ -256,9 +279,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
     return (
       <div className="space-y-6">
-        <ChefPageHeader
+        {!hideHeader && <ChefPageHeader
           title={mt("navBookingRules")}
-          description={mt("configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}
+          description={mt(policyOverrides ? "kitchenPoliciesInheritedDescription" : "configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}
           actions={
             // One save for the whole page, in a stable spot near the title and
             // only while something is unsaved — the page now spans three cards,
@@ -271,26 +294,36 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               />
             ) : undefined
           }
-        />
+        />}
 
         <Card>
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
+            {policyOverrides && <CardDescription>{mt("kitchenPoliciesCardDescription")}</CardDescription>}
           </CardHeader>
           <CardContent className="divide-y divide-border p-0">
+            {minimumBookingHours !== undefined && <SettingsRow id="kitchen-minimum-duration"
+              label={mt("minimumBookingDuration")} hint={mt("zeroMeansNoMinimum")}
+              help={mt("setTheMinimumHoursRequiredPerBookingForEachKitchen")}>
+              <NumericInput id="kitchen-minimum-duration" suffix={hourUnit(minimumDuration)} value={String(minimumDuration)}
+                disabled={policyUpdating}
+                onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} className="w-32" />
+            </SettingsRow>}
             <SettingsRow
               id="cancellation-hours"
               label={mt("cancellationWindow")}
               hint={mt("minimumHoursBeforeCancellationAllowed")}
               help={mt("cancellationRefundPlatformNote")}
             >
-              <NumericInput
+              <div className="flex flex-col items-end gap-2"><NumericInput
                 id="cancellation-hours"
+                disabled={policyUpdating}
                 suffix={hourUnit(cancellationHours)}
                 value={String(cancellationHours)}
                 onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
                 className="w-32"
               />
+              {resetPolicyControl("cancellationPolicyHours")}</div>
             </SettingsRow>
 
             <SettingsRow
@@ -299,13 +332,15 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               hint={mt("maximumHoursAChefCanBookInASingleDay124Hours")}
               help={mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}
             >
-              <NumericInput
+              <div className="flex flex-col items-end gap-2"><NumericInput
                 id="daily-limit"
+                disabled={policyUpdating}
                 suffix={hourUnit(dailyBookingLimit)}
                 value={String(dailyBookingLimit)}
                 onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
                 className="w-32"
               />
+              {resetPolicyControl("defaultDailyBookingLimit")}</div>
             </SettingsRow>
 
             <SettingsRow
@@ -314,8 +349,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               hint={mt("chefsMustBookAtLeastHours")}
               help={mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}
             >
-              <NumericInput
+              <div className="flex flex-col items-end gap-2"><NumericInput
                 id="min-window"
+                disabled={policyUpdating}
                 suffix={hourUnit(minimumBookingWindowHours)}
                 value={String(minimumBookingWindowHours)}
                 onValueChange={(val) => {
@@ -324,6 +360,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 }}
                 className="w-32"
               />
+              {resetPolicyControl("minimumBookingWindowHours")}</div>
             </SettingsRow>
           </CardContent>
         </Card>
@@ -418,11 +455,11 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 <button
                   type="button"
                   onClick={() => onNavigate("settings-checkin-checkout")}
-                  className="inline-flex items-center gap-1.5 rounded-md text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors duration-200 ease-out motion-reduce:transition-none hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <ClipboardCheck className="h-4 w-4" />
                   {mt("goToCheckinChecklist")}
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
             )}
@@ -468,7 +505,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 </div>
                 <AuthenticatedDocumentLink
                   url={location.kitchenTermsUrl}
-                  className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors duration-200 ease-out motion-reduce:transition-none hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {mt("viewDocument")}
                   <ExternalLink className="h-3.5 w-3.5" />

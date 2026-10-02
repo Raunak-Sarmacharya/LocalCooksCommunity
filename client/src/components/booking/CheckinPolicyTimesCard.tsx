@@ -32,7 +32,7 @@ type CheckinPolicyTimesCardProps = {
 };
 
 /**
- * Check-in opens / visit starts / no-show window — shared by booking details
+ * Check-in opens / visit starts — shared by booking details
  * and the chef check-in sheet so chefs see the same numbers in both places.
  */
 export function CheckinPolicyTimesCard({
@@ -50,7 +50,7 @@ export function CheckinPolicyTimesCard({
   showIntro = true,
 }: CheckinPolicyTimesCardProps) {
   const { t, i18n } = useTranslation("chef");
-  const tz = timezone || "America/St_Johns";
+  const tz = "America/St_Johns";
   const times = kitchenCheckinPolicyTimes(
     bookingDate.split("T")[0],
     startTime,
@@ -72,14 +72,6 @@ export function CheckinPolicyTimesCard({
     {
       label: t("bdVisitStarts", "Visit starts"),
       value: formatPolicyTimestamp(times.startsAt, i18n.language, tz),
-    },
-    {
-      label: t("bdNoShowAfter", "No-show may be recorded after"),
-      value: formatPolicyTimestamp(times.noShowAfter, i18n.language, tz),
-      hint: t("bdMinutesAfterStart", {
-        count: noShowGraceMinutes,
-        defaultValue: `${noShowGraceMinutes} minutes after start`,
-      }),
     },
   ] as const;
 
@@ -136,7 +128,7 @@ export function CheckoutReadyCard({
   className,
 }: CheckoutReadyCardProps) {
   const { t, i18n } = useTranslation("chef");
-  const tz = timezone || "America/St_Johns";
+  const tz = "America/St_Johns";
   const dateOnly = bookingDate.split("T")[0];
   const endsAt = createBookingDateTime(
     calendarDateForBookingTime(dateOnly, endTime, operatingWindowStartTime, startTime),
