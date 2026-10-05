@@ -3,7 +3,7 @@ import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
-import { chefKitchenApplications, chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, platformSettings, users } from '@shared/schema';
+import { chefKitchenApplications, chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, platformSettings, users, kitchenViewings } from '@shared/schema';
 import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
 import { findMissingRequiredCustomFields } from '../../domains/applications/tier-validation';
 import { fromZodError } from 'zod-validation-error';
@@ -17,8 +17,11 @@ import { KitchenService } from '../../domains/kitchens/kitchen.service';
 import { ApplicationRepository } from '../../domains/applications/application.repository';
 import { ApplicationService } from '../../domains/applications/application.service';
 
-import { getAdminDb, initializeConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
+import { getAdminDb, initializeConversation, initializeSharedConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
+import { isChatParticipant, participantChatRelationships, sharedChatEligibility, tourGrantsChat } from '../../services/shared-chat-access';
 import { FieldValue } from 'firebase-admin/firestore';
+import { ChatAccessError, withParticipantChat, serializeChat, sendParticipantMessage, readParticipantMessages, orphanChatHistory } from '../../services/participant-chat';
+import { storedFileUrl } from '../../services/chat-file-access';
 import { and, eq, isNotNull, ne, inArray } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
 import { getChefPhone } from '../../phone-utils';
@@ -1455,8 +1458,142 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
     }
 });
 
+// Only server-owned context is returned; tour notes never enter this DTO.
+async function participantConversation(actor: NonNullable<Request['neonUser']>, chefId: number, locationId: number) {
+    const location = await locationService.getLocationById(locationId);
+    if (!location || !isChatParticipant(actor, chefId, location.managerId)) return null;
+    const eligible = await sharedChatEligibility(chefId, locationId);
+    if (!eligible) return null;
+    const conversationId = await initializeSharedConversation(chefId, locationId);
+    if (!conversationId) throw new Error('CHAT_UNAVAILABLE');
+    const snapshot = await (await getAdminDb()).collection('conversations').doc(conversationId).get();
+    if (!snapshot.exists) throw new Error('CHAT_UNAVAILABLE');
+    const metadata = await withParticipantChat(actor, actor.firebaseUid!, conversationId, async ({ ref, live }) => serializeChat({ id: ref.id, ...(await ref.get()).data(), unavailable: !live }));
+    return { id: conversationId, conversationId, chefId, locationId, managerId: location.managerId,
+        locationName: location.name, chefName: await getUserDisplayName(chefId, 'chef'),
+        managerName: await getUserDisplayName(location.managerId!, 'manager'),
+        linkedApplicationIds: eligible.applications.map(application => application.id),
+        eligibleViewingIds: eligible.viewingIds, conversation: metadata };
+}
+// Direct Firestore chat access is denied. Every refresh rechecks SQL ownership;
+// polling replaces listeners so reassignment never leaves a stale grant alive.
+const participantPath = '/firebase/chat/conversations/:conversationId';
+function participantRequestError(res: Response, error: unknown) {
+    if (error instanceof ChatAccessError) return res.status(error.status).json({ error: error.message });
+    return sharedChatError(res, error);
+}
+router.get(participantPath, requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+        const result = await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId,
+            async ({ ref, managerId, live, applicationIds }) => serializeChat({ id: ref.id, ...(await ref.get()).data(),
+                managerId, applicationId: applicationIds[0], linkedApplicationIds: applicationIds, unavailable: !live }));
+        return res.json(result);
+    } catch (error) { return participantRequestError(res, error); }
+});
+router.get(`${participantPath}/messages`, requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+        const result = await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId,
+            async ({ ref }) => {
+                const snapshot = await ref.collection('messages').orderBy('createdAt', 'desc').limit(50).get();
+                return snapshot.docs.reverse().map(doc => serializeChat({ id: doc.id, ...doc.data() }));
+            });
+        return res.json(result);
+    } catch (error) { return participantRequestError(res, error); }
+});
+router.post(`${participantPath}/messages`, requireFirebaseAuthWithUser, async (req, res) => {
+    try { return res.status(201).json(await sendParticipantMessage(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId, req.body)); }
+    catch (error) { return participantRequestError(res, error); }
+});
+router.post(`${participantPath}/read`, requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+        if (Object.keys(req.body || {}).some(key => key !== 'messageIds')) throw new ChatAccessError(400, 'Invalid read request');
+        await readParticipantMessages(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId, req.body?.messageIds);
+        return res.json({ ok: true });
+    } catch (error) { return participantRequestError(res, error); }
+});
+router.post(`${participantPath}/archive`, requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+        if (typeof req.body?.archived !== 'boolean' || Object.keys(req.body).some(key => key !== 'archived'))
+            throw new ChatAccessError(400, 'Invalid archive request');
+        await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId, async ({ ref, role }) => {
+            await ref.update({ [role === 'chef' ? 'archivedChefAt' : 'archivedManagerAt']:
+                req.body.archived ? FieldValue.serverTimestamp() : FieldValue.delete() });
+        });
+        return res.json({ ok: true });
+    } catch (error) { return participantRequestError(res, error); }
+});
+function sharedChatError(res: Response, error: unknown) {
+    logger.error('Could not resolve shared participant chat', error);
+    return res.status(409).json({ error: 'Messaging is temporarily unavailable. Please retry or contact Local Cooks.' });
+}
+router.get('/firebase/chat/conversations', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        if (!['chef', 'manager'].includes(req.neonUser!.role || '')) return res.status(403).json({ error: 'Participant access required' });
+        const pairs = await participantChatRelationships(req.neonUser!);
+        const conversations = await orphanChatHistory(req.neonUser!, req.firebaseUser!.uid);
+        for (const row of conversations) {
+            const location = await locationService.getLocationById(row.locationId);
+            row.locationName = location.name;
+            row.chefName = await getUserDisplayName(row.chefId, 'chef');
+            row.managerName = row.managerId ? await getUserDisplayName(row.managerId, 'manager') : 'Manager account unavailable';
+        }
+        for (const pair of pairs) {
+            if (conversations.some(row => row.chefId === pair.chefId && row.locationId === pair.locationId)) continue;
+            const conversation = await participantConversation(req.neonUser!, pair.chefId, pair.locationId);
+            if (conversation) conversations.push(conversation);
+        }
+        return res.json({ conversations });
+    } catch (error) { return sharedChatError(res, error); }
+});
+router.get('/firebase/chat/locations/:locationId/chefs/:chefId/conversation', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const chefId = Number(req.params.chefId), locationId = Number(req.params.locationId);
+        if (![chefId, locationId].every(id => Number.isSafeInteger(id) && id > 0)) return res.status(400).json({ error: 'Invalid relationship' });
+        const conversation = await participantConversation(req.neonUser!, chefId, locationId);
+        if (!conversation) return res.status(404).json({ error: 'Eligible conversation not found' });
+        return res.json(conversation);
+    } catch (error) { return sharedChatError(res, error); }
+});
+router.get('/firebase/chat/viewings/:viewingId/conversation', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const viewingId = Number(req.params.viewingId);
+        if (!Number.isSafeInteger(viewingId) || viewingId <= 0) return res.status(400).json({ error: 'Invalid tour' });
+        const [tour] = await db.select({ id: kitchenViewings.id, chefId: kitchenViewings.chefId,
+            locationId: kitchenViewings.locationId, status: kitchenViewings.status,
+            adminReviewDecision: kitchenViewings.adminReviewDecision, outcomeHistory: kitchenViewings.outcomeHistory })
+            .from(kitchenViewings).where(eq(kitchenViewings.id, viewingId)).limit(1);
+        const location = tour ? await locationService.getLocationById(tour.locationId) : null;
+        if (!tour || !location || !isChatParticipant(req.neonUser!, tour.chefId, location.managerId))
+            return res.status(404).json({ error: 'Tour not found' });
+        if (!tourGrantsChat(tour)) return res.status(409).json({ error: 'Messaging opens after Local Cooks approves and forwards this tour' });
+        const conversation = await participantConversation(req.neonUser!, tour.chefId, tour.locationId);
+        if (!conversation) return res.status(409).json({ error: 'Eligible conversation unavailable. Please retry.' });
+        return res.json({ ...conversation, viewingId,
+            path: `${req.neonUser!.role === 'manager' ? '/manager' : ''}/dashboard?view=messages&conversation=${encodeURIComponent(conversation.conversationId)}&tour=${viewingId}` });
+    } catch (error) { return sharedChatError(res, error); }
+});
+
 // Local Cooks chat is server mediated: Firestore client rules only admit the
 // chef and kitchen manager to a conversation.
+router.get('/firebase/chat/applications/:applicationId/conversation', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const id = Number(req.params.applicationId);
+        if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid application' });
+        const application = await chefApplicationService.getApplicationById(id);
+        const location = application ? await locationService.getLocationById(application.locationId) : null;
+        if (!application || !location || !isChatParticipant(req.neonUser!, application.chefId, location.managerId))
+            return res.status(404).json({ error: 'Application not found' });
+        if (application.status !== 'approved') return res.json(null);
+        const conversationId = await initializeConversation(application);
+        if (!conversationId) return res.status(409).json({ error: 'Kitchen messaging is unavailable. Contact Local Cooks.' });
+        const conversation = await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, conversationId,
+            async ({ ref }) => serializeChat({ id: ref.id, ...(await ref.get()).data() }));
+        res.json(conversation);
+    } catch (error) {
+        logger.error('Failed to resolve participant conversation:', error);
+        res.status(500).json({ error: 'Could not open kitchen messaging' });
+    }
+});
 router.get('/firebase/admin/chat/applications/:applicationId/conversation', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const applicationId = Number(req.params.applicationId);
@@ -1490,16 +1627,19 @@ router.get('/firebase/admin/chat/conversations/:conversationId/messages', requir
 router.post('/firebase/admin/chat/conversations/:conversationId/messages', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { content, fileUrl, fileName } = req.body || {};
-        if (typeof content !== 'string' || content.length > 10000 || (fileUrl != null && typeof fileUrl !== 'string') || (fileName != null && typeof fileName !== 'string') || (!content.trim() && !fileUrl)) {
+        if (typeof content !== 'string' || content.length > 10000 || (fileUrl != null && (typeof fileUrl !== 'string' || !storedFileUrl(fileUrl))) || (fileName != null && typeof fileName !== 'string') || (!content.trim() && !fileUrl)) {
             return res.status(400).json({ error: 'Invalid message' });
         }
         const adminDb = await getAdminDb();
         const conversation = adminDb.collection('conversations').doc(req.params.conversationId);
         const existing = await conversation.get();
         if (!existing.exists || existing.data()?.unavailable === true) return res.status(409).json({ error: 'Conversation is unavailable' });
-        const message = await conversation.collection('messages').add({
+        const message = conversation.collection('messages').doc();
+        const batch = adminDb.batch();
+        batch.set(message, {
             senderId: req.neonUser!.id,
             senderRole: 'admin',
+            senderFirebaseUid: req.firebaseUser!.uid,
             content: content.trim(),
             type: fileUrl ? 'file' : 'text',
             fileUrl: fileUrl || null,
@@ -1507,11 +1647,13 @@ router.post('/firebase/admin/chat/conversations/:conversationId/messages', requi
             createdAt: FieldValue.serverTimestamp(),
             readAt: null,
         });
-        await conversation.update({
+        batch.update(conversation, {
             lastMessageAt: FieldValue.serverTimestamp(),
             lastMessageText: fileUrl ? (fileName || 'Attachment') : content.trim().slice(0, 240),
             unreadChefCount: FieldValue.increment(1),
+            archivedChefAt: FieldValue.delete(),
         });
+        await batch.commit();
         res.status(201).json({ id: message.id });
     } catch (error) {
         logger.error('Failed to send Local Cooks chat message:', error);

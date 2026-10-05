@@ -5,7 +5,7 @@ import { AlertCircle, MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
-import { getAllConversations, getLiveChatParticipants, setConversationArchived, type Conversation } from "@/services/chat-service";
+import { getAllConversations, getLiveChatParticipants, setConversationArchived, resolveTourConversation, type Conversation } from "@/services/chat-service";
 import { useToast } from "@/hooks/use-toast";
 import ChatPanel from './ChatPanel';
 import { ConversationList } from "./ConversationList";
@@ -44,6 +44,7 @@ interface UnifiedChatViewProps {
   userId: number;
   role: 'chef' | 'manager';
   initialConversationId?: string | null;
+  initialTourId?: string | null;
   onNavigate?: (view: string) => void;
   chefHasApplications?: boolean;
   managerHasKitchen?: boolean;
@@ -55,23 +56,25 @@ interface UnifiedChatViewProps {
    */
   hideConversationList?: boolean;
 }
+const EMPTY_CONVERSATIONS: Conversation[] = [];
 
-export default function UnifiedChatView({ userId, role, initialConversationId, onNavigate, chefHasApplications = false, managerHasKitchen = true, hideConversationList = false }: UnifiedChatViewProps) {
+export default function UnifiedChatView({ userId, role, initialConversationId, initialTourId, onNavigate, chefHasApplications = false, managerHasKitchen = true, hideConversationList = false }: UnifiedChatViewProps) {
   const { t } = useTranslation('chef');
   const { toast } = useToast();
   const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [applicationDetails, setApplicationDetails] = useState<Record<number, ApplicationDetails>>({});
-  const [locationNames, setLocationNames] = useState<Record<number, string>>({});
-  const [partnerNames, setPartnerNames] = useState<Record<number, string>>({});
+  const [locationNames] = useState<Record<number, string>>({});
+  const [partnerNames] = useState<Record<number, string>>({});
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
   // Whether the application-details pass has finished at least once. The list
   // used to hide every conversation until its application arrived, which made
   // the sidebar look empty (then pop in) even though the data was already here.
   const [hasResolvedDetails, setHasResolvedDetails] = useState(false);
+  const [applicationContextError, setApplicationContextError] = useState('');
 
   // Fetch all conversations
-  const { data: conversations = [], isLoading, error, refetch } = useQuery({
+  const { data: conversations = EMPTY_CONVERSATIONS, isLoading, error, refetch } = useQuery({
     queryKey: [`${role}-conversations`, userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -83,21 +86,29 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
     retryDelay: 1000,
   });
 
-  // Set initial conversation if provided
+  const exactTour = useQuery({
+    queryKey: ['chat-exact-tour', initialTourId, initialConversationId],
+    enabled: !!initialTourId,
+    queryFn: async () => {
+      if (!/^\d+$/.test(initialTourId || '')) throw Error('Invalid tour context');
+      const result = await resolveTourConversation(Number(initialTourId));
+      if (!initialConversationId || result.conversationId !== initialConversationId)
+        throw Error('This tour link no longer matches its shared conversation. Reopen messaging from My Tours.');
+      return result;
+    }, retry: false,
+  });
+  const appliedContext = useRef<string | null>(null);
+  const contextKey = initialConversationId + ':' + (initialTourId || '');
   useEffect(() => {
-    if (initialConversationId && conversations.length > 0) {
+    if (initialTourId && !exactTour.data) { setSelectedConversation(null); return; }
+    if (appliedContext.current !== contextKey) {
       const conv = conversations.find(c => c.id === initialConversationId);
-      if (conv) {
-        setSelectedConversation(conv);
-        setIsMobileListVisible(false);
-      }
+      setSelectedConversation(conv || null);
+      if (conv) { setIsMobileListVisible(false); appliedContext.current = contextKey; }
+    } else {
+      setSelectedConversation(current => conversations.find(c => c.id === current?.id) || null);
     }
-  }, [initialConversationId, conversations]);
-
-
-
-  // Track failed fetches to prevent infinite retries
-  const failedLocationIds = useRef(new Set<number>());
+  }, [initialConversationId, initialTourId, exactTour.data, conversations, contextKey]);
 
   // Memoize the refresh callback to prevent re-renders in ChatPanel -> useChat
   const handleUnreadCountUpdate = useCallback(() => {
@@ -183,120 +194,31 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
     [deletedParticipantIds, participantStatus],
   );
 
-  // Fetch application details
+  // Optional application details control only application panels and booking.
   useEffect(() => {
-    if (conversations.length === 0) {
-      setHasResolvedDetails(true);
-      return;
-    }
-
-    const fetchApplicationDetails = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
+    let active = true;
+    if (!conversations.some(c => c.applicationId)) { setApplicationDetails({}); setApplicationContextError(''); setHasResolvedDetails(true); return; }
+    const load = async () => {
       try {
-        const token = await currentUser.getIdToken();
-        const details: Record<number, ApplicationDetails> = {};
-        const locations: Record<number, string> = {};
-        const partners: Record<number, string> = {};
-
-        // Choose endpoint based on role
-        const endpoint = role === 'manager'
-          ? '/api/manager/kitchen-applications'
-          : '/api/firebase/chef/kitchen-applications';
-
-        const appsResponse = await fetch(endpoint, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: 'include',
-        });
-
-        if (appsResponse.ok) {
-          const allApps = await appsResponse.json();
-          if (Array.isArray(allApps)) {
-            for (const conv of conversations) {
-              const matchingApp = allApps.find((app: ApplicationDetails) => app.id === conv.applicationId);
-              if (matchingApp) {
-                details[conv.applicationId] = matchingApp;
-
-                if (matchingApp?.location?.name) {
-                  locations[conv.locationId] = matchingApp.location.name;
-                }
-
-                if (role === 'manager') {
-                  // Partner is chef
-                  if (matchingApp?.chef?.username) {
-                    partners[conv.chefId] = matchingApp.chef.username;
-                  }
-                  if (matchingApp?.fullName) {
-                    partners[conv.chefId] = matchingApp.fullName;
-                  }
-                } else if (matchingApp?.managerName) {
-                  // Partner is the manager. The server resolves their real name
-                  // for us; a chef working across several kitchens needs to see
-                  // *which* manager each thread belongs to, so only fall back to
-                  // the generic label when the name genuinely isn't available.
-                  partners[conv.managerId] = matchingApp.managerName;
-                }
-              }
-            }
-          }
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw Error('Not authenticated');
+        const response = await fetch(role === 'manager' ? '/api/manager/kitchen-applications' : '/api/firebase/chef/kitchen-applications', {
+          credentials: 'include', headers: { Authorization: 'Bearer ' + token } });
+        if (!response.ok) throw Error('Could not load application context');
+        const apps = await response.json(), details: Record<number, ApplicationDetails> = {};
+        for (const conv of conversations) {
+          const app = Array.isArray(apps) ? apps.find(app => app.id === conv.applicationId && app.status === 'approved') : null;
+          if (app) details[app.id] = app;
         }
-
-        // Fill in any missing location names (only fetch if not already known)
-        const locationPromises = conversations
-          .filter(conv => {
-            if (locations[conv.locationId]) return false;
-            if (locationNames[conv.locationId] && !locationNames[conv.locationId].startsWith('Location #')) return false;
-            if (failedLocationIds.current.has(conv.locationId)) return false;
-            return true;
-          })
-          .map(async (conv) => {
-            try {
-              const locationResponse = await fetch(`/api/public/locations/${conv.locationId}/details`, {
-                credentials: 'include',
-              });
-              if (locationResponse.ok) {
-                const locationData = await locationResponse.json();
-                // API returns name directly at root level, not nested under location
-                const locationName = locationData?.name || locationData?.location?.name;
-                if (locationName) {
-                  locations[conv.locationId] = locationName;
-                } else {
-                  locations[conv.locationId] = "Unknown Location";
-                  failedLocationIds.current.add(conv.locationId);
-                }
-              } else {
-                // Location not found - use a friendly fallback
-                locations[conv.locationId] = `Location #${conv.locationId}`;
-                failedLocationIds.current.add(conv.locationId);
-              }
-            } catch (error) {
-              logger.error(`Error fetching location ${conv.locationId}:`, error);
-              locations[conv.locationId] = `Location #${conv.locationId}`;
-              failedLocationIds.current.add(conv.locationId);
-            }
-          });
-
-        await Promise.all(locationPromises);
-
-        setApplicationDetails(prev => ({ ...prev, ...details }));
-        setLocationNames(prev => ({ ...prev, ...locations }));
-        setPartnerNames(prev => ({ ...prev, ...partners }));
-      } catch (err) {
-        logger.error('Error in fetchApplicationDetails:', err);
-      } finally {
-        // Even on failure, stop showing skeletons — a list of real rows
-        // degrading to id fallbacks beats an indefinite loading state.
-        setHasResolvedDetails(true);
-      }
+        if (active) { setApplicationDetails(details); setApplicationContextError(''); }
+      } catch (error) { if (active) { setApplicationDetails({}); setApplicationContextError('Application details could not be loaded. Messaging remains available.'); logger.error('Optional application context unavailable:', error); } }
+      finally { if (active) setHasResolvedDetails(true); }
     };
-
-    fetchApplicationDetails();
-    // Removed locationNames from dependency array to prevent infinite loop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void load(); return () => { active = false; };
   }, [conversations, role]);
 
   const handleSelectConversation = (conversation: Conversation) => {
+    appliedContext.current = contextKey;
     setSelectedConversation(conversation);
     setIsMobileListVisible(false);
   };
@@ -317,7 +239,8 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
   // Helpers
   const getPartnerNameLabel = (c: Conversation) => {
     if (role === 'manager') {
-      const app = applicationDetails[c.applicationId];
+      if (c.chefName) return c.chefName;
+      const app = applicationDetails[c.applicationId ?? 0];
       if (partnerNames[c.chefId]) return partnerNames[c.chefId];
       if (app?.fullName) return app.fullName;
       if (app?.chef?.username) return app.chef.username;
@@ -330,9 +253,9 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
     // then whatever the resolver already stored. Only when neither exists do we
     // fall back — and then to the kitchen, which at least disambiguates two
     // threads, rather than a flat "Manager" that tells the chef nothing.
-    const app = applicationDetails[c.applicationId];
+    const app = applicationDetails[c.applicationId ?? 0];
     return (
-      partnerNames[c.managerId] ||
+      c.managerName || partnerNames[c.managerId] ||
       app?.managerName ||
       getPartnerLocation(c) ||
       t("chatManager")
@@ -340,11 +263,11 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
   };
 
   const getPartnerLocation = (c: Conversation) =>
-    applicationDetails[c.applicationId]?.location?.name || locationNames[c.locationId] || `Location #${c.locationId}`;
+    c.locationName || applicationDetails[c.applicationId ?? 0]?.location?.name || locationNames[c.locationId] || `Location #${c.locationId}`;
 
   // Compute application status for conversation thread display
   const getApplicationStatus = useCallback((c: Conversation): ApplicationStatus => {
-    const app = applicationDetails[c.applicationId];
+    const app = applicationDetails[c.applicationId ?? 0];
     if (!app) return 'unknown';
 
     const status = app.status;
@@ -414,6 +337,14 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
     );
   }
 
+  if (initialTourId && exactTour.isPending) return <div role="status" className="p-8">Opening tour messaging…</div>;
+  if (exactTour.error || (initialConversationId && !conversations.some(c => c.id === initialConversationId))) {
+    return <div role="alert" className="p-8 space-y-3">
+      <p>{exactTour.error?.message || 'This conversation is unavailable for your current account. Reopen messaging from your tour or application.'}</p>
+      <Button onClick={() => { void refetch(); if (initialTourId) void exactTour.refetch(); }}>Retry</Button>
+    </div>;
+  }
+
   // Show every conversation the user actually has. Previously rows were hidden
   // until their application details resolved, so a chef opening Messages saw an
   // empty sidebar that filled in late. Rows now render immediately and their
@@ -451,12 +382,14 @@ export default function UnifiedChatView({ userId, role, initialConversationId, o
         "flex-1 flex flex-col bg-background",
         hideConversationList || showEmptyInbox || !isMobileListVisible ? "flex" : "hidden md:flex"
       )}>
+        {applicationContextError && <div role="alert" className="p-3 text-sm">{applicationContextError} <Button variant="link" onClick={() => void refetch()}>Retry</Button></div>}
         {selectedConversation ? (
           <ChatPanel
             key={selectedConversation.id}
             conversationId={selectedConversation.id}
-            applicationId={selectedConversation.applicationId}
-            canBook={applicationDetails[selectedConversation.applicationId]?.status === 'approved' && (applicationDetails[selectedConversation.applicationId]?.current_tier ?? 1) >= 3 && !!applicationDetails[selectedConversation.applicationId]?.tier2_completed_at}
+            bookingId={initialConversationId === selectedConversation.id && /^\d+$/.test(new URLSearchParams(window.location.search).get('booking') || '') ? Number(new URLSearchParams(window.location.search).get('booking')) : undefined}
+            applicationId={applicationDetails[selectedConversation.applicationId ?? 0]?.status === 'approved' ? selectedConversation.applicationId : undefined}
+            canBook={applicationDetails[selectedConversation.applicationId ?? 0]?.status === 'approved' && (applicationDetails[selectedConversation.applicationId ?? 0]?.current_tier ?? 1) >= 3 && !!applicationDetails[selectedConversation.applicationId ?? 0]?.tier2_completed_at}
             chefId={selectedConversation.chefId}
             managerId={selectedConversation.managerId}
             locationId={selectedConversation.locationId}

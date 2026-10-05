@@ -105,8 +105,11 @@ export function isBookingPast(bookingDate: string, endTime: string, timezone: st
  */
 export function formatInTimezone(date: Date, formatStr: string = 'PPpp', timezone: string = DEFAULT_TIMEZONE): string {
   const tzDate = new TZDate(date, timezone);
-  // TZDate already handles timezone, so we don't need to pass timeZone option to format
-  return format(tzDate, formatStr);
+    // date-fns v3 clones Date subclasses, losing TZDate's wall-clock getters.
+    // Format an explicit wall-clock Date; the caller labels the target timezone.
+    const wall = new Date(tzDate.getFullYear(), tzDate.getMonth(), tzDate.getDate(),
+      tzDate.getHours(), tzDate.getMinutes(), tzDate.getSeconds(), tzDate.getMilliseconds());
+    return format(wall, formatStr);
 }
 
 /**

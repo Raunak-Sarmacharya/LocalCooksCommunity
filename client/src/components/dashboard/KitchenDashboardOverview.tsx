@@ -44,7 +44,7 @@ interface Booking {
   checkinStatus?: string | null;
   operatingWindowStartTime?: string | null;
 }
-interface Viewing { viewing: { id: number; locationId: number; status: string; scheduledAt: string; createdAt?: string; updatedAt?: string; durationMinutes?: number; requestedRescheduleAt?: string | null; disruptionReason?: string | null; outcomeHistory?: unknown; adminReviewDecision?: string | null; cancelledBy?: string | null }; chefName?: string; kitchenName?: string; locationName?: string }
+interface Viewing { viewing: { id: number; locationId: number; status: string; scheduledAt: string; createdAt?: string; updatedAt?: string; durationMinutes?: number; requestedRescheduleAt?: string | null; disruptionReason?: string | null; outcomeHistory?: unknown; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; targetedKitchenId?: number | null; adminReviewDecision?: string | null; cancelledBy?: string | null }; chefName?: string; kitchenName?: string; locationName?: string }
 interface Application { chefId?: number; createdAt?: string; updatedAt?: string; fullName?: string; id: number; locationId: number; status: string; current_tier?: number; currentTier?: number; tier2_completed_at?: string | null }
 interface Revenue { completedNetRevenue?: number; netRevenue?: number; pendingPayments?: number; completedPayments?: number; paidBookingCount?: number }
 
@@ -129,7 +129,6 @@ const ACTIVITY_PARAM: Record<string, string | undefined> = {
 const RECENT_ACTIVITY_LIMIT = 20;
 
 export default function KitchenDashboardOverview({ selectedLocation, locations, kitchens, onNavigate, onSelectLocation }: Props) {
-  useTourClock();
   const { user } = useFirebaseAuth();
   const { i18n } = useTranslation();
   const { bookings: allBookings, isLoadingBookings, isErrorBookings } = useManagerDashboard();
@@ -155,6 +154,10 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const locationViewings = viewings.filter((item) =>
     !selectedLocation || item.viewing.locationId === selectedLocation.id,
   );
+  const upcomingTourEnds = locationViewings.filter(({ viewing }) => viewing.status === "confirmed")
+    .map(({ viewing }) => Date.parse(viewing.scheduledAt) + (viewing.durationMinutes ?? 30) * 60_000)
+    .filter(end => Number.isFinite(end) && end > Date.now());
+  useTourClock(upcomingTourEnds.length ? Math.min(...upcomingTourEnds) : undefined);
   const { data: applications = [], isLoading: isLoadingApplications, isError: isErrorApplications } = useQuery<Application[]>({
     queryKey: ["/api/manager/kitchen-applications"],
     queryFn: () => apiGet("/manager/kitchen-applications"),

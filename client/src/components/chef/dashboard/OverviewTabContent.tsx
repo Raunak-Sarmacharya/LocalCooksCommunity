@@ -31,7 +31,7 @@ import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { findChefNavItem } from "@/lib/chef-nav-sections";
 import { useLocation } from "wouter";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
-import { countPendingOrUpcomingTours, normalizeChefTourRow, viewingStatusBadge, type ChefTourRow } from "@/lib/chef-viewing-display";
+import { chefTourVisitAction, countPendingOrUpcomingTours, normalizeChefTourRow, viewingStatusBadge, type ChefTourRow } from "@/lib/chef-viewing-display";
 import { tourActivity } from "@shared/tour-activity";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { useTourClock } from "@/hooks/use-tour-clock";
@@ -288,6 +288,12 @@ export default function OverviewTabContent({
       cta: string;
       onClick: () => void;
     }> = [];
+    for (const tour of tourRows) {
+      const action = chefTourVisitAction(tour);
+      if (action) items.push({ id: `tour-attendance-${tour.id}`, title: action === 'departure' ? 'Tour departure required' : 'Tour arrival required',
+        description: `${tour.kitchenName || tour.locationName} · TOUR-${tour.id}`,
+        cta: action === 'departure' ? tr('tourRecordDeparture', { ns: 'chef', defaultValue: 'Record departure' }) : tr('tourRecordArrival', { ns: 'chef', defaultValue: 'Record arrival' }), onClick: () => navigate(`/dashboard?view=viewings&viewing=${tour.id}`) });
+    }
     for (const tour of tourRows.filter(tour => tour.status === 'no_show' || tour.disruptionReason)) {
       items.push({ id: `tour-${tour.id}`, title: t('ovTourOutcomeReview'),
         description: `${tour.kitchenName || tour.locationName} · ${tr(viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy, tour.disruptionReason).labelKey, { ns: 'chef' })}`,

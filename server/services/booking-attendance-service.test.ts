@@ -41,7 +41,7 @@ describe('explicit booking attendance statements (mocked database only)', () => 
   });
   it('rejects reporting before the whole booking end', async () => {
     vi.setSystemTime(new Date('2026-10-02T19:29:59Z')); prepare();
-    await expect(recordBookingAttendance(10, actor, input)).rejects.toThrow(/scheduled booking end/);
+    await expect(recordBookingAttendance(10, actor, input)).rejects.toThrow(/scheduled visit or booking end/);
     expect(state.events).toEqual([]);
   });
   it.each(['pending', 'cancelled', 'cancellation_requested'])('rejects a %s reservation', async status => {
@@ -56,6 +56,15 @@ describe('explicit booking attendance statements (mocked database only)', () => 
   });
   it('rejects a manipulated visit ID', async () => {
     prepare(); await expect(recordBookingAttendance(10, actor, { ...input, visitId: 999 })).rejects.toThrow(/belonging/);
+  });
+  it('reports an earlier visit after its own end with tracking off, without completing later visits', async () => {
+    vi.setSystemTime(new Date('2026-10-02T14:00:00Z'));
+    const visit = { id: 5, blockIndex: 0, startTime: '09:00', endTime: '10:00', checkinStatus: 'not_checked_in', updatedAt: new Date(timestamp) };
+    state.rows.push([context()], [visit], [visit], []); response();
+    await recordBookingAttendance(10, actor, { ...input, visitId: 5 });
+    expect(state.events[0]).toMatchObject({ visitId: 5, action: 'report_no_show' });
+    expect(state.updates[0]).not.toHaveProperty('status');
+    expect(state.updates[0]).not.toHaveProperty('checkoutApprovedAt');
   });
   it.each([{ checkinStatus: 'checked_in' }, { checkedInAt: new Date() }, { checkoutPhotoUrls: ['photo'] }, { checkoutApprovedAt: new Date() }])('rejects contradictory attendance/inspection evidence %o', async evidence => {
     prepare(evidence); await expect(recordBookingAttendance(10, actor, input)).rejects.toThrow(/contradicts/);

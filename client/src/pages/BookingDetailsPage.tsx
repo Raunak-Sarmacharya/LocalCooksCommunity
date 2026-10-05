@@ -1,3 +1,8 @@
+import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
+import BookingPreparation from "@/components/booking/BookingPreparation";
+import { KitchenBookingChanges } from '@/components/booking/KitchenBookingChanges';
+import { BookingCancellationChooser } from '@/components/booking/BookingCancellationChooser';
+import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { getHourlySlotStarts, sortTimesInOperatingWindow } from '@shared/operating-hours';
@@ -26,6 +31,7 @@ import { BookingActionDialog, type BookingForAction } from "@/components/manager
 import { BookingManagementDialog, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementDialog";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 import { BookingAttendancePanel } from "@/components/booking/BookingAttendancePanel";
+import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { createBookingDateTime } from '@shared/timezone-utils';
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { ServiceFeeInfoPopover } from "@/components/booking/ServiceFeeInfoPopover";
@@ -35,7 +41,6 @@ import { mt } from "@/i18n/manager";
 import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
 import { CheckinPolicyTimesCard } from "@/components/booking/CheckinPolicyTimesCard";
 import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
-import { CancellationRequestDialog, type CancellationTarget } from '@/components/booking/CancellationRequestDialog';
 
 interface BookingDetails {
   id: number;
@@ -50,6 +55,8 @@ interface BookingDetails {
   status: string;
   paymentStatus?: string;
   paymentDecision?: { state?: string; amount?: number } | null;
+  cancellationPolicyHours?: number;
+  cancellationRequestDeclinedAt?: string | null;
   specialNotes?: string;
   totalPrice?: number;
   hourlyRate?: number;
@@ -76,7 +83,10 @@ interface BookingDetails {
     id: number;
     name: string;
     address?: string;
+    arrivalInstructions?: string | null;
+    departureInstructions?: string | null;
     timezone?: string;
+    cancellationPolicyHours?: number;
   };
   chef?: {
     id: number;
@@ -150,7 +160,7 @@ interface BookingDetails {
   checkoutEnabled?: boolean;
   checkinWindowMinutesBefore?: number;
   noShowGraceMinutes?: number;
-  visits?: Array<{ id: number; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
+  visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -187,12 +197,26 @@ export default function BookingDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [openingConversation, setOpeningConversation] = useState(false);
+  const openBookingConversation = async () => {
+    if (!booking || openingConversation) return;
+    setOpeningConversation(true);
+    try {
+      const response = await fetch(`/api/bookings/${booking.id}/conversation`, { method: 'POST', headers: await getAuthHeaders(), credentials: 'include' });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Kitchen messaging is unavailable');
+      navigate(result.path);
+    } catch (error) {
+      toast({ title: 'Kitchen messaging', description: error instanceof Error ? error.message : 'Please retry or contact Local Cooks.', variant: 'destructive' });
+    } finally { setOpeningConversation(false); }
+  };
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [cancellationRefundScope, setCancellationRefundScope] = useState<{ kind: 'storage' | 'equipment'; id: number } | undefined>();
+  const [cancellationRefundOpen, setCancellationRefundOpen] = useState(false);
   const [managementDialogOpen, setManagementDialogOpen] = useState(false);
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const [checkinTrackerOpen, setCheckinTrackerOpen] = useState(false);
-  const [itemCancellation, setItemCancellation] = useState<CancellationTarget | null>(null);
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const queryClient = useQueryClient();
 
@@ -283,23 +307,6 @@ export default function BookingDetailsPage() {
     } catch (err) {
       logger.error("Error reloading booking details:", err);
     }
-  };
-
-  const cancelItem = async (id: number, reason?: string) => {
-    if (!itemCancellation) return;
-    setItemCancellationPending(true);
-    try {
-      const response = await fetch(`/api/chef/${itemCancellation.type}-bookings/${id}/cancel`, {
-        method: 'PUT', credentials: 'include', headers: await getAuthHeaders(), body: JSON.stringify({ reason }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Cancellation could not be saved');
-      toast({ title: result.action === 'cancelled' ? t('crImmediateCancellation') : t('crManagerReviewRequired'), description: result.message });
-      setItemCancellation(null);
-      await reloadBookingDetails();
-      await queryClient.invalidateQueries({ queryKey: ['/api/chef/bookings'] });
-    } catch (error) { toast({ title: t('crImmediateCancellation'), description: error instanceof Error ? error.message : 'Cancellation unavailable', variant: 'destructive' }); }
-    finally { setItemCancellationPending(false); }
   };
 
   const reviewEquipmentCancellation = async (id: number, accept: boolean) => {
@@ -1105,13 +1112,7 @@ export default function BookingDetailsPage() {
           break;
         }
         case "accept-cancellation": {
-          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ action: 'accept' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
-          setBooking({ ...booking, status: 'cancelled' });
-          toast({ title: mt("cancellationAccepted") });
+          setCancellationRefundScope(undefined); setCancellationRefundOpen(true);
           break;
         }
         case "decline-cancellation": {
@@ -1126,13 +1127,7 @@ export default function BookingDetailsPage() {
         }
         case "accept-storage-cancel": {
           if (!params.storageCancellationId) throw new Error(tt("noStorageBookingId"));
-          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
-            method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ action: 'accept' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
-          toast({ title: mt("storageCancellationAccepted") });
-          window.location.reload();
+          setCancellationRefundScope({ kind: 'storage', id: params.storageCancellationId }); setCancellationRefundOpen(true);
           break;
         }
         case "decline-storage-cancel": {
@@ -1200,7 +1195,8 @@ export default function BookingDetailsPage() {
   const chefCanCheckIn = !isManagerView && booking?.status === 'confirmed' &&
     booking.checkinEnabled === true && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
   const chefCanCheckOut = !isManagerView && booking?.status === 'confirmed' &&
-    booking.checkoutEnabled === true && booking.checkinStatus === 'checked_in';
+    ((booking.checkinStatus === 'checked_in' && (booking.checkoutEnabled === true || booking.checkinEnabled === true)) ||
+      (booking.checkoutEnabled === true && booking.checkinEnabled !== true && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in')));
   const renderChefCheckinPolicy = (startTime: string) => {
     if (!booking || isManagerView || booking.checkinWindowMinutesBefore == null || booking.noShowGraceMinutes == null) return null;
     return (
@@ -1246,15 +1242,26 @@ export default function BookingDetailsPage() {
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="space-y-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight">
               {booking.kitchen?.name || t("bdKitchenBookingFallback")}
             </h1>
+            {!isManagerView && <BookingCancellationChooser bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
+              decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
+              paidCancellationAvailable={(() => { try { return Date.now() < kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return false; } })()}
+              items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
+                name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${item.startDate.slice(0, 10)} – ${item.endDate.slice(0, 10)}` })),
+                ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
+                  name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
+              onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}</div>
             {booking.location && (
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5" />
                 {booking.location.name}
                 {booking.location.address && ` · ${booking.location.address}`}
               </p>
+            )}
+            {!isManagerView && ['confirmed', 'completed', 'cancellation_requested'].includes(booking.status) && (
+              <BookingPreparation arrivalInstructions={booking.location?.arrivalInstructions} departureInstructions={booking.location?.departureInstructions} />
             )}
           </div>
 
@@ -1317,6 +1324,10 @@ export default function BookingDetailsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
+          <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
+          {(['cancelled', 'cancellation_requested'].includes(booking.status) || [...(booking.storageBookings || []), ...(booking.equipmentBookings || [])].some(item => ['cancelled', 'cancellation_requested', 'removal_required'].includes(item.status))) && <Button variant="outline" onClick={() => { setCancellationRefundScope(undefined); setCancellationRefundOpen(true); }}>View cancellation and refund outcomes</Button>}
+          <KitchenBookingChanges key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+          <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport />
           <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} />
           {/* ── Schedule ── */}
           <section className="rounded-2xl border bg-card p-5 sm:p-6">
@@ -1599,9 +1610,6 @@ export default function BookingDetailsPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        {!isManagerView && booking.paymentDecision?.state !== 'pending' && ['pending', 'confirmed'].includes(storage.status) && <Button variant="outline" size="sm"
-                          onClick={() => setItemCancellation({ type: 'storage', id: storage.id, name: storage.storageListing?.name || `Storage #${storage.id}`,
-                            sharedAuthorization: true, tier: ['paid', 'partially_refunded'].includes(storage.paymentStatus || '') ? 'request' : 'immediate' })}>{t('crCancelItem')}</Button>}
                         <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {formatCurrency(storage.totalPrice)}
                         </span>
@@ -1668,9 +1676,6 @@ export default function BookingDetailsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        {!isManagerView && ['pending', 'confirmed'].includes(equipment.status) && <Button variant="outline" size="sm"
-                          onClick={() => setItemCancellation({ type: 'equipment', id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.id}`,
-                            sharedAuthorization: true, tier: ['paid', 'partially_refunded'].includes(equipment.paymentStatus || '') ? 'request' : 'immediate' })}>{t('crCancelItem')}</Button>}
                         {isManagerView && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex gap-2">
                           <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
                           <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
@@ -1709,8 +1714,6 @@ export default function BookingDetailsPage() {
             </section>
           )}
 
-          <CancellationRequestDialog open={!!itemCancellation} onOpenChange={open => { if (!open) setItemCancellation(null); }}
-            target={itemCancellation} isPending={itemCancellationPending} onConfirm={cancelItem} />
           {/* ── Notes ── */}
           {booking.specialNotes && (
             <section>
@@ -1732,6 +1735,7 @@ export default function BookingDetailsPage() {
                 {t('bdContactKitchenHint', { defaultValue: 'Questions about your visit? Reach the kitchen directly.' })}
               </p>
               <div className="mt-4 space-y-3 text-sm">
+                {['confirmed', 'cancellation_requested', 'completed'].includes(booking.status) && <Button variant="outline" onClick={openBookingConversation} disabled={openingConversation}>{openingConversation ? 'Opening conversation…' : isManagerView ? 'Message chef' : 'Message kitchen'}</Button>}
                 <a
                   className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline"
                   href={`mailto:${booking.kitchenContact.email}`}
@@ -1800,11 +1804,7 @@ export default function BookingDetailsPage() {
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {t("bdKitchenLine", {
-                      duration: booking.pricingMode === "daily"
-                        ? t("bdDailyRate")
-                        : t("bdHours", { count: calculateDuration() }),
-                    })}
+                    Kitchen · original payment
                   </span>
                   <span className="font-mono">
                     {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
@@ -2023,6 +2023,7 @@ export default function BookingDetailsPage() {
           booking={bookingForManagement}
           isProcessing={isManagementProcessing}
           onSubmit={handleManagementSubmit}
+          onChanged={reloadBookingDetails}
         />
       </ManagerBookingLayout>
     );

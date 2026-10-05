@@ -1,4 +1,5 @@
 import { logger } from "./logger.js";
+import { escapeHtml } from './security';
 import { isE2eOutboundSuppressed } from "./e2e-outbound-guard.js";
 import { stripCountryCode } from "./phone-utils";
 import nodemailer from 'nodemailer';
@@ -102,6 +103,9 @@ interface EmailContent {
 const recentEmails = new Map<string, number>();
 const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
 
+import { assertWorkerTime, inRecurringWorker, workerRemaining } from './services/worker-context';
+import { boundedSmtpSend } from './services/bounded-smtp';
+
 // Create a transporter with enhanced configuration for Vercel serverless
 const createTransporter = (config: EmailConfig, durableDelivery = false) => {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
@@ -199,12 +203,12 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         fromAddress: process.env.EMAIL_FROM || process.env.EMAIL_USER,
         retryOfId: options?.retryOfId,
       });
-      return true;
+      return false; // Suppression is not provider acceptance.
     }
 
     // Check for duplicate emails if trackingId is provided
     if (options?.trackingId && !options.durableDelivery) {
-      const lastSent = recentEmails.get(options.trackingId);
+      const lastSent = recentEmails.get(`${options.trackingId}:${content.to.trim().toLowerCase()}`);
       const now = Date.now();
 
       if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
@@ -223,9 +227,6 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         });
         return true; // Return true to avoid breaking existing code
       }
-
-      // Update the tracking map with current timestamp
-      recentEmails.set(options.trackingId, now);
 
       // Cleanup old entries every 10 minutes to prevent memory leaks
       if (recentEmails.size > 100) {
@@ -286,7 +287,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const fromEmail = process.env.EMAIL_FROM || `${fromName} <${config.auth.user}>`;
 
     // Verify SMTP connection (skip in production for faster execution)
-    if (!isProduction && !options?.durableDelivery) {
+    if (!isProduction && !options?.durableDelivery && !inRecurringWorker()) {
       try {
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
@@ -350,13 +351,19 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     // Send the email with enhanced timeout protection and retry logic (critical for serverless)
     let info;
     let attempts = 0;
-    const maxAttempts = options?.durableDelivery ? 1 : 2; // Tour retries are owned by the durable ledger.
+    const maxAttempts = options?.durableDelivery || inRecurringWorker() ? 1 : 2;
 
     while (attempts < maxAttempts) {
       attempts++;
       logger.info(`📧 Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
 
       try {
+        if (options?.durableDelivery || inRecurringWorker()) {
+          assertWorkerTime(2_000);
+          info = await boundedSmtpSend(transporter, mailOptions, config,
+            Math.min(inRecurringWorker() ? 1_500 : 8_000, workerRemaining() - 750));
+          break;
+        }
         const emailPromise = transporter.sendMail(mailOptions);
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Email sending timeout')), options?.durableDelivery ? 8000 : 25000);
@@ -399,23 +406,29 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
 
     const accepted = Array.isArray((info as any)?.accepted) ? (info as any).accepted as string[] : [];
     const rejected = Array.isArray((info as any)?.rejected) ? (info as any).rejected as string[] : [];
-    const smtpRejected = rejected.length > 0 && accepted.length === 0;
+    const { parseRecipients } = await import('./services/email-log-service');
+    const intended = parseRecipients(content.to);
+    const acceptedRecipients = accepted.map(value => String(value).toLowerCase());
+    const smtpRejected = intended.length === 0 || intended.some(value => !acceptedRecipients.includes(value));
 
     await persistEmailLog({
-      to: content.to,
+      to: intended.filter(value => acceptedRecipients.includes(value)).join(','),
       subject: content.subject,
       text: content.text,
       html: content.html,
-      status: smtpRejected ? "failed" : "sent",
-      errorMessage: smtpRejected
-        ? `SMTP rejected recipient(s): ${rejected.join(", ")}`
-        : undefined,
+      status: "sent",
       trackingId: options?.trackingId,
       smtpMessageId: (info as any)?.messageId,
       emailType: options?.emailType,
       fromAddress: fromEmail,
       retryOfId: options?.retryOfId,
     });
+
+    if (smtpRejected) await persistEmailLog({ to: intended.filter(value => !acceptedRecipients.includes(value)).join(','),
+      subject: content.subject, text: content.text, html: content.html, status: 'failed',
+      errorMessage: 'SMTP did not confirm acceptance for this recipient', trackingId: options?.trackingId,
+      emailType: options?.emailType, fromAddress: fromEmail, retryOfId: options?.retryOfId });
+    if (!smtpRejected && options?.trackingId && !options.durableDelivery) recentEmails.set(`${options.trackingId}:${content.to.trim().toLowerCase()}`, Date.now());
 
     if (!smtpRejected && (info as any)?.response) {
       logger.info(
@@ -626,7 +639,8 @@ const generateIcsFile = (
   description: string,
   organizerEmail?: string,
   attendeeEmails?: string[],
-  eventUid?: string // Optional: Use same UID for synchronization
+  eventUid?: string, // Optional: Use same UID for synchronization
+  revision?: { sequence: number; modifiedAt?: Date; cancelled?: boolean }
 ): string => {
   // Format dates in UTC (Z suffix) for RFC 5545 compliance
   const startDateStr = formatDateForCalendar(startDateTime);
@@ -643,18 +657,18 @@ const generateIcsFile = (
     'VERSION:2.0',
     'PRODID:-//Local Cooks Community//Kitchen Booking System//EN',
     'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH', // Changed to PUBLISH for better compatibility
+    revision?.cancelled ? 'METHOD:CANCEL' : 'METHOD:PUBLISH',
     'BEGIN:VEVENT',
     `UID:${uid}`,
-    `DTSTAMP:${now}`, // When the event was created
+    `DTSTAMP:${revision?.modifiedAt ? formatDateForCalendar(revision.modifiedAt) : now}`,
     `DTSTART:${startDateStr}`, // Start time in UTC
     `DTEND:${endDateStr}`, // End time in UTC
     `SUMMARY:${escapeIcalText(title)}`,
     `DESCRIPTION:${escapeIcalText(description)}`,
     `LOCATION:${escapeIcalText(location)}`,
-    'STATUS:CONFIRMED',
-    'SEQUENCE:0', // Increment on updates for synchronization
-    'TRANSP:OPAQUE', // Indicates busy time
+    revision?.cancelled ? 'STATUS:CANCELLED' : 'STATUS:CONFIRMED',
+    `SEQUENCE:${revision?.sequence ?? 0}`,
+    revision?.cancelled ? 'TRANSP:TRANSPARENT' : 'TRANSP:OPAQUE',
   ];
 
   // Add organizer (required for proper calendar integration)
@@ -679,7 +693,7 @@ const generateIcsFile = (
   }
 
   // Add reminder alarms (15 minutes before and 1 day before)
-  lines.push(
+  if (!revision?.cancelled) lines.push(
     'BEGIN:VALARM',
     'ACTION:DISPLAY',
     'TRIGGER:-PT15M', // 15 minutes before
@@ -689,10 +703,9 @@ const generateIcsFile = (
     'ACTION:EMAIL',
     'TRIGGER:-P1D', // 1 day before
     'DESCRIPTION:Reminder: Kitchen booking tomorrow',
-    'END:VALARM',
-    'END:VEVENT',
-    'END:VCALENDAR'
+    'END:VALARM'
   );
+  lines.push('END:VEVENT', 'END:VCALENDAR');
 
   // RFC 5545 requires CRLF line endings
   return lines.join('\r\n');
@@ -808,6 +821,7 @@ const generateCalendarUrl = (
 };
 
 type BookingCalendarInput = {
+  bookingId?: number;
   bookingDate: string | Date;
   startTime: string;
   endTime: string;
@@ -822,7 +836,8 @@ function bookingCalendarParts(
   const operatingDate = booking.bookingDate instanceof Date
     ? booking.bookingDate.toISOString().slice(0, 10) : booking.bookingDate.slice(0, 10);
   const windowStart = booking.operatingWindowStartTime || booking.startTime;
-  const selectedSlots = Array.isArray(booking.selectedSlots) ? booking.selectedSlots : [];
+  const selectedSlots = Array.isArray(booking.selectedSlots) ? booking.selectedSlots.map(slot =>
+    typeof slot === 'string' ? { startTime: slot, endTime: addHour(slot) } : slot) : [];
   const hasValidSlots = selectedSlots.length > 0
     && selectedSlots.every(slot => slot && typeof slot.startTime === 'string'
       && /^([01]\d|2[0-3]):[0-5]\d$/.test(slot.startTime)
@@ -839,7 +854,7 @@ function bookingCalendarParts(
   }
   const timeLabel = groups.map(group => `${group.startTime}–${group.endTime}`).join(', ');
   const exactDescription = description.replace(/Time: [^\n]*/, `Time: ${timeLabel}`);
-  const uid = generateEventUid(booking.bookingDate, booking.startTime, location);
+  const uid = booking.bookingId ? `booking-${booking.bookingId}@localcooks.com` : generateEventUid(booking.bookingDate, booking.startTime, location);
   const icsFiles = groups.map((group, index) => {
     const start = createBookingDateTime(calendarDateForBookingTime(operatingDate, group.startTime,
       booking.operatingWindowStartTime), group.startTime, timezone);
@@ -1566,6 +1581,68 @@ The Local Cooks Team
   };
 };
 
+
+// Generate chat digest email using unified design
+export const generateChatDigestEmail = (
+  to: string,
+  unreadCount: number,
+  senderName: string,
+  locationName: string,
+  primaryUrl: string,
+  bookings: number[]
+): EmailContent => {
+  const subject = `Unread messages from ${senderName} — ${locationName}`;
+  const unreadText = `${unreadCount} unread message${unreadCount === 1 ? '' : 's'}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${escapeHtml(subject)}</h2>
+      <p class="message" style="margin-bottom: 20px;">You have ${unreadText} from ${escapeHtml(senderName)} at ${escapeHtml(locationName)}.</p>
+
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${escapeHtml(primaryUrl)}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Open conversation</a>
+      </div>
+
+      ${bookings.length > 0 ? `
+      <div style="margin: 24px 0; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+        <p style="font-size: 14px; color: #475569; margin: 0 0 8px 0; font-weight: 500;">Booking context:</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #64748b;">
+          ${bookings.map(b => `<li style="margin-bottom: 4px;">Booking #${escapeHtml(String(b))}</li>`).join('')}
+        </ul>
+      </div>` : ''}
+
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Local Cooks</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `
+You have ${unreadText} from ${senderName} at ${locationName}.
+
+Open conversation: ${primaryUrl}
+${bookings.length > 0 ? `\nBooking context:\n${bookings.map(b => `- Booking #${b}`).join('\n')}` : ''}
+
+Local Cooks
+  `.trim();
+
+  return { to, subject, text, html };
+};
 
 export async function sendApplicationReceivedEmail(applicationData: any) {
   const firstName = applicationData.fullName ? applicationData.fullName.split(' ')[0] : 'there';
@@ -3980,36 +4057,61 @@ ${new Date().getFullYear()} Local Cooks
   };
 };
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown }): EmailContent => {
+export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string }): EmailContent => {
   const timezone = DEFAULT_TIMEZONE;
   const locationName = bookingData.locationName || bookingData.kitchenName;
-  const dashboardUrl = getDashboardUrl();
+  const dashboardUrl = bookingData.actionUrl || getDashboardUrl();
   const firstName = bookingData.chefName.split(' ')[0];
 
   // Convert bookingDate to Date object for display
   const bookingDateObj = bookingData.bookingDate instanceof Date
     ? bookingData.bookingDate
     : new Date(bookingData.bookingDate);
-  const formattedDate = bookingDateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const formattedDate = new Date(`${bookingDateObj.toISOString().slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 
   // Compute duration from start/end time
   const [startH, startM] = bookingData.startTime.split(':').map(Number);
   const [endH, endM] = bookingData.endTime.split(':').map(Number);
-  const durationMins = bookingData.durationHours != null
+  const durationMins = Array.isArray(bookingData.selectedSlots) && bookingData.selectedSlots.length > 0
+    ? bookingData.selectedSlots.length * 60 : bookingData.durationHours != null
     ? bookingData.durationHours * 60 : ((endH * 60 + endM) - (startH * 60 + startM) + 1440) % 1440;
   const durationHrs = Math.floor(durationMins / 60);
   const durationRemMins = durationMins % 60;
   const durationStr = durationRemMins > 0 ? `${durationHrs}h ${durationRemMins}m` : `${durationHrs}h`;
 
-  const subject = `Your Kitchen Booking Is Confirmed for ${formattedDate}`;
+  const subject = `${bookingData.isStaff ? 'Kitchen Booking Confirmed' : 'Your Kitchen Booking Is Confirmed'} for ${formattedDate}`;
 
   // Generate calendar URL based on email provider
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
-  const calendarDescription = `Confirmed kitchen booking for ${bookingData.kitchenName}.\n\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Confirmed${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
+  const calendarDescription = `Confirmed kitchen booking for ${bookingData.kitchenName}.\n\nDate: ${formattedDate}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Confirmed${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
   const calendar = bookingCalendarParts(bookingData, bookingData.chefEmail, calendarTitle,
-    locationName, calendarDescription, timezone);
+    bookingData.locationAddress || locationName, calendarDescription, timezone);
   const icsContent = calendar.ics;
 
+  const changeGuidance = bookingData.isStaff
+    ? 'Open the booking to review its current status and any cancellation request. Coordinate date/time change requests with the chef and Local Cooks at support@localcook.shop.'
+    : `Open the booking for current actions or to request cancellation. To request a date/time change, contact ${bookingData.contactEmail || 'support@localcook.shop'}. Your confirmed dates remain in place until a change is agreed.`;
+  const guidance = bookingData.isStaff ? [
+    `Reference: Booking #${bookingData.bookingId}`,
+    bookingData.paymentSummary,
+    'Review the confirmed itinerary and any current tasks from the booking link.',
+    bookingData.arrivalInstructions ? `Arrival instructions shared with the chef: ${bookingData.arrivalInstructions}` : '',
+    bookingData.departureInstructions ? `Departure instructions shared with the chef: ${bookingData.departureInstructions}` : '',
+    'Saved calendar events do not update automatically. Open the booking for the current schedule and actions.',
+  ].filter(Boolean).join('\n') : [
+    `Reference: ${bookingData.bookingId ? `Booking #${bookingData.bookingId}` : 'Kitchen booking'}`,
+    bookingData.paymentSummary,
+    bookingData.checkinEnabled === true
+      ? (bookingData.checkInWindowMinutesBefore != null && bookingData.noShowGraceMinutes != null
+        ? `Check-in opens ${bookingData.checkInWindowMinutesBefore} minutes before your session. If you have not checked in, you may be marked a no-show ${bookingData.noShowGraceMinutes} minutes after it begins.`
+        : 'Check in for each visit when the action opens. View the booking for the current check-in window and requirements.')
+      : 'Arrival tracking is off. Your confirmed reservation remains valid; follow the arrival instructions.',
+    bookingData.checkoutEnabled === true ? 'Request checkout for each visit. Manager inspection remains pending until reviewed.' : 'Departure tracking is off. Follow the departure instructions.',
+    bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : 'Open the booking for current arrival guidance. Contact the manager if instructions are missing.',
+    bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : '',
+    bookingData.contactEmail ? `Kitchen contact: ${bookingData.contactEmail}` : 'For help contact support@localcook.shop.',
+    'Saved calendar events do not update automatically. Open the booking for the current schedule and actions.',
+  ].filter(Boolean).join('\n');
   const html = `
 <!DOCTYPE html>
 <html>
@@ -4026,13 +4128,13 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 24px;">Great news &#8212; your booking at ${bookingData.kitchenName} has been confirmed!</p>
+      <p class="message" style="margin-bottom: 24px;">The booking at ${bookingData.kitchenName} has been confirmed!</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Booking Details:</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
         ${bookingData.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${bookingData.locationAddress}</strong></p>` : (locationName !== bookingData.kitchenName ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${locationName}</strong></p>` : '')}
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${calendar.timeLabel} (${durationStr})</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${calendar.timeLabel} (${durationStr}; ${timezone})</strong></p>
         ${bookingData.addons ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Equipment/Storage Booked:</span> <strong style="color: #1e293b;">${bookingData.addons}</strong></p>` : ''}
       </div>
       <div style="margin: 16px 0 4px 0; text-align: center;">
@@ -4044,44 +4146,14 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
         <a href="cid:kitchen-booking.ics" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">&#128197; Download ICS File</a>
       </div>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 0 0 24px 0; text-align: center;">(Or open the attached calendar invite to add this booking to your preferred calendar app)</p>
-      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Check-In &amp; Check-Out Required:</p>
-      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
-        <p style="font-size: 14px; line-height: 1.65; color: #1e40af; margin: 0 0 8px 0;">You must check in and check out for every booking session. Here&#8217;s what to expect:</p>
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0;">
-          <tr>
-            <td style="padding: 5px 10px 5px 0; vertical-align: top; width: 20px; font-size: 15px; line-height: 22px;">&#10148;</td>
-            <td style="padding: 5px 0; font-size: 14px; line-height: 1.6; color: #1e3a5f;"><strong>Check In</strong> when you arrive &#8212; complete a quick checklist and snap photos of the kitchen condition. This protects you by establishing a baseline.</td>
-          </tr>
-          <tr>
-            <td style="padding: 5px 10px 5px 0; vertical-align: top; width: 20px; font-size: 15px; line-height: 22px;">&#10148;</td>
-            <td style="padding: 5px 0; font-size: 14px; line-height: 1.6; color: #1e3a5f;"><strong>Check Out</strong> when you&#8217;re done &#8212; upload photos of the kitchen after your session. The manager will review and clear you.</td>
-          </tr>
-          <tr>
-            <td style="padding: 5px 10px 5px 0; vertical-align: top; width: 20px; font-size: 15px; line-height: 22px;">&#10148;</td>
-            <td style="padding: 5px 0; font-size: 14px; line-height: 1.6; color: #1e3a5f;">If you don&#8217;t check in within the grace period, the system may mark you as a <strong>no-show</strong>.</td>
-          </tr>
-        </table>
-        <p style="font-size: 13px; line-height: 1.5; color: #3b5998; margin: 8px 0 0 0;">Both steps are done from your dashboard &#8212; just open the booking and tap &#8220;Check In&#8221; or &#8220;Check Out.&#8221;</p>
-      </div>
-      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Before Your Session:</p>
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Check-in opens <strong>${bookingData.checkInWindowMinutesBefore ?? 15} minutes before</strong> your session. If you have not checked in, you may be marked a no-show <strong>${bookingData.noShowGraceMinutes ?? 30} minutes after</strong> it begins.</td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Review the kitchen&#8217;s specific terms and policies in your dashboard</td>
-        </tr>
-      </table>
+      <p class="message" style="white-space:pre-line">${escapeHtml(guidance)}</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Need to Make Changes?</p>
-      <p class="message" style="margin-bottom: 20px;">If you need to reschedule or cancel, please use your dashboard.</p>
-      <p class="message" style="margin-bottom: 20px;">You can also reach the kitchen manager directly through the chat in your dashboard.</p>
+      <p class="message" style="margin-bottom: 20px;">${escapeHtml(changeGuidance)}</p>
       <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View booking and current actions</a>
       </div>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">Contact us anytime at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a> or reply to this email.</p>
-      <p class="message" style="margin-top: 20px; font-style: italic; color: #64748b;">We&#8217;re excited for your upcoming session and look forward to supporting your culinary work!</p>
+      <p class="message" style="margin-top: 20px; font-style: italic; color: #64748b;">Open the current booking whenever you need the latest status and available actions.</p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4098,36 +4170,25 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   const text = `
 Hi ${firstName},
 
-Great news — your booking at ${bookingData.kitchenName} has been confirmed!
+The booking at ${bookingData.kitchenName} has been confirmed!
 
 Booking Details:
 Kitchen: ${bookingData.kitchenName}
 ${bookingData.locationAddress ? `Location: ${bookingData.locationAddress}\n` : ''}Date: ${formattedDate}
-Time: ${calendar.timeLabel} (${durationStr})
+Time: ${calendar.timeLabel} (${durationStr}; ${timezone})
 ${bookingData.addons ? `Equipment/Storage Booked: ${bookingData.addons}\n` : ''}
 ${calendar.linksText}
 (Or open the attached calendar invite to add this booking to your preferred calendar app)
 
-Check-In & Check-Out Required:
-You must check in and check out for every booking session.
-
-- Check In when you arrive — complete a quick checklist and snap photos of the kitchen condition. This protects you by establishing a baseline.
-- Check Out when you're done — upload photos of the kitchen after your session. The manager will review and clear you.
-- If you don't check in within the grace period, the system may mark you as a no-show.
-
-Both steps are done from your dashboard — just open the booking and tap "Check In" or "Check Out."
-
-Before Your Session:
-• Check-in opens ${bookingData.checkInWindowMinutesBefore ?? 15} minutes before your session. If you have not checked in, you may be marked a no-show ${bookingData.noShowGraceMinutes ?? 30} minutes after it begins.
-• Review the kitchen's specific terms and policies in your dashboard
+${guidance}
 
 Need to Make Changes?
-If you need to reschedule or cancel, please use your dashboard: ${dashboardUrl}
-You can also reach the kitchen manager directly through the chat in your dashboard.
+${changeGuidance}
+Current booking: ${dashboardUrl}
 
 Contact us anytime at support@localcook.shop or reply to this email.
 
-We're excited for your upcoming session and look forward to supporting your culinary work!
+Open the current booking whenever you need the latest status and available actions.
 
 Best,
 The Local Cooks Team
@@ -4143,7 +4204,7 @@ The Local Cooks Team
     attachments: [{
       filename: 'kitchen-booking.ics',
       content: icsContent,
-      contentType: 'text/calendar; charset=utf-8; method=REQUEST'
+      contentType: 'text/calendar; charset=utf-8; method=PUBLISH'
     }]
   };
 };
@@ -7673,126 +7734,87 @@ The Local Cooks Team
   return { to: data.chefEmail, subject, text, html };
 };
 
-export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; timezone?: string }): EmailContent => {
-  const styles = getUniformEmailStyles();
-  const dateStr = formatTourDate(new Date(data.tourDate));
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      ${styles}
-    </head>
-    <body>
-      <div class="email-container">
-        <div class="header">
-          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-        </div>
-        <div class="content">
-          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
-          <p class="message">Your kitchen tour at <strong>${data.kitchenName}</strong> has been requested.</p>
-          
-          <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
-            <p><strong>Date:</strong> ${dateStr}</p>
-            <p><strong>Time:</strong> ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE})</p>
-          </div>
-          
-          <p class="message">Local Cooks will review your request first. If approved, it will be sent to the kitchen manager for final confirmation.</p>
-        ${getUniformEmailFooter()}
-      </div>
-    </body>
-    </html>
-  `;
-
-  return {
-    to: data.chefEmail,
-    subject: `Kitchen Tour Requested - ${data.kitchenName}`,
-    html,
-  };
+type TourRequestEmailDetails = {
+  tourId: number; kitchenName: string; locationName?: string; address?: string;
+  tourDate: string | Date; durationMinutes: number; startTime?: string; timezone?: string;
 };
 
-export const generateTourRequestedLocalCooksEmail = (data: { recipientEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; timezone?: string }): EmailContent => {
-  const dateStr = formatTourDate(new Date(data.tourDate));
-  return {
-    to: data.recipientEmail,
-    subject: `Kitchen tour request awaiting Local Cooks review - ${data.chefName}`,
-    text: `${data.chefName} requested a tour of ${data.kitchenName} on ${dateStr} at ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE}). Review the request: ${getSubdomainUrl('admin')}/admin?section=tour-requests`,
-    html: `<p><strong>${data.chefName}</strong> requested a tour of <strong>${data.kitchenName}</strong>.</p><p>${dateStr} at ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE})</p><p><a href="${getSubdomainUrl('admin')}/admin?section=tour-requests">Review tour request</a></p>${getUniformEmailFooter()}`,
-  };
+function tourRequestFacts(data: TourRequestEmailDetails) {
+  if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(new Date(data.tourDate).getTime())
+    || !Number.isFinite(data.durationMinutes) || data.durationMinutes <= 0) throw new Error('Invalid tour request details');
+  return [{ label: 'Kitchen', value: data.kitchenName },
+    ...(data.locationName ? [{ label: 'Location', value: data.locationName }] : []),
+    ...(data.address ? [{ label: 'Address', value: data.address }] : []),
+    { label: 'Requested time', value: formatTourDate(new Date(data.tourDate)) + ', ' + formatTourSlotRange(data.tourDate, data.durationMinutes) },
+    { label: 'Reference', value: 'TOUR-' + data.tourId }];
+}
+
+export const generateTourRequestedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string }): EmailContent =>
+  renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
+    subject: 'Tour request received — ' + data.kitchenName,
+    message: 'We received your tour request. Local Cooks will review it first. If forwarded, the kitchen manager will decide whether to confirm the requested time. Your tour is not yet confirmed.',
+    facts: tourRequestFacts(data), actionLabel: 'View request',
+    actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId });
+
+export const generateTourRequestedLocalCooksEmail = (data: TourRequestEmailDetails & { recipientEmail: string; chefName: string }): EmailContent =>
+  renderTransactionalEmail({ to: data.recipientEmail, recipientName: 'Local Cooks',
+    subject: 'Tour request awaiting review — ' + data.kitchenName,
+    message: data.chefName + ' requested a kitchen tour. Review the request to forward it to the current kitchen manager or decline it. Forwarding does not confirm the appointment.',
+    facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data)], actionLabel: 'Review tour request',
+    actionUrl: getSubdomainUrl('admin') + '/admin?section=tour-requests&viewing=' + data.tourId });
+
+export const generateTourDeclinedByLocalCooksEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string; reason?: string }): EmailContent =>
+  renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
+    subject: 'Tour request declined — ' + data.kitchenName,
+    message: 'Local Cooks declined your tour request. This appointment was not confirmed.',
+    facts: [...tourRequestFacts(data), ...(data.reason ? [{ label: 'Reason', value: data.reason }] : [])],
+    actionLabel: 'View request', actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId });
+
+export const generateTourManagerChangeEmail = (data: { tourId: number; durationMinutes: number; managerEmail: string; managerName?: string; chefName: string; kitchenName: string; locationName?: string; address?: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string }): EmailContent => {
+  const when = (date: Date) => `${formatTourDate(date)}, ${formatTourSlotRange(date, data.durationMinutes)}`;
+  const cancelled = data.kind === 'cancelled';
+  return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Manager',
+    subject: `${cancelled ? 'Kitchen tour cancelled by chef' : 'Kitchen tour time change requested'} · TOUR-${data.tourId}`,
+    message: cancelled ? `${data.chefName} cancelled their tour.` : `${data.chefName} requested a new tour time. The original slot remains booked until you decide.`,
+    facts: [{ label: 'Kitchen', value: data.kitchenName },
+      ...(data.locationName ? [{ label: 'Location', value: data.locationName }] : []),
+      ...(data.address ? [{ label: 'Address', value: data.address }] : []),
+      { label: cancelled ? 'Former time' : 'Original time', value: when(data.scheduledAt) },
+      ...(!cancelled && data.requestedAt ? [{ label: 'Proposed time', value: when(data.requestedAt) }] : []),
+      { label: 'Reference', value: `TOUR-${data.tourId}` }],
+    actionLabel: cancelled ? 'View cancelled tour' : 'Review time change',
+    actionUrl: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}`,
+    note: cancelled ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined,
+  });
 };
 
-export const generateTourDeclinedByLocalCooksEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; reason?: string }): EmailContent => ({
-  to: data.chefEmail,
-  subject: `Kitchen tour request update - ${data.kitchenName}`,
-  text: `Hi ${data.chefName.split(' ')[0]},\n\nLocal Cooks could not approve your tour request for ${data.kitchenName}.${data.reason ? `\n\nReason: ${data.reason}` : ''}\n\nThe Local Cooks Team`,
-  html: `<p>Hi ${data.chefName.split(' ')[0]},</p><p>Local Cooks could not approve your tour request for <strong>${data.kitchenName}</strong>.</p>${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ''}${getUniformEmailFooter()}`,
-});
+export const generateTourRequestedManagerEmail = (data: TourRequestEmailDetails & { managerEmail: string; managerName: string; chefName: string; chefNotes?: string }): EmailContent =>
+  renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName,
+    subject: 'Tour request from ' + data.chefName + ' — ' + data.kitchenName,
+    message: 'Local Cooks reviewed and forwarded this request from ' + data.chefName + '. Review the requested time to confirm or decline. You can open the conversation from the tour to coordinate.',
+    facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data),
+      ...(data.chefNotes ? [{ label: 'Visitor notes', value: data.chefNotes }] : [])],
+    actionLabel: 'Review tour request', actionUrl: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId });
 
-export const generateTourManagerChangeEmail = (data: { managerEmail: string; chefName: string; kitchenName: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string }): EmailContent => {
-  const formatTime = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE, dateStyle: 'medium', timeStyle: 'short' }).format(date);
-  const title = data.kind === 'cancelled' ? 'Kitchen tour cancelled by chef' : 'Kitchen tour time change requested';
-  const details = data.kind === 'cancelled'
-    ? `${data.chefName} cancelled their tour at ${data.kitchenName}, previously scheduled for ${formatTime(data.scheduledAt)}.`
-    : `${data.chefName} requested a new tour time at ${data.kitchenName}: ${data.requestedAt ? formatTime(data.requestedAt) : 'see dashboard'}. The original ${formatTime(data.scheduledAt)} slot remains booked until you decide.`;
-  const actionUrl = `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings`;
-  const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  return {
-    to: data.managerEmail,
-    subject: `${title} - Local Cooks`,
-    text: `${details}\n\n${data.kind === 'cancelled' ? 'View tours' : 'Review request'}: ${actionUrl}`,
-    html: `<p>${escapeHtml(details)}</p><p><a href="${actionUrl}">${data.kind === 'cancelled' ? 'View tours' : 'Review request'}</a></p>${getUniformEmailFooter()}`,
-  };
-};
+export function generateTourCalendarAttachment(data: {
+  tourId: number; durationMinutes: number; tourDate: string | Date; kitchenName: string; locationAddress: string;
+  notes?: string; organizerEmail?: string; attendeeEmails?: string[]; calendarSequence?: number; updatedAt?: Date; cancelled?: boolean;
+}) {
+  const start = new Date(data.tourDate), end = new Date(start.getTime() + data.durationMinutes * 60_000);
+  if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(start.getTime())
+    || !Number.isFinite(end.getTime()) || !Number.isFinite(data.durationMinutes) || data.durationMinutes <= 0
+    || !Number.isInteger(data.calendarSequence ?? 0) || (data.calendarSequence ?? 0) < 0
+    || (data.calendarSequence ?? 0) > 2147483647 || (data.updatedAt && !Number.isFinite(data.updatedAt.getTime()))) {
+    throw new Error('Invalid tour calendar details');
+  }
+  return { filename: 'kitchen-tour.ics', contentType: `text/calendar; charset=utf-8; method=${data.cancelled ? 'CANCEL' : 'PUBLISH'}`,
+    content: generateIcsFile(`Kitchen Tour at ${data.kitchenName}`, start, end, data.locationAddress,
+      `Kitchen Tour at ${data.kitchenName}.${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
+      data.organizerEmail, data.attendeeEmails, `tour-${data.tourId}@localcooks.com`,
+      { sequence: data.calendarSequence ?? 0, modifiedAt: data.updatedAt, cancelled: data.cancelled }) };
+}
 
-export const generateTourRequestedManagerEmail = (data: { managerEmail: string; managerName: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; chefNotes?: string; timezone?: string }): EmailContent => {
-  const styles = getUniformEmailStyles();
-  const dateStr = formatTourDate(new Date(data.tourDate));
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      ${styles}
-    </head>
-    <body>
-      <div class="email-container">
-        <div class="header">
-          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-        </div>
-        <div class="content">
-          <p class="greeting">Hello ${data.managerName},</p>
-          <p class="message">Chef <strong>${data.chefName}</strong> has requested a kitchen tour at <strong>${data.kitchenName}</strong>.</p>
-          
-          <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
-            <p><strong>Date:</strong> ${dateStr}</p>
-            <p><strong>Time:</strong> ${formatTourClock(new Date(data.tourDate))} (${DEFAULT_TIMEZONE})</p>
-            ${data.chefNotes ? `<p><strong>Notes from Chef:</strong> ${data.chefNotes}</p>` : ''}
-          </div>
-          
-          <p class="message">Please log in to your dashboard to accept or decline this request.</p>
-          
-          <div style="text-align: center;">
-            <a href="${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings" class="cta-button">Review Request</a>
-          </div>
-        ${getUniformEmailFooter()}
-      </div>
-    </body>
-    </html>
-  `;
-
-  return {
-    to: data.managerEmail,
-    subject: `New Kitchen Tour Request from ${data.chefName}`,
-    html,
-  };
-};
-
-export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[] }): EmailContent => {
-  const styles = getUniformEmailStyles();
+export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date }): EmailContent => {
   const startDateTimeObj = new Date(data.tourDate);
   const endDateTimeObj = new Date(startDateTimeObj.getTime() + data.durationMinutes * 60_000);
   if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(startDateTimeObj.getTime())
@@ -7801,121 +7823,68 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
   }
   const dateStr = formatTourDate(startDateTimeObj);
   const startTime = formatTourSlotRange(startDateTimeObj, data.durationMinutes);
-  const title = `Kitchen Tour: ${data.otherPartyName} @ ${data.kitchenName}`;
+  const title = `Kitchen Tour at ${data.kitchenName}`;
+  const actionUrl = `${getSubdomainUrl(data.isManager ? 'kitchen' : 'chef')}${data.isManager ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=${data.tourId}`;
 
-  const icsContent = generateIcsFile(
-    title,
-    startDateTimeObj,
-    endDateTimeObj,
-    data.locationAddress,
-    `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
-    data.organizerEmail,
-    data.attendeeEmails,
-    `tour-${data.tourId}@localcooks.com`
-  );
+  const calendarAttachment = generateTourCalendarAttachment(data);
 
   const googleCalendarUrl = generateGoogleCalendarUrl(
     title,
     startDateTimeObj,
     endDateTimeObj,
     data.locationAddress,
-    `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\\n\\nNotes: ' + data.notes : ''}`
+    `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`
   );
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      ${styles}
-    </head>
-    <body>
-      <div class="email-container">
-        <div class="header">
-          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-        </div>
-        <div class="content">
-          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.recipientName.split(' ')[0]},</h2>
-          <p class="message">The kitchen tour at <strong>${data.kitchenName}</strong> has been confirmed.</p>
-          
-          <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
-            <p><strong>Meeting with:</strong> ${data.otherPartyName}</p>
-            <p><strong>Date:</strong> ${dateStr}</p>
-            <p><strong>Time:</strong> ${startTime} (${DEFAULT_TIMEZONE})</p>
-            <p><strong>Address:</strong> ${data.locationAddress}</p>
-            ${data.notes ? `<p><strong>Notes:</strong> ${data.notes}</p>` : ''}
-          </div>
-          <p class="message" style="margin-bottom: 24px;">A calendar file is attached. Saved calendar events do not update automatically when a tour changes. You can also add this tour to Google Calendar:</p>
-          <div style="margin: 16px 0 32px 0;">
-            <a href="${googleCalendarUrl}" target="_blank" class="cta-button" style="display: inline-block; padding: 10px 24px; background: #4285F4; color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Add to Google Calendar</a>
-          </div>
-        ${getUniformEmailFooter()}
-      </div>
-    </body>
-    </html>
-  `;
-
   return {
-    to: data.email,
-    subject: `Confirmed: Kitchen Tour at ${data.kitchenName}`,
-    html,
-    attachments: [
-      {
-        filename: 'kitchen-tour.ics',
-        contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
-        content: icsContent
-      }
-    ]
+    ...renderTransactionalEmail({ to: data.email, subject: `${data.previousTourDate ? 'Tour time changed' : 'Confirmed: Kitchen Tour'} at ${data.kitchenName}`,
+      recipientName: data.recipientName, message: data.previousTourDate ? 'Your tour time change was approved. Your tour is confirmed for the new time below.' : 'Your kitchen tour is confirmed.',
+      facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: 'Meeting with', value: data.otherPartyName },
+        { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
+        ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes)}` }] : []),
+        { label: 'Address', value: data.locationAddress },
+        ...(data.notes ? [{ label: 'Meeting instructions', value: data.notes }] : []),
+        { label: 'Arrival help', value: data.contactEmail || getSupportEmail() },
+        { label: 'Reference', value: `TOUR-${data.tourId}` }],
+      actionLabel: data.previousTourDate ? 'View updated tour' : 'View your tour', actionUrl,
+      secondaryLink: { label: 'Add to Google Calendar', url: googleCalendarUrl },
+      note: 'A calendar file is attached. Saved calendar events do not update automatically when a tour changes.',
+    }),
+    attachments: [calendarAttachment]
   };
 };
 
-export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; cancellationReason?: string; managerNotes?: string; timezone?: string; cancelled?: boolean; reviewer?: 'Local Cooks' | 'Manager' }): EmailContent => {
-  const styles = getUniformEmailStyles();
-  const dateStr = formatTourDate(new Date(data.tourDate));
-  const reviewer = data.reviewer || 'Manager';
+export const generateTourRejectedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string; cancellationReason?: string; managerNotes?: string; cancelled?: boolean; reviewer?: 'Local Cooks' | 'Manager' }): EmailContent =>
+  renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
+    subject: (data.cancelled ? 'Kitchen Tour Cancelled' : 'Kitchen Tour Request Declined') + ' — ' + data.kitchenName,
+    message: 'Your ' + (data.cancelled ? 'confirmed kitchen tour was cancelled' : 'kitchen tour request was declined') + ' by ' + (data.reviewer === 'Local Cooks' ? 'Local Cooks' : 'the manager') + '.',
+    facts: [...tourRequestFacts(data).map(fact => fact.label === 'Requested time' && data.cancelled ? { ...fact, label: 'Former time' } : fact),
+      ...(data.cancellationReason ? [{ label: 'Reason', value: data.cancellationReason }] : []),
+      ...(data.managerNotes ? [{ label: 'Shared meeting notes', value: data.managerNotes }] : [])],
+    actionLabel: 'View your tour', actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId,
+    note: data.cancelled ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined });
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      ${styles}
-    </head>
-    <body>
-      <div class="email-container">
-        <div class="header">
-          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-        </div>
-        <div class="content">
-          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
-          <p class="message">Your ${data.cancelled ? 'confirmed kitchen tour' : 'kitchen tour request'} at <strong>${data.kitchenName}</strong> for ${dateStr} at ${formatTourClock(new Date(data.tourDate))} was ${data.cancelled ? 'cancelled' : 'declined'} by ${reviewer === 'Manager' ? 'the manager' : reviewer}.</p>
-          
-          ${(data.cancellationReason || data.managerNotes) ? `
-          <div class="info-box">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Message from ${reviewer}</h3>
-            ${data.cancellationReason ? `<p><strong>Reason:</strong> ${data.cancellationReason}</p>` : ''}
-            ${data.managerNotes ? `<p>${data.managerNotes}</p>` : ''}
-          </div>
-          ` : ''}
-          
-          <p class="message">Open My Tours for the current status. You can request another time or explore other kitchens.${data.cancelled ? ' Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : ''}</p>
-          
-          <div style="text-align: center;">
-            <a href="${getSubdomainUrl('chef')}/book-kitchen" class="cta-button">Find Kitchens</a>
-          </div>
-        ${getUniformEmailFooter()}
-      </div>
-    </body>
-    </html>
-  `;
-
+/** Explicit opt-in shell: supplied content stays literal in HTML and plain text. */
+export function renderTransactionalEmail(data: {
+  to: string; subject: string; recipientName: string; message: string;
+  facts: { label: string; value: string }[]; actionLabel: string; actionUrl: string; note?: string; secondaryLink?: { label: string; url: string };
+  secondaryButton?: { label: string; url: string };
+}): EmailContent {
   return {
-    to: data.chefEmail,
-    subject: `${data.cancelled ? 'Kitchen Tour Cancelled' : 'Kitchen Tour Request Declined'} - ${data.kitchenName}`,
-    html,
+    to: data.to, subject: data.subject,
+    text: `Hi ${data.recipientName},\n\n${data.message}\n\n${data.facts.map(fact => `${fact.label}: ${fact.value}`).join('\n')}\n\n${data.actionLabel}: ${data.actionUrl}${data.secondaryButton ? `\n${data.secondaryButton.label}: ${data.secondaryButton.url}` : ''}${data.secondaryLink ? `\n${data.secondaryLink.label}: ${data.secondaryLink.url}` : ''}${data.note ? `\n\n${data.note}` : ''}\n\nThe Local Cooks Team`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(data.subject)}</title>${getUniformEmailStyles()}</head>
+<body><div class="email-container"><div class="header">
+<img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+</div><div class="content"><h2 class="greeting">Hi ${escapeHtml(data.recipientName)},</h2>
+<p class="message">${escapeHtml(data.message)}</p><div class="info-box">
+${data.facts.map(fact => `<p style="white-space:pre-line;"><strong>${escapeHtml(fact.label)}:</strong> ${escapeHtml(fact.value)}</p>`).join('')}
+</div><p><a href="${escapeHtml(data.actionUrl)}" class="cta-button">${escapeHtml(data.actionLabel)}</a></p>
+${data.secondaryButton ? `<p style="margin:0 0 20px;"><a href="${escapeHtml(data.secondaryButton.url)}" class="cta-button" style="background:#ffffff;color:#e11d48 !important;border:1px solid #e11d48;box-shadow:none;margin:0;">${escapeHtml(data.secondaryButton.label)}</a></p>` : ''}
+${data.secondaryLink ? `<p><a href="${escapeHtml(data.secondaryLink.url)}">${escapeHtml(data.secondaryLink.label)}</a></p>` : ''}
+${data.note ? `<p class="message">${escapeHtml(data.note)}</p>` : ''}${getUniformEmailFooter()}</div></body></html>`,
   };
-};
+}
 
 export const getUniformEmailFooter = () => `
       <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" style="color: hsl(347, 91%, 51%); text-decoration: none;">${getSupportEmail()}</a></p>

@@ -29,10 +29,13 @@ import { unifyStorageInspectionItems, storageInspectionItemsToArrays, validateSt
 import { KitchenCheckinCheckoutEditor } from "./KitchenCheckinCheckoutEditor";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
+import { Switch } from '@/components/ui/switch';
+import { SettingsRow } from './SettingsRow';
+import { TrackingWorkflowHelp, type TrackingTimingSettings } from './TrackingWorkflowHelp';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface StorageCheckinCheckoutSettingsData {
+interface StorageCheckinCheckoutSettingsData extends TrackingTimingSettings {
   id: number | null;
   locationId: number;
   // Storage check-in (move-in inspection)
@@ -113,8 +116,9 @@ export default function StorageCheckinCheckoutSettings({
   // Sync from server data on first load / when switching locations
   useEffect(() => {
     if (data) {
-      setCheckinEnabled(data.storageCheckinEnabled ?? false);
-      setCheckoutEnabled(data.storageCheckoutEnabled ?? false);
+      const trackingEnabled = data.storageCheckinEnabled === true || data.storageCheckoutEnabled === true;
+      setCheckinEnabled(trackingEnabled);
+      setCheckoutEnabled(trackingEnabled);
       setCheckinInstructions(data.storageCheckinInstructions);
       setCheckoutInstructions(data.storageCheckoutInstructions);
       setItems(initialUnifiedItems);
@@ -143,8 +147,10 @@ export default function StorageCheckinCheckoutSettings({
   ]);
 
   const validationErrors = useMemo(
-    () => validateStorageInspectionItems(items),
-    [items],
+    () => [...validateStorageInspectionItems(items),
+      ...((checkinEnabled || checkoutEnabled) && (!checkinInstructions?.trim() || !checkoutInstructions?.trim())
+        ? [mt('trackingRequiredNotes')] : [])],
+    [items, checkinEnabled, checkoutEnabled, checkinInstructions, checkoutInstructions],
   );
   const dormantCheckin = checkinEnabled ? 0 : items.filter((item) => item.label.trim() && item.requiredOnCheckin).length;
   const dormantCheckout = checkoutEnabled ? 0 : items.filter((item) => item.label.trim() && item.requiredOnCheckout).length;
@@ -181,6 +187,7 @@ export default function StorageCheckinCheckoutSettings({
       queryClient.invalidateQueries({
         queryKey: ["checkin-checkout-settings", location.id],
       });
+      queryClient.invalidateQueries({ queryKey: ['kitchen-listing-readiness'] });
 
       toast({ title: mt("settingsSaved"),
         description: mt("storageCheckInCheckOutChecklistsUpdatedSuccessfully"),
@@ -237,11 +244,13 @@ export default function StorageCheckinCheckoutSettings({
         {dormantCheckin > 0 && <p>{mt("checklistDormantCheckin", { count: dormantCheckin })}</p>}
         {dormantCheckout > 0 && <p>{mt("checklistDormantCheckout", { count: dormantCheckout })}</p>}
       </div></div>}
+      <SettingsRow id="storage-tracking-enabled" label={mt('navStorageCheckinCheckout')} hint={mt('trackingBothStages')} help={<TrackingWorkflowHelp storage settings={data} />}>
+        <Switch id="storage-tracking-enabled" checked={checkinEnabled || checkoutEnabled}
+          onCheckedChange={enabled => { setCheckinEnabled(enabled); setCheckoutEnabled(enabled); }} />
+      </SettingsRow>
       <KitchenCheckinCheckoutEditor
+        coupledStages
         title={mt("storageCheckInCheckOutChecklists")}
-        smartLockAvailable={false}
-        smartLockInstructions={null}
-        onSmartLockInstructionsChange={() => {}}
         onFlowToggleMouseDown={(event) => event.preventDefault()}
         onFlowToggleClick={(event) => (event.currentTarget.closest("[data-stage-panel]") as HTMLElement | null)?.focus({ preventScroll: true })}
         onFlowToggleKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === " " || event.key === "Enter")) (event.currentTarget.closest("[data-stage-panel]") as HTMLElement | null)?.focus({ preventScroll: true }); }}

@@ -1,3 +1,4 @@
+import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 /**
  * Damage Claim Service
  * 
@@ -12,6 +13,7 @@
  */
 
 import { db } from "../db";
+import { queueClaimOutcome, attemptOutcomeDelivery } from "./outcome-delivery";
 import { generateReferenceCode } from "../reference-code";
 import {
   damageClaims,
@@ -41,13 +43,7 @@ import {
   hasRequiredDamageClaimEvidence,
 } from "@shared/damage-claim-evidence";
 import {
-  generateDamageClaimFiledEmail,
-  generateDamageClaimResponseEmail,
-  generateDamageClaimDisputedAdminEmail,
-  generateDamageClaimDecisionEmail,
-  generateDamageClaimChargedEmail,
   getSubdomainUrl,
-  sendEmail,
 } from "../email";
 
 // Initialize Stripe
@@ -80,6 +76,7 @@ export interface CreateDamageClaimInput {
   claimedAmountCents: number;
   damagedItems?: DamagedItemInput[];
   submitImmediately?: boolean; // Immediate submission is rejected; evidence is required first.
+  checkoutHandoffKey?: string; // Internal stable inspection identity; normal manual claims remain independent.
 }
 
 export interface DamageClaimWithDetails extends DamageClaim {
@@ -128,15 +125,17 @@ export interface ChargeResult {
  */
 async function createHistoryEntry(
   damageClaimId: number,
-  previousStatus: DamageClaimStatus | null,
+  previousStatus: DamageClaimStatus|null,
   newStatus: DamageClaimStatus,
   action: string,
   actionBy: string,
   actionByUserId?: number,
   notes?: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string,unknown>,
+  tx?: Parameters<Parameters<typeof db.transaction>[0]>[0]
 ): Promise<void> {
-  await db.insert(damageClaimHistory).values({
+  if(!tx) return db.transaction(inner => createHistoryEntry(damageClaimId,previousStatus,newStatus,action,actionBy,actionByUserId,notes,metadata,inner));
+  const [history]=await tx.insert(damageClaimHistory).values({
     damageClaimId,
     previousStatus,
     newStatus,
@@ -144,8 +143,9 @@ async function createHistoryEntry(
     actionBy,
     actionByUserId,
     notes,
-    metadata: metadata || {},
-  });
+    metadata: metadata||{},
+  }).returning();
+  await queueClaimOutcome(tx,history);
 }
 
 /**
@@ -207,7 +207,7 @@ async function getBookingPaymentDetails(
  * Create a new damage claim (draft status)
  */
 async function validateClaimBooking(bookingType: 'kitchen' | 'storage', bookingId: number,
-  managerId: number, deadlineDays: number): Promise<string | undefined> {
+  managerId: number, deadlineDays: number, visitId?: number | null): Promise<string | undefined> {
   if (bookingType === 'storage') {
     const [booking] = await db.select({ status: storageBookings.status, endDate: storageBookings.endDate,
       managerId: locations.managerId })
@@ -229,6 +229,12 @@ async function validateClaimBooking(bookingType: 'kitchen' | 'storage', bookingI
     if (!booking || booking.managerId !== managerId) return 'Booking location not found or unauthorized';
     if (!['confirmed', 'completed'].includes(booking.status)) return 'Only confirmed or completed bookings are eligible';
     const date = new Date(booking.bookingDate).toISOString().slice(0, 10);
+    if (visitId) {
+      const [visit] = await db.select({ endTime: kitchenBookingVisits.endTime }).from(kitchenBookingVisits)
+        .where(and(eq(kitchenBookingVisits.id, visitId), eq(kitchenBookingVisits.bookingId, bookingId))).limit(1);
+      if (!visit) return 'Visit does not belong to this booking';
+      booking.endTime = visit.endTime;
+    }
     const endDate = booking.operatingWindowStartTime
       ? calendarDateForOperatingTime(date, booking.endTime, booking.operatingWindowStartTime)
       : booking.endTime <= booking.startTime ? calendarDateForOperatingTime(date, '00:00', '23:00') : date;
@@ -260,7 +266,7 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
 
     // Check if booking can have more claims
     const bookingId = input.bookingType === 'storage' ? input.storageBookingId : input.kitchenBookingId;
-    if (bookingId) {
+    if (bookingId && !input.checkoutHandoffKey) {
       const claimCheck = await canFileClaimForBooking(input.bookingType, bookingId);
       if (!claimCheck.allowed) {
         return { success: false, error: claimCheck.error };
@@ -271,7 +277,7 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
     const limits = await getDamageClaimLimits();
     if (!bookingId) return { success: false, error: 'Missing booking ID' };
     const bookingError = await validateClaimBooking(input.bookingType, bookingId, input.managerId,
-      limits.claimSubmissionDeadlineDays);
+      limits.claimSubmissionDeadlineDays, input.kitchenBookingVisitId);
     if (bookingError) return { success: false, error: bookingError };
     if (input.kitchenBookingVisitId != null) {
       if (input.bookingType !== 'kitchen') return { success: false, error: 'Kitchen visits cannot be attached to storage claims' };
@@ -382,6 +388,14 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
     const claim = await db.transaction(async (tx) => {
     const bookingTable = input.bookingType === 'storage' ? storageBookings : kitchenBookings;
     await tx.execute(sql`SELECT id FROM ${bookingTable} WHERE id = ${bookingId} FOR NO KEY UPDATE`);
+    if (input.checkoutHandoffKey) {
+      const [existing] = await tx.select({ claim: damageClaims }).from(damageClaims)
+        .innerJoin(damageClaimHistory, eq(damageClaimHistory.damageClaimId, damageClaims.id))
+        .where(and(eq(damageClaims.managerId, input.managerId),
+          input.bookingType === 'storage' ? eq(damageClaims.storageBookingId, bookingId) : eq(damageClaims.kitchenBookingId, bookingId),
+          sql`${damageClaimHistory.metadata}->>'checkoutHandoffKey' = ${input.checkoutHandoffKey}`)).limit(1);
+      if (existing) return existing.claim;
+    }
     const [count] = await tx.select({ count: sql<number>`count(*)::int` }).from(damageClaims)
       .where(input.bookingType === 'storage' ? eq(damageClaims.storageBookingId, bookingId) : eq(damageClaims.kitchenBookingId, bookingId));
     if ((count?.count ?? 0) >= limits.maxClaimsPerBooking) throw new Error(`Maximum of ${limits.maxClaimsPerBooking} claims per booking reached`);
@@ -402,11 +416,14 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
       status: 'draft',
       damagedItems: input.damagedItems || [],
     }).returning();
+    if (input.checkoutHandoffKey) await tx.insert(damageClaimHistory).values({ damageClaimId: created.id, newStatus: 'draft',
+      action: 'created', actionBy: 'manager', actionByUserId: input.managerId, notes: 'Inspection handed to a draft claim',
+      metadata: { checkoutHandoffKey: input.checkoutHandoffKey } });
     return created;
     });
 
     // Create history entry — single entry, no redundant draft
-    await createHistoryEntry(
+    if (!input.checkoutHandoffKey) await createHistoryEntry(
       claim.id,
       null,
       'draft',
@@ -529,44 +546,44 @@ export async function submitClaim(
   managerId: number
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const [claim] = await db
+    const [claim]=await db
       .select()
       .from(damageClaims)
-      .where(and(eq(damageClaims.id, claimId), eq(damageClaims.managerId, managerId)))
+      .where(and(eq(damageClaims.id,claimId),eq(damageClaims.managerId,managerId)))
       .limit(1);
 
-    if (!claim) {
-      return { success: false, error: 'Claim not found or unauthorized' };
+    if(!claim) {
+      return { success: false,error: 'Claim not found or unauthorized' };
     }
 
-    if (claim.status !== 'draft') {
-      return { success: false, error: 'Can only submit draft claims' };
+    if(claim.status!=='draft') {
+      return { success: false,error: 'Can only submit draft claims' };
     }
 
-    const { validateClaimAmount, getDamageClaimLimits } = await import('./damage-claim-limits-service');
-    const validation = await validateClaimAmount(claim.claimedAmountCents);
-    if (!validation.valid) return { success: false, error: validation.error };
-    const limits = await getDamageClaimLimits();
-    const claimBookingId = claim.bookingType === 'storage' ? claim.storageBookingId : claim.kitchenBookingId;
-    if (!claimBookingId) return { success: false, error: 'Missing booking ID' };
-    const bookingError = await validateClaimBooking(claim.bookingType as 'kitchen' | 'storage', claimBookingId,
-      managerId, limits.claimSubmissionDeadlineDays);
-    if (bookingError) return { success: false, error: bookingError };
-    const submittedAt = new Date();
-    const chefResponseDeadline = new Date(submittedAt.getTime() + limits.chefResponseDeadlineHours * 60 * 60 * 1000);
+    const { validateClaimAmount,getDamageClaimLimits }=await import('./damage-claim-limits-service');
+    const validation=await validateClaimAmount(claim.claimedAmountCents);
+    if(!validation.valid) return { success: false,error: validation.error };
+    const limits=await getDamageClaimLimits();
+    const claimBookingId=claim.bookingType==='storage'? claim.storageBookingId:claim.kitchenBookingId;
+    if(!claimBookingId) return { success: false,error: 'Missing booking ID' };
+    const bookingError=await validateClaimBooking(claim.bookingType as 'kitchen'|'storage',claimBookingId,
+      managerId,limits.claimSubmissionDeadlineDays,claim.kitchenBookingVisitId);
+    if(bookingError) return { success: false,error: bookingError };
+    const submittedAt=new Date();
+    const chefResponseDeadline=new Date(submittedAt.getTime()+limits.chefResponseDeadlineHours*60*60*1000);
 
     // Evidence must prove the before state, the after state, and the cost.
-    const evidenceRows = await db
+    const evidenceRows=await db
       .select({ evidenceType: damageEvidence.evidenceType })
       .from(damageEvidence)
-      .where(eq(damageEvidence.damageClaimId, claimId));
+      .where(eq(damageEvidence.damageClaimId,claimId));
 
-    if (!hasRequiredDamageClaimEvidence(evidenceRows)) {
-      const missing = damageClaimEvidenceGaps(evidenceRows);
-      const missingLabels = [
-        missing.beforePhoto && 'a before photo',
-        missing.afterPhoto && 'an after photo',
-        missing.costDocument && 'a receipt or invoice/quote',
+    if(!hasRequiredDamageClaimEvidence(evidenceRows)) {
+      const missing=damageClaimEvidenceGaps(evidenceRows);
+      const missingLabels=[
+        missing.beforePhoto&&'a before photo',
+        missing.afterPhoto&&'an after photo',
+        missing.costDocument&&'a receipt or invoice/quote',
       ].filter(Boolean);
       return {
         success: false,
@@ -574,97 +591,47 @@ export async function submitClaim(
       };
     }
 
-    const bookingId = claim.bookingType === 'storage' ? claim.storageBookingId : claim.kitchenBookingId;
-    const paymentDetails = bookingId
-      ? await getBookingPaymentDetails(claim.bookingType as 'kitchen' | 'storage', bookingId)
-      : null;
-    const submitted = await db.transaction(async tx => {
+    const bookingId=claim.bookingType==='storage'? claim.storageBookingId:claim.kitchenBookingId;
+    const paymentDetails=bookingId
+      ? await getBookingPaymentDetails(claim.bookingType as 'kitchen'|'storage',bookingId)
+      :null;
+    const submitted=await db.transaction(async tx => {
       await tx.execute(sql`SELECT id FROM damage_claims WHERE id = ${claimId} FOR UPDATE`);
-      const currentEvidence = await tx.select({ evidenceType: damageEvidence.evidenceType }).from(damageEvidence)
-        .where(eq(damageEvidence.damageClaimId, claimId));
-      if (!hasRequiredDamageClaimEvidence(currentEvidence)) return undefined;
-      const [result] = await tx.update(damageClaims).set({
-      status: 'submitted', submittedAt, chefResponseDeadline, updatedAt: submittedAt,
-      ...(paymentDetails ? {
-        stripeCustomerId: paymentDetails.stripeCustomerId,
-        stripePaymentMethodId: paymentDetails.stripePaymentMethodId,
-      } : {}),
-    }).where(and(eq(damageClaims.id, claimId), eq(damageClaims.managerId, managerId),
-      eq(damageClaims.status, 'draft'))).returning({ id: damageClaims.id });
+      const currentEvidence=await tx.select({ evidenceType: damageEvidence.evidenceType }).from(damageEvidence)
+        .where(eq(damageEvidence.damageClaimId,claimId));
+      if(!hasRequiredDamageClaimEvidence(currentEvidence)) return undefined;
+      const [result]=await tx.update(damageClaims).set({
+        status: 'submitted',submittedAt,chefResponseDeadline,updatedAt: submittedAt,
+        ...(paymentDetails? {
+          stripeCustomerId: paymentDetails.stripeCustomerId,
+          stripePaymentMethodId: paymentDetails.stripePaymentMethodId,
+        }:{}),
+      }).where(and(eq(damageClaims.id,claimId),eq(damageClaims.managerId,managerId),
+        eq(damageClaims.status,'draft'))).returning({ id: damageClaims.id });
+      if(result) {
+        await createHistoryEntry(
+          claimId,
+          'draft',
+          'submitted',
+          'submitted',
+          'manager',
+          managerId,
+          'Claim submitted to chef for response',undefined,tx);
+      }
       return result;
     });
-    if (!submitted) return { success: false, error: 'Claim changed; reload before submitting' };
+    if(!submitted) return { success: false,error: 'Claim changed; reload before submitting' };
 
-    await createHistoryEntry(
-      claimId,
-      'draft',
-      'submitted',
-      'submitted',
-      'manager',
-      managerId,
-      'Claim submitted to chef for response'
-    );
 
-    logger.info(`[DamageClaimService] Claim ${claimId} submitted`, { managerId });
 
-    // Send email notification to chef
-    try {
-      const claimWithDetails = await getClaimById(claimId);
-      if (claimWithDetails) {
-        const [chefUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, claim.chefId))
-          .limit(1);
-        
-        const [managerUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, claim.managerId))
-          .limit(1);
+    logger.info(`[DamageClaimService] Claim ${claimId} submitted`,{ managerId });
 
-        if (chefUser?.username) {
-          const emailContent = generateDamageClaimFiledEmail({
-            chefEmail: chefUser.username,
-            chefName: claimWithDetails.chefName || chefUser.username || 'Chef',
-            managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
-            locationName: claimWithDetails.locationName || 'Unknown Location',
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            damageDate: format(new Date(claim.damageDate), 'MMM d, yyyy'),
-            responseDeadline: format(chefResponseDeadline, 'MMM d, yyyy h:mm a'),
-            claimId: claim.id,
-          });
-          await sendEmail(emailContent);
-          logger.info(`[DamageClaimService] Sent claim filed email to chef ${chefUser.username}`);
-
-          // Send in-app notification to chef
-          try {
-            const { notificationService } = await import('./notification.service');
-            await notificationService.notifyChefDamageClaimFiled({
-              chefId: claim.chefId,
-              managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
-              responseDeadline: chefResponseDeadline,
-              claimId: claim.id,
-              claimTitle: claim.claimTitle,
-              amountCents: claim.claimedAmountCents,
-              locationName: claimWithDetails.locationName || 'Unknown Location',
-              bookingType: claim.bookingType,
-            });
-            logger.info(`[DamageClaimService] Sent in-app notification to chef for claim ${claimId}`);
-          } catch (notifError) {
-            logger.error('[DamageClaimService] Failed to send in-app notification:', notifError);
-          }
-        }
-      }
-    } catch (emailError) {
-      logger.error('[DamageClaimService] Failed to send claim filed email:', emailError);
-      // Don't fail the submission if email fails
-    }
-
+    await attemptOutcomeDelivery();
     return { success: true };
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to submit claim';
-    logger.error('[DamageClaimService] Error submitting claim:', error);
-    return { success: false, error: errorMessage };
+  } catch(error: unknown) {
+    const errorMessage=error instanceof Error? error.message:'Failed to submit claim';
+    logger.error('[DamageClaimService] Error submitting claim:',error);
+    return { success: false,error: errorMessage };
   }
 }
 
@@ -894,238 +861,137 @@ export async function chefRespondToClaim(
   response: ChefClaimResponse
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const [claim] = await db
+    const [claim]=await db
       .select()
       .from(damageClaims)
-      .where(and(eq(damageClaims.id, claimId), eq(damageClaims.chefId, chefId)))
+      .where(and(eq(damageClaims.id,claimId),eq(damageClaims.chefId,chefId)))
       .limit(1);
 
-    if (!claim) {
-      return { success: false, error: 'Claim not found or unauthorized' };
+    if(!claim) {
+      return { success: false,error: 'Claim not found or unauthorized' };
     }
 
-    if (!['accept', 'dispute'].includes(response.action) || typeof response.response !== 'string' || response.response.trim().length < 10) {
-      return { success: false, error: 'Choose accept or dispute and provide at least 10 characters' };
+    if(!['accept','dispute'].includes(response.action)||typeof response.response!=='string'||response.response.trim().length<10) {
+      return { success: false,error: 'Choose accept or dispute and provide at least 10 characters' };
     }
-    if (claim.status === 'under_review') {
-      if (response.action !== 'dispute') return { success: false, error: 'Claims under review can only receive additional dispute information' };
-      const [responded] = await db.update(damageClaims).set({ chefResponse: response.response,
-        chefRespondedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(damageClaims.id, claimId), eq(damageClaims.chefId, chefId), eq(damageClaims.status, 'under_review')))
-        .returning({ id: damageClaims.id });
-      if (!responded) return { success: false, error: 'Claim changed; reload before responding' };
-      await createHistoryEntry(claimId, 'under_review', 'under_review', 'chef_response', 'chef', chefId,
-        `Additional chef response: ${response.response}`);
-      try {
-        const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
-        const { notificationService } = await import('./notification.service');
-        for (const admin of admins) await notificationService.createForManager({ managerId: admin.id,
-          type: 'damage_claim_disputed', priority: 'high', title: 'Additional damage claim response',
-          message: `The chef added information to claim #${claimId}.`, metadata: { damageClaimId: claimId },
-          actionUrl: '/admin?section=damage-claims', actionLabel: 'Review response' });
-      } catch (error) { logger.error('Chef response saved; admin notification failed', error); }
+    if(claim.status==='under_review') {
+      if(response.action!=='dispute') return { success: false,error: 'Claims under review can only receive additional dispute information' };
+      await db.transaction(async tx => {
+        const [responded]=await tx.update(damageClaims).set({
+          chefResponse: response.response,
+          chefRespondedAt: new Date(),updatedAt: new Date()
+        })
+          .where(and(eq(damageClaims.id,claimId),eq(damageClaims.chefId,chefId),eq(damageClaims.status,'under_review')))
+          .returning({ id: damageClaims.id });
+        if(!responded) throw new Error('Claim changed; reload before responding');
+        await createHistoryEntry(claimId,'under_review','under_review','chef_response','chef',chefId,
+          `Additional chef response: ${response.response}`,undefined,tx);
+      });
+      await attemptOutcomeDelivery();
       return { success: true };
     }
-    if (claim.status !== 'submitted') {
-      return { success: false, error: 'Can only respond to submitted claims or claims under review' };
+    if(claim.status!=='submitted') {
+      return { success: false,error: 'Can only respond to submitted claims or claims under review' };
     }
 
-    const previousStatus = claim.status;
+    const previousStatus=claim.status;
     let newStatus: DamageClaimStatus;
 
-    if (response.action === 'accept') {
-      newStatus = 'chef_accepted';
-      const [accepted] = await db
-        .update(damageClaims)
-        .set({
-          status: 'approved',
-          chefResponse: response.response,
-          chefRespondedAt: new Date(),
-          approvedAmountCents: claim.claimedAmountCents,
-          finalAmountCents: claim.claimedAmountCents,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(damageClaims.id, claimId), eq(damageClaims.chefId, chefId), eq(damageClaims.status, 'submitted')))
-        .returning({ id: damageClaims.id });
-      if (!accepted) return { success: false, error: 'Claim changed; reload before responding' };
+    if(response.action==='accept') {
+      newStatus='chef_accepted';
+      await db.transaction(async tx => {
+        const [accepted]=await tx
+          .update(damageClaims)
+          .set({
+            status: 'approved',
+            chefResponse: response.response,
+            chefRespondedAt: new Date(),
+            approvedAmountCents: claim.claimedAmountCents,
+            finalAmountCents: claim.claimedAmountCents,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(damageClaims.id,claimId),eq(damageClaims.chefId,chefId),eq(damageClaims.status,'submitted')))
+          .returning({ id: damageClaims.id });
+        if(!accepted) throw new Error('Claim changed; reload before responding');
 
-      await createHistoryEntry(
-        claimId,
-        previousStatus,
-        'chef_accepted',
-        'chef_response',
-        'chef',
-        chefId,
-        `Chef accepted claim: ${response.response}`
-      );
+        await createHistoryEntry(
+          claimId,
+          previousStatus,
+          'chef_accepted',
+          'chef_response',
+          'chef',
+          chefId,
+          `Chef accepted claim: ${response.response}`,undefined,tx);
 
-      await createHistoryEntry(
-        claimId,
-        'chef_accepted',
-        'approved',
-        'auto_approved',
-        'system',
-        undefined,
-        'Claim auto-approved after chef acceptance'
-      );
+        await createHistoryEntry(
+          claimId,
+          'chef_accepted',
+          'approved',
+          'auto_approved',
+          'system',
+          undefined,
+          'Claim auto-approved after chef acceptance',undefined,tx);
 
+
+      });
       logger.info(`[DamageClaimService] Chef ${chefId} accepted claim ${claimId}`);
 
       // Auto-charge the chef after acceptance (like overstay penalties)
       try {
-        const chargeResult = await chargeApprovedClaim(claimId);
-        if (chargeResult.success) {
+        const chargeResult=await chargeApprovedClaim(claimId);
+        if(chargeResult.success) {
           logger.info(`[DamageClaimService] Auto-charged claim ${claimId} after chef acceptance`);
         } else {
           logger.warn(`[DamageClaimService] Auto-charge failed for claim ${claimId}: ${chargeResult.error}`);
         }
-      } catch (chargeError) {
-        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`, chargeError);
+      } catch(chargeError) {
+        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`,chargeError);
       }
 
     } else {
-      newStatus = 'chef_disputed';
-      const [disputed] = await db
-        .update(damageClaims)
-        .set({
-          status: 'under_review',
-          chefResponse: response.response,
-          chefRespondedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(damageClaims.id, claimId), eq(damageClaims.chefId, chefId), eq(damageClaims.status, 'submitted')))
-        .returning({ id: damageClaims.id });
-      if (!disputed) return { success: false, error: 'Claim changed; reload before responding' };
+      newStatus='chef_disputed';
+      await db.transaction(async tx => {
+        const [disputed]=await tx
+          .update(damageClaims)
+          .set({
+            status: 'under_review',
+            chefResponse: response.response,
+            chefRespondedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(damageClaims.id,claimId),eq(damageClaims.chefId,chefId),eq(damageClaims.status,'submitted')))
+          .returning({ id: damageClaims.id });
+        if(!disputed) throw new Error('Claim changed; reload before responding');
 
-      await createHistoryEntry(
-        claimId,
-        previousStatus,
-        'chef_disputed',
-        'chef_response',
-        'chef',
-        chefId,
-        `Chef disputed claim: ${response.response}`
-      );
+        await createHistoryEntry(
+          claimId,
+          previousStatus,
+          'chef_disputed',
+          'chef_response',
+          'chef',
+          chefId,
+          `Chef disputed claim: ${response.response}`,undefined,tx);
 
-      await createHistoryEntry(
-        claimId,
-        'chef_disputed',
-        'under_review',
-        'escalated_to_admin',
-        'system',
-        undefined,
-        'Disputed claim escalated to admin for review'
-      );
+        await createHistoryEntry(
+          claimId,
+          'chef_disputed',
+          'under_review',
+          'escalated_to_admin',
+          'system',
+          undefined,
+          'Disputed claim escalated to admin for review',undefined,tx);
 
+
+      });
       logger.info(`[DamageClaimService] Chef ${chefId} disputed claim ${claimId}`);
     }
 
-    // Send email notifications
-    try {
-      const claimWithDetails = await getClaimById(claimId);
-      if (claimWithDetails) {
-        const [managerUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, claim.managerId))
-          .limit(1);
-        
-        const [chefUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, chefId))
-          .limit(1);
-
-        // Notify manager of chef's response
-        if (managerUser?.username) {
-          const emailContent = generateDamageClaimResponseEmail({
-            managerEmail: managerUser.username,
-            managerName: claimWithDetails.managerName || managerUser.username || 'Manager',
-            chefName: claimWithDetails.chefName || chefUser?.username || 'Chef',
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            response: response.action === 'accept' ? 'accepted' : 'disputed',
-            chefResponse: response.response,
-            claimId: claim.id,
-          });
-          await sendEmail(emailContent);
-          logger.info(`[DamageClaimService] Sent response notification to manager ${managerUser.username}`);
-
-          // Send in-app notification to manager
-          try {
-            const { notificationService } = await import('./notification.service');
-            await notificationService.notifyManagerClaimResponseReceived({
-              managerId: claim.managerId,
-              locationId: claim.locationId,
-              chefName: claimWithDetails.chefName || chefUser?.username || 'Chef',
-              responseType: response.action === 'accept' ? 'accepted' : 'disputed',
-              chefResponse: response.response,
-              claimId: claim.id,
-              claimTitle: claim.claimTitle,
-              amountCents: claim.claimedAmountCents,
-              locationName: claimWithDetails.locationName || 'Unknown Location',
-              bookingType: claim.bookingType,
-            });
-            logger.info(`[DamageClaimService] Sent in-app notification to manager for claim ${claimId} response`);
-          } catch (notifError) {
-            logger.error('[DamageClaimService] Failed to send manager in-app notification:', notifError);
-          }
-        }
-
-        // If disputed, notify all admins — same pattern as kitchen license / registration notifications
-        if (response.action === 'dispute') {
-          const admins = await db
-            .select({ id: users.id, username: users.username })
-            .from(users)
-            .where(eq(users.role, 'admin'));
-
-          const { notificationService } = await import('./notification.service');
-
-          for (const admin of admins) {
-            // The bell is the surface admins actually watch - the email alone
-            // left disputed claims invisible in-app.
-            try {
-              await notificationService.createForManager({
-                managerId: admin.id,
-                type: 'damage_claim_disputed',
-                priority: 'high',
-                title: 'Damage claim disputed',
-                message: `${claim.claimTitle} - the chef disputed this claim and it needs your review.`,
-                metadata: { damageClaimId: claim.id },
-                actionUrl: '/admin?section=damage-claims',
-                actionLabel: 'Review claim',
-              });
-            } catch (notifyError) {
-              logger.error(`[DamageClaimService] Failed to notify admin ${admin.id} in-app about claim ${claim.id}:`, notifyError);
-            }
-
-            if (admin.username) {
-              const adminEmailContent = generateDamageClaimDisputedAdminEmail({
-                adminEmail: admin.username,
-                chefName: claimWithDetails.chefName || chefUser?.username || 'Chef',
-                chefEmail: claimWithDetails.chefEmail || chefUser?.username || '',
-                managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
-                locationName: claimWithDetails.locationName || 'Unknown Location',
-                claimTitle: claim.claimTitle,
-                claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-                chefResponse: response.response,
-                claimId: claim.id,
-              });
-              await sendEmail(adminEmailContent);
-            }
-          }
-          if (admins.length > 0) {
-            logger.info(`[DamageClaimService] Sent dispute notification to ${admins.length} admin(s)`);
-          }
-        }
-      }
-    } catch (emailError) {
-      logger.error('[DamageClaimService] Failed to send response emails:', emailError);
-    }
-
+    await attemptOutcomeDelivery();
     return { success: true };
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to process response';
-    logger.error('[DamageClaimService] Error processing chef response:', error);
-    return { success: false, error: errorMessage };
+  } catch(error: unknown) {
+    const errorMessage=error instanceof Error? error.message:'Failed to process response';
+    logger.error('[DamageClaimService] Error processing chef response:',error);
+    return { success: false,error: errorMessage };
   }
 }
 
@@ -1182,189 +1048,100 @@ export async function adminDecision(
   decision: AdminDecision
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const [claim] = await db
+    const [claim]=await db
       .select()
       .from(damageClaims)
-      .where(eq(damageClaims.id, claimId))
+      .where(eq(damageClaims.id,claimId))
       .limit(1);
 
-    if (!claim) {
-      return { success: false, error: 'Claim not found' };
+    if(!claim) {
+      return { success: false,error: 'Claim not found' };
     }
 
-    if (claim.status !== 'under_review') {
-      return { success: false, error: 'Can only review claims under review' };
+    if(claim.status!=='under_review') {
+      return { success: false,error: 'Can only review claims under review' };
     }
 
-    const previousStatus = claim.status;
+    const previousStatus=claim.status;
     let newStatus: DamageClaimStatus;
-    let approvedAmount: number | null = null;
-    let finalAmount: number | null = null;
+    let approvedAmount: number|null=null;
+    let finalAmount: number|null=null;
 
-    switch (decision.decision) {
+    switch(decision.decision) {
       case 'approve':
-        newStatus = 'approved';
-        approvedAmount = claim.claimedAmountCents;
-        finalAmount = claim.claimedAmountCents;
+        newStatus='approved';
+        approvedAmount=claim.claimedAmountCents;
+        finalAmount=claim.claimedAmountCents;
         break;
       case 'partially_approve':
-        if (!Number.isSafeInteger(decision.approvedAmountCents) || !decision.approvedAmountCents ||
-            decision.approvedAmountCents <= 0 || decision.approvedAmountCents > claim.claimedAmountCents) {
-          return { success: false, error: 'Partial approval must be whole cents greater than zero and no more than the claimed amount' };
+        if(!Number.isSafeInteger(decision.approvedAmountCents)||!decision.approvedAmountCents||
+          decision.approvedAmountCents<=0||decision.approvedAmountCents>claim.claimedAmountCents) {
+          return { success: false,error: 'Partial approval must be whole cents greater than zero and no more than the claimed amount' };
         }
-        newStatus = 'partially_approved';
-        approvedAmount = decision.approvedAmountCents;
-        finalAmount = decision.approvedAmountCents;
+        newStatus='partially_approved';
+        approvedAmount=decision.approvedAmountCents;
+        finalAmount=decision.approvedAmountCents;
         break;
       case 'reject':
-        newStatus = 'rejected';
-        approvedAmount = 0;
-        finalAmount = 0;
+        newStatus='rejected';
+        approvedAmount=0;
+        finalAmount=0;
         break;
       default:
-        return { success: false, error: 'Invalid decision' };
+        return { success: false,error: 'Invalid decision' };
     }
 
-    const [reviewed] = await db
-      .update(damageClaims)
-      .set({
-        status: newStatus,
-        adminReviewerId: adminId,
-        adminReviewedAt: new Date(),
-        adminDecisionReason: decision.decisionReason,
-        adminNotes: decision.notes,
-        approvedAmountCents: approvedAmount,
-        finalAmountCents: finalAmount,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(damageClaims.id, claimId), eq(damageClaims.status, 'under_review')))
-      .returning({ id: damageClaims.id });
-    if (!reviewed) return { success: false, error: 'Claim changed; reload before deciding' };
+    await db.transaction(async tx => {
+      const [reviewed]=await tx
+        .update(damageClaims)
+        .set({
+          status: newStatus,
+          adminReviewerId: adminId,
+          adminReviewedAt: new Date(),
+          adminDecisionReason: decision.decisionReason,
+          adminNotes: decision.notes,
+          approvedAmountCents: approvedAmount,
+          finalAmountCents: finalAmount,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(damageClaims.id,claimId),eq(damageClaims.status,'under_review')))
+        .returning({ id: damageClaims.id });
+      if(!reviewed) throw new Error('Claim changed; reload before deciding');
 
-    await createHistoryEntry(
-      claimId,
-      previousStatus,
-      newStatus,
-      'admin_decision',
-      'admin',
-      adminId,
-      `Admin ${decision.decision}: ${decision.decisionReason}`,
-      { approvedAmountCents: approvedAmount }
-    );
+      await createHistoryEntry(
+        claimId,
+        previousStatus,
+        newStatus,
+        'admin_decision',
+        'admin',
+        adminId,
+        `Admin ${decision.decision}: ${decision.decisionReason}`,
+        { approvedAmountCents: approvedAmount },tx);
 
+
+    });
     logger.info(`[DamageClaimService] Admin ${adminId} decided on claim ${claimId}: ${decision.decision}`);
 
-    // Send email notifications to chef and manager
-    try {
-      const claimWithDetails = await getClaimById(claimId);
-      if (claimWithDetails) {
-        const [chefUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, claim.chefId))
-          .limit(1);
-        
-        const [managerUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, claim.managerId))
-          .limit(1);
-
-        const decisionType = decision.decision === 'approve' ? 'approved' 
-          : decision.decision === 'partially_approve' ? 'partially_approved' 
-          : 'rejected';
-
-        // Notify chef
-        if (chefUser?.username) {
-          const chefEmail = generateDamageClaimDecisionEmail({
-            recipientEmail: chefUser.username,
-            recipientName: claimWithDetails.chefName || chefUser.username || 'Chef',
-            recipientRole: 'chef',
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            decision: decisionType,
-            finalAmount: finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : undefined,
-            decisionReason: decision.decisionReason,
-            claimId: claim.id,
-          });
-          await sendEmail(chefEmail);
-        }
-
-        // Notify manager
-        if (managerUser?.username) {
-          const managerEmail = generateDamageClaimDecisionEmail({
-            recipientEmail: managerUser.username,
-            recipientName: claimWithDetails.managerName || managerUser.username || 'Manager',
-            recipientRole: 'manager',
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            decision: decisionType,
-            finalAmount: finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : undefined,
-            decisionReason: decision.decisionReason,
-            claimId: claim.id,
-          });
-          await sendEmail(managerEmail);
-        }
-
-        // Send in-app notifications for admin decision
-        try {
-          const { notificationService } = await import('./notification.service');
-          
-          // Notify chef of decision
-          await notificationService.notifyChefClaimDecision({
-            chefId: claim.chefId,
-            decision: decisionType as 'approved' | 'partially_approved' | 'rejected',
-            approvedAmountCents: finalAmount || undefined,
-            decisionReason: decision.decisionReason,
-            claimId: claim.id,
-            claimTitle: claim.claimTitle,
-            amountCents: claim.claimedAmountCents,
-            locationName: claimWithDetails.locationName || 'Unknown Location',
-            bookingType: claim.bookingType,
-          });
-
-          // Notify manager of decision
-          await notificationService.notifyManagerClaimDecision({
-            managerId: claim.managerId,
-            locationId: claim.locationId,
-            decision: decisionType as 'approved' | 'partially_approved' | 'rejected',
-            approvedAmountCents: finalAmount || undefined,
-            decisionReason: decision.decisionReason,
-            claimId: claim.id,
-            claimTitle: claim.claimTitle,
-            amountCents: claim.claimedAmountCents,
-            locationName: claimWithDetails.locationName || 'Unknown Location',
-            bookingType: claim.bookingType,
-          });
-
-          logger.info(`[DamageClaimService] Sent in-app decision notifications for claim ${claimId}`);
-        } catch (notifError) {
-          logger.error('[DamageClaimService] Failed to send in-app decision notifications:', notifError);
-        }
-
-        logger.info(`[DamageClaimService] Sent decision emails for claim ${claimId}`);
-      }
-    } catch (emailError) {
-      logger.error('[DamageClaimService] Failed to send decision emails:', emailError);
-    }
-
     // Auto-charge if approved or partially approved (like overstay penalties)
-    if (newStatus === 'approved' || newStatus === 'partially_approved') {
+    if(newStatus==='approved'||newStatus==='partially_approved') {
       try {
-        const chargeResult = await chargeApprovedClaim(claimId);
-        if (chargeResult.success) {
+        const chargeResult=await chargeApprovedClaim(claimId);
+        if(chargeResult.success) {
           logger.info(`[DamageClaimService] Auto-charged claim ${claimId} after admin ${decision.decision}`);
         } else {
           logger.warn(`[DamageClaimService] Auto-charge failed for claim ${claimId}: ${chargeResult.error}`);
         }
-      } catch (chargeError) {
-        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`, chargeError);
+      } catch(chargeError) {
+        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`,chargeError);
       }
     }
 
+    await attemptOutcomeDelivery();
     return { success: true };
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to process decision';
-    logger.error('[DamageClaimService] Error processing admin decision:', error);
-    return { success: false, error: errorMessage };
+  } catch(error: unknown) {
+    const errorMessage=error instanceof Error? error.message:'Failed to process decision';
+    logger.error('[DamageClaimService] Error processing admin decision:',error);
+    return { success: false,error: errorMessage };
   }
 }
 
@@ -1376,18 +1153,18 @@ export async function adminDecision(
  * Charge an approved damage claim
  */
 export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult> {
-  if (!stripe) {
-    return { success: false, error: 'Stripe not configured' };
+  if(!stripe) {
+    return { success: false,error: 'Stripe not configured' };
   }
 
-  const [claim] = await db
+  const [claim]=await db
     .select()
     .from(damageClaims)
-    .where(eq(damageClaims.id, claimId))
+    .where(eq(damageClaims.id,claimId))
     .limit(1);
 
-  if (!claim) {
-    return { success: false, error: 'Claim not found' };
+  if(!claim) {
+    return { success: false,error: 'Claim not found' };
   }
 
   // ENTERPRISE STANDARD: Allow charging from approved states + recovery statuses
@@ -1395,116 +1172,119 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
   // - charge_failed: retry after a previous failure (legacy records)
   // - charge_pending: recovery from stuck state (e.g. server crash during previous charge)
   // - escalated: admin force-retry (e.g. chef updated their card)
-  const chargeableStatuses = ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'charge_pending', 'escalated'];
-  if (!chargeableStatuses.includes(claim.status)) {
-    return { success: false, error: `Cannot charge claim in status: ${claim.status}` };
+  const chargeableStatuses=['approved','partially_approved','chef_accepted','charge_failed','charge_pending','escalated'];
+  if(!chargeableStatuses.includes(claim.status)) {
+    return { success: false,error: `Cannot charge claim in status: ${claim.status}` };
   }
 
-  const chargeAmount = claim.finalAmountCents;
-  if (!chargeAmount || chargeAmount <= 0) {
-    return { success: false, error: 'No amount to charge' };
+  const chargeAmount=claim.finalAmountCents;
+  if(!chargeAmount||chargeAmount<=0) {
+    return { success: false,error: 'No amount to charge' };
   }
 
   // Fetch Stripe payment method from the associated booking (kitchen or storage)
   // ENTERPRISE FIX: Fall back to related storage/equipment bookings if primary booking has null Stripe fields
-  let customerId: string | null = null;
-  let paymentMethodId: string | null = null;
-  let paymentMethodSource: string = 'unknown';
+  let customerId: string|null=null;
+  let paymentMethodId: string|null=null;
+  let paymentMethodSource: string='unknown';
 
-  if (claim.bookingType === 'kitchen' && claim.kitchenBookingId) {
+  if(claim.bookingType==='kitchen'&&claim.kitchenBookingId) {
     // First try the kitchen booking itself
-    const [booking] = await db
+    const [booking]=await db
       .select({
         stripeCustomerId: kitchenBookings.stripeCustomerId,
         stripePaymentMethodId: kitchenBookings.stripePaymentMethodId,
       })
       .from(kitchenBookings)
-      .where(eq(kitchenBookings.id, claim.kitchenBookingId))
+      .where(eq(kitchenBookings.id,claim.kitchenBookingId))
       .limit(1);
-    
-    if (booking?.stripeCustomerId && booking?.stripePaymentMethodId) {
-      customerId = booking.stripeCustomerId;
-      paymentMethodId = booking.stripePaymentMethodId;
-      paymentMethodSource = 'kitchen_booking';
+
+    if(booking?.stripeCustomerId&&booking?.stripePaymentMethodId) {
+      customerId=booking.stripeCustomerId;
+      paymentMethodId=booking.stripePaymentMethodId;
+      paymentMethodSource='kitchen_booking';
     } else {
       // FALLBACK: Check associated storage bookings for payment method
       logger.info(`[DamageClaimService] Kitchen booking ${claim.kitchenBookingId} has null Stripe fields, checking storage bookings...`);
-      
-      const [storageBooking] = await db
+
+      const [storageBooking]=await db
         .select({
           stripeCustomerId: storageBookings.stripeCustomerId,
           stripePaymentMethodId: storageBookings.stripePaymentMethodId,
         })
         .from(storageBookings)
-        .where(eq(storageBookings.kitchenBookingId, claim.kitchenBookingId))
+        .where(eq(storageBookings.kitchenBookingId,claim.kitchenBookingId))
         .limit(1);
-      
-      if (storageBooking?.stripeCustomerId && storageBooking?.stripePaymentMethodId) {
-        customerId = storageBooking.stripeCustomerId;
-        paymentMethodId = storageBooking.stripePaymentMethodId;
-        paymentMethodSource = 'storage_booking_fallback';
+
+      if(storageBooking?.stripeCustomerId&&storageBooking?.stripePaymentMethodId) {
+        customerId=storageBooking.stripeCustomerId;
+        paymentMethodId=storageBooking.stripePaymentMethodId;
+        paymentMethodSource='storage_booking_fallback';
         logger.info(`[DamageClaimService] Using storage booking payment method as fallback for kitchen claim ${claimId}`);
       }
       // Note: Equipment bookings don't have separate Stripe fields (payments bundled with kitchen booking)
     }
-  } else if (claim.bookingType === 'storage' && claim.storageBookingId) {
-    const [booking] = await db
+  } else if(claim.bookingType==='storage'&&claim.storageBookingId) {
+    const [booking]=await db
       .select({
         stripeCustomerId: storageBookings.stripeCustomerId,
         stripePaymentMethodId: storageBookings.stripePaymentMethodId,
       })
       .from(storageBookings)
-      .where(eq(storageBookings.id, claim.storageBookingId))
+      .where(eq(storageBookings.id,claim.storageBookingId))
       .limit(1);
-    
-    if (booking) {
-      customerId = booking.stripeCustomerId;
-      paymentMethodId = booking.stripePaymentMethodId;
-      paymentMethodSource = 'storage_booking';
+
+    if(booking) {
+      customerId=booking.stripeCustomerId;
+      paymentMethodId=booking.stripePaymentMethodId;
+      paymentMethodSource='storage_booking';
     }
   }
 
-  logger.info(`[DamageClaimService] Payment method lookup for claim ${claimId}:`, {
-    customerId: customerId ? `${customerId.substring(0, 10)}...` : null,
-    paymentMethodId: paymentMethodId ? `${paymentMethodId.substring(0, 10)}...` : null,
+  logger.info(`[DamageClaimService] Payment method lookup for claim ${claimId}:`,{
+    customerId: customerId? `${customerId.substring(0,10)}...`:null,
+    paymentMethodId: paymentMethodId? `${paymentMethodId.substring(0,10)}...`:null,
     source: paymentMethodSource,
   });
 
-  if (!customerId || !paymentMethodId) {
+  if(!customerId||!paymentMethodId) {
     // Mark as failed - no payment method
-    await db
-      .update(damageClaims)
-      .set({
-        status: 'charge_failed',
-        chargeFailedAt: new Date(),
-        chargeFailureReason: 'No saved payment method available',
-        updatedAt: new Date(),
-      })
-      .where(and(eq(damageClaims.id, claimId), inArray(damageClaims.status, chargeableStatuses as any)));
+    await db.transaction(async tx => {
+      const [changedOutcome1]=await tx
+        .update(damageClaims)
+        .set({
+          status: 'charge_failed',
+          chargeFailedAt: new Date(),
+          chargeFailureReason: 'No saved payment method available',
+          updatedAt: new Date(),
+        })
+        .where(and(eq(damageClaims.id,claimId),inArray(damageClaims.status,chargeableStatuses as any))).returning({ id: damageClaims.id });
+      if(!changedOutcome1) throw new Error('Claim changed; outcome needs reconciliation');
 
-    await createHistoryEntry(
-      claimId,
-      claim.status,
-      'charge_failed',
-      'charge_attempt',
-      'system',
-      undefined,
-      'No saved payment method available'
-    );
-    await sendDamageClaimPaymentLinkToChef(claimId, claim, 'No saved payment method available');
-    await sendDamageClaimEscalationAdminEmail(claimId, claim, 'No saved payment method available');
-    return { success: false, error: 'No saved payment method available' };
+      await createHistoryEntry(
+        claimId,
+        claim.status,
+        'charge_failed',
+        'charge_attempt',
+        'system',
+        undefined,
+        'No saved payment method available',undefined,tx);
+
+    });
+    await sendDamageClaimPaymentLinkToChef(claimId,claim,'No saved payment method available');
+
+    return { success: false,error: 'No saved payment method available' };
   }
 
   // Get manager's Stripe Connect account for destination charge
-  let managerStripeAccountId: string | null = null;
-  const [manager] = await db
+  let managerStripeAccountId: string|null=null;
+  const [manager]=await db
     .select({ stripeConnectAccountId: users.stripeConnectAccountId })
     .from(users)
-    .where(eq(users.id, claim.managerId))
+    .where(eq(users.id,claim.managerId))
     .limit(1);
 
-  managerStripeAccountId = manager?.stripeConnectAccountId || null;
+  managerStripeAccountId=manager?.stripeConnectAccountId||null;
 
   // ARCHITECTURE — Separate Charges and Transfers:
   //   No application_fee_amount, no transfer_data on the PaymentIntent.
@@ -1513,16 +1293,22 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
   //   manager_connect_account_id stored in metadata so the webhook knows the destination.
 
   // Update status to charge_pending
-  const [charging] = await db
-    .update(damageClaims)
-    .set({
-      status: 'charge_pending',
-      chargeAttemptedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(damageClaims.id, claimId), eq(damageClaims.status, claim.status)))
-    .returning({ id: damageClaims.id });
-  if (!charging) return { success: false, error: 'Claim changed; reload before charging' };
+  const charging=await db.transaction(async tx => {
+    const [changed]=await tx
+      .update(damageClaims)
+      .set({
+        status: 'charge_pending',
+        chargeAttemptedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(damageClaims.id,claimId),eq(damageClaims.status,claim.status)))
+      .returning({ id: damageClaims.id });
+
+    if(!changed) return undefined;
+    await createHistoryEntry(claimId,claim.status,'charge_pending','charge_attempt','system',undefined,'Payment attempt pending; no successful charge receipt yet',undefined,tx);
+    return changed;
+  });
+  if(!charging) return { success: false,error: 'Claim changed; reload before charging' };
 
   try {
     const paymentIntentParams: {
@@ -1532,9 +1318,9 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       payment_method: string;
       off_session: boolean;
       confirm: boolean;
-      metadata: Record<string, string>;
+      metadata: Record<string,string>;
       statement_descriptor_suffix: string;
-    } = {
+    }={
       amount: chargeAmount,
       currency: 'cad',
       customer: customerId,
@@ -1551,47 +1337,52 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       statement_descriptor_suffix: 'DAMAGE CLAIM',
     };
 
-    if (managerStripeAccountId) {
+    if(managerStripeAccountId) {
       // Store destination in metadata so the webhook can find the manager Connect account
-      paymentIntentParams.metadata.manager_connect_account_id = managerStripeAccountId;
+      paymentIntentParams.metadata.manager_connect_account_id=managerStripeAccountId;
       logger.info(`[DamageClaimService] PaymentIntent will be charged to platform; transfer to ${managerStripeAccountId} happens in webhook`);
     }
 
     // ENTERPRISE STANDARD: Use idempotency key to prevent duplicate charges
     // Key format: damage_claim_{claimId}_{timestamp_day} - allows retry within same day
-    const paymentIntent = await chargeObligation(stripe, 'damage_claim', claimId, paymentIntentParams);
-    if (paymentIntent.status === 'processing') return { success: false, paymentIntentId: paymentIntent.id,
-      error: 'Payment is processing; no additional payment has been created' };
+    const paymentIntent=await chargeObligation(stripe,'damage_claim',claimId,paymentIntentParams);
+    if(paymentIntent.status==='processing') return {
+      success: false,paymentIntentId: paymentIntent.id,
+      error: 'Payment is processing; no additional payment has been created'
+    };
 
-    if (paymentIntent.status === 'succeeded') {
-      const chargeId = typeof paymentIntent.latest_charge === 'string'
+    if(paymentIntent.status==='succeeded') {
+      const chargeId=typeof paymentIntent.latest_charge==='string'
         ? paymentIntent.latest_charge
-        : paymentIntent.latest_charge?.id;
+        :paymentIntent.latest_charge?.id;
 
-      await db
-        .update(damageClaims)
-        .set({
-          status: 'charge_succeeded',
-          stripePaymentIntentId: paymentIntent.id,
-          stripeChargeId: chargeId || null,
-          chargeSucceededAt: new Date(),
-          resolvedAt: new Date(),
-          resolutionType: 'paid',
-          updatedAt: new Date(),
-        })
-        .where(and(eq(damageClaims.id, claimId), inArray(damageClaims.status, chargeableStatuses as any)));
+      await db.transaction(async tx => {
+        const [changedOutcome2]=await tx
+          .update(damageClaims)
+          .set({
+            status: 'charge_succeeded',
+            stripePaymentIntentId: paymentIntent.id,
+            stripeChargeId: chargeId||null,
+            chargeSucceededAt: new Date(),
+            resolvedAt: new Date(),
+            resolutionType: 'paid',
+            updatedAt: new Date(),
+          })
+          .where(and(eq(damageClaims.id,claimId),inArray(damageClaims.status,chargeableStatuses as any))).returning({ id: damageClaims.id });
+        if(!changedOutcome2) throw new Error('Claim changed; outcome needs reconciliation');
 
-      await createHistoryEntry(
-        claimId,
-        'charge_pending',
-        'charge_succeeded',
-        'charge_attempt',
-        'stripe_webhook',
-        undefined,
-        `Payment successful: ${paymentIntent.id}`,
-        { paymentIntentId: paymentIntent.id, chargeId }
-      );
+        await createHistoryEntry(
+          claimId,
+          'charge_pending',
+          'charge_succeeded',
+          'charge_attempt',
+          'stripe_webhook',
+          undefined,
+          `Payment successful: ${paymentIntent.id}`,
+          { paymentIntentId: paymentIntent.id,chargeId },tx);
 
+
+      });
       // Create payment transaction record (initial values; webhook overrides with actual transfer)
       //
       // ARCHITECTURE — Separate Charges and Transfers:
@@ -1605,12 +1396,12 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       //   We seed the PT with conservative initial values (serviceFee=0, managerRevenue=charge);
       //   they will be corrected by the webhook.
       try {
-        const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
-        const { getStripePaymentAmounts } = await import("./stripe-service");
+        const { createPaymentTransaction,updatePaymentTransaction }=await import("./payment-transactions-service");
+        const { getStripePaymentAmounts }=await import("./stripe-service");
 
-        const ptRecord = await createPaymentTransaction({
-          bookingId: claim.bookingType === 'storage' ? claim.storageBookingId! : claim.kitchenBookingId!,
-          bookingType: claim.bookingType as 'kitchen' | 'storage',
+        const ptRecord=await createPaymentTransaction({
+          bookingId: claim.bookingType==='storage'? claim.storageBookingId!:claim.kitchenBookingId!,
+          bookingType: claim.bookingType as 'kitchen'|'storage',
           chefId: claim.chefId,
           managerId: claim.managerId,
           amount: chargeAmount,
@@ -1619,7 +1410,7 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
           managerRevenue: chargeAmount, // Will be reduced by webhook to actual transfer amount
           currency: "CAD",
           paymentIntentId: paymentIntent.id,
-          chargeId: chargeId || undefined,
+          chargeId: chargeId||undefined,
           status: "succeeded",
           stripeStatus: "succeeded",
           metadata: {
@@ -1627,38 +1418,38 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
             damage_claim_id: claimId.toString(),
             is_reimbursement: "true",
             no_tax: "true",
-            manager_connect_account_id: managerStripeAccountId || '',
+            manager_connect_account_id: managerStripeAccountId||'',
           },
-        }, db);
+        },db);
 
         // Try to sync stripe fees and create the transfer immediately if balance_transaction is ready.
         // If not ready, charge.updated webhook will retry the transfer.
-        if (ptRecord) {
-          const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerStripeAccountId || undefined);
-          if (stripeAmounts) {
-            await updatePaymentTransaction(ptRecord.id, {
+        if(ptRecord) {
+          const stripeAmounts=await getStripePaymentAmounts(paymentIntent.id,managerStripeAccountId||undefined);
+          if(stripeAmounts) {
+            await updatePaymentTransaction(ptRecord.id,{
               paidAt: new Date(),
               lastSyncedAt: new Date(),
               stripeAmount: stripeAmounts.stripeAmount,
               stripeProcessingFee: stripeAmounts.stripeProcessingFee,
               stripePlatformFee: stripeAmounts.stripePlatformFee,
               stripeNetAmount: stripeAmounts.stripeNetAmount,
-            }, db);
+            },db);
 
             // Create transfer to manager if Connect account + balance_transaction available
-            if (managerStripeAccountId && stripeAmounts.stripeProcessingFee > 0) {
-              const { transferToManagerForBooking } = await import('./stripe-transfer-service');
+            if(managerStripeAccountId&&stripeAmounts.stripeProcessingFee>0) {
+              const { transferToManagerForBooking }=await import('./stripe-transfer-service');
               try {
-                const transferResult = await transferToManagerForBooking({
+                const transferResult=await transferToManagerForBooking({
                   paymentIntentId: paymentIntent.id,
                   paymentTransactionId: ptRecord.id,
                   chargeAmountCents: stripeAmounts.stripeAmount,
                   actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
-                  chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                  chargeId: chargeId||stripeAmounts.chargeId||undefined,
                   transferGroup: `pi_${paymentIntent.id}`,
                 });
-                if (transferResult.transferred) {
-                  await updatePaymentTransaction(ptRecord.id, {
+                if(transferResult.transferred) {
+                  await updatePaymentTransaction(ptRecord.id,{
                     serviceFee: transferResult.feeWithheldCents,
                     managerRevenue: transferResult.transferredCents,
                     stripePlatformFee: transferResult.feeWithheldCents,
@@ -1678,112 +1469,107 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
                         transferredCents: transferResult.transferredCents,
                       },
                     },
-                  }, db);
+                  },db);
                 }
-              } catch (transferErr) {
-                logger.error(`[DamageClaimService] Transfer error for ${paymentIntent.id} (will retry on charge.updated):`, transferErr);
+              } catch(transferErr) {
+                logger.error(`[DamageClaimService] Transfer error for ${paymentIntent.id} (will retry on charge.updated):`,transferErr);
               }
             }
 
-            logger.info(`[DamageClaimService] Synced Stripe fees for damage claim ${claimId}:`, {
-              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+            logger.info(`[DamageClaimService] Synced Stripe fees for damage claim ${claimId}:`,{
+              processingFee: `$${(stripeAmounts.stripeProcessingFee/100).toFixed(2)}`,
             });
           }
         }
 
-        logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`, {
+        logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`,{
           amount: chargeAmount,
         });
-      } catch (ptError) {
-        logger.error(`[DamageClaimService] Failed to create payment transaction:`, ptError);
+      } catch(ptError) {
+        logger.error(`[DamageClaimService] Failed to create payment transaction:`,ptError);
       }
 
-      logger.info(`[DamageClaimService] Claim ${claimId} charged successfully`, {
+      logger.info(`[DamageClaimService] Claim ${claimId} charged successfully`,{
         paymentIntentId: paymentIntent.id,
         amount: chargeAmount,
       });
 
-      // Send email notification to chef about the charge
-      try {
-        const claimWithDetails = await getClaimById(claimId);
-        const [chefUser] = await db.select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, claim.chefId))
-          .limit(1);
-
-        if (chefUser?.username && claimWithDetails) {
-          const chargeEmail = generateDamageClaimChargedEmail({
-            chefEmail: chefUser.username,
-            chefName: claimWithDetails.chefName || chefUser.username || 'Chef',
-            claimTitle: claim.claimTitle,
-            chargedAmount: `$${(chargeAmount / 100).toFixed(2)}`,
-            locationName: claimWithDetails.locationName || 'Unknown Location',
-            claimId: claim.id,
-          });
-          await sendEmail(chargeEmail);
-          logger.info(`[DamageClaimService] Sent charge notification to chef ${chefUser.username}`);
-
-          // Send in-app notifications for successful charge
-          try {
-            const { notificationService } = await import('./notification.service');
-            
-            // Notify chef that claim was charged
-            await notificationService.notifyChefDamageClaimCharged({
-              chefId: claim.chefId,
-              claimId: claim.id,
-              claimTitle: claim.claimTitle,
-              amountCents: chargeAmount,
-              locationName: claimWithDetails.locationName || 'Unknown Location',
-              bookingType: claim.bookingType,
-            });
-
-            // Notify manager that payment was received
-            await notificationService.notifyManagerDamageClaimReceived({
-              managerId: claim.managerId,
-              locationId: claim.locationId,
-              chefName: claimWithDetails.chefName || chefUser.username || 'Chef',
-              claimId: claim.id,
-              claimTitle: claim.claimTitle,
-              amountCents: chargeAmount,
-              locationName: claimWithDetails.locationName || 'Unknown Location',
-              bookingType: claim.bookingType,
-            });
-
-            logger.info(`[DamageClaimService] Sent in-app charge notifications for claim ${claimId}`);
-          } catch (notifError) {
-            logger.error('[DamageClaimService] Failed to send in-app charge notifications:', notifError);
-          }
-        }
-      } catch (emailError) {
-        logger.error('[DamageClaimService] Failed to send charge email:', emailError);
-      }
-
       return {
         success: true,
         paymentIntentId: paymentIntent.id,
-        chargeId: chargeId || undefined,
+        chargeId: chargeId||undefined,
       };
     } else {
       // ENTERPRISE STANDARD: Auto-charge failed — immediately escalate and create self-serve checkout.
       // No retry system. On any failure: escalate → chef gets payment link → admin notified.
-      const failureReason = paymentIntent.status === 'requires_action' || 
-                            paymentIntent.status === 'requires_confirmation' ||
-                            paymentIntent.status === 'requires_payment_method'
+      const failureReason=paymentIntent.status==='requires_action'||
+        paymentIntent.status==='requires_confirmation'||
+        paymentIntent.status==='requires_payment_method'
         ? `Payment requires authentication (3DS/SCA)`
-        : `Payment status: ${paymentIntent.status}`;
+        :`Payment status: ${paymentIntent.status}`;
 
-      await db
+      await db.transaction(async tx => {
+        const [changedOutcome3]=await tx
+          .update(damageClaims)
+          .set({
+            status: 'escalated',
+            stripePaymentIntentId: paymentIntent.id,
+            chargeFailedAt: new Date(),
+            chargeFailureReason: failureReason,
+            resolutionType: 'escalated_collection',
+            resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-service payment is available from the current claim; notice queued.`,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(damageClaims.id,claimId),inArray(damageClaims.status,chargeableStatuses as any))).returning({ id: damageClaims.id });
+        if(!changedOutcome3) throw new Error('Claim changed; outcome needs reconciliation');
+
+        await createHistoryEntry(
+          claimId,
+          'charge_pending',
+          'escalated',
+          'auto_escalation',
+          'system',
+          undefined,
+          `Off-session charge failed: ${failureReason}. Escalated immediately.`,
+          { paymentIntentId: paymentIntent.id,status: paymentIntent.status },tx);
+
+
+      });
+      // Create self-serve checkout session and email chef
+      await sendDamageClaimPaymentLinkToChef(claimId,claim,failureReason);
+
+      // Notify admins of escalation
+
+
+      return {
+        success: false,
+        error: `Auto-charge failed (${failureReason}). Escalated — review the current claim for payment recovery.`,
+      };
+    }
+  } catch(error: unknown) {
+    // ENTERPRISE STANDARD: On ANY Stripe exception, immediately escalate + create self-serve checkout.
+    // No retry system. Covers: 3DS/SCA, card declined, expired card, insufficient funds, network errors.
+    const errorMessage=error instanceof Error? error.message:'Unknown error';
+    const stripeErrorCode=(error as any)?.code||(error as any)?.raw?.code||'';
+    const failureReason=stripeErrorCode==='authentication_required'||
+      errorMessage.includes('requires authentication')||
+      errorMessage.includes('authentication_required')
+      ? `Payment requires authentication (3DS/SCA)`
+      :errorMessage;
+
+    await db.transaction(async tx => {
+      const [changedOutcome4]=await tx
         .update(damageClaims)
         .set({
           status: 'escalated',
-          stripePaymentIntentId: paymentIntent.id,
           chargeFailedAt: new Date(),
           chargeFailureReason: failureReason,
           resolutionType: 'escalated_collection',
-          resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-serve payment link sent to chef.`,
+          resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-service payment is available from the current claim; notice queued.`,
           updatedAt: new Date(),
         })
-        .where(and(eq(damageClaims.id, claimId), inArray(damageClaims.status, chargeableStatuses as any)));
+        .where(and(eq(damageClaims.id,claimId),inArray(damageClaims.status,chargeableStatuses as any))).returning({ id: damageClaims.id });
+      if(!changedOutcome4) throw new Error('Claim changed; outcome needs reconciliation');
 
       await createHistoryEntry(
         claimId,
@@ -1792,67 +1578,23 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
         'auto_escalation',
         'system',
         undefined,
-        `Off-session charge failed: ${failureReason}. Escalated immediately.`,
-        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
-      );
+        `Off-session charge error: ${failureReason}. Escalated immediately.`,
+        { error: errorMessage,stripeErrorCode },tx);
 
-      // Create self-serve checkout session and email chef
-      await sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason);
 
-      // Notify admins of escalation
-      await sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason);
-
-      return { 
-        success: false, 
-        error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.`,
-      };
-    }
-  } catch (error: unknown) {
-    // ENTERPRISE STANDARD: On ANY Stripe exception, immediately escalate + create self-serve checkout.
-    // No retry system. Covers: 3DS/SCA, card declined, expired card, insufficient funds, network errors.
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const stripeErrorCode = (error as any)?.code || (error as any)?.raw?.code || '';
-    const failureReason = stripeErrorCode === 'authentication_required' || 
-                           errorMessage.includes('requires authentication') ||
-                           errorMessage.includes('authentication_required')
-      ? `Payment requires authentication (3DS/SCA)`
-      : errorMessage;
-
-    await db
-      .update(damageClaims)
-      .set({
-        status: 'escalated',
-        chargeFailedAt: new Date(),
-        chargeFailureReason: failureReason,
-        resolutionType: 'escalated_collection',
-        resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-serve payment link sent to chef.`,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(damageClaims.id, claimId), inArray(damageClaims.status, chargeableStatuses as any)));
-
-    await createHistoryEntry(
-      claimId,
-      'charge_pending',
-      'escalated',
-      'auto_escalation',
-      'system',
-      undefined,
-      `Off-session charge error: ${failureReason}. Escalated immediately.`,
-      { error: errorMessage, stripeErrorCode }
-    );
-
-    logger.error(`[DamageClaimService] Charge failed — escalated immediately for claim ${claimId}:`, {
+    });
+    logger.error(`[DamageClaimService] Charge failed — escalated immediately for claim ${claimId}:`,{
       error: errorMessage,
       stripeErrorCode,
     });
 
     // Create self-serve checkout session and email chef
-    await sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason);
+    await sendDamageClaimPaymentLinkToChef(claimId,claim,failureReason);
 
     // Notify admins of escalation
-    await sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason);
 
-    return { success: false, error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.` };
+
+    return { success: false,error: `Auto-charge failed (${failureReason}). Escalated — review the current claim for payment recovery.` };
   }
 }
 
@@ -1881,41 +1623,14 @@ async function sendDamageClaimPaymentLinkToChef(
     );
 
     if ('checkoutUrl' in checkoutResult) {
-      const [chef] = await db
-        .select({ email: users.username })
-        .from(users)
-        .where(eq(users.id, claim.chefId))
-        .limit(1);
-
-      if (chef?.email) {
-        const amount = ((claim.finalAmountCents ?? claim.claimedAmountCents) / 100).toFixed(2);
-        await sendEmail({
-          to: chef.email,
-          subject: `⚠️ Action Required: Damage Claim Payment — $${amount} CAD`,
-          html: `
-            <h2>⚠️ Damage Claim — Payment Required</h2>
-            <p>We were unable to automatically charge your saved payment method for the damage claim.</p>
-            <p><strong>Reason:</strong> ${failureReason}</p>
-            <p><strong>Claim:</strong> ${claim.claimTitle}</p>
-            <p><strong>Amount:</strong> $${amount} CAD</p>
-            <p>Please pay immediately using the secure link below:</p>
-            <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Pay Now — $${amount} CAD</a></p>
-            <p>This link will expire in 24 hours.</p>
-            <p><em>You will not be able to make new bookings until this claim is resolved. If payment is not received, this matter may be referred for manual collection.</em></p>
-          `,
-          text: `Damage Claim — Payment Required\n\nReason: ${failureReason}\nClaim: ${claim.claimTitle}\nAmount: $${amount} CAD\n\nPay now: ${checkoutResult.checkoutUrl}\n\nThis link expires in 24 hours.`,
-        });
-        logger.info(`[DamageClaimService] Sent escalation payment link to chef ${chef.email} for claim ${claimId}`);
-      }
-
       await createHistoryEntry(
         claimId,
         'escalated',
         'escalated',
-        'escalation_payment_link_sent',
+        'escalation_checkout_prepared',
         'system',
         undefined,
-        `Escalation payment link sent to chef (reason: ${failureReason})`,
+        `Escalation checkout prepared for chef (reason: ${failureReason})`,
         { checkoutUrl: checkoutResult.checkoutUrl, failureReason }
       );
     } else {
@@ -1929,64 +1644,6 @@ async function sendDamageClaimPaymentLinkToChef(
 /**
  * Notify all admin users when a damage claim is escalated.
  * Called immediately when auto-charge fails — no retry system.
- */
-async function sendDamageClaimEscalationAdminEmail(
-  claimId: number,
-  claim: DamageClaim,
-  failureReason: string
-): Promise<void> {
-  try {
-    // Get chef email for context
-    const [chef] = await db
-      .select({ email: users.username })
-      .from(users)
-      .where(eq(users.id, claim.chefId))
-      .limit(1);
-    const chefEmail = chef?.email || 'Unknown';
-    const amount = ((claim.finalAmountCents ?? claim.claimedAmountCents) / 100).toFixed(2);
-
-    // Get all admin users
-    const admins = await db
-      .select({ username: users.username })
-      .from(users)
-      .where(eq(users.role, 'admin'));
-
-    if (admins.length === 0) {
-      logger.warn(`[DamageClaimService] No admin users found — escalation email NOT sent for claim ${claimId}`);
-      return;
-    }
-
-    for (const admin of admins) {
-      if (admin.username) {
-        await sendEmail({
-          to: admin.username,
-          subject: `⚠️ Escalated Damage Claim — Auto-Charge Failed`,
-          html: `
-            <h2>Damage Claim Escalated</h2>
-            <p>A damage claim auto-charge failed and has been escalated. A self-serve payment link has been sent to the chef.</p>
-            <h3>Details:</h3>
-            <ul>
-              <li><strong>Claim ID:</strong> ${claimId}</li>
-              <li><strong>Claim:</strong> ${claim.claimTitle}</li>
-              <li><strong>Chef Email:</strong> ${chefEmail}</li>
-              <li><strong>Amount:</strong> $${amount} CAD</li>
-              <li><strong>Failure Reason:</strong> ${failureReason}</li>
-            </ul>
-            <p>If the chef does not pay via the link, please take appropriate collection action.</p>
-          `,
-          text: `Damage Claim Escalated\n\nClaim ID: ${claimId}\nClaim: ${claim.claimTitle}\nChef: ${chefEmail}\nAmount: $${amount} CAD\nReason: ${failureReason}`,
-        });
-      }
-    }
-    logger.info(`[DamageClaimService] Sent escalation notification to ${admins.length} admin(s) for claim ${claimId}`);
-  } catch (emailError) {
-    logger.error(`[DamageClaimService] Failed to send admin escalation email for claim ${claimId}:`, emailError);
-  }
-}
-
-/**
- * Create a Stripe Checkout session for chef to pay a damage claim manually
- * Used when off-session charge fails (3DS, card declined, etc.)
  */
 export async function createDamageClaimPaymentCheckout(
   claimId: number,
@@ -2368,16 +2025,20 @@ export async function processExpiredClaims(): Promise<ExpiredClaimResult[]> {
       .select()
       .from(damageClaims)
       .where(and(
+        workerAfter('claims', damageClaims.id),
         eq(damageClaims.status, 'submitted'),
         sql`${damageClaims.chefResponseDeadline} < ${now}`
-      ));
+      )).orderBy(damageClaims.id).limit(workerBatch());
+    await workerPageEnd('claims', expiredClaims.length);
 
     logger.info(`[DamageClaimService] Found ${expiredClaims.length} expired claims to process`);
 
     for (const claim of expiredClaims) {
+      await workerRecord('claims', claim.id);
       try {
         // Escalate rather than approve: the chef's silence must not move money.
-        const [escalated] = await db
+        const escalated = await db.transaction(async tx => {
+        const [escalated] = await tx
           .update(damageClaims)
           .set({
             status: 'under_review',
@@ -2385,7 +2046,7 @@ export async function processExpiredClaims(): Promise<ExpiredClaimResult[]> {
           })
           .where(and(eq(damageClaims.id, claim.id), eq(damageClaims.status, 'submitted'),
             sql`${damageClaims.chefResponseDeadline} < ${now}`)).returning({ id: damageClaims.id });
-        if (!escalated) continue;
+        if (!escalated) return false;
 
         await createHistoryEntry(
           claim.id,
@@ -2394,9 +2055,11 @@ export async function processExpiredClaims(): Promise<ExpiredClaimResult[]> {
           'escalated_to_admin',
           'system',
           undefined,
-          'Chef did not respond within the response window - escalated to admin for review'
-        );
+          'Chef did not respond within the response window - escalated to admin for review', undefined, tx);
 
+return true;
+});
+if (!escalated) continue;
         results.push({
           claimId: claim.id,
           chefId: claim.chefId,
@@ -2406,79 +2069,6 @@ export async function processExpiredClaims(): Promise<ExpiredClaimResult[]> {
         });
 
         logger.info(`[DamageClaimService] Escalated claim ${claim.id} to admin - chef did not respond in time`);
-
-        // Send notification emails
-        try {
-          const [chefUser] = await db.select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, claim.chefId))
-            .limit(1);
-          
-          const [managerUser] = await db.select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, claim.managerId))
-            .limit(1);
-
-          // The claim is NOT approved - tell the chef it moved to review instead.
-          if (chefUser?.username) {
-            await sendEmail({
-              to: chefUser.username,
-              subject: `Damage claim moved to review - ${claim.claimTitle}`,
-              text: `You did not respond to this damage claim within the response window, so it has been sent to Local Cooks for review. No charge has been made.\n\nClaim: ${claim.claimTitle}\nAmount: $${(claim.claimedAmountCents / 100).toFixed(2)}\n\nYou can still add your side of the story from your dashboard.`,
-            });
-          }
-
-          // Tell the manager the claim is with Local Cooks, not approved.
-          if (managerUser?.username) {
-            await sendEmail({
-              to: managerUser.username,
-              subject: `Damage claim under review - ${claim.claimTitle}`,
-              text: `The chef did not respond within the response window, so this claim has been escalated to Local Cooks for review. No charge has been made yet and you will be notified once a decision is made.\n\nClaim: ${claim.claimTitle}\nAmount: $${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            });
-          }
-        } catch (emailError) {
-          logger.error(`[DamageClaimService] Failed to send escalation emails for claim ${claim.id}:`, emailError);
-        }
-
-        // An escalation must reach an admin - they are the only party who can decide it.
-        try {
-          const admins = await db
-            .select({ id: users.id, email: users.username })
-            .from(users)
-            .where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
-
-          const reviewUrl = `${getSubdomainUrl('admin')}/admin?section=damage-claims`;
-          const { notificationService } = await import('./notification.service');
-
-          for (const admin of admins) {
-            // Email alone left escalations invisible in the admin bell.
-            try {
-              await notificationService.createForManager({
-                managerId: admin.id,
-                type: 'damage_claim_disputed',
-                priority: 'high',
-                title: 'Damage claim needs review',
-                message: `${claim.claimTitle} - the chef did not respond within the response window.`,
-                metadata: { damageClaimId: claim.id },
-                actionUrl: '/admin?section=damage-claims',
-                actionLabel: 'Review claim',
-              });
-            } catch (inAppError) {
-              logger.error(`[DamageClaimService] Failed to create in-app admin notification for claim ${claim.id}:`, inAppError);
-            }
-            try {
-              await sendEmail({
-                to: admin.email,
-                subject: `Damage claim needs review - ${claim.claimTitle}`,
-                text: `The chef did not respond within the response window, so this claim has been escalated for review.\n\nClaim: ${claim.claimTitle}\nAmount: $${(claim.claimedAmountCents / 100).toFixed(2)}\n\nReview: ${reviewUrl}`,
-              });
-            } catch (adminEmailError) {
-              logger.error(`[DamageClaimService] Failed to notify admin ${admin.id} about claim ${claim.id}:`, adminEmailError);
-            }
-          }
-        } catch (adminNotifyError) {
-          logger.error(`[DamageClaimService] Failed to look up admins for claim ${claim.id}:`, adminNotifyError);
-        }
 
       } catch (claimError) {
         logger.error(`[DamageClaimService] Error processing expired claim ${claim.id}:`, claimError);
@@ -2519,53 +2109,53 @@ export async function refundDamageClaim(
 ): Promise<{ success: boolean; error?: string; refundId?: string }> {
   try {
     // Get the claim
-    const [claim] = await db
+    const [claim]=await db
       .select()
       .from(damageClaims)
-      .where(eq(damageClaims.id, claimId))
+      .where(eq(damageClaims.id,claimId))
       .limit(1);
 
-    if (!claim) {
-      return { success: false, error: 'Damage claim not found' };
+    if(!claim) {
+      return { success: false,error: 'Damage claim not found' };
     }
 
     // Validate status - can only refund charged claims
-    if (claim.status !== 'charge_succeeded') {
-      return { 
-        success: false, 
-        error: `Cannot refund claim in status '${claim.status}'. Only 'charge_succeeded' claims can be refunded.` 
+    if(claim.status!=='charge_succeeded') {
+      return {
+        success: false,
+        error: `Cannot refund claim in status '${claim.status}'. Only 'charge_succeeded' claims can be refunded.`
       };
     }
 
     // Must have a payment intent ID to refund
-    if (!claim.stripePaymentIntentId) {
-      return { success: false, error: 'No payment intent found for this claim. Manual refund required in Stripe Dashboard.' };
+    if(!claim.stripePaymentIntentId) {
+      return { success: false,error: 'No payment intent found for this claim. Manual refund required in Stripe Dashboard.' };
     }
 
-    const chargedAmount = claim.finalAmountCents ?? claim.approvedAmountCents ?? claim.claimedAmountCents;
-    const refundAmount = partialAmountCents || chargedAmount;
+    const chargedAmount=claim.finalAmountCents??claim.approvedAmountCents??claim.claimedAmountCents;
+    const refundAmount=partialAmountCents||chargedAmount;
 
     // Validate refund amount
-    if (refundAmount <= 0) {
-      return { success: false, error: 'Refund amount must be greater than 0' };
+    if(refundAmount<=0) {
+      return { success: false,error: 'Refund amount must be greater than 0' };
     }
-    if (refundAmount > chargedAmount) {
-      return { success: false, error: `Refund amount ($${(refundAmount/100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount/100).toFixed(2)})` };
+    if(refundAmount>chargedAmount) {
+      return { success: false,error: `Refund amount ($${(refundAmount/100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount/100).toFixed(2)})` };
     }
 
-    if (!stripe) {
-      return { success: false, error: 'Stripe not configured' };
+    if(!stripe) {
+      return { success: false,error: 'Stripe not configured' };
     }
 
     // Issue Stripe refund
-    logger.info(`[DamageClaimService] Issuing refund for claim ${claimId}:`, {
+    logger.info(`[DamageClaimService] Issuing refund for claim ${claimId}:`,{
       paymentIntentId: claim.stripePaymentIntentId,
       chargedAmount: `$${(chargedAmount/100).toFixed(2)}`,
       refundAmount: `$${(refundAmount/100).toFixed(2)}`,
       reason: refundReason,
     });
 
-    const refund = await stripe.refunds.create({
+    const refund=await stripe.refunds.create({
       payment_intent: claim.stripePaymentIntentId,
       amount: refundAmount,
       reason: 'requested_by_customer',
@@ -2576,127 +2166,68 @@ export async function refundDamageClaim(
       },
     });
 
-    const isFullRefund = refundAmount >= chargedAmount;
+    const isFullRefund=refundAmount>=chargedAmount;
 
     // Update the claim
-    await db
-      .update(damageClaims)
-      .set({
-        status: 'resolved',
-        resolvedAt: new Date(),
-        resolvedBy: refundedBy,
-        resolutionType: isFullRefund ? 'refunded' : 'partially_refunded',
-        resolutionNotes: `${isFullRefund ? 'Full' : 'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(damageClaims.id, claimId));
+    await db.transaction(async tx => {
+      const [changedOutcome5]=await tx
+        .update(damageClaims)
+        .set({
+          status: 'resolved',
+          resolvedAt: new Date(),
+          resolvedBy: refundedBy,
+          resolutionType: isFullRefund? 'refunded':'partially_refunded',
+          resolutionNotes: `${isFullRefund? 'Full':'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(damageClaims.id,claimId)).returning({ id: damageClaims.id });
+      if(!changedOutcome5) throw new Error('Claim changed; outcome needs reconciliation');
 
-    // Create history entry
-    await createHistoryEntry(
-      claimId,
-      'charge_succeeded',
-      'resolved',
-      'refund',
-      'admin',
-      refundedBy,
-      `${isFullRefund ? 'Full' : 'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
-      {
-        refundId: refund.id,
-        refundAmount,
-        chargedAmount,
-        isFullRefund,
-        reason: refundReason,
-      }
-    );
+      // Create history entry
+      await createHistoryEntry(
+        claimId,
+        'charge_succeeded',
+        'resolved',
+        'refund',
+        'admin',
+        refundedBy,
+        `${isFullRefund? 'Full':'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
+        {
+          refundId: refund.id,
+          refundAmount,
+          chargedAmount,
+          isFullRefund,
+          reason: refundReason,
+        },tx);
 
+
+    });
     // Update payment_transactions if exists
-    if (claim.paymentTransactionId) {
+    if(claim.paymentTransactionId) {
       try {
-        const { updatePaymentTransaction } = await import('./payment-transactions-service');
-        await updatePaymentTransaction(claim.paymentTransactionId, {
-          status: isFullRefund ? 'refunded' : 'partially_refunded',
+        const { updatePaymentTransaction }=await import('./payment-transactions-service');
+        await updatePaymentTransaction(claim.paymentTransactionId,{
+          status: isFullRefund? 'refunded':'partially_refunded',
           refundAmount,
           refundId: refund.id,
           refundedAt: new Date(),
-        }, db);
-      } catch (ptError) {
-        logger.warn(`[DamageClaimService] Could not update payment_transactions for refund:`, ptError as object);
+        },db);
+      } catch(ptError) {
+        logger.warn(`[DamageClaimService] Could not update payment_transactions for refund:`,ptError as object);
       }
     }
 
-    // Send refund notification email + in-app notification to chef
-    try {
-      const [chef] = await db
-        .select({ email: users.username })
-        .from(users)
-        .where(eq(users.id, claim.chefId))
-        .limit(1);
+    await attemptOutcomeDelivery();
+    return { success: true,refundId: refund.id };
+  } catch(error: any) {
+    logger.error(`[DamageClaimService] Error refunding claim ${claimId}:`,error);
 
-      if (chef?.email) {
-        await sendEmail({
-          to: chef.email,
-          subject: `Damage Claim Refund - $${(refundAmount/100).toFixed(2)}`,
-          html: `
-            <h2>Damage Claim Refund</h2>
-            <p>A ${isFullRefund ? 'full' : 'partial'} refund has been issued for your damage claim.</p>
-            <p><strong>Claim:</strong> ${claim.claimTitle}</p>
-            <p><strong>Refund Amount:</strong> $${(refundAmount/100).toFixed(2)}</p>
-            <p><strong>Reason:</strong> ${refundReason}</p>
-            <p>The refund should appear on your statement within 5-10 business days.</p>
-          `,
-          text: `Damage Claim Refund\n\nA ${isFullRefund ? 'full' : 'partial'} refund of $${(refundAmount/100).toFixed(2)} has been issued for your damage claim.\n\nClaim: ${claim.claimTitle}\nReason: ${refundReason}`,
-        });
-        logger.info(`[DamageClaimService] Sent refund notification email to chef ${chef.email}`);
-      }
-
-      // In-app notification
-      try {
-        const { notificationService } = await import('./notification.service');
-        // Get location name for notification
-        let locationName = 'Location';
-        try {
-          const [loc] = await db
-            .select({ name: locations.name })
-            .from(locations)
-            .where(eq(locations.id, claim.locationId))
-            .limit(1);
-          locationName = loc?.name || 'Location';
-        } catch {}
-
-        await notificationService.notifyChefDamageClaimRefunded({
-          chefId: claim.chefId,
-          claimId: claim.id,
-          claimTitle: claim.claimTitle,
-          amountCents: chargedAmount,
-          refundAmountCents: refundAmount,
-          refundReason,
-          locationName,
-          bookingType: claim.bookingType,
-        });
-        logger.info(`[DamageClaimService] Sent refund in-app notification to chef for claim ${claimId}`);
-      } catch (notifError) {
-        logger.error(`[DamageClaimService] Error sending refund in-app notification:`, notifError);
-      }
-    } catch (emailError) {
-      logger.error(`[DamageClaimService] Error sending refund notification email:`, emailError);
-    }
-
-    logger.info(`[DamageClaimService] ✅ Refund successful for claim ${claimId}:`, {
-      refundId: refund.id,
-      amount: `$${(refundAmount/100).toFixed(2)}`,
-      isFullRefund,
-    });
-
-    return { success: true, refundId: refund.id };
-  } catch (error: any) {
-    logger.error(`[DamageClaimService] Error refunding claim ${claimId}:`, error);
-    
     // Handle Stripe-specific errors
-    if (error.type === 'StripeInvalidRequestError') {
-      return { success: false, error: `Stripe error: ${error.message}` };
+    if(error.type==='StripeInvalidRequestError') {
+      return { success: false,error: `Stripe error: ${error.message}` };
     }
-    
-    return { success: false, error: error.message || 'Failed to process refund' };
+
+    return { success: false,error: error.message||'Failed to process refund' };
   }
 }
 

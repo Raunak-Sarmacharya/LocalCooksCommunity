@@ -1,5 +1,6 @@
 
 import { getFirestore } from 'firebase-admin/firestore';
+import { firestoreDatabaseId } from '../../shared/firestore-database';
 import { initializeFirebaseAdmin } from '../firebase-setup';
 
 /**
@@ -15,7 +16,7 @@ async function cleanupSpecificLocation(locationId: number) {
         console.error('Failed to initialize Firebase Admin');
         process.exit(1);
     }
-    const adminDb = getFirestore(app);
+    const adminDb = getFirestore(app, firestoreDatabaseId(process.env.FIRESTORE_DATABASE_ID, process.env.VERCEL_ENV));
 
     try {
         // 2. Query conversations for this location

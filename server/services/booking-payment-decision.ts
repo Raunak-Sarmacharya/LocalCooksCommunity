@@ -1,3 +1,4 @@
+import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { kitchenBookings, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents } from '@shared/schema';
@@ -7,6 +8,7 @@ import { capturePaymentIntent, cancelPaymentIntent, getBookingCheckoutSession, g
 import { cancelLinkedBookingDates } from './booking-linked-cancellation';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
+import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 
 type ItemAction = { action: 'confirmed' | 'cancelled'; storageBookingId?: number; equipmentBookingId?: number };
 type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending' | 'complete'; intentId: string;
@@ -87,11 +89,18 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       // The webhook needs this split before capture to calculate the manager transfer.
       const [transaction] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
       if (!transaction && target === 'confirmed') throw new BookingTermsReviewRequired();
+      const components = target === 'confirmed' ? [
+        ...storage.filter(item => storagePlan.find(plan => plan.id === item.id)?.status === 'confirmed').map(item => ({ kind: 'storage' as const, bookingId: item.id, subtotalCents: Number(item.totalPrice) })),
+        ...equipment.filter(item => equipmentPlan.find(plan => plan.id === item.id)?.status === 'confirmed').map(item => ({ kind: 'equipment' as const, bookingId: item.id, subtotalCents: Number(item.totalPrice) })),
+      ] : [];
+      const allocations = target === 'confirmed' ? capturedComponentAllocations([
+        { kind: 'kitchen', bookingId, subtotalCents: subtotal - components.reduce((sum, item) => sum + item.subtotalCents, 0) }, ...components
+      ], next.tax) : [];
       if (target === 'confirmed' && transaction) await tx.update(paymentTransactions).set({ amount: String(next.amount),
         baseAmount: String(subtotal + next.tax), taxAmount: String(next.tax), serviceFee: String(next.commission),
         metadata: { ...(transaction.metadata as object || {}), partialCapture: next.amount < terms.authorizedAmount,
           approvedSubtotal: subtotal, approvedTax: next.tax, taxRatePercent: terms.rate, platformCommission: next.commission,
-          bookingDecisionId: next.id } }).where(eq(paymentTransactions.id, transaction.id));
+          bookingDecisionId: next.id, capturedComponentAllocations: allocations, componentAllocationVersion: 'original-tax-largest-remainder-v1' } }).where(eq(paymentTransactions.id, transaction.id));
       await tx.update(kitchenBookings).set({ paymentDecision: next, updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
       return next;
     });
@@ -125,11 +134,37 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
   let intent = await getBookingPaymentIntent(decision.intentId);
   if (intent.status === 'requires_capture') {
     if (decision.target === 'confirmed') await capturePaymentIntent(decision.intentId, decision.amount, undefined, `booking-decision:${decision.id}`);
-    else await cancelPaymentIntent(decision.intentId);
+    else {
+      try { await cancelPaymentIntent(decision.intentId); }
+      catch (error) {
+        const outcome = await getBookingPaymentIntent(decision.intentId);
+        if (!['succeeded', 'canceled'].includes(outcome.status)) throw error;
+      }
+    }
     intent = await getBookingPaymentIntent(decision.intentId);
   }
   if (decision.target === 'confirmed' && (intent.status !== 'succeeded' || intent.amount_received !== decision.amount))
     throw new Error('Payment outcome is awaiting Local Cooks reconciliation. Do not create another payment.');
+  if (decision.target === 'cancelled' && intent.status === 'succeeded') {
+    // Capture won the attempted release. Preserve real money and ownership;
+    // neither a released hold nor a customer refund can be inferred here.
+    await db.transaction(async tx => {
+      const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1).for('update');
+      if ((booking?.paymentDecision as Decision | null)?.id !== decision!.id) throw new Error('Payment decision changed; financial review required');
+      const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1).for('update');
+      await tx.update(paymentTransactions).set({ status: 'succeeded', stripeStatus: intent.status,
+        paidAt: new Date(), updatedAt: new Date(),
+        metadata: { ...(source?.metadata as object || {}), capturedCancellationRace: true, verifiedCapturedCents: intent.amount_received, cancellationDecisionId: decision!.id } })
+        .where(eq(paymentTransactions.paymentIntentId, decision!.intentId));
+      await tx.update(kitchenBookings).set({ paymentStatus: 'paid', updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
+      const [notice] = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, bookingId),
+        eq(bookingLifecycleEvents.kind, 'payment_recovery_needed'), sql`${bookingLifecycleEvents.metadata}->>'decisionId' = ${decision!.id}`)).limit(1);
+      if (!notice) await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Capture won cancellation release; Local Cooks review required',
+        'The original payment was captured while the uncaptured request was being cancelled. The card hold was not released. Local Cooks must reconcile the booking and paid cancellation; any refund requires separate verification. Linked resources remain recorded.',
+        decision!.actorId, { decisionId: decision!.id, capturedCancellationRace: true });
+    });
+    throw new Error('The original payment was captured before the hold could be released. Paid funds are recorded; Local Cooks must reconcile cancellation. No refund is confirmed.');
+  }
   if (decision.target === 'cancelled' && intent.status !== 'canceled')
     throw new Error('The payment hold has not been verified as released. Local Cooks must review this booking.');
   await db.transaction(async tx => {
@@ -173,9 +208,12 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
 
 export async function recoverPendingBookingDecisions(limit = 10) {
   const bookings = await db.select({ id: kitchenBookings.id, decision: kitchenBookings.paymentDecision }).from(kitchenBookings)
-    .where(sql`${kitchenBookings.paymentDecision}->>'state' = 'pending'`).limit(limit);
+    .where(and(workerAfter('paymentRecovery', kitchenBookings.id), sql`${kitchenBookings.paymentDecision}->>'state' = 'pending'`))
+    .orderBy(kitchenBookings.id).limit(Math.min(limit, workerBatch()));
+  await workerPageEnd('paymentRecovery', bookings.length);
   const result = { recovered: 0, pending: 0 };
   for (const booking of bookings) {
+    await workerRecord('paymentRecovery', booking.id);
     try { await decideAuthorizedBooking(booking.id, (booking.decision as Decision).target); result.recovered++; }
     catch { result.pending++; }
   }

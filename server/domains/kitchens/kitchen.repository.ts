@@ -40,9 +40,6 @@ export class KitchenRepository {
       // Cast enum to specific string union type if needed, or trust strict match
       pricingModel: row.pricingModel as any,
       taxRatePercent: row.taxRatePercent ? parseFloat(row.taxRatePercent) : null,
-      smartLockAvailable: row.smartLockAvailable ?? false,
-      smartLockEnabled: row.smartLockEnabled ?? false,
-      smartLockConfig: row.smartLockConfig as Record<string, unknown> | null ?? null,
     };
   }
 
@@ -238,7 +235,6 @@ export class KitchenRepository {
           minimumBookingHours: dto.minimumBookingHours ?? 1,
           pricingModel: dto.pricingModel || 'hourly',
           taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : null,
-          smartLockAvailable: dto.smartLockAvailable ?? false,
         })
         .returning();
 
@@ -284,9 +280,6 @@ export class KitchenRepository {
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,
           taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : (dto.taxRatePercent === null ? null : undefined),
-          smartLockAvailable: dto.smartLockAvailable,
-          smartLockEnabled: dto.smartLockEnabled,
-          smartLockConfig: dto.smartLockConfig as any,
         })
         .where(eq(kitchens.id, id))
         .returning();
@@ -474,20 +467,6 @@ export class KitchenRepository {
     }
   }
 
-  /**
-   * Delete kitchen.
-   *
-   * `kitchen_bookings.kitchen_id` is the only foreign key pointing at `kitchens`
-   * that is NOT `ON DELETE CASCADE` — every sibling table (availability, date
-   * overrides, storage/equipment listings, viewings, access codes) cascades.
-   * Relying on the database therefore aborted the delete with a foreign-key
-   * violation for any kitchen that had ever been booked, which surfaced to the
-   * manager as a bare "Failed to delete kitchen". Booking rows are removed
-   * explicitly here so the whole delete is atomic:
-   *   - storage_bookings / equipment_bookings / access_code_audit cascade from
-   *     `kitchen_bookings` on their own;
-   *   - damage_claims keeps its row and is delinked (its FK is `SET NULL`).
-   */
   async delete(id: number): Promise<void> {
     try {
       await db.transaction(async (tx) => {

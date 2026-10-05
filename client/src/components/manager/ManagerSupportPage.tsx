@@ -122,6 +122,7 @@ export default function ManagerSupportPage({
 
   return (
     <SupportPageShell
+      problemRole="manager"
       title={t("supportPageTitle", "Support")}
       description={t("supportManagerPageDesc", "Answers, contact, and the resolution center.")}
       liveChatTitle={t("liveChat", "Live chat")}

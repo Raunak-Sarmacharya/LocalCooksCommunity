@@ -60,6 +60,8 @@ const REQUIREMENT_TARGET: Record<ListingRequirementId, RowTarget> = {
   stripe: { view: "payments" },
   applicationRequirements: { view: "application-requirements" },
   bookingRules: { view: "settings-booking-rules" },
+  visitSetup: { view: "settings-checkin-checkout" },
+  storageVisitSetup: { view: 'settings-storage-checkin-checkout' },
 };
 
 const RECOMMENDATION_TARGET: Record<ListingRecommendationId, RowTarget> = {
@@ -89,7 +91,7 @@ interface KitchenListingReviewProps {
    * All three matter. Without the section a row lands on the wrong tab; without the kitchen it lands
    * on the wrong kitchen. Both were true of every row on this page.
    */
-  onNavigate?: (view: KitchensNavigationTarget, kitchenId?: number, section?: KitchenSection) => void;
+  onNavigate?: (view: KitchensNavigationTarget, kitchenId?: number, section?: KitchenSection, focus?: 'tracking') => void;
   /** Called after a successful publish so the shell can return to the kitchen. */
   onListed?: () => void;
 }
@@ -305,7 +307,9 @@ export default function KitchenListingReview({
             >
               <RowAction
                 label={row.met ? mt("listingReviewChange") : mt("listingReviewFix")}
-                onClick={() => go(REQUIREMENT_TARGET[row.id])}
+                onClick={() => row.id === 'visitSetup'
+                  ? onNavigate?.('kitchens', kitchenId, 'details', 'tracking')
+                  : go(REQUIREMENT_TARGET[row.id])}
               />
             </SettingsRow>
           ))}
@@ -395,6 +399,25 @@ function requirementValue(
   d: KitchenReadinessReview["details"],
   met: boolean,
 ): string | null {
+  if (id === 'storageVisitSetup' && d.storageVisitSetup) {
+    const setup = d.storageVisitSetup;
+    return [
+      mt('listingStorageCount', { count: setup.listingCount }),
+      mt(setup.checkinEnabled ? 'listingVisitArrivalOn' : 'listingVisitArrivalOff'),
+      mt(setup.checkoutEnabled ? 'listingVisitDepartureOn' : 'listingVisitDepartureOff'),
+      mt(setup.arrivalNotesSaved && setup.departureNotesSaved ? 'listingVisitNotesReady' : 'listingVisitNotesMissing'),
+    ].join(' · ');
+  }
+  if (id === "visitSetup" && d.visitSetup) {
+    const setup = d.visitSetup;
+    return [
+      mt(setup.trackingEnabled ? "listingVisitTrackingOn" : "listingVisitTrackingOff"),
+      mt(setup.checkinEnabled ? "listingVisitArrivalOn" : "listingVisitArrivalOff"),
+      mt(setup.checkoutEnabled ? "listingVisitDepartureOn" : "listingVisitDepartureOff"),
+      mt(setup.arrivalNotesSaved && setup.departureNotesSaved ? 'listingVisitNotesReady' : 'listingVisitNotesMissing'),
+      mt("listingVisitRequirements", { arrival: setup.arrivalRequirementCount, departure: setup.departureRequirementCount }),
+    ].join(" · ");
+  }
   if (!met) return null;
 
   switch (id) {

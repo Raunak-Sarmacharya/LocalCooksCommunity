@@ -842,14 +842,15 @@ function getKitchenBookingSelection() {
         noShowDetectedAt: kitchenBookings.noShowDetectedAt,
         actualStartTime: kitchenBookings.actualStartTime,
         actualEndTime: kitchenBookings.actualEndTime,
-        accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
-        accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
     };
 }
 
 function getStorageBookingSelection() {
     return {
         id: storageBookings.id,
+        assistanceHistory: storageBookings.assistanceHistory,
+        visitDuties: storageBookings.visitDuties,
+        checkoutApprovedBy: storageBookings.checkoutApprovedBy,
         cancellationAcceptedAt: storageBookings.cancellationAcceptedAt,
         referenceCode: storageBookings.referenceCode,
         storageListingId: storageBookings.storageListingId,

@@ -13,6 +13,7 @@ import { getAuthHeaders } from "@/lib/api";
 import { filterManagerStorageBookings, inheritStorageChef, type ManagerStorageBooking } from "@/lib/manager-storage-bookings";
 import { mt } from "@/i18n/manager";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
+import { VisitAssistancePanel } from '@/components/booking/VisitAssistancePanel';
 
 const statusClass: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 border-amber-300",
@@ -30,6 +31,7 @@ interface ManagerStorageBookingsPageProps {
 export default function ManagerStorageBookingsPage({ onOpenOverstays, onOpenInspections }: ManagerStorageBookingsPageProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [assistanceId, setAssistanceId] = useState<number | null>(null);
   const [focusedBookingId, setFocusedBookingId] = useState(() => Number(new URLSearchParams(window.location.search).get("storageBooking")) || null);
   useEffect(() => {
     const sync = () => setFocusedBookingId(Number(new URLSearchParams(window.location.search).get("storageBooking")) || null);
@@ -137,10 +139,16 @@ export default function ManagerStorageBookingsPage({ onOpenOverstays, onOpenInsp
       header: mt("total"),
       cell: ({ row }) => new Intl.NumberFormat(undefined, { style: "currency", currency: row.original.currency }).format(Number(row.original.totalPrice) / 100),
     },
+    { id: 'assistance', header: 'Visit help', cell: ({ row }) => row.original.updatedAt && ['confirmed', 'cancellation_requested', 'completed'].includes(row.original.status)
+      ? <Button variant="outline" size="sm" onClick={() => setAssistanceId(row.original.id)}>Assistance / removal</Button> : null },
   ], []);
 
   return (
     <div className="space-y-6">
+      {assistanceId && bookings.find(booking => booking.id === assistanceId)?.updatedAt && <VisitAssistancePanel
+        key={assistanceId} storage bookingId={assistanceId} updatedAt={bookings.find(booking => booking.id === assistanceId)!.updatedAt!}
+        history={bookings.find(booking => booking.id === assistanceId)?.assistanceHistory}
+        onSaved={async () => { await refetch(); }} />}
       {(availableActions?.overstays || availableActions?.inspections) && (
         <div className="flex flex-wrap gap-2">
           {availableActions.overstays && <Button variant="outline" size="sm" onClick={onOpenOverstays}>{mt("navOverstayPenalties")}</Button>}

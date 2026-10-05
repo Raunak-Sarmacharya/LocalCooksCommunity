@@ -2,12 +2,78 @@ import { logger } from "../logger";
 import express, { Router, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
+import { randomUUID } from 'node:crypto';
 import { getPresignedUrl, isR2Configured } from "../r2-storage";
 import { upload, uploadToBlob } from "../fileUpload";
 import { optionalFirebaseAuth, requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { userService } from "../domains/users/user.service";
+import { ChatAccessError, withParticipantChat } from '../services/participant-chat';
+import { attachmentKey, storedFileUrl } from '../services/chat-file-access';
+import { getAdminDb } from '../chat-service';
+import { canReadPrivateFile } from '../services/private-file-access';
 
 const router = Router();
+
+router.post('/chat/:conversationId/upload', requireFirebaseAuthWithUser, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'Choose a file' });
+        const save = async () => {
+            // Publish an opaque application URL, never the raw storage URL.
+            req.file!.originalname = `${randomUUID()}${path.extname(req.file!.originalname)}`;
+            const storageUrl = await uploadToBlob(req.file!, req.neonUser!.id, 'chat-private');
+            const url = `/api/files/chat-attachments/${randomUUID()}`;
+            await (await getAdminDb()).collection('chatAttachments').doc(attachmentKey(url)).set({
+                url, storageUrl, conversationId: req.params.conversationId, uploaderId: req.neonUser!.id });
+            return { url };
+        };
+        const result = req.neonUser!.role === 'admin' ? await save() : await withParticipantChat(
+            req.neonUser!, req.firebaseUser!.uid, req.params.conversationId, async ({ live }) => {
+                if (!live) throw new ChatAccessError(409, 'The other account is unavailable');
+                return save();
+            });
+        return res.json(result);
+    } catch (error) { return res.status(error instanceof ChatAccessError ? error.status : 409).json({ error: (error as Error).message }); }
+});
+router.get('/chat/:conversationId/file', requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+        const url = req.query.url;
+        if (typeof url !== 'string' || !storedFileUrl(url)) return res.status(400).json({ error: 'Invalid attachment' });
+        const load = async (ref: FirebaseFirestore.DocumentReference) => {
+            const matches = await ref.collection('messages').where('fileUrl', '==', url).limit(1).get();
+            if (matches.empty) throw new ChatAccessError(404, 'Attachment not shared in this conversation');
+            const receipt = url.startsWith('/api/files/chat-attachments/')
+                ? await (await getAdminDb()).collection('chatAttachments').doc(attachmentKey(url)).get() : null;
+            if (receipt && (!receipt.exists || receipt.data()?.conversationId !== ref.id)) throw new ChatAccessError(404, 'Attachment not found');
+            const storageUrl = receipt ? receipt.data()!.storageUrl : url;
+            if (typeof storageUrl !== 'string' || !storedFileUrl(storageUrl)) throw new ChatAccessError(404, 'Attachment not found');
+            if (storageUrl.startsWith('/api/files/documents/')) {
+                return { bytes: await fs.promises.readFile(path.join(process.cwd(), 'uploads/documents', storageUrl.slice('/api/files/documents/'.length))), type: 'application/octet-stream' };
+            }
+            const upstream = await fetch(await getPresignedUrl(storageUrl), { redirect: 'error' });
+            if (!upstream.ok) throw Error('Could not load attachment');
+            return { bytes: Buffer.from(await upstream.arrayBuffer()), type: upstream.headers.get('content-type') || 'application/octet-stream' };
+        };
+        const result = req.neonUser!.role === 'admin' ? await load((await getAdminDb()).collection('conversations').doc(req.params.conversationId))
+            : await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId, ({ ref }) => load(ref));
+        res.setHeader('Content-Type', result.type); res.setHeader('Cache-Control', 'private, no-store');
+        res.setHeader('Content-Disposition', 'attachment'); res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.send(result.bytes);
+    } catch (error) { return res.status(error instanceof ChatAccessError ? error.status : 409).json({ error: 'Attachment unavailable. Please retry.' }); }
+});
+
+// Apply to every generic URL/signing/static path, including image extensions.
+// The application-preview and chat paths above have their own exact grants.
+router.use(optionalFirebaseAuth, async (req, res, next) => {
+    try {
+        let url = typeof req.query.url === 'string' ? req.query.url : typeof req.body?.imageUrl === 'string' ? req.body.imageUrl : null;
+        if (req.path.startsWith('/images/r2/')) url = `https://files.localcooks.ca/${decodeURIComponent(req.path.slice('/images/r2/'.length))}`;
+        if (req.path.startsWith('/documents/')) url = `/api/files${req.path}`;
+        if (!url && typeof req.query.filename === 'string') url = `https://files.localcooks.ca/${/\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(req.query.filename) ? 'images' : 'documents'}/${req.query.filename}`;
+        if (!url) return next();
+        if (!await canReadPrivateFile(req.neonUser, url)) return res.status(403).json({ error: 'File access denied' });
+        return next();
+    } catch (error) { logger.error('File authorization failed', error); return res.status(403).json({ error: 'File access unavailable' }); }
+});
 
 // Return an application document inline for the manager's review modal.
 // The browser cannot embed R2's cross-origin signed URL, so the modal fetches

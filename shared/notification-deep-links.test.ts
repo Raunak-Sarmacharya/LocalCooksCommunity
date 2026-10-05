@@ -21,6 +21,14 @@ import { describe, it } from "vitest";
  * real failures in this repo's baseline.
  */
 describe("notification-deep-links", () => {
+  it('preserves exact tour context for both roles and legacy notifications', () => {
+    for (const role of ['chef', 'manager'] as const) {
+      const path = `${role === 'manager' ? '/manager' : ''}/dashboard?view=viewings&viewing=42`;
+      assert.equal(resolveNotificationHref({ role, type: 'booking_new', metadata: { viewingId: 42 } }), path);
+      assert.equal(resolveNotificationHref({ role, actionUrl: `https://dev-${role}.localcooks.ca${path}` }), path);
+    }
+    assert.equal(resolveNotificationHref({ role: 'chef', metadata: { viewingId: 42, conversationId: 'shared' } }), chefMessagesHref('shared'));
+  });
   it("holds", () => {
 
     assert.equal(chefDashboardView("bookings"), "/dashboard?view=bookings");

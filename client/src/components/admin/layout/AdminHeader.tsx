@@ -17,6 +17,7 @@ interface AdminHeaderProps {
 }
 
 const SECTION_META: Record<AdminSection, { category: string; title: string }> = {
+  'live-problems': { category: 'Communications', title: 'Support requests' },
   overview: { category: "Dashboard", title: "Overview" },
   applications: { category: "Applications", title: "Seller Applications" },
   "kitchen-applications-step1": { category: "Applications", title: "Kitchen Application Requests" },
@@ -39,7 +40,6 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "overstay-penalties-history": { category: "Revenue", title: "Overstay Penalties" },
   "damage-claims-history": { category: "Revenue", title: "Damage Claims History" },
   "security-settings": { category: "Settings", title: "Security & Rate Limits" },
-  "access-codes": { category: "Management", title: "Access Codes" },
   "password-reset": { category: "Management", title: "Password Reset" },
   "email-log": { category: "Communications", title: "Email Log" },
 };

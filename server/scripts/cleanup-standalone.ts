@@ -8,6 +8,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 console.log('Environment loaded.');
 
 import { getFirestore } from 'firebase-admin/firestore';
+import { firestoreDatabaseId } from '../../shared/firestore-database';
 import { initializeApp, cert } from 'firebase-admin/app';
 
 /**
@@ -45,7 +46,7 @@ async function cleanupStandalone(locationId: number) {
         process.exit(1);
     }
 
-    const adminDb = getFirestore(app);
+    const adminDb = getFirestore(app, firestoreDatabaseId(process.env.FIRESTORE_DATABASE_ID, process.env.VERCEL_ENV));
 
     try {
         // 2. Query conversations for this location

@@ -34,7 +34,7 @@ import Stripe from 'stripe';
 import { logger } from '../logger';
 import { db } from '../db';
 import { eq, ne, and } from 'drizzle-orm';
-import { users, paymentTransactions } from '@shared/schema';
+import { users, paymentTransactions, kitchenBookingChanges } from '@shared/schema';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -77,6 +77,8 @@ export interface TransferResult {
   feeWithheldCents: number;
   /** Amount actually transferred to manager Connect account (cents) */
   transferredCents: number;
+  /** Verified original net before reversals; retain this for refund-share ceilings. */
+  originalManagerNetCents?: number;
 }
 
 // ============================================================================
@@ -147,6 +149,14 @@ async function fetchPlatformCommission(): Promise<number> {
 export async function transferToManagerForBooking(
   params: TransferToManagerParams,
 ): Promise<TransferResult> {
+  return db.transaction(async tx => {
+    await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
+      .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
+    return transferLockedSource(params, tx);
+  });
+}
+
+async function transferLockedSource(params: TransferToManagerParams, connection: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<TransferResult> {
   const baseResult: TransferResult = {
     transferred: false,
     transferId: null,
@@ -155,6 +165,14 @@ export async function transferToManagerForBooking(
     feeWithheldCents: params.actualStripeFeeCents,
     transferredCents: Math.max(0, params.chargeAmountCents - params.actualStripeFeeCents),
   };
+
+  // A captured adjustment is not an approved new schedule until inventory commit.
+  // Reload durable source on every payment/charge.updated retry, never trust stale metadata.
+  if (params.existingMetadata?.kitchenChangeId) {
+    const [change] = await db.select({ state: kitchenBookingChanges.state }).from(kitchenBookingChanges)
+      .where(eq(kitchenBookingChanges.id, String(params.existingMetadata.kitchenChangeId))).limit(1);
+    if (change?.state !== 'applied') return { ...baseResult, reason: 'Kitchen change needs schedule/payment recovery before manager transfer' };
+  }
 
   if (!stripe) {
     return { ...baseResult, reason: 'Stripe not configured' };
@@ -168,21 +186,49 @@ export async function transferToManagerForBooking(
   if (!params.chargeId) {
     return { ...baseResult, reason: 'No charge ID provided (cannot link transfer to source)' };
   }
+  // Read provider truth as well as the local ledger: refund success may have
+  // preceded a failed local commit or an out-of-order fee-availability event.
+  const capturedCharge = await stripe.charges.retrieve(params.chargeId);
+  let managerRefundedCents = 0;
 
   // Idempotency: if PT already has a transfer recorded, return it
   try {
-    const [existing] = await db
-      .select({ transferId: paymentTransactions.transferId })
+    const [existing] = await connection
+      .select({ transferId: paymentTransactions.transferId, refundAmount: paymentTransactions.refundAmount, metadata: paymentTransactions.metadata })
       .from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId))
       .limit(1);
+    if (!existing) throw new Error('Payment source is missing; manager transfer cannot be verified.');
+    if ((existing.metadata as any)?.refundRecovery && (existing.metadata as any).refundRecovery.status !== 'succeeded') return { ...baseResult, transferId: existing.transferId, transferredCents: 0, reason: 'Original refund/reversal requires recovery before new payout' };
+    if ((existing.metadata as any)?.cancellationRefundOperation && (existing.metadata as any).cancellationRefundOperation.status !== 'succeeded')
+      return { ...baseResult, transferId: existing.transferId, transferredCents: 0, reason: 'Source reserved for cancellation refund verification; no new payout' };
+    if ((existing.metadata as any)?.capturedCancellationRace) return { ...baseResult, transferredCents: 0,
+      reason: 'Captured cancellation race requires verified terms and ownership before manager payout' };
+    if (capturedCharge.amount_refunded > 0 || Number(existing.refundAmount) > 0) {
+      const receipts = (existing.metadata as any)?.refunds;
+      if (!Array.isArray(receipts) || Number(existing.refundAmount) !== capturedCharge.amount_refunded)
+        return { ...baseResult, transferId: existing.transferId, transferredCents: 0,
+          reason: 'Provider/local refund history requires retained entitlement reconciliation before payout' };
+      const seen = new Set<string>();
+      let verifiedCustomerRefunds = 0;
+      for (const receipt of receipts) {
+        const id = receipt.refundId || receipt.id;
+        if (!id || seen.has(id) || ![receipt.customerReceived, receipt.managerDebited, receipt.platformServiceFeeReturned]
+          .every(value => Number.isSafeInteger(value) && value >= 0)
+          || receipt.customerReceived !== receipt.managerDebited + receipt.platformServiceFeeReturned)
+          return { ...baseResult, transferredCents: 0, reason: 'Refund source allocations require financial review before payout' };
+        seen.add(id); verifiedCustomerRefunds += receipt.customerReceived; managerRefundedCents += receipt.managerDebited;
+      }
+      if (verifiedCustomerRefunds !== capturedCharge.amount_refunded)
+        return { ...baseResult, transferredCents: 0, reason: 'Provider refund total differs from allocated receipts; payout requires reconciliation' };
+    }
     if (existing?.transferId) {
       logger.info(
         `[StripeTransferService] PT ${params.paymentTransactionId} already has transfer ${existing.transferId}, reconciling`,
       );
       try {
         const existingTransfer = await stripe.transfers.retrieve(existing.transferId);
-        const transferredCents = existingTransfer.amount;
+        const transferredCents = existingTransfer.amount - existingTransfer.amount_reversed;
         const platformCommissionRate = await fetchPlatformCommission();
         const split = await resolveManagerGrossAndCommission({
           paymentTransactionId: params.paymentTransactionId,
@@ -190,12 +236,33 @@ export async function transferToManagerForBooking(
           platformCommissionRate,
           existingMetadata: params.existingMetadata,
         });
-        const expectedTransferCents = Math.max(0, split.managerGrossCents - params.actualStripeFeeCents);
+        const expectedTransferCents = Math.max(0, split.managerGrossCents - params.actualStripeFeeCents - managerRefundedCents);
+
+        // The correction may have reached Stripe before its replacement ID was
+        // committed locally. A fully reversed old transfer is not the payout.
+        if (existingTransfer.amount_reversed === existingTransfer.amount && expectedTransferCents > 0) {
+          let replacement: Stripe.Transfer | undefined;
+          for await (const candidate of stripe.transfers.list({ transfer_group: params.transferGroup, limit: 100 })) {
+            if (candidate.metadata?.payment_intent_id !== params.paymentIntentId || candidate.metadata?.replaces_transfer_id !== existing.transferId) continue;
+            if (replacement || candidate.amount - candidate.amount_reversed !== expectedTransferCents)
+              throw new Error('Corrected manager transfer requires financial reconciliation.');
+            replacement = candidate;
+          }
+          if (!replacement) return { ...baseResult, transferredCents: 0, transferId: existing.transferId,
+            reason: 'Reversed payout correction needs provider reconciliation; no replacement transfer was created' };
+          await connection.update(paymentTransactions).set({ transferId: replacement.id, updatedAt: new Date() })
+            .where(eq(paymentTransactions.id, params.paymentTransactionId));
+          return { transferred: true, transferId: replacement.id, transferredCents: replacement.amount - replacement.amount_reversed,
+            originalManagerNetCents: split.managerGrossCents - params.actualStripeFeeCents,
+            actualStripeFeeCents: params.actualStripeFeeCents, platformCommissionCents: split.platformCommissionCents,
+            feeWithheldCents: split.platformCommissionCents + params.actualStripeFeeCents,
+            reason: 'Recovered corrected provider payout; no new transfer created' };
+        }
 
         // A previously-created underpayment cannot be edited in Stripe. Replace
         // it atomically (idempotent reversal + idempotent corrected transfer) so
         // the DB continues tracking one authoritative transfer for refunds.
-        if (expectedTransferCents > transferredCents) {
+        if (expectedTransferCents > transferredCents && existingTransfer.amount_reversed === 0) {
           const existingDestination = typeof existingTransfer.destination === 'string'
             ? existingTransfer.destination
             : existingTransfer.destination?.id;
@@ -232,7 +299,7 @@ export async function transferToManagerForBooking(
             { idempotencyKey: `transfer-reconcile-create:${params.paymentIntentId}:${expectedTransferCents}` },
           );
 
-          await db
+          await connection
             .update(paymentTransactions)
             .set({ transferId: correctedTransfer.id, updatedAt: new Date() })
             .where(eq(paymentTransactions.id, params.paymentTransactionId));
@@ -247,15 +314,17 @@ export async function transferToManagerForBooking(
             transferredCents: expectedTransferCents,
           };
         }
-        const feeWithheldCents = Math.max(0, params.chargeAmountCents - transferredCents);
+        // Intentional manager reversals are customer refunds, never new fees.
+        const feeWithheldCents = split.platformCommissionCents + params.actualStripeFeeCents;
         return {
           transferred: true,
           transferId: existing.transferId,
           reason: 'Already transferred; reconciled existing transfer',
           actualStripeFeeCents: params.actualStripeFeeCents,
-          platformCommissionCents: Math.max(0, feeWithheldCents - params.actualStripeFeeCents),
+          platformCommissionCents: split.platformCommissionCents,
           feeWithheldCents,
           transferredCents,
+          originalManagerNetCents: managerRefundedCents > 0 ? split.managerGrossCents - params.actualStripeFeeCents : existingTransfer.amount,
         };
       } catch (retrieveErr) {
         logger.warn(`[StripeTransferService] Could not retrieve existing transfer ${existing.transferId}:`, retrieveErr as Error);
@@ -268,6 +337,7 @@ export async function transferToManagerForBooking(
     }
   } catch (err) {
     logger.warn(`[StripeTransferService] Could not check existing transfer for PT ${params.paymentTransactionId}:`, err as Error);
+    throw err;
   }
 
   const managerConnectAccountId = await fetchManagerConnectAccount(params.paymentTransactionId);
@@ -291,10 +361,11 @@ export async function transferToManagerForBooking(
   });
 
   // The manager receives subtotal + tax minus the actual Stripe fee
-  const transferredCents = managerGrossCents - params.actualStripeFeeCents;
+  const originalManagerNetCents = managerGrossCents - params.actualStripeFeeCents;
+  const transferredCents = originalManagerNetCents - managerRefundedCents;
 
   // The amount the platform keeps in its Stripe balance (service fee + stripe fee withheld from transfer)
-  const feeWithheldCents = params.chargeAmountCents - transferredCents;
+  const feeWithheldCents = platformCommissionCents + params.actualStripeFeeCents;
   if (transferredCents <= 0) {
     return {
       ...baseResult,
@@ -306,6 +377,22 @@ export async function transferToManagerForBooking(
   }
 
   try {
+    // A provider success can outlive a failed local transfer-ID write. Discover
+    // that same source before creating again, even after key retention ends.
+    let recoveredTransfer: Stripe.Transfer | undefined;
+    for await (const candidate of stripe.transfers.list({ transfer_group: params.transferGroup, limit: 100 })) {
+      if (candidate.metadata?.payment_intent_id !== params.paymentIntentId) continue;
+      if (recoveredTransfer) throw new Error('Multiple manager transfers require financial reconciliation.');
+      recoveredTransfer = candidate;
+    }
+    if (recoveredTransfer) {
+      await connection.update(paymentTransactions).set({ transferId: recoveredTransfer.id, updatedAt: new Date() })
+        .where(eq(paymentTransactions.id, params.paymentTransactionId));
+      return { ...baseResult, transferred: true, transferId: recoveredTransfer.id, platformCommissionCents,
+        feeWithheldCents, transferredCents: recoveredTransfer.amount - recoveredTransfer.amount_reversed,
+        originalManagerNetCents: recoveredTransfer.amount - recoveredTransfer.amount_reversed + managerRefundedCents,
+        reason: 'Recovered existing provider transfer; no new transfer created' };
+    }
     const transfer = await stripe.transfers.create(
       {
         amount: transferredCents,
@@ -336,7 +423,7 @@ export async function transferToManagerForBooking(
 
     // Persist transfer_id on payment_transactions (best-effort; webhook also updates)
     try {
-      await db
+      await connection
         .update(paymentTransactions)
         .set({ transferId: transfer.id, updatedAt: new Date() })
         .where(eq(paymentTransactions.id, params.paymentTransactionId));
@@ -366,6 +453,7 @@ export async function transferToManagerForBooking(
       platformCommissionCents,
       feeWithheldCents,
       transferredCents,
+      originalManagerNetCents,
     };
   } catch (err: any) {
     // Stripe returns the same transfer on idempotency replay — handle gracefully
@@ -424,6 +512,7 @@ async function resolveManagerGrossAndCommission(params: {
       `[StripeTransferService] Could not load PT ${params.paymentTransactionId} for fee split:`,
       err as Error,
     );
+    throw new Error('Captured source components are unavailable; manager payout requires reconciliation.');
   }
 
   return computeManagerGrossAndCommission({

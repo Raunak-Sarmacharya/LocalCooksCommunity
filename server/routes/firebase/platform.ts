@@ -250,13 +250,9 @@ router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
             'kitchen_checkin_window_minutes_before',
             'kitchen_no_show_grace_minutes',
             'kitchen_checkout_review_window_minutes',
-            'kitchen_access_code_valid_before_minutes',
-            'kitchen_access_code_valid_after_minutes',
         ];
 
         const defaults: Record<string, { key: string; value: string; intValue: number; description: string | null; updatedAt: Date | null }> = {
-            accessCodeValidBeforeMinutes: { key: 'kitchen_access_code_valid_before_minutes', value: '15', intValue: 15, description: 'Access code validity before booking start', updatedAt: null },
-            accessCodeValidAfterMinutes: { key: 'kitchen_access_code_valid_after_minutes', value: '15', intValue: 15, description: 'Access code validity after booking end', updatedAt: null },
             checkinWindowMinutesBefore: { key: 'kitchen_checkin_window_minutes_before', value: '15', intValue: 15, description: 'How early (in minutes) before start time a chef can check in', updatedAt: null },
             noShowGraceMinutes: { key: 'kitchen_no_show_grace_minutes', value: '30', intValue: 30, description: 'Grace period (in minutes) after start time before marking no-show', updatedAt: null },
             checkoutReviewWindowMinutes: { key: 'kitchen_checkout_review_window_minutes', value: '60', intValue: 60, description: 'How long (in minutes) manager has to review a checkout request', updatedAt: null },
@@ -277,10 +273,6 @@ router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
                     defaults.noShowGraceMinutes = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
                 } else if (key === 'kitchen_checkout_review_window_minutes') {
                     defaults.checkoutReviewWindowMinutes = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
-                } else if (key === 'kitchen_access_code_valid_before_minutes') {
-                    defaults.accessCodeValidBeforeMinutes = { key, value: setting.value, intValue: Number(setting.value), description: setting.description, updatedAt: setting.updatedAt };
-                } else if (key === 'kitchen_access_code_valid_after_minutes') {
-                    defaults.accessCodeValidAfterMinutes = { key, value: setting.value, intValue: Number(setting.value), description: setting.description, updatedAt: setting.updatedAt };
                 }
             }
         }
@@ -295,7 +287,7 @@ router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
 // Update kitchen time window defaults
 router.put('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { checkinWindowMinutesBefore, noShowGraceMinutes, checkoutReviewWindowMinutes, accessCodeValidBeforeMinutes, accessCodeValidAfterMinutes } = req.body;
+        const { checkinWindowMinutesBefore, noShowGraceMinutes, checkoutReviewWindowMinutes } = req.body;
         const userId = req.neonUser!.id;
 
         if (!userId) {
@@ -305,8 +297,6 @@ router.put('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthW
         const results: Record<string, any> = {};
 
         const fields = [
-            { key: 'kitchen_access_code_valid_before_minutes', value: accessCodeValidBeforeMinutes, label: 'accessCodeValidBeforeMinutes', min: 0, max: 120, description: 'Access code validity before booking start' },
-            { key: 'kitchen_access_code_valid_after_minutes', value: accessCodeValidAfterMinutes, label: 'accessCodeValidAfterMinutes', min: 0, max: 120, description: 'Access code validity after booking end' },
             { key: 'kitchen_checkin_window_minutes_before', value: checkinWindowMinutesBefore, label: 'checkinWindowMinutesBefore', min: 0, max: 120, description: 'How early (in minutes) before start time a chef can check in' },
             { key: 'kitchen_no_show_grace_minutes', value: noShowGraceMinutes, label: 'noShowGraceMinutes', min: 0, max: 120, description: 'Grace period (in minutes) after start time before marking no-show' },
             { key: 'kitchen_checkout_review_window_minutes', value: checkoutReviewWindowMinutes, label: 'checkoutReviewWindowMinutes', min: 0, max: 480, description: 'How long (in minutes) manager has to review a checkout request' },

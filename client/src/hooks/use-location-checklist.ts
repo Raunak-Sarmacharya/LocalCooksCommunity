@@ -8,7 +8,7 @@ export interface ChecklistItem {
   label: string;
   description?: string;
   required: boolean;
-  category: 'general' | 'safety' | 'equipment' | 'smart_lock';
+  category: 'general' | 'safety' | 'equipment';
   /**
    * When true, the chef must upload a photo alongside checking this item off.
    * Matched to a PhotoRequirement with the same id in the sibling
@@ -43,7 +43,6 @@ export interface LocationChecklist {
   storageCheckinItems: ChecklistItem[];
   storageCheckinPhotoRequirements: PhotoRequirement[];
   storageCheckinInstructions: string | null;
-  smartLockCheckinInstructions: string | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { useState, useMemo, useCallback } from "react";
 import { mt } from "@/i18n/manager";
@@ -101,6 +102,7 @@ interface BookingManagementDialogProps {
   booking: BookingForManagement | null;
   isProcessing?: boolean;
   onSubmit: (params: ManagementSubmitParams) => void;
+  onChanged?: () => Promise<void>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -142,6 +144,7 @@ export function BookingManagementDialog({
   booking,
   isProcessing = false,
   onSubmit,
+  onChanged,
 }: BookingManagementDialogProps) {
   
   const dialogKey = booking ? `mgmt-${booking.id}` : "empty";
@@ -154,6 +157,7 @@ export function BookingManagementDialog({
           booking={booking}
           isProcessing={isProcessing}
           onSubmit={onSubmit}
+          onChanged={onChanged}
           onClose={() => onOpenChange(false)}
         />
       ) : open ? (
@@ -172,11 +176,13 @@ function BookingManagementContent({
   booking,
   isProcessing,
   onSubmit,
+  onChanged,
   onClose,
 }: {
   booking: BookingForManagement;
   isProcessing: boolean;
   onSubmit: BookingManagementDialogProps["onSubmit"];
+  onChanged?: () => Promise<void>;
   onClose: () => void;
 }) {
   // ── State ────────────────────────────────────────────────────────────────
@@ -206,6 +212,8 @@ function BookingManagementContent({
     return defaults;
   });
 
+  const [cancellationScope, setCancellationScope] = useState<{ kind: 'storage' | 'equipment'; id: number } | undefined>();
+  const [cancellationReviewOpen, setCancellationReviewOpen] = useState(false);
   const [refundMode, setRefundMode] = useState(false);
   const [isEditingRefund, setIsEditingRefund] = useState(false);
   const [customRefundInput, setCustomRefundInput] = useState("");
@@ -437,9 +445,10 @@ function BookingManagementContent({
     e.stopPropagation();
     e.preventDefault();
     if (isProcessing) return;
+    if (action === "accept") { setCancellationScope(undefined); setCancellationReviewOpen(true); return; }
     onSubmit({
       bookingId: booking.id,
-      action: action === "accept" ? "accept-cancellation" : "decline-cancellation",
+      action: "decline-cancellation",
     });
   }, [booking.id, isProcessing, onSubmit]);
 
@@ -447,9 +456,10 @@ function BookingManagementContent({
     e.stopPropagation();
     e.preventDefault();
     if (isProcessing) return;
+    if (action === "accept") { setCancellationScope({ kind: "storage", id: storageBookingId }); setCancellationReviewOpen(true); return; }
     onSubmit({
       bookingId: booking.id,
-      action: action === "accept" ? "accept-storage-cancel" : "decline-storage-cancel",
+      action: "decline-storage-cancel",
       storageCancellationId: storageBookingId,
     });
   }, [booking.id, isProcessing, onSubmit]);
@@ -465,6 +475,7 @@ function BookingManagementContent({
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <AppDialogContent className="sm:max-w-[520px] flex flex-col p-0 gap-0 max-h-[90vh] overflow-hidden">
+      <CancellationRefundReview bookingId={booking.id} open={cancellationReviewOpen} scope={cancellationScope} onOpenChange={setCancellationReviewOpen} onChanged={onChanged} />
       {/* Header */}
       <DialogHeader className="px-6 pt-6 pb-4 border-b bg-muted/30 shrink-0">
         <DialogTitle className="flex items-center gap-2 text-lg">
@@ -629,7 +640,7 @@ function BookingManagementContent({
                 const decision = storageDecisions.get(item.storageBookingId) || "keep";
                 const isKeeping = decision === "keep";
                 const isDisabled = kitchenIsCancelling || isProcessing;
-                const hasCancelRequest = item.cancellationRequested;
+                const hasCancelRequest = item.cancellationRequested || item.status === 'cancellation_requested';
                 const dateRange = item.startDate && item.endDate
                   ? item.startDate === item.endDate
                     ? formatStorageDate(item.startDate)
@@ -755,6 +766,10 @@ function BookingManagementContent({
                 <Package className="h-3.5 w-3.5" />{mt("equipmentRentals")}</p>
 
               {activeEquipmentItems.map((item) => {
+                if (item.status === 'cancellation_requested') return <Button key={item.equipmentBookingId} variant="outline" disabled={isProcessing}
+                  onClick={() => { setCancellationScope({ kind: 'equipment', id: item.equipmentBookingId }); setCancellationReviewOpen(true); }}>
+                  Review {item.name} cancellation refund
+                </Button>;
                 const decision = equipmentDecisions.get(item.equipmentBookingId) || "keep";
                 const isKeeping = decision === "keep";
                 const isDisabled = kitchenIsCancelling || isProcessing;

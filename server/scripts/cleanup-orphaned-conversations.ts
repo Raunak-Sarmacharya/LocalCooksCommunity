@@ -2,6 +2,7 @@
 import { db } from '../db';
 import { locations } from '@shared/schema';
 import { getFirestore } from 'firebase-admin/firestore';
+import { firestoreDatabaseId } from '../../shared/firestore-database';
 import { initializeFirebaseAdmin } from '../firebase-setup';
 import { inArray } from 'drizzle-orm';
 
@@ -18,7 +19,7 @@ async function cleanupOrphanedConversations() {
         console.error('Failed to initialize Firebase Admin');
         process.exit(1);
     }
-    const adminDb = getFirestore(app);
+    const adminDb = getFirestore(app, firestoreDatabaseId(process.env.FIRESTORE_DATABASE_ID, process.env.VERCEL_ENV));
 
     try {
         // 2. Fetch all conversations from Firestore

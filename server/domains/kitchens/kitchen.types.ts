@@ -44,7 +44,6 @@ export interface CreateKitchenDTO {
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
   taxRatePercent?: number | null;
-  smartLockAvailable?: boolean;
 }
 
 /**
@@ -65,10 +64,6 @@ export interface UpdateKitchenDTO {
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
   taxRatePercent?: number | null;
-  /** Admin-controlled capability gate. When false, managers cannot configure smart locks. */
-  smartLockAvailable?: boolean;
-  smartLockEnabled?: boolean;
-  smartLockConfig?: Record<string, unknown> | null;
 }
 
 /**
@@ -102,10 +97,6 @@ export interface KitchenDTO {
   minimumBookingHours: number;
   pricingModel: PricingModel;
   taxRatePercent: number | null;
-  /** Admin-controlled capability gate. When false, managers cannot configure smart locks. */
-  smartLockAvailable: boolean;
-  smartLockEnabled: boolean;
-  smartLockConfig: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
 }

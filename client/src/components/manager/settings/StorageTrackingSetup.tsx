@@ -11,8 +11,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "./SettingsRow";
 import { SettingsContentSkeleton } from "../SettingsContentSkeleton";
+import { hasTrackingNotes } from '@shared/tracking-setup';
+import { TrackingWorkflowHelp, type TrackingTimingSettings } from './TrackingWorkflowHelp';
 
-interface StorageTrackingSettings {
+interface StorageTrackingSettings extends TrackingTimingSettings {
+  storageCheckinInstructions?: string | null;
+  storageCheckoutInstructions?: string | null;
   storageCheckinEnabled: boolean;
   storageCheckoutEnabled: boolean;
   storageCheckinItems: unknown[];
@@ -27,10 +31,8 @@ export function StorageTrackingSetup({ locationId, onConfigure }: { locationId: 
   const key = ["checkin-checkout-settings", locationId];
   const { data, isLoading, isError, refetch } = useQuery<StorageTrackingSettings>({ queryKey: key, queryFn: () => apiGet(`/manager/locations/${locationId}/checkin-checkout-settings`) });
   const enabled = !!(data?.storageCheckinEnabled || data?.storageCheckoutEnabled);
-  const configured = !!(data?.storageCheckinEnabled && data.storageCheckoutEnabled &&
-    ((data.storageCheckinItems?.length ?? 0) + (data.storageCheckinPhotoRequirements?.length ?? 0)) &&
-    ((data.storageCheckoutItems?.length ?? 0) + (data.storageCheckoutPhotoRequirements?.length ?? 0)));
-  const signature = trackingSetupSignature([data?.storageCheckinEnabled, data?.storageCheckoutEnabled, data?.storageCheckinItems, data?.storageCheckoutItems, data?.storageCheckinPhotoRequirements, data?.storageCheckoutPhotoRequirements]);
+  const configured = !!(data?.storageCheckinEnabled && data.storageCheckoutEnabled && hasTrackingNotes({ ...data }, true));
+  const signature = trackingSetupSignature([data?.storageCheckinEnabled, data?.storageCheckoutEnabled, data?.storageCheckinInstructions, data?.storageCheckoutInstructions]);
   const dismissalKey = `storage-tracking-setup:v1:${auth.currentUser?.uid}:${locationId}`;
   const [dismissedSignature, setDismissedSignature] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(false);
@@ -55,10 +57,11 @@ export function StorageTrackingSetup({ locationId, onConfigure }: { locationId: 
       <div className="flex gap-2"><Button size="sm" onClick={() => { const target = document.getElementById(`storage-tracking-settings-${locationId}`); target?.scrollIntoView({ behavior: "smooth", block: "center" }); target?.focus({ preventScroll: true }); setHighlight(true); }}>{mt("setUpChecklist")}</Button><Button size="sm" variant="ghost" onClick={() => { setDismissedSignature(signature); try { saveTrackingPromptDismissal(enabled ? window.localStorage : window.sessionStorage, dismissalKey, signature); } catch { /* Dismiss for this visit. */ } }}>{mt("dismiss")}</Button></div>
     </CardContent></Card>}
     <Card id={`storage-tracking-settings-${locationId}`} tabIndex={-1} className={`transition-[border-color,box-shadow] duration-500 ${highlight ? "border-primary/70 shadow-[0_0_0_3px_hsl(var(--primary)/0.18)]" : ""}`}><CardContent className="p-0">
-      <SettingsRow id={`storage-tracking-${locationId}`} label={mt("navStorageCheckinCheckout")} hint={mt("storageTrackingDescription")} help={mt("storageTrackingHelp")}>
-        <Switch id={`storage-tracking-${locationId}`} checked={enabled} disabled={change.isPending} onCheckedChange={(value) => change.mutate(value)} />
+      <SettingsRow id={`storage-tracking-${locationId}`} label={mt("navStorageCheckinCheckout")} hint={mt("storageTrackingDescription")} help={<TrackingWorkflowHelp storage settings={data} />}>
+        <Switch id={`storage-tracking-${locationId}`} checked={enabled} disabled={change.isPending}
+          onCheckedChange={value => value && !hasTrackingNotes({ ...data }, true) ? onConfigure() : change.mutate(value)} />
       </SettingsRow>
-      {enabled && <div className="border-t p-4"><Button variant="outline" onClick={onConfigure}>{mt("kitchenTrackingConfigureShared")}</Button></div>}
+      <div className="border-t p-4"><Button variant="outline" onClick={onConfigure}>{mt("kitchenTrackingConfigureShared")}</Button></div>
     </CardContent></Card>
   </div>;
 }

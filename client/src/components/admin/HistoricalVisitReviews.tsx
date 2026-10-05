@@ -24,8 +24,8 @@ function VisitReview({ row, onSaved }: { row: Row; onSaved: () => void }) {
     finally { setSaving(false); }
   }
   return <div className="border rounded p-3 space-y-2"><p>{row.kitchenName} · Booking #{row.booking.id} · {row.booking.bookingDate.slice(0, 10)} {row.visit.startTime}</p>
-    <p className="text-sm">Private admin evidence. This records attendance only; it does not approve checkout or change payment. Host absence, denied access and other disruptions are not chef no-shows.</p>
-    <Textarea aria-label={`Private admin evidence for visit ${row.visit.id}`} value={reason} onChange={event => setReason(event.target.value)} placeholder="Record private evidence supporting attendance" />
+    <p className="text-sm">This private review records whether the chef visited. Checkout and payment require separate decisions. Manager absence, denied access and other disruptions are not chef no-shows.</p>
+    <Textarea aria-label={`Private admin evidence for visit ${row.visit.id}`} value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain how you confirmed whether the chef visited" />
     <div className="flex gap-2"><Button disabled={saving || reason.trim().length < 10} onClick={() => save('checked_out')}>Record chef attended</Button>
       <Button variant="outline" disabled={saving || reason.trim().length < 10} onClick={() => save('no_show')}>Explicitly report chef no-show</Button></div></div>;
 }

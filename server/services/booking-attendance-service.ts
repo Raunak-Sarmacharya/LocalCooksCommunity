@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, kitchens, locations } from '@shared/schema';
-import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence } from '@shared/booking-attendance';
+import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 
 export type AttendanceActor = { id: number; role: 'chef' | 'manager' | 'admin' };
@@ -28,6 +28,7 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
     : await db.select(publicFields).from(kitchenBookingAttendanceEvents).where(eq(kitchenBookingAttendanceEvents.bookingId, bookingId)).orderBy(asc(kitchenBookingAttendanceEvents.id));
   const visits = await db.select({ id: kitchenBookingVisits.id, startTime: kitchenBookingVisits.startTime,
     endTime: kitchenBookingVisits.endTime, checkinStatus: kitchenBookingVisits.checkinStatus,
+    assistanceHistory: kitchenBookingVisits.assistanceHistory,
     updatedAt: kitchenBookingVisits.updatedAt }).from(kitchenBookingVisits)
     .where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
   const visibleHistory = actor.role === 'admin' ? history : history.map(event => ({
@@ -36,7 +37,11 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
   }));
   return { bookingId, status: context.booking.status, checkinStatus: context.booking.checkinStatus,
     updatedAt: context.booking.updatedAt, scheduledEnd: bookingAttendanceEnd(context.booking),
-    operationsComplete: bookingOperationsComplete(context.booking), visits, history: visibleHistory };
+    assistanceHistory: context.booking.assistanceHistory,
+    operationsComplete: bookingOperationsComplete(context.booking), visits: visits.map(visit => ({ ...visit,
+      scheduledEnd: visitAttendanceEnd(context.booking, visit),
+      operationsComplete: ['confirmed', 'completed'].includes(context.booking.status) && Date.now() >= visitAttendanceEnd(context.booking, visit).getTime(),
+    })), history: visibleHistory };
 }
 
 export async function recordBookingAttendance(bookingId: number, actor: AttendanceActor, input: {
@@ -76,7 +81,8 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
     if (input.action !== 'withdraw_attendance') {
       if (!context.booking.chefId) throw new AttendanceError('Chef attendance reports require a chef reservation');
       if (!['confirmed', 'completed'].includes(context.booking.status)) throw new AttendanceError('Only confirmed reservations may be reported');
-      if (Date.now() < bookingAttendanceEnd(context.booking).getTime()) throw new AttendanceError('Report only after the scheduled booking end');
+      if (Date.now() < (visit ? visitAttendanceEnd(context.booking, visit) : bookingAttendanceEnd(context.booking)).getTime())
+        throw new AttendanceError('Report only after the scheduled visit or booking end');
     }
     if (input.action === 'report_no_show') {
       if (current.checkinStatus === 'no_show') throw new AttendanceError('A no-show is already recorded', 409);

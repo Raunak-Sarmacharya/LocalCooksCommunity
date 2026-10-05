@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
+import { scheduleAdvanceReminders } from './advance-reminders';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ conditions: [] as any[], won: false, rows: [] as any[][], photosValid: true, queue: vi.fn() }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.queue }));
+vi.mock('./visit-duties', () => ({ storageDuties: async () => ({ arrival: { enabled: true }, departure: { enabled: true, items: [],
+  photos: state.photosValid ? [] : [{ id: 'removal', required: true }] } }) }));
+vi.mock('./outcome-delivery', () => ({ queueStorageVisitAction: state.queue, queueStorageClearance: async () => {}, attemptOutcomeDelivery: async () => {} }));
 vi.mock('./kitchen-checkout-service', () => ({
   validateRequiredPhotos: async () => ({ valid: state.photosValid, error: 'Required removal photos missing' }),
   validateRequiredChecklistItems: async () => ({ valid: true }),
@@ -13,7 +18,7 @@ vi.mock('../db', () => { const db: any = {
     state.conditions.push(condition);
     return { returning: async () => state.won ? [{ id: 1 }] : [] };
   } }) }),
-  transaction: async (run: any) => run(db),
+  execute: async () => [], transaction: async (run: any) => run(db),
 }; return { db }; });
 import { autoCleanExpiredCheckout, requestStorageCheckout } from './storage-checkout-service';
 
@@ -37,13 +42,13 @@ describe('occupied cancelled storage removal', () => {
   it('allows removal of accepted occupied storage without fabricating optional check-in', async () => {
     occupied(); state.won = true;
     expect((await requestStorageCheckout(1, 366)).success).toBe(true);
-    expect(state.queue).toHaveBeenCalledWith(expect.anything(), 10, 'storage_checkout_requested',
-      expect.any(String), expect.any(String), 366, { storageBookingId: 1 });
+    expect(scheduleAdvanceReminders).toHaveBeenCalledWith(expect.anything(), 'storage_review', 1);
+    expect(state.queue).toHaveBeenCalledWith(expect.anything(), 1, 'departure', 366);
     expect(new PgDialect().sqlToQuery(state.conditions[0]).sql).toContain('updated_at');
   });
   it('still enforces required inspection photos for accepted cancellation removal', async () => {
     occupied(); state.photosValid = false;
-    expect((await requestStorageCheckout(1, 366)).error).toBe('Required removal photos missing');
+    expect((await requestStorageCheckout(1, 366)).error).toMatch(/distinct photo/);
     expect(state.conditions).toEqual([]); expect(state.queue).not.toHaveBeenCalled();
   });
   it('does not announce removal when a concurrent storage change wins', async () => {

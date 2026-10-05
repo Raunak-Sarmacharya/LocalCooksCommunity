@@ -32,6 +32,7 @@ import { calculateKitchenBasePrice, type KitchenBookingRateMode } from "@shared/
 import { addHour, calendarDateForOperatingTime, sortTimesInOperatingWindow } from "@shared/operating-hours";
 import { matchingLocalInstants } from '@shared/booking-dst';
 import { bookingVisitBlocks } from '@shared/booking-visit-blocks';
+import { validateKitchenSlotSelection, CONSECUTIVE_SLOTS_MESSAGE } from '@shared/consecutive-booking-slots';
 import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
 
 /** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
@@ -407,6 +408,8 @@ export default function KitchenBookingFlow({
     isFullyBooked: boolean;
   }>>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const selectedSlotsRef = useRef(selectedSlots);
+  selectedSlotsRef.current = selectedSlots;
   const [fullDayBookable, setFullDayBookable] = useState(false);
   const [pendingTimeSlots, setPendingTimeSlots] = useState<string[]>([]);
   const [timeModalOpen, setTimeModalOpen] = useState(false);
@@ -538,7 +541,7 @@ export default function KitchenBookingFlow({
     initRef.current = true;
     const restoreForKitchen = findPersistedBookingForKitchens([kitchen.id]);
     const legacyDate = initialDateIso && /^\d{4}-\d{2}-\d{2}$/.test(initialDateIso) ? initialDateIso : undefined;
-    const legacySlots = initialSlots?.filter(slot => /^([01]\d|2[0-3]):[0-5]\d$/.test(slot));
+    const legacySlots = initialSlots;
     const restore = legacyDate
       ? { dateIso: legacyDate, slots: legacySlots || [], step: 'slots' as BookingStep }
       : restoreForKitchen
@@ -756,7 +759,12 @@ export default function KitchenBookingFlow({
       });
 
       setAllSlots(filteredSlots);
-      setSelectedSlots(previous => previous.filter(time => filteredSlots.some((slot: any) => slot.time === time && !slot.isFullyBooked)));
+      // A stale middle hour invalidates the draft; never silently leave two visits.
+      if (selectedSlotsRef.current.length && validateKitchenSlotSelection(selectedSlotsRef.current, filteredSlots)) {
+        toast({ title: 'Choose your hours again', description: 'Your saved hours must be consecutive and available. Select one continuous range.', variant: 'destructive' });
+        setSelectedSlots([]);
+        setCurrentStep('slots');
+      }
       const canBookFullDay = slots.length > 0 && slots.every((slot: any) => !slot.isFullyBooked) && filteredSlots.length === slots.length;
       setFullDayBookable(canBookFullDay);
       // Don't auto-navigate - user clicks "Select Time Slots" button to proceed
@@ -941,16 +949,16 @@ export default function KitchenBookingFlow({
         setSelectedDate(restoredDate);
         setCalendarMonth(new Date(y, m - 1, 1));
         if (restore.slots?.length) {
-          setSelectedSlots(sortTimesInOperatingWindow(restore.slots, restore.slots[0]));
+          if (restore.slots.some(time => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) {
+            toast({ title: 'Choose your hours again', description: 'Your saved hours are invalid. Select consecutive available hours.', variant: 'destructive' });
+          } else {
+            // Availability loading validates the complete draft before continuing.
+            setSelectedSlots(restore.slots);
+          }
         }
         setHideDateStep(true);
-        // Date already chosen — start at time (or next step if slots also prefilled).
-        setCurrentStep(
-          restore.step ??
-            (restore.slots?.length
-              ? stepAfterTime(addons.equipment.all.length > 0, addons.storage.length > 0)
-              : "slots")
-        );
+        // A restored draft is a fresh selection, not replay of its old checkout.
+        setCurrentStep('slots');
       } else {
         setHideDateStep(false);
         setCurrentStep("calendar");
@@ -1001,15 +1009,8 @@ export default function KitchenBookingFlow({
     }
 
     setter(prev => {
-      // Each hour is an independent choice, including when a minimum applies.
-      if (prev.includes(slot.time)) {
-        return prev.filter(s => s !== slot.time);
-      }
-
-      // Minimum hours counts selected slots; the hours may be separate.
-      if (prev.length < maxSlotsPerChef) {
-        return sortSelectedSlots([...prev, slot.time]);
-      } else {
+      const next = prev.includes(slot.time) ? prev.filter(s => s !== slot.time) : [...prev, slot.time];
+      if (next.length > maxSlotsPerChef) {
         toast({
           title: t("toastLimitReachedTitle", "Limit reached"),
           description: t("toastLimitReachedDesc", { count: maxSlotsPerChef, defaultValue: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.` }),
@@ -1017,6 +1018,11 @@ export default function KitchenBookingFlow({
         });
         return prev;
       }
+      if (next.length && validateKitchenSlotSelection(next, allSlots)) {
+        toast({ title: 'Select consecutive hours', description: CONSECUTIVE_SLOTS_MESSAGE, variant: 'destructive' });
+        return prev;
+      }
+      return sortSelectedSlots(next);
     });
   };
 
@@ -1096,6 +1102,18 @@ export default function KitchenBookingFlow({
   };
 
   const orderedSelectedSlots = bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
+  const selectionError = (times = selectedSlots) => validateKitchenSlotSelection(
+    times, allSlots, bookingRateMode === 'hourly' ? Math.max(1, kitchenPricing?.minimumBookingHours ?? 0) : 1,
+    bookingRateMode === 'hourly' ? maxSlotsPerChef : Infinity,
+  ) || (bookingRateMode === 'daily' && (!fullDayBookable || times.length !== allSlots.length)
+    ? 'A daily booking must include the full available operating day.' : null);
+  const requireValidSelection = () => {
+    const error = selectionError();
+    if (!error) return true;
+    toast({ title: 'Review your booking hours', description: error, variant: 'destructive' });
+    setCurrentStep('slots');
+    return false;
+  };
   const bookingTimeBlocks = bookingVisitBlocks(
     orderedSelectedSlots.map(startTime => ({ startTime, endTime: addHour(startTime) }))
   ).map(block => `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`);
@@ -1103,6 +1121,7 @@ export default function KitchenBookingFlow({
   // Redirect to Stripe Checkout
   const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (!requireValidSelection()) return;
 
     // Enforce minimum booking hours (0 = no restriction)
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
@@ -1197,6 +1216,7 @@ export default function KitchenBookingFlow({
   // Handle free booking submission
   const handleFreeBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (!requireValidSelection()) return;
 
     // Enforce minimum booking hours (0 = no restriction)
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
@@ -1477,12 +1497,13 @@ export default function KitchenBookingFlow({
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <p className="text-sm text-muted-foreground">Select consecutive hours for one continuous visit. Add adjacent hours; remove hours from either end.</p>
               {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
                 <div className="shrink-0 rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
                   <Icon icon="mdi:clock-outline" className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     <strong>{t("sheetMinBookingNoticeBold", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Minimum ${kitchenPricing.minimumBookingHours}-hour booking.` })}</strong>{" "}
-                    {` Select at least ${kitchenPricing.minimumBookingHours} hours; they may be separate.`}
+                    {` Select at least ${kitchenPricing.minimumBookingHours} consecutive hours.`}
                   </p>
                 </div>
               )}
@@ -2098,6 +2119,7 @@ export default function KitchenBookingFlow({
   };
 
   const goToNextStep = () => {
+    if (currentStep !== 'calendar' && !requireValidSelection()) return;
     const next = goToStepRelative(currentStep, 1);
     if (next) setCurrentStep(next);
   };
@@ -2356,11 +2378,12 @@ export default function KitchenBookingFlow({
           </div>
           <div className="flex items-center justify-between gap-3 border-t bg-white px-5 py-4">
             <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("time")}>{t("sheetCancelButton")}</Button>
-            <p className="text-sm text-muted-foreground">{pendingTimeSlots.length} hour{pendingTimeSlots.length === 1 ? "" : "s"} selected</p>
+            <p className="text-sm text-muted-foreground">{selectionError(pendingTimeSlots) || `${pendingTimeSlots.length} hours selected`}</p>
             <Button
-              disabled={pendingTimeSlots.length === 0}
+              disabled={!!selectionError(pendingTimeSlots)}
               className={chefPrimaryCtaClass()}
               onClick={() => {
+                if (selectionError(pendingTimeSlots)) return;
                 setSelectedSlots(sortSelectedSlots(pendingTimeSlots));
                 setTimeModalOpen(false);
               }}

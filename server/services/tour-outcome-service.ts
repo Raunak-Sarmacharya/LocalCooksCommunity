@@ -4,6 +4,7 @@ import { kitchenViewings, locations, tourDeliveryEvents } from '@shared/schema';
 import { logger } from '../logger';
 import { getLifecycleSettings } from './lifecycle-settings';
 import { queueTourEvent, deliverTourEvents } from './tour-delivery-service';
+import { workerAfter, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
 
 export async function deliverTourOutcome(viewing: typeof kitchenViewings.$inferSelect, locationName: string) {
   // Move pre-existing pending deliveries to the ledger without changing their outcome.
@@ -23,10 +24,13 @@ export async function remindUnrecordedTourOutcomes({ budgetMs = 20_000, maxTours
   // Expiry follows the existing confirmation deadline; it never invents attendance or changes reservation state.
   const expired = await db.select({ id: kitchenViewings.id }).from(kitchenViewings)
     .where(and(inArray(kitchenViewings.status, ['pending_local_cooks', 'pending']),
+      workerAfter('tourExpiry', kitchenViewings.id),
       sql`${kitchenViewings.scheduledAt} <= CURRENT_TIMESTAMP`,
-      sql`NOT EXISTS (SELECT 1 FROM tour_delivery_events WHERE viewing_id = ${kitchenViewings.id} AND payload->>'kind' = 'expired')`)).limit(maxTours);
+      sql`NOT EXISTS (SELECT 1 FROM tour_delivery_events WHERE viewing_id = ${kitchenViewings.id} AND payload->>'kind' = 'expired')`)).orderBy(kitchenViewings.id).limit(maxTours);
+  await workerPageEnd('tourExpiry', expired.length);
   for (const candidate of expired) {
-    if (deadline - Date.now() < 5_000) break;
+    if (deadline - Date.now() < (inRecurringWorker() ? 1_000 : 5_000)) break;
+    await workerRecord('tourExpiry', candidate.id);
     try {
       await db.transaction(async tx => {
         const [current] = await tx.select().from(kitchenViewings).where(and(eq(kitchenViewings.id, candidate.id),
@@ -40,9 +44,11 @@ export async function remindUnrecordedTourOutcomes({ budgetMs = 20_000, maxTours
   }
   const pending = await db.select({ viewing: kitchenViewings, locationName: locations.name }).from(kitchenViewings)
     .innerJoin(locations, eq(kitchenViewings.locationId, locations.id))
-    .where(and(eq(kitchenViewings.outcomeNotificationPending, true), inArray(kitchenViewings.status, ['completed', 'no_show']))).limit(maxTours);
+    .where(and(workerAfter('tourRecovery', kitchenViewings.id), eq(kitchenViewings.outcomeNotificationPending, true), inArray(kitchenViewings.status, ['completed', 'no_show']))).orderBy(kitchenViewings.id).limit(maxTours);
+  await workerPageEnd('tourRecovery', pending.length);
   for (const row of pending) {
-    if (deadline - Date.now() < 5_000) break;
+    if (deadline - Date.now() < (inRecurringWorker() ? 1_000 : 5_000)) break;
+    await workerRecord('tourRecovery', row.viewing.id);
     try { await deliverTourOutcome(row.viewing, row.locationName); }
     catch (error) { result.errors++; logger.error('Tour outcome delivery retry failed', error); }
   }
@@ -51,10 +57,13 @@ export async function remindUnrecordedTourOutcomes({ budgetMs = 20_000, maxTours
     locationName: locations.name }).from(kitchenViewings)
     .innerJoin(locations, eq(kitchenViewings.locationId, locations.id))
     .where(and(eq(kitchenViewings.status, 'confirmed'),
+      workerAfter('tourOutcome', kitchenViewings.id),
       isNull(kitchenViewings.outcomeReminderSentAt),
-      sql`${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} + ${settings.tourOutcomeReminderMinutes}) * interval '1 minute' <= CURRENT_TIMESTAMP`)).limit(maxTours);
+      sql`${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} + ${settings.tourOutcomeReminderMinutes}) * interval '1 minute' <= CURRENT_TIMESTAMP`)).orderBy(kitchenViewings.id).limit(maxTours);
+  await workerPageEnd('tourOutcome', tours.length);
   for (const { viewing, managerId, locationName } of tours) {
-    if (deadline - Date.now() < 5_000) break;
+    if (deadline - Date.now() < (inRecurringWorker() ? 1_000 : 5_000)) break;
+    await workerRecord('tourOutcome', viewing.id);
     try {
       const queued = await db.transaction(async tx => {
         const [claimed] = await tx.update(kitchenViewings).set({ outcomeReminderSentAt: new Date() })

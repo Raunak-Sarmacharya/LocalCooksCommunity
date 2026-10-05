@@ -5,6 +5,7 @@ import { kitchenBookings, kitchens, locations, storageBookings, storageListings,
   equipmentBookings, equipmentListings, paymentTransactions } from '@shared/schema';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
+import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 import { parseCheckoutCancellationPolicy, parseCheckoutSlots } from './checkout-metadata';
 import { fulfillKitchenCheckout, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
@@ -76,7 +77,12 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           managerRevenue: String(terms.subtotal + terms.tax), netAmount: String(intent.amount), paymentIntentId: intent.id,
           status: authorized ? 'authorized' : 'succeeded', stripeStatus: intent.status,
           metadata: { checkout_session_id: session.id, fee_model: metadata.fee_model, taxRatePercent: terms.rate,
-            platformCommission: terms.commission, storage_items: storageItems, equipment_items: equipmentItems } });
+            platformCommission: terms.commission, storage_items: storageItems, equipment_items: equipmentItems,
+            componentAllocationVersion: 'original-tax-largest-remainder-v1', capturedComponentAllocations: capturedComponentAllocations([
+              { kind: 'kitchen', bookingId: parent.id, subtotalCents: terms.subtotal - [...storageItems, ...equipmentItems].reduce((sum, item) => sum + Number(item.totalPrice), 0) },
+              ...storageItems.map(item => ({ kind: 'storage' as const, bookingId: Number(item.storageBookingId), subtotalCents: Number(item.totalPrice) })),
+              ...equipmentItems.map(item => ({ kind: 'equipment' as const, bookingId: Number(item.equipmentBookingId), subtotalCents: Number(item.totalPrice) })),
+            ], terms.tax) } });
         await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'Kitchen booking requested',
           authorized ? `Booking #${parent.id} awaits manager approval. Payment is authorized and has not been captured.`
             : `Booking #${parent.id} awaits manager approval. The original checkout payment was received.`, chefId);

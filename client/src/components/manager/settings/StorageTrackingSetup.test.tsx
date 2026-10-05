@@ -11,7 +11,7 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: state.toast }) }
 
 beforeEach(() => {
   sessionStorage.clear(); localStorage.clear(); state.put.mockReset(); state.toast.mockReset();
-  state.settings = { storageCheckinEnabled: false, storageCheckoutEnabled: false, storageCheckinItems: [], storageCheckoutItems: [], storageCheckinPhotoRequirements: [], storageCheckoutPhotoRequirements: [] };
+  state.settings = { storageCheckinEnabled: false, storageCheckoutEnabled: false, storageCheckinItems: [], storageCheckoutItems: [], storageCheckinPhotoRequirements: [], storageCheckoutPhotoRequirements: [], storageCheckinInstructions: 'Use the marked shelf.', storageCheckoutInstructions: 'Remove all items.' };
   state.put.mockImplementation(async (_path, patch) => { state.settings = { ...state.settings, ...patch }; });
 });
 afterEach(cleanup);
@@ -22,7 +22,7 @@ const mount = () => {
   return { ...page, client, configure };
 };
 
-it("dismisses only the setup prompt and brings it back when the saved setup changes", async () => {
+it("dismisses only the prompt and enables both stages with saved notes and no duties", async () => {
   const page = mount();
   await screen.findByText("storageChecklistBannerTitle");
   fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
@@ -34,11 +34,22 @@ it("dismisses only the setup prompt and brings it back when the saved setup chan
   await screen.findByRole("switch");
   expect(screen.queryByText("storageChecklistBannerTitle")).toBeNull();
   fireEvent.click(screen.getByRole("switch"));
-  await screen.findByText("storageChecklistBannerTitle");
+  await waitFor(() => expect(screen.getByRole('switch')).toBeChecked());
+  expect(screen.queryByText('storageChecklistBannerTitle')).toBeNull();
   expect(state.put).toHaveBeenCalledWith("/manager/locations/33/checkin-checkout-settings", { storageCheckinEnabled: true, storageCheckoutEnabled: true });
   fireEvent.click(screen.getByRole("button", { name: "kitchenTrackingConfigureShared" }));
   expect(next.configure).toHaveBeenCalledOnce();
   next.client.clear();
+});
+
+it('opens setup instead of enabling tracking without saved notes', async () => {
+  state.settings = { ...state.settings, storageCheckinInstructions: '   ', storageCheckoutInstructions: null };
+  const page = mount();
+  fireEvent.click(await screen.findByRole('switch'));
+  expect(page.configure).toHaveBeenCalledOnce();
+  expect(state.put).not.toHaveBeenCalled();
+  expect(screen.getByRole('switch')).not.toBeChecked();
+  page.client.clear();
 });
 
 it("hides completed setup and disables both flows without deleting checklist items", async () => {

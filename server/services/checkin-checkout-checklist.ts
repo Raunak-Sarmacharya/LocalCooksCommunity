@@ -15,8 +15,14 @@ import {
   type CheckinCheckoutChecklist,
 } from "@shared/schema";
 import { resolveKitchenTracking } from "@shared/kitchen-tracking";
+import { activeChecklist } from "@shared/active-checklist";
 
 export async function getKitchenTrackingState(kitchenId: number, checkinStatus?: string | null, bookingId?: number) {
+  if (bookingId) {
+    const { kitchenDuties } = await import('./visit-duties');
+    const duties = await kitchenDuties(bookingId);
+    return { checkinEnabled: duties.arrival.enabled, checkoutEnabled: duties.departure.enabled };
+  }
   const [row] = await db.select({ enabled: kitchens.checkinCheckoutEnabled,
     trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${bookingId ?? -1} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
     checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
@@ -50,7 +56,6 @@ const DEFAULT_CHECKLIST_ROW = {
   storageCheckinItems: [] as unknown[],
   storageCheckinPhotoRequirements: [] as unknown[],
   storageCheckinInstructions: null as string | null,
-  smartLockCheckinInstructions: null as string | null,
 };
 
 /**
@@ -66,7 +71,7 @@ export async function ensureDefaultCheckinCheckoutChecklist(
     .where(eq(checkinCheckoutChecklists.locationId, locationId))
     .limit(1);
 
-  if (existing) return existing;
+  if (existing) return activeChecklist(existing);
 
   const [created] = await db
     .insert(checkinCheckoutChecklists)
@@ -77,7 +82,7 @@ export async function ensureDefaultCheckinCheckoutChecklist(
     .onConflictDoNothing({ target: checkinCheckoutChecklists.locationId })
     .returning();
 
-  if (created) return created;
+  if (created) return activeChecklist(created);
 
   const [raced] = await db
     .select()
@@ -90,5 +95,5 @@ export async function ensureDefaultCheckinCheckoutChecklist(
       `Failed to ensure checkin_checkout_checklists row for location ${locationId}`,
     );
   }
-  return raced;
+  return activeChecklist(raced);
 }

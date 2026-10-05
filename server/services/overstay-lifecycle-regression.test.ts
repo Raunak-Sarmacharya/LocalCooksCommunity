@@ -1,7 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ rows: [] as any[][], writes: [] as any[] }));
-vi.mock('../db', () => ({ db: {
+vi.mock('./outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), queueOverstayOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
+vi.mock('../db', () => { const db: any = {
   select: () => {
     const chain: any = { from: () => chain, innerJoin: () => chain, where: () => chain,
       orderBy: () => chain, limit: async () => state.rows.shift() || [],
@@ -11,8 +12,8 @@ vi.mock('../db', () => ({ db: {
   update: () => ({ set: (value: any) => { state.writes.push(value);
     return { where: () => ({ then: (resolve: any) => resolve(undefined), returning: async () => [{ id: 1 }] }) };
   } }),
-  insert: () => ({ values: () => ({ then: (resolve: any) => resolve(undefined) }) }),
-} }));
+  insert: () => ({ values: (value: any) => ({ returning: async () => [{ id: 1, ...value }], then: (resolve: any) => resolve(undefined) }) }),
+}; db.transaction = (run: any) => run(db); return { db }; });
 vi.mock('../logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 vi.mock('./notification.service', () => ({ notificationService: { createForManager: vi.fn(), createForChef: vi.fn() } }));
 vi.mock('./overstay-defaults-service', () => ({ getEffectivePenaltyConfig: async () => ({

@@ -95,6 +95,14 @@ router.post("/stripe", async (req: Request, res: Response) => {
     const wLog = logger.child({ webhookEventId, eventType: event.type });
 
     switch (event.type) {
+      case 'payment_intent.amount_capturable_updated': {
+        const intent = event.data.object as Stripe.PaymentIntent;
+        if (intent.metadata.type === 'kitchen_booking_change') {
+          const { reconcileKitchenChangeAuthorization } = await import('../services/kitchen-booking-changes');
+          await reconcileKitchenChangeAuthorization(intent);
+        }
+        break;
+      }
       case "checkout.session.completed":
         await handleCheckoutSessionCompleted(
           event.data.object as Stripe.Checkout.Session,
@@ -103,6 +111,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
         break;
       case "checkout.session.expired": {
         const expiredSession = event.data.object as Stripe.Checkout.Session;
+        if (expiredSession.metadata?.type === 'kitchen_booking_change') {
+          const { syncKitchenChange } = await import('../services/kitchen-booking-changes');
+          await syncKitchenChange(stripe, Number(expiredSession.metadata.booking_id), expiredSession.metadata.kitchen_change_id,
+            { id: Number(expiredSession.metadata.chef_id), role: 'chef' });
+        }
         if (expiredSession.metadata?.type === 'kitchen_booking' && expiredSession.metadata.hold_id) {
           const { releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
           await releaseKitchenCheckout(expiredSession.metadata.hold_id);
@@ -233,6 +246,18 @@ async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
   webhookEventId: string,
 ) {
+  if (session.metadata?.type === 'kitchen_booking_change') {
+    if (!process.env.STRIPE_SECRET_KEY) throw Error('Stripe unavailable for booking-change verification');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
+    const intentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+    if (!intentId) throw Error('Change payment intent missing');
+    const intent = await stripe.paymentIntents.retrieve(intentId);
+    if (intent.status === 'requires_capture') {
+      const { reconcileKitchenChangeAuthorization } = await import('../services/kitchen-booking-changes');
+      await reconcileKitchenChangeAuthorization(intent);
+    } else await handlePaymentIntentSucceeded(intent, webhookEventId);
+    return;
+  }
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -1003,7 +1028,7 @@ async function handleCheckoutSessionCompleted(
                     if (transferResult.transferred) {
                       await updatePaymentTransaction(ptRecord.id, {
                         serviceFee: transferResult.platformCommissionCents,
-                        managerRevenue: transferResult.transferredCents,
+                        managerRevenue: transferResult.originalManagerNetCents ?? transferResult.transferredCents,
                         stripePlatformFee: transferResult.platformCommissionCents,
                         stripeNetAmount: transferResult.transferredCents,
                       }, db);
@@ -1577,7 +1602,7 @@ async function handleStorageExtensionPaymentCompleted(
               if (transferResult.transferred) {
                 await updatePaymentTransaction(ptRecord.id, {
                   serviceFee: transferResult.platformCommissionCents,
-                  managerRevenue: transferResult.transferredCents,
+                  managerRevenue: transferResult.originalManagerNetCents ?? transferResult.transferredCents,
                   stripePlatformFee: transferResult.platformCommissionCents,
                   stripeNetAmount: transferResult.transferredCents,
                   metadata: {
@@ -1717,6 +1742,13 @@ async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
 ) {
+  // Let Stripe retry a failed change commit. The generic handler below historically
+  // catches errors; this new financial branch must not acknowledge lost fulfillment.
+  if (paymentIntent.metadata.type === 'kitchen_booking_change') {
+    const { reconcileKitchenChangePayment } = await import('../services/kitchen-booking-changes');
+    const outcome = await reconcileKitchenChangePayment(paymentIntent);
+    if (!outcome?.applied) return; // Captured funds have an owned recovery task; no manager transfer yet.
+  }
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -1896,7 +1928,7 @@ async function handlePaymentIntentSucceeded(
           if (transferResult.transferred) {
             // Update PT to reflect actual transfer amounts
             updateParams.serviceFee = transferResult.platformCommissionCents;
-            updateParams.managerRevenue = transferResult.transferredCents;
+            updateParams.managerRevenue = transferResult.originalManagerNetCents ?? transferResult.transferredCents;
             updateParams.stripePlatformFee = transferResult.platformCommissionCents;
             updateParams.stripeNetAmount = transferResult.transferredCents;
             updateParams.metadata = {
@@ -2097,6 +2129,7 @@ async function handlePaymentIntentFailed(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
 ) {
+  if (paymentIntent.metadata.type === 'kitchen_booking_change') return;
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -2252,6 +2285,11 @@ async function handlePaymentIntentCanceled(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
 ) {
+  if (paymentIntent.metadata.type === 'kitchen_booking_change') {
+    const { reconcileKitchenChangeCancellation } = await import('../services/kitchen-booking-changes');
+    await reconcileKitchenChangeCancellation(paymentIntent);
+    return;
+  }
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -2366,6 +2404,10 @@ async function handleChargeRefunded(
   charge: Stripe.Charge,
   webhookEventId: string,
 ) {
+  if ((charge.refunds?.data || []).some(refund => refund.metadata?.kitchen_change_id)) {
+    const { reconcileKitchenChangeRefundCharge } = await import('../services/kitchen-booking-changes');
+    if (await reconcileKitchenChangeRefundCharge(charge)) return;
+  }
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -2385,6 +2427,11 @@ async function handleChargeRefunded(
       logger.warn(`[Webhook] Charge ${charge.id} has no payment_intent`);
       return;
     }
+
+    const { reconcilePaymentRefundReceipts } = await import('../services/payment-refund-reconciliation');
+    // Verified allocations are authoritative, including a webhook arriving before route commit.
+    // Unknown legacy allocations fail into retry/review rather than inventing a manager debit.
+    await reconcilePaymentRefundReceipts(paymentIntentId);
 
     // Get refund amount from Stripe charge
     const refundAmountCents = charge.amount_refunded;
@@ -2837,7 +2884,7 @@ async function handleOverstayPenaltyPaymentCompleted(
               if (transferResult.transferred) {
                 await updatePaymentTransaction(ptRecord.id, {
                   serviceFee: transferResult.platformCommissionCents,
-                  managerRevenue: transferResult.transferredCents,
+                  managerRevenue: transferResult.originalManagerNetCents ?? transferResult.transferredCents,
                   stripePlatformFee: transferResult.platformCommissionCents,
                   stripeNetAmount: transferResult.transferredCents,
                   metadata: {
@@ -3132,7 +3179,7 @@ async function handleDamageClaimPaymentCompleted(
               if (transferResult.transferred) {
                 await updatePaymentTransaction(ptRecord.id, {
                   serviceFee: transferResult.platformCommissionCents,
-                  managerRevenue: transferResult.transferredCents,
+                  managerRevenue: transferResult.originalManagerNetCents ?? transferResult.transferredCents,
                   stripePlatformFee: transferResult.platformCommissionCents,
                   stripeNetAmount: transferResult.transferredCents,
                   metadata: {
@@ -3381,7 +3428,7 @@ async function handleChargeUpdated(
 
         if (transferResult.transferred) {
           updateParams.serviceFee = transferResult.platformCommissionCents;
-          updateParams.managerRevenue = transferResult.transferredCents;
+          updateParams.managerRevenue = transferResult.originalManagerNetCents ?? transferResult.transferredCents;
           updateParams.stripePlatformFee = transferResult.platformCommissionCents;
           updateParams.stripeNetAmount = transferResult.transferredCents;
           updateParams.metadata = {

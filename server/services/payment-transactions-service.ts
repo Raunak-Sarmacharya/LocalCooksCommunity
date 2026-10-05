@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { queuePaymentOutcome } from "./outcome-delivery";
 /**
  * Payment Transactions Service
  * 
@@ -196,13 +197,15 @@ export async function createPaymentTransaction(
 export async function updatePaymentTransaction(
   transactionId: number,
   params: UpdatePaymentTransactionParams,
-  db: any
+  db: any,
+  inTransaction = false
 ): Promise<PaymentTransactionRecord | null> {
   // Get current transaction to track status changes
   const currentResult = await db.execute(sql`
     SELECT status, refund_amount, amount
     FROM payment_transactions
     WHERE id = ${transactionId}
+    ${inTransaction ? sql`FOR UPDATE` : sql``}
   `);
 
   if (currentResult.rows.length === 0) {
@@ -211,8 +214,24 @@ export async function updatePaymentTransaction(
 
   const current: any = currentResult.rows[0];
   const previousStatus = current.status as TransactionStatus;
+  if (!inTransaction && (params.refundAmount !== undefined || params.stripeAmount !== undefined || params.stripeNetAmount !== undefined
+    || params.status === "failed" && ["succeeded", "partially_refunded"].includes(previousStatus)))
+    return db.transaction((tx: any) => updatePaymentTransaction(transactionId, params, tx, true));
   const currentRefundAmount = parseFloat(current.refund_amount || '0');
   const currentAmount = parseFloat(current.amount || '0');
+  // Fee-availability/payout callbacks can carry a snapshot from before a refund.
+  // Lock and reload above; those callbacks may sync fees, never undo refund state.
+  if ((params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) && params.refundAmount === undefined) {
+    params = { ...params, metadata: params.metadata ? { ...params.metadata } : undefined };
+    if (['partially_refunded', 'refunded'].includes(previousStatus) && params.status === 'succeeded') delete params.status;
+    if (params.metadata) {
+      delete params.metadata.refunds;
+      delete params.metadata.lastRefund;
+      delete params.metadata.fullRefundRequest;
+      delete params.metadata.cancellationRefundOperation;
+      delete params.metadata.refundRecovery;
+    }
+  }
 
   // Build update query dynamically
   const updates: SQL[] = [];
@@ -350,9 +369,17 @@ export async function updatePaymentTransaction(
       stripeFees,
     };
 
+    // A fee sync may carry a stale operation snapshot; preserve the locked reservation.
+    if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
+      if (currentMetadata.cancellationRefundOperation) updatedMetadata.cancellationRefundOperation = currentMetadata.cancellationRefundOperation;
+    }
     updates.push(sql`metadata = ${JSON.stringify(updatedMetadata)}`);
   } else if (params.metadata !== undefined) {
-    updates.push(sql`metadata = ${JSON.stringify(params.metadata)}`);
+    const incoming = { ...params.metadata };
+    delete incoming.cancellationRefundOperation;
+    delete incoming.refundRecovery;
+    delete incoming.cancellationRefundOperations;
+    updates.push(sql`metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(incoming)}::jsonb`);
   }
 
   if (updates.length === 0) {
@@ -448,6 +475,12 @@ export async function updatePaymentTransaction(
     );
   }
 
+  if (params.refundAmount !== undefined && params.refundAmount > currentRefundAmount ||
+      params.status === 'failed' && ['succeeded', 'partially_refunded'].includes(previousStatus)) {
+    const history = await db.execute(sql`SELECT id FROM payment_history WHERE transaction_id = ${transactionId} ORDER BY id DESC LIMIT 1`);
+    if (!history.rows[0]) throw new Error('Payment outcome history missing');
+    await queuePaymentOutcome(db, history.rows[0].id, updated);
+  }
   return updated;
 }
 
@@ -812,7 +845,7 @@ export async function syncExistingPaymentTransactionsFromStripe(
           });
           if (transferResult.transferred) {
             updateParams.serviceFee = transferResult.platformCommissionCents;
-            updateParams.managerRevenue = transferResult.transferredCents;
+            updateParams.managerRevenue = transferResult.originalManagerNetCents ?? transferResult.transferredCents;
             updateParams.stripeNetAmount = transferResult.transferredCents;
             updateParams.stripePlatformFee = transferResult.platformCommissionCents;
             updateParams.metadata = {
@@ -948,7 +981,7 @@ export async function addPaymentHistory(
   },
   db: any
 ): Promise<void> {
-  await db.execute(sql`
+  const inserted = await db.execute(sql`
     INSERT INTO payment_history (
       transaction_id,
       previous_status,
@@ -969,8 +1002,13 @@ export async function addPaymentHistory(
       ${history.description || null},
       ${JSON.stringify(history.metadata || {})},
       ${history.createdBy || null}
-    )
+    ) RETURNING id
   `);
+  if (["full_refund_requested", "full_refund_rejected", "refund_recovery_required"].includes(history.eventType)) {
+    const current = await db.execute(sql`SELECT * FROM payment_transactions WHERE id = ${transactionId}`);
+    if (!inserted.rows[0] || !current.rows[0]) throw new Error("Refund notice history/context missing");
+    await queuePaymentOutcome(db, inserted.rows[0].id, { ...current.rows[0], deliveryKind: history.eventType });
+  }
 }
 
 /**

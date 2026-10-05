@@ -215,7 +215,7 @@ export async function hasSentTrackingId(trackingId: string): Promise<boolean> {
   }
 }
 
-export async function retryFailedEmail(logId: number): Promise<{ success: boolean; error?: string }> {
+export async function retryFailedEmail(logId: number): Promise<{ success: boolean; error?: string; message?: string }> {
   const [log] = await db
     .select()
     .from(emailLogs)
@@ -225,6 +225,64 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
   if (!log) {
     return { success: false, error: "Email log not found" };
   }
+
+  if (log.category === 'chat_digest' || log.category === 'chat_digest_attempt') {
+    const originalId = log.category === 'chat_digest' ? log.id : log.retryOfId;
+    if (!originalId) return { success: false, error: 'Original chat intent missing; Local Cooks review required.' };
+    const { dispatchChatDigests } = await import('./chat-notices');
+    await dispatchChatDigests(1, 20000, originalId);
+    const [original] = await db.select().from(emailLogs).where(eq(emailLogs.id, originalId)).limit(1);
+    return original?.status === 'sent' ? { success: true, message: 'Original unread digest acknowledged; inbox unverified.' }
+      : original?.status === 'suppressed' ? { success: true, message: 'Read or obsolete conversation suppressed; no email sent.' }
+      : { success: false, error: 'Unread digest remains future, in backoff, concurrently claimed or unaccepted.' };
+  }
+
+  if (log.category === 'advance_reminder' || log.category === 'advance_reminder_attempt') {
+    const originalId = log.category === 'advance_reminder' ? log.id : log.retryOfId;
+    if (!originalId) return { success: false, error: 'Original scheduled action missing; Local Cooks review required.' };
+    const { dispatchAdvanceReminders } = await import('./advance-reminders');
+    await dispatchAdvanceReminders({ onlyLogId: originalId, limit: 1 });
+    const [original] = await db.select().from(emailLogs).where(eq(emailLogs.id, originalId)).limit(1);
+    if (original?.status === 'suppressed') return { success: true, message: 'Obsolete action suppressed; no email sent.' };
+    if (original?.status === 'sent') return { success: true, message: 'Original channel acknowledgment recorded; inbox receipt is not confirmed.' };
+    return { success: false, error: 'Action remains pending: it may be future, in backoff, policy pending, claimed by another worker or unaccepted. Review current source and next attempt.' };
+  }
+
+  if (log.category === 'lifecycle_outcome' || log.category === 'lifecycle_outcome_attempt') {
+    const originalId = log.category === 'lifecycle_outcome' ? log.id : log.retryOfId;
+    if (!originalId) return { success: false, error: 'Original outcome intent missing; Local Cooks must review this record' };
+    const { deliverOutcomeEmails } = await import('./outcome-delivery');
+    await deliverOutcomeEmails(1, 20_000, originalId);
+    const [original] = await db.select().from(emailLogs).where(eq(emailLogs.id, originalId)).limit(1);
+    return original?.status === 'sent' ? { success: true } : { success: false, error: 'Original outcome remains pending; check delivery recovery and retry.' };
+  }
+
+  const ledger = /^(booking|tour)-event:(\d+):(.+)$/.exec(log.trackingId || '');
+  if (ledger) {
+    const { bookingLifecycleEvents, tourDeliveryEvents } = await import('@shared/schema');
+    const table = ledger[1] === 'booking' ? bookingLifecycleEvents : tourDeliveryEvents;
+    const eventId = Number(ledger[2]);
+    const [event] = await db.select().from(table).where(eq(table.id, eventId)).limit(1);
+    if (!event) return { success: false, error: 'Original delivery event missing; review required' };
+    if (event.leaseUntil && event.leaseUntil > new Date()) return { success: false, error: 'Original event is being delivered; retry after its lease expires' };
+    const keys = 'deliveredEmailKeys' in event ? event.deliveredEmailKeys : event.deliveredKeys;
+    if ((keys as string[]).includes(ledger[3])) return { success: true };
+    if (event.completedAt) return { success: false, error: 'Completed event has no acknowledgment for this channel; review required' };
+    await db.update(table).set({ nextAttemptAt: new Date() }).where(and(eq(table.id, eventId),
+      sql`(${table.leaseUntil} IS NULL OR ${table.leaseUntil} <= CURRENT_TIMESTAMP)`));
+    if (ledger[1] === 'booking') {
+      const { deliverBookingLifecycleEvents } = await import('./booking-lifecycle-delivery');
+      await deliverBookingLifecycleEvents(1, 20_000, undefined, eventId, true);
+    } else {
+      const { deliverTourEvents } = await import('./tour-delivery-service');
+      await deliverTourEvents(undefined, 1, 20_000, eventId, true);
+    }
+    const [reconciled] = await db.select().from(table).where(eq(table.id, eventId)).limit(1);
+    const acknowledged = reconciled && ('deliveredEmailKeys' in reconciled ? reconciled.deliveredEmailKeys : reconciled.deliveredKeys) as string[] | undefined;
+    return acknowledged?.includes(ledger[3]) ? { success: true } : { success: false, error: 'Original channel remains pending; an earlier event, concurrent worker or delivery failure may require recovery.' };
+  }
+  if (['damage_claim', 'overstay', 'refund', 'checkin', 'cancellation', 'booking', 'viewing', 'storage'].includes(log.category))
+    return { success: false, error: 'This legacy action email has no durable intent to reconcile. Review current reservation/claim state and contact the recipient through the existing support flow.' };
 
   if (!canRetryEmailLog(log.status, log.htmlBody, log.textBody)) {
     if (log.status !== "failed") {
@@ -236,35 +294,19 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
     };
   }
 
-  const { sendEmail } = await import("../email");
-  const sent = await sendEmail(
-    {
-      to: log.recipientEmail,
-      subject: log.subject,
-      text: log.textBody || undefined,
-      html: log.htmlBody || undefined,
-    },
-    {
-      trackingId: `retry_${log.id}_${Date.now()}`,
-      emailType: log.category,
-      retryOfId: log.id,
-    },
-  );
-
-  await db
-    .update(emailLogs)
-    .set({
-      retryCount: (log.retryCount || 0) + 1,
-      retriedAt: new Date(),
-    })
-    .where(eq(emailLogs.id, logId));
-
-  if (!sent) {
-    return {
-      success: false,
-      error: "Retry failed. A new failed entry was added to the log.",
-    };
-  }
-
-  return { success: true };
+  return db.transaction(async tx => {
+    const [current] = await tx.select().from(emailLogs).where(eq(emailLogs.id, logId)).limit(1).for('update');
+    if (!current) return { success: false, error: 'Email log not found' };
+    if (current.status === 'sent') return { success: true };
+    const trackingId = current.trackingId || `email-log:${current.id}`;
+    const [accepted] = await tx.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.trackingId, trackingId),
+      eq(emailLogs.recipientEmail, current.recipientEmail), eq(emailLogs.status, 'sent'))).limit(1);
+    const { sendEmail } = await import('../email');
+    const sent = !!accepted || await sendEmail({ to: current.recipientEmail, subject: current.subject,
+      text: current.textBody || undefined, html: current.htmlBody || undefined },
+      { trackingId, emailType: current.category, retryOfId: current.id, durableDelivery: true });
+    await tx.update(emailLogs).set({ retryCount: current.retryCount + 1, retriedAt: new Date(),
+      ...(sent ? { status: 'sent', errorMessage: null } : {}) }).where(eq(emailLogs.id, logId));
+    return sent ? { success: true } : { success: false, error: 'Retry failed; original log remains retryable.' };
+  });
 }

@@ -10,6 +10,8 @@ import BookingRulesSettings, { type BookingPoliciesHandle } from "./BookingRules
 import type { resolveKitchenBookingPolicies } from "@shared/kitchen-booking-policies";
 import { kitchenWorkspaceSettingsKey } from "@/lib/manager-kitchens-navigation";
 import { SettingsRow } from "./SettingsRow";
+import { TrackingWorkflowHelp, type TrackingTimingSettings } from './TrackingWorkflowHelp';
+import { hasTrackingNotes } from '@shared/tracking-setup';
 import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
 
 type Policies = ReturnType<typeof resolveKitchenBookingPolicies>;
@@ -37,6 +39,11 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
   const { toast } = useToast();
   const key = kitchenWorkspaceSettingsKey(kitchenId);
   const rulesRef = useRef<BookingPoliciesHandle>(null);
+  const { data: visitSetup, isLoading: setupLoading } = useQuery<Record<string, unknown>>({
+    queryKey: ['checkin-checkout-settings', location.id],
+    queryFn: () => apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
+    enabled: mode === 'tracking',
+  });
   const scopeRef = useRef<PolicySaveScope>("kitchen");
   useImperativeHandle(saveRef, () => ({ saveAllChanges: async (scope) => {
     scopeRef.current = scope;
@@ -48,7 +55,7 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
   });
   const refresh = (updated: KitchenWorkspaceSettings) => {
     queryClient.setQueryData(key, updated);
-    for (const queryKey of [["managerKitchens", location.id], ["/api/manager/all-kitchens"], ["/api/manager/bookings"], ["managerBookings"], ["location-checklist"], ["kitchen-listing-readiness", kitchenId]]) {
+    for (const queryKey of [["managerKitchens", location.id], ["/api/manager/all-kitchens"], ["/api/manager/bookings"], ["managerBookings"], ["location-checklist"], ['checkin-checkout-settings', location.id], ["kitchen-listing-readiness", kitchenId]]) {
       void queryClient.invalidateQueries({ queryKey });
     }
   };
@@ -65,11 +72,12 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
     <Card id="tracking-settings" tabIndex={-1} className={`transition-[border-color,box-shadow] duration-500 ${highlight ? "border-primary/70 shadow-[0_0_0_3px_hsl(var(--primary)/0.18),0_18px_36px_-24px_hsl(var(--primary)/0.65)]" : ""}`}><CardContent className="p-0">
       <SettingsRow id={`kitchen-tracking-${kitchenId}`} label={mt("navCheckinCheckout")}
         hint={mt("kitchenTrackingSharedDescription")}
-        help={mt("kitchenTrackingSharedHelp", { kitchen: data.kitchen.name ?? mt("kitchenScopeFallback") })}>
+        help={<TrackingWorkflowHelp settings={visitSetup as TrackingTimingSettings | undefined} />}>
         <Switch id={`kitchen-tracking-${kitchenId}`} checked={data.kitchen.checkinCheckoutEnabled}
-          disabled={change.isPending} onCheckedChange={(checkinCheckoutEnabled) => change.mutate({ checkinCheckoutEnabled })} />
+          disabled={change.isPending || setupLoading} onCheckedChange={(checkinCheckoutEnabled) =>
+            checkinCheckoutEnabled && !hasTrackingNotes(visitSetup) ? onConfigure?.() : change.mutate({ checkinCheckoutEnabled })} />
       </SettingsRow>
-      {data.kitchen.checkinCheckoutEnabled && <div className="border-t p-4"><Button variant="outline" onClick={onConfigure}>{mt("kitchenTrackingConfigureShared")}</Button></div>}
+      <div className="border-t p-4"><Button variant="outline" onClick={onConfigure}>{mt("kitchenTrackingConfigureShared")}</Button></div>
     </CardContent></Card>
   );
 

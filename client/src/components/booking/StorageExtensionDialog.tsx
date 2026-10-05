@@ -1,6 +1,5 @@
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
-import { logger } from "@/lib/logger";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -47,6 +46,7 @@ export function StorageExtensionDialog({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  useEffect(() => { setSelectedDate(undefined); }, [booking.id, booking.endDate, open]);
 
   // Check for unpaid penalties
   const { data: penaltyData } = useUnpaidPenaltiesCheck(open);
@@ -65,31 +65,26 @@ export function StorageExtensionDialog({
       { label: t('sx2Weeks'), days: 14, date: addWeeks(baseDate, 2) },
       { label: t('sx1Month'), days: 30, date: addMonths(baseDate, 1) },
       { label: t('sx3Months'), days: 90, date: addMonths(baseDate, 3) },
-    ].filter(opt => opt.days >= minDays);
-  }, [minDate, minDays, t]);
+    ].filter(opt => Math.ceil((opt.date.getTime() - currentEndDate.getTime()) / 86400000) >= minDays);
+  }, [minDate, currentEndDate, minDays, t]);
 
   // Fetch extension preview from server to get accurate pricing with tax
-  const { data: extensionPreview } = useQuery({
+  const { data: extensionPreview, error: previewError, isFetching: previewLoading } = useQuery({
     queryKey: ['/api/chef/storage-bookings', booking.id, 'extension-preview', selectedDate?.toISOString()],
     queryFn: async () => {
       if (!selectedDate) return null;
-      try {
         const headers = await getAuthHeaders();
         const response = await fetch(`/api/chef/storage-bookings/${booking.id}/extension-preview`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ newEndDate: selectedDate.toISOString() }),
         });
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        logger.error('Error fetching extension preview:', error);
-      }
-      return null;
+        const result = await response.json();
+        if (!response.ok) throw Error(result.error || 'Could not verify extension eligibility');
+        return result;
     },
-    enabled: !!selectedDate && selectedDate > currentEndDate,
-    staleTime: 30 * 1000, // Cache for 30 seconds
+    enabled: open && !!selectedDate && selectedDate > currentEndDate,
+    staleTime: 0,
   });
 
   // Calculate extension details using server-provided preview (includes tax)
@@ -98,7 +93,7 @@ export function StorageExtensionDialog({
       return null;
     }
 
-    const extensionDays = differenceInDays(selectedDate, currentEndDate);
+    const extensionDays = Math.ceil((selectedDate.getTime() - currentEndDate.getTime()) / 86400000);
     const minDays = booking.minimumBookingDuration || 1;
     
     if (extensionDays < minDays) {
@@ -125,20 +120,8 @@ export function StorageExtensionDialog({
       };
     }
 
-    // Fallback: Calculate locally without tax (will be corrected at checkout)
-    const basePricePerDayCents = booking.basePrice || 0;
-    const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
-    
-    // Customer pays base price (tax will be added at checkout)
-    return {
-      valid: true,
-      extensionDays,
-      extensionBasePriceCents,
-      extensionTaxCents: 0,
-      taxRatePercent: 0,
-      extensionTotalPriceCents: extensionBasePriceCents,
-    };
-  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, extensionPreview]);
+    return { valid: false, error: previewError?.message || (previewLoading ? 'Checking current extension eligibility…' : 'Select an eligible date to verify the current price and availability.') };
+  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, extensionPreview, previewError, previewLoading]);
 
   // Create checkout session for storage extension payment
   const checkoutMutation = useMutation({
@@ -186,7 +169,7 @@ export function StorageExtensionDialog({
   });
 
   const handleExtend = () => {
-    if (!selectedDate || !extensionDetails || !extensionDetails.valid) {
+    if (!selectedDate || !extensionDetails || !extensionDetails.valid || previewLoading || previewError) {
       return;
     }
 
@@ -385,7 +368,7 @@ export function StorageExtensionDialog({
           </Button>
           <Button
             onClick={handleExtend}
-            disabled={!selectedDate || !extensionDetails || !extensionDetails.valid || isProcessing}
+            disabled={!selectedDate || !extensionDetails || !extensionDetails.valid || isProcessing || previewLoading || !!previewError}
             className="min-w-[160px]"
           >
             {isProcessing ? (

@@ -9,13 +9,14 @@
  * 4. Prevents unwarranted overstay penalties
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle, Clock, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
+import { type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
 import { auth } from "@/lib/firebase";
+import { useStorageDuties } from '@/hooks/use-storage-duties';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -56,12 +57,15 @@ export function StorageCheckoutDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
 
+  useEffect(() => { setCheckoutNotes(''); setUploadedPhotos({}); setCheckedItems(new Set()); }, [storageBooking.id]);
+
   // Fetch manager-defined checklist for storage checkout
-  const { data: checklist } = useLocationChecklist(storageBooking.locationId);
-  const storageCheckoutItems: ChecklistItem[] = checklist?.storageCheckoutItems || [];
-  const storageCheckoutPhotoReqs: PhotoRequirement[] = checklist?.storageCheckoutPhotoRequirements || [];
-  // All items are required by design.
-  const allItemsChecked = storageCheckoutItems.every((i: ChecklistItem) => checkedItems.has(i.id));
+  const dutiesQuery = useStorageDuties(storageBooking.id, open);
+  const section = dutiesQuery.data?.departure;
+  const storageCheckoutItems: ChecklistItem[] = section ? section.enabled ? section.items as ChecklistItem[] : [] : [];
+  const storageCheckoutPhotoReqs: PhotoRequirement[] = section?.enabled ? section.photos as PhotoRequirement[] : [];
+  // Only configured mandatory items block submission.
+  const allItemsChecked = storageCheckoutItems.every((i: ChecklistItem) => i.required === false || checkedItems.has(i.id));
   const allPhotosUploaded = areAllRequiredPhotosUploaded(storageCheckoutPhotoReqs, uploadedPhotos);
 
   const handleSubmitCheckout = async () => {
@@ -155,6 +159,8 @@ export function StorageCheckoutDialog({
             {t("coDialogDesc")}
           </DialogDescription>
         </DialogHeader>
+        {dutiesQuery.isPending && <p role="status">Loading the booking’s departure requirements…</p>}
+        {dutiesQuery.error && <p role="alert">Requirements could not be loaded. <Button variant="link" onClick={() => void dutiesQuery.refetch()}>Retry</Button> or contact the kitchen manager for assistance.</p>}
 
         {(storageCheckoutItems.some((item) => item.required) ||
           storageCheckoutPhotoReqs.some((item) => item.required)) && (
@@ -176,10 +182,10 @@ export function StorageCheckoutDialog({
           </div>
 
           {/* Manager Instructions */}
-          {checklist?.storageCheckoutInstructions && (
+          {section?.instructions && (
             <div className="rounded-lg border p-3">
               <p className="text-xs font-medium mb-1">{t("ciManagerInstructions")}</p>
-              <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.storageCheckoutInstructions}</p>
+              <p className="text-xs text-muted-foreground whitespace-pre-line">{section.instructions}</p>
             </div>
           )}
 
@@ -248,7 +254,7 @@ export function StorageCheckoutDialog({
           </Button>
           <Button
             onClick={handleSubmitCheckout}
-            disabled={isSubmitting || !allPhotosUploaded || !allItemsChecked}
+            disabled={isSubmitting || !dutiesQuery.data || !allPhotosUploaded || !allItemsChecked}
           >
             {isSubmitting ? (
               <>

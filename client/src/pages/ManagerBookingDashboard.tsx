@@ -9,7 +9,7 @@ import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useOnboardingStatus, invalidateOnboardingStatus, SETUP_STEP_WIZARD_STEP } from "@/hooks/use-onboarding-status";
@@ -165,7 +165,11 @@ type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 
 export default function ManagerBookingDashboard() {
   
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
+  const [currentPath, setLocation] = useLocation();
+  const currentSearch = useSearch();
+  const routeTourId = /^\/manager\/tours\/([^/]+)$/.exec(currentPath)?.[1];
+  const detailTourId = routeTourId || new URLSearchParams(currentSearch).get('viewing');
+  const tourNavigationGuard = useRef<((navigate: () => void) => boolean) | null>(null);
   const { locations, isLoadingLocations, isErrorLocations, kitchens: managerKitchens, isLoadingKitchens, isErrorKitchens, bookings: managerBookings } = useManagerDashboard();
   const { startNewLocation } = useManagerOnboarding();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
@@ -174,6 +178,7 @@ export default function ManagerBookingDashboard() {
 
   // Tab state - check URL params first, then default to 'overview'
   const [activeView, setActiveView] = useState<ViewType>(() => {
+    if (routeTourId) return 'viewings';
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
@@ -345,15 +350,18 @@ export default function ManagerBookingDashboard() {
 
   // Sync activeView with URL parameters. Listens to popstate so back/forward
   // through the pushed tab history correctly updates the active view.
+  const [deepLinkTourId, setDeepLinkTourId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('tour'));
   const [deepLinkConversationId, setDeepLinkConversationId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("conversation")
   );
 
   useEffect(() => {
     const handleLocationChange = () => {
+      if (/^\/manager\/tours\/[^/]+$/.test(window.location.pathname)) { setActiveView('viewings'); return; }
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
       setDeepLinkConversationId(params.get("conversation"));
+      setDeepLinkTourId(params.get("tour"));
       const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'my-locations') {
@@ -389,12 +397,13 @@ export default function ManagerBookingDashboard() {
     handleLocationChange();
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
-  }, []);
+  }, [currentPath]);
 
   // Centralised tab-change handler. Pushes the new view into browser history
   // so the back button walks through the user's tab journey instead of always
   // returning to whatever tab was last viewed before opening a sub-page.
-  const handleViewChange = (view: ViewType, kitchenId?: number, section?: KitchenSection) => {
+  const handleViewChange = (view: ViewType, kitchenId?: number, section?: KitchenSection, focus?: 'tracking' | 'tour-notes') => {
+    if (activeView === 'viewings' && tourNavigationGuard.current?.(() => handleViewChange(view, kitchenId, section, focus)) === false) return;
     void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] });
     // Remember which kitchen a task view belongs to. Held in state rather than the URL so opening
     // the publish review never depends on the URL shape, which differs between environments.
@@ -421,7 +430,8 @@ export default function ManagerBookingDashboard() {
         : profileTab
           ? 'profile'
           : view;
-    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !targetSection && !kitchenId;
+    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !targetSection && !kitchenId
+      && !(nextView === 'viewings' && detailTourId);
     if (isSameDestination) return;
     if ((activeView === 'availability' || activeView === 'tour-availability') && availabilityDirty && !bypassAvailabilityGuard.current) {
       setPendingAvailabilityView(view);
@@ -457,13 +467,17 @@ export default function ManagerBookingDashboard() {
 
     setActiveView(nextView);
     const url = new URL(window.location.href);
+    if (/^\/manager\/tours\//.test(url.pathname)) url.pathname = '/manager/dashboard';
+    if (focus === 'tracking' && nextView === 'kitchens' && targetSection === 'details') url.searchParams.set('focus', 'tracking');
+    else if (focus === 'tour-notes' && nextView === 'kitchens' && targetSection === 'tours') url.searchParams.set('focus', 'tour-notes');
+    else url.searchParams.delete('focus');
     if (kitchenId && (nextView === "kitchens" || nextView === "listing-review" || nextView === "settings-storage-checkin-checkout")) {
       url.searchParams.set("kit", String(kitchenId));
     } else if (nextView !== "kitchens" && nextView !== "listing-review" && nextView !== "settings-storage-checkin-checkout") {
       url.searchParams.delete("kit");
     }
     if (nextView !== 'applications') url.searchParams.delete('application');
-    if (nextView !== 'viewings') url.searchParams.delete('viewing');
+    url.searchParams.delete('viewing');
     if (nextView !== 'damage-claims') url.searchParams.delete('claim');
     if (nextView !== 'storage-bookings') url.searchParams.delete('storageBooking');
     if (targetSection) {
@@ -646,7 +660,9 @@ export default function ManagerBookingDashboard() {
     notifications: 'navNotifications', 'notification-settings': 'navNotificationSettings',
     overstays: 'navOverstayPenalties', 'damage-claims': 'navDamageClaims', 'storage-checkouts': 'navStorageInspections', support: 'navSupport',
   };
-  const breadcrumbs: ManagerBreadcrumb[] = activeView === 'applications' && reviewedApplicationName
+  const breadcrumbs: ManagerBreadcrumb[] = activeView === 'viewings' && detailTourId
+    ? [{ label: mt('kitchenTours'), navId: 'viewings', onClick: () => handleViewChange('viewings') }, { label: `TOUR-${detailTourId}` }]
+    : activeView === 'applications' && reviewedApplicationName
     ? [
         { label: mt("navRequests"), navId: "applications", onClick: () => showApplicationsListRef.current() },
         { label: reviewedApplicationName },
@@ -1187,7 +1203,7 @@ export default function ManagerBookingDashboard() {
 
       {(activeView === 'bookings' || activeView === 'viewings') && (
         <div className="space-y-6 animate-fade-in">
-          <ChefPageHeader
+          {!(activeView === 'viewings' && detailTourId) && <ChefPageHeader
             title={activeView === 'bookings' ? mt("bookingRequests") : mt("kitchenTours")}
             description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("manageUpcomingAndPastKitchenTours")}
             actions={activeView === 'bookings' ? (
@@ -1195,18 +1211,31 @@ export default function ManagerBookingDashboard() {
                 <Package className="mr-2 h-4 w-4" />{mt("navStorageBookings")}
               </Button>
             ) : undefined}
-          />
+          />}
           <Tabs value={activeView} onValueChange={(view) => handleViewChange(view as ViewType)}>
-            <TabsList className="mb-6 grid w-full grid-cols-2 rounded-xl bg-muted p-1">
+            {!(activeView === 'viewings' && detailTourId) && <TabsList className="mb-6 grid w-full grid-cols-2 rounded-xl bg-muted p-1">
               <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><managerNavIcons.bookings className="h-4 w-4" />{mt("navBookings")}</TabsTrigger>
               <TabsTrigger value="viewings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><KitchenTour className="h-4 w-4" />{mt("kitchenTours")}</TabsTrigger>
-            </TabsList>
+            </TabsList>}
             <TabsContent value="bookings" className="mt-0">
               <ManagerBookingsPanel embedded={true} onGoToKitchens={() => handleViewChange('kitchens')} />
             </TabsContent>
             <TabsContent value="viewings" className="mt-0">
               <ViewingsDashboard
+                tourId={routeTourId}
+                navigationGuardRef={tourNavigationGuard}
+                onOpenTour={id => setLocation(`/manager/tours/${id}`)}
+                onBackToTours={() => { setLocation('/manager/dashboard?view=viewings'); setActiveView('viewings'); }}
+                onConfigureNotes={(kitchenId, locationId) => {
+                  const location = locations.find((item: Location) => item.id === locationId);
+                  if (location) setSelectedLocation(location);
+                  handleViewChange('kitchens', kitchenId, 'tours', 'tour-notes');
+                }}
                 locationId={selectedLocation?.id}
+                onSelectTourLocation={id => {
+                  const location = locations.find((item: Location) => item.id === id);
+                  if (location) setSelectedLocation(location);
+                }}
                 hasKitchen={managerKitchens.length > 0}
                 onConfigureTours={() => handleViewChange('kitchens', managerKitchens[0]?.id, managerKitchens.length ? 'availability' : undefined)}
               />
@@ -1273,7 +1302,7 @@ export default function ManagerBookingDashboard() {
       {activeView === 'messages' && (
         managerId ? (
           <div className="h-[calc(100vh-8rem)]">
-            <UnifiedChatView userId={managerId} role="manager" initialConversationId={deepLinkConversationId} onNavigate={(view) => handleViewChange(view as ViewType)} managerHasKitchen={managerKitchens.length > 0} />
+            <UnifiedChatView userId={managerId} role="manager" initialConversationId={deepLinkConversationId} initialTourId={deepLinkTourId} onNavigate={(view) => handleViewChange(view as ViewType)} managerHasKitchen={managerKitchens.length > 0} />
           </div>
         ) : (
           <Card>
@@ -1428,19 +1457,13 @@ export default function ManagerBookingDashboard() {
         />
       )}
 
-      {activeView === 'settings-checkin-checkout' && selectedLocation && managerKitchens.some((kitchen) => kitchen.checkinCheckoutEnabled) && (
+      {activeView === 'settings-checkin-checkout' && selectedLocation && (
         <CheckinCheckoutSettings
           location={locationDetails || selectedLocation}
           saveRef={checkinCheckoutRef}
           onDirtyChange={setCheckinCheckoutDirty}
           onNavigate={handleViewChange}
         />
-      )}
-      {activeView === 'settings-checkin-checkout' && selectedLocation && !managerKitchens.some((kitchen) => kitchen.checkinCheckoutEnabled) && (
-        <Card><CardContent className="space-y-3 p-6">
-          <p>{mt("kitchenTrackingEnableFirst")}</p>
-          <Button onClick={() => handleViewChange('kitchens', undefined, 'details')}>{mt("navSpaces")}</Button>
-        </CardContent></Card>
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (

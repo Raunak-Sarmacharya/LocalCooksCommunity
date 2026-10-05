@@ -2,16 +2,33 @@ import { describe, expect, it } from "vitest";
 import { bookingNextAction, tourNextAction, licenseNextAction, overstayNextAction, storageHasEnded } from "./manager-overview-lifecycle";
 const now = Date.parse("2026-09-30T12:00:00Z");
 describe("manager lifecycle actions", () => {
-  it("does not require attendance recording to finish the scheduled tour", () => {
+  it("offers visit results for ended confirmed tours until an outcome is recorded", () => {
     const tour = { status: "confirmed", scheduledAt: "2026-09-29T12:00:00Z", durationMinutes: 30 };
-    expect(tourNextAction(tour, now)).toBeNull();
+    expect(tourNextAction(tour, now)).toBe("overviewTourOutcomes");
     for (const status of ["completed", "no_show", "cancelled", "rejected"]) expect(tourNextAction({ ...tour, status }, now)).toBeNull();
     expect(tourNextAction({ ...tour, scheduledAt: "2026-10-01T12:00:00Z" }, now)).toBeNull();
     expect(tourNextAction({ ...tour, scheduledAt: "2026-10-01T12:00:00Z", requestedRescheduleAt: "2026-10-02T12:00:00Z" }, now)).toBe("overviewTourReschedules");
   });
   it('does not leave expired requests or reschedules on the action list', () => {
     expect(tourNextAction({ status: 'pending', scheduledAt: '2026-09-29T12:00:00Z' }, now)).toBeNull();
-    expect(tourNextAction({ status: 'confirmed', scheduledAt: '2026-09-29T12:00:00Z', requestedRescheduleAt: '2026-10-02T12:00:00Z' }, now)).toBeNull();
+    expect(tourNextAction({ status: 'confirmed', scheduledAt: '2026-09-29T12:00:00Z', requestedRescheduleAt: '2026-10-02T12:00:00Z' }, now)).toBe('overviewTourOutcomes');
+  });
+  it('does not suggest a hidden arrival action for closed tours, but keeps departure help after arrival', () => {
+    const tour = { status: 'completed', scheduledAt: '2026-09-29T12:00:00Z', durationMinutes: 30,
+      targetedKitchenId: 40, outcomeHistory: [{ from: 'confirmed', to: 'completed' }] };
+    for (const status of ['completed', 'no_show', 'cancelled', 'rejected']) {
+      expect(tourNextAction({ ...tour, status }, now)).toBeNull();
+    }
+    expect(tourNextAction({ ...tour, checkedInAt: '2026-09-29T12:00:00Z',
+      attendance: { canAssistDeparture: true } as any }, now)).toBe('overviewTourDepartureAssistance');
+    expect(tourNextAction({ ...tour, checkedInAt: '2026-09-29T12:00:00Z', checkedOutAt: '2026-09-29T12:30:00Z' }, now)).toBeNull();
+  });
+  it("offers visit results exactly at the scheduled end, including across midnight", () => {
+    const tour = { status: "confirmed", scheduledAt: "2026-10-01T23:45:00Z", durationMinutes: 30 };
+    const end = Date.parse("2026-10-02T00:15:00Z");
+    expect(tourNextAction(tour, end - 1)).toBeNull();
+    expect(tourNextAction(tour, end)).toBe("overviewTourOutcomes");
+    expect(tourNextAction({ ...tour, scheduledAt: "invalid" }, end)).toBeNull();
   });
   it("waits for the operating day's booking end and respects recorded outcomes", () => {
     const booking = { status: "confirmed", bookingDate: "2026-09-29", startTime: "23:00", endTime: "02:00", operatingWindowStartTime: "18:00" };

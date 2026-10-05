@@ -14,6 +14,7 @@ import { Redirect, useLocation } from "wouter";
 import { z } from "zod";
 import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import { useAuthTransition } from "@/components/auth/AuthTransition";
+import { adminAuthReturn } from '@/lib/auth-return';
 
 const loginSchema = z.object({
   email: z.string().email("Valid email required"),
@@ -32,7 +33,7 @@ export default function AdminLogin() {
   // Where an already-signed-in visitor belongs. Resolved before the redirect so
   // the handoff overlay can be raised with it.
   const redirectTo = !loading && user?.role
-    ? (isAdmin ? '/admin' : user.role === 'manager' ? '/manager/dashboard' : '/dashboard')
+    ? (isAdmin ? adminAuthReturn(new URLSearchParams(window.location.search).get('redirect')) : user.role === 'manager' ? '/manager/dashboard' : '/dashboard')
     : null;
 
   useEffect(() => {

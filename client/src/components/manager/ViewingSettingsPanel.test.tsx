@@ -2,12 +2,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ViewingSettingsPanel } from "./ViewingSettingsPanel";
+import { createRef } from "react";
+import type { ViewingSettingsPanelHandle } from "./ViewingSettingsPanel";
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: null } }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 beforeAll(() => {
   if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
   if (!Element.prototype.releasePointerCapture) Element.prototype.releasePointerCapture = () => {};
@@ -29,6 +31,35 @@ function mount(initial = data) {
 }
 
 describe("tour settings refetches", () => {
+  it("edits tour notes directly, preserves drafts on refresh, saves with the parent action and reloads them", async () => {
+    const saved = { ...data, settings: { ...data.settings, arrivalNotes: 'Meet at reception', departureNotes: 'Return your badge' } };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(key, saved);
+    const ref = createRef<ViewingSettingsPanelHandle>();
+    const dirty = vi.fn();
+    const fetcher = vi.fn(async (_path: string, _options?: RequestInit) => ({ ok: true, json: async () => ({ ...saved.settings, arrivalNotes: 'Use the side entrance\nAsk for Sam' }) }));
+    vi.stubGlobal('fetch', fetcher);
+    const view = render(<QueryClientProvider client={client}><ViewingSettingsPanel kitchenId={40} ref={ref} onDirtyChange={dirty} hideSaveActions /></QueryClientProvider>);
+    expect(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' })).toHaveValue('Meet at reception');
+    expect(screen.getByRole('textbox', { name: 'departureInstructionsTitle' })).toHaveValue('Return your badge');
+    fireEvent.change(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' }), { target: { value: 'Use the side entrance\nAsk for Sam' } });
+    await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(true));
+    act(() => client.setQueryData(key, { ...saved, availability: [] }));
+    expect(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' })).toHaveValue('Use the side entrance\nAsk for Sam');
+    let result = false;
+    await act(async () => { result = await ref.current!.saveChanges(); });
+    expect(result).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [path, options] = fetcher.mock.calls[0];
+    expect(path).toBe('/api/viewings/settings/40');
+    expect(JSON.parse(options!.body as string)).toMatchObject({ arrivalNotes: 'Use the side entrance\nAsk for Sam', departureNotes: 'Return your badge' });
+    await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
+    view.unmount();
+    client.setQueryData(key, { ...saved, settings: { ...saved.settings, arrivalNotes: 'Use the side entrance\nAsk for Sam' } });
+    render(<QueryClientProvider client={client}><ViewingSettingsPanel kitchenId={40} hideSaveActions /></QueryClientProvider>);
+    expect(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' })).toHaveValue('Use the side entrance\nAsk for Sam');
+    client.clear();
+  });
   it("preserves unsaved weekly hours when the settings section refreshes", async () => {
     const client = mount();
     fireEvent.click(screen.getByRole("switch", { name: "Monday" }));

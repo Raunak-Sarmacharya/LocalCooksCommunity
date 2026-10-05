@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { chefTourRowHasDetails, countPendingOrUpcomingTours, formatTourWhen, isPendingOrUpcomingTour, normalizeChefTourRow, viewingStatusBadge } from "./chef-viewing-display";
+import { chefTourRowHasDetails, chefTourVisitAction, countPendingOrUpcomingTours, formatTourWhen, isPendingOrUpcomingTour, normalizeChefTourRow, viewingStatusBadge } from "./chef-viewing-display";
+import { tourAttendance } from '@shared/tour-attendance';
+
+describe('chef visit action timing', () => {
+  const tour = { id: 1, status: 'confirmed', scheduledAt: '2026-10-05T12:15:00Z', durationMinutes: 30, updatedAt: '2026-10-05T11:00:00Z', targetedKitchenId: 40 };
+  const attendance = tourAttendance(tour, 5, new Date('2026-10-05T12:15:00Z'));
+  it('does not turn confirmation or stale eligibility into an early or expired arrival prompt', () => {
+    const row = { ...tour, attendance };
+    expect(chefTourVisitAction(row, Date.parse('2026-10-05T12:09:59Z'))).toBeNull();
+    expect(chefTourVisitAction(row, Date.parse('2026-10-05T12:10:00Z'))).toBe('arrival');
+    expect(chefTourVisitAction(row, Date.parse('2026-10-05T12:45:00Z'))).toBe('arrival');
+    expect(chefTourVisitAction(row, Date.parse('2026-10-05T12:45:01Z'))).toBeNull();
+    expect(chefTourVisitAction({ ...row, status: 'pending' }, Date.parse('2026-10-05T12:15:00Z'))).toBeNull();
+    expect(chefTourVisitAction({ ...row, disruptionReason: 'weather' }, Date.parse('2026-10-05T12:15:00Z'))).toBeNull();
+    expect(chefTourVisitAction(tour, Date.parse('2026-10-05T12:15:00Z'))).toBeNull();
+  });
+  it('keeps eligible departure after a terminal result but hides blocked or already saved departure', () => {
+    const row = { ...tour, status: 'completed', checkedInAt: '2026-10-05T12:15:00Z', attendance: { ...attendance, canCheckOut: true } };
+    expect(chefTourVisitAction(row)).toBe('departure');
+    expect(chefTourVisitAction({ ...row, checkedOutAt: '2026-10-05T12:30:00Z' })).toBeNull();
+    expect(chefTourVisitAction({ ...row, attendance: { ...row.attendance, canCheckOut: false } })).toBeNull();
+  });
+});
 
 describe("viewingStatusBadge", () => {
   it("maps both review gates to warning and confirmed to success", () => {
@@ -49,7 +71,7 @@ describe("normalizeChefTourRow", () => {
     const row = normalizeChefTourRow({ viewing: { id: 4, scheduledAt: '2026-10-01T12:00:00Z', managerNotes: 'PRIVATE ADMIN', sharedManagerNotes: 'Hello chef' } });
     expect(row?.sharedManagerNotes).toBe('Hello chef');
     expect(JSON.stringify(row)).not.toContain('PRIVATE ADMIN');
-    expect(viewingStatusBadge('cancelled', null, 'manager', 'access_unavailable').defaultLabel).toBe('Disrupted');
+    expect(viewingStatusBadge('cancelled', null, 'manager', 'access_unavailable').defaultLabel).toBe('Couldn’t take place');
   });
   it("flattens nested API rows and drops empty intake", () => {
     const row = normalizeChefTourRow({

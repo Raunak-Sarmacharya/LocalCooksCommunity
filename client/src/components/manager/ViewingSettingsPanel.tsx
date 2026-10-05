@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -60,6 +61,8 @@ interface ViewingSettings {
   bufferAfterMinutes: number
   advanceNoticeHours: number
   maxAdvanceBookingDays: number
+  arrivalNotes?: string | null
+  departureNotes?: string | null
 }
 
 interface AvailabilitySlot {
@@ -104,6 +107,8 @@ const DEFAULT_SETTINGS = {
   bufferAfterMinutes: 15,
   advanceNoticeHours: 24,
   maxAdvanceBookingDays: 30,
+  arrivalNotes: "",
+  departureNotes: "",
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -130,6 +135,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   const [bufferAfter, setBufferAfter] = useState(15)
   const [advanceNotice, setAdvanceNotice] = useState(24)
   const [maxDays, setMaxDays] = useState(30)
+  const [arrivalNotes, setArrivalNotes] = useState("")
+  const [departureNotes, setDepartureNotes] = useState("")
 
   // Layout tabs
   const [activeTab, setActiveTab] = useState("weekly")
@@ -169,6 +176,12 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
     queryKey: [`/api/viewings/settings/${kitchenId}`],
     staleTime: 10000,
   })
+  useEffect(() => {
+    if (isLoading || isError || new URLSearchParams(window.location.search).get('focus') !== 'tour-notes') return
+    const notes = document.getElementById('tour-visit-notes')
+    notes?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    notes?.focus({ preventScroll: true })
+  }, [kitchenId, isLoading, isError])
 
   // Initialize local state from fetched data
   useEffect(() => {
@@ -185,6 +198,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
       bufferAfterMinutes: source.bufferAfterMinutes,
       advanceNoticeHours: source.advanceNoticeHours,
       maxAdvanceBookingDays: source.maxAdvanceBookingDays,
+      arrivalNotes: source.arrivalNotes ?? "",
+      departureNotes: source.departureNotes ?? "",
     }
     // Refetching one section must not discard unsaved edits in the other.
     if (!dirtyFields.current.settings) {
@@ -193,6 +208,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
       setBufferAfter(settings.bufferAfterMinutes)
       setAdvanceNotice(settings.advanceNoticeHours)
       setMaxDays(settings.maxAdvanceBookingDays)
+      setArrivalNotes(settings.arrivalNotes)
+      setDepartureNotes(settings.departureNotes)
       setSavedSettings(JSON.stringify(settings))
     }
 
@@ -228,6 +245,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
     bufferAfterMinutes: bufferAfter,
     advanceNoticeHours: advanceNotice,
     maxAdvanceBookingDays: maxDays,
+    arrivalNotes,
+    departureNotes,
   }
   const isSettingsDirty = !!savedSettings && JSON.stringify(currentSettings) !== savedSettings
   const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule
@@ -392,6 +411,29 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
 
   return (
     <div className="space-y-6">
+      <Card id="tour-visit-notes" tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-primary/30">
+        <CardHeader className="p-4 pb-3">
+          <CardTitle className="text-lg">{mt("tourVisitNotesTitle")}</CardTitle>
+          <CardDescription>{mt("tourVisitNotesDescription", { kitchen: kitchenName ?? mt("kitchenScopeFallback") })}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-5 p-4 pt-0 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`tour-arrival-notes-${kitchenId}`}>{mt("arrivalInstructionsTitle")}</Label>
+            <p id={`tour-arrival-help-${kitchenId}`} className="text-xs text-muted-foreground">{mt("tourArrivalNotesHelp")}</p>
+            <Textarea id={`tour-arrival-notes-${kitchenId}`} aria-describedby={`tour-arrival-help-${kitchenId}`} rows={4} maxLength={2000}
+              value={arrivalNotes} onChange={event => setArrivalNotes(event.target.value)} placeholder={mt("tourArrivalNotesPlaceholder")} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`tour-departure-notes-${kitchenId}`}>{mt("departureInstructionsTitle")}</Label>
+            <p id={`tour-departure-help-${kitchenId}`} className="text-xs text-muted-foreground">{mt("tourDepartureNotesHelp")}</p>
+            <Textarea id={`tour-departure-notes-${kitchenId}`} aria-describedby={`tour-departure-help-${kitchenId}`} rows={4} maxLength={2000}
+              value={departureNotes} onChange={event => setDepartureNotes(event.target.value)} placeholder={mt("tourDepartureNotesPlaceholder")} />
+          </div>
+        </CardContent>
+        {!hideSaveActions && isSettingsDirty && <div className="flex justify-end border-t p-4">
+          <Button size="sm" disabled={saveSettingsMutation.isPending} onClick={() => saveSettingsMutation.mutate()}>{mt("saveChanges")}</Button>
+        </div>}
+      </Card>
       <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
           <TabsTrigger value="weekly" className={TAB_TRIGGER}>

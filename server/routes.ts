@@ -1267,6 +1267,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Kitchen Viewings / Viewing Scheduling routes
   app.use("/api/viewings", (await import("./routes/viewings")).default);
+  app.use("/api/commitment-problems", (await import("./routes/commitment-problems")).default);
+  app.use("/api/bookings", (await import("./routes/kitchen-booking-changes")).default);
 
   // Mount Kitchens Router
   app.use("/api", (await import("./routes/kitchens")).default);

@@ -527,6 +527,17 @@ function TransactionDetailDialog({
           )}
 
           {/* Refund History from metadata */}
+          {(tx.metadata as any)?.cancellationRefundOperation && <section className="rounded border p-3 space-y-2 text-sm">
+            <h4 className="font-semibold">Accepted cancellation refund</h4>
+            <p>Provider outcome: {(tx.metadata as any).cancellationRefundOperation.status}</p>
+            <p>Quoted manager debit / customer refund: {formatCurrency((tx.metadata as any).cancellationRefundOperation.managerRefund)}</p>
+            <p>Verified refunded: {formatCurrency((tx.metadata as any).cancellationRefundOperation.refunded || 0)}</p>
+            <p>Processing cost retained: {formatCurrency((tx.metadata as any).cancellationRefundOperation.processingCost)}</p>
+            <p>Used add-on payments retained: {formatCurrency((tx.metadata as any).cancellationRefundOperation.retainedUsedAddonCents || 0)}</p>
+            <p>Service fee awaiting separate approval: {formatCurrency((tx.metadata as any).cancellationRefundOperation.serviceFeeReview)}</p>
+            {(tx.metadata as any).cancellationRefundOperation.error && <p className="text-destructive">Local Cooks must verify the original refund/reversal: {(tx.metadata as any).cancellationRefundOperation.error}</p>}
+            <p>Stripe success does not confirm bank receipt. Resolve reserved operations before approving another refund.</p>
+          </section>}
           {tx.metadata && Array.isArray((tx.metadata as any).refunds) && (tx.metadata as any).refunds.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-semibold">Refund History ({(tx.metadata as any).refunds.length})</h4>
@@ -858,6 +869,11 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
   const [bookingTypeFilter, setBookingTypeFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [linkedBookingId, setLinkedBookingId] = useState(() => {
+    const value = new URLSearchParams(window.location.search).get('bookingId');
+    const id = Number(value);
+    return value && Number.isSafeInteger(id) && id > 0 ? id : null;
+  });
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
@@ -890,10 +906,11 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
 
   // Fetch transactions
   const { data, isLoading, error, refetch } = useQuery<{ transactions: AdminTransaction[]; total: number }>({
-    queryKey: ["/api/admin/transactions", bookingTypeFilter, locationFilter, debouncedSearch],
+    queryKey: ["/api/admin/transactions", bookingTypeFilter, locationFilter, debouncedSearch, linkedBookingId],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append("limit", "500");
+      if (linkedBookingId) params.append('bookingId', String(linkedBookingId));
       if (bookingTypeFilter !== "all") params.append("bookingType", bookingTypeFilter);
       if (locationFilter !== "all") params.append("locationId", locationFilter);
       if (debouncedSearch.trim()) params.append("search", debouncedSearch.trim());
@@ -908,7 +925,8 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
     refetchInterval: 60000,
   });
 
-  const transactions = useMemo(() => data?.transactions || [], [data]);
+  const transactions = useMemo(() => (data?.transactions || []).filter(tx => !linkedBookingId ||
+    (tx.bookingId === linkedBookingId && ['kitchen', 'bundle'].includes(tx.bookingType))), [data, linkedBookingId]);
 
   const filteredTransactions = useMemo(
     () => filterTransactionsByStatus(transactions, statusFilter),
@@ -1110,6 +1128,17 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
       {/* Main Card */}
       <Card>
         <CardHeader className="pb-4">
+          {linkedBookingId && <div className="flex items-center justify-between gap-3 text-sm" role="status">
+            <span>{isLoading ? `Loading kitchen booking #${linkedBookingId} transactions…` : error
+              ? `Could not load kitchen booking #${linkedBookingId}. Retry to view its payment history.`
+              : transactions.length ? `Payment history for kitchen booking #${linkedBookingId}`
+              : `No payment record is available for kitchen booking #${linkedBookingId} with the current filters.`}</span>
+            <Button variant="outline" size="sm" onClick={() => {
+              setLinkedBookingId(null);
+              const url = new URL(window.location.href); url.searchParams.delete('bookingId');
+              window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+            }}>Show all bookings</Button>
+          </div>}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">

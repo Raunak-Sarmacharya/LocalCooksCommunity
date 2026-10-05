@@ -58,4 +58,13 @@ describe('atomic quoted checkout fulfillment', () => {
     await fulfillQuotedKitchenBooking(session, intent, {} as any);
     expect(state.rows.kitchen_bookings).toHaveLength(1);
   });
+  it('replays recorded split checkout slots without repricing or merging them', async () => {
+    const split = { ...session, metadata: { ...session.metadata, start_time: '09:00', end_time: '15:00',
+      selected_slots: '09:00,14:00', duration_hours: '2', hourly_rate_cents: '500' } };
+    const id = await fulfillQuotedKitchenBooking(split, intent, {} as any);
+    expect(state.rows.kitchen_bookings[0]).toMatchObject({ totalPrice: '2000', durationHours: '2', hourlyRate: '500',
+      selectedSlots: [{ startTime: '09:00', endTime: '10:00' }, { startTime: '14:00', endTime: '15:00' }] });
+    expect(await fulfillQuotedKitchenBooking(split, intent, {} as any)).toBe(id);
+    expect(state.rows.payment_transactions).toHaveLength(1);
+  });
 });

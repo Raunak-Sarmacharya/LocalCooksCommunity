@@ -7,6 +7,7 @@ import * as Sentry from '@sentry/node';
 import { initializeFirebaseAdmin } from "./firebase-setup.js";
 import { registerFirebaseRoutes } from "./firebase-routes.js";
 import { registerRoutes } from "./routes.js";
+import { registerInngest, registerLifecycleWorkerEndpoints } from './lifecycle-inngest';
 import { log, serveStatic, setupVite } from "./vite.js";
 import { registerSecurityMiddleware } from "./security.js";
 import { pinoInstance } from "./logger.js";
@@ -21,6 +22,7 @@ import {
 const app = express();
 // Set environment explicitly to match NODE_ENV
 app.set('env', process.env.NODE_ENV || 'development');
+registerLifecycleWorkerEndpoints(app);
 
 // CRITICAL: Stripe webhooks require raw body for signature verification
 // Must be registered BEFORE express.json() middleware
@@ -30,6 +32,9 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 // JSON parsing for all other routes
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
+// Inngest authenticates signed requests before optional Firebase/host routing or
+// database-backed rate-limit middleware. This endpoint cannot accept Bearer cron calls.
+registerInngest(app);
 
 // Security middleware: Helmet (CSP, headers), CORS, Rate Limiting
 registerSecurityMiddleware(app);

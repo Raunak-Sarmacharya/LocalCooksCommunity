@@ -7,7 +7,7 @@ vi.mock('../db', () => {
       const rows = () => table === 'tour_delivery_events' ? state.existing ? [{ id: 99 }] : []
         : fields?.id ? [{ id: 10 }] : fields ? [] : state.current ? [state.current] : [];
       const chain: any = { from: (value: any) => { table = value[Symbol.for('drizzle:Name')]; return chain; },
-        innerJoin: () => chain, where: () => chain, limit: () => chain, for: () => chain,
+        innerJoin: () => chain, where: () => chain, orderBy: () => chain, limit: () => chain, for: () => chain,
         then: (resolve: any) => resolve(rows()) };
       return chain;
     } };

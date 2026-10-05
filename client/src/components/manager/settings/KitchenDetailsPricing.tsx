@@ -8,7 +8,7 @@ import { Trash2, Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import {  } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
@@ -37,8 +37,6 @@ export interface KitchenDetailsTarget {
   id: number;
   name: string;
   description?: string;
-  smartLockAvailable?: boolean;
-  smartLockEnabled?: boolean;
 }
 
 export interface KitchenDetailsPricingHandle {
@@ -61,16 +59,6 @@ interface KitchenDetailsPricingProps {
 const DESTRUCTIVE_ACTION =
   "rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive";
 
-/**
- * The "Details & Pricing" tab.
- *
- * One card per concern — the kitchen's identity, its rates, and the destructive
- * actions — instead of a heading per field. Every card is committed by the
- * parent's single save action through `saveAllChanges`, so the tab never grows a
- * row of buttons in the middle of the page. The smart-door-lock switch is the
- * deliberate exception: a boolean toggle saves on change, like every other
- * toggle in the product.
- */
 const KitchenDetailsPricing = forwardRef<
   KitchenDetailsPricingHandle,
   KitchenDetailsPricingProps
@@ -170,31 +158,6 @@ const KitchenDetailsPricing = forwardRef<
     }),
     [saveDetails],
   );
-
-  const handleSmartLockToggle = async (enabled: boolean) => {
-    try {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
-      const token = await currentFirebaseUser.getIdToken();
-
-      const response = await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ smartLockEnabled: enabled }),
-      });
-      if (!response.ok) throw new Error(tt('failedToUpdateGeneric'));
-
-      await invalidateKitchenCaches();
-      toast({ title: enabled ? mt("smartLockEnabledToast") : mt("smartLockDisabledToast") });
-    } catch (error) {
-      logger.error('Smart lock toggle error:', error);
-      toast({ title: mt("failedToUpdate"), variant: "destructive" });
-    }
-  };
 
   // Ask the server what this delete would actually destroy, so the confirmation
   // can name the real number instead of warning in the abstract.
@@ -307,23 +270,6 @@ const KitchenDetailsPricing = forwardRef<
             />
           </SettingsRow>
 
-          {kitchen.smartLockAvailable && (
-            <SettingsRow
-              label={mt("smartDoorLock")}
-              hint={mt("enableIfThisKitchenHasAKeypadOrSmartLockYouCanSetAccessCodes")}
-              help={
-                kitchen.smartLockEnabled
-                  ? mt("configureAccessCodeInCheckinSettings", { section: mt("navCheckinCheckout") })
-                  : undefined
-              }
-            >
-              <Switch
-                checked={kitchen.smartLockEnabled || false}
-                onCheckedChange={handleSmartLockToggle}
-                aria-label={mt("smartDoorLock")}
-              />
-            </SettingsRow>
-          )}
         </CardContent>
       </Card>
 

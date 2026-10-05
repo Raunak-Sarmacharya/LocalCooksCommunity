@@ -1,7 +1,5 @@
-import { logger } from "@/lib/logger";
-import { collection, doc, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, Timestamp, serverTimestamp, deleteField, QuerySnapshot, DocumentData } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-
+import { logger } from '@/lib/logger';
+import type { Timestamp } from 'firebase/firestore';
 /**
  * Who wrote a message.
  *
@@ -27,7 +25,12 @@ export interface ChatMessage {
 
 export interface Conversation {
   id: string;
-  applicationId: number;
+  applicationId?: number;
+  linkedApplicationIds?: number[];
+  eligibleViewingIds?: number[];
+  locationName?: string;
+  chefName?: string;
+  managerName?: string;
   chefId: number;
   managerId: number;
   locationId: number;
@@ -52,647 +55,109 @@ export interface Conversation {
   archivedManagerAt?: Timestamp | Date;
 }
 
-export async function setConversationArchived(conversationId: string, role: 'chef' | 'manager', archived: boolean): Promise<void> {
-  const field = role === 'chef' ? 'archivedChefAt' : 'archivedManagerAt';
-  await updateDoc(doc(db, 'conversations', conversationId), {
-    [field]: archived ? serverTimestamp() : deleteField(),
-  });
-}
 
-/**
- * Create a new conversation for an application
- */
-export async function createConversation(
-  applicationId: number,
-  chefId: number,
-  managerId: number,
-  locationId: number
-): Promise<string> {
-  try {
-    // First check if a conversation already exists for this application
-    const existingConversation = await getConversationForApplication(applicationId);
-    if (existingConversation) {
-      logger.info('Using existing conversation:', existingConversation.id);
-
-      // If the existing conversation is missing IDs (legacy data), update it
-      const updates: any = {};
-      if (!existingConversation.chefId || existingConversation.chefId !== chefId) {
-        updates.chefId = chefId;
-      }
-      if (!existingConversation.managerId || existingConversation.managerId !== managerId) {
-        updates.managerId = managerId;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        logger.info('Healing existing conversation with missing IDs:', updates);
-        const conversationRef = doc(db, 'conversations', existingConversation.id);
-        await updateDoc(conversationRef, updates);
-      }
-
-      return existingConversation.id;
-    }
-
-    const conversationRef = await addDoc(collection(db, 'conversations'), {
-      applicationId,
-      chefId,
-      managerId,
-      locationId,
-      createdAt: serverTimestamp(),
-      lastMessageAt: serverTimestamp(),
-      unreadChefCount: 0,
-      unreadManagerCount: 0,
-    });
-
-    logger.info('Created new conversation:', conversationRef.id);
-    return conversationRef.id;
-  } catch (error) {
-    logger.error('Error creating conversation:', error);
-    throw error;
-  }
-}
-
-/**
- * Get a conversation by ID
- */
-export async function getConversation(conversationId: string): Promise<Conversation | null> {
-  try {
-    const conversationDoc = await getDoc(doc(db, 'conversations', conversationId));
-    if (!conversationDoc.exists()) {
-      return null;
-    }
-    return {
-      id: conversationDoc.id,
-      ...conversationDoc.data(),
-    } as Conversation;
-  } catch (error) {
-    logger.error('Error getting conversation:', error);
-    throw error;
-  }
-}
-
-/**
- * Get conversation for an application
- */
-export async function getConversationForApplication(applicationId: number): Promise<Conversation | null> {
-  try {
-    const q = query(
-      collection(db, 'conversations'),
-      where('applicationId', '==', applicationId),
-      limit(1)
-    );
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) {
-      return null;
-    }
-    const doc = querySnapshot.docs[0];
-    return {
-      id: doc.id,
-      ...doc.data(),
-    } as Conversation;
-  } catch (error) {
-    logger.error('Error getting conversation for application:', error);
-    throw error;
-  }
-}
-
-/**
- * Send a message in a conversation
- */
-export async function sendMessage(
-  conversationId: string,
-  senderId: number,
-  senderRole: 'chef' | 'manager' | 'admin',
-  content: string,
-  type: 'text' | 'file' = 'text',
-  fileUrl?: string,
-  fileName?: string
-): Promise<string> {
-  try {
-    // Validate inputs
-    if (!conversationId) {
-      throw new Error('Conversation ID is required');
-    }
-    if (!senderId || senderId === 0) {
-      throw new Error('Sender ID is required');
-    }
-    if (!content.trim() && !fileUrl) {
-      throw new Error('Message content is required');
-    }
-
-    // Ensure user is authenticated
-    const { auth } = await import('@/lib/firebase');
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      throw new Error('User must be authenticated to send messages');
-    }
-
-    try {
-      await currentUser.getIdToken(); // Ensure valid token without forcing refresh
-    } catch (authError) {
-      logger.error('Auth token error:', authError);
-      throw new Error('Authentication failed. Please refresh the page and try again.');
-    }
-
-    logger.info('Creating message document...', {
-      conversationId,
-      senderId,
-      senderRole,
-      type,
-      hasContent: !!content.trim(),
-      hasFile: !!fileUrl,
-      userId: currentUser.uid,
-    });
-
-    // Create the message
-    const messageRef = await addDoc(
-      collection(db, 'conversations', conversationId, 'messages'),
-      {
-        senderId,
-        senderRole,
-        content: content.trim() || '',
-        type,
-        fileUrl: fileUrl || null,
-        fileName: fileName || null,
-        createdAt: serverTimestamp(),
-        readAt: null,
-      }
-    );
-
-    logger.info('Message document created:', messageRef.id);
-
-    // Update conversation's lastMessageAt and unread counts
-    const conversationRef = doc(db, 'conversations', conversationId);
-
-    // Get current conversation to read current unread counts atomically
-    const conversation = await getConversation(conversationId);
-    if (!conversation) {
-      logger.warn('Conversation not found, but message was created:', conversationId);
-      // Message was created, but conversation update might fail - that's okay
-      return messageRef.id;
-    }
-
-    const preview =
-      type === "file"
-        ? fileName?.trim() || "Attachment"
-        : content.trim().slice(0, 240);
-
-    const updateData: any = {
-      lastMessageAt: serverTimestamp(),
-      lastMessageText: preview,
-    };
-
-    // Increment unread count for the other party.
-    //
-    // An admin is on the "other party" side of the conversation from the chef's
-    // point of view, exactly like the manager, so an admin message must light up
-    // the chef's badge. Treating admin as a manager here (the alternative) would
-    // have incremented the wrong counter and left the chef unaware of the reply.
-    if (senderRole === 'chef') {
-      updateData.unreadManagerCount = (conversation.unreadManagerCount || 0) + 1;
-      updateData.archivedManagerAt = deleteField();
-    } else {
-      updateData.unreadChefCount = (conversation.unreadChefCount || 0) + 1;
-      updateData.archivedChefAt = deleteField();
-    }
-
-    // Self-healing: Update managerId or chefId if missing/incorrect on the conversation
-    // This fixes legacy conversations where managerId might be 0 or undefined
-    if (senderRole === 'manager' && (!conversation.managerId || conversation.managerId !== senderId)) {
-      logger.info('Self-healing managerId on conversation:', conversationId, 'from', conversation.managerId, 'to', senderId);
-      updateData.managerId = senderId;
-    }
-    if (senderRole === 'chef' && (!conversation.chefId || conversation.chefId !== senderId)) {
-      logger.info('Self-healing chefId on conversation:', conversationId, 'from', conversation.chefId, 'to', senderId);
-      updateData.chefId = senderId;
-    }
-
-    logger.info('Updating conversation:', updateData);
-    await updateDoc(conversationRef, updateData);
-    logger.info('Conversation updated successfully');
-
-    // Note: Notifications are handled by Firebase Cloud Function (onNewChatMessage)
-    // which triggers on Firestore message creation and uses the actual sender's name from the database
-
-    return messageRef.id;
-  } catch (error) {
-    logger.error('Error sending message:', error);
-    // Log more details about the error
-    if (error instanceof Error) {
-      logger.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      });
-    }
-    throw error;
-  }
-}
-
-/**
- * Send a system message (automated notifications)
- */
-export async function sendSystemMessage(
-  conversationId: string,
-  content: string
-): Promise<string> {
-  try {
-    const messageRef = await addDoc(
-      collection(db, 'conversations', conversationId, 'messages'),
-      {
-        senderId: 0, // System user
-        senderRole: 'system',
-        content,
-        type: 'system',
-        createdAt: serverTimestamp(),
-        readAt: null,
-      }
-    );
-
-    // Update conversation's lastMessageAt
-    await updateDoc(doc(db, 'conversations', conversationId), {
-      lastMessageAt: serverTimestamp(),
-      lastMessageText: content.trim().slice(0, 240),
-    });
-
-    return messageRef.id;
-  } catch (error) {
-    logger.error('Error sending system message:', error);
-    throw error;
-  }
-}
-
-/**
- * Get messages for a conversation (with pagination)
- */
-export async function getMessages(
-  conversationId: string,
-  limitCount: number = 50
-): Promise<ChatMessage[]> {
-  try {
-    const q = query(
-      collection(db, 'conversations', conversationId, 'messages'),
-      orderBy('createdAt', 'desc'),
-      limit(limitCount)
-    );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      } as ChatMessage))
-      .reverse(); // Reverse to show oldest first
-  } catch (error) {
-    logger.error('Error getting messages:', error);
-    throw error;
-  }
-}
-
-/**
- * Subscribe to real-time messages for a conversation
- */
-export function subscribeToMessages(
-  conversationId: string,
-  callback: (messages: ChatMessage[]) => void,
-  onError?: (error: Error) => void,
-  limitCount: number = 50
-): () => void {
-
-  const q = query(
-    collection(db, 'conversations', conversationId, 'messages'),
-    orderBy('createdAt', 'desc'),
-    limit(limitCount)
-  );
-
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot: QuerySnapshot<DocumentData>) => {
-      const messages = snapshot.docs
-        .map(doc => {
-          const data = doc.data();
-
-          return {
-            id: doc.id,
-            ...data,
-          } as ChatMessage;
-        })
-        .reverse(); // Reverse to show oldest first
-
-      logger.info('Calling callback with', messages.length, 'messages');
-      callback(messages);
-    },
-    (error) => {
-      logger.error('Error subscribing to messages:', error);
-      if (onError) {
-        onError(error);
-      }
-    }
-  );
-
-  return unsubscribe;
-}
-
-/**
- * Mark messages as read
- */
-export async function markAsRead(
-  conversationId: string,
-  userId: number,
-  role: 'chef' | 'manager' | 'admin'
-): Promise<void> {
-  try {
-    // Mark all unread messages as read
-    const messagesSnapshot = await getDocs(
-      collection(db, 'conversations', conversationId, 'messages')
-    );
-
-    // Everything not written by this viewer counts as theirs to read, including
-    // admin (Local Cooks) messages. Comparing "chef vs manager" alone left admin
-    // messages permanently unread, so the badge never cleared.
-    const batch = messagesSnapshot.docs
-      .filter(doc => {
-        const data = doc.data();
-        if (data.readAt) return false;
-        const fromOtherParty =
-          (role === 'chef' && (data.senderRole === 'manager' || data.senderRole === 'admin')) ||
-          (role !== 'chef' && data.senderRole === 'chef');
-        return fromOtherParty;
-      })
-      .map(doc => updateDoc(doc.ref, { readAt: serverTimestamp() }));
-
-    await Promise.all(batch);
-
-    // Reset unread count. An admin reads on the chef's behalf counter the same
-    // way a manager does; only the chef's own badge is theirs to clear.
-    const conversationRef = doc(db, 'conversations', conversationId);
-    const updateData: any = {};
-    if (role === 'chef') {
-      updateData.unreadChefCount = 0;
-    } else {
-      updateData.unreadManagerCount = 0;
-    }
-    await updateDoc(conversationRef, updateData);
-  } catch (error) {
-    logger.error('Error marking messages as read:', error);
-    throw error;
-  }
-}
-
-/**
- * Upload a file for chat (returns file URL)
- * Note: This should use your existing R2 upload infrastructure
- */
-export async function uploadChatFile(
-  conversationId: string,
-  file: File
-): Promise<string> {
-  try {
-    // Use existing upload endpoint
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const { auth } = await import('@/lib/firebase');
-    const token = await auth.currentUser?.getIdToken();
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch('/api/files/upload-file', {
-      method: 'POST',
-      body: formData,
-      credentials: 'include',
-      headers,
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      throw new Error(data?.details || data?.error || 'Failed to upload file');
-    }
-
-    const data = await response.json();
-    if (typeof data?.url !== 'string' || !data.url) throw new Error('Upload completed without a file URL');
-    return data.url;
-  } catch (error) {
-    logger.error('Error uploading chat file:', error);
-    throw error;
-  }
-}
-
-async function adminChatRequest(path: string, init?: RequestInit) {
+export async function chatRequest(path: string, init?: RequestInit) {
   const { auth } = await import('@/lib/firebase');
   const token = await auth.currentUser?.getIdToken();
-  if (!token) throw new Error('Not authenticated');
-  const response = await fetch(`/api/firebase/admin/chat/${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: { Authorization: `Bearer ${token}`, ...(init?.body ? { 'Content-Type': 'application/json' } : {}) },
-  });
+  if (!token) throw Error('Not authenticated');
+  const response = await fetch('/api/firebase/' + path, { ...init, credentials: 'include', cache: 'no-store',
+    headers: { Authorization: 'Bearer ' + token, ...(init?.body ? { 'Content-Type': 'application/json' } : {}) } });
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(data?.error || 'Chat request failed');
+  if (!response.ok) throw Error(data?.error || 'Messaging is unavailable. Please retry.');
   return data;
 }
-
-export async function getAdminConversationForApplication(applicationId: number): Promise<Conversation> {
-  return adminChatRequest(`applications/${applicationId}/conversation`);
-}
-
-export async function getAdminChatMessages(conversationId: string): Promise<ChatMessage[]> {
-  const messages = await adminChatRequest(`conversations/${encodeURIComponent(conversationId)}/messages`);
-  return messages.map((message: ChatMessage) => ({
-    ...message,
-    createdAt: new Date(message.createdAt as unknown as string),
-  }));
-}
-
-export async function sendAdminChatMessage(conversationId: string, content: string, fileUrl?: string, fileName?: string) {
-  return adminChatRequest(`conversations/${encodeURIComponent(conversationId)}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ content, fileUrl, fileName }),
-  });
-}
-
-/**
- * Get all conversations for a user (manager or chef)
- */
-export async function getAllConversations(
-  userId: number,
-  role: 'chef' | 'manager'
-): Promise<Conversation[]> {
-  try {
-    // Ensure Firebase is initialized
-    if (!db) {
-      throw new Error('Firebase is not initialized. Please check your configuration.');
-    }
-
-    // Ensure user is authenticated before querying
-    const { auth } = await import('@/lib/firebase');
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      throw new Error('User must be authenticated to load conversations');
-    }
-
-    try {
-      await currentUser.getIdToken(); // Ensure valid token without forcing refresh
-    } catch (authError) {
-      logger.error('Auth token error:', authError);
-      throw new Error('Authentication failed. Please refresh the page and try again.');
-    }
-
-    if (!userId || userId === 0) {
-      throw new Error(`Invalid ${role} ID: ${userId}`);
-    }
-
-    const field = role === 'chef' ? 'chefId' : 'managerId';
-
-
-    // First, get all conversations for this user
-    // Note: Ensure userId matches the data type stored in Firestore (should be number)
-    const q = query(
-      collection(db, 'conversations'),
-      where(field, '==', userId)
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    const conversations: Conversation[] = [];
-    querySnapshot.docs.forEach(doc => {
-      const data = doc.data();
-      conversations.push({
-        id: doc.id,
-        applicationId: data.applicationId,
-        chefId: data.chefId,
-        managerId: data.managerId,
-        locationId: data.locationId,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        lastMessageAt: data.lastMessageAt?.toDate() || new Date(),
-        lastMessageText:
-          typeof data.lastMessageText === "string" ? data.lastMessageText : undefined,
-        unreadChefCount: data.unreadChefCount || 0,
-        unreadManagerCount: data.unreadManagerCount || 0,
-        // Carried through explicitly: this mapper builds each object by hand, so
-        // a field not named here is dropped even though it is in the document.
-        unavailable: data.unavailable === true,
-        unavailableReason: data.unavailableReason,
-        unavailableRole: data.unavailableRole,
-        unavailableAt: data.unavailableAt?.toDate?.() ?? undefined,
-        archivedChefAt: data.archivedChefAt?.toDate?.() ?? undefined,
-        archivedManagerAt: data.archivedManagerAt?.toDate?.() ?? undefined,
-      });
-    });
-
-    // Sort by lastMessageAt descending (client-side to avoid index requirement)
-    conversations.sort((a, b) => {
-      const dateA = a.lastMessageAt instanceof Date
-        ? a.lastMessageAt
-        : (a.lastMessageAt as Timestamp).toDate();
-      const dateB = b.lastMessageAt instanceof Date
-        ? b.lastMessageAt
-        : (b.lastMessageAt as Timestamp).toDate();
-      return dateB.getTime() - dateA.getTime();
-    });
-
-    // Deduplicate conversations by applicationId, keeping the most recent one
-    const uniqueConversationsMap = new Map<number, Conversation>();
-
-    conversations.forEach(conv => {
-      const existing = uniqueConversationsMap.get(conv.applicationId);
-      if (!existing || conv.lastMessageAt > existing.lastMessageAt) {
-        uniqueConversationsMap.set(conv.applicationId, conv);
-      }
-    });
-
-    // Convert back to array
-    const uniqueConversations = Array.from(uniqueConversationsMap.values());
-
-    // Backfill preview text for older conversations (written on send going forward)
-    await Promise.all(
-      uniqueConversations
-        .filter((c) => !c.lastMessageText?.trim())
-        .slice(0, 25)
-        .map(async (conv) => {
-          try {
-            const qLast = query(
-              collection(db, "conversations", conv.id, "messages"),
-              orderBy("createdAt", "desc"),
-              limit(1)
-            );
-            const snap = await getDocs(qLast);
-            const data = snap.docs[0]?.data();
-            if (!data) return;
-            const text =
-              data.type === "file"
-                ? data.fileName || "Attachment"
-                : typeof data.content === "string"
-                  ? data.content.trim().slice(0, 240)
-                  : "";
-            if (!text) return;
-            conv.lastMessageText = text;
-            // Persist so the list stays fast next open
-            void updateDoc(doc(db, "conversations", conv.id), { lastMessageText: text });
-          } catch {
-            /* ignore per-conversation backfill failures */
-          }
-        })
-    );
-
-    return uniqueConversations;
-  } catch (error) {
-    logger.error('Error getting conversations:', error);
-    // Log more details about the error
-    if (error instanceof Error) {
-      logger.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-        userId,
-        role,
-      });
-    }
-    throw error;
+function dates<T>(value: T): T {
+  const result = { ...value } as any;
+  for (const key of ['createdAt','lastMessageAt','readAt','unavailableAt','archivedChefAt','archivedManagerAt']) {
+    const time = result[key];
+    if (time) result[key] = typeof time === 'string' ? new Date(time)
+      : time._seconds != null ? new Date(time._seconds * 1000 + (time._nanoseconds || 0) / 1e6) : time;
   }
+  return result;
 }
-
-/**
- * Get unread message count for a user
- */
-export async function getUnreadCount(
-  userId: number,
-  role: 'chef' | 'manager'
-): Promise<number> {
-  try {
-    const field = role === 'chef' ? 'chefId' : 'managerId';
-    const unreadField = role === 'chef' ? 'unreadChefCount' : 'unreadManagerCount';
-
-    const q = query(
-      collection(db, 'conversations'),
-      where(field, '==', userId)
-    );
-    const querySnapshot = await getDocs(q);
-
-    let totalUnread = 0;
-    querySnapshot.docs.forEach(doc => {
-      const data = doc.data();
-      totalUnread += data[unreadField] || 0;
-    });
-
-    return totalUnread;
-  } catch (error) {
-    logger.error('Error getting unread count:', error);
-    return 0;
-  }
+const threadPath = (id: string) => 'chat/conversations/' + encodeURIComponent(id);
+const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) });
+export async function setConversationArchived(id: string, _role: 'chef' | 'manager', archived: boolean) {
+  await chatRequest(threadPath(id) + '/archive', post({ archived }));
 }
-
-/**
- * Ask the server which of these participant ids still have an account.
- *
- * Conversations outlive deleted accounts (they are in Firestore, the account was
- * in Postgres). A delete-time flag covers future deletions but not conversations
- * that were already orphaned, so the authoritative check has to happen on read.
- * Callers treat any id missing from the response as "this participant is gone".
- *
- * Returns null on failure so a caller can distinguish "nobody is deleted" from
- * "we could not tell" and avoid disabling threads on a transient error.
- */
+export async function getConversation(id: string): Promise<Conversation | null> {
+  return dates(await chatRequest(threadPath(id)));
+}
+export async function getConversationForApplication(id: number): Promise<Conversation | null> {
+  const data = await chatRequest('chat/applications/' + id + '/conversation');
+  return data ? dates(data) : null;
+}
+export async function createConversation(id: number, _chef: number, _manager: number, _location: number) {
+  const conversation = await getConversationForApplication(id);
+  if (!conversation) throw Error('Chat opens after the request to apply is approved');
+  return conversation.id;
+}
+export async function resolveTourConversation(id: number) {
+  return chatRequest('chat/viewings/' + id + '/conversation');
+}
+export async function sendMessage(id: string, _senderId: number, _role: 'chef' | 'manager' | 'admin',
+  content: string, type: 'text' | 'file' = 'text', fileUrl?: string, fileName?: string, bookingId?: number): Promise<string> {
+  const result = await chatRequest(threadPath(id) + '/messages', post({ content, type, fileUrl, fileName, bookingId }));
+  return result.id;
+}
+export async function sendSystemMessage(_id: string, _content: string): Promise<string> {
+  throw Error('System messages are server-owned');
+}
+export async function getMessages(id: string, _limit = 50): Promise<ChatMessage[]> {
+  return (await chatRequest(threadPath(id) + '/messages')).map(dates);
+}
+export function subscribeToMessages(id: string, callback: (messages: ChatMessage[]) => void,
+  onError?: (error: Error) => void, _limit = 50): () => void {
+  let active = true, busy = false;
+  const refresh = async () => {
+    if (busy || !active) return;
+    busy = true;
+    try { const messages = await getMessages(id); if (active) callback(messages); }
+    catch (error) { if (active) onError?.(error as Error); }
+    finally { busy = false; }
+  };
+  void refresh();
+  const timer = window.setInterval(refresh, 3000);
+  return () => { active = false; window.clearInterval(timer); };
+}
+export async function markAsRead(id: string, _userId: number, role: 'chef' | 'manager' | 'admin', messages: ChatMessage[]) {
+  if (role === 'admin') return;
+  const messageIds = Array.from(new Set(messages.filter(m => m.id && !m.readAt &&
+    (role === 'chef' ? ['manager', 'admin'].includes(m.senderRole) : m.senderRole === 'chef')).map(m => m.id!)));
+  if (messageIds.length) await chatRequest(threadPath(id) + '/read', post({ messageIds }));
+}
+export async function uploadChatFile(id: string, file: File): Promise<string> {
+  const { auth } = await import('@/lib/firebase');
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw Error('Not authenticated');
+  const body = new FormData(); body.append('file', file);
+  const response = await fetch('/api/files/chat/' + encodeURIComponent(id) + '/upload', {
+    method: 'POST', body, credentials: 'include', headers: { Authorization: 'Bearer ' + token } });
+  const data = await response.json();
+  if (!response.ok || !data.url) throw Error(data.error || 'Could not upload attachment');
+  return data.url;
+}
+export async function getAdminConversationForApplication(id: number): Promise<Conversation> {
+  return dates(await chatRequest('admin/chat/applications/' + id + '/conversation'));
+}
+export async function getAdminChatMessages(id: string): Promise<ChatMessage[]> {
+  return (await chatRequest('admin/chat/conversations/' + encodeURIComponent(id) + '/messages')).map(dates);
+}
+export async function sendAdminChatMessage(id: string, content: string, fileUrl?: string, fileName?: string) {
+  return chatRequest('admin/chat/conversations/' + encodeURIComponent(id) + '/messages', post({ content, fileUrl, fileName }));
+}
+export async function getAllConversations(_userId: number, _role: 'chef' | 'manager'): Promise<Conversation[]> {
+  const { conversations } = await chatRequest('chat/conversations');
+  return conversations.map((row: any) => dates({ ...row.conversation, id: row.conversationId,
+    chefId: row.chefId, managerId: row.managerId, locationId: row.locationId,
+    applicationId: row.linkedApplicationIds[0], linkedApplicationIds: row.linkedApplicationIds,
+    eligibleViewingIds: row.eligibleViewingIds, locationName: row.locationName, chefName: row.chefName, managerName: row.managerName }))
+    .sort((a: Conversation, b: Conversation) => Number(b.lastMessageAt) - Number(a.lastMessageAt));
+}
+export async function getUnreadCount(id: number, role: 'chef' | 'manager'): Promise<number> {
+  return (await getAllConversations(id, role)).reduce((total, row) => total +
+    (role === 'chef' ? row.unreadChefCount : row.unreadManagerCount), 0);
+}
 export async function getLiveChatParticipants(userIds: number[]): Promise<Set<number> | null> {
   const unique = Array.from(new Set(userIds.filter((id) => Number.isInteger(id) && id > 0)));
   if (unique.length === 0) return new Set();
@@ -723,32 +188,5 @@ export async function getLiveChatParticipants(userIds: number[]): Promise<Set<nu
   } catch (error) {
     logger.error('Error resolving chat participant status:', error);
     return null;
-  }
-}
-
-/**
- * Ensure conversation has the correct managerId (Self-healing for legacy chats)
- */
-export async function ensureConversationManagerId(
-  conversationId: string,
-  managerId: number
-): Promise<void> {
-  try {
-    if (!conversationId || !managerId) return;
-
-    const conversationRef = doc(db, 'conversations', conversationId);
-    const conversationSnap = await getDoc(conversationRef);
-
-    if (conversationSnap.exists()) {
-      const data = conversationSnap.data();
-      // If managerId is missing or 0 or incorrect, update it
-      if (!data.managerId || data.managerId !== managerId) {
-        logger.info(`[ChatService] Healing conversation ${conversationId}: Updating managerId from ${data.managerId} to ${managerId}`);
-        await updateDoc(conversationRef, { managerId });
-      }
-    }
-  } catch (error) {
-    logger.error('[ChatService] Error verifying conversation managerId:', error);
-    // Don't throw, just log - this is a background repair operation
   }
 }

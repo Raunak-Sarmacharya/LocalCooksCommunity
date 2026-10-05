@@ -146,6 +146,12 @@ export function resolveNotificationHref(opts: {
   const conversationId = metaStr(meta, "conversationId");
   const locationId = metaNum(meta, "locationId");
 
+  const viewingId = metaNum(meta, 'viewingId');
+  if (viewingId && Number.isSafeInteger(viewingId) && viewingId > 0 && !conversationId) {
+    return opts.role === 'chef' ? chefDashboardView('viewings', { viewing: String(viewingId) })
+      : managerDashboardView('viewings', { viewing: String(viewingId) });
+  }
+
   if (opts.role === "chef") {
     if (conversationId || type === "message_received") return chefMessagesHref(conversationId);
     if (bookingId && (type.startsWith("booking_") || type.startsWith("kitchen_") || type === "payment_received")) {

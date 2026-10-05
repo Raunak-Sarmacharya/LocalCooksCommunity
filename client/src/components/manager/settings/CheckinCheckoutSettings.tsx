@@ -2,7 +2,7 @@
  * Kitchen Check-In / Check-Out Settings
  *
  * Manager-controlled check-in and check-out checklists for kitchens, including
- * per-item photo requirements and optional arrival instructions.
+ * optional duties/photos and required arrival and departure instructions.
  *
  * Deliberately scoped to *the checklist itself*. Everything that describes
  * *when* a booking happens — the check-in window and the no-show grace period —
@@ -61,7 +61,6 @@ interface CheckinCheckoutSettingsData {
   checkoutItems: ChecklistItem[];
   checkoutPhotoRequirements: PhotoRequirement[];
   checkoutInstructions: string | null;
-  smartLockCheckinInstructions: string | null;
   timeWindowSettings?: TimeWindowSettings;
   platformDefaults?: PlatformTimeWindowDefaults;
 }
@@ -157,34 +156,17 @@ export default function CheckinCheckoutSettings({
   });
 
   // Fetch kitchens to determine if ANY kitchen at this location has the
-  // admin-controlled smart-door capability enabled. When none do, the smart
   // lock instructions textarea and all related UI is hidden from the manager.
-  const { data: kitchensAtLocation } = useQuery<
-    Array<{ id: number; smartLockAvailable?: boolean; smart_lock_available?: boolean }>
-  >({
-    queryKey: ["manager-kitchens-smart-availability", location.id],
-    queryFn: () => apiGet(`/manager/kitchens/${location.id}`),
-    enabled: !!location.id,
-  });
-
-  const hasSmartLockKitchen = useMemo(() => {
-    if (!kitchensAtLocation) return false;
-    return kitchensAtLocation.some((k: any) =>
-      Boolean(k.smartLockAvailable ?? k.smart_lock_available ?? false),
-    );
-  }, [kitchensAtLocation]);
 
   // Kitchen check-in/out local state.
   // Items are held in a single unified list; split into server-side
   // checkinItems / checkoutItems arrays on save.
-  const [checkinEnabled, setCheckinEnabled] = useState(false);
+  const [checkinEnabled, setCheckinEnabled] = useState(true);
   const stickyBarRef = useRef<HTMLDivElement>(null);
-  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(true);
   const [items, setItems] = useState<UnifiedChecklistItem[]>([]);
   const [checkinInstructions, setCheckinInstructions] = useState<string | null>(null);
   const [checkoutInstructions, setCheckoutInstructions] = useState<string | null>(null);
-  const [smartLockCheckinInstructions, setSmartLockCheckinInstructions] =
-    useState<string | null>(null);
 
   // Arrival timings (null = inherit the platform default).
   const [twCheckinWindow, setTwCheckinWindow] = useState<number | null>(null);
@@ -210,11 +192,11 @@ export default function CheckinCheckoutSettings({
   // Sync from server data
   useEffect(() => {
     if (data) {
-      setCheckinEnabled(data.checkinEnabled);
-      setCheckoutEnabled(data.checkoutEnabled);
+      // Kitchen tracking owns activation. Shared setup configures both stages.
+      setCheckinEnabled(true);
+      setCheckoutEnabled(true);
       setCheckinInstructions(data.checkinInstructions);
       setCheckoutInstructions(data.checkoutInstructions);
-      setSmartLockCheckinInstructions(data.smartLockCheckinInstructions);
       setItems(initialUnifiedItems);
       if (data.timeWindowSettings) {
         setTwCheckinWindow(data.timeWindowSettings.checkinWindowMinutesBefore);
@@ -231,7 +213,6 @@ export default function CheckinCheckoutSettings({
       JSON.stringify(items) !== JSON.stringify(initialUnifiedItems) ||
       (checkinInstructions || null) !== (data.checkinInstructions || null) ||
       (checkoutInstructions || null) !== (data.checkoutInstructions || null) ||
-      (smartLockCheckinInstructions || null) !== (data.smartLockCheckinInstructions || null) ||
       twCheckinWindow !== (data.timeWindowSettings?.checkinWindowMinutesBefore ?? null) ||
       twNoShowGrace !== (data.timeWindowSettings?.noShowGraceMinutes ?? null)
     );
@@ -243,7 +224,6 @@ export default function CheckinCheckoutSettings({
     items,
     checkinInstructions,
     checkoutInstructions,
-    smartLockCheckinInstructions,
     twCheckinWindow,
     twNoShowGrace,
   ]);
@@ -254,7 +234,8 @@ export default function CheckinCheckoutSettings({
    */
   const problems = useMemo(() => findUnifiedItemProblems(items), [items]);
 
-  const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0;
+  const missingNotes = !checkinInstructions?.trim() || !checkoutInstructions?.trim();
+  const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0 || missingNotes;
 
   /**
    * Items assigned to a flow the manager has switched off.
@@ -306,7 +287,7 @@ export default function CheckinCheckoutSettings({
   const saveAction = useStatusButton(
     useCallback(async () => {
       if (hasProblems) {
-        throw new Error(mt("fixChecklistItemsBeforeSaving"));
+        throw new Error(mt(missingNotes ? 'trackingRequiredNotes' : "fixChecklistItemsBeforeSaving"));
       }
 
       const {
@@ -325,7 +306,6 @@ export default function CheckinCheckoutSettings({
         checkoutItems: outCheckoutItems,
         checkoutPhotoRequirements: outCheckoutPhotos,
         checkoutInstructions: checkoutInstructions || null,
-        smartLockCheckinInstructions: smartLockCheckinInstructions || null,
         timeWindowSettings: {
           checkinWindowMinutesBefore: twCheckinWindow,
           noShowGraceMinutes: twNoShowGrace,
@@ -335,6 +315,8 @@ export default function CheckinCheckoutSettings({
       queryClient.invalidateQueries({
         queryKey: ["checkin-checkout-settings", location.id],
       });
+      // The shared checklist affects the publish review of every kitchen at this location.
+      queryClient.invalidateQueries({ queryKey: ["kitchen-listing-readiness"] });
 
       toast({
         title: mt("checklistsSaved"),
@@ -347,10 +329,10 @@ export default function CheckinCheckoutSettings({
       checkoutEnabled,
       checkinInstructions,
       checkoutInstructions,
-      smartLockCheckinInstructions,
       twCheckinWindow,
       twNoShowGrace,
       hasProblems,
+      missingNotes,
       queryClient,
       toast,
     ]),
@@ -473,6 +455,7 @@ export default function CheckinCheckoutSettings({
         <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="space-y-0.5 text-xs text-destructive">
+            {missingNotes && <p>{mt('trackingRequiredNotes')}</p>}
             {problems.empty.length > 0 && (
               <p>{mt("checklistEmptyLabels", { count: problems.empty.length })}</p>
             )}
@@ -513,6 +496,7 @@ export default function CheckinCheckoutSettings({
 
       {/* Checklist editor */}
       <KitchenCheckinCheckoutEditor
+        coupledStages
         items={items}
         onItemsChange={setItems}
         checkinEnabled={checkinEnabled}
@@ -526,9 +510,6 @@ export default function CheckinCheckoutSettings({
         onCheckinInstructionsChange={setCheckinInstructions}
         checkoutInstructions={checkoutInstructions}
         onCheckoutInstructionsChange={setCheckoutInstructions}
-        smartLockInstructions={smartLockCheckinInstructions}
-        onSmartLockInstructionsChange={setSmartLockCheckinInstructions}
-        smartLockAvailable={hasSmartLockKitchen}
       />
 
       {/* Arrival timings. Shown here as well as on Booking Policies — both read
@@ -697,11 +678,10 @@ export default function CheckinCheckoutSettings({
               size="sm"
               className="h-8 rounded-lg px-2 text-xs hover:bg-muted"
               onClick={() => {
-                setCheckinEnabled(data?.checkinEnabled ?? false);
-                setCheckoutEnabled(data?.checkoutEnabled ?? false);
+                setCheckinEnabled(true);
+                setCheckoutEnabled(true);
                 setCheckinInstructions(data?.checkinInstructions ?? null);
                 setCheckoutInstructions(data?.checkoutInstructions ?? null);
-                setSmartLockCheckinInstructions(data?.smartLockCheckinInstructions ?? null);
                 setTwCheckinWindow(data?.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
                 setTwNoShowGrace(data?.timeWindowSettings?.noShowGraceMinutes ?? null);
                 setItems(initialUnifiedItems);

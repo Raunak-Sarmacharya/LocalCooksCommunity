@@ -19,6 +19,11 @@ export function bookingOperationsComplete(booking: Parameters<typeof bookingAtte
     && now.getTime() >= bookingAttendanceEnd(booking).getTime();
 }
 
+/** A separated visit ends independently, using the reservation's operating day. */
+export function visitAttendanceEnd(booking: Parameters<typeof bookingAttendanceEnd>[0], visit: { startTime: string; endTime: string }) {
+  return bookingAttendanceEnd({ ...booking, endTime: visit.endTime });
+}
+
 /** Missing tracking is unknown attendance, including when tracking is optional. */
 export function hasBookingAttendanceEvidence(row: {
   checkinStatus?: string | null; checkedInAt?: unknown; checkoutRequestedAt?: unknown;

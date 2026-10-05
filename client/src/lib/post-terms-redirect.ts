@@ -1,4 +1,5 @@
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { authReturn, adminAuthReturn } from './auth-return';
 
 /**
  * Where to land after terms are accepted — anchored to the CURRENT subdomain,
@@ -18,9 +19,11 @@ export function postTermsRedirect(opts: {
   chefFallback?: string;
 }): string {
   const { hostname, redirectParam, role, isManager, chefFallback = "/dashboard" } = opts;
+  if (role === 'admin') return adminAuthReturn(redirectParam);
 
   // An explicit, non-generic target always wins (e.g. /manager/dashboard).
-  if (redirectParam && redirectParam !== "/dashboard") return redirectParam;
+  const safeRedirect = authReturn(redirectParam);
+  if (safeRedirect !== '/' && safeRedirect !== "/dashboard") return safeRedirect;
 
   const subdomain = getSubdomainFromHostname(hostname);
   const manager = role === "manager" || isManager === true;

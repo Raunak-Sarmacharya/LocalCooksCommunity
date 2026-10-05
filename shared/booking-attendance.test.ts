@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, publicBookingAttendanceNotes } from './booking-attendance';
+import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, publicBookingAttendanceNotes, visitAttendanceEnd } from './booking-attendance';
 
 describe('Newfoundland booking attendance', () => {
   const booking = { bookingDate: '2026-10-02', startTime: '09:00', endTime: '17:00', status: 'confirmed' };
@@ -21,6 +21,11 @@ describe('Newfoundland booking attendance', () => {
   });
   it('does not normalize a nonexistent spring end into another scheduled time', () => {
     expect(() => bookingAttendanceEnd({ bookingDate: '2026-03-08', startTime: '00:00', endTime: '02:00' })).toThrow(/not a valid Newfoundland/);
+  });
+  it('ends each separated overnight visit on its own operating-day boundary', () => {
+    const parent = { bookingDate: '2026-10-31', startTime: '20:00', endTime: '04:00', operatingWindowStartTime: '20:00' };
+    expect(visitAttendanceEnd(parent, { startTime: '20:00', endTime: '22:00' }).toISOString()).toBe('2026-11-01T00:30:00.000Z');
+    expect(visitAttendanceEnd(parent, { startTime: '01:00', endTime: '02:00' }).toISOString()).toBe('2026-11-01T05:30:00.000Z');
   });
   it.each(['checkedInAt', 'checkoutRequestedAt', 'checkedOutAt', 'checkoutApprovedAt', 'actualStartTime', 'actualEndTime', 'checkinNotes'])('treats %s as contradictory evidence', key => {
     expect(hasBookingAttendanceEvidence({ checkinStatus: 'not_checked_in', [key]: 'evidence' })).toBe(true);

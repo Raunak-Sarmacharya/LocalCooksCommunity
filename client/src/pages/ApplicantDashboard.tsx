@@ -162,6 +162,7 @@ export default function ApplicantDashboard() {
 
   // Training view mode - 'overview' shows training overview, 'player' shows the video player
   const [trainingViewMode, setTrainingViewMode] = useState<'overview' | 'player'>('overview');
+  const [deepLinkTourId, setDeepLinkTourId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('tour'));
   const [deepLinkConversationId, setDeepLinkConversationId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("conversation")
   );
@@ -185,6 +186,7 @@ export default function ApplicantDashboard() {
       const view = params.get('view');
       const action = params.get('action');
       setDeepLinkConversationId(params.get("conversation"));
+      setDeepLinkTourId(params.get("tour"));
       setResolutionTab(params.get("tab") || undefined);
 
       if (view && VALID_VIEWS.includes(view)) {
@@ -786,7 +788,7 @@ export default function ApplicantDashboard() {
 
   const messagesTabContent = (
     <div className="h-[calc(100vh-8rem)]">
-      <UnifiedChatView userId={chefId} role="chef" initialConversationId={deepLinkConversationId} onNavigate={setActiveTab} chefHasApplications={kitchenApplications.length > 0} />
+      <UnifiedChatView userId={chefId} role="chef" initialConversationId={deepLinkConversationId} initialTourId={deepLinkTourId} onNavigate={setActiveTab} chefHasApplications={kitchenApplications.length > 0} />
     </div>
   );
 

@@ -149,7 +149,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // Redirect to login if no user found (only after loading is complete)
   if (!user) {
     logger.info('ManagerProtectedRoute - No user found, redirecting to login');
-    return <Redirect to="/manager/login" />;
+    return <Redirect to={`/manager/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`} />;
   }
 
   // Redirect if user is not a manager (only after loading is complete)
@@ -171,7 +171,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // room, so a fourth door cannot be opened by a future change to any single flow.
   if (needsWelcomeScreen(user)) {
     logger.info('ManagerProtectedRoute - Welcome screen not seen, returning to it');
-    return <Redirect to="/manager/login" />;
+    return <Redirect to={`/manager/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`} />;
   }
 
   // An unverified email is no longer a redirect. Sending the manager back to the
@@ -193,7 +193,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // hide the one screen that tells the manager why nothing works.
   if (needsAcceptance && !emailUnverified && location !== '/accept-terms') {
     logger.info('ManagerProtectedRoute - Terms not accepted, redirecting to /accept-terms');
-    const redirectParam = encodeURIComponent(location);
+    const redirectParam = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
     return <Redirect to={`/accept-terms?redirect=${redirectParam}`} />;
   }
 

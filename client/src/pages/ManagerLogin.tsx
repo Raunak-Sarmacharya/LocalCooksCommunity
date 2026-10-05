@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { managerAuthReturn } from "@/lib/auth-return";
 import { useTranslation } from "react-i18next";
 import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
@@ -36,6 +37,7 @@ export default function ManagerLogin() {
 
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
+  const returnPath = managerAuthReturn(new URLSearchParams(window.location.search).get("redirect"));
   const { user, loading, authPhase, refreshUserData, authenticateWithGoogle, updateUserVerification, discardPendingGoogleRegistration } = useFirebaseAuth();
   const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const queryClient = useQueryClient();
@@ -106,8 +108,8 @@ export default function ManagerLogin() {
       !user?.termsAccepted || user?.termsVersion !== CURRENT_POLICY_VERSION;
     setLocation(
       needsTerms
-        ? `/accept-terms?redirect=${encodeURIComponent("/manager/dashboard")}`
-        : "/manager/dashboard",
+        ? `/accept-terms?redirect=${encodeURIComponent(returnPath)}`
+        : returnPath,
       { replace: true },
     );
   };
@@ -335,8 +337,8 @@ export default function ManagerLogin() {
       refreshedUser.termsVersion !== CURRENT_POLICY_VERSION;
     setLocation(
       needsTerms
-        ? `/accept-terms?redirect=${encodeURIComponent("/manager/dashboard")}`
-        : "/manager/dashboard",
+        ? `/accept-terms?redirect=${encodeURIComponent(returnPath)}`
+        : returnPath,
       { replace: true },
     );
   };
@@ -590,7 +592,7 @@ export default function ManagerLogin() {
           t("btnSigningYouIn", { ns: "auth", defaultValue: "Signing you in..." }),
           t("overlayRedirectingDashboard", { ns: "auth", defaultValue: "Redirecting to your dashboard..." }),
         );
-        setLocation('/manager/dashboard');
+        setLocation(returnPath);
       } else if (isManager && !hasVerifiedContact(user, userMetaData)) {
         logger.info('📧 EMAIL OR PHONE VERIFICATION REQUIRED');
         // Stay on login page to show verification message

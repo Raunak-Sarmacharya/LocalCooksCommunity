@@ -87,7 +87,7 @@ export function AdminTourRequestsSection() {
     onError: (error: Error) => { queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin'] }); toast({ title: 'Outcome failed', description: error.message, variant: 'destructive' }); },
   });
 
-  const { data: requests = [], isLoading } = useQuery<TourRequest[]>({
+  const { data: requests = [], isLoading, isError, refetch } = useQuery<TourRequest[]>({
     queryKey: ["/api/viewings/admin"],
     queryFn: async () => {
       const response = await fetch("/api/viewings/admin", { headers: await authHeaders(), credentials: "include" });
@@ -109,13 +109,13 @@ export function AdminTourRequestsSection() {
     if (!tour) return;
     setTab(tour.viewing.status === 'pending_local_cooks' && Date.parse(tour.viewing.scheduledAt) > Date.now() ? 'pending' : needsOutcome(tour) ? 'outcomes' : 'history');
     openedLink.current = linkedTourId;
-    requestAnimationFrame(() => document.getElementById(`admin-tour-${linkedTourId}`)?.scrollIntoView({ block: 'center' }));
+    requestAnimationFrame(() => document.getElementById(`admin-tour-${linkedTourId}`)?.scrollIntoView?.({ block: 'center' }));
   }, [linkedTourId, requests]);
   const retryDelivery = useMutation({ mutationFn: async (viewingId: number) => {
     const response = await fetch(`/api/viewings/admin/${viewingId}/retry-delivery`, { method: 'POST', headers: await authHeaders(), credentials: 'include' });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Retry failed'); return body;
   }, onSuccess: (body) => { queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin/delivery-status'] });
-    toast({ title: body.notificationDeliveryFailed ? 'Some delivery remains pending' : 'Tour communications delivered', description: 'Tour state and attendance were not changed.' }); },
+    toast({ title: body.notificationDeliveryFailed ? 'Some delivery remains pending' : 'Tour communications delivered', description: 'The tour result and visit times were not changed.' }); },
   onError: (error: Error) => toast({ title: 'Delivery retry failed', description: error.message, variant: 'destructive' }) });
 
   const review = useMutation({
@@ -135,7 +135,7 @@ export function AdminTourRequestsSection() {
       queryClient.invalidateQueries({ queryKey: ["/api/viewings/admin"] });
       toast({
         title: decision === "approved" ? "Sent to kitchen manager" : "Tour request declined",
-        description: data?.notificationDeliveryFailed ? "The decision is saved, but some notifications could not be delivered." : decision === "approved"
+        description: data?.chatProvisioningFailed ? `${data.chatProvisioningMessage}${data.notificationDeliveryFailed ? ' Some notifications also remain pending.' : ''}` : data?.notificationDeliveryFailed ? "The decision is saved, but some notifications could not be delivered." : decision === "approved"
           ? "The manager can now review and approve or deny the request."
           : "The chef has been notified.",
       });
@@ -158,6 +158,9 @@ export function AdminTourRequestsSection() {
 
   return (
     <div className="space-y-5">
+      {isError && <div role="alert"><p>We couldn’t load tour requests.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
+      {!isLoading && !isError && linkedTourId > 0 && !requests.some(request => request.viewing.id === linkedTourId) &&
+        <div role="alert"><p>This tour is unavailable. Check your access or try again.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
       <HistoricalVisitReviews />
       {pendingDeliveries.length > 0 && <Card><CardHeader><CardTitle>Tour communications pending ({pendingDeliveries.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">{Array.from(new Set(pendingDeliveries.map(event => event.viewingId))).map(id => <div key={id} className="flex items-center justify-between gap-3">
@@ -174,7 +177,7 @@ export function AdminTourRequestsSection() {
       <Tabs value={tab} onValueChange={(value) => setTab(value as "pending" | "outcomes" | "history")}>
         <TabsList>
           <TabsTrigger value="pending">Pending ({requests.filter((request) => request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()).length})</TabsTrigger>
-          <TabsTrigger value="outcomes">Past tours · optional attendance ({requests.filter(needsOutcome).length})</TabsTrigger>
+          <TabsTrigger value="outcomes">Past tours · visit results ({requests.filter(needsOutcome).length})</TabsTrigger>
           <TabsTrigger value="history">History ({requests.filter((request) => request.viewing.status !== 'pending_local_cooks' || new Date(request.viewing.scheduledAt).getTime() <= Date.now()).length})</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -252,7 +255,7 @@ export function AdminTourRequestsSection() {
             <SelectTrigger aria-label="Tour outcome"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="completed" disabled={outcomeTour?.viewing.status === 'completed'}>Completed</SelectItem><SelectItem value="no_show" disabled={outcomeTour?.viewing.status === 'no_show'}>Visitor did not attend</SelectItem><SelectItem value="disrupted" disabled={!!outcomeTour?.viewing.disruptionReason}>Disrupted</SelectItem></SelectContent>
           </Select>
-          {outcome === 'no_show' && <p className="text-sm text-muted-foreground">Saving confirms visitor non-attendance. Host absence, access failure or weather must be recorded as disruption.</p>}
+          {outcome === 'no_show' && <p className="text-sm text-muted-foreground">Only choose this if the chef did not come. If the manager was unavailable, access failed or weather prevented the visit, record why the tour couldn’t take place instead.</p>}
           {outcome === 'disrupted' && <Select value={outcomeReason} onValueChange={setOutcomeReason}>
             <SelectTrigger aria-label="Disruption reason"><SelectValue placeholder="Select disruption" /></SelectTrigger>
             <SelectContent>{Object.entries(tourDisruptionReasons).map(([reason, label]) => <SelectItem key={reason} value={reason}>{label}</SelectItem>)}</SelectContent>

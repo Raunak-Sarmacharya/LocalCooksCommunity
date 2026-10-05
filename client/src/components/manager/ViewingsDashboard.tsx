@@ -6,12 +6,13 @@
  * Built mobile-first with shadcn/ui components.
  */
 
-import { useState, useEffect, useRef } from "react"
-import { useSearch } from "wouter"
+import { useState, useEffect, useRef, type MutableRefObject } from "react"
+import { CommitmentProblems } from '@/components/support/CommitmentProblems';
+import { useLocation, useSearch } from "wouter"
 import type { ColumnDef } from "@tanstack/react-table"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, Briefcase, FileText, Mail, Phone, Search, X } from "@/components/ui/manager-icons"
+import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, Search, X } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -23,8 +24,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Dialog, DialogFooter } from "@/components/ui/dialog";
-import { AppDialogContent, AppDialogHeader } from "@/components/ui/app-dialog";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
@@ -33,6 +32,8 @@ import type { TourBookingOverlap } from "@shared/tour-booking-overlap"
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display"
 import { useTourClock } from "@/hooks/use-tour-clock"
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome'
+import { TourChatButton } from '@/components/chat/TourChatButton'
+import { TourAttendancePanel } from '@/components/tour/TourAttendancePanel'
 import { formatTourWhen } from "@/lib/chef-viewing-display"
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
@@ -76,6 +77,8 @@ interface ViewingRecord {
     completedAt: string | null
     createdAt: string
     updatedAt: string
+    checkedInAt?: string | null
+    checkedOutAt?: string | null
     requestedRescheduleAt: string | null
   }
   locationName: string | null
@@ -134,7 +137,7 @@ function getIntakeLabel(key: string): string {
     targetStartDate: mt("viewingIntakeTargetStart"),
     additionalInfo: mt("viewingIntakeNotes"),
   }
-  return labels[key] || key
+  return labels[key] || key.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " ")
 }
 
 function canReviewReschedule(viewing: ViewingRecord["viewing"]): boolean {
@@ -144,15 +147,24 @@ function canReviewReschedule(viewing: ViewingRecord["viewing"]): boolean {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface ViewingsDashboardProps {
+  tourId?: string
+  onOpenTour?: (id: number) => void
+  onBackToTours?: () => void
+  onConfigureNotes?: (kitchenId: number, locationId: number) => void
+  navigationGuardRef?: MutableRefObject<((navigate: () => void) => boolean) | null>
   locationId?: number
+  onSelectTourLocation?: (locationId: number) => void
   onConfigureTours?: () => void
   hasKitchen?: boolean
 }
 
-export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = true }: ViewingsDashboardProps) {
+export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigureTours, hasKitchen = true,
+  tourId, onOpenTour, onBackToTours, onConfigureNotes, navigationGuardRef }: ViewingsDashboardProps) {
   useTourClock()
   
   const queryClient = useQueryClient()
+  const [, navigate] = useLocation()
+  const heading = useRef<HTMLHeadingElement>(null)
   const [selectedViewing, setSelectedViewing] = useState<ViewingRecord | null>(null)
   const [statusAction, setStatusAction] = useState<string>("")
   const [managerNotes, setManagerNotes] = useState("")
@@ -164,7 +176,10 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
   const openedDeepLink = useRef<string | null>(null)
+  const selectedDeepLinkLocation = useRef<string | null>(null)
   const tourSearch = useSearch()
+  const exactId = tourId || new URLSearchParams(tourSearch).get('viewing')
+  const pendingNavigation = useRef<(() => void) | null>(null)
 
   // Fetch viewings
   const queryUrl = locationId
@@ -176,17 +191,53 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
     refetchInterval: 30000, // Poll every 30s
     refetchOnWindowFocus: true,
   })
+  // Exact links resolve through the existing current-manager endpoint, independently
+  // of the shell's previously selected location or caller-supplied location hint.
+  const exactQuery = useQuery<ViewingRecord[]>({
+    queryKey: ['/api/viewings/manager', 'exact-tour', exactId],
+    enabled: !!exactId,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    queryFn: async () => {
+      const response = await fetch('/api/viewings/manager', { headers: await getAuthHeaders() })
+      if (!response.ok) throw new Error('Tour unavailable')
+      return response.json()
+    },
+    refetchOnWindowFocus: true,
+  })
+  const exactRecord = exactQuery.data?.find(item => item.viewing.id === Number(exactId))
   useEffect(() => {
-    const id = new URLSearchParams(tourSearch).get("viewing")
+    if (exactId && !exactQuery.isLoading && (exactQuery.isError || !exactRecord)) setSelectedViewing(null)
+  }, [exactId, exactRecord, exactQuery.isLoading, exactQuery.isError])
+  useEffect(() => { heading.current?.focus({ preventScroll: true }) }, [selectedViewing?.viewing.id])
+  useEffect(() => {
+    if (openedDeepLink.current && openedDeepLink.current !== exactId) {
+      openedDeepLink.current = null
+      setSelectedViewing(null)
+      setStatusAction('')
+      setManagerNotes('')
+      setNoShowReason('')
+      setDisruptionReason('')
+      setCancellationReason('')
+    }
+  }, [exactId])
+  useEffect(() => {
+    if (!exactId) { selectedDeepLinkLocation.current = null; return }
+    if (!exactRecord || locationId === undefined || selectedDeepLinkLocation.current === exactId) return
+    selectedDeepLinkLocation.current = exactId
+    if (exactRecord.viewing.locationId !== locationId) onSelectTourLocation?.(exactRecord.viewing.locationId)
+  }, [exactId, exactRecord, locationId, onSelectTourLocation])
+  useEffect(() => {
+    const id = exactId
     if (!id) { openedDeepLink.current = null; return }
     if (openedDeepLink.current === id) return
-    const record = viewings?.find((item) => item.viewing.id === Number(id))
+    const record = exactRecord
     if (!record) return
     openedDeepLink.current = id
     setSelectedViewing(record)
     setStatusAction("view")
     setManagerNotes(record.viewing.sharedManagerNotes ?? "")
-  }, [viewings, tourSearch])
+  }, [exactRecord, exactId])
   useEffect(() => {
     setSelectedViewing(current => current
       ? viewings?.find(record => record.viewing.id === current.viewing.id) ?? current
@@ -197,6 +248,15 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
   const outcomeEligible = !!selectedViewing && hasTourConfirmation(selectedViewing.viewing)
     && (['confirmed', 'completed', 'no_show'].includes(selectedViewing.viewing.status) || !!selectedViewing.viewing.disruptionReason)
     && new Date(selectedViewing.viewing.scheduledAt).getTime() + selectedViewing.viewing.durationMinutes * 60_000 <= Date.now()
+  const nextStepKey = selectedViewing && statusAction === 'view'
+    ? selectedViewing.viewing.status === 'pending'
+      ? new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextReview' : 'tourNextExpired'
+      : canReviewReschedule(selectedViewing.viewing) ? 'tourNextReschedule'
+      : selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
+        ? outcomeEligible ? 'tourNextOutcome'
+          : new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextPrepare' : 'tourNextHost'
+        : null
+    : null
 
   const decisionKind = selectedViewing && canReviewReschedule(selectedViewing.viewing)
     ? "reschedule" : statusAction === "confirm" ? "confirm" : null
@@ -224,6 +284,11 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
       queryClient.invalidateQueries({ queryKey: ["tour-decision-context"] })
     }
   }
+  const refreshOverview = (updated: ViewingRecord['viewing']) => {
+    queryClient.setQueriesData<ViewingRecord[]>({ queryKey: ['managerViewings'] }, current => current?.map(record =>
+      record.viewing.id === updated.id ? { ...record, viewing: { ...record.viewing, ...updated } } : record))
+    queryClient.invalidateQueries({ queryKey: ['managerViewings'] })
+  }
   const reviewReschedule = useMutation({
     mutationFn: async ({ id, decision }: { id: number; decision: "accept" | "decline" }) => {
       const response = await fetch(`/api/viewings/manager/${id}/reschedule`, { method: "PATCH", headers: await getAuthHeaders(), body: JSON.stringify({ decision, ...decisionReview() }) })
@@ -232,6 +297,7 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
       return body
     },
     onSuccess: (data) => {
+      refreshOverview(data)
       queryClient.invalidateQueries({ queryKey: [queryUrl] })
       queryClient.invalidateQueries({ queryKey: ["tour-decision-context"] })
       closeDialog()
@@ -278,6 +344,7 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
       return response.json()
     },
     onSuccess: (updated) => {
+      refreshOverview(updated)
       queryClient.setQueryData<ViewingRecord[]>([queryUrl], (current = []) =>
         current.map((record) => record.viewing.id === updated.id
           ? { ...record, viewing: { ...record.viewing, ...updated } }
@@ -300,15 +367,30 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
     setDisruptionReason("")
     setCancellationReason("")
     setAcceptBookingOverlap(false)
+    if (exactId) onBackToTours?.()
   }
 
-  const requestClose = () => {
-    const hasUnsavedInput = managerNotes !== (selectedViewing?.viewing.sharedManagerNotes || "") || !!noShowReason || !!disruptionReason || !!cancellationReason.trim()
-    if (hasUnsavedInput) setConfirmExit(true)
-    else closeDialog()
+  const hasUnsavedInput = !!selectedViewing && (managerNotes !== (selectedViewing.viewing.sharedManagerNotes || "") || !!noShowReason || !!disruptionReason || !!cancellationReason.trim())
+  const guardNavigation = (navigate: () => void) => {
+    if (!hasUnsavedInput) return true
+    pendingNavigation.current = navigate
+    setConfirmExit(true)
+    return false
   }
+  const requestNavigation = (navigate: () => void) => { if (guardNavigation(navigate)) navigate() }
+  const requestClose = () => requestNavigation(closeDialog)
+  useEffect(() => {
+    if (navigationGuardRef) navigationGuardRef.current = guardNavigation
+    const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    if (hasUnsavedInput) window.addEventListener('beforeunload', preventLoss)
+    return () => {
+      if (navigationGuardRef) navigationGuardRef.current = null
+      window.removeEventListener('beforeunload', preventLoss)
+    }
+  })
 
   const handleStatusAction = (viewing: ViewingRecord, action: string) => {
+    if (action === 'view' && onOpenTour) { onOpenTour(viewing.viewing.id); return }
     setSelectedViewing(viewing)
     setStatusAction(action)
     setManagerNotes(viewing.viewing.sharedManagerNotes || "")
@@ -348,12 +430,16 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
     { id: "chef", header: mt("chef"), cell: ({ row }) => <div><div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />{row.original.chefName || row.original.chefUsername?.split("@")[0] || `Chef #${row.original.viewing.chefId}`}</div>{Object.keys(row.original.viewing.intakeData || {}).length > 0 && <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><FileText className="h-3 w-3" />{mt("hasIntakeData")}</div>}</div> },
     { id: "kitchen", header: mt("navLocation"), cell: ({ row }) => <div><div>{row.original.locationName || "—"}</div><div className="text-xs text-muted-foreground">{row.original.kitchenName}</div></div> },
     { id: "status", header: mt("status"), cell: ({ row }) => <div className="flex flex-col items-start gap-1">{row.original.viewing.status === "pending" && new Date(row.original.viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">Request expired</Badge> : getStatusBadge(row.original.viewing.status, row.original.viewing.cancelledBy, row.original.viewing.adminReviewDecision, row.original.viewing.disruptionReason)}{row.original.viewing.requestedRescheduleAt && <Badge variant="outline">Date change requested</Badge>}</div> },
-    { id: "actions", header: "", meta: { mobileHidden: true }, cell: ({ row }) => <Button variant="outline" size="sm" onClick={() => handleStatusAction(row.original, "view")}>{mt("viewDetails")}</Button> },
+    { id: "actions", header: "", meta: { mobileHidden: true }, cell: ({ row }) => <div className="flex gap-2"><TourChatButton tour={row.original.viewing} role="manager" /><Button variant="outline" size="sm" onClick={() => handleStatusAction(row.original, "view")}>{mt("viewDetails")}</Button></div> },
   ]
 
   return (
     <>
-      <div className="space-y-6">
+      {!selectedViewing && <div className="space-y-6">
+        {exactId && exactQuery.isLoading && <p role="status">{mt('tourDetailsLoading')}</p>}
+        {exactId && !exactQuery.isLoading && (exactQuery.isError || !exactRecord) &&
+          <div role="alert"><p>This tour is unavailable. Check your location access or try again.</p><Button variant="outline" onClick={() => void exactQuery.refetch()}>Try again</Button></div>}
+        {!exactId && <>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -385,80 +471,56 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
           ) : (
             <DataTable columns={columns} data={filteredTours} defaultSorting={[{ id: "scheduledAt", desc: true }]} pageSize={15} onRowClick={(record) => handleStatusAction(record, "view")} />
           )}
-      </div>
+        </>}
+      </div>}
 
-      {/* Detail / Action Dialog */}
-      <Dialog open={selectedViewing !== null} onOpenChange={(open) => !open && requestClose()}>
-        <AppDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
+      {selectedViewing && <section aria-label={mt('sheetViewingDetails')} className="space-y-6">
           {selectedViewing && (
             <>
-              <AppDialogHeader
-                icon={<Calendar className="h-5 w-5" />}
-                title={statusAction === "view" ? mt("sheetViewingDetails") : statusAction === "confirm" ? mt("sheetConfirmViewingRequest") : statusAction === "complete" ? mt("sheetMarkAsCompleted") : statusAction === "no_show" ? mt("sheetMarkAsNoShow") : mt("sheetCancelViewing")}
-                description={`${formatTourDate(new Date(selectedViewing.viewing.scheduledAt))} at ${formatTourClock(new Date(selectedViewing.viewing.scheduledAt))}`}
-                badge={getStatusBadge(selectedViewing.viewing.status, selectedViewing.viewing.cancelledBy, selectedViewing.viewing.adminReviewDecision, selectedViewing.viewing.disruptionReason)}
-              />
-
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-                {/* Viewing Info */}
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("viewingReference")}</span>
-                    <span className="font-medium">TOUR-{selectedViewing.viewing.id}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">{mt("submitted")}</span>
-                    <span className="text-right">{formatTourWhen(selectedViewing.viewing.createdAt, null, selectedViewing.locationTimezone || "America/St_Johns")}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">{mt("tourDateAndTime")}</span>
-                    <span className="text-right">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("chef")}</span>
-                    <span>
-                      {selectedViewing.chefName || selectedViewing.chefUsername?.split("@")[0] ||
-                        `Chef #${selectedViewing.viewing.chefId}`}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("navLocation")}</span>
-                    <span>{selectedViewing.locationName || "—"}</span>
-                  </div>
-                  {selectedViewing.locationAddress && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">{mt("address")}</span>
-                      <span className="text-right">{selectedViewing.locationAddress}</span>
-                    </div>
-                  )}
-                  {selectedViewing.chefEmail && (
-                    <div className="flex justify-between gap-4">
-                      <span className="flex items-center gap-1 text-muted-foreground"><Mail className="h-3.5 w-3.5" />Email</span>
-                      <a className="truncate text-primary hover:underline" href={`mailto:${selectedViewing.chefEmail}`}>{selectedViewing.chefEmail}</a>
-                    </div>
-                  )}
-                  {selectedViewing.chefPhone && (
-                    <div className="flex justify-between gap-4">
-                      <span className="flex items-center gap-1 text-muted-foreground"><Phone className="h-3.5 w-3.5" />Phone</span>
-                      <a className="text-primary hover:underline" href={`tel:${selectedViewing.chefPhone}`}>{selectedViewing.chefPhone}</a>
-                    </div>
-                  )}
-                  {selectedViewing.kitchenName && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{mt("kitchenInterest")}</span>
-                      <span>{selectedViewing.kitchenName}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("duration")}</span>
-                    <span>{mt("minutesLong", { count: selectedViewing.viewing.durationMinutes })}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("status")}</span>
-                    {getStatusBadge(selectedViewing.viewing.status, selectedViewing.viewing.cancelledBy, selectedViewing.viewing.adminReviewDecision, selectedViewing.viewing.disruptionReason)}
-                  </div>
+              <header className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">TOUR-{selectedViewing.viewing.id} · {selectedViewing.chefName || mt('chef')}</h1>
+                  <p className="text-sm text-muted-foreground">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p>
                 </div>
+                {getStatusBadge(selectedViewing.viewing.status, selectedViewing.viewing.cancelledBy, selectedViewing.viewing.adminReviewDecision, selectedViewing.viewing.disruptionReason)}
+              </header>
+              {nextStepKey && <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5" aria-label={mt('tourNextStep')}>
+                <h2 className="font-semibold">{mt('tourNextStep')}</h2>
+                <p className="text-sm">{mt(nextStepKey)}</p>
+                {nextStepKey === 'tourNextReview' && <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending}>{mt('acceptViewing')}</Button>
+                  <Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('declineRequest')}</Button>
+                </div>}
+              </section>}
+              <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+              <div className="min-w-0 space-y-4 rounded-xl border bg-card">
 
+              <div className="space-y-5 p-5 sm:p-6">
+                <div className="space-y-3 text-sm">
+                  <div><p className="font-medium">{selectedViewing.kitchenName || selectedViewing.locationName}</p>{selectedViewing.kitchenName && <p className="text-muted-foreground">{selectedViewing.locationName}</p>}{selectedViewing.locationAddress && <p className="text-muted-foreground">{selectedViewing.locationAddress}</p>}</div>
+                </div>
+                <section className="space-y-4 rounded-lg border bg-background p-4" aria-label={mt('tourChefDetailsTitle')}>
+                  <h2 className="font-semibold">{mt('tourChefDetailsTitle')}</h2>
+                  <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
+                    <div><dt className="text-xs text-muted-foreground">{mt('chef')}</dt><dd className="mt-1 font-medium">{selectedViewing.chefName || selectedViewing.chefUsername || mt('tourNotShared')}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{mt('tourChefEmail')}</dt><dd className="mt-1 break-all">{selectedViewing.chefEmail ? <a className="text-primary underline underline-offset-2" href={`mailto:${selectedViewing.chefEmail}`}>{selectedViewing.chefEmail}</a> : mt('tourNotShared')}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">{mt('tourChefPhone')}</dt><dd className="mt-1">{selectedViewing.chefPhone ? <a className="text-primary underline underline-offset-2" href={`tel:${selectedViewing.chefPhone}`}>{selectedViewing.chefPhone}</a> : mt('tourNotShared')}</dd></div>
+                  </dl>
+                </section>
+                <section className="space-y-4 rounded-lg border bg-background p-4" aria-label={mt('tourChefRequestDetails')}>
+                  <h2 className="font-semibold">{mt('tourChefRequestDetails')}</h2>
+                  <dl className="grid gap-4 sm:grid-cols-2">
+                    <div><dt className="text-xs text-muted-foreground">{mt('tourRequestedTime')}</dt><dd className="mt-1 text-sm">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</dd></div>
+                    {selectedViewing.viewing.createdAt && <div><dt className="text-xs text-muted-foreground">{mt('tourRequestSubmitted')}</dt><dd className="mt-1 text-sm">{formatTourWhen(selectedViewing.viewing.createdAt, null, selectedViewing.locationTimezone || 'America/St_Johns')}</dd></div>}
+                  </dl>
+                  <div className="space-y-1 border-t pt-3"><p className="text-sm font-medium">{mt('chefSNotes')}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{selectedViewing.viewing.chefNotes?.trim() || mt('tourNoChefNotes')}</p></div>
+                  {!!Object.keys(selectedViewing.viewing.intakeData || {}).length && <div className="space-y-3 border-t pt-3">
+                    <dl className="grid min-w-0 gap-4 sm:grid-cols-2">{Object.entries(selectedViewing.viewing.intakeData)
+                      .filter(([, value]) => value != null && value !== '' && ['string','number','boolean'].includes(typeof value))
+                      .map(([key,value]) => <div key={key}><dt className="text-xs text-muted-foreground">{getIntakeLabel(key)}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{typeof value === 'boolean' ? mt(value ? 'yes' : 'no') : String(value).replaceAll('_',' ')}</dd></div>)}</dl>
+                  </div>}
+                </section>
+                {selectedViewing.viewing.checkedInAt && <TourAttendancePanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} />}
                 {decisionKind && (
                   <div className="space-y-3 rounded-md border p-4" aria-live="polite">
                     <p className="text-sm font-medium">{mt("tourOverlappingBookings")}</p>
@@ -498,19 +560,6 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
                   </div>
                 )}
 
-                {/* Chef Notes */}
-                {selectedViewing.viewing.chefNotes && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">{mt("chefSNotes")}</p>
-                      <p className="text-sm bg-muted/50 p-2 rounded">
-                        {selectedViewing.viewing.chefNotes}
-                      </p>
-                    </div>
-                  </>
-                )}
-
                 {/* Intake Data */}
                 {selectedViewing.viewing.sharedManagerNotes && statusAction === 'view' && <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">{mt('tourMessageToChefOptional')}</p>
@@ -524,37 +573,6 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
                     {entry.sharedNotes && <p className="whitespace-pre-wrap">{entry.sharedNotes}</p>}
                   </div>)}
                 </details>}
-                {selectedViewing.viewing.intakeData &&
-                  Object.keys(selectedViewing.viewing.intakeData).length > 0 && (
-                    <>
-                      <Separator />
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">{mt("preViewingScreening")}</p>
-                        <div className="space-y-1.5 bg-blue-50/50 p-3 rounded-md border border-blue-100">
-                          {Object.entries(selectedViewing.viewing.intakeData)
-                            .filter(([_, v]) => v != null && v !== "")
-                            .map(([key, value]) => (
-                              <div
-                                key={key}
-                                className="flex justify-between text-xs sm:text-sm"
-                              >
-                                <span className="text-muted-foreground">
-                                  {getIntakeLabel(key)}
-                                </span>
-                                <span className="font-medium break-words text-right">
-                                  {typeof value === "boolean"
-                                    ? value
-                                      ? mt("yes")
-                                      : mt("no")
-                                    : typeof value === "object" ? JSON.stringify(value) : String(value).replace(/_/g, " ")}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-
                 {/* Action Forms */}
                 {statusAction !== "view" && (
                   <>
@@ -612,7 +630,7 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
               </div>
 
               {statusAction !== "view" && (
-                <DialogFooter className="flex flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:space-x-0">
+                <div className="flex flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:space-x-0">
                   <Button
                     variant="ghost"
                     onClick={requestClose}
@@ -656,42 +674,48 @@ export function ViewingsDashboard({ locationId, onConfigureTours, hasKitchen = t
                     {statusAction === "cancel" && mt("cancelViewing")}
                     {statusAction === "disrupt" && mt("tourRecordDisruption")}
                   </Button>
-                </DialogFooter>
+                </div>
               )}
 
               {statusAction === "view" && outcomeEligible && (
-                <DialogFooter className="flex flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:space-x-0">
+                <div className="flex flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:space-x-0">
                   {!selectedViewing.viewing.disruptionReason && <Button variant="outline" onClick={() => { setManagerNotes(''); setStatusAction('disrupt') }}>{mt('tourRecordDisruption')}</Button>}
                   {selectedViewing.viewing.status !== 'no_show' && <Button variant="outline" onClick={() => { if (correctingOutcome) setManagerNotes(''); setStatusAction('no_show') }}>{mt('markNoShow')}</Button>}
                   {selectedViewing.viewing.status !== 'completed' && <Button onClick={() => { if (correctingOutcome) setManagerNotes(''); setStatusAction('complete') }}>{mt('markCompleted')}</Button>}
-                </DialogFooter>
+                </div>
               )}
-              {statusAction === 'view' && selectedViewing.viewing.status === 'pending' && new Date(selectedViewing.viewing.scheduledAt).getTime() <= Date.now() && <DialogFooter className="border-t px-6 py-4"><Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button></DialogFooter>}
+              {statusAction === 'view' && selectedViewing.viewing.status === 'pending' && new Date(selectedViewing.viewing.scheduledAt).getTime() <= Date.now() && <div className="border-t px-6 py-4"><Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button></div>}
 
-              {statusAction === "view" && selectedViewing.viewing.status === "pending" && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && (
-                <DialogFooter className="flex flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:space-x-0">
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => setStatusAction("cancel")}
-                  >{mt("declineRequest")}</Button>
-                  <Button
-                    className="w-full sm:w-auto"
-                    disabled={updateStatusMutation.isPending}
-                    onClick={() => setStatusAction("confirm")}
-                  >{mt("acceptViewing")}</Button>
-                </DialogFooter>
-              )}
               {statusAction === "view" && selectedViewing.viewing.status === "confirmed" && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && (
-                <DialogFooter className="border-t px-6 py-4 sm:space-x-0">
+                <div className="border-t px-6 py-4 sm:space-x-0">
                   <Button variant="outline" onClick={() => setStatusAction("cancel")}>{mt("cancelViewing")}</Button>
-                </DialogFooter>
+                </div>
               )}
+              </div>
+              <aside className="space-y-4">
+                {['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() + selectedViewing.viewing.durationMinutes * 60_000 > Date.now() && <Card><CardContent className="space-y-3 p-5">
+                  <h2 className="font-semibold">{mt('tourVisitNotesTitle')}</h2>
+                  <p className="text-sm text-muted-foreground">{mt('tourNotesOptionalHelp')}</p>
+                  {selectedViewing.viewing.targetedKitchenId && onConfigureNotes && <Button variant="outline" className="w-full" onClick={() => requestNavigation(() => onConfigureNotes(selectedViewing.viewing.targetedKitchenId!, selectedViewing.viewing.locationId))}>{mt('tourEditVisitNotes')}</Button>}
+                </CardContent></Card>}
+                <Card><CardContent className="space-y-3 p-5">
+                  <h2 className="font-semibold">{mt('tourVisitorContactTitle')}</h2>
+                  <p className="text-sm text-muted-foreground">{mt('tourVisitorContactHelp')}</p>
+                  <TourChatButton tour={selectedViewing.viewing} role="manager" onNavigate={path => requestNavigation(() => navigate(path))} />
+                </CardContent></Card>
+                <CommitmentProblems kind="tour" id={selectedViewing.viewing.id} role="manager" canReport />
+              </aside>
+              </div>
             </>
           )}
-        </AppDialogContent>
-      </Dialog>
-      <UnsavedChangesDialog open={confirmExit} onOpenChange={setConfirmExit} description={mt("tourUnsavedDescription")} onDiscard={() => { setConfirmExit(false); closeDialog(); }} />
+      </section>}
+      <UnsavedChangesDialog open={confirmExit} onOpenChange={setConfirmExit} description={mt("tourUnsavedDescription")} onDiscard={() => {
+        setConfirmExit(false);
+        const navigate = pendingNavigation.current;
+        pendingNavigation.current = null;
+        if (navigationGuardRef) navigationGuardRef.current = null;
+        navigate?.();
+      }} />
 
     </>
   )

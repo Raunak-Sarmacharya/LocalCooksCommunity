@@ -5,6 +5,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
+import { adminAuthReturn } from '@/lib/auth-return';
 
 interface AdminProtectedRouteProps {
   children: React.ReactNode;
@@ -108,14 +109,14 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
       firebaseUser,
       firebaseLoading
     });
-    return <Redirect to="/admin/login" />;
+    return <Redirect to={`/admin/login?redirect=${encodeURIComponent(adminAuthReturn(window.location.pathname + window.location.search))}`} />;
   }
 
   // Check if user has admin role
   if (!isAdmin) {
     logger.info('AdminProtectedRoute - User is not an admin, redirecting to login. User role:', user.role);
     logger.info('AdminProtectedRoute - Full user object:', user);
-    return <Redirect to="/admin/login" />;
+    return <Redirect to={`/admin/login?redirect=${encodeURIComponent(adminAuthReturn(window.location.pathname + window.location.search))}`} />;
   }
 
   // Terms acceptance gate
@@ -129,7 +130,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
 
   if (needsAcceptance) {
     logger.info('AdminProtectedRoute - Terms not accepted, redirecting to /accept-terms');
-    const redirectParam = encodeURIComponent(location);
+    const redirectParam = encodeURIComponent(adminAuthReturn(window.location.pathname + window.location.search));
     return <Redirect to={`/accept-terms?redirect=${redirectParam}`} />;
   }
 

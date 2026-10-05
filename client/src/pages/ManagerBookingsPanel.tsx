@@ -1,3 +1,4 @@
+import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
@@ -70,6 +71,8 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
   const { locations, kitchens } = useManagerDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [refundReviewScope, setRefundReviewScope] = useState<{ kind: 'storage' | 'equipment'; id: number } | undefined>();
+  const [refundReviewId, setRefundReviewId] = useState<number | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
@@ -390,7 +393,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
   });
 
   const handleAcceptCancellation = (booking: Booking) => {
-    cancellationRequestMutation.mutate({ bookingId: booking.id, action: 'accept' });
+    setRefundReviewScope(undefined); setRefundReviewId(booking.id);
   };
 
   const handleDeclineCancellation = (booking: Booking) => {
@@ -399,7 +402,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
 
   // Direct-call versions for PendingCancellationRequests component (has its own confirm dialog)
   const handleAcceptKitchenCancellationById = (bookingId: number) => {
-    cancellationRequestMutation.mutate({ bookingId, action: 'accept' });
+    setRefundReviewScope(undefined); setRefundReviewId(bookingId);
   };
   const handleDeclineKitchenCancellationById = (bookingId: number) => {
     cancellationRequestMutation.mutate({ bookingId, action: 'decline' });
@@ -442,7 +445,8 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
   });
 
   const handleAcceptStorageCancellation = (storageBookingId: number) => {
-    storageCancellationMutation.mutate({ storageBookingId, action: 'accept' });
+    const parent = bookings.find((booking: Booking) => (booking.storageItems || []).some(item => item.storageBookingId === storageBookingId));
+    if (parent) { setRefundReviewScope({ kind: 'storage', id: storageBookingId }); setRefundReviewId(parent.id); }
   };
 
   const handleDeclineStorageCancellation = (storageBookingId: number) => {
@@ -613,6 +617,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
    */
   const content = (
     <div className={embedded ? "flex-1" : undefined}>
+      {refundReviewId !== null && <CancellationRefundReview bookingId={refundReviewId} scope={refundReviewScope} open onOpenChange={value => { if (!value) setRefundReviewId(null); }} />}
       <div className={embedded ? "w-full" : undefined}>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-md">

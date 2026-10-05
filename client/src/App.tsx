@@ -280,7 +280,9 @@ function Router() {
         <SubdomainRoute path="/book-kitchen" component={LegacyKitchenBookingRedirect} subdomain={subdomain} />
         <SubdomainRoute path="/book-kitchen/confirm" component={LegacyKitchenBookingRedirect} subdomain={subdomain} />
         <SubdomainRoute path="/payment-success" component={PaymentSuccessPage} subdomain={subdomain} />
-        <SubdomainRoute path="/booking/:id" component={BookingDetailsPage} subdomain={subdomain} />
+        <SubdomainRoute path="/booking/:id" subdomain={subdomain}>
+          <ProtectedRoute path="/booking/:id" component={BookingDetailsPage} />
+        </SubdomainRoute>
 
         {/* Kitchen Application Routes */}
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
@@ -321,6 +323,13 @@ function Router() {
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
               <Redirect to="/manager/dashboard?view=profile" replace />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
+        <Route path="/manager/tours/:id">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerBookingDashboard />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

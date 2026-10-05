@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   // Sentry (Error Tracking & Performance)
   readonly VITE_SENTRY_DSN: string;
   readonly VITE_VERCEL_ENV: string;
+  readonly VITE_FIRESTORE_DATABASE_ID?: string;
   readonly VITE_VERCEL_GIT_COMMIT_SHA: string;
 }
 

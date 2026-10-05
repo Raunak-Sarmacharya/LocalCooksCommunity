@@ -9,7 +9,7 @@
 import { useState, useCallback } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { Plus, Trash2, Camera, ClipboardCheck, Lock, Eye, Info, Calendar, LogIn, LogOut, Upload } from "@/components/ui/manager-icons";
+import { Plus, Trash2, Camera, ClipboardCheck,  Eye, Info, Calendar, LogIn, LogOut, Upload } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ export interface ChecklistItem {
   label: string;
   description?: string;
   required: boolean;
-  category: "general" | "safety" | "equipment" | "smart_lock";
+  category: "general" | "safety" | "equipment";
   /**
    * When true, the chef must upload a photo alongside checking this item off.
    * Used by CheckinCheckoutSettings to fold photo requirements into items.
@@ -203,14 +203,12 @@ function PhotoRequirementRow({
 function ChefViewPreview({
   title,
   instructions,
-  smartLockInstructions,
   items,
   photoRequirements,
   type,
 }: {
   title: string;
   instructions: string | null;
-  smartLockInstructions?: string | null;
   items: ChecklistItem[];
   photoRequirements: PhotoRequirement[];
   type: PreviewType;
@@ -236,25 +234,6 @@ function ChefViewPreview({
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
           <p className="text-xs text-blue-800 font-medium mb-1">{mt("instructionsFromManager")}</p>
           <p className="text-xs text-blue-700 whitespace-pre-line">{instructions}</p>
-        </div>
-      )}
-
-      {/* Smart lock (check-in only) */}
-      {type === "checkin" && smartLockInstructions && (
-        <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-2">
-          <div className="flex items-center gap-1.5">
-            <Lock className="size-3.5 text-violet-600" />
-            <p className="text-xs text-violet-800 font-medium">{mt("smartLockAccess")}</p>
-          </div>
-          <p className="text-xs text-violet-700 whitespace-pre-line">
-            {smartLockInstructions}
-          </p>
-          <div className="flex items-center gap-2 p-2 rounded-md bg-violet-100 border border-violet-300">
-            <span className="text-lg font-mono font-bold text-violet-900 tracking-[0.2em]">
-              A1B2C3
-            </span>
-            <span className="text-[10px] text-violet-600 ml-auto">{mt("sampleCode")}</span>
-          </div>
         </div>
       )}
 
@@ -312,8 +291,7 @@ function ChefViewPreview({
       {/* Empty state */}
       {filledItems.length === 0 &&
         filledPhotos.length === 0 &&
-        !instructions &&
-        !smartLockInstructions && (
+        !instructions && (
           <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
             <Info className="size-5 mx-auto mb-2" />
             <p>{mt("noChecklistItemsOrPhotosConfiguredYet")}</p>
@@ -350,8 +328,6 @@ export interface ChecklistSectionProps {
   onPhotoRequirementsChange: (items: PhotoRequirement[]) => void;
   instructions: string | null;
   onInstructionsChange: (val: string | null) => void;
-  smartLockInstructions?: string | null;
-  onSmartLockInstructionsChange?: (val: string | null) => void;
   type: "checkin" | "checkout";
   previewType: PreviewType;
 }
@@ -369,8 +345,6 @@ export function ChecklistSection({
   onPhotoRequirementsChange,
   instructions,
   onInstructionsChange,
-  smartLockInstructions,
-  onSmartLockInstructionsChange,
   type,
   previewType,
 }: ChecklistSectionProps) {
@@ -501,29 +475,6 @@ export function ChecklistSection({
             />
           </div>
 
-          {/* Smart Lock Instructions (checkin only) */}
-          {type === "checkin" && onSmartLockInstructionsChange && (
-            <div className="p-3 rounded-lg border border-violet-200 bg-violet-50/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Lock className="size-4 text-violet-600" />
-                <Label
-                  htmlFor={`smart-lock-instructions-${previewType}`}
-                  className="text-sm font-medium text-violet-900"
-                >
-                  {mt("smartLockInstructionsLabel")} <span className="text-violet-500 font-normal">{mt("optionalLabel")}</span>
-                </Label>
-              </div>
-              <Textarea
-                id={`smart-lock-instructions-${previewType}`}
-                value={smartLockInstructions || ""}
-                onChange={(e) => onSmartLockInstructionsChange(e.target.value || null)}
-                placeholder={mt("smartLockAccessPlaceholder")}
-                rows={2}
-                className="border-violet-200 bg-white"
-              />
-            </div>
-          )}
-
           {/* Checklist Items — always visible */}
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -603,7 +554,6 @@ export function ChecklistSection({
           <ChefViewPreview
             title={title}
             instructions={instructions}
-            smartLockInstructions={smartLockInstructions}
             items={items}
             photoRequirements={photoRequirements}
             type={previewType}

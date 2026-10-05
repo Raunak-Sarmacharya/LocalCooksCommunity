@@ -1,3 +1,5 @@
+import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
+import { queueStorageClearance, attemptOutcomeDelivery } from './outcome-delivery';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 /**
  * Storage Checkout Service
@@ -27,7 +29,10 @@ import {
   storageCheckinStatusEnum,
   damageEvidence,
 } from "@shared/schema";
-import { eq, desc, and, or, inArray, lt, isNull } from "drizzle-orm";
+import { eq, desc, and, or, inArray, lt, isNull, sql } from "drizzle-orm";
+import { storageDuties } from './visit-duties';
+import { validateDutySection, readVisitDuties } from '@shared/visit-duties';
+import { queueStorageVisitAction } from './outcome-delivery';
 import { logger } from "../logger";
 
 // ============================================================================
@@ -200,20 +205,21 @@ export async function requestStorageCheckout(
 
     // Verify check-in has been completed before allowing checkout.
     // You cannot check out of a storage unit you haven't checked into.
+    const duties = await storageDuties(storageBookingId);
     const currentCheckinStatus = (row.checkinStatus ?? 'not_checked_in') as string;
-    if (!row.cancellationAcceptedAt && (currentCheckinStatus === 'not_checked_in' || currentCheckinStatus === 'checkin_requested')) {
+    if (!row.cancellationAcceptedAt && duties.arrival.enabled && (currentCheckinStatus === 'not_checked_in' || currentCheckinStatus === 'checkin_requested')) {
       return { success: false, error: 'You must complete check-in before requesting checkout. Please submit your move-in inspection first.' };
     }
 
     // Enforce photo requirements against the manager-configured checklist.
     const { validateRequiredPhotos, validateRequiredChecklistItems } = await import('./kitchen-checkout-service');
-    const photoValidation = await validateRequiredPhotos(locationId, 'storage_checkout', checkoutPhotoUrls);
+    const photoValidation = validateDutySection(duties.departure, checkoutPhotoUrls, checkoutChecklistItems);
     if (!photoValidation.valid) {
       return { success: false, error: photoValidation.error };
     }
 
     // Enforce checklist item requirements against the manager-configured checklist.
-    const checklistValidation = await validateRequiredChecklistItems(locationId, 'storage_checkout', checkoutChecklistItems);
+    const checklistValidation = { valid: true, error: undefined };
     if (!checklistValidation.valid) {
       return { success: false, error: checklistValidation.error };
     }
@@ -221,6 +227,10 @@ export async function requestStorageCheckout(
     // Update the booking with checkout request
     await db.transaction(async tx => {
       if (row.kitchenBookingId) await tx.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id, row.kitchenBookingId)).for('update');
+      await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${storageBookingId} FOR UPDATE`);
+      const captured = await storageDuties(storageBookingId, tx, 'legacy_first_action');
+      const validation = validateDutySection(captured.departure, checkoutPhotoUrls, checkoutChecklistItems);
+      if (!validation.valid) throw Error(validation.error);
       const changed = await tx
       .update(storageBookings)
       .set({
@@ -237,7 +247,9 @@ export async function requestStorageCheckout(
       })
       .where(and(eq(storageBookings.id, storageBookingId), eq(storageBookings.updatedAt, row.updatedAt))).returning({ id: storageBookings.id });
       if (!changed.length) throw new Error('Storage changed; refresh before requesting checkout');
-      if (row.kitchenBookingId) await queueBookingLifecycleEvent(tx, row.kitchenBookingId, 'storage_checkout_requested', 'Storage checkout requested', 'The chef requested storage checkout. The kitchen manager must confirm removal before occupied storage is released.', chefId, { storageBookingId });
+      const { scheduleAdvanceReminders } = await import('./advance-reminders');
+      await scheduleAdvanceReminders(tx, 'storage_review', storageBookingId);
+      await queueStorageVisitAction(tx, storageBookingId, 'departure', chefId);
     });
 
     logger.info(`[StorageCheckout] Chef ${chefId} requested checkout for storage booking ${storageBookingId}`, {
@@ -245,13 +257,7 @@ export async function requestStorageCheckout(
       photoCount: checkoutPhotoUrls?.length || 0,
     });
 
-    // Send notification to manager
-    try {
-      if (!row.kitchenBookingId) await sendCheckoutRequestNotification(storageBookingId, chefId);
-    } catch (notifyError) {
-      logger.error(`[StorageCheckout] Error sending checkout notification:`, notifyError);
-      // Don't fail the request if notification fails
-    }
+    await attemptOutcomeDelivery();
 
     return {
       success: true,
@@ -345,19 +351,27 @@ export async function requestStorageCheckin(
 
     // Enforce photo requirements against the manager-configured check-in checklist.
     const { validateRequiredPhotos, validateRequiredChecklistItems } = await import('./kitchen-checkout-service');
-    const photoValidation = await validateRequiredPhotos(locationId, 'storage_checkin', checkinPhotoUrls);
+    const duties = await storageDuties(storageBookingId);
+    if (!duties.arrival.enabled) return { success: false, error: 'Storage check-in is not required. Use storage checkout or contact the kitchen manager to confirm removal.' };
+    const photoValidation = validateDutySection(duties.arrival, checkinPhotoUrls, checkinChecklistItems);
     if (!photoValidation.valid) {
       return { success: false, error: photoValidation.error };
     }
 
     // Enforce checklist item requirements against the manager-configured check-in checklist.
-    const checklistValidation = await validateRequiredChecklistItems(locationId, 'storage_checkin', checkinChecklistItems);
+    const checklistValidation = { valid: true, error: undefined };
     if (!checklistValidation.valid) {
       return { success: false, error: checklistValidation.error };
     }
 
     // Auto-approve storage check-in (no manager approval required)
-    await db
+    await db.transaction(async tx => {
+    if (row.kitchenBookingId) await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${row.kitchenBookingId} FOR UPDATE`);
+    await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${storageBookingId} FOR UPDATE`);
+    const captured = await storageDuties(storageBookingId, tx, 'legacy_first_action');
+    const validation = validateDutySection(captured.arrival, checkinPhotoUrls, checkinChecklistItems);
+    if (!validation.valid) throw Error(validation.error);
+    const changed = await tx
       .update(storageBookings)
       .set({
         checkinStatus: 'checkin_completed',
@@ -367,7 +381,12 @@ export async function requestStorageCheckin(
         checkinChecklistItems: checkinChecklistItems || [],
         updatedAt: new Date(),
       })
-      .where(eq(storageBookings.id, storageBookingId));
+      .where(and(eq(storageBookings.id, storageBookingId), eq(storageBookings.updatedAt, row.updatedAt), eq(storageBookings.status, row.status))).returning({ id: storageBookings.id });
+    if (!changed.length) throw Error('Storage changed; refresh before recording arrival');
+    await queueStorageVisitAction(tx, storageBookingId, 'arrival', chefId);
+    const { scheduleAdvanceReminders } = await import('./advance-reminders');
+    await scheduleAdvanceReminders(tx, 'storage_arrival', storageBookingId);
+    });
 
     logger.info(`[StorageCheckin] Chef ${chefId} auto-checked in to storage booking ${storageBookingId}`, {
       hasPhotos: (checkinPhotoUrls?.length || 0) > 0,
@@ -646,73 +665,7 @@ async function sendCheckoutRequestNotification(storageBookingId: number, chefId:
  * Send notification to chef when storage is cleared (no issues).
  * @param isAutoClear - true if cleared by system (review window expired)
  */
-async function sendCheckoutClearedNotification(
-  storageBookingId: number,
-  chefId: number | null,
-  isAutoClear: boolean = false
-): Promise<void> {
-  try {
-    if (!chefId) return;
 
-    const [chef] = await db
-      .select({ username: users.username })
-      .from(users)
-      .where(eq(users.id, chefId))
-      .limit(1);
-
-    if (!chef?.username) return;
-
-    const [booking] = await db
-      .select({
-        storageName: storageListings.name,
-        kitchenName: kitchens.name,
-      })
-      .from(storageBookings)
-      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-      .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-      .where(eq(storageBookings.id, storageBookingId))
-      .limit(1);
-
-    if (!booking) return;
-
-    const { sendEmail } = await import('../email');
-
-    const clearedBy = isAutoClear ? 'automatically (review window expired with no issues reported)' : 'by the kitchen manager';
-    const emailContent = {
-      to: chef.username,
-      subject: `Storage Cleared \u2014 No Issues - ${booking.storageName}`,
-      html: `
-        <h2>Storage Checkout Complete</h2>
-        <p>Your storage checkout has been cleared ${clearedBy}.</p>
-        <table style="border-collapse: collapse; margin: 20px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Status:</strong></td><td style="padding: 8px; border: 1px solid #ddd; color: #16a34a; font-weight: 600;">Storage Cleared \u2014 No Issues</td></tr>
-        </table>
-        <p>Your storage booking has been successfully completed. Thank you for using Local Cooks!</p>
-      `,
-      text: `Storage Checkout Complete\n\nYour storage checkout has been cleared ${clearedBy}.\n\nStorage: ${booking.storageName}\nKitchen: ${booking.kitchenName}\nStatus: Storage Cleared \u2014 No Issues\n\nThank you for using Local Cooks!`,
-    };
-    await sendEmail(emailContent);
-
-    // In-app notification for chef
-    try {
-      const { notificationService } = await import('./notification.service');
-      await notificationService.notifyChefStorageCheckoutCleared({
-        chefId,
-        storageName: booking.storageName || 'Storage',
-        storageBookingId,
-        isAutoClear,
-      });
-    } catch (notifError) {
-      logger.error(`[StorageCheckout] Error sending cleared in-app notification:`, notifError);
-    }
-
-    logger.info(`[StorageCheckout] Sent cleared notification to chef ${chef.username} (autoClear: ${isAutoClear})`);
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error sending cleared notification:`, error);
-  }
-}
 
 /**
  * Send notification to chef when kitchen files a damage/cleaning claim during checkout review.
@@ -860,7 +813,7 @@ async function processCheckoutClear(
   managerNotes?: string
 ): Promise<CheckoutReviewResult> {
   // Get the storage booking
-  const [booking] = await db
+  const [booking]=await db
     .select({
       id: storageBookings.id,
       kitchenBookingId: storageBookings.kitchenBookingId,
@@ -868,56 +821,55 @@ async function processCheckoutClear(
       checkoutStatus: storageBookings.checkoutStatus,
     })
     .from(storageBookings)
-    .where(eq(storageBookings.id, storageBookingId))
+    .where(eq(storageBookings.id,storageBookingId))
     .limit(1);
 
-  if (!booking) {
-    return { success: false, error: 'Storage booking not found' };
+  if(!booking) {
+    return { success: false,error: 'Storage booking not found' };
   }
 
   // Verify manager has permission
-  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
-  if (!hasPermission) {
-    return { success: false, error: 'You do not have permission to review this checkout' };
+  const hasPermission=await verifyManagerPermission(storageBookingId,managerId);
+  if(!hasPermission) {
+    return { success: false,error: 'You do not have permission to review this checkout' };
   }
 
   // Verify checkout status allows review
-  const currentCheckoutStatus = booking.checkoutStatus as CheckoutStatus | null;
-  if (currentCheckoutStatus !== 'checkout_requested') {
-    return { success: false, error: `Cannot process checkout in status: ${currentCheckoutStatus || 'active'}` };
+  const currentCheckoutStatus=booking.checkoutStatus as CheckoutStatus|null;
+  if(currentCheckoutStatus!=='checkout_requested') {
+    return { success: false,error: `Cannot process checkout in status: ${currentCheckoutStatus||'active'}` };
   }
 
   // Clear the storage — mark as completed
   await db.transaction(async tx => {
-    if (booking.kitchenBookingId) await tx.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id, booking.kitchenBookingId)).for('update');
-    const changed = await tx
-    .update(storageBookings)
-    .set({
-      checkoutStatus: 'completed',
-      checkoutApprovedAt: new Date(),
-      checkoutApprovedBy: managerId,
-      checkoutNotes: managerNotes
-        ? `Manager: ${managerNotes}`
-        : 'Storage cleared — no issues found',
-      status: 'completed',
-      updatedAt: new Date(),
-    })
-    .where(and(eq(storageBookings.id, storageBookingId), eq(storageBookings.checkoutStatus, 'checkout_requested'))).returning({ id: storageBookings.id });
-    if (!changed.length) throw new Error('Checkout changed; refresh before reviewing');
-    if (booking.kitchenBookingId) await queueBookingLifecycleEvent(tx, booking.kitchenBookingId, 'storage_removed', 'Storage removal confirmed', 'The kitchen manager confirmed that storage has been cleared.', managerId, { storageBookingId });
+    if(booking.kitchenBookingId) await tx.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id,booking.kitchenBookingId)).for('update');
+    await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${storageBookingId} FOR UPDATE`);
+    const [current] = await tx.select().from(storageBookings).where(eq(storageBookings.id, storageBookingId)).limit(1);
+    if (!current || current.checkoutStatus !== 'checkout_requested') throw Error('Checkout changed; refresh before reviewing');
+    const changed=await tx
+      .update(storageBookings)
+      .set({
+        checkoutStatus: 'completed',
+        checkoutApprovedAt: new Date(),
+        checkoutApprovedBy: managerId,
+        assistanceHistory: [...(Array.isArray(current.assistanceHistory) ? current.assistanceHistory : []), {
+          actorId: managerId, action: 'inspection_and_removal_confirmed', reason: managerNotes || 'Manager confirmed storage clearance and removal',
+          actualAt: new Date().toISOString(), recordedAt: new Date().toISOString(), previousStatus: current.checkoutStatus }],
+        status: 'completed',
+        updatedAt: new Date(),
+      })
+      .where(and(eq(storageBookings.id,storageBookingId),eq(storageBookings.checkoutStatus,'checkout_requested'))).returning({ id: storageBookings.id });
+    if(!changed.length) throw new Error('Checkout changed; refresh before reviewing');
+    if(booking.kitchenBookingId) await queueBookingLifecycleEvent(tx,booking.kitchenBookingId,'storage_removed','Storage removal confirmed','The kitchen manager confirmed that storage has been cleared.',managerId,{ storageBookingId,recipientPolicy: 'chef' });
+    else await queueStorageClearance(tx,storageBookingId);
   });
 
   logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} — no issues`);
   // Freeze accrued overstay time only after the manager confirms physical removal.
-  const { detectOverstays } = await import('./overstay-penalty-service');
-  try { await detectOverstays(); } catch (error) { logger.error('Storage checkout saved; overstay finalization will retry on the scheduler', error); }
+  const { detectOverstays }=await import('./overstay-penalty-service');
+  try { await detectOverstays(); } catch(error) { logger.error('Storage checkout saved; overstay finalization will retry on the scheduler',error); }
 
-  // Send notification to chef
-  try {
-    if (!booking.kitchenBookingId) await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
-  } catch (notifyError) {
-    logger.error(`[StorageCheckout] Error sending cleared notification:`, notifyError);
-  }
+  await attemptOutcomeDelivery();
 
   return {
     success: true,
@@ -992,6 +944,7 @@ async function processCheckoutStartClaim(
     bookingType: 'storage',
     storageBookingId,
     managerId,
+    checkoutHandoffKey: `storage:${storageBookingId}:${booking.checkoutRequestedAt?.toISOString() || 'legacy'}`,
     claimTitle: claimData.claimTitle.trim(),
     claimDescription: claimData.claimDescription.trim(),
     claimedAmountCents: claimData.claimedAmountCents,
@@ -1053,25 +1006,20 @@ async function processCheckoutStartClaim(
     );
   }
 
-  // Update checkout status to claim_filed
-  await db
-    .update(storageBookings)
-    .set({
-      checkoutStatus: 'checkout_claim_filed',
-      checkoutApprovedAt: new Date(),
-      checkoutApprovedBy: managerId,
-      checkoutNotes: managerNotes
-        ? `Manager: ${managerNotes} | Claim #${claimId} filed`
-        : `Damage/cleaning claim #${claimId} filed during checkout review`,
-      // Mark booking as completed — storage is released, but claim is tracked separately
-      status: 'completed',
-      updatedAt: new Date(),
-    })
-    .where(eq(storageBookings.id, storageBookingId));
-
-  logger.info(`[StorageCheckout] Manager ${managerId} started claim #${claimId} for storage booking ${storageBookingId}`);
-  const { detectOverstays } = await import('./overstay-penalty-service');
-  try { await detectOverstays(); } catch (error) { logger.error('Storage checkout saved; overstay finalization will retry on the scheduler', error); }
+  // Draft handoff does not establish physical removal or overwrite chef evidence.
+  const handedOff = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT id FROM storage_bookings WHERE id = ${storageBookingId} FOR UPDATE`);
+    const [current] = await tx.select().from(storageBookings).where(eq(storageBookings.id, storageBookingId)).limit(1);
+    if (!current || current.checkoutStatus !== currentCheckoutStatus) return false;
+    await tx.update(storageBookings).set({ checkoutStatus: 'checkout_claim_filed', status: 'completed', updatedAt: new Date(),
+      assistanceHistory: [...(Array.isArray(current.assistanceHistory) ? current.assistanceHistory : []), { actorId: managerId, action: 'draft_claim_handoff',
+        reason: managerNotes || 'Inspection handed to a draft claim', recordedAt: new Date().toISOString(), claimId, previousStatus: current.checkoutStatus }]
+    }).where(eq(storageBookings.id, storageBookingId));
+    await queueStorageVisitAction(tx, storageBookingId, 'draft_claim', managerId);
+    return true;
+  });
+  if (!handedOff) return { success: false, error: 'Inspection changed; refresh. The saved draft remains available for review.', damageClaimId: claimId };
+  await attemptOutcomeDelivery();
 
   // The chef's response window and notifications start only after evidence-backed submission.
 
@@ -1105,48 +1053,46 @@ async function processCheckoutStartClaim(
  */
 export async function autoCleanExpiredCheckout(
   bookingId: number,
-  chefId: number | null,
-  checkoutRequestedAt: Date | null,
+  chefId: number|null,
+  checkoutRequestedAt: Date|null,
   reviewWindowHours: number,
 ): Promise<boolean> {
-  if (!checkoutRequestedAt) return false;
+  if(!checkoutRequestedAt) return false;
 
-  const reviewWindowMs = reviewWindowHours * 60 * 60 * 1000;
-  const deadline = new Date(checkoutRequestedAt.getTime() + reviewWindowMs);
-  if (new Date() <= deadline) return false;
+  const reviewWindowMs=reviewWindowHours*60*60*1000;
+  const deadline=new Date(checkoutRequestedAt.getTime()+reviewWindowMs);
+  if(new Date()<=deadline) return false;
 
   try {
     // Atomically clear only if still in checkout_requested (prevents double-clear race)
-    const cleared = await db
-      .update(storageBookings)
-      .set({
-        checkoutStatus: 'completed',
-        checkoutApprovedAt: new Date(),
-        checkoutNotes: `Auto-cleared by system — review window (${reviewWindowHours}h) expired with no issues reported`,
-        status: 'completed',
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(storageBookings.id, bookingId),
-          eq(storageBookings.checkoutStatus, 'checkout_requested'),
-          isNull(storageBookings.cancellationAcceptedAt),
-        )
-      ).returning({ id: storageBookings.id });
-    if (!cleared.length) return false;
+    const cleared=await db.transaction(async tx => {
+      const changed=await tx
+        .update(storageBookings)
+        .set({
+          checkoutStatus: 'completed',
+          checkoutApprovedAt: new Date(),
+          status: 'completed',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(storageBookings.id,bookingId),
+            eq(storageBookings.checkoutStatus,'checkout_requested'),
+            isNull(storageBookings.cancellationAcceptedAt),
+          )
+        ).returning({ id: storageBookings.id });
+      if(!changed.length) return false;
 
+
+      await queueStorageClearance(tx,bookingId,true);
+      return true;
+    });
+    if(!cleared) return false;
     logger.info(`[StorageCheckout] Lazy auto-cleared booking ${bookingId} — review window expired`);
 
-    // Fire-and-forget notification
-    try {
-      await sendCheckoutClearedNotification(bookingId, chefId, true);
-    } catch (notifyError) {
-      logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${bookingId}:`, notifyError);
-    }
-
     return true;
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`, error);
+  } catch(error) {
+    logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`,error);
     return false;
   }
 }
@@ -1157,18 +1103,18 @@ export async function autoCleanExpiredCheckout(
  * already cleared by lazy evaluation on read.
  */
 export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> {
-  const result: AutoClearResult = { processed: 0, cleared: 0, errors: 0 };
+  const result: AutoClearResult={ processed: 0,cleared: 0,errors: 0 };
 
   try {
     // Get admin-controlled review window
-    const { getStorageCheckoutSettings } = await import('./damage-claim-limits-service');
-    const settings = await getStorageCheckoutSettings();
-    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1000;
+    const { getStorageCheckoutSettings }=await import('./damage-claim-limits-service');
+    const settings=await getStorageCheckoutSettings();
+    const reviewWindowMs=settings.reviewWindowHours*60*60*1000;
 
     // Find all checkout_requested bookings past the review deadline
-    const cutoffTime = new Date(Date.now() - reviewWindowMs);
+    const cutoffTime=new Date(Date.now()-reviewWindowMs);
 
-    const expiredCheckouts = await db
+    const expiredCheckouts=await db
       .select({
         id: storageBookings.id,
         chefId: storageBookings.chefId,
@@ -1177,57 +1123,60 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
       .from(storageBookings)
       .where(
         and(
-          eq(storageBookings.checkoutStatus, 'checkout_requested'),
-          lt(storageBookings.checkoutRequestedAt, cutoffTime),
+          eq(storageBookings.checkoutStatus,'checkout_requested'),
+          workerAfter('storageCheckout', storageBookings.id),
+          sql`${storageBookings.checkoutRequestedAt} + COALESCE((${storageBookings.visitDuties}->>'checkoutReviewWindowMinutes')::integer, ${settings.reviewWindowHours * 60}) * interval '1 minute' <= CURRENT_TIMESTAMP`,
           isNull(storageBookings.cancellationAcceptedAt)
         )
-      );
+      ).orderBy(storageBookings.id).limit(workerBatch());
+    await workerPageEnd('storageCheckout', expiredCheckouts.length);
 
-    result.processed = expiredCheckouts.length;
+    result.processed=expiredCheckouts.length;
 
-    if (expiredCheckouts.length === 0) {
+    if(expiredCheckouts.length===0) {
       logger.info(`[StorageCheckout] No expired checkout reviews to process`);
       return result;
     }
 
     logger.info(`[StorageCheckout] Processing ${expiredCheckouts.length} expired checkout reviews (window: ${settings.reviewWindowHours}h)`);
 
-    for (const checkout of expiredCheckouts) {
+    for(const checkout of expiredCheckouts) {
+      await workerRecord('storageCheckout', checkout.id);
       try {
         // Auto-clear the checkout
-        const cleared = await db
-          .update(storageBookings)
-          .set({
-            checkoutStatus: 'completed',
-            checkoutApprovedAt: new Date(),
-            checkoutNotes: `Auto-cleared by system — review window (${settings.reviewWindowHours}h) expired with no issues reported`,
-            status: 'completed',
-            updatedAt: new Date(),
-          })
-          .where(and(eq(storageBookings.id, checkout.id), eq(storageBookings.checkoutStatus, 'checkout_requested'), isNull(storageBookings.cancellationAcceptedAt)))
-          .returning({ id: storageBookings.id });
+        const cleared=await db.transaction(async tx => {
+          const changed=await tx
+            .update(storageBookings)
+            .set({
+              checkoutStatus: 'completed',
+              checkoutApprovedAt: new Date(),
+              status: 'completed',
+              updatedAt: new Date(),
+            })
+            .where(and(eq(storageBookings.id,checkout.id),eq(storageBookings.checkoutStatus,'checkout_requested'),isNull(storageBookings.cancellationAcceptedAt),
+              sql`${storageBookings.checkoutRequestedAt} + COALESCE((${storageBookings.visitDuties}->>'checkoutReviewWindowMinutes')::integer, ${settings.reviewWindowHours * 60}) * interval '1 minute' <= CURRENT_TIMESTAMP`))
+            .returning({ id: storageBookings.id });
 
-        if (!cleared.length) continue;
+          if(!changed.length) return false;
+
+          await queueStorageClearance(tx,checkout.id,true);
+          return true;
+        });
+        if(!cleared) continue;
         result.cleared++;
 
         logger.info(`[StorageCheckout] Auto-cleared booking ${checkout.id} — review window expired`);
 
-        // Notify chef that checkout was auto-cleared
-        try {
-          await sendCheckoutClearedNotification(checkout.id, checkout.chefId, true);
-        } catch (notifyError) {
-          logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${checkout.id}:`, notifyError);
-        }
-      } catch (bookingError) {
+      } catch(bookingError) {
         result.errors++;
-        logger.error(`[StorageCheckout] Error auto-clearing booking ${checkout.id}:`, bookingError);
+        logger.error(`[StorageCheckout] Error auto-clearing booking ${checkout.id}:`,bookingError);
       }
     }
 
     logger.info(`[StorageCheckout] Auto-clear results: ${result.cleared} cleared, ${result.errors} errors out of ${result.processed} processed`);
     return result;
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error processing expired checkout reviews:`, error);
+  } catch(error) {
+    logger.error(`[StorageCheckout] Error processing expired checkout reviews:`,error);
     return result;
   }
 }
@@ -1252,6 +1201,7 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
     const query = db
       .select({
         cancellationAcceptedAt: storageBookings.cancellationAcceptedAt,
+        visitDuties: storageBookings.visitDuties,
         storageBookingId: storageBookings.id,
         storageListingId: storageBookings.storageListingId,
         storageName: storageListings.name,
@@ -1291,7 +1241,7 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
     const stillPending: typeof filtered = [];
     for (const r of filtered) {
       const reviewDeadline = r.checkoutRequestedAt
-        ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs)
+        ? new Date(r.checkoutRequestedAt.getTime() + (readVisitDuties(r.visitDuties)?.checkoutReviewWindowMinutes ?? settings.reviewWindowHours * 60) * 60000)
         : null;
       const isExpired = reviewDeadline ? now > reviewDeadline : false;
 
@@ -1301,7 +1251,7 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
           r.storageBookingId,
           r.chefId,
           r.checkoutRequestedAt,
-          settings.reviewWindowHours,
+          (readVisitDuties(r.visitDuties)?.checkoutReviewWindowMinutes ?? settings.reviewWindowHours * 60) / 60,
         );
         if (wasCleared) {
           logger.info(`[StorageCheckout] Lazy-cleared booking ${r.storageBookingId} during getPendingCheckoutReviews`);
@@ -1317,7 +1267,7 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
       
       // Compute review deadline from checkoutRequestedAt + review window
       const reviewDeadline = r.checkoutRequestedAt
-        ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs)
+        ? new Date(r.checkoutRequestedAt.getTime() + (readVisitDuties(r.visitDuties)?.checkoutReviewWindowMinutes ?? settings.reviewWindowHours * 60) * 60000)
         : null;
       const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
 
@@ -1380,6 +1330,7 @@ export async function getCheckoutHistory(locationIds: number[], limit: number = 
         checkoutRequestedAt: storageBookings.checkoutRequestedAt,
         checkoutApprovedAt: storageBookings.checkoutApprovedAt,
         checkoutNotes: storageBookings.checkoutNotes,
+        visitDuties: storageBookings.visitDuties,
         checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
       })
       .from(storageBookings)
@@ -1549,6 +1500,7 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
       .select({
         checkoutStatus: storageBookings.checkoutStatus,
         endDate: storageBookings.endDate,
+        visitDuties: storageBookings.visitDuties,
         checkoutRequestedAt: storageBookings.checkoutRequestedAt,
         checkoutApprovedAt: storageBookings.checkoutApprovedAt,
         checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
@@ -1570,7 +1522,7 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
     const now = new Date();
 
     const reviewDeadline = booking.checkoutRequestedAt
-      ? new Date(booking.checkoutRequestedAt.getTime() + settings.reviewWindowHours * 60 * 60 * 1000)
+      ? new Date(booking.checkoutRequestedAt.getTime() + (readVisitDuties(booking.visitDuties)?.checkoutReviewWindowMinutes ?? settings.reviewWindowHours * 60) * 60000)
       : null;
     const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
 
@@ -1587,7 +1539,7 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
         storageBookingId,
         bookingFull?.chefId ?? null,
         booking.checkoutRequestedAt,
-        settings.reviewWindowHours,
+        (readVisitDuties(booking.visitDuties)?.checkoutReviewWindowMinutes ?? settings.reviewWindowHours * 60) / 60,
       );
 
       if (wasCleared) {
@@ -1598,7 +1550,7 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
           checkoutRequestedAt: booking.checkoutRequestedAt,
           checkoutApprovedAt: new Date(),
           checkoutPhotoUrls: (booking.checkoutPhotoUrls as string[]) || [],
-          checkoutNotes: `Auto-cleared by system — review window (${settings.reviewWindowHours}h) expired with no issues reported`,
+          checkoutNotes: booking.checkoutNotes,
           reviewDeadline,
           isReviewExpired: true,
           extendedClaimDeadline: filingDeadline,

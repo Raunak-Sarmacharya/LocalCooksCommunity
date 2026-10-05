@@ -8,7 +8,7 @@
  * State shape: Record<requirementId | '__generic__', string[]>
  */
 
-import { useCallback, useRef } from "react"
+import { useCallback, useRef, useState } from "react"
 import { Camera, Upload, X, Loader2, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
 const GENERIC_KEY = "__generic__"
 export const MAX_PHOTOS_PER_REQUIREMENT = 3
 export const GENERIC_MAX_PHOTOS = 10
-export const GENERIC_MIN_PHOTOS = 1
+export const GENERIC_MIN_PHOTOS = 0
 
 export interface PhotoRequirementUploaderProps {
   /** Manager-defined photo requirements. Empty array = use generic uploader. */
@@ -32,7 +32,7 @@ export interface PhotoRequirementUploaderProps {
   /** Current uploaded photos keyed by requirement id (or __generic__ for fallback). */
   photos: Record<string, string[]>
   /** Setter for the photos map. */
-  onPhotosChange: (next: Record<string, string[]>) => void
+  onPhotosChange: React.Dispatch<React.SetStateAction<Record<string, string[]>>>
   /** Folder name on R2 for uploaded files. */
   uploadFolder: string
   /** Fallback instructional text when no requirements are defined. */
@@ -50,14 +50,14 @@ export function flattenPhotos(photos: Record<string, string[]>): string[] {
 
 /**
  * Checks whether all required photo slots have at least one upload.
- * If no requirements, returns true when at least one generic photo exists.
+ * No configured requirements means photos are optional.
  */
 export function areAllRequiredPhotosUploaded(
   requirements: PhotoRequirement[],
   photos: Record<string, string[]>,
 ): boolean {
   if (requirements.length === 0) {
-    return (photos[GENERIC_KEY]?.length || 0) >= GENERIC_MIN_PHOTOS
+    return true
   }
   return requirements
     .filter((r) => r.required !== false) // required defaults to true
@@ -88,6 +88,7 @@ function SingleRequirementSlot({
   // Persistent loading toast — dismissed on success/error. Makes upload
   // feedback visible regardless of scroll position or slot visibility.
   const toastIdRef = useRef<string | number | null>(null)
+  const [uploadError, setUploadError] = useState('');
   
   const { t: tStrict } = useTranslation("chef");
   const t = (key: string, defaultText?: string, vars?: any): string => {
@@ -106,11 +107,13 @@ function SingleRequirementSlot({
     maxSize: 4.5 * 1024 * 1024,
     allowedTypes: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
     onSuccess: (response) => {
+      setUploadError('');
       dismissLoadingToast()
       toast.success(t("photoUploadedMsg", `${label} photo uploaded`, { label }))
       onChange([...photos, response.url])
     },
     onError: (err) => {
+      setUploadError(`${err} Your existing photos are retained. Choose the photo again to retry, or contact the kitchen manager for assistance.`);
       dismissLoadingToast()
       toast.error(err)
     },
@@ -120,6 +123,7 @@ function SingleRequirementSlot({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (!file) return
+      setUploadError('');
       if (photos.length >= max) {
         toast.error(t("maxPhotosMsg", `You can upload up to ${max} photo(s) for this requirement`, { max }))
         return
@@ -154,6 +158,7 @@ function SingleRequirementSlot({
       )}
     >
       {/* Header: label + status */}
+      {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium flex items-center gap-1.5">
@@ -215,7 +220,7 @@ function SingleRequirementSlot({
             type="file"
             accept="image/jpeg,image/jpg,image/png,image/webp"
             onChange={handleUpload}
-            className="hidden"
+            className="sr-only focus:not-sr-only"
             id={slotId}
             disabled={isUploading || disabled}
           />
@@ -262,9 +267,9 @@ export function PhotoRequirementUploader({
 }: PhotoRequirementUploaderProps) {
   const updateSlot = useCallback(
     (id: string, next: string[]) => {
-      onPhotosChange({ ...photos, [id]: next })
+      onPhotosChange(current => ({ ...current, [id]: next }))
     },
-    [photos, onPhotosChange],
+    [onPhotosChange],
   )
 
   const { t: tStrict } = useTranslation("chef");
@@ -273,7 +278,7 @@ export function PhotoRequirementUploader({
     return val !== key ? val : (defaultText || key);
   };
 
-  // Fallback: no requirements defined → show single generic uploader with backwards-compatible behavior.
+  // Fallback: no requirements defined → show single generic uploader with optional evidence.
   if (requirements.length === 0) {
     return (
       <SingleRequirementSlot
@@ -283,7 +288,7 @@ export function PhotoRequirementUploader({
           genericInstruction ||
           t("conditionPhotosDesc", "Upload photos showing the current condition. This helps resolve any disputes and speeds up approval.")
         }
-        required
+        required={false}
         max={GENERIC_MAX_PHOTOS}
         photos={photos[GENERIC_KEY] || []}
         onChange={(next) => updateSlot(GENERIC_KEY, next)}

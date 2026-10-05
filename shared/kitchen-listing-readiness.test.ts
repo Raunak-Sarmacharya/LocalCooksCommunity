@@ -13,12 +13,14 @@ const READY: ListingReadinessInput = {
   hasCoverPhoto: true,
   stripeConnected: true,
   hasApplicationRequirements: true,
+  hasVisitSetup: true,
   hasGalleryImages: true,
   hasTerms: true,
   toursEnabled: true,
   hasBookingRules: true,
   hasEquipment: true,
   hasStorage: true,
+  hasStorageVisitSetup: true,
 };
 
 describe("buildListingChecklist", () => {
@@ -46,6 +48,13 @@ describe("buildListingChecklist", () => {
     const checklist = buildListingChecklist({ ...READY, hasRate: false });
     expect(checklist.canPublish).toBe(false);
     expect(checklist.missingRequirementIds).toEqual(["rate"]);
+  });
+
+  it("requires visit setup independently of optional listing recommendations", () => {
+    const checklist = buildListingChecklist({ ...READY, hasVisitSetup: false });
+    expect(checklist.canPublish).toBe(false);
+    expect(checklist.missingRequirementIds).toEqual(["visitSetup"]);
+    expect(checklist.openRecommendationIds).not.toContain("visitSetup");
   });
 
   it("blocks on a missing licence — the one gate an admin reviews", () => {
@@ -87,6 +96,7 @@ describe("buildListingChecklist", () => {
       hasCoverPhoto: false,
       stripeConnected: false,
       hasApplicationRequirements: false,
+      hasVisitSetup: false,
       hasGalleryImages: false,
       hasTerms: false,
       toursEnabled: false,
@@ -95,7 +105,7 @@ describe("buildListingChecklist", () => {
       hasStorage: false,
     });
     expect(checklist.canPublish).toBe(false);
-    expect(checklist.missingRequirementIds).toHaveLength(8);
+    expect(checklist.missingRequirementIds).toHaveLength(9);
     expect(checklist.openRecommendationIds).toHaveLength(5);
     // Recommendations are reported on their own list, never folded into the blockers.
     expect(checklist.missingRequirementIds).not.toContain("gallery");
@@ -104,7 +114,16 @@ describe("buildListingChecklist", () => {
 
   it("always reports the full checklist, so the review screen can show what is already done", () => {
     const checklist = buildListingChecklist({ ...READY, hasTerms: false });
-    expect(checklist.requirements).toHaveLength(8);
+    expect(checklist.requirements).toHaveLength(10);
     expect(checklist.recommendations).toHaveLength(5);
   });
+});
+
+it('requires storage setup only for kitchens with storage listings', () => {
+  const withStorage = buildListingChecklist({ ...READY, hasStorageVisitSetup: false });
+  expect(withStorage.missingRequirementIds).toEqual(['storageVisitSetup']);
+  expect(withStorage.canPublish).toBe(false);
+  const noStorage = buildListingChecklist({ ...READY, hasStorage: false, hasStorageVisitSetup: false });
+  expect(noStorage.requirements.some(row => row.id === 'storageVisitSetup')).toBe(false);
+  expect(noStorage.canPublish).toBe(true);
 });

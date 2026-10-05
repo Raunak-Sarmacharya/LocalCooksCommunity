@@ -13,12 +13,13 @@
  *      damage claim is ever filed at checkout.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, LogIn, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
+import { type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
+import { useStorageDuties } from '@/hooks/use-storage-duties';
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,16 +63,19 @@ export function StorageCheckinDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
 
-  // Fetch manager-defined check-in checklist for the storage unit's location.
-  const { data: checklist } = useLocationChecklist(storageBooking.locationId);
-  const storageCheckinItems: ChecklistItem[] =
-    checklist?.storageCheckinItems || [];
-  const storageCheckinPhotoReqs: PhotoRequirement[] =
-    checklist?.storageCheckinPhotoRequirements || [];
+  useEffect(() => { setCheckinNotes(''); setUploadedPhotos({}); setCheckedItems(new Set()); }, [storageBooking.id]);
 
-  // All manager-defined items are required by design, matching checkout.
+  // Fetch manager-defined check-in checklist for the storage unit's location.
+  const dutiesQuery = useStorageDuties(storageBooking.id, open);
+  const section = dutiesQuery.data?.arrival;
+  const storageCheckinItems: ChecklistItem[] =
+    section?.enabled ? section.items as ChecklistItem[] : [];
+  const storageCheckinPhotoReqs: PhotoRequirement[] =
+    section?.enabled ? section.photos as PhotoRequirement[] : [];
+
+  // Only configured mandatory items block submission.
   const allItemsChecked = storageCheckinItems.every((i: ChecklistItem) =>
-    checkedItems.has(i.id),
+    i.required === false || checkedItems.has(i.id),
   );
   const allPhotosUploaded = areAllRequiredPhotosUploaded(
     storageCheckinPhotoReqs,
@@ -185,6 +189,8 @@ export function StorageCheckinDialog({
             {t("ciDialogDesc")}
           </DialogDescription>
         </DialogHeader>
+        {dutiesQuery.isPending && <p role="status">Loading the booking’s arrival requirements…</p>}
+        {dutiesQuery.error && <p role="alert">Requirements could not be loaded. <Button variant="link" onClick={() => void dutiesQuery.refetch()}>Retry</Button> or contact the kitchen manager for assistance.</p>}
 
         {!isAlreadySubmitted &&
           (storageCheckinItems.some((item) => item.required) ||
@@ -223,13 +229,13 @@ export function StorageCheckinDialog({
           {!isAlreadySubmitted && (
             <>
               {/* Manager Instructions */}
-              {checklist?.storageCheckinInstructions && (
+              {section?.instructions && (
                 <div className="rounded-lg border p-3">
                   <p className="text-xs font-medium mb-1">
                     {t("ciManagerInstructions")}
                   </p>
                   <p className="text-xs text-muted-foreground whitespace-pre-line">
-                    {checklist.storageCheckinInstructions}
+                    {section.instructions}
                   </p>
                 </div>
               )}
@@ -329,7 +335,7 @@ export function StorageCheckinDialog({
           {!isAlreadySubmitted && (
             <Button
               onClick={handleSubmitCheckin}
-              disabled={isSubmitting || !allPhotosUploaded || !allItemsChecked}
+              disabled={isSubmitting || !dutiesQuery.data || !section?.enabled || !allPhotosUploaded || !allItemsChecked}
             >
               {isSubmitting ? (
                 <>

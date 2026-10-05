@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: vi.fn() }));
+vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
+vi.mock('./visit-duties', () => ({ kitchenDuties: async () => ({ arrival: { enabled: true, items: [], photos: [] }, departure: { enabled: true, items: [], photos: [] } }), captureKitchenDuties: vi.fn(async () => {}) }));
+import { captureKitchenDuties } from './visit-duties';
+import { scheduleAdvanceReminders } from './advance-reminders';
+import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ rows: [] as any[][], writes: [] as any[], conditions: [] as any[], won: true }));
 const stripe = vi.hoisted(() => ({ cancel: vi.fn() }));
@@ -19,16 +25,23 @@ import { checkoutKitchenVisit } from './kitchen-visit-lifecycle';
 import { lazyExpireKitchenBookingAuth } from './auth-expiry-service';
 const where = () => new PgDialect().sqlToQuery(state.conditions[0]);
 describe('checkout guards (mocked database, no Stripe calls)', () => {
-  beforeEach(() => { state.rows = []; state.writes = []; state.conditions = []; state.won = true; stripe.cancel.mockClear(); });
+  beforeEach(() => { state.rows = []; state.writes = []; state.conditions = []; state.won = true; stripe.cancel.mockClear(); vi.mocked(captureKitchenDuties).mockClear(); });
   it('rejects cancelled chef checkout without writes', async () => {
     state.rows.push([{ id: 10, chefId: 3, status: 'cancelled', checkinStatus: 'checked_in' }]);
     expect((await requestKitchenCheckout(10, 3)).success).toBe(false);
     expect(state.writes).toEqual([]);
   });
+  it('schedules the legacy inspection warning with the guarded checkout transaction', async () => {
+    state.rows.push([{ id: 10, chefId: 3, status: 'confirmed', checkinStatus: 'checked_in', locationId: 4, updatedAt: new Date() }]);
+    expect((await requestKitchenCheckout(10, 3)).success).toBe(true);
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 10, 'checkout_requested', expect.any(String), expect.any(String), 3,
+      { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
+  });
   it('rejects a checkout lost to cancellation or another action', async () => {
     state.won = false; state.rows.push([{ id: 10, chefId: 3, status: 'confirmed', checkinStatus: 'checked_in', locationId: 4, updatedAt: new Date('2026-01-01') }]);
     expect((await requestKitchenCheckout(10, 3)).success).toBe(false);
     expect(where().params).toContain('confirmed');
+    expect(captureKitchenDuties).not.toHaveBeenCalled();
   });
   it('preserves chef notes and records manager communication separately', async () => {
     state.rows.push([{ id: 10, chefId: 3, checkinStatus: 'checkout_requested', updatedAt: new Date('2026-01-01') }], [{ managerId: 7 }]);

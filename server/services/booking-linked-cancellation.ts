@@ -11,9 +11,12 @@ export const cancelledStorageStatus = sql`CASE WHEN
 
 export const storageListingAwaitingRemoval = sql<boolean>`EXISTS (SELECT 1 FROM storage_bookings occupied_storage
   WHERE occupied_storage.storage_listing_id = storage_listings.id
-    AND occupied_storage.cancellation_accepted_at IS NOT NULL
-    AND occupied_storage.status = 'cancellation_requested'
-    AND COALESCE(occupied_storage.checkout_status::text, 'active') NOT IN ('checkout_approved', 'completed', 'checkout_claim_filed'))`;
+    AND occupied_storage.checkout_approved_by IS NULL
+    AND ((occupied_storage.cancellation_accepted_at IS NOT NULL
+      AND occupied_storage.status = 'cancellation_requested')
+      OR (occupied_storage.end_date <= CURRENT_TIMESTAMP
+        AND (occupied_storage.checkin_status = 'checkin_completed'
+          OR occupied_storage.checkout_status IN ('checkout_requested', 'completed', 'checkout_claim_filed')))))`;
 
 export async function cancelLinkedBookingDates(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], bookingId: number) {
   const storage = await tx.update(storageBookings).set({ status: cancelledStorageStatus, cancellationAcceptedAt: new Date(), updatedAt: new Date() })

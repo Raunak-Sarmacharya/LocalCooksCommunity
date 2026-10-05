@@ -6,6 +6,7 @@ import { MessageCircle, Mail, Phone, HelpCircle, Shield, FileText, ExternalLink,
 import type { ComponentType } from "react";
 import { useTidioChat } from "@/components/chat/TidioController";
 import { ChefPageHeader, QuietNotice } from "@/components/chef/ui";
+import { CommitmentProblems } from './CommitmentProblems';
 
 /**
  * The support page's layout, with no content of its own.
@@ -60,6 +61,7 @@ export interface SupportPageShellProps {
   openLabel: string;
   onOpenResolutionCenter?: () => void;
   pendingResolutionCount?: number;
+  problemRole?: 'chef' | 'manager';
 }
 
 export function SupportPageShell({
@@ -83,12 +85,14 @@ export function SupportPageShell({
   openLabel,
   onOpenResolutionCenter,
   pendingResolutionCount = 0,
+  problemRole = 'chef',
 }: SupportPageShellProps) {
   const { openChat } = useTidioChat();
 
   return (
     <div className="space-y-8">
       <ChefPageHeader title={title} description={description} />
+      <CommitmentProblems role={problemRole} />
 
       <div
         className={`grid grid-cols-1 gap-4 ${

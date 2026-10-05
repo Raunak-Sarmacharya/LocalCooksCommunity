@@ -1,9 +1,10 @@
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning, Key, KeyRound, Mail, CalendarDays } from "lucide-react";
+import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, FileWarning,  KeyRound, Mail, CalendarDays } from "lucide-react";
 
 export type AdminSection =
+  | "live-problems"
   | "overview"
   | "applications"
   | "kitchen-applications-step1"
@@ -26,7 +27,6 @@ export type AdminSection =
   | "overstay-penalties-history"
   | "damage-claims-history"
   | "security-settings"
-  | "access-codes"
   | "password-reset"
   | "email-log";
 
@@ -62,13 +62,13 @@ const NAV_GROUPS = [
       { id: "user-management" as AdminSection, label: "User Management", icon: Users },
       { id: "chef-kitchen-access" as AdminSection, label: "Chef Kitchen Access", icon: Users },
       { id: "kitchen-management" as AdminSection, label: "Manage Kitchens", icon: Building2 },
-      { id: "access-codes" as AdminSection, label: "Access Codes", icon: Key },
       { id: "password-reset" as AdminSection, label: "Password Reset", icon: KeyRound },
     ],
   },
   {
     label: "Communications",
     items: [
+      { id: "live-problems" as AdminSection, label: "Support requests", icon: AlertTriangle },
       { id: "promos" as AdminSection, label: "Send Promo Codes", icon: Gift },
       { id: "email-log" as AdminSection, label: "Email Log", icon: Mail },
     ],

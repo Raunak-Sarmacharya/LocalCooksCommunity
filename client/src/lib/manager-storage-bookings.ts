@@ -14,6 +14,8 @@ export interface ManagerStorageBooking {
   totalPrice: string | number;
   currency: string;
   createdAt: string;
+  updatedAt?: string;
+  assistanceHistory?: Array<{ actorId: number; action: string; reason: string; actualAt?: string; recordedAt: string }>;
 }
 
 export function inheritStorageChef<T extends { id: number; kitchenBookingId?: number | null; chefId?: number | null; chefName?: string }>(rows: T[], parents: Array<{ id: number; chefId?: number; chefName?: string; storageItems?: Array<{ id: number; storageBookingId?: number }> }>): T[] {

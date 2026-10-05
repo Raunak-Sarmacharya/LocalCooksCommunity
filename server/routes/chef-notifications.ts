@@ -272,19 +272,11 @@ router.post("/archive", requireFirebaseAuthWithUser, async (req: Request, res: R
  */
 router.post("/message-received", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
   try {
-    const { chefId, senderName, messagePreview, conversationId } = req.body;
-
-    if (!chefId || !senderName || !conversationId) {
-      return res.status(400).json({ error: "chefId, senderName, and conversationId are required" });
-    }
-
-    // Create notification for the chef
-    await notificationService.notifyChefMessage({
-      chefId,
-      senderName,
-      messagePreview: messagePreview || "You have a new message",
-      conversationId
-    });
+    const { conversationId, messageId } = req.body || {};
+    if (typeof conversationId !== 'string' || typeof messageId !== 'string')
+      return res.status(400).json({ error: 'Persisted conversationId and messageId are required' });
+    const { notifyPersistedChatMessage } = await import('../services/chat-notices');
+    await notifyPersistedChatMessage(conversationId, messageId, req.neonUser!.id);
 
     res.json({ success: true });
   } catch (error) {

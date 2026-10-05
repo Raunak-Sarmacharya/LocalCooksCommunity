@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { calendarDateForBookingTime } from '@shared/operating-hours';
+import type { VisitDuties } from '@shared/visit-duties';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,8 @@ export type KitchenCheckinStatus =
   | "checkout_claim_filed";
 
 export interface CheckinStatusData {
+  visitDuties?: VisitDuties;
+  checkoutReviewDeadline?: string | null;
   checkinEnabled?: boolean;
   checkoutEnabled?: boolean;
   id: number;
@@ -33,16 +36,6 @@ export interface CheckinStatusData {
   actualEndTime: string | null;
   checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
   checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
-  accessCode: string | null;
-  accessCodeValidFrom: string | null;
-  accessCodeValidUntil: string | null;
-  smartLockEnabled: boolean | null;
-  smartLockConfig: {
-    accessCode?: string;
-    accessCodeFormat?: string;
-    codeVisibility?: 'on_booking' | 'at_checkin' | 'manual';
-    [key: string]: unknown;
-  } | null;
   bookingDate: string;
   startTime: string;
   endTime: string;
@@ -65,6 +58,7 @@ export interface CheckinStatusData {
     checkedOutAt: string | null;
     checkoutApprovedAt: string | null;
     noShowDetectedAt: string | null;
+    checkoutReviewDeadline?: string | null;
     checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
     checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
   }>;
@@ -75,8 +69,6 @@ interface CheckinResult {
   success: boolean;
   error?: string;
   checkinStatus?: KitchenCheckinStatus;
-  accessCodeValidFrom?: string;
-  accessCodeValidUntil?: string;
 }
 
 interface CheckoutResult {
@@ -252,7 +244,11 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
   const canCheckout = (): boolean => {
     const s = status;
     if (!s) return false;
-    return s.checkoutEnabled === true && s.checkinStatus === "checked_in";
+    if (s.status !== 'confirmed') return false;
+    if (s.checkinStatus === 'checked_in') return s.checkoutEnabled === true || s.checkinEnabled === true;
+    if (s.checkinEnabled === true || s.checkoutEnabled !== true || ![null, 'not_checked_in'].includes(s.checkinStatus)) return false;
+    const start = createBookingDateTime(calendarDateForBookingTime(s.bookingDate.split('T')[0], s.startTime, s.operatingWindowStartTime), s.startTime, s.timezone || DEFAULT_TIMEZONE);
+    return new Date() >= start;
   };
 
   return {

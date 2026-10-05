@@ -1,4 +1,6 @@
 import { KitchenTour } from "@/components/ui/manager-icons";
+import { TourChatButton } from '@/components/chat/TourChatButton';
+import { TourAttendancePanel } from '@/components/tour/TourAttendancePanel';
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -14,11 +16,12 @@ import { DateField } from "@/components/ui/date-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { tt } from "@/i18n/common-ns";
-import { ChefTourRow, chefTourRowHasDetails, formatTourWhen, normalizeChefTourRow, viewingStatusBadge } from "@/lib/chef-viewing-display";
+import { ChefTourRow, chefTourRowHasDetails, chefTourVisitAction, formatTourWhen, normalizeChefTourRow, viewingStatusBadge } from "@/lib/chef-viewing-display";
 import { tourAvailableDate } from "@/lib/tour-available-date";
 import { Link, useSearch } from "wouter";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { formatTourSlotRange } from '@shared/tour-time';
+import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 
 function TourDownloadButton({ tour, t }: { tour: ChefTourRow; t: (key: string, defaultValue?: string | Record<string, unknown>) => string }) {
   const [downloading, setDownloading] = useState(false);
@@ -78,19 +81,21 @@ function TourDetailPanel({
   const expired = ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() < Date.now();
   const [date, setDate] = useState("");
   const [slot, setSlot] = useState("");
-  const { data: calendarAvailability } = useQuery({
-    queryKey: [`/api/viewings/calendar-availability/${tour.targetedKitchenId}`],
+  const { data: calendarAvailability, error: calendarError } = useQuery({
+    queryKey: [`/api/viewings/calendar-availability/${tour.targetedKitchenId}`, tour.id, tour.updatedAt],
     queryFn: async () => {
-      const response = await fetch(`/api/viewings/calendar-availability/${tour.targetedKitchenId}`);
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/viewings/calendar-availability/${tour.targetedKitchenId}?viewingId=${tour.id}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       if (!response.ok) throw new Error("Could not load tour availability");
       return response.json();
     },
     enabled: !!tour.targetedKitchenId && tour.status === "confirmed" && !pastEnd,
   });
-  const { data: slots = [], isFetching: loadingSlots } = useQuery<{ scheduledAt: string; startTime: string }[]>({
-    queryKey: ["/api/viewings/available-slots", tour.id, date],
+  const { data: slots = [], isFetching: loadingSlots, error: slotsError } = useQuery<{ scheduledAt: string; startTime: string }[]>({
+    queryKey: ["/api/viewings/available-slots", tour.id, tour.updatedAt, date],
     queryFn: async () => {
-      const response = await fetch(`/api/viewings/available-slots/${tour.targetedKitchenId}?date=${date}`);
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/viewings/available-slots/${tour.targetedKitchenId}?date=${date}&viewingId=${tour.id}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       if (!response.ok) throw new Error("Could not load available times");
       const data = await response.json();
       return Array.isArray(data) ? data : data.slots || [];
@@ -99,6 +104,13 @@ function TourDetailPanel({
   });
   return (
     <div className="space-y-5 text-sm">
+      <CommitmentProblems kind="tour" id={tour.id} canReport />
+      {(tour.checkedInAt || (tour.status === 'confirmed' && tour.attendance && Date.now() >= Date.parse(tour.attendance.checkInOpensAt))) && <TourAttendancePanel id={tour.id} role="chef" version={tour.updatedAt} />}
+      {(tour.arrivalNotes || tour.departureNotes) && <section className="space-y-3 rounded-lg border bg-background p-4">
+        <h4 className="font-semibold text-foreground">{t("tourVisitNotes", "Tour arrival and departure notes")}</h4>
+        {tour.arrivalNotes && <div><p className="text-sm font-medium">{t("tourArrivalNotes", "Arrival notes")}</p><p className="whitespace-pre-wrap text-muted-foreground">{tour.arrivalNotes}</p></div>}
+        {tour.departureNotes && <div><p className="text-sm font-medium">{t("tourDepartureNotes", "Departure notes")}</p><p className="whitespace-pre-wrap text-muted-foreground">{tour.departureNotes}</p></div>}
+      </section>}
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="space-y-3">
           <h4 className="font-semibold text-foreground">{t("tourVisitDetails", "Visit details")}</h4>
@@ -108,7 +120,6 @@ function TourDetailPanel({
             {tour.managerName && <p><span className="text-foreground">{t("tourDetailManager", "Kitchen manager")}: </span>{tour.managerName}</p>}
             {tour.status === "confirmed" && <div className="flex flex-wrap gap-x-4 gap-y-1">{tour.locationContactPhone && <a className="text-foreground underline underline-offset-2" href={`tel:${tour.locationContactPhone}`}>{tour.locationContactPhone}</a>}{tour.locationContactEmail && <a className="break-all text-foreground underline underline-offset-2" href={`mailto:${tour.locationContactEmail}`}>{tour.locationContactEmail}</a>}</div>}
           </div>
-          {<p className="text-xs text-muted-foreground">{t("tourNeedHelp", "Need help from Local Cooks?")} <a className="underline underline-offset-2" href="tel:+17096318480">709-631-8480</a> · <a className="underline underline-offset-2" href="mailto:support@localcook.shop">support@localcook.shop</a></p>}
         </section>
         <section className="space-y-3">
           <h4 className="font-semibold text-foreground">{t("tourRequestDetails", "Request details")}</h4>
@@ -123,13 +134,14 @@ function TourDetailPanel({
         </section>
       </div>
       {tour.requestedRescheduleAt && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{t("tourChangeRequested", "Change requested for")} {formatTourWhen(tour.requestedRescheduleAt, tour.durationMinutes, tour.timezone)}. {t("tourOriginalTimeHeld", "Your original time remains confirmed until the manager accepts.")}</p>}
-      {tour.status === "confirmed" && !pastEnd && !tour.requestedRescheduleAt && new Date(tour.scheduledAt).getTime() > Date.now() && (
+      {tour.status === "confirmed" && !tour.checkedInAt && !pastEnd && !tour.requestedRescheduleAt && new Date(tour.scheduledAt).getTime() > Date.now() && (
         <details className="rounded-lg border bg-background p-3">
           <summary className="cursor-pointer font-medium text-foreground">{t("tourRequestNewTime", "Request new time")}</summary>
+          {(calendarError || slotsError) && <p role="alert" className="mt-2 text-destructive">{(calendarError || slotsError)?.message}. Refresh your tour or contact Local Cooks.</p>}
           <div className="mt-3 flex flex-wrap items-end gap-3">
           <div className="w-full sm:w-56"><label className="mb-1 block text-xs font-medium" htmlFor={`tour-date-${tour.id}`}>{t("tourNewDate", "New date")}</label><DateField id={`tour-date-${tour.id}`} value={date} onChange={(value) => { setDate(value); setSlot(""); }} placeholder={t("tourChooseDate", "Choose a date")} disabledDate={(day) => !tourAvailableDate(day, calendarAvailability)} /></div>
           <div className="w-full sm:w-56"><label className="mb-1 block text-xs font-medium" htmlFor={`tour-time-${tour.id}`}>{t("tourAvailableTime", "Available time")}</label><Select value={slot} onValueChange={setSlot} disabled={!date || loadingSlots || slots.length === 0}><SelectTrigger id={`tour-time-${tour.id}`}><SelectValue placeholder={loadingSlots ? t("tourLoadingTimes", "Loading…") : t("tourChooseTime", "Choose a time")} /></SelectTrigger><SelectContent>{slots.map((item) => <SelectItem key={item.scheduledAt} value={item.scheduledAt}>{formatTourSlotRange(item.scheduledAt, tour.durationMinutes ?? 30)}</SelectItem>)}</SelectContent></Select></div>
-          <Button variant="outline" size="sm" disabled={!slot || rescheduling} onClick={() => onReschedule(tour, slot)}>{t("tourRequestNewTime", "Request new time")}</Button>
+          <Button variant="outline" size="sm" disabled={!slot || rescheduling || loadingSlots || !!slotsError || !!calendarError || !slots.some(item => item.scheduledAt === slot)} onClick={() => onReschedule(tour, slot)}>{t("tourRequestNewTime", "Request new time")}</Button>
           </div>
         </details>
       )}
@@ -186,10 +198,11 @@ function TourDetailPanel({
         </div>
       )}
       {expired && <p className="rounded-xl border bg-muted/50 px-3 py-2 text-sm">{t("tourExpiredHelp", "The requested time passed before confirmation. If you have not applied, you can request another tour from the kitchen page.")}</p>}
-      {tour.disruptionReason && <p>{t("tourDisruptionReason", "Disruption reason")}: {tour.disruptionReason.replace(/_/g, " ")}</p>}
+      {tour.disruptionReason && <p>{t("tourDisruptionReason", "Reason the tour couldn’t take place")}: {tour.disruptionReason.replace(/_/g, " ")}</p>}
       {tour.noShowReason && <div><p className="font-medium text-xs">{t("tourDetailNoShowReason", "No-show reason")}</p><p className="text-muted-foreground">{tour.noShowReason.replace(/_/g, " ")}</p></div>}
       </div></details>}
-      {(tour.status === "pending_local_cooks" || tour.status === "pending") && !expired && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("tourListPendingNext", "Your tour request was sent. We’ll let you know when it is approved or rejected.")}</p>}
+      {tour.status === "pending_local_cooks" && !expired && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("tourListAwaitingLocalCooks", "Your request is awaiting Local Cooks review. Your tour is not yet confirmed.")}</p>}
+      {tour.status === "pending" && !expired && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("tourListAwaitingManager", "Waiting for the kitchen manager to confirm your tour.")}</p>}
       {tour.status === "confirmed" && !pastEnd && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-950">{t("tourListConfirmedNext", "Tour confirmed. Arrive on time and bring questions about equipment, storage, and access.")}</p>}
     </div>
   );
@@ -268,6 +281,10 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
     return <Card className="shadow-none"><CardContent className="space-y-3 p-8 text-center"><p>We couldn’t load your kitchen tours right now.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></CardContent></Card>;
   }
 
+  if (linkedTourId > 0 && !data.some(tour => tour.id === linkedTourId)) {
+    return <Card><CardContent role="alert" className="space-y-3 p-8 text-center"><p>This tour is unavailable. Check your account or try again.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></CardContent></Card>;
+  }
+
   if (data.length === 0) {
     return (
       <Card className="border-dashed shadow-none" data-testid="chef-viewings-list-empty">
@@ -302,6 +319,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           const pastEnd = new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 < Date.now();
           const expired = ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() < Date.now();
           const badge = viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy, tour.disruptionReason);
+          const visitAction = chefTourVisitAction(tour);
           return (
             <article key={tour.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
               <div className="p-4 sm:p-5">
@@ -321,6 +339,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                   {tour.locationAddress && <p className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span className="line-clamp-2">{tour.locationAddress}</span></p>}
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
+                  {visitAction && !open && <Button variant="outline" size="sm" onClick={() => setExpandedId(tour.id)}>{visitAction === 'arrival' ? t('tourRecordArrival', 'Record arrival') : t('tourRecordDeparture', 'Record departure')}</Button>}
+                  <TourChatButton tour={tour} role="chef" />
                   {tour.locationId && (tour.status === 'completed' || (tour.status === 'confirmed' && pastEnd)) &&
                     <Button asChild variant="outline" size="sm"><Link href={`/apply-kitchen/${tour.locationId}${tour.targetedKitchenId ? `?kitchenId=${tour.targetedKitchenId}` : ''}`}>{t('tourApplyNext', 'Apply to this kitchen')}</Link></Button>}
                   {tour.status === "confirmed" && !pastEnd && <TourDownloadButton tour={tour} t={t as any} />}

@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { fireEvent, render as renderDom } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,6 +56,22 @@ beforeEach(() => {
 });
 
 describe("manager overview states", () => {
+  it('links missing departure assistance for a terminal tour and clears it after departure', () => {
+    const tour = { id: 77, locationId: 1, status: 'completed', scheduledAt: '2025-01-01T12:00:00Z', durationMinutes: 30,
+      checkedInAt: '2025-01-01T12:00:00Z', attendanceHistory: [{ action: 'check_in', actorId: 8, source: 'visitor',
+        actualAt: '2025-01-01T12:00:00Z', recordedAt: '2025-01-01T12:00:00Z', scheduledAt: '2025-01-01T12:00:00.000Z' }] };
+    state.viewings = [{ viewing: tour }];
+    expect(render()).toContain('overviewTourDepartureAssistance');
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    const onNavigate = vi.fn();
+    const mounted = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={onNavigate} />);
+    fireEvent.click(mounted.getByRole('button', { name: /guestChef/ }));
+    expect(onNavigate).toHaveBeenCalledWith('viewings');
+    expect(new URLSearchParams(window.location.search).get('viewing')).toBe('77');
+    mounted.unmount(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/');
+    state.viewings = [{ viewing: { ...tour, checkedOutAt: '2025-01-01T12:30:00Z' } }];
+    expect(render()).not.toContain('overviewTourDepartureAssistance');
+  });
   it('shows disruption and correction history without making optional outcomes mandatory', () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: 'completed', scheduledAt: '2025-01-01T12:00:00Z', updatedAt: '2025-01-01T14:00:00Z', outcomeHistory: [
       { from: 'confirmed', to: 'cancelled', disruptionReason: 'access_unavailable', recordedAt: '2025-01-01T13:00:00Z' },
@@ -71,9 +88,17 @@ describe("manager overview states", () => {
     expect(html).not.toContain("listingReviewReadyCount");
     expect(html).toContain("overviewRecentActivityEmpty");
   });
-  it("keeps ended tours out of mandatory attention", () => {
+  it("shows ended confirmed tours in attention and removes recorded outcomes", () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 }, chefName: "Jamie" }];
-    expect(render()).not.toContain("overviewTourOutcomes");
+    expect(render()).toContain("overviewTourOutcomes");
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    const onNavigate = vi.fn();
+    const screen = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole("button", { name: /Jamie/ }));
+    expect(onNavigate).toHaveBeenCalledWith("viewings");
+    expect(new URL(window.location.href).searchParams.get("viewing")).toBe("77");
+    screen.unmount();
+    vi.unstubAllGlobals();
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "no_show", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 } }];
     expect(render()).not.toContain("overviewTourOutcomes");
   });

@@ -38,6 +38,7 @@ describe("kitchen policy write scope", () => {
   it("highlights the check-in card itself without an outer layout box", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     client.setQueryData(kitchenWorkspaceSettingsKey(40), original);
+    client.setQueryData(['checkin-checkout-settings', 33], { checkinInstructions: 'Arrive here.', checkoutInstructions: 'Leave here.' });
     render(<QueryClientProvider client={client}><KitchenWorkspaceControls kitchenId={40} location={location}
       mode="tracking" highlight /></QueryClientProvider>);
     const card = document.getElementById("tracking-settings");
@@ -92,4 +93,24 @@ describe("kitchen policy write scope", () => {
     expect(api.put).not.toHaveBeenCalled();
     client.clear();
   });
+});
+
+it.each([false, true])('routes missing notes to setup or enables the whole kitchen workflow (notes saved: %s)', async notesSaved => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(kitchenWorkspaceSettingsKey(40), original);
+  client.setQueryData(['checkin-checkout-settings', 33], { checkinInstructions: notesSaved ? 'Use the main door.' : '  ', checkoutInstructions: notesSaved ? 'Lock the door.' : null });
+  api.put.mockResolvedValue({ ...original, kitchen: { ...original.kitchen, checkinCheckoutEnabled: true } });
+  api.get.mockResolvedValue({ checkinInstructions: 'Use the main door.', checkoutInstructions: 'Lock the door.', checkinEnabled: true, checkoutEnabled: true });
+  const configure = vi.fn();
+  render(<QueryClientProvider client={client}><KitchenWorkspaceControls kitchenId={40} location={location} mode="tracking" onConfigure={configure} /></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole('switch'));
+  if (notesSaved) {
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('/manager/kitchens/40/workspace-settings', { checkinCheckoutEnabled: true }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings'));
+    expect(configure).not.toHaveBeenCalled();
+  } else {
+    expect(configure).toHaveBeenCalledOnce();
+    expect(api.put).not.toHaveBeenCalled();
+  }
+  client.clear();
 });

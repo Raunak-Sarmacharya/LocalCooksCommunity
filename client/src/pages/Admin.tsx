@@ -20,9 +20,9 @@ import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOve
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
 import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
-import { AccessCodeDashboard } from "@/components/admin/sections/AccessCodeDashboard";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
 import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
+import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { formatApplicationStatus, formatCertificationStatus, formatKitchenPreference } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -99,7 +99,7 @@ function AdminDashboard() {
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "overstay-penalties-history", "damage-claims-history",
-    "security-settings", "access-codes", "password-reset", "email-log",
+    "security-settings", "password-reset", "email-log", "live-problems",
   ], []);
 
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
@@ -952,6 +952,8 @@ function AdminDashboard() {
   // Render the active section content
   const renderSectionContent = () => {
     switch (activeSection) {
+      case 'live-problems':
+        return <CommitmentProblems staff role="admin" />;
       case "overview":
         return (
           <AdminOverviewSection
@@ -1220,13 +1222,6 @@ function AdminDashboard() {
 
       case "damage-claim-settings":
         return <DamageClaimSettings />;
-
-      case "access-codes":
-        return (
-          <ErrorBoundary>
-            <AccessCodeDashboard />
-          </ErrorBoundary>
-        );
 
       case "security-settings":
         return (

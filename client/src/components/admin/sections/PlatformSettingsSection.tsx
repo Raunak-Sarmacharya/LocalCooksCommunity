@@ -26,8 +26,6 @@ export function PlatformSettingsSection() {
     checkinWindowMinutesBefore: '15',
     noShowGraceMinutes: '30',
     checkoutReviewWindowMinutes: '60',
-    accessCodeValidBeforeMinutes: '15',
-    accessCodeValidAfterMinutes: '15',
   });
   const [autoAcceptHours, setAutoAcceptHours] = useState('24');
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
@@ -122,14 +120,12 @@ export function PlatformSettingsSection() {
         checkinWindowMinutesBefore: String(timeWindowData.checkinWindowMinutesBefore?.intValue ?? 15),
         noShowGraceMinutes: String(timeWindowData.noShowGraceMinutes?.intValue ?? 30),
         checkoutReviewWindowMinutes: String(timeWindowData.checkoutReviewWindowMinutes?.intValue ?? 60),
-        accessCodeValidBeforeMinutes: String(timeWindowData.accessCodeValidBeforeMinutes?.intValue ?? 15),
-        accessCodeValidAfterMinutes: String(timeWindowData.accessCodeValidAfterMinutes?.intValue ?? 15),
       });
     }
   }, [timeWindowData]);
 
   const timeWindowMutation = useMutation({
-    mutationFn: async (settings: { checkinWindowMinutesBefore?: number; noShowGraceMinutes?: number; checkoutReviewWindowMinutes?: number; accessCodeValidBeforeMinutes?: number; accessCodeValidAfterMinutes?: number }) => {
+    mutationFn: async (settings: { checkinWindowMinutesBefore?: number; noShowGraceMinutes?: number; checkoutReviewWindowMinutes?: number;   }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) throw new Error('Firebase user not available');
       const token = await currentFirebaseUser.getIdToken();
@@ -162,8 +158,6 @@ export function PlatformSettingsSection() {
       checkinWindowMinutesBefore: parseInt(twDefaults.checkinWindowMinutesBefore, 10),
       noShowGraceMinutes: parseInt(twDefaults.noShowGraceMinutes, 10),
       checkoutReviewWindowMinutes: Number(twDefaults.checkoutReviewWindowMinutes),
-      accessCodeValidBeforeMinutes: Number(twDefaults.accessCodeValidBeforeMinutes),
-      accessCodeValidAfterMinutes: Number(twDefaults.accessCodeValidAfterMinutes),
     });
   };
 
@@ -573,7 +567,7 @@ export function PlatformSettingsSection() {
               <p className="text-xs text-muted-foreground">Grace period before marking as no-show</p>
             </div>
             <div className="space-y-2">
-              <Label>Checkout Review Window (minutes after end)</Label>
+              <Label>Checkout Review Window (minutes after checkout request)</Label>
               <NumericInput
                 suffix="min"
                 value={twDefaults.checkoutReviewWindowMinutes}
@@ -582,11 +576,6 @@ export function PlatformSettingsSection() {
               />
               <p className="text-xs text-muted-foreground">How long manager has to review checkout before auto-clear (admin-only; no per-location override)</p>
             </div>
-            {(['accessCodeValidBeforeMinutes', 'accessCodeValidAfterMinutes'] as const).map(field => <div className="space-y-2" key={field}>
-              <Label htmlFor={field}>{field === 'accessCodeValidBeforeMinutes' ? 'Access code valid before start' : 'Access code valid after end'}</Label>
-              <NumericInput id={field} suffix="minutes" value={twDefaults[field]} onValueChange={value => setTwDefaults({ ...twDefaults, [field]: value })} className="max-w-32" />
-              <p className="text-xs text-muted-foreground">Applies when issuing new access codes. Already issued codes retain their saved validity times.</p>
-            </div>)}
           </div>
           <Button
             onClick={handleSaveTimeWindows}

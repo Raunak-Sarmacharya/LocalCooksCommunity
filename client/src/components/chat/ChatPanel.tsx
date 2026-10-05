@@ -9,21 +9,33 @@ import { Card, CardContent } from "@/components/ui/card";
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
 import { MessageThreadSkeleton } from './ConversationItemSkeleton';
 import { useChat } from "@/hooks/use-chat";
-import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { auth } from '@/lib/firebase';
 import { uploadChatFile } from "@/services/chat-service";
 import { Timestamp } from "firebase/firestore";
 
 // Authenticated file link component for chat attachments
-function AuthenticatedFileLink({ url, fileName, className }: { url: string | null | undefined; fileName?: string; className?: string }) {
-  const { url: presignedUrl, isLoading } = usePresignedDocumentUrl(url);
+function AuthenticatedFileLink({ url, fileName, className, conversationId }: { url: string | null | undefined; fileName?: string; className?: string; conversationId: string }) {
+  const [isLoading, setIsLoading] = useState(false), [error, setError] = useState('');
+  const open = async () => {
+    if (!url) return;
+    setIsLoading(true); setError('');
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw Error('Sign in to open this attachment');
+      const response = await fetch(`/api/files/chat/${encodeURIComponent(conversationId)}/file?url=${encodeURIComponent(url)}`, {
+        headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      if (!response.ok) throw Error('This attachment is unavailable for your current account. Please retry.');
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a'); link.href = objectUrl; link.download = fileName || 'Attachment'; link.click();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) { setError((error as Error).message); }
+    finally { setIsLoading(false); }
+  };
   
   if (!url) return null;
   
   return (
-    <a
-      href={presignedUrl || url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div><button type="button" disabled={isLoading} onClick={() => void open()}
       className={className}
     >
       <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20">
@@ -36,7 +48,7 @@ function AuthenticatedFileLink({ url, fileName, className }: { url: string | nul
       <span className="text-xs underline truncate max-w-[150px]">
         {fileName || 'Attached File'}
       </span>
-    </a>
+    </button>{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</div>
   );
 }
 
@@ -85,6 +97,7 @@ interface ChatPanelProps {
   onClose?: () => void;
   onUnreadCountUpdate?: () => void;
   embedded?: boolean;
+  bookingId?: number;
 }
 
 export default function ChatPanel({
@@ -105,7 +118,16 @@ export default function ChatPanel({
   onClose,
   onUnreadCountUpdate,
   embedded = false,
+  bookingId,
 }: ChatPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    if (!panelRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => setIsVisible(entry.isIntersecting && entry.intersectionRatio > 0));
+    observer.observe(panelRef.current);
+    return () => observer.disconnect();
+  }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [attachedFacilityDocuments, setAttachedFacilityDocuments] = useState<Array<{
     name: string;
@@ -129,6 +151,8 @@ export default function ChatPanel({
     managerId,
     onUnreadCountUpdate,
     viewerRole,
+    isVisible: isVisible && !availabilityPending,
+    bookingId,
   });
 
   const localCooksName = adminName || t("chatLocalCooks", "Local Cooks");
@@ -283,6 +307,7 @@ export default function ChatPanel({
                 <div className="flex flex-col gap-2 p-1">
                   {message.content && <span className="text-sm">{message.content}</span>}
                   <AuthenticatedFileLink
+                    conversationId={conversationId}
                     url={message.fileUrl}
                     fileName={message.fileName}
                     className="flex items-center gap-2 p-2 rounded bg-background/50 border hover:bg-background/80 transition-colors group"
@@ -314,7 +339,7 @@ export default function ChatPanel({
         {/* Attaching facility documents is pointless once the thread is dormant,
             and the pending-attachment chip row would dangle. Both are hidden
             behind the same read-only state rather than the composer alone. */}
-        {!unavailable && !availabilityPending && isManager && (
+        {!unavailable && !availabilityPending && isManager && !!applicationId && (
           <div className="border-b bg-muted/10">
             <FacilityDocumentsPanel
               locationId={locationId}
@@ -381,7 +406,8 @@ export default function ChatPanel({
 
   if (embedded) {
     return (
-      <div className="flex flex-col h-full bg-background border-none shadow-none">
+      <div ref={panelRef} className="flex flex-col h-full bg-background border-none shadow-none">
+        {bookingId && <a className="px-4 py-2 text-sm underline" href={`${isManager ? '/manager' : ''}/booking/${bookingId}`}>Booking #{bookingId}</a>}
         {renderContent}
       </div>
     );
@@ -389,7 +415,7 @@ export default function ChatPanel({
 
   return (
     <Card className="w-full max-w-4xl mx-auto h-[700px] flex flex-col shadow-2xl border-border/50 overflow-hidden">
-      <CardContent className="flex-1 p-0 flex flex-col h-full">
+      <CardContent ref={panelRef} className="flex-1 p-0 flex flex-col h-full">
         {renderContent}
       </CardContent>
     </Card>

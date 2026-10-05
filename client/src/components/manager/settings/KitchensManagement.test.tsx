@@ -38,7 +38,8 @@ vi.mock("@tanstack/react-query", () => ({
     if (queryKey[0] === "publicKitchenShare") return { data: h.shareableKitchen };
     if (queryKey[0] === "managerKitchens") return { data: h.kitchens, isLoading: h.isLoading };
     if (queryKey[0] === "checkin-checkout-settings") return { data: { checkinEnabled: h.checklistConfigured, checkoutEnabled: h.checklistConfigured,
-      checkinItems: h.checklistConfigured ? [{}] : [], checkoutItems: h.checklistConfigured ? [{}] : [] } };
+      checkinItems: [], checkoutItems: [], checkinInstructions: h.checklistConfigured ? 'Use the main door.' : null,
+      checkoutInstructions: h.checklistConfigured ? 'Close the door.' : null } };
     if (queryKey[0] === "managerKitchenWorkspace") return { data: { kitchen: { checkinCheckoutEnabled: h.trackingEnabled } } };
     if (queryKey[0] === "/api/manager/availability") return { data: h.bookingHours, isLoading: false };
     const kitchenId = Number(String(queryKey[0]).split("/").at(-1));
@@ -170,12 +171,30 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("My Kitchens — creating a kitchen", () => {
+  it('opens tour notes for the requested kitchen even when new tours are disabled', () => {
+    h.kitchens = [{ id: 40, name: 'First Kitchen' }, { id: 47, name: 'Second Kitchen' }];
+    h.tourEnabled[47] = false;
+    window.history.replaceState({}, '', '/?view=kitchens&section=tours&kit=47&focus=tour-notes');
+    render(<KitchensManagement {...props} initialKitchenId={47} />);
+    expect(screen.getByRole('tab', { name: 'kitchenTours' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByTestId('tour-settings')).toHaveTextContent('47');
+    expect(screen.getByRole('switch')).not.toBeChecked();
+  });
   it("takes managers to the check-in card and highlights the target", () => {
     h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
     render(<KitchensManagement {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "setUpChecklist" }));
     expect(document.getElementById("tracking-settings")).toHaveAttribute("data-highlight", "true");
     expect(document.activeElement).toBe(document.getElementById("tracking-settings"));
+  });
+  it('uses the same scroll, focus and highlight for listing-review navigation', () => {
+    h.kitchens = [{ id: 1, name: 'Harbour Kitchen' }, { id: 2, name: 'Market Kitchen' }];
+    window.history.replaceState({}, '', '/manager/dashboard?view=kitchens&section=details&kit=2&focus=tracking');
+    render(<KitchensManagement {...props} initialKitchenId={2} />);
+    expect(document.getElementById('tracking-settings')).toHaveAttribute('data-highlight', 'true');
+    expect(document.activeElement).toBe(document.getElementById('tracking-settings'));
+    expect(new URL(window.location.href).searchParams.get('kit')).toBe('2');
+    expect(new URL(window.location.href).searchParams.has('focus')).toBe(false);
   });
   it("shows Add Kitchen before the selector opens, even with a long kitchen list", () => {
     h.kitchens = Array.from({ length: 24 }, (_, index) => ({ id: index + 1, name: `Kitchen ${index + 1}` }));

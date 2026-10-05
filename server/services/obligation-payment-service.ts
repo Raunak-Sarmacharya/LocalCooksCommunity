@@ -1,3 +1,4 @@
+import { queueClaimOutcome, queueOverstayOutcome } from './outcome-delivery';
 import type Stripe from 'stripe';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db';
@@ -83,50 +84,66 @@ export async function checkoutObligation(stripe: Stripe, kind: ObligationKind, i
 
 /** Reconcile verified Stripe success events even if the charging request crashed. */
 export async function reconcileObligationPayment(intent: Stripe.PaymentIntent) {
-  const kind = intent.metadata.type;
-  if (!['damage_claim', 'overstay_penalty'].includes(kind)) return null;
-  if (intent.status !== 'succeeded') throw new Error('Payment has not succeeded');
-  const id = Number(kind === 'damage_claim' ? intent.metadata.damage_claim_id
-    : intent.metadata.overstay_record_id || intent.metadata.overstayRecordId);
-  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid payment obligation ID');
-  const table = tableFor(kind as ObligationKind);
-  const [record] = await db.select().from(table).where(eq(table.id, id)).limit(1);
-  if (!record) throw new Error('Payment obligation not found');
-  const isClaim = 'claimedAmountCents' in record;
-  if (record.paymentRoute === 'checkout' && intent.metadata.obligation_checkout_attempt !== String(record.checkoutAttempt))
-    throw new Error('Payment does not match the active checkout attempt');
-  const baseCents = isClaim ? record.finalAmountCents : record.finalPenaltyCents;
-  const taxCents = isClaim ? 0 : Number(intent.metadata.penalty_tax_cents || 0);
-  if (!Number.isSafeInteger(baseCents) || !baseCents || baseCents <= 0 || !Number.isSafeInteger(taxCents)
-    || taxCents < 0 || intent.amount_received !== baseCents + taxCents || intent.currency !== 'cad') {
-    throw new Error('Payment amount does not match the approved obligation');
-  }
-  if (record.stripePaymentIntentId && record.stripePaymentIntentId !== intent.id &&
-    !(record.paymentRoute === 'checkout' && intent.metadata.obligation_checkout_attempt === String(record.checkoutAttempt))) {
-    throw new Error('Payment does not match the active obligation attempt');
-  }
-  const chargeId = typeof intent.latest_charge === 'string' ? intent.latest_charge : intent.latest_charge?.id;
-  const [settled] = await db.update(table).set({ status: 'charge_succeeded', stripePaymentIntentId: intent.id,
-    stripeChargeId: chargeId || null, chargeSucceededAt: new Date(), resolvedAt: new Date(),
-    resolutionType: 'paid', updatedAt: new Date() })
-    .where(and(eq(table.id, id), or(eq(table.status, 'charge_succeeded'),
-      sql`${table.status}::text IN ('charge_pending','charge_failed','escalated','approved','partially_approved','chef_accepted','penalty_approved')`)))
+  const kind=intent.metadata.type;
+  if(!['damage_claim','overstay_penalty'].includes(kind)) return null;
+  if(intent.status!=='succeeded') throw new Error('Payment has not succeeded');
+  const id=Number(kind==='damage_claim'? intent.metadata.damage_claim_id
+    :intent.metadata.overstay_record_id||intent.metadata.overstayRecordId);
+  if(!Number.isSafeInteger(id)||id<=0) throw new Error('Invalid payment obligation ID');
+  const table=tableFor(kind as ObligationKind);
+  return db.transaction(async tx => {
+    const [record]=await tx.select().from(table).where(eq(table.id,id)).limit(1).for('update');
+    if(!record) throw new Error('Payment obligation not found');
+    const isClaim='claimedAmountCents' in record;
+    if(record.paymentRoute==='checkout'&&intent.metadata.obligation_checkout_attempt!==String(record.checkoutAttempt))
+      throw new Error('Payment does not match the active checkout attempt');
+    const baseCents=isClaim? record.finalAmountCents:record.finalPenaltyCents;
+    const taxCents=isClaim? 0:Number(intent.metadata.penalty_tax_cents||0);
+    if(!Number.isSafeInteger(baseCents)||!baseCents||baseCents<=0||!Number.isSafeInteger(taxCents)
+      ||taxCents<0||intent.amount_received!==baseCents+taxCents||intent.currency!=='cad') {
+      throw new Error('Payment amount does not match the approved obligation');
+    }
+    if(record.stripePaymentIntentId&&record.stripePaymentIntentId!==intent.id&&
+      !(record.paymentRoute==='checkout'&&intent.metadata.obligation_checkout_attempt===String(record.checkoutAttempt))) {
+      throw new Error('Payment does not match the active obligation attempt');
+    }
+    const chargeId=typeof intent.latest_charge==='string'? intent.latest_charge:intent.latest_charge?.id;
+    const [settled]=await tx.update(table).set({
+      status: 'charge_succeeded',stripePaymentIntentId: intent.id,
+      stripeChargeId: chargeId||null,chargeSucceededAt: new Date(),resolvedAt: new Date(),
+      resolutionType: 'paid',updatedAt: new Date()
+    })
+      .where(and(eq(table.id,id),or(eq(table.status,'charge_succeeded'),
+        sql`${table.status}::text IN ('charge_pending','charge_failed','escalated','approved','partially_approved','chef_accepted','penalty_approved')`)))
       .returning({ id: table.id });
-  if (!settled) throw new Error('Payment obligation changed; admin reconciliation required');
-  if (record.status !== 'charge_succeeded') {
-    const { damageClaimHistory, storageOverstayHistory } = await import('@shared/schema');
-    if (isClaim) await db.insert(damageClaimHistory).values({ damageClaimId: id, previousStatus: record.status as any,
-      newStatus: 'charge_succeeded', action: 'charge_attempt', actionBy: 'stripe_webhook',
-      notes: `Stripe payment reconciled: ${intent.id}`, metadata: { paymentIntentId: intent.id } });
-    else await db.insert(storageOverstayHistory).values({ overstayRecordId: id, previousStatus: record.status as any,
-      newStatus: 'charge_succeeded', eventType: 'charge_attempt', eventSource: 'stripe_webhook',
-      description: `Stripe payment reconciled: ${intent.id}`, metadata: { paymentIntentId: intent.id } });
-  }
-  const bookingId = isClaim ? (record.storageBookingId || record.kitchenBookingId)! : record.storageBookingId;
-  const chefId = isClaim ? record.chefId : Number(intent.metadata.chef_id || intent.metadata.chefId) || null;
-  const managerId = isClaim ? record.managerId : Number(intent.metadata.manager_id || intent.metadata.managerId) || null;
-  return { bookingId, bookingType: (isClaim ? record.bookingType : 'storage') as 'kitchen' | 'storage', chefId, managerId,
-    amount: intent.amount_received, baseAmount: baseCents, taxAmount: taxCents, serviceFee: 0,
-    managerRevenue: intent.amount_received, currency: 'CAD', paymentIntentId: intent.id, chargeId,
-    status: 'succeeded' as const, stripeStatus: intent.status, metadata: { ...intent.metadata, createdFrom: 'obligation_webhook_recovery' } };
+    if(!settled) throw new Error('Payment obligation changed; admin reconciliation required');
+    if(record.status!=='charge_succeeded') {
+      const { damageClaimHistory,storageOverstayHistory }=await import('@shared/schema');
+      if(isClaim) {
+        const [history]=await tx.insert(damageClaimHistory).values({
+          damageClaimId: id,previousStatus: record.status as any,
+          newStatus: 'charge_succeeded',action: 'charge_attempt',actionBy: 'stripe_webhook',
+          notes: `Stripe payment reconciled: ${intent.id}`,metadata: { paymentIntentId: intent.id }
+        }).returning();
+        await queueClaimOutcome(tx,history);
+      }
+      else {
+        const [history]=await tx.insert(storageOverstayHistory).values({
+          overstayRecordId: id,previousStatus: record.status as any,
+          newStatus: 'charge_succeeded',eventType: 'charge_attempt',eventSource: 'stripe_webhook',
+          description: `Stripe payment reconciled: ${intent.id}`,metadata: { paymentIntentId: intent.id }
+        }).returning();
+        await queueOverstayOutcome(tx,history);
+      }
+    }
+    const bookingId=isClaim? (record.storageBookingId||record.kitchenBookingId)!:record.storageBookingId;
+    const chefId=isClaim? record.chefId:Number(intent.metadata.chef_id||intent.metadata.chefId)||null;
+    const managerId=isClaim? record.managerId:Number(intent.metadata.manager_id||intent.metadata.managerId)||null;
+    return {
+      bookingId,bookingType: (isClaim? record.bookingType:'storage') as 'kitchen'|'storage',chefId,managerId,
+      amount: intent.amount_received,baseAmount: baseCents,taxAmount: taxCents,serviceFee: 0,
+      managerRevenue: intent.amount_received,currency: 'CAD',paymentIntentId: intent.id,chargeId,
+      status: 'succeeded' as const,stripeStatus: intent.status,metadata: { ...intent.metadata,createdFrom: 'obligation_webhook_recovery' }
+    };
+  });
 }

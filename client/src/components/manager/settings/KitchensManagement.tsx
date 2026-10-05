@@ -56,9 +56,6 @@ interface Kitchen {
   isActive: boolean;
   galleryImages?: string[];
   minimumBookingHours?: number;
-  /** Admin-controlled capability gate. When false, all smart-door UI is hidden. */
-  smartLockAvailable?: boolean;
-  smartLockEnabled?: boolean;
 }
 
 function getInitialKitchenSection(): KitchenSection {
@@ -124,6 +121,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId ?? null);
   const appliedInitialKitchenId = useRef<number>();
   const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
+  const notesFocused = activeSection === 'tours' && new URLSearchParams(window.location.search).get('focus') === 'tour-notes';
 
   const detailsRef = useRef<KitchenDetailsPricingHandle>(null);
   const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
@@ -150,6 +148,16 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [highlightTracking, setHighlightTracking] = useState(false);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
+  const highlightTrackingSection = useCallback(() => {
+    const target = document.getElementById('tracking-settings');
+    if (!target) return false;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.focus({ preventScroll: true });
+    setHighlightTracking(true);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightTracking(false), 3000);
+    return true;
+  }, []);
   const [policiesDirty, setPoliciesDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
   const [storagePenaltyDirty, setStoragePenaltyDirty] = useState(false);
@@ -219,9 +227,19 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   });
   const trackingConfigured = workspaceSettings?.kitchen?.checkinCheckoutEnabled === true
     && checklistSettings?.checkinEnabled === true && checklistSettings?.checkoutEnabled === true
-    && Boolean(checklistSettings.checkinItems?.length || checklistSettings.checkinPhotoRequirements?.length || checklistSettings.checkinInstructions?.trim())
-    && Boolean(checklistSettings.checkoutItems?.length || checklistSettings.checkoutPhotoRequirements?.length || checklistSettings.checkoutInstructions?.trim());
+    && Boolean(checklistSettings.checkinInstructions?.trim())
+    && Boolean(checklistSettings.checkoutInstructions?.trim());
   const trackingEnabled = workspaceSettings?.kitchen?.checkinCheckoutEnabled === true;
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeSection !== 'details' || !activeKitchenId || !workspaceSettings || url.searchParams.get('focus') !== 'tracking') return;
+    const requestedKitchen = url.searchParams.get('kit');
+    if (requestedKitchen && Number(requestedKitchen) !== activeKitchenId) return;
+    if (highlightTrackingSection()) {
+      url.searchParams.delete('focus');
+      window.history.replaceState({}, '', url);
+    }
+  }, [activeSection, activeKitchenId, workspaceSettings, highlightTrackingSection]);
   const trackingUid = auth.currentUser?.uid;
   const trackingDismissalKey = trackingUid && activeKitchenId != null ? trackingPromptKey(trackingUid, activeKitchenId) : null;
   const trackingSignature = workspaceSettings?.kitchen && checklistSettings ? trackingSetupSignature([
@@ -469,7 +487,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   };
 
   useEffect(() => {
-    if (activeSection !== "tours" || tourSettings === undefined || toursEnabled || toursDirty) return;
+    if (activeSection !== "tours" || tourSettings === undefined || toursEnabled || toursDirty || notesFocused) return;
     // Disabled legacy links lead to the control that enables tours, rather than an empty tab.
     setActiveSection("availability");
     const url = new URL(window.location.href);
@@ -477,7 +495,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     url.searchParams.set("section", "availability");
     url.searchParams.delete("tab");
     window.history.replaceState({}, "", url);
-  }, [activeSection, tourSettings, toursEnabled, toursDirty]);
+  }, [activeSection, tourSettings, toursEnabled, toursDirty, notesFocused]);
 
   useEffect(() => {
     const syncSectionFromUrl = () => setActiveSection(kitchenSectionFromParams(new URLSearchParams(window.location.search)));
@@ -634,7 +652,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               <TabsTrigger value="equipment" className={TAB_TRIGGER}>
                 <Wrench className={TAB_ICON} />{mt("navEquipment")}
               </TabsTrigger>
-              {toursEnabled && <TabsTrigger value="tours" className={TAB_TRIGGER}>
+              {(toursEnabled || notesFocused) && <TabsTrigger value="tours" className={TAB_TRIGGER}>
                 <KitchenTour className={TAB_ICON} />{mt("kitchenTours")}
               </TabsTrigger>}
             </TabsList>
@@ -644,14 +662,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
                 <Card className="overflow-hidden border-l-[3px] border-l-primary/80 shadow-[0_8px_24px_-18px_hsl(var(--primary)/0.5)]"><CardContent className="relative flex flex-wrap items-center justify-between gap-4 p-4">
                   <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.8)]"><ClipboardCheck className="size-5" /></span>
                     <div><p className="font-semibold tracking-tight">{mt("trackingSetupTitle")}</p><p className="text-sm text-muted-foreground">{mt("trackingSetupDescription")}</p></div></div>
-                  <div className="flex gap-2"><Button size="sm" onClick={() => {
-                    const target = document.getElementById("tracking-settings");
-                    target?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    target?.focus({ preventScroll: true });
-                    setHighlightTracking(true);
-                    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-                    highlightTimer.current = setTimeout(() => setHighlightTracking(false), 3000);
-                   }}>{mt("setUpChecklist")}</Button>
+                  <div className="flex gap-2"><Button size="sm" onClick={highlightTrackingSection}>{mt("setUpChecklist")}</Button>
                     <Button size="sm" variant="ghost" onClick={() => {
                       if (!trackingDismissalKey || !trackingSignature) return;
                       setSessionTrackingDismissal({ key: trackingDismissalKey, signature: trackingSignature, dismissedAt: Date.now() });
@@ -707,7 +718,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               </SettingsRow></CardContent></Card>}
               {isLoadingTours && <AvailabilitySkeleton />}
               {toursError && <Button variant="outline" onClick={() => refetchTours()}>{mt("retry")}</Button>}
-              {activeKitchenId && (toursEnabled || toursDirty) && <ViewingSettingsPanel key={activeKitchenId} ref={toursRef} kitchenId={activeKitchenId} facilityKitchenCount={kitchens.length}
+              {activeKitchenId && (toursEnabled || toursDirty || notesFocused) && <ViewingSettingsPanel key={activeKitchenId} ref={toursRef} kitchenId={activeKitchenId} facilityKitchenCount={kitchens.length}
                 kitchenName={activeKitchen?.name} onDirtyChange={setToursDirty} hideSaveActions />}
             </TabsContent>
             <TabsContent value="policies" className="mt-0">

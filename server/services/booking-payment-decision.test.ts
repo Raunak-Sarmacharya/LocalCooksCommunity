@@ -32,6 +32,7 @@ vi.mock('../db', () => {
   return { db: database(mocks.state) };
 });
 import { decideAuthorizedBooking } from './booking-payment-decision';
+import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 describe('durable booking capture recovery (isolated Stripe and transaction model)', () => {
   beforeEach(() => {
     vi.resetAllMocks(); mocks.failFinalize = false;
@@ -51,6 +52,18 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'authorized',
       paymentDecision: { state: 'pending', amount: 1220, subtotal: 1000, commission: 70, tax: 150 } });
     expect(mocks.state.storage_bookings[0].status).toBe('pending');
+  });
+  it('records captured money when capture wins a cancellation release, without releasing linked resources', async () => {
+    mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+      .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+      .mockResolvedValue({ id: 'pi_fixture', status: 'succeeded', amount_received: 2440 });
+    mocks.cancel.mockRejectedValue(Error('Capture already succeeded'));
+    await expect(decideAuthorizedBooking(1, 'cancelled')).rejects.toThrow('Paid funds are recorded');
+    expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'paid', paymentDecision: { target: 'cancelled', state: 'pending' } });
+    expect(mocks.state.payment_transactions[0]).toMatchObject({ status: 'succeeded', stripeStatus: 'succeeded' });
+    expect(mocks.state.storage_bookings[0]).toMatchObject({ kitchenBookingId: 1, status: 'pending' });
+    expect(mocks.capture).not.toHaveBeenCalled();
+    expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.some(call => call[2] === 'payment_recovery_needed')).toBe(true);
   });
   it('recovers a captured payment after local finalization fails, without capturing again', async () => {
     mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
@@ -73,6 +86,22 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       .mockResolvedValue({ id: 'pi_fixture', status: 'processing' });
     await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow('reconciliation');
     expect(mocks.state.kitchen_bookings[0].status).toBe('pending');
+    expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.some(call => call[2] === 'confirmed')).toBe(false);
+  });
+  it('hands the finalized approved state to the outbox in the same transaction, after capture verification', async () => {
+    mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+      .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+      .mockResolvedValue({ id: 'pi_fixture', status: 'succeeded', amount_received: 1220 });
+    vi.mocked(queueBookingLifecycleEvent).mockImplementationOnce(async tx => {
+      const [booking] = await tx.select().from(kitchenBookings);
+      const [payment] = await tx.select().from(paymentTransactions);
+      const [storage] = await tx.select().from(storageBookings);
+      expect(booking).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', paymentDecision: { state: 'complete', amount: 1220 } });
+      expect(payment).toMatchObject({ status: 'succeeded', amount: '1220' });
+      expect(storage).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
+    });
+    await decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }]);
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'confirmed', expect.any(String), expect.any(String), undefined, expect.objectContaining({ decisionId: expect.any(String) }));
   });
   it('does not change a persisted approval into rejection', async () => {
     mocks.capture.mockRejectedValue(new Error('timeout'));

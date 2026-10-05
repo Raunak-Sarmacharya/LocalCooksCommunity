@@ -485,14 +485,6 @@ export const kitchens = pgTable("kitchens", {
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
   taxRatePercent: numeric("tax_rate_percent"), // Optional tax percentage (e.g., 13 for 13%)
-  // Smart lock integration (optional per kitchen)
-  // Admin-controlled capability gate — if false, managers cannot see or configure
-  // any smart-door UI for this kitchen. Enforced in code on top of the DB constraint.
-  smartLockAvailable: boolean("smart_lock_available").default(false).notNull(),
-  smartLockEnabled: boolean("smart_lock_enabled").default(false),
-  // Manager-typed static access code settings: { accessCode, accessCodeFormat, codeVisibility, codeSetAt }.
-  // No provider/API credentials anymore — managers program their keypads manually.
-  smartLockConfig: jsonb("smart_lock_config").default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -535,6 +527,8 @@ export const kitchenCheckoutHolds = pgTable("kitchen_checkout_holds", {
 
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
+  visitDuties: jsonb('visit_duties'), // v1 confirmation snapshot; null legacy captures at first action
+  assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. KB-A7K9MX
   chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
@@ -574,7 +568,6 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   cancellationRequestReason: text("cancellation_request_reason"),
   cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
   // ── Kitchen Check-In / Check-Out Lifecycle ────────────────────────────────
-  // Tracks chef arrival, departure, condition documentation, and smart lock access.
   // All columns nullable/defaulted — zero impact on existing bookings.
   checkinStatus: kitchenCheckinStatusEnum("checkin_status").default("not_checked_in"),
   checkedInAt: timestamp("checked_in_at"),
@@ -589,12 +582,6 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   checkoutManagerMessage: text("checkout_manager_message"), // Explicitly shared; preserves chef checkout notes
   checkoutApprovedAt: timestamp("checkout_approved_at"),
   checkoutApprovedBy: integer("checkout_approved_by").references(() => users.id, { onDelete: "set null" }),
-  // Access code integration (per-booking codes the manager programs manually)
-  accessCodeHash: text("access_code_hash"),                 // bcrypt hash — no plaintext stored
-  accessCodeFormat: text("access_code_format").default("alphanumeric"), // 'numeric' or 'alphanumeric'
-  accessCodeValidFrom: timestamp("access_code_valid_from"), // Code activates (e.g., 15 min before start)
-  accessCodeValidUntil: timestamp("access_code_valid_until"), // Code expires (e.g., end time + 15 min)
-  // No-show tracking (kitchen overstay tracking removed — not enforceable without smart locks)
   noShowDetectedAt: timestamp("no_show_detected_at"),
   actualStartTime: text("actual_start_time"),   // HH:MM of actual check-in
   actualEndTime: text("actual_end_time"),        // HH:MM of actual check-out
@@ -607,7 +594,36 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
 
 // Separate visits for a booking with nonconsecutive hourly blocks. One kitchen
 // booking/payment can have several independent check-in and checkout lifecycles.
+// Append-only request/adjustment evidence; original paid booking fields remain historical.
+export const kitchenBookingChanges = pgTable('kitchen_booking_changes', {
+  id: text('id').primaryKey(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  requestKey: text('request_key').notNull(),
+  kind: text('kind').notNull(),
+  state: text('state').notNull(),
+  revision: integer('revision').default(1).notNull(),
+  original: jsonb('original').notNull(),
+  destination: jsonb('destination').notNull(),
+  quote: jsonb('quote').notNull(),
+  linkedItems: jsonb('linked_items').notNull().default([]),
+  policy: jsonb('policy').notNull(),
+  bookingVersion: timestamp('booking_version').notNull(),
+  decisionBy: timestamp('decision_by').notNull(),
+  paymentBy: timestamp('payment_by'),
+  managerId: integer('manager_id').references(() => users.id).notNull(),
+  holdId: text('hold_id'),
+  sessionId: text('session_id').unique(),
+  intentId: text('intent_id').unique(),
+  releaseOutcome: text('release_outcome'),
+  refundPlan: jsonb('refund_plan'),
+  refundId: text('refund_id'),
+  history: jsonb('history').default([]).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
+  assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
   bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(),
   blockIndex: integer("block_index").notNull(),
@@ -649,25 +665,8 @@ export const kitchenBookingAttendanceEvents = pgTable("kitchen_booking_attendanc
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Access code audit trail
-export const accessCodeAudit = pgTable("access_code_audit", {
-  id: serial("id").primaryKey(),
-  bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }),
-  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
-  action: text("action").notNull(),             // 'generated', 'expired', 'revoked', 'regenerated'
-  accessCodeHash: text("access_code_hash"),      // Hash of the code at time of action (for correlation, not plaintext)
-  source: text("source").default("system").notNull(), // 'system', 'manager_app', 'api'
-  metadata: jsonb("metadata").default({}),       // Extra context (e.g., revocation reason)
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertAccessCodeAuditSchema = createInsertSchema(accessCodeAudit);
-export type AccessCodeAudit = typeof accessCodeAudit.$inferSelect;
-export type InsertAccessCodeAudit = z.infer<typeof insertAccessCodeAuditSchema>;
-
 // ── Checkin/Checkout Checklists (per-location, manager-controlled) ──────────
 // Managers define checklists and photo requirements that chefs must complete
-// during kitchen check-in and check-out. Smart lock instructions are stored here.
 export const checkinCheckoutChecklists = pgTable("checkin_checkout_checklists", {
   id: serial("id").primaryKey(),
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
@@ -696,9 +695,6 @@ export const checkinCheckoutChecklists = pgTable("checkin_checkout_checklists", 
   storageCheckinPhotoRequirements: jsonb("storage_checkin_photo_requirements").default([]).notNull(),
   storageCheckinInstructions: text("storage_checkin_instructions"),
 
-  // Smart lock settings (location-level, shown inside checkin checklist)
-  smartLockCheckinInstructions: text("smart_lock_checkin_instructions"),
-
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -709,7 +705,7 @@ export const checklistItemSchema = z.object({
   label: z.string().min(1),
   description: z.string().optional(),
   required: z.boolean().default(true),
-  category: z.enum(['general', 'safety', 'equipment', 'smart_lock']).default('general'),
+  category: z.enum(['general', 'safety', 'equipment']).default('general'),
   /**
    * When true, the chef must upload a photo for this checklist item in addition
    * to ticking the checkbox. The manager UI folds photo requirements into items
@@ -1386,6 +1382,8 @@ export const bookingLifecycleEvents = pgTable('booking_lifecycle_events', {
 });
 
 export const storageBookings = pgTable("storage_bookings", {
+  visitDuties: jsonb('visit_duties'), // Independent storage duties/dates, including standalone legacy
+  assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. SB-X3P2NR
   storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
@@ -2282,6 +2280,8 @@ export const kitchenViewingSettings = pgTable("kitchen_viewing_settings", {
   bufferAfterMinutes: integer("buffer_after_minutes").default(15).notNull(), // Buffer after a tour slot
   advanceNoticeHours: integer("advance_notice_hours").default(24).notNull(), // Minimum hours in advance to book
   maxAdvanceBookingDays: integer("max_advance_booking_days").default(30).notNull(), // How far ahead chefs can book
+  arrivalNotes: text("arrival_notes"), // Shared guidance for confirmed tour visitors, separate from paid bookings.
+  departureNotes: text("departure_notes"),
   version: integer("version").default(1).notNull(), // Optimistic locking version
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2335,6 +2335,9 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   adminReviewerId: integer("admin_reviewer_id").references(() => users.id, { onDelete: "set null" }),
   adminReviewedAt: timestamp("admin_reviewed_at"),
   // Completion tracking
+  checkedInAt: timestamp("checked_in_at"),
+  checkedOutAt: timestamp("checked_out_at"),
+  attendanceHistory: jsonb("attendance_history").default([]),
   completedAt: timestamp("completed_at"),
   noShowAt: timestamp("no_show_at"),
   outcomeRecordedBy: integer("outcome_recorded_by").references(() => users.id, { onDelete: "set null" }),
@@ -2346,6 +2349,25 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
 });
 
 // Outgoing email log — every sendEmail() attempt is recorded for admin tracking
+// Owned recovery state is independent of attendance, money and resource occupancy.
+export const commitmentProblems = pgTable('commitment_problems', {
+  id: serial('id').primaryKey(),
+  sourceKey: text('source_key').notNull().unique(),
+  kind: text('kind').notNull(), // live | schedule
+  bookingId: integer('booking_id').references(() => kitchenBookings.id),
+  viewingId: integer('viewing_id').references(() => kitchenViewings.id),
+  kitchenId: integer('kitchen_id').references(() => kitchens.id),
+  reportedBy: integer('reported_by').references(() => users.id).notNull(),
+  owner: text('owner').notNull().default('local_cooks'),
+  claimedBy: integer('claimed_by').references(() => users.id),
+  status: text('status').notNull().default('reported'),
+  description: text('description').notNull(),
+  revision: integer('revision').notNull().default(1),
+  history: jsonb('history').notNull().default([]),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const emailLogs = pgTable("email_logs", {
   id: serial("id").primaryKey(),
   recipientEmail: text("recipient_email").notNull(),
@@ -2395,6 +2417,8 @@ export const insertKitchenViewingSettingsSchema = createInsertSchema(kitchenView
   bufferAfterMinutes: z.number().int().min(0).max(60).optional(),
   advanceNoticeHours: z.number().int().min(0).max(168).optional(), // Max 1 week
   maxAdvanceBookingDays: z.number().int().min(1).max(90).optional(),
+  arrivalNotes: z.string().trim().max(2000).nullable().optional(),
+  departureNotes: z.string().trim().max(2000).nullable().optional(),
 }).omit({
   id: true,
   version: true,
@@ -2409,6 +2433,8 @@ export const updateKitchenViewingSettingsSchema = z.object({
   bufferAfterMinutes: z.number().int().min(0).max(60).optional(),
   advanceNoticeHours: z.number().int().min(0).max(168).optional(),
   maxAdvanceBookingDays: z.number().int().min(1).max(90).optional(),
+  arrivalNotes: z.string().trim().max(2000).nullable().optional(),
+  departureNotes: z.string().trim().max(2000).nullable().optional(),
 });
 
 export const insertKitchenViewingAvailabilitySchema = createInsertSchema(kitchenViewingAvailability, {

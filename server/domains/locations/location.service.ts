@@ -65,7 +65,7 @@ export class LocationService {
   /**
    * Update location with validation
    */
-  async updateLocation(dto: UpdateLocationDTO): Promise<LocationDTO> {
+  async updateLocation(dto: UpdateLocationDTO, allowManagerChange = false): Promise<LocationDTO> {
     try {
       const existingLocation = await this.locationRepo.findById(dto.id);
 
@@ -77,7 +77,7 @@ export class LocationService {
         );
       }
 
-      if (dto.managerId && dto.managerId !== existingLocation.managerId) {
+      if (!allowManagerChange && dto.managerId !== undefined && dto.managerId !== existingLocation.managerId) {
         throw new DomainError(
           LocationErrorCodes.NO_MANAGER_ASSIGNED,
           'Cannot change location manager',

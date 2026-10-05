@@ -80,8 +80,6 @@ interface Booking {
   checkedOutAt?: string | null
   checkoutApprovedAt?: string | null
   noShowDetectedAt?: string | null
-  accessCodeValidFrom?: string | null
-  accessCodeValidUntil?: string | null
   checkinEnabled?: boolean
   checkoutEnabled?: boolean
 }
@@ -228,6 +226,7 @@ const getTimeUntilBooking = (bookingDateTime: Date, now: Date, t?: LooseTFunctio
 
 const canCancelBooking = (booking: Booking, now: Date): boolean => {
   if (booking.status === 'cancelled' || booking.status === 'completed' || booking.status === 'cancellation_requested') return false
+  if (booking.status === 'pending' && ['authorized', 'pending', 'failed'].includes(booking.paymentStatus || '')) return true
 
   try {
     const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
@@ -243,7 +242,7 @@ const canCancelBooking = (booking: Booking, now: Date): boolean => {
     const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
     const cancellationHours = booking.location?.cancellationPolicyHours ?? 24
 
-    return hoursUntilBooking >= cancellationHours
+    return hoursUntilBooking > cancellationHours
   } catch {
     return false
   }
@@ -753,6 +752,10 @@ const getChefBookingColumns = ({
       const canDownloadInvoice = booking.status !== 'cancelled' && !isVoided
 
       return (
+        <div className="flex flex-wrap items-center gap-2">
+        {showCancel && <Button variant="outline" size="sm" onClick={() => onNavigate(`/booking/${booking.id}?cancel=1`)}>
+          {booking.status === 'pending' ? 'Cancel request' : 'Request cancellation'}
+        </Button>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -793,24 +796,9 @@ const getChefBookingColumns = ({
               </DropdownMenuItem>
             )}
 
-            {showCancel && (() => {
-              const isConfirmedPaid = booking.status === 'confirmed' &&
-                (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')
-              return (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => onCancelBooking(booking.id)}
-                    className={isConfirmedPaid ? "text-warning focus:text-warning" : "text-destructive focus:text-destructive"}
-                  >
-                    <Ban className="h-4 w-4 mr-2" />
-                    {isConfirmedPaid ? t("bkRequestCancellation") : t("bkCancelBooking")}
-                  </DropdownMenuItem>
-                </>
-              )
-            })()}
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       )
     },
   },
@@ -1080,7 +1068,7 @@ const getStorageBookingColumns = ({
       // You cannot check out of a storage unit you haven't checked into.
       const canCheckout = checkoutStatusActive && (
         Boolean(storageBooking.cancellationAcceptedAt) ||
-        (isConfirmed && checkinCompleted && storageBooking.storageCheckoutEnabled === true)
+        (isConfirmed && hasStarted && (checkinCompleted || storageBooking.storageCheckinEnabled !== true))
       )
 
       const canExtend = isConfirmed && checkoutStatusActive && !isCompleted && !isExpired
@@ -1497,6 +1485,8 @@ export default function ChefBookingsView({
     const booking = bookings.find(b => b.id === bookingId)
     if (!booking) return
 
+    const uncapturedRequest = booking.status === 'pending' && ['authorized', 'pending', 'failed'].includes(booking.paymentStatus || '')
+
     const dateStr = booking.bookingDate.split('T')[0]
     // Resolve in the location's timezone so the cancellation-window math
     // agrees with the server (which measures against the kitchen's wall clock).
@@ -1515,12 +1505,12 @@ export default function ChefBookingsView({
 
     const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
 
-    if (hoursUntilBooking < 0) {
+    if (!uncapturedRequest && hoursUntilBooking < 0) {
       toast.error(t("bkAlreadyStarted"))
       return
     }
 
-    if (hoursUntilBooking < cancellationHours) {
+    if (!uncapturedRequest && hoursUntilBooking <= cancellationHours) {
       toast.error(policyMessage)
       return
     }
@@ -1663,7 +1653,7 @@ export default function ChefBookingsView({
     return (storageBookings as StorageBooking[]).filter(sb => {
       const active = !sb.checkoutStatus || sb.checkoutStatus === 'active'
       if (sb.cancellationAcceptedAt) return active
-      return sb.status === 'confirmed' && sb.storageCheckoutEnabled === true && sb.checkinStatus === 'checkin_completed' && active
+      return sb.status === 'confirmed' && new Date(sb.startDate) <= new Date() && (sb.checkinStatus === 'checkin_completed' || sb.storageCheckinEnabled !== true) && active
     })
   }, [storageBookings])
 

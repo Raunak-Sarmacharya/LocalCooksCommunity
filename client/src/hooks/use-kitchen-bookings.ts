@@ -28,8 +28,6 @@ interface Booking {
   checkedOutAt?: string | null;
   checkoutApprovedAt?: string | null;
   noShowDetectedAt?: string | null;
-  accessCodeValidFrom?: string | null;
-  accessCodeValidUntil?: string | null;
 }
 
 interface CreateBookingData {
@@ -177,8 +175,6 @@ export function useKitchenBookings() {
         checkedOutAt: booking.checkedOutAt ?? booking.checked_out_at ?? null,
         checkoutApprovedAt: booking.checkoutApprovedAt ?? booking.checkout_approved_at ?? null,
         noShowDetectedAt: booking.noShowDetectedAt ?? booking.no_show_detected_at ?? null,
-        accessCodeValidFrom: booking.accessCodeValidFrom ?? booking.access_code_valid_from ?? null,
-        accessCodeValidUntil: booking.accessCodeValidUntil ?? booking.access_code_valid_until ?? null,
       }));
       
       return normalizedBookings;

@@ -4,7 +4,7 @@ import { db, pool } from '../db';
 import { kitchenBookings, kitchenCheckoutHolds } from '@shared/schema';
 import { absoluteOperatingSlotInterval, occupiedIntervals, type OperatingSlot } from '@shared/operating-hours';
 
-const HOLD_MINUTES = 37; // Stripe Checkout expires after 32 minutes; allow webhook delivery time.
+export const HOLD_MINUTES = 37; // Stripe Checkout expires after 32 minutes; allow webhook delivery time.
 
 export class KitchenSlotUnavailableError extends Error {
   constructor() { super('One or more selected time slots are no longer available'); }

@@ -19,15 +19,30 @@ interface UseChatOptions {
    * makes the viewer a recognized third participant.
    */
   viewerRole?: 'admin';
+  isVisible?: boolean;
+  bookingId?: number;
 }
 
-export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate, viewerRole }: UseChatOptions) {
+export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate, viewerRole, isVisible = false, bookingId }: UseChatOptions) {
   const { user } = useFirebaseAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const queryClient = useQueryClient();
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState === 'visible' && document.hasFocus());
+  useEffect(() => {
+    const update = () => setPageVisible(document.visibilityState === 'visible' && document.hasFocus());
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    window.addEventListener('blur', update);
+    return () => {
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('focus', update);
+      window.removeEventListener('blur', update);
+    };
+  }, []);
 
   // Use ref for callback to avoid re-subscribing when it changes
   const onUnreadCountUpdateRef = useRef(onUnreadCountUpdate);
@@ -85,14 +100,10 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         const initialMessages = isAdmin ? await getAdminChatMessages(conversationId) : await getMessages(conversationId);
         if (mounted) {
           setMessages(initialMessages);
+          setLoadedConversationId(conversationId);
           setIsLoading(false);
         }
 
-        if (role && !isAdmin) {
-          await markAsRead(conversationId, currentUserId, role);
-          queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
-          if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
-        }
       } catch (error) {
         logger.error('Error loading messages:', error);
         if (mounted) {
@@ -116,21 +127,29 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     const unsubscribe = subscribeToMessages(
       conversationId,
       (newMessages) => {
+        setError(null);
         setMessages(newMessages);
-        // If we receive new messages and we are viewing the chat, mark as read
-        if (currentUserId && role) {
-          markAsRead(conversationId, currentUserId, role)
-            .then(() => {
-              if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
-            })
-            .catch((err) => logger.error('Failed to mark as read', err));
-        }
+        setLoadedConversationId(conversationId);
+        setIsLoading(false);
       },
-      (error) => logger.error('Subscription error:', error)
+      (error) => { setMessages([]); setError(error); setIsLoading(false); }
     );
 
     return () => unsubscribe();
   }, [conversationId, currentUserId, role, isAdmin]);
+
+  useEffect(() => {
+    if (!isVisible || !pageVisible || isLoading || loadedConversationId !== conversationId || !currentUserId || !role || isAdmin) return;
+    // A subscription is not a read. Acknowledge only the rendered snapshot;
+    // arrivals racing this acknowledgment retain their own unread state.
+    if (!messages.some(message => !message.readAt && (role === 'chef'
+      ? message.senderRole === 'manager' || message.senderRole === 'admin'
+      : message.senderRole === 'chef'))) return;
+    void markAsRead(conversationId, currentUserId, role, messages).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
+      onUnreadCountUpdateRef.current?.();
+    }).catch(err => logger.error('Failed to mark as read', err));
+  }, [conversationId, currentUserId, role, isAdmin, isVisible, pageVisible, isLoading, loadedConversationId, messages, queryClient]);
 
   useEffect(() => {
     if (!conversationId || !isAdmin) return;
@@ -168,7 +187,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         await sendAdminChatMessage(conversationId, messageContent, fileUrl, fileName);
         setMessages(await getAdminChatMessages(conversationId));
       } else {
-        await sendMessage(conversationId, currentUserId, role, messageContent, file ? 'file' : 'text', fileUrl, fileName);
+        await sendMessage(conversationId, currentUserId, role, messageContent, file ? 'file' : 'text', fileUrl, fileName, bookingId);
       }
 
       // No need to setMessages manually as subscription will catch it
@@ -179,7 +198,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, currentUserId, role, isAdmin]);
+  }, [conversationId, currentUserId, role, isAdmin, bookingId]);
 
   return {
     messages,

@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ record: { route: null, intentId: null, sessionId: null, attempt: 0 } as any,
   writes: [] as any[], events: [] as string[] }));
-vi.mock('../db', () => ({ db: {
-  select: () => { const chain: any = { from: () => chain, where: () => chain, limit: async () => [state.record] }; return chain; },
+vi.mock('./outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), queueOverstayOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
+vi.mock('../db', () => { const db: any = {
+  select: () => { const chain: any = { from: () => chain, where: () => chain, limit: () => chain, for: () => chain, then: (resolve: any) => resolve([state.record]) }; return chain; },
   update: () => ({ set: (values: any) => ({ where: () => {
     state.writes.push(values); state.events.push(values.stripePaymentIntentId ? 'persist intent' : 'write');
     if (values.paymentRoute) state.record.route = values.paymentRoute;
     if (values.stripePaymentIntentId) state.record.intentId = values.stripePaymentIntentId;
     return { returning: async () => [{ id: 1 }], then: (resolve: any) => resolve(undefined) };
   } }) }),
-  insert: () => ({ values: async () => undefined }),
-} }));
+  insert: () => ({ values: (value: any) => ({ returning: async () => [{ id: 1, ...value }], then: (resolve: any) => resolve(undefined) }) }),
+}; db.transaction = (run: any) => run(db); return { db }; });
 import { chargeObligation, checkoutObligation, reconcileObligationPayment } from './obligation-payment-service';
 function stripeMock(status = 'requires_confirmation') {
   return { paymentIntents: {

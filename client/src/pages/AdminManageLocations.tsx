@@ -1,6 +1,6 @@
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
-import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, EyeOff,  } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -79,7 +79,6 @@ export default function AdminManageLocations() {
     description: "",
     isActive: true,
     taxRatePercent: "",
-    smartLockAvailable: false,
   });
 
   const [managerForm, setManagerForm] = useState({
@@ -492,13 +491,12 @@ export default function AdminManageLocations() {
           name: kitchenForm.name,
           description: kitchenForm.description,
           taxRatePercent: kitchenForm.taxRatePercent,
-          smartLockAvailable: kitchenForm.smartLockAvailable,
         }),
       });
       if (response.ok) {
         toast.success("Success", { description: "Kitchen created successfully" });
         setShowKitchenForm(false);
-        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "", smartLockAvailable: false });
+        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
         if (kitchenForm.locationId) {
           loadKitchens(parseInt(kitchenForm.locationId));
         }
@@ -529,14 +527,13 @@ export default function AdminManageLocations() {
           isActive: kitchenForm.isActive,
           locationId: parseInt(kitchenForm.locationId),
           taxRatePercent: kitchenForm.taxRatePercent,
-          smartLockAvailable: kitchenForm.smartLockAvailable,
         }),
       });
       if (response.ok) {
         toast.success("Success", { description: "Kitchen updated successfully" });
         setShowKitchenForm(false);
         setEditingKitchen(null);
-        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "", smartLockAvailable: false });
+        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
         if (kitchenForm.locationId) {
           loadKitchens(parseInt(kitchenForm.locationId));
         }
@@ -587,7 +584,6 @@ export default function AdminManageLocations() {
       description: kitchen.description || "",
       isActive: kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active !== undefined ? kitchen.is_active : true,
       taxRatePercent: kitchen.taxRatePercent !== undefined && kitchen.taxRatePercent !== null ? kitchen.taxRatePercent.toString() : "",
-      smartLockAvailable: Boolean(kitchen.smartLockAvailable ?? kitchen.smart_lock_available ?? false),
     });
     setShowKitchenForm(true);
   };
@@ -1005,7 +1001,7 @@ export default function AdminManageLocations() {
                     size="sm"
                     onClick={() => {
                       setEditingKitchen(null);
-                      setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true, taxRatePercent: "", smartLockAvailable: false });
+                      setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true, taxRatePercent: "" });
                       setShowKitchenForm(true);
                     }}
                     disabled={locations.length === 0}
@@ -1310,7 +1306,7 @@ export default function AdminManageLocations() {
       </Dialog>
 
       {/* Kitchen Form Dialog */}
-      <Dialog open={showKitchenForm} onOpenChange={(open) => { if (!open) { setShowKitchenForm(false); setEditingKitchen(null); setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "", smartLockAvailable: false }); } }}>
+      <Dialog open={showKitchenForm} onOpenChange={(open) => { if (!open) { setShowKitchenForm(false); setEditingKitchen(null); setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" }); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingKitchen ? "Edit Kitchen" : "Create New Kitchen"}</DialogTitle>
@@ -1341,25 +1337,6 @@ export default function AdminManageLocations() {
               <Input type="number" step="0.01" min="0" max="100" value={kitchenForm.taxRatePercent} onChange={(e) => setKitchenForm({ ...kitchenForm, taxRatePercent: e.target.value })} placeholder="e.g. 13" />
             </div>
 
-            {/* Smart Door Lock — admin-controlled capability gate */}
-            <div className="flex items-start justify-between gap-3 rounded-md border p-3">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50">
-                  <KeyRound className="h-4 w-4 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <Label className="text-sm font-medium">Smart Door Lock</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Enable if this kitchen is equipped with a smart/keypad lock. When off, the manager cannot see or configure any smart-door settings for this kitchen.
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={kitchenForm.smartLockAvailable}
-                onCheckedChange={(checked) => setKitchenForm({ ...kitchenForm, smartLockAvailable: checked })}
-              />
-            </div>
-
             {editingKitchen && (
               <div className="flex items-center gap-3">
                 <Switch checked={kitchenForm.isActive} onCheckedChange={(checked) => setKitchenForm({ ...kitchenForm, isActive: checked })} />
@@ -1367,7 +1344,7 @@ export default function AdminManageLocations() {
               </div>
             )}
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button type="button" variant="outline" onClick={() => { setShowKitchenForm(false); setEditingKitchen(null); setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "", smartLockAvailable: false }); }}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => { setShowKitchenForm(false); setEditingKitchen(null); setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" }); }}>Cancel</Button>
               <Button type="submit" disabled={loading}>{loading ? "Saving..." : editingKitchen ? "Update" : "Create"}</Button>
             </DialogFooter>
           </form>

@@ -353,6 +353,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             startTime,
             endTime,
             bookingName,
+            selectedSlots,
             bookingEmail,
             bookingPhone,
             bookingCompany,
@@ -405,7 +406,8 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             parseInt(kitchenId),
             bookingDateObj,
             startTime,
-            endTime
+            endTime,
+            { selectedSlots }
         );
 
         if (!availabilityCheck.valid) {
@@ -460,6 +462,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             startTime,
             endTime,
             specialNotes: specialNotes || `Portal booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}`,
+            selectedSlots: availabilityCheck.slots,
             bookingType: 'portal',
             createdBy: userId,
             externalContact: {

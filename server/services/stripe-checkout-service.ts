@@ -14,7 +14,8 @@ import { bookingAddonPrices } from '@shared/booking-addon-prices';
  */
 
 import Stripe from 'stripe';
-import { serializeCheckoutSlots } from './checkout-metadata';
+import { expandHourlySlots, serializeCheckoutSlots } from './checkout-metadata';
+import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
 import { saveStorageOverstayQuote, describeStorageOverstayTerms } from './storage-overstay-terms-service';
 import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 
@@ -40,6 +41,8 @@ export interface CreateCheckoutSessionParams {
   metadata?: Record<string, string>;
   /** Custom line item name shown to customer (default: 'Kitchen Session Booking') */
   lineItemName?: string;
+  /** Server-only: manager-approved post-confirmation adjustment, never an initial request. */
+  kitchenChangeAuthorization?: { idempotencyKey: string; expiresAt: number };
 }
 
 export interface CheckoutSessionResult {
@@ -127,6 +130,14 @@ export async function createPendingCheckoutSession(
     lineItemName = 'Kitchen Session Booking',
     lineItemBreakdown,
   } = params;
+
+  // This creates a new selection; fulfillment of recorded sessions stays compatible.
+  const freshSlots = bookingData.selectedSlots?.length ? bookingData.selectedSlots
+    : expandHourlySlots(bookingData.startTime, bookingData.endTime);
+  assertConsecutiveBookingSlots(freshSlots, bookingData.windowStartTime || bookingData.startTime);
+  if (freshSlots[0].startTime !== bookingData.startTime || freshSlots.at(-1)!.endTime !== bookingData.endTime) {
+    throw new Error('Booking start and end must match the selected slots');
+  }
 
   // Validate amounts
   if (bookingPriceInCents <= 0) {
@@ -400,9 +411,10 @@ export async function expireAbandonedCheckoutSession(sessionId: string): Promise
  * @throws Error if Stripe is not configured or if validation fails
  */
 export async function createCheckoutSession(
-  params: CreateCheckoutSessionParams
+  params: CreateCheckoutSessionParams,
+  provider: Stripe | null = stripe,
 ): Promise<CheckoutSessionResult> {
-  if (!stripe) {
+  if (!provider) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
 
@@ -476,6 +488,8 @@ export async function createCheckoutSession(
     const { eq } = await import('drizzle-orm');
     const [existingBooking] = await db.select({ chefId: kitchenBookings.chefId, paymentStatus: kitchenBookings.paymentStatus })
       .from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+    if (params.kitchenChangeAuthorization && (metadata.type !== 'kitchen_booking_change' || existingBooking?.paymentStatus !== 'paid'))
+      throw new Error('Kitchen change authorizations require an existing paid booking');
     const storedStorage = existingBooking?.paymentStatus === 'pending' ? await db.select().from(storageBookings)
       .where(eq(storageBookings.kitchenBookingId, bookingId)) : [];
     const overstayQuoteMetadata: Record<string, string> = {};
@@ -502,7 +516,7 @@ export async function createCheckoutSession(
     };
 
     // Create Checkout session
-    const session = await stripe.checkout.sessions.create({
+    const session = await provider.checkout.sessions.create({
       mode: 'payment',
       customer_email: customerEmail,
       // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
@@ -523,6 +537,7 @@ export async function createCheckoutSession(
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
+      ...(params.kitchenChangeAuthorization ? { expires_at: params.kitchenChangeAuthorization.expiresAt } : {}),
       ...(Object.keys(overstayQuoteMetadata).length ? { custom_text: { submit: {
         message: 'By continuing, you agree to the storage overstay terms displayed in this checkout. Rates are fixed for this booking.',
       } } } : {}),
@@ -538,7 +553,7 @@ export async function createCheckoutSession(
       // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
       // Invoices are generated at capture time via payment_intent.succeeded webhook
       // Stripe will send receipt email when payment is actually captured
-    });
+    }, params.kitchenChangeAuthorization ? { idempotencyKey: params.kitchenChangeAuthorization.idempotencyKey } : undefined);
 
     if (!session.url) {
       throw new Error('Failed to create checkout session URL');

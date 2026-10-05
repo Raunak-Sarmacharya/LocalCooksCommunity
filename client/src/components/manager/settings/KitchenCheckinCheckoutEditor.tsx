@@ -686,29 +686,11 @@ function PresetPicker({
 
 // ─── Chef View Preview (matches KitchenCheckinTracker) ───────────────────────
 
-/**
- * Review surface for one flow — a read-only recap of everything the manager has
- * configured, so they can read it top to bottom and confirm it is right.
- *
- * This replaces an interactive simulation of the chef's screen. The simulation
- * was answering the wrong question: a manager here is not asking "what does
- * this look like", they are asking "did I get this right" — and that is a
- * reading task, not a clicking one. It also carried content the manager cannot
- * configure (a fabricated booking slot, a hard-coded smart-lock code), which is
- * noise dressed as information, and being interactive it let a manager tick
- * boxes and leave believing they had changed something.
- *
- * The governing principle is the one Baymard states for review steps: a review
- * page is a summary of known facts, and should introduce nothing new. So this
- * shows committed configuration only, in a fixed order, with no controls other
- * than the one action that matters — jump back to the field and change it.
- */
 function ReviewDialog({
   open,
   onOpenChange,
   stage,
   instructions,
-  smartLockInstructions,
   items,
   onEditSection,
 }: {
@@ -716,7 +698,6 @@ function ReviewDialog({
   onOpenChange: (o: boolean) => void;
   stage: Stage;
   instructions: string | null;
-  smartLockInstructions: string | null;
   items: UnifiedChecklistItem[];
   /**
    * Takes the manager to the section they want to change. Review surfaces are
@@ -733,11 +714,10 @@ function ReviewDialog({
   );
   const photoItems = flowItems.filter((i) => i.photoRequired);
   const hasInstructions = !!instructions;
-  const hasSmartLock = isCheckin && !!smartLockInstructions;
 
   const StageIcon = isCheckin ? LogIn : LogOut;
 
-  const nothingConfigured = flowItems.length === 0 && !hasInstructions && !hasSmartLock;
+  const nothingConfigured = flowItems.length === 0 && !hasInstructions;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -795,18 +775,6 @@ function ReviewDialog({
                 >
                   <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
                     {instructions}
-                  </p>
-                </ReviewBlock>
-              )}
-
-              {hasSmartLock && (
-                <ReviewBlock
-                  icon={<Lock className="size-3.5" />}
-                  title={mt("smartLockInstructions")}
-                  onEdit={() => onEditSection("instructions")}
-                >
-                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
-                    {smartLockInstructions}
                   </p>
                 </ReviewBlock>
               )}
@@ -948,19 +916,12 @@ function ReviewBlock({
 // ─── Stage Header ─────────────────────────────────────────────────────────────
 
 interface StageHeaderProps {
+  coupledStages?: boolean;
   stage: Stage;
   enabled: boolean;
   onEnabledChange: (val: boolean) => void;
   instructions: string | null;
   onInstructionsChange: (val: string | null) => void;
-  smartLockInstructions: string | null;
-  onSmartLockInstructionsChange: (val: string | null) => void;
-  /**
-   * Admin-controlled capability gate. When false, the smart-lock instructions
-   * textarea is hidden — no kitchen at this location is equipped with a smart
-   * door. Only relevant to the check-in stage.
-   */
-  smartLockAvailable: boolean;
   itemCount: number;
   photoCount: number;
   onOpenPreview: () => void;
@@ -974,29 +935,13 @@ interface StageHeaderProps {
   onToggleKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
-/**
- * Per-flow control panel: the enable switch, a one-line status, the arrival
- * instructions disclosure and a preview entry point. The checklist items
- * themselves live in the shared list below both panels so managers can see and
- * edit the whole matrix at once.
- *
- * State is carried by a single `On` / `Off` badge next to a description that
- * says what that state *means* for the chef — the previous version showed
- * counts only when enabled and nothing when disabled, which left "off" reading
- * as "broken" rather than "intentionally not used". Instructions and smart-lock
- * copy are the only things hidden behind a disclosure, and they announce
- * themselves with an `Added` badge when set, so a manager can always tell at a
- * glance whether they have written something.
- */
 function StageHeader({
+  coupledStages,
   stage,
   enabled,
   onEnabledChange,
   instructions,
   onInstructionsChange,
-  smartLockInstructions,
-  onSmartLockInstructionsChange,
-  smartLockAvailable,
   itemCount,
   photoCount,
   onOpenPreview,
@@ -1007,9 +952,7 @@ function StageHeader({
   const title = stage === "checkin" ? mt("checkInStage") : mt("checkOutStage");
   const StageIcon = stage === "checkin" ? LogIn : LogOut;
 
-  const hasSmartLock = stage === "checkin" && smartLockAvailable;
   const hasInstructions = !!instructions;
-  const hasSmartLockInstructions = hasSmartLock && !!smartLockInstructions;
 
   /**
    * Whether the notes editor is open.
@@ -1023,22 +966,7 @@ function StageHeader({
    */
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  /**
-   * Notes are edited against a local draft and only pushed up on Save.
-   *
-   * Writing straight through to the parent would mean `hasInstructions` turns
-   * true on the first keystroke, which flips this panel out of its empty state
-   * and changes what Save means under the user's hands. A draft keeps the two
-   * states honest: the read state shows what has been committed, the editor
-   * shows what is being typed, and Save is the only thing that moves one to the
-   * other.
-   *
-   * `smartLockDraft` rides along because it lives inside the same disclosure —
-   * committing it separately would let a manager save one half of a form they
-   * filled in as a unit.
-   */
   const [draft, setDraft] = useState(() => instructions ?? "");
-  const [smartLockDraft, setSmartLockDraft] = useState(() => smartLockInstructions ?? "");
   const [savedAt, setSavedAt] = useState(0);
 
   /**
@@ -1056,7 +984,6 @@ function StageHeader({
    */
   const lastCommittedRef = useRef({
     instructions: instructions ?? "",
-    smartLock: smartLockInstructions ?? "",
   });
 
   // Adopt committed values whenever they actually change underneath us. On the
@@ -1066,22 +993,19 @@ function StageHeader({
   useEffect(() => {
     const next = {
       instructions: instructions ?? "",
-      smartLock: smartLockInstructions ?? "",
     };
     const prev = lastCommittedRef.current;
-    if (prev.instructions === next.instructions && prev.smartLock === next.smartLock) return;
+    if (prev.instructions === next.instructions) return;
     lastCommittedRef.current = next;
     setDraft(next.instructions);
-    setSmartLockDraft(next.smartLock);
-  }, [instructions, smartLockInstructions]);
+  }, [instructions]);
 
   /** True once the manager has typed something the committed value lacks. */
   const notesDirty =
-    draft !== (instructions ?? "") || smartLockDraft !== (smartLockInstructions ?? "");
+    draft !== (instructions ?? "");
 
   const commitNotes = useCallback(() => {
     const next = draft.trim();
-    const nextLock = hasSmartLock ? smartLockDraft.trim() : "";
 
     /**
      * Record the committed values *before* pushing them up, and synchronously.
@@ -1094,28 +1018,19 @@ function StageHeader({
      * first collapses that window to nothing: the effect sees the values it just
      * caused and correctly does nothing.
      */
-    lastCommittedRef.current = { instructions: next, smartLock: nextLock };
+    lastCommittedRef.current = { instructions: next };
 
     onInstructionsChange(next || null);
-    if (hasSmartLock) onSmartLockInstructionsChange(nextLock || null);
 
     setDraft(next);
-    setSmartLockDraft(nextLock);
     setSavedAt(Date.now());
     setDetailsOpen(false);
-  }, [
-    draft,
-    smartLockDraft,
-    hasSmartLock,
-    onInstructionsChange,
-    onSmartLockInstructionsChange,
-  ]);
+  }, [draft, onInstructionsChange]);
 
   const cancelNotes = useCallback(() => {
     setDraft(instructions ?? "");
-    setSmartLockDraft(smartLockInstructions ?? "");
     setDetailsOpen(false);
-  }, [instructions, smartLockInstructions]);
+  }, [instructions]);
 
   /**
    * In edit mode Escape must mean one thing on every field: discard. Notes are
@@ -1132,6 +1047,28 @@ function StageHeader({
       else setDetailsOpen(false);
     },
     [notesDirty, cancelNotes],
+  );
+
+  if (coupledStages) return (
+    <div data-stage-panel={stage} className="space-y-3 rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold">{title}</span>
+        <Badge variant="outline">{mt(enabled ? 'trackingNotesRequired' : 'trackingOffNotesDraft')}</Badge>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${stage}-instructions`}>
+          {mt(stage === 'checkin' ? 'arrivalInstructionsTitle' : 'departureInstructionsTitle')}
+        </Label>
+        <Textarea id={`${stage}-instructions`} value={instructions ?? ''}
+          required={enabled} aria-invalid={enabled && !instructions?.trim()}
+          aria-describedby={`${stage}-notes-help`}
+          onChange={event => onInstructionsChange(event.target.value || null)} />
+        <p id={`${stage}-notes-help`} className={enabled && !instructions?.trim() ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+          {mt(enabled && !instructions?.trim() ? 'trackingRequiredNotes' : 'trackingNotesSaveTogether')}
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">{mt('trackingOptionalDuties')}</p>
+    </div>
   );
 
   // A flow with nothing in it will do nothing for the chef, which is worth
@@ -1228,11 +1165,6 @@ function StageHeader({
             )}
           </div>
 
-          {/* Instructions + smart lock, behind one disclosure.
-              This is the primary writing surface on the panel — the thing a
-              manager actually comes here to type — so it is the full-width,
-              always-labelled field. The preview below it is only a way to
-              check the work, and is sized as the secondary action. */}
           <div className="mt-3 border-t pt-3" data-review-anchor="instructions" onKeyDown={onNotesKeyDown}>
             {detailsOpen ? (
               <div className="space-y-2">
@@ -1271,31 +1203,6 @@ function StageHeader({
                     className="mt-1.5 bg-background text-xs"
                   />
                 </div>
-
-                {hasSmartLock && (
-                  <div className="rounded-md border bg-muted/40 p-2.5">
-                    <div className="mb-1 flex items-center gap-1.5">
-                      <Lock className="size-3.5 text-muted-foreground" />
-                      <Label
-                        htmlFor="smart-lock-instructions"
-                        className="text-xs font-medium"
-                      >
-                        {mt("smartLockInstructions")}{" "}
-                        <span className="font-normal text-muted-foreground">
-                          {mt("optionalLabel")}
-                        </span>
-                      </Label>
-                    </div>
-                    <Textarea
-                      id="smart-lock-instructions"
-                      value={smartLockDraft}
-                      onChange={(e) => setSmartLockDraft(e.target.value)}
-                      placeholder={mt("smartLockAccessPlaceholder")}
-                      rows={2}
-                      className="bg-background text-xs"
-                    />
-                  </div>
-                )}
 
                 {/*
                   The commit pair. Previously the only exit was "Hide", which
@@ -1370,14 +1277,6 @@ function StageHeader({
                     )}
                   </div>
 
-                  {hasSmartLockInstructions && (
-                    <div className="mt-2 flex items-start gap-1.5 border-t border-border/60 pt-2">
-                      <Lock className="mt-px size-3 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 flex-1 whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
-                        {smartLockInstructions}
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
@@ -1406,15 +1305,6 @@ function StageHeader({
                     </span>
                   </span>
                 </button>
-                {hasSmartLock && hasSmartLockInstructions && (
-                  <Badge
-                    variant="outline"
-                    className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground"
-                  >
-                    <Lock className="mr-0.5 size-2.5" />
-                    {mt("smartLockAddedBadge")}
-                  </Badge>
-                )}
               </div>
             )}
           </div>
@@ -1793,6 +1683,7 @@ function ChecklistList({
 // ─── Main Editor ──────────────────────────────────────────────────────────────
 
 export interface KitchenCheckinCheckoutEditorProps {
+  coupledStages?: boolean;
   title?: string;
   items: UnifiedChecklistItem[];
   onItemsChange: (next: UnifiedChecklistItem[]) => void;
@@ -1804,14 +1695,6 @@ export interface KitchenCheckinCheckoutEditorProps {
   onCheckinInstructionsChange: (val: string | null) => void;
   checkoutInstructions: string | null;
   onCheckoutInstructionsChange: (val: string | null) => void;
-  smartLockInstructions: string | null;
-  onSmartLockInstructionsChange: (val: string | null) => void;
-  /**
-   * Admin-controlled capability gate. When false, no smart-lock UI is shown
-   * in the editor or the preview — because no kitchen at this location is
-   * equipped with a smart door.
-   */
-  smartLockAvailable: boolean;
   /** Forwarded to both flow switches — see `StageHeaderProps.onToggleClick`. */
   onFlowToggleClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onFlowToggleMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -1819,6 +1702,7 @@ export interface KitchenCheckinCheckoutEditorProps {
 }
 
 export function KitchenCheckinCheckoutEditor({
+  coupledStages,
   title,
   items,
   onItemsChange,
@@ -1830,9 +1714,6 @@ export function KitchenCheckinCheckoutEditor({
   onCheckinInstructionsChange,
   checkoutInstructions,
   onCheckoutInstructionsChange,
-  smartLockInstructions,
-  onSmartLockInstructionsChange,
-  smartLockAvailable,
   onFlowToggleClick,
   onFlowToggleMouseDown,
   onFlowToggleKeyDown,
@@ -1923,14 +1804,12 @@ export function KitchenCheckinCheckoutEditor({
             half content reads as one undifferentiated block. */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <StageHeader
+            coupledStages={coupledStages}
             stage="checkin"
             enabled={checkinEnabled}
             onEnabledChange={onCheckinEnabledChange}
             instructions={checkinInstructions}
             onInstructionsChange={onCheckinInstructionsChange}
-            smartLockInstructions={smartLockInstructions}
-            onSmartLockInstructionsChange={onSmartLockInstructionsChange}
-            smartLockAvailable={smartLockAvailable}
             itemCount={checkinItemCount}
             photoCount={checkinPhotoCount}
             onOpenPreview={() => setPreviewStage("checkin")}
@@ -1939,14 +1818,12 @@ export function KitchenCheckinCheckoutEditor({
             onToggleKeyDown={onFlowToggleKeyDown}
           />
           <StageHeader
+            coupledStages={coupledStages}
             stage="checkout"
             enabled={checkoutEnabled}
             onEnabledChange={onCheckoutEnabledChange}
             instructions={checkoutInstructions}
             onInstructionsChange={onCheckoutInstructionsChange}
-            smartLockInstructions={smartLockInstructions}
-            onSmartLockInstructionsChange={onSmartLockInstructionsChange}
-            smartLockAvailable={false}
             itemCount={checkoutItemCount}
             photoCount={checkoutPhotoCount}
             onOpenPreview={() => setPreviewStage("checkout")}
@@ -1960,7 +1837,7 @@ export function KitchenCheckinCheckoutEditor({
         {bothDisabled && (
           <div className="flex items-start gap-2 rounded-lg border border-dashed border-border bg-muted/40 p-2.5 text-[10px] leading-snug text-muted-foreground/80">
             <Info className="mt-0.5 size-3.5 shrink-0" />
-            <p>{mt("bothStagesDisabledHint")}</p>
+            <p>{mt(coupledStages ? 'trackingDisabledHint' : 'bothStagesDisabledHint')}</p>
           </div>
         )}
 
@@ -2034,8 +1911,6 @@ export function KitchenCheckinCheckoutEditor({
           previewStage === "checkout" ? checkoutInstructions : checkinInstructions
         }
         // The review must not show a capability the chef will not get: when no
-        // kitchen here has a smart lock, it is hidden from chefs too.
-        smartLockInstructions={smartLockAvailable ? smartLockInstructions : null}
         items={items}
         onEditSection={handleEditSection}
       />

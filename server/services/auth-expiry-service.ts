@@ -1,3 +1,4 @@
+import { workerAfter, workerBatch, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
 /**
  * Authorization Expiry Service
  * 
@@ -23,6 +24,7 @@ import {
   equipmentBookings as equipmentBookingsTable,
   pendingStorageExtensions,
   users,
+  emailLogs,
   kitchens,
 } from "@shared/schema";
 import { eq, and, lt, sql } from "drizzle-orm";
@@ -37,7 +39,7 @@ export interface AuthExpiryResult {
   error?: string;
 }
 
-const AUTH_EXPIRY_HOURS = 24;
+export const AUTH_EXPIRY_HOURS = 24;
 
 // ============================================================================
 // LAZY EVALUATION — called inline during read operations
@@ -209,14 +211,17 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
       .where(
         and(
           eq(kitchenBookings.paymentStatus, "authorized"),
+          workerAfter('authBookings', kitchenBookings.id),
           eq(kitchenBookings.status, "pending"),
           lt(kitchenBookings.createdAt, cutoffTime),
         ),
-      );
+      ).orderBy(kitchenBookings.id).limit(workerBatch());
+    await workerPageEnd('authBookings', expiredBookings.length);
 
     logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
 
     for (const booking of expiredBookings) {
+      await workerRecord('authBookings', booking.id);
       if (!booking.paymentIntentId) continue;
 
       try {
@@ -279,31 +284,63 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
       .where(
         and(
           eq(pendingStorageExtensions.status, "authorized"),
+          workerAfter('authExtensions', pendingStorageExtensions.id),
           lt(pendingStorageExtensions.createdAt, cutoffTime),
         ),
-      );
+      ).orderBy(pendingStorageExtensions.id).limit(workerBatch());
+    await workerPageEnd('authExtensions', expiredExtensions.length);
 
     logger.info(`[AuthExpiry] Found ${expiredExtensions.length} expired storage extension authorizations`);
 
     for (const ext of expiredExtensions) {
+      await workerRecord('authExtensions', ext.id);
       if (!ext.stripePaymentIntentId) continue;
 
       try {
-        const { cancelPaymentIntent } = await import("./stripe-service");
-        await cancelPaymentIntent(ext.stripePaymentIntentId);
+        const { cancelPaymentIntent, getBookingPaymentIntent } = await import("./stripe-service");
+        if (inRecurringWorker()) {
+          const prior = await getBookingPaymentIntent(ext.stripePaymentIntentId);
+          if (prior.status !== 'canceled') await cancelPaymentIntent(ext.stripePaymentIntentId);
+          if ((await getBookingPaymentIntent(ext.stripePaymentIntentId)).status !== 'canceled')
+            throw Error('Storage extension hold release remains unverified; retain authorization for recovery');
+        } else await cancelPaymentIntent(ext.stripePaymentIntentId);
 
         // Update extension to expired/rejected
-        await db
+        const expired = await db.transaction(async tx => {
+        const [changed] = await tx
           .update(pendingStorageExtensions)
           .set({
             status: "expired",
             rejectionReason: "Payment authorization expired — manager did not respond within 24 hours",
             updatedAt: new Date(),
           })
-          .where(eq(pendingStorageExtensions.id, ext.id));
+          .where(and(eq(pendingStorageExtensions.id, ext.id), eq(pendingStorageExtensions.status, 'authorized'))).returning({ id: pendingStorageExtensions.id });
+        if (!changed) return false;
+        if (inRecurringWorker()) {
+          const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./payment-transactions-service');
+          const pt = await findPaymentTransactionByIntentId(ext.stripePaymentIntentId!, tx);
+          if (pt) await updatePaymentTransaction(pt.id, { status: 'canceled', stripeStatus: 'canceled' }, tx);
+        }
+        if (ext.chefId && inRecurringWorker()) {
+          const [chef] = await tx.select({ email: users.username }).from(users).where(eq(users.id, ext.chefId)).limit(1);
+          const { notificationService } = await import('./notification.service');
+          const title = 'Storage extension authorization expired';
+          const message = 'The storage extension payment hold was released after the existing approval window expired. Your original storage booking and physical removal duties remain separate. Open your current storage booking for details.';
+          await notificationService.create({ userId: ext.chefId, target: 'chef', type: 'system_announcement', title, message,
+            actionUrl: '/dashboard?view=bookings', actionLabel: 'View storage bookings', metadata: { extensionId: ext.id } }, tx);
+          const { getAppBaseUrl } = await import('../config');
+          await tx.insert(emailLogs).values({ recipientEmail: chef?.email || '', recipientUserId: ext.chefId, recipientRole: 'chef',
+            subject: title, category: 'lifecycle_outcome', status: 'queued',
+            trackingId: `storage-outcome:${ext.storageBookingId}:authorization-expired-${ext.id}:${ext.chefId}`,
+            textBody: `${message}\n\n${getAppBaseUrl('chef')}/dashboard?view=bookings`, previewText: message });
+        }
+        return true;
+        });
+        if (!expired) continue;
 
         // Update payment_transactions
         try {
+          if (!inRecurringWorker()) {
           const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
             await import("./payment-transactions-service");
           const pt = await findPaymentTransactionByIntentId(ext.stripePaymentIntentId, db);
@@ -313,13 +350,14 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
               stripeStatus: "canceled",
             }, db);
           }
+          }
         } catch (ptErr: any) {
           logger.warn(`[AuthExpiry] Could not update PT for extension ${ext.id}:`, ptErr);
         }
 
         // Notify chef
         try {
-          await sendAuthExpiryNotification(ext.chefId, ext.id, "storage_extension");
+          if (!inRecurringWorker()) await sendAuthExpiryNotification(ext.chefId, ext.id, "storage_extension");
         } catch (notifErr: any) {
           logger.warn(`[AuthExpiry] Could not send notification for extension ${ext.id}:`, notifErr);
         }

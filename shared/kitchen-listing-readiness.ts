@@ -24,6 +24,8 @@ export type ListingRequirementId =
   | "coverPhoto"
   | "stripe"
   | "applicationRequirements"
+  | "visitSetup"
+  | "storageVisitSetup"
   /**
    * Booking rules cannot be UNSET — the columns are NOT NULL with defaults — so this never blocks in
    * practice. It is a requirement anyway because the values are what a chef is agreeing to, and a
@@ -78,6 +80,10 @@ export interface ListingReadinessInput {
    * requirement that was already satisfied (2026-09-26).
    */
   hasApplicationRequirements: boolean;
+  /** Both visit actions must be available; additional duties/photos may be empty. */
+  hasVisitSetup: boolean;
+  /** Required only when this kitchen has storage listings. Absence is not proof of setup. */
+  hasStorageVisitSetup?: boolean;
 
   hasGalleryImages: boolean;
   hasTerms: boolean;
@@ -116,6 +122,8 @@ const REQUIREMENT_ORDER: ListingRequirementId[] = [
   "stripe",
   "applicationRequirements",
   "license",
+  "visitSetup",
+  "storageVisitSetup",
   "bookingRules",
 ];
 
@@ -250,6 +258,8 @@ export function buildListingChecklist(input: ListingReadinessInput): ListingChec
     coverPhoto: input.hasCoverPhoto,
     stripe: input.stripeConnected,
     applicationRequirements: input.hasApplicationRequirements,
+    visitSetup: input.hasVisitSetup,
+    storageVisitSetup: input.hasStorageVisitSetup === true,
     bookingRules: input.hasBookingRules,
   };
 
@@ -261,7 +271,8 @@ export function buildListingChecklist(input: ListingReadinessInput): ListingChec
     terms: input.hasTerms,
   };
 
-  const requirements = REQUIREMENT_ORDER.map((id) => ({ id, met: requirementMet[id] }));
+  const requirements = REQUIREMENT_ORDER.filter(id => id !== 'storageVisitSetup' || input.hasStorage)
+    .map((id) => ({ id, met: requirementMet[id] }));
   const recommendations = RECOMMENDATION_ORDER.map((id) => ({ id, met: recommendationMet[id] }));
 
   const missingRequirementIds = requirements.filter((r) => !r.met).map((r) => r.id);
@@ -284,6 +295,25 @@ export function buildListingChecklist(input: ListingReadinessInput): ListingChec
  * which is why nothing here is a `Date`.
  */
 export interface KitchenReadinessDetails {
+  storageVisitSetup?: {
+    listingCount: number;
+    checkinEnabled: boolean;
+    checkoutEnabled: boolean;
+    arrivalNotesSaved: boolean;
+    departureNotesSaved: boolean;
+  };
+  /** Optional for older cached responses; absence is never evidence of setup. */
+  visitSetup?: {
+    trackingEnabled: boolean;
+    checkinEnabled: boolean;
+    checkoutEnabled: boolean;
+    arrivalNotesSaved?: boolean;
+    departureNotesSaved?: boolean;
+    arrivalRequirementCount: number;
+    departureRequirementCount: number;
+    checkinWindowMinutesBefore: number;
+    checkoutReviewWindowMinutes: number;
+  };
   kitchenName: string;
   locationName: string | null;
   description: string | null;

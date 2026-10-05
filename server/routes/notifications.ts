@@ -422,29 +422,11 @@ router.post("/unarchive", requireFirebaseAuthWithUser, requireNotificationOwner,
 router.post("/message-received", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
   if (req.baseUrl.startsWith('/api/admin/')) return res.status(404).json({ error: 'Not found' });
   try {
-    const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
-
-    if (!managerId || !senderName || !conversationId) {
-      return res.status(400).json({ error: "managerId, senderName, and conversationId are required" });
-    }
-
-    // Create notification for the manager
-    await createNotification({
-      managerId,
-      locationId,
-      type: 'message_received',
-      priority: 'normal',
-      title: `Message from ${senderName}`,
-      message: messagePreview?.length > 100 
-        ? `${messagePreview.substring(0, 100)}...` 
-        : (messagePreview || "You have a new message"),
-      metadata: {
-        senderName,
-        conversationId
-      },
-      actionUrl: `/manager/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`,
-      actionLabel: 'View Message'
-    });
+    const { conversationId, messageId } = req.body || {};
+    if (typeof conversationId !== 'string' || typeof messageId !== 'string')
+      return res.status(400).json({ error: 'Persisted conversationId and messageId are required' });
+    const { notifyPersistedChatMessage } = await import('../services/chat-notices');
+    await notifyPersistedChatMessage(conversationId, messageId, req.neonUser!.id);
 
     res.json({ success: true });
   } catch (error) {

@@ -10,6 +10,7 @@ import { logger } from "../logger";
  */
 
 import Stripe from 'stripe';
+import { assertWorkerTime, inRecurringWorker, workerRemaining } from './worker-context';
 
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -20,6 +21,14 @@ if (!stripeSecretKey) {
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
   apiVersion: '2026-02-25.clover',
 }) : null;
+const workerStripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
+  apiVersion: '2026-02-25.clover', maxNetworkRetries: 0, timeout: 1500,
+  httpClient: Stripe.createFetchHttpClient((url: RequestInfo | URL, init?: RequestInit) => {
+    assertWorkerTime(2_000);
+    return fetch(url, { ...init, signal: AbortSignal.timeout(Math.floor(Math.min(1500, workerRemaining() - 750))) });
+  }),
+}) : null;
+const decisionStripe = () => inRecurringWorker() ? workerStripe : stripe;
 
 export interface CreatePaymentIntentParams {
   amount: number; // Amount in cents
@@ -240,6 +249,7 @@ export async function confirmPaymentIntent(
   paymentIntentId: string,
   paymentMethodId: string
 ): Promise<PaymentIntentResult> {
+  const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -267,14 +277,54 @@ export async function confirmPaymentIntent(
  * Retrieve PaymentIntent status
  */
 export async function getBookingCheckoutSession(paymentIntentId: string): Promise<Stripe.Checkout.Session | null> {
+  const stripe = decisionStripe();
   if (!stripe) throw new Error('Stripe is not configured');
   const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 2 });
   return sessions.data.length === 1 && !sessions.has_more ? sessions.data[0] : null;
 }
 
 export async function getBookingPaymentIntent(paymentIntentId: string) {
+  const stripe = decisionStripe();
   if (!stripe) throw new Error('Stripe is not configured');
   return stripe.paymentIntents.retrieve(paymentIntentId);
+}
+
+export async function getPaymentIntentRefunds(paymentIntentId: string) {
+  const stripe = decisionStripe();
+  if (!stripe) throw new Error('Stripe is not configured');
+  const refunds = await stripe.refunds.list({ payment_intent: paymentIntentId, limit: 100 });
+  if (refunds.has_more) throw new Error('This refund history requires financial review before retrying');
+  return refunds.data;
+}
+
+/** Cancellation quotes require an actual captured charge and balance transaction. */
+export async function getCancellationPaymentFacts(paymentIntentId: string) {
+  const provider = decisionStripe();
+  if (!provider) throw new Error('Stripe is not configured');
+  const intent = await provider.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge.balance_transaction'] });
+  if (intent.status !== 'succeeded' || !intent.latest_charge) throw new Error('Captured payment requires verification before quoting a refund');
+  const charge = typeof intent.latest_charge === 'string' ? await provider.charges.retrieve(intent.latest_charge) : intent.latest_charge;
+  if (!charge.balance_transaction || !charge.amount_captured) throw new Error('Actual captured amount and processing cost are not yet verified');
+  const balance = typeof charge.balance_transaction === 'string' ? await provider.balanceTransactions.retrieve(charge.balance_transaction) : charge.balance_transaction;
+  if (balance.currency !== intent.currency || !Number.isSafeInteger(balance.fee) || balance.fee < 0) throw new Error('Actual processing cost requires review');
+  return { captured: charge.amount_captured, processingCost: balance.fee, currency: intent.currency,
+    chargeId: charge.id, refunded: charge.amount_refunded, refunds: await getPaymentIntentRefunds(paymentIntentId) };
+}
+
+export async function verifyCancellationRefundFunding(paymentIntentId: string, transferId: string | null, managerRefund: number) {
+  const provider = decisionStripe();
+  if (!provider) throw new Error('Stripe is not configured');
+  const intent = await provider.paymentIntents.retrieve(paymentIntentId);
+  const transfers: Stripe.Transfer[] = [];
+  for await (const transfer of provider.transfers.list({ transfer_group: intent.transfer_group || `pi_${paymentIntentId}`, limit: 100 })) {
+    if (transfer.metadata?.payment_intent_id === paymentIntentId && transfer.amount > transfer.amount_reversed) transfers.push(transfer);
+  }
+  if (transfers.length > 1) throw new Error('Multiple manager transfers require funding review before cancellation');
+  const recorded = transferId ? await provider.transfers.retrieve(transferId) : null;
+  const transfer = transfers[0] || recorded;
+  if (transfer && (transfer.currency !== intent.currency || managerRefund > transfer.amount - transfer.amount_reversed))
+    throw new Error('The quoted refund exceeds the verified unreversed manager transfer. Local Cooks must reconcile funding before acceptance');
+  return transfer ? { transferId: transfer.id, available: transfer.amount - transfer.amount_reversed } : { transferId: null, available: null };
 }
 
 export async function getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentResult | null> {
@@ -323,7 +373,7 @@ export async function getStripePaymentAmounts(
   try {
     // Retrieve PaymentIntent with expanded charge
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['latest_charge'],
+      expand: ['latest_charge', 'latest_charge.balance_transaction'],
     });
 
     if (!paymentIntent.latest_charge) {
@@ -471,6 +521,7 @@ export async function capturePaymentIntent(
   _applicationFeeAmount?: number,
   idempotencyKey?: string,
 ): Promise<PaymentIntentResult> {
+  const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -518,6 +569,7 @@ export async function capturePaymentIntent(
  * @returns PaymentIntentResult with canceled status
  */
 export async function cancelPaymentIntent(paymentIntentId: string): Promise<PaymentIntentResult> {
+  const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -770,8 +822,20 @@ export async function reverseTransferAndRefund(
     refundApplicationFee?: boolean;
     metadata?: Record<string, string>;
     transferMetadata?: Record<string, string>;
+    sourceConnection?: Parameters<Parameters<typeof import('../db').db.transaction>[0]>[0];
   }
 ): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string | null }> {
+  if (!options?.sourceConnection) {
+    const { db } = await import('../db');
+    const { paymentTransactions } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    return db.transaction(async tx => {
+      await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentIntentId, paymentIntentId)).limit(1).for('update');
+      return reverseTransferAndRefund(paymentIntentId, amount, reason, { ...options, sourceConnection: tx });
+    });
+  }
+  const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -781,9 +845,9 @@ export async function reverseTransferAndRefund(
   }
 
   try {
-    // Retrieve PaymentIntent and expand latest charge
+    // Retrieve PaymentIntent and its actual processing cost.
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['latest_charge'],
+      expand: ['latest_charge', 'latest_charge.balance_transaction'],
     });
 
     if (!paymentIntent.latest_charge) {
@@ -795,6 +859,20 @@ export async function reverseTransferAndRefund(
       : paymentIntent.latest_charge;
 
     const chargeId = charge.id;
+    // A later refund/reversal can reduce today's remaining balance. A verified
+    // receipt for this immutable operation still wins over a new funding check.
+    if (options.idempotencyKey) {
+      let receipt: Stripe.Refund | undefined;
+      for await (const candidate of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
+        if (candidate.metadata?.refund_operation_id !== options.idempotencyKey) continue;
+        if (receipt || candidate.amount !== amount) throw new Error('Conflicting refund receipts require financial review.');
+        receipt = candidate;
+      }
+      if (receipt) {
+        if (receipt.status !== 'succeeded') throw new Error(`Refund ${receipt.id} is not verified as complete (${receipt.status || 'unknown'}). Verify this original operation; do not issue another refund.`);
+        return { refundId: receipt.id, refundAmount: receipt.amount, refundStatus: receipt.status, chargeId, transferReversalId: null };
+      }
+    }
 
     // SEPARATE CHARGES + TRANSFERS: charge.transfer is null because we use stripe.transfers.create()
     // separately. Look up the transfer_id we stored on payment_transactions.
@@ -802,21 +880,34 @@ export async function reverseTransferAndRefund(
     let transferIdFromDb: string | null = null;
     let transferredAmount = 0;
     let chargeAmountForProration = charge.amount_captured || charge.amount;
+    let sourceServiceFee = 0, priorManagerDebits = 0;
 
     try {
       const { db } = await import('../db');
       const { paymentTransactions } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
-      const [pt] = await db
+      const [pt] = await options.sourceConnection
         .select({
           transferId: paymentTransactions.transferId,
           managerRevenue: paymentTransactions.managerRevenue,
           amount: paymentTransactions.amount,
+          serviceFee: paymentTransactions.serviceFee,
+          metadata: paymentTransactions.metadata,
+          refundAmount: paymentTransactions.refundAmount,
         })
         .from(paymentTransactions)
         .where(eq(paymentTransactions.paymentIntentId, paymentIntentId))
         .limit(1);
+      if (!pt) throw new Error('Payment source record is missing.');
+      const recovery = (pt.metadata as any)?.refundRecovery;
+      if (recovery && recovery.status !== 'succeeded' && recovery.attemptKey !== options.idempotencyKey) throw new Error('Verify the original refund/reversal before starting another operation');
+      const reserved = (pt.metadata as any)?.cancellationRefundOperation;
+      if (reserved && reserved.status !== 'succeeded' && reserved.id !== options.idempotencyKey)
+        throw new Error('The source is reserved for its cancellation refund. Verify that operation before another refund.');
       transferIdFromDb = pt?.transferId || null;
+      sourceServiceFee = Number(pt.serviceFee || 0);
+      const history = (pt.metadata as any)?.refunds;
+      priorManagerDebits = Array.isArray(history) ? history.reduce((total: number, item: any) => total + Number(item.managerDebited || 0), 0) : Number(pt.refundAmount || 0);
       if (pt?.managerRevenue) {
         transferredAmount = parseInt(String(pt.managerRevenue), 10) || 0;
       }
@@ -825,24 +916,48 @@ export async function reverseTransferAndRefund(
       }
     } catch (err) {
       logger.warn('[reverseTransferAndRefund] Could not lookup transfer_id from payment_transactions:', err as Error);
+      throw new Error('Transfer lookup failed. Refund funding cannot be verified; retry the recorded operation.');
     }
 
     // Fallback to charge.transfer for legacy destination charges
-    const transferId = transferIdFromDb || (typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id);
+    let transferId = transferIdFromDb || (typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id);
+    if (!transferId) {
+      const recoveredTransfers: Stripe.Transfer[] = [];
+      for await (const transfer of stripe.transfers.list({ transfer_group: paymentIntent.transfer_group || `pi_${paymentIntentId}`, limit: 100 })) {
+        if (transfer.metadata?.payment_intent_id === paymentIntentId && transfer.amount > transfer.amount_reversed) recoveredTransfers.push(transfer);
+      }
+      if (recoveredTransfers.length > 1) throw new Error('Multiple unreversed manager transfers require financial review.');
+      transferId = recoveredTransfers[0]?.id;
+    }
+    if (!transferId && options.reverseTransferAmount !== undefined) {
+      const balance = typeof charge.balance_transaction === 'string' ? await stripe.balanceTransactions.retrieve(charge.balance_transaction) : charge.balance_transaction;
+      if (!balance || !Number.isSafeInteger(balance.fee)) throw new Error('Actual processing cost is not available. Unpaid manager entitlement and refund funding require verification.');
+      const available = Math.max(0, chargeAmountForProration - sourceServiceFee - balance.fee - priorManagerDebits);
+      if (options.reverseTransferAmount > available) throw new Error('The required manager refund exceeds verified unpaid entitlement. Separate funding approval is required.');
+    }
 
     // Reverse only the manager's share. When the customer refund includes the
     // platform service fee, reverseTransferAmount < refund amount — the platform
     // absorbs the fee from its own balance. Fall back to charge-proration only
     // when no explicit manager debit was provided.
     if (transferId && options?.reverseTransferAmount !== undefined) {
-      const reversalAmount = Math.min(
-        Math.max(0, options.reverseTransferAmount),
-        transferredAmount > 0 ? transferredAmount : options.reverseTransferAmount,
-      );
+      const transfer = await stripe.transfers.retrieve(transferId);
+      const reversalAmount = Math.max(0, options.reverseTransferAmount);
+      const operationId = options.idempotencyKey;
+      let recoveredReversal: Stripe.TransferReversal | undefined;
+      if (operationId) {
+        for await (const reversal of stripe.transfers.listReversals(transferId, { limit: 100 })) {
+          if (reversal.metadata?.refund_operation_id !== operationId) continue;
+          if (recoveredReversal || reversal.amount !== reversalAmount) throw new Error('Conflicting reversal receipts require financial review.');
+          recoveredReversal = reversal;
+        }
+      }
+      if (!recoveredReversal && reversalAmount > transfer.amount - transfer.amount_reversed)
+        throw new Error('The required manager reversal exceeds the verified unreversed transfer. Separate funding approval is required.');
       if (reversalAmount > 0) {
-        const reversal = await stripe.transfers.createReversal(transferId, {
+        const reversal = recoveredReversal || await stripe.transfers.createReversal(transferId, {
           amount: reversalAmount,
-          metadata: options?.transferMetadata || options?.metadata,
+          metadata: { ...(options?.transferMetadata || options?.metadata), ...(operationId ? { refund_operation_id: operationId } : {}) },
         }, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-reversal` } : undefined);
         transferReversalId = reversal.id;
       }
@@ -871,7 +986,16 @@ export async function reverseTransferAndRefund(
       refundParams.metadata = options.metadata;
     }
 
-    const refund = await stripe.refunds.create(refundParams, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-refund` } : undefined);
+    let recoveredRefund: Stripe.Refund | undefined;
+    if (options?.idempotencyKey) {
+      refundParams.metadata = { ...refundParams.metadata, refund_operation_id: options.idempotencyKey };
+      for await (const receipt of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
+        if (receipt.metadata?.refund_operation_id !== options.idempotencyKey) continue;
+        if (recoveredRefund || receipt.amount !== amount) throw new Error('Conflicting refund receipts require financial review.');
+        recoveredRefund = receipt;
+      }
+    }
+    const refund = recoveredRefund || await stripe.refunds.create(refundParams, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-refund` } : undefined);
 
     if (!refund.charge || typeof refund.charge !== 'string') {
       throw new Error('Refund created but charge ID is missing');
@@ -879,6 +1003,9 @@ export async function reverseTransferAndRefund(
 
     if (!refund.status || typeof refund.status !== 'string') {
       throw new Error('Refund created but status is missing');
+    }
+    if (refund.status !== 'succeeded') {
+      throw new Error(`Refund ${refund.id} is not verified as complete (${refund.status}). Verify this original operation; do not issue another refund.`);
     }
 
     return {

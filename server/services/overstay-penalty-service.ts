@@ -1,3 +1,5 @@
+import { workerAfter, workerBatch, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
+import { queueOverstayOutcome, attemptOutcomeDelivery } from './outcome-delivery';
 /**
  * Overstay Penalty Service
  * 
@@ -150,19 +152,22 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
     .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
     .innerJoin(locations, eq(kitchens.locationId, locations.id))
     .where(and(
+      workerAfter('overstays', storageBookings.id),
       lt(storageBookings.endDate, now),
       not(eq(storageBookings.status, 'cancelled')),
       inArray(storageBookings.status, ['confirmed', 'completed'])
     ))
-    .orderBy(asc(storageBookings.endDate));
+    .orderBy(asc(storageBookings.id)).limit(workerBatch());
+  await workerPageEnd('overstays', expiredBookings.length);
 
   const results: OverstayDetectionResult[] = [];
 
   for (const booking of expiredBookings) {
+    await workerRecord('overstays', booking.id);
     try {
       // HYBRID VERIFICATION: Skip bookings with checkout in progress
       // This prevents unwarranted overstay penalties when chef has initiated checkout
-      // Manager has 48-hour window to verify before penalties apply
+      // Review expiry alone does not establish physical removal or an overstay.
       const checkoutStatus = booking.checkoutStatus as string | null;
       const itemsRemovedAt = booking.checkoutApprovedBy && booking.checkoutApprovedAt
         && ['completed', 'checkout_claim_filed'].includes(checkoutStatus || '') ? booking.checkoutApprovedAt : null;
@@ -248,7 +253,8 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
           existingRecord.daysOverdue !== daysOverdue || (!!itemsRemovedAt && !existingRecord.itemsRemovedAt);
 
         if (shouldUpdate && !['penalty_approved', 'penalty_waived', 'charge_pending', 'charge_succeeded', 'resolved', 'escalated'].includes(existingRecord.status)) {
-          const [transitioned] = await db
+          const transitioned = await db.transaction(async tx => {
+          const [changed] = await tx
             .update(storageOverstayRecords)
             .set({
               daysOverdue,
@@ -260,12 +266,15 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
             .where(and(eq(storageOverstayRecords.id, existingRecord.id),
               eq(storageOverstayRecords.status, existingRecord.status)))
             .returning({ id: storageOverstayRecords.id });
+          if (changed && existingRecord.status !== status) await createOverstayHistoryEntry(existingRecord.id,
+            existingRecord.status as OverstayStatus, status, 'status_change', 'cron', `Days overdue: ${daysOverdue}`, undefined, undefined, tx);
+          return changed;
+          });
           if (!transitioned) continue;
 
           // Log status change
           if (existingRecord.status !== status) {
-            await createOverstayHistoryEntry(existingRecord.id, existingRecord.status as OverstayStatus, status, 'status_change', 'cron', `Days overdue: ${daysOverdue}`);
-            try {
+            if (!inRecurringWorker()) try {
               await sendOverstayNotificationEmails({ storageBookingId: booking.id, chefId: booking.chefId,
                 daysOverdue, gracePeriodEndsAt, isInGracePeriod, calculatedPenaltyCents, endDate: new Date(booking.endDate) });
               const { notificationService } = await import('./notification.service');
@@ -293,7 +302,8 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
       } else {
         // Create new overstay record
         const opRefCode = await generateReferenceCode('overstay_penalty');
-        const [newRecord] = await db
+        const newRecord = await db.transaction(async tx => {
+        const [created] = await tx
           .insert(storageOverstayRecords)
           .values({
             referenceCode: opRefCode,
@@ -311,8 +321,9 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
           })
           .returning();
 
-        // Create history entry
-        await createOverstayHistoryEntry(newRecord.id, null, status, 'status_change', 'cron', `Overstay detected. Days overdue: ${daysOverdue}`);
+        await createOverstayHistoryEntry(created.id, null, status, 'status_change', 'cron', `Overstay detected. Days overdue: ${daysOverdue}`, undefined, undefined, tx);
+        return created;
+        });
 
         results.push({
           bookingId: booking.id,
@@ -333,6 +344,7 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
         });
 
         // Send overstay notification emails
+        if (inRecurringWorker()) continue; // State/history/notice intent already committed together above.
         try {
           await sendOverstayNotificationEmails({
             storageBookingId: booking.id,
@@ -598,253 +610,142 @@ export async function getOverstayRecord(overstayId: number): Promise<StorageOver
  * - All decisions are logged in audit history
  */
 export async function processManagerDecision(decision: ManagerPenaltyDecision): Promise<{ success: boolean; error?: string }> {
-  const { overstayRecordId, managerId, action, finalPenaltyCents, waiveReason, managerNotes } = decision;
+  const { overstayRecordId,managerId,action,finalPenaltyCents,waiveReason,managerNotes }=decision;
 
   // Input validation
-  if (!overstayRecordId || overstayRecordId <= 0) {
-    return { success: false, error: 'Invalid overstay record ID' };
+  if(!overstayRecordId||overstayRecordId<=0) {
+    return { success: false,error: 'Invalid overstay record ID' };
   }
-  if (!managerId || managerId <= 0) {
-    return { success: false, error: 'Invalid manager ID' };
+  if(!managerId||managerId<=0) {
+    return { success: false,error: 'Invalid manager ID' };
   }
 
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) {
-    return { success: false, error: 'Overstay record not found' };
+  const record=await getOverstayRecord(overstayRecordId);
+  if(!record) {
+    return { success: false,error: 'Overstay record not found' };
   }
 
   // Validate current status allows this action
-  const allowedStatuses: OverstayStatus[] = ['pending_review', 'charge_failed'];
-  if (record.status === 'penalty_approved' && !record.penaltyNoticeSentAt) allowedStatuses.push('penalty_approved');
-  if (!allowedStatuses.includes(record.status as OverstayStatus)) {
-    return { success: false, error: `Cannot process decision for record in status: ${record.status}` };
+  const allowedStatuses: OverstayStatus[]=['pending_review','charge_failed'];
+  if(record.status==='penalty_approved'&&!record.penaltyNoticeSentAt) allowedStatuses.push('penalty_approved');
+  if(!allowedStatuses.includes(record.status as OverstayStatus)) {
+    return { success: false,error: `Cannot process decision for record in status: ${record.status}` };
   }
 
-  const previousStatus = record.status as OverstayStatus;
-  if (!record.itemsRemovedAt) {
-    return { success: false, error: 'Confirm that the items were removed before reviewing the final penalty' };
+  const previousStatus=record.status as OverstayStatus;
+  if(!record.itemsRemovedAt) {
+    return { success: false,error: 'Confirm that the items were removed before reviewing the final penalty' };
   }
   let newStatus: OverstayStatus;
-  const updateData: Partial<StorageOverstayRecord> = {
+  const updateData: Partial<StorageOverstayRecord>={
     penaltyApprovedBy: managerId,
     penaltyApprovedAt: new Date(),
-    managerNotes: managerNotes || record.managerNotes,
+    managerNotes: managerNotes||record.managerNotes,
     updatedAt: new Date(),
   };
 
   // Helper function to validate penalty amount against maximum
-  const validatePenaltyAmount = (amount: number): { valid: boolean; error?: string } => {
-    if (!Number.isSafeInteger(amount)) {
-      return { valid: false, error: 'Penalty amount must be a whole number of cents' };
+  const validatePenaltyAmount=(amount: number): { valid: boolean; error?: string } => {
+    if(!Number.isSafeInteger(amount)) {
+      return { valid: false,error: 'Penalty amount must be a whole number of cents' };
     }
-    if (amount < 0) {
-      return { valid: false, error: 'Penalty amount cannot be negative' };
+    if(amount<0) {
+      return { valid: false,error: 'Penalty amount cannot be negative' };
     }
-    if (amount > record.calculatedPenaltyCents) {
-      return { 
-        valid: false, 
-        error: `Penalty amount cannot exceed the calculated maximum of $${(record.calculatedPenaltyCents / 100).toFixed(2)}` 
+    if(amount>record.calculatedPenaltyCents) {
+      return {
+        valid: false,
+        error: `Penalty amount cannot exceed the calculated maximum of $${(record.calculatedPenaltyCents/100).toFixed(2)}`
       };
     }
     return { valid: true };
   };
 
-  switch (action) {
+  switch(action) {
     case 'approve': {
-      if (finalPenaltyCents !== undefined) {
-        const validation = validatePenaltyAmount(finalPenaltyCents);
-        if (!validation.valid) {
-          return { success: false, error: validation.error };
+      if(finalPenaltyCents!==undefined) {
+        const validation=validatePenaltyAmount(finalPenaltyCents);
+        if(!validation.valid) {
+          return { success: false,error: validation.error };
         }
       }
-      newStatus = 'penalty_approved';
-      updateData.finalPenaltyCents = finalPenaltyCents ?? record.calculatedPenaltyCents;
-      updateData.status = newStatus;
+      newStatus='penalty_approved';
+      updateData.finalPenaltyCents=finalPenaltyCents??record.calculatedPenaltyCents;
+      updateData.status=newStatus;
       break;
     }
 
     case 'waive':
-      newStatus = 'penalty_waived';
-      updateData.penaltyWaived = true;
-      updateData.waiveReason = waiveReason || 'Manager waived penalty';
-      updateData.finalPenaltyCents = 0;
-      updateData.status = newStatus;
-      updateData.resolvedAt = new Date();
-      updateData.resolutionType = 'waived';
+      newStatus='penalty_waived';
+      updateData.penaltyWaived=true;
+      updateData.waiveReason=waiveReason||'Manager waived penalty';
+      updateData.finalPenaltyCents=0;
+      updateData.status=newStatus;
+      updateData.resolvedAt=new Date();
+      updateData.resolutionType='waived';
       break;
 
     case 'adjust': {
-      if (finalPenaltyCents === undefined) {
-        return { success: false, error: 'finalPenaltyCents required for adjust action' };
+      if(finalPenaltyCents===undefined) {
+        return { success: false,error: 'finalPenaltyCents required for adjust action' };
       }
-      const adjustValidation = validatePenaltyAmount(finalPenaltyCents);
-      if (!adjustValidation.valid) {
-        return { success: false, error: adjustValidation.error };
+      const adjustValidation=validatePenaltyAmount(finalPenaltyCents);
+      if(!adjustValidation.valid) {
+        return { success: false,error: adjustValidation.error };
       }
-      newStatus = 'penalty_approved';
-      updateData.finalPenaltyCents = finalPenaltyCents;
-      updateData.status = newStatus;
+      newStatus='penalty_approved';
+      updateData.finalPenaltyCents=finalPenaltyCents;
+      updateData.status=newStatus;
       break;
     }
 
     default:
-      return { success: false, error: `Invalid action: ${action}` };
+      return { success: false,error: `Invalid action: ${action}` };
   }
 
-  if (updateData.finalPenaltyCents === 0 && action !== 'waive') {
-    newStatus = 'penalty_waived';
-    updateData.status = newStatus;
-    updateData.penaltyWaived = true;
-    updateData.waiveReason = managerNotes || 'Manager approved no monetary penalty';
-    updateData.resolvedAt = new Date();
-    updateData.resolutionType = 'waived';
+  if(updateData.finalPenaltyCents===0&&action!=='waive') {
+    newStatus='penalty_waived';
+    updateData.status=newStatus;
+    updateData.penaltyWaived=true;
+    updateData.waiveReason=managerNotes||'Manager approved no monetary penalty';
+    updateData.resolvedAt=new Date();
+    updateData.resolutionType='waived';
   }
 
-  const [decided] = await db
-    .update(storageOverstayRecords)
-    .set(updateData)
-    .where(and(eq(storageOverstayRecords.id, overstayRecordId), eq(storageOverstayRecords.status, previousStatus)))
-    .returning({ id: storageOverstayRecords.id });
-  if (!decided) return { success: false, error: 'Overstay changed; reload before reviewing' };
+  if(newStatus==='penalty_approved') {
+    updateData.penaltyNoticeSentAt=new Date();
+    updateData.chefDisputeDeadline=new Date(updateData.penaltyNoticeSentAt.getTime()+await getOverstayDisputeWindowHours()*3600000);
+  }
+  const decided=await db.transaction(async tx => {
+    const [decided]=await tx
+      .update(storageOverstayRecords)
+      .set(updateData)
+      .where(and(eq(storageOverstayRecords.id,overstayRecordId),eq(storageOverstayRecords.status,previousStatus)))
+      .returning({ id: storageOverstayRecords.id });
+    if(!decided) return undefined;
 
-  // Create history entry
-  await createOverstayHistoryEntry(
-    overstayRecordId,
-    previousStatus,
-    newStatus,
-    action === 'waive' ? 'penalty_waived' : 'penalty_approved',
-    'manager',
-    `Manager ${action}: ${action === 'waive' ? waiveReason : `$${((finalPenaltyCents ?? record.calculatedPenaltyCents) / 100).toFixed(2)}`}`,
-    { managerId, action, finalPenaltyCents, waiveReason },
-    managerId
-  );
+    // Create history entry
+    await createOverstayHistoryEntry(
+      overstayRecordId,
+      previousStatus,
+      newStatus,
+      action==='waive'? 'penalty_waived':'penalty_approved',
+      'manager',
+      `Manager ${action}: ${action==='waive'? waiveReason:`$${((finalPenaltyCents??record.calculatedPenaltyCents)/100).toFixed(2)}`}`,
+      { managerId,action,finalPenaltyCents,waiveReason },
+      managerId,tx);
+    return decided;
+  });
+  if(!decided) return { success: false,error: 'Overstay changed; reload before reviewing' };
 
-  logger.info(`[OverstayService] Manager decision processed`, {
+  logger.info(`[OverstayService] Manager decision processed`,{
     overstayRecordId,
     managerId,
     action,
     finalPenaltyCents: updateData.finalPenaltyCents,
   });
 
-  // Send in-app notifications and emails to chef about the decision
-  try {
-    const { notificationService } = await import('./notification.service');
-    const { sendEmail, generatePenaltyApprovedEmail, generatePenaltyWaivedEmail } = await import('../email');
-
-    // Get booking context for notification data
-    const [booking] = await db
-      .select({
-        chefId: storageBookings.chefId,
-        storageListingId: storageBookings.storageListingId,
-      })
-      .from(storageBookings)
-      .where(eq(storageBookings.id, record.storageBookingId))
-      .limit(1);
-
-    let storageName = 'Storage';
-    let kitchenNameForNotif = 'Kitchen';
-
-    if (booking?.storageListingId) {
-      const [listingInfo] = await db
-        .select({ name: storageListings.name, kitchenId: storageListings.kitchenId })
-        .from(storageListings)
-        .where(eq(storageListings.id, booking.storageListingId))
-        .limit(1);
-      storageName = listingInfo?.name || 'Storage';
-
-      if (listingInfo?.kitchenId) {
-        const [kitchenInfo] = await db
-          .select({ name: kitchens.name })
-          .from(kitchens)
-          .where(eq(kitchens.id, listingInfo.kitchenId))
-          .limit(1);
-        kitchenNameForNotif = kitchenInfo?.name || 'Kitchen';
-      }
-    }
-
-    if (action === 'approve' || action === 'adjust') {
-      // In-app notification to chef
-      if (booking?.chefId) {
-        const noticeSentAt = new Date();
-        const disputeWindowHours = await getOverstayDisputeWindowHours();
-        const disputeDeadline = new Date(noticeSentAt.getTime() + disputeWindowHours * 3600000);
-        await notificationService.notifyChefPenaltyApproved({
-          chefId: booking.chefId,
-          overstayId: overstayRecordId,
-          storageName,
-          kitchenName: kitchenNameForNotif,
-          daysOverdue: record.daysOverdue,
-          penaltyAmountCents: updateData.finalPenaltyCents ?? record.calculatedPenaltyCents,
-          disputeDeadline: disputeDeadline.toISOString(),
-        });
-        await db.update(storageOverstayRecords).set({ penaltyNoticeSentAt: noticeSentAt,
-          chefDisputeDeadline: disputeDeadline })
-          .where(and(eq(storageOverstayRecords.id, overstayRecordId), eq(storageOverstayRecords.status, 'penalty_approved')));
-
-        // Email to chef
-        const [chefUser] = await db
-          .select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, booking.chefId))
-          .limit(1);
-
-        if (chefUser?.username) {
-          try {
-            await sendEmail(generatePenaltyApprovedEmail({
-              chefEmail: chefUser.username,
-              chefName: chefUser.username.split('@')[0],
-              storageName,
-              kitchenName: kitchenNameForNotif,
-              daysOverdue: record.daysOverdue,
-              penaltyAmountCents: updateData.finalPenaltyCents ?? record.calculatedPenaltyCents,
-            }));
-            logger.info(`[OverstayService] Sent penalty approved email to chef for overstay ${overstayRecordId}`);
-          } catch (emailError) {
-            logger.error(`[OverstayService] Error sending penalty approved email:`, emailError);
-          }
-        }
-      }
-    } else if (action === 'waive') {
-      // In-app notification to chef
-      if (booking?.chefId) {
-        await notificationService.notifyChefPenaltyWaived({
-          chefId: booking.chefId,
-          overstayId: overstayRecordId,
-          storageName,
-          kitchenName: kitchenNameForNotif,
-          daysOverdue: record.daysOverdue,
-          penaltyAmountCents: record.calculatedPenaltyCents,
-          waiveReason: waiveReason,
-        });
-
-        // Email to chef
-        const [chefUser] = await db
-          .select({ username: users.username })
-          .from(users)
-          .where(eq(users.id, booking.chefId))
-          .limit(1);
-
-        if (chefUser?.username) {
-          try {
-            await sendEmail(generatePenaltyWaivedEmail({
-              chefEmail: chefUser.username,
-              chefName: chefUser.username.split('@')[0],
-              storageName,
-              kitchenName: kitchenNameForNotif,
-              daysOverdue: record.daysOverdue,
-              waiveReason,
-            }));
-            logger.info(`[OverstayService] Sent penalty waived email to chef for overstay ${overstayRecordId}`);
-          } catch (emailError) {
-            logger.error(`[OverstayService] Error sending penalty waived email:`, emailError);
-          }
-        }
-      }
-    }
-  } catch (notifError) {
-    logger.error(`[OverstayService] Error sending decision notifications:`, notifError);
-  }
-
+  await attemptOutcomeDelivery();
   return { success: true };
 }
 
@@ -856,14 +757,14 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
  * Charge the chef for an approved penalty using their saved payment method
  */
 export async function chargeApprovedPenalty(overstayRecordId: number): Promise<ChargeResult> {
-  if (!(await isOverstayMonetaryEnforcementEnabled())) return { success: false, error: 'Overstay monetary enforcement is disabled by an admin' };
-  if (!stripe) {
-    return { success: false, error: 'Stripe not configured' };
+  if(!(await isOverstayMonetaryEnforcementEnabled())) return { success: false,error: 'Overstay monetary enforcement is disabled by an admin' };
+  if(!stripe) {
+    return { success: false,error: 'Stripe not configured' };
   }
 
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) {
-    return { success: false, error: 'Overstay record not found' };
+  const record=await getOverstayRecord(overstayRecordId);
+  if(!record) {
+    return { success: false,error: 'Overstay record not found' };
   }
 
   // ENTERPRISE STANDARD: Allow charging from multiple statuses
@@ -871,17 +772,17 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
   // - charge_failed: retry after a previous failure (legacy records)
   // - charge_pending: recovery from stuck state (e.g. server crash during previous charge)
   // - escalated: admin force-retry (e.g. chef updated their card)
-  const chargeableStatuses = ['penalty_approved', 'charge_failed', 'charge_pending', 'escalated'];
-  if (!chargeableStatuses.includes(record.status)) {
-    return { success: false, error: `Cannot charge record in status: ${record.status}` };
+  const chargeableStatuses=['penalty_approved','charge_failed','charge_pending','escalated'];
+  if(!chargeableStatuses.includes(record.status)) {
+    return { success: false,error: `Cannot charge record in status: ${record.status}` };
   }
 
-  if (!record.finalPenaltyCents || record.finalPenaltyCents <= 0) {
-    return { success: false, error: 'No penalty amount to charge' };
+  if(!record.finalPenaltyCents||record.finalPenaltyCents<=0) {
+    return { success: false,error: 'No penalty amount to charge' };
   }
 
   // Get booking details for Stripe customer/payment method
-  const [booking] = await db
+  const [booking]=await db
     .select({
       stripeCustomerId: storageBookings.stripeCustomerId,
       stripePaymentMethodId: storageBookings.stripePaymentMethodId,
@@ -889,156 +790,166 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       overstayTerms: storageBookings.overstayTerms,
     })
     .from(storageBookings)
-    .where(eq(storageBookings.id, record.storageBookingId))
+    .where(eq(storageBookings.id,record.storageBookingId))
     .limit(1);
 
-  if (!booking) {
-    return { success: false, error: 'Booking not found' };
+  if(!booking) {
+    return { success: false,error: 'Booking not found' };
   }
-  const collectionError = overstayCollectionError(record);
-  if (collectionError) return { success: false, error: collectionError };
-  if (!isStorageOverstayTerms(booking.overstayTerms) || booking.overstayTerms.pricingModel !== 'daily' || !booking.overstayTerms.acceptedAt) {
-    return { success: false, error: 'Manual review required: accepted daily overstay terms are unavailable' };
+  const collectionError=overstayCollectionError(record);
+  if(collectionError) return { success: false,error: collectionError };
+  if(!isStorageOverstayTerms(booking.overstayTerms)||booking.overstayTerms.pricingModel!=='daily'||!booking.overstayTerms.acceptedAt) {
+    return { success: false,error: 'Manual review required: accepted daily overstay terms are unavailable' };
   }
 
   // Try to get Stripe customer ID from user if not on booking
-  let customerId = booking.stripeCustomerId;
-  const paymentMethodId = booking.stripePaymentMethodId;
+  let customerId=booking.stripeCustomerId;
+  const paymentMethodId=booking.stripePaymentMethodId;
 
-  if (!customerId && booking.chefId) {
-    const [user] = await db
+  if(!customerId&&booking.chefId) {
+    const [user]=await db
       .select({ stripeCustomerId: users.stripeCustomerId })
       .from(users)
-      .where(eq(users.id, booking.chefId))
+      .where(eq(users.id,booking.chefId))
       .limit(1);
-    
-    customerId = user?.stripeCustomerId || null;
+
+    customerId=user?.stripeCustomerId||null;
   }
 
-  if (!customerId || !paymentMethodId) {
+  if(!customerId||!paymentMethodId) {
     // Mark as failed - no payment method available
-    await db
-      .update(storageOverstayRecords)
-      .set({
-        status: 'charge_failed',
-        chargeFailedAt: new Date(),
-        chargeFailureReason: 'No saved payment method available',
-        updatedAt: new Date(),
-      })
-      .where(and(eq(storageOverstayRecords.id, overstayRecordId), inArray(storageOverstayRecords.status, chargeableStatuses as any)));
+    await db.transaction(async tx => {
+      const [changedOutcome]=await tx
+        .update(storageOverstayRecords)
+        .set({
+          status: 'charge_failed',
+          chargeFailedAt: new Date(),
+          chargeFailureReason: 'No saved payment method available',
+          updatedAt: new Date(),
+        })
+        .where(and(eq(storageOverstayRecords.id,overstayRecordId),inArray(storageOverstayRecords.status,chargeableStatuses as any))).returning({ id: storageOverstayRecords.id });
+      if(!changedOutcome) throw new Error("Overstay changed; reconcile the outcome");
 
-    await createOverstayHistoryEntry(
-      overstayRecordId,
-      'penalty_approved',
-      'charge_failed',
-      'charge_attempt',
-      'system',
-      'No saved payment method available'
-    );
-    await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, 'No saved payment method available');
-    await sendEscalationAdminEmail(overstayRecordId, record, 'No saved payment method available');
-    return { success: false, error: 'No saved payment method available for off-session charging' };
+      await createOverstayHistoryEntry(
+        overstayRecordId,
+        'penalty_approved',
+        'charge_failed',
+        'charge_attempt',
+        'system',
+        'No saved payment method available',undefined,undefined,tx);
+
+    });
+
+    await sendEscalationPaymentLinkToChef(overstayRecordId,record,booking.chefId,'No saved payment method available');
+
+    return { success: false,error: 'No saved payment method available for off-session charging' };
   }
 
   // ENTERPRISE STANDARD: Get manager's Stripe Connect account for destination charges
   // Overstay penalties should be transferred to the manager (same as booking payments)
-  let managerStripeAccountId: string | null = null;
-  let managerId: number | null = null;
+  let managerStripeAccountId: string|null=null;
+  let managerId: number|null=null;
 
-  const [storageBooking] = await db
+  const [storageBooking]=await db
     .select({ storageListingId: storageBookings.storageListingId })
     .from(storageBookings)
-    .where(eq(storageBookings.id, record.storageBookingId))
+    .where(eq(storageBookings.id,record.storageBookingId))
     .limit(1);
 
-  if (storageBooking) {
-    const [listing] = await db
+  if(storageBooking) {
+    const [listing]=await db
       .select({ kitchenId: storageListings.kitchenId })
       .from(storageListings)
-      .where(eq(storageListings.id, storageBooking.storageListingId))
+      .where(eq(storageListings.id,storageBooking.storageListingId))
       .limit(1);
 
-    if (listing?.kitchenId) {
-      const [kitchen] = await db
+    if(listing?.kitchenId) {
+      const [kitchen]=await db
         .select({ locationId: kitchens.locationId })
         .from(kitchens)
-        .where(eq(kitchens.id, listing.kitchenId))
+        .where(eq(kitchens.id,listing.kitchenId))
         .limit(1);
 
-      if (kitchen?.locationId) {
-        const [location] = await db
+      if(kitchen?.locationId) {
+        const [location]=await db
           .select({ managerId: locations.managerId })
           .from(locations)
-          .where(eq(locations.id, kitchen.locationId))
+          .where(eq(locations.id,kitchen.locationId))
           .limit(1);
-        
-        if (location?.managerId) {
-          managerId = location.managerId;
-          const [manager] = await db
+
+        if(location?.managerId) {
+          managerId=location.managerId;
+          const [manager]=await db
             .select({ stripeConnectAccountId: users.stripeConnectAccountId })
             .from(users)
-            .where(eq(users.id, location.managerId))
+            .where(eq(users.id,location.managerId))
             .limit(1);
-          managerStripeAccountId = manager?.stripeConnectAccountId || null;
+          managerStripeAccountId=manager?.stripeConnectAccountId||null;
         }
       }
     }
   }
 
   // Update status to charge_pending
-  const [charging] = await db
-    .update(storageOverstayRecords)
-    .set({
-      status: 'charge_pending',
-      chargeAttemptedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(storageOverstayRecords.id, overstayRecordId), eq(storageOverstayRecords.status, record.status)))
-    .returning({ id: storageOverstayRecords.id });
-  if (!charging) return { success: false, error: 'Penalty changed; reload before charging' };
+  const charging=await db.transaction(async tx => {
+    const [changed]=await tx
+      .update(storageOverstayRecords)
+      .set({
+        status: 'charge_pending',
+        chargeAttemptedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(storageOverstayRecords.id,overstayRecordId),eq(storageOverstayRecords.status,record.status)))
+      .returning({ id: storageOverstayRecords.id });
+
+    if(!changed) return undefined;
+    await createOverstayHistoryEntry(overstayRecordId,record.status as OverstayStatus,'charge_pending','charge_attempt','system','Payment attempt pending; no successful charge receipt yet',undefined,undefined,tx);
+    return changed;
+  });
+  if(!charging) return { success: false,error: 'Penalty changed; reload before charging' };
 
   try {
     // ENTERPRISE STANDARD: Create off-session PaymentIntent with destination charge
     // This automatically transfers funds to the manager's Stripe Connect account
-    
+
     // Get kitchen tax rate for tax calculation (same as storage extensions)
-    let taxRatePercent = 0;
+    let taxRatePercent=0;
     try {
-      const [storageBooking] = await db
+      const [storageBooking]=await db
         .select({ storageListingId: storageBookings.storageListingId })
         .from(storageBookings)
-        .where(eq(storageBookings.id, record.storageBookingId))
+        .where(eq(storageBookings.id,record.storageBookingId))
         .limit(1);
 
-      if (storageBooking) {
-        const [listing] = await db
+      if(storageBooking) {
+        const [listing]=await db
           .select({ kitchenId: storageListings.kitchenId })
           .from(storageListings)
-          .where(eq(storageListings.id, storageBooking.storageListingId))
+          .where(eq(storageListings.id,storageBooking.storageListingId))
           .limit(1);
 
-        if (listing?.kitchenId) {
-          const [kitchen] = await db
+        if(listing?.kitchenId) {
+          const [kitchen]=await db
             .select({ taxRatePercent: kitchens.taxRatePercent })
             .from(kitchens)
-            .where(eq(kitchens.id, listing.kitchenId))
+            .where(eq(kitchens.id,listing.kitchenId))
             .limit(1);
-          
-          if (kitchen?.taxRatePercent) {
-            taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
+
+          if(kitchen?.taxRatePercent) {
+            taxRatePercent=parseFloat(String(kitchen.taxRatePercent));
           }
         }
       }
-    } catch (taxError: unknown) {
-      logger.warn(`[OverstayService] Could not fetch tax rate for penalty:`, taxError as object);
+    } catch(taxError: unknown) {
+      logger.warn(`[OverstayService] Could not fetch tax rate for penalty:`,taxError as object);
     }
 
     // Calculate penalty with tax (same logic as storage extensions)
-    const penaltyBaseCents = record.finalPenaltyCents;
-    const penaltyTaxCents = Math.round((penaltyBaseCents * taxRatePercent) / 100);
-    const penaltyTotalCents = penaltyBaseCents + penaltyTaxCents;
-    
-    logger.info(`[OverstayService] Calculated tax for overstay penalty:`, {
+    const penaltyBaseCents=record.finalPenaltyCents;
+    const penaltyTaxCents=Math.round((penaltyBaseCents*taxRatePercent)/100);
+    const penaltyTotalCents=penaltyBaseCents+penaltyTaxCents;
+
+    logger.info(`[OverstayService] Calculated tax for overstay penalty:`,{
       overstayRecordId,
       penaltyBaseCents,
       penaltyTaxCents,
@@ -1058,9 +969,9 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       payment_method: string;
       off_session: boolean;
       confirm: boolean;
-      metadata: Record<string, string>;
+      metadata: Record<string,string>;
       statement_descriptor_suffix: string;
-    } = {
+    }={
       amount: penaltyTotalCents,
       currency: 'cad',
       customer: customerId,
@@ -1070,11 +981,11 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       metadata: {
         type: 'overstay_penalty',
         overstay_record_id: overstayRecordId.toString(),
-        chef_id: booking.chefId?.toString() || '',
+        chef_id: booking.chefId?.toString()||'',
         storage_booking_id: record.storageBookingId.toString(),
         days_overdue: record.daysOverdue.toString(),
-        manager_id: managerId?.toString() || '',
-        manager_connect_account_id: managerStripeAccountId || '',
+        manager_id: managerId?.toString()||'',
+        manager_connect_account_id: managerStripeAccountId||'',
         tax_rate_percent: taxRatePercent.toString(),
         penalty_base_cents: penaltyBaseCents.toString(),
         penalty_tax_cents: penaltyTaxCents.toString(),
@@ -1082,57 +993,63 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       statement_descriptor_suffix: 'OVERSTAY FEE',
     };
 
-    if (managerStripeAccountId) {
+    if(managerStripeAccountId) {
       logger.info(`[OverstayService] PaymentIntent will be charged to platform; transfer to ${managerStripeAccountId} happens in webhook`);
     }
 
     // ENTERPRISE STANDARD: Use idempotency key to prevent duplicate charges
     // Key format: overstay_penalty_{recordId}_{timestamp_day} - allows retry within same day
-    const paymentIntent = await chargeObligation(stripe, 'overstay_penalty', overstayRecordId, paymentIntentParams);
-    if (paymentIntent.status === 'processing') return { success: false, paymentIntentId: paymentIntent.id,
-      error: 'Payment is processing; no additional payment has been created' };
+    const paymentIntent=await chargeObligation(stripe,'overstay_penalty',overstayRecordId,paymentIntentParams);
+    if(paymentIntent.status==='processing') return {
+      success: false,paymentIntentId: paymentIntent.id,
+      error: 'Payment is processing; no additional payment has been created'
+    };
 
-    if (paymentIntent.status === 'succeeded') {
+    if(paymentIntent.status==='succeeded') {
       // Get charge ID
-      const chargeId = typeof paymentIntent.latest_charge === 'string' 
-        ? paymentIntent.latest_charge 
-        : paymentIntent.latest_charge?.id;
+      const chargeId=typeof paymentIntent.latest_charge==='string'
+        ? paymentIntent.latest_charge
+        :paymentIntent.latest_charge?.id;
 
-      await db
-        .update(storageOverstayRecords)
-        .set({
-          status: 'charge_succeeded',
-          stripePaymentIntentId: paymentIntent.id,
-          stripeChargeId: chargeId || null,
-          chargeSucceededAt: new Date(),
-          resolvedAt: new Date(),
-          resolutionType: 'paid',
-          updatedAt: new Date(),
-        })
-        .where(and(eq(storageOverstayRecords.id, overstayRecordId), inArray(storageOverstayRecords.status, chargeableStatuses as any)));
+      await db.transaction(async tx => {
+        const [changedOutcome]=await tx
+          .update(storageOverstayRecords)
+          .set({
+            status: 'charge_succeeded',
+            stripePaymentIntentId: paymentIntent.id,
+            stripeChargeId: chargeId||null,
+            chargeSucceededAt: new Date(),
+            resolvedAt: new Date(),
+            resolutionType: 'paid',
+            updatedAt: new Date(),
+          })
+          .where(and(eq(storageOverstayRecords.id,overstayRecordId),inArray(storageOverstayRecords.status,chargeableStatuses as any))).returning({ id: storageOverstayRecords.id });
+        if(!changedOutcome) throw new Error("Overstay changed; reconcile the outcome");
 
-      await createOverstayHistoryEntry(
-        overstayRecordId,
-        'charge_pending',
-        'charge_succeeded',
-        'charge_attempt',
-        'stripe_webhook',
-        `Payment successful: ${paymentIntent.id}`,
-        { paymentIntentId: paymentIntent.id, chargeId }
-      );
+        await createOverstayHistoryEntry(
+          overstayRecordId,
+          'charge_pending',
+          'charge_succeeded',
+          'charge_attempt',
+          'stripe_webhook',
+          `Payment successful: ${paymentIntent.id}`,
+          { paymentIntentId: paymentIntent.id,chargeId },undefined,tx);
+
+      });
+
 
       // ARCHITECTURE — Separate Charges and Transfers:
       //   Initial PT seeded with conservative values (serviceFee=0, managerRevenue=penaltyTotal).
       //   Webhook (or in-line transfer below if balance_transaction is ready) updates them
       //   to reflect the actual Stripe fee + transfer amount.
       try {
-        const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
-        const { getStripePaymentAmounts } = await import("./stripe-service");
+        const { createPaymentTransaction,updatePaymentTransaction }=await import("./payment-transactions-service");
+        const { getStripePaymentAmounts }=await import("./stripe-service");
 
-        const ptRecord = await createPaymentTransaction({
+        const ptRecord=await createPaymentTransaction({
           bookingId: record.storageBookingId,
           bookingType: "storage",
-          chefId: booking.chefId || null,
+          chefId: booking.chefId||null,
           managerId,
           amount: penaltyTotalCents,
           baseAmount: penaltyBaseCents,
@@ -1140,7 +1057,7 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
           managerRevenue: penaltyTotalCents, // Webhook updates with actual transfer amount
           currency: "CAD",
           paymentIntentId: paymentIntent.id,
-          chargeId: chargeId || undefined,
+          chargeId: chargeId||undefined,
           status: "succeeded",
           stripeStatus: "succeeded",
           metadata: {
@@ -1151,59 +1068,59 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
             tax_rate_percent: taxRatePercent.toString(),
             penalty_base_cents: penaltyBaseCents.toString(),
             penalty_tax_cents: penaltyTaxCents.toString(),
-            manager_connect_account_id: managerStripeAccountId || '',
+            manager_connect_account_id: managerStripeAccountId||'',
           },
-        }, db);
+        },db);
 
         // Try inline transfer if balance_transaction is ready; otherwise webhook handles it
-        if (ptRecord) {
-          const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerStripeAccountId || undefined);
-          if (stripeAmounts) {
-            await updatePaymentTransaction(ptRecord.id, {
+        if(ptRecord) {
+          const stripeAmounts=await getStripePaymentAmounts(paymentIntent.id,managerStripeAccountId||undefined);
+          if(stripeAmounts) {
+            await updatePaymentTransaction(ptRecord.id,{
               paidAt: new Date(),
               lastSyncedAt: new Date(),
               stripeAmount: stripeAmounts.stripeAmount,
               stripeNetAmount: stripeAmounts.stripeNetAmount,
               stripeProcessingFee: stripeAmounts.stripeProcessingFee,
               stripePlatformFee: stripeAmounts.stripePlatformFee,
-            }, db);
+            },db);
 
-            if (managerStripeAccountId && stripeAmounts.stripeProcessingFee > 0) {
-              const { transferToManagerForBooking } = await import('./stripe-transfer-service');
+            if(managerStripeAccountId&&stripeAmounts.stripeProcessingFee>0) {
+              const { transferToManagerForBooking }=await import('./stripe-transfer-service');
               try {
-                const transferResult = await transferToManagerForBooking({
+                const transferResult=await transferToManagerForBooking({
                   paymentIntentId: paymentIntent.id,
                   paymentTransactionId: ptRecord.id,
                   chargeAmountCents: stripeAmounts.stripeAmount,
                   actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
-                  chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                  chargeId: chargeId||stripeAmounts.chargeId||undefined,
                   transferGroup: `pi_${paymentIntent.id}`,
                 });
-                if (transferResult.transferred) {
-                  await updatePaymentTransaction(ptRecord.id, {
+                if(transferResult.transferred) {
+                  await updatePaymentTransaction(ptRecord.id,{
                     serviceFee: transferResult.feeWithheldCents,
                     managerRevenue: transferResult.transferredCents,
                     stripePlatformFee: transferResult.feeWithheldCents,
                     stripeNetAmount: transferResult.transferredCents,
-                  }, db);
+                  },db);
                 }
-              } catch (transferErr) {
-                logger.error(`[OverstayService] Transfer error for ${paymentIntent.id} (will retry on charge.updated):`, transferErr);
+              } catch(transferErr) {
+                logger.error(`[OverstayService] Transfer error for ${paymentIntent.id} (will retry on charge.updated):`,transferErr);
               }
             }
 
-            logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`, {
-              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+            logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`,{
+              processingFee: `$${(stripeAmounts.stripeProcessingFee/100).toFixed(2)}`,
             });
           }
         }
 
         logger.info(`[OverstayService] Created payment_transactions for overstay penalty ${overstayRecordId}`);
-      } catch (ptError) {
-        logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`, ptError);
+      } catch(ptError) {
+        logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`,ptError);
       }
 
-      logger.info(`[OverstayService] Penalty charged successfully`, {
+      logger.info(`[OverstayService] Penalty charged successfully`,{
         overstayRecordId,
         paymentIntentId: paymentIntent.id,
         amount: record.finalPenaltyCents,
@@ -1211,94 +1128,87 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
 
       // Send penalty charged email to chef
       try {
-        await sendPenaltyChargedEmail(overstayRecordId, record.finalPenaltyCents, record.daysOverdue);
-      } catch (emailError: unknown) {
-        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError as object);
+        await attemptOutcomeDelivery();
+      } catch(emailError: unknown) {
+        logger.error(`[OverstayService] Error sending penalty charged email:`,emailError as object);
       }
 
-      // Send in-app notifications for successful charge
-      try {
-        const { notificationService } = await import('./notification.service');
-        
-        // Fetch names for notifications
-        let storageName = 'Storage';
-        let kitchenNameForNotif = 'Kitchen';
-        let locationIdForNotif: number | null = null;
-        
-        if (storageBooking?.storageListingId) {
-          const [listingInfo] = await db
-            .select({ name: storageListings.name, kitchenId: storageListings.kitchenId })
-            .from(storageListings)
-            .where(eq(storageListings.id, storageBooking.storageListingId))
-            .limit(1);
-          storageName = listingInfo?.name || 'Storage';
-          
-          if (listingInfo?.kitchenId) {
-            const [kitchenInfo] = await db
-              .select({ name: kitchens.name, locationId: kitchens.locationId })
-              .from(kitchens)
-              .where(eq(kitchens.id, listingInfo.kitchenId))
-              .limit(1);
-            kitchenNameForNotif = kitchenInfo?.name || 'Kitchen';
-            locationIdForNotif = kitchenInfo?.locationId || null;
-          }
-        }
-
-        // Notify chef that penalty was charged
-        if (booking.chefId) {
-          await notificationService.notifyChefPenaltyCharged({
-            chefId: booking.chefId,
-            overstayId: overstayRecordId,
-            storageName,
-            kitchenName: kitchenNameForNotif,
-            daysOverdue: record.daysOverdue,
-            penaltyAmountCents: record.finalPenaltyCents || 0,
-          });
-        }
-
-        // Notify manager that payment was received
-        if (managerId && locationIdForNotif) {
-          await notificationService.notifyManagerPenaltyReceived({
-            managerId,
-            locationId: locationIdForNotif,
-            chefName: booking.chefId ? `Chef #${booking.chefId}` : 'Chef',
-            overstayId: overstayRecordId,
-            storageName,
-            kitchenName: kitchenNameForNotif,
-            daysOverdue: record.daysOverdue,
-            penaltyAmountCents: record.finalPenaltyCents || 0,
-          });
-        }
-      } catch (notifError) {
-        logger.error(`[OverstayService] Error sending in-app notifications for charge:`, notifError);
-      }
-
-      return { 
-        success: true, 
+      return {
+        success: true,
         paymentIntentId: paymentIntent.id,
-        chargeId: chargeId || undefined,
+        chargeId: chargeId||undefined,
       };
     } else {
       // ENTERPRISE STANDARD: Auto-charge failed — immediately escalate and create self-serve checkout
       // No retry system. On any failure: escalate → chef gets payment link → admin notified.
-      const failureReason = paymentIntent.status === 'requires_action' || 
-                            paymentIntent.status === 'requires_confirmation' ||
-                            paymentIntent.status === 'requires_payment_method'
+      const failureReason=paymentIntent.status==='requires_action'||
+        paymentIntent.status==='requires_confirmation'||
+        paymentIntent.status==='requires_payment_method'
         ? `Payment requires authentication (3DS/SCA)`
-        : `Payment status: ${paymentIntent.status}`;
+        :`Payment status: ${paymentIntent.status}`;
 
-      await db
+      await db.transaction(async tx => {
+        const [changedOutcome]=await tx
+          .update(storageOverstayRecords)
+          .set({
+            status: 'escalated',
+            stripePaymentIntentId: paymentIntent.id,
+            chargeFailedAt: new Date(),
+            chargeFailureReason: failureReason,
+            resolutionType: 'escalated_collection',
+            resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-service payment is available from the current storage issue; notice queued.`,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(storageOverstayRecords.id,overstayRecordId),inArray(storageOverstayRecords.status,chargeableStatuses as any))).returning({ id: storageOverstayRecords.id });
+        if(!changedOutcome) throw new Error("Overstay changed; reconcile the outcome");
+
+        await createOverstayHistoryEntry(
+          overstayRecordId,
+          'charge_pending',
+          'escalated',
+          'auto_escalation',
+          'system',
+          `Off-session charge failed: ${failureReason}. Escalated immediately.`,
+          { paymentIntentId: paymentIntent.id,status: paymentIntent.status },undefined,tx);
+
+      });
+
+
+      // Create self-serve checkout session and email chef
+      await sendEscalationPaymentLinkToChef(overstayRecordId,record,booking.chefId,failureReason);
+
+      // Notify admins of escalation
+
+
+      return {
+        success: false,
+        error: `Auto-charge failed (${failureReason}). Escalated — review the current storage issue for payment recovery.`,
+      };
+    }
+  } catch(error: any) {
+    // ENTERPRISE STANDARD: On ANY Stripe exception, immediately escalate + create self-serve checkout.
+    // No retry system. Covers: 3DS/SCA, card declined, expired card, insufficient funds, network errors.
+    const errorMessage=error.message||'Unknown error';
+    const stripeErrorCode=error.code||error.raw?.code||'';
+    const failureReason=stripeErrorCode==='authentication_required'||
+      errorMessage.includes('requires authentication')||
+      errorMessage.includes('authentication_required')
+      ? `Payment requires authentication (3DS/SCA)`
+      :errorMessage;
+
+    await db.transaction(async tx => {
+      const [changedOutcome]=await tx
         .update(storageOverstayRecords)
         .set({
           status: 'escalated',
-          stripePaymentIntentId: paymentIntent.id,
           chargeFailedAt: new Date(),
           chargeFailureReason: failureReason,
           resolutionType: 'escalated_collection',
-          resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-serve payment link sent to chef.`,
+          resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-service payment is available from the current storage issue; notice queued.`,
           updatedAt: new Date(),
         })
-        .where(and(eq(storageOverstayRecords.id, overstayRecordId), inArray(storageOverstayRecords.status, chargeableStatuses as any)));
+        .where(and(eq(storageOverstayRecords.id,overstayRecordId),inArray(storageOverstayRecords.status,chargeableStatuses as any))).returning({ id: storageOverstayRecords.id });
+      if(!changedOutcome) throw new Error("Overstay changed; reconcile the outcome");
 
       await createOverstayHistoryEntry(
         overstayRecordId,
@@ -1306,67 +1216,25 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         'escalated',
         'auto_escalation',
         'system',
-        `Off-session charge failed: ${failureReason}. Escalated immediately.`,
-        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
-      );
+        `Off-session charge error: ${failureReason}. Escalated immediately.`,
+        { error: errorMessage,stripeErrorCode },undefined,tx);
 
-      // Create self-serve checkout session and email chef
-      await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, failureReason);
+    });
 
-      // Notify admins of escalation
-      await sendEscalationAdminEmail(overstayRecordId, record, failureReason);
 
-      return { 
-        success: false, 
-        error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.`,
-      };
-    }
-  } catch (error: any) {
-    // ENTERPRISE STANDARD: On ANY Stripe exception, immediately escalate + create self-serve checkout.
-    // No retry system. Covers: 3DS/SCA, card declined, expired card, insufficient funds, network errors.
-    const errorMessage = error.message || 'Unknown error';
-    const stripeErrorCode = error.code || error.raw?.code || '';
-    const failureReason = stripeErrorCode === 'authentication_required' || 
-                           errorMessage.includes('requires authentication') ||
-                           errorMessage.includes('authentication_required')
-      ? `Payment requires authentication (3DS/SCA)`
-      : errorMessage;
-
-    await db
-      .update(storageOverstayRecords)
-      .set({
-        status: 'escalated',
-        chargeFailedAt: new Date(),
-        chargeFailureReason: failureReason,
-        resolutionType: 'escalated_collection',
-        resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-serve payment link sent to chef.`,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(storageOverstayRecords.id, overstayRecordId), inArray(storageOverstayRecords.status, chargeableStatuses as any)));
-
-    await createOverstayHistoryEntry(
-      overstayRecordId,
-      'charge_pending',
-      'escalated',
-      'auto_escalation',
-      'system',
-      `Off-session charge error: ${failureReason}. Escalated immediately.`,
-      { error: errorMessage, stripeErrorCode }
-    );
-
-    logger.error(`[OverstayService] Penalty charge failed — escalated immediately`, {
+    logger.error(`[OverstayService] Penalty charge failed — escalated immediately`,{
       overstayRecordId,
       error: errorMessage,
       stripeErrorCode,
     });
 
     // Create self-serve checkout session and email chef
-    await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, failureReason);
+    await sendEscalationPaymentLinkToChef(overstayRecordId,record,booking.chefId,failureReason);
 
     // Notify admins of escalation
-    await sendEscalationAdminEmail(overstayRecordId, record, failureReason);
 
-    return { success: false, error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.` };
+
+    return { success: false,error: `Auto-charge failed (${failureReason}). Escalated — review the current storage issue for payment recovery.` };
   }
 }
 
@@ -1422,50 +1290,13 @@ async function sendEscalationPaymentLinkToChef(
     );
 
     if ('checkoutUrl' in checkoutResult) {
-      const { sendEmail } = await import('../email');
-      await sendEmail({
-        to: chef.email,
-        subject: `⚠️ Action Required: Overstay Penalty Payment - $${penaltyAmount} CAD`,
-        html: `
-          <h2>⚠️ Overstay Penalty — Payment Required</h2>
-          <p>We were unable to automatically charge your saved payment method for your storage overstay penalty.</p>
-          <p><strong>Reason:</strong> ${failureReason}</p>
-          <p><strong>Amount:</strong> $${penaltyAmount} CAD</p>
-          <p><strong>Storage:</strong> ${storageName}</p>
-          <p><strong>Days Overdue:</strong> ${record.daysOverdue}</p>
-          <p>Please pay immediately using the secure link below:</p>
-          <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Pay Now — $${penaltyAmount} CAD</a></p>
-          <p>This link will expire in 24 hours.</p>
-          <p><em>You will not be able to make new bookings until this penalty is resolved. If payment is not received, this matter may be referred for manual collection.</em></p>
-        `,
-        text: `Overstay Penalty — Payment Required\n\nReason: ${failureReason}\nAmount: $${penaltyAmount} CAD\nStorage: ${storageName}\nDays Overdue: ${record.daysOverdue}\n\nPay now: ${checkoutResult.checkoutUrl}\n\nThis link expires in 24 hours.`,
-      });
-      logger.info(`[OverstayService] Sent escalation payment link to chef ${chef.email} for overstay ${overstayRecordId}`);
-
-      // In-app notification to chef about payment required
-      try {
-        const { notificationService } = await import('./notification.service');
-        await notificationService.notifyChefPaymentRequired({
-          chefId,
-          overstayId: overstayRecordId,
-          storageName,
-          kitchenName: 'Kitchen',
-          daysOverdue: record.daysOverdue,
-          penaltyAmountCents: record.finalPenaltyCents ?? record.calculatedPenaltyCents ?? 0,
-          paymentUrl: 'checkoutUrl' in checkoutResult ? checkoutResult.checkoutUrl : undefined,
-        });
-        logger.info(`[OverstayService] Sent payment required in-app notification to chef for overstay ${overstayRecordId}`);
-      } catch (notifError) {
-        logger.error(`[OverstayService] Error sending payment required in-app notification:`, notifError);
-      }
-
       await createOverstayHistoryEntry(
         overstayRecordId,
         'escalated',
         'escalated',
-        'escalation_payment_link_sent',
+        'escalation_checkout_prepared',
         'system',
-        `Escalation payment link sent to chef ${chef.email}`,
+        `Escalation checkout prepared for chef ${chef.email}`,
         { checkoutUrl: checkoutResult.checkoutUrl, chefEmail: chef.email, failureReason }
       );
     }
@@ -1478,148 +1309,77 @@ async function sendEscalationPaymentLinkToChef(
  * Notify all admin users when an overstay penalty is escalated.
  * Called immediately when auto-charge fails — no retry system.
  */
-async function sendEscalationAdminEmail(
-  overstayRecordId: number,
-  record: StorageOverstayRecord,
-  failureReason: string
-): Promise<void> {
-  try {
-    const { sendEmail } = await import('../email');
 
-    // Get booking context
-    const [booking] = await db
-      .select({
-        storageName: storageListings.name,
-        chefId: storageBookings.chefId,
-      })
-      .from(storageBookings)
-      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-      .where(eq(storageBookings.id, record.storageBookingId))
-      .limit(1);
-
-    let chefEmail = 'Unknown';
-    if (booking?.chefId) {
-      const [chef] = await db
-        .select({ email: users.username })
-        .from(users)
-        .where(eq(users.id, booking.chefId))
-        .limit(1);
-      chefEmail = chef?.email || 'Unknown';
-    }
-
-    const penaltyAmount = ((record.finalPenaltyCents ?? record.calculatedPenaltyCents ?? 0) / 100).toFixed(2);
-
-    // Get all admin users
-    const admins = await db
-      .select({ username: users.username })
-      .from(users)
-      .where(eq(users.role, 'admin'));
-
-    if (admins.length === 0) {
-      logger.warn(`[OverstayService] No admin users found — escalation email NOT sent for overstay ${overstayRecordId}`);
-      return;
-    }
-
-    for (const admin of admins) {
-      if (admin.username) {
-        await sendEmail({
-          to: admin.username,
-          subject: `⚠️ Escalated Overstay Penalty — Auto-Charge Failed`,
-          html: `
-            <h2>Overstay Penalty Escalated</h2>
-            <p>An overstay penalty auto-charge failed and has been escalated. A self-serve payment link has been sent to the chef.</p>
-            <h3>Details:</h3>
-            <ul>
-              <li><strong>Overstay Record ID:</strong> ${overstayRecordId}</li>
-              <li><strong>Storage:</strong> ${booking?.storageName || 'Unknown'}</li>
-              <li><strong>Chef Email:</strong> ${chefEmail}</li>
-              <li><strong>Penalty Amount:</strong> $${penaltyAmount} CAD</li>
-              <li><strong>Days Overdue:</strong> ${record.daysOverdue}</li>
-              <li><strong>Failure Reason:</strong> ${failureReason}</li>
-            </ul>
-            <p>If the chef does not pay via the link, please take appropriate collection action.</p>
-          `,
-          text: `Overstay Penalty Escalated\n\nRecord ID: ${overstayRecordId}\nChef: ${chefEmail}\nAmount: $${penaltyAmount} CAD\nReason: ${failureReason}`,
-        });
-      }
-    }
-    logger.info(`[OverstayService] Sent escalation notification to ${admins.length} admin(s) for overstay ${overstayRecordId}`);
-  } catch (emailError) {
-    logger.error(`[OverstayService] Failed to send escalation admin email:`, emailError);
-  }
-}
-
-// ============================================================================
-// RESOLUTION FUNCTIONS
-// ============================================================================
-
-/**
- * Mark overstay as resolved (e.g., chef extended booking or removed items)
- */
 export async function resolveOverstay(
   overstayRecordId: number,
-  resolutionType: 'extended' | 'removed' | 'escalated',
+  resolutionType: 'extended'|'removed'|'escalated',
   resolutionNotes?: string,
   resolvedBy?: number
 ): Promise<{ success: boolean; error?: string }> {
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) {
-    return { success: false, error: 'Overstay record not found' };
+  const record=await getOverstayRecord(overstayRecordId);
+  if(!record) {
+    return { success: false,error: 'Overstay record not found' };
   }
 
   // A settled overstay must not be re-resolved: doing so would overwrite a
   // successful charge or a waiver and silently erase the money record.
-  const settledStatuses: OverstayStatus[] = ['resolved', 'charge_succeeded', 'penalty_waived', 'escalated'];
-  if (resolutionType === 'removed') {
-    if (!resolvedBy) return { success: false, error: 'A manager must confirm removal' };
-    if (record.itemsRemovedAt) return { success: true };
-    const removedAt = new Date();
-    await db.update(storageBookings).set({ status: 'completed', checkoutStatus: 'completed',
-      checkoutApprovedAt: removedAt, checkoutApprovedBy: resolvedBy, updatedAt: removedAt })
-      .where(eq(storageBookings.id, record.storageBookingId));
+  const settledStatuses: OverstayStatus[]=['resolved','charge_succeeded','penalty_waived','escalated'];
+  if(resolutionType==='removed') {
+    if(!resolvedBy) return { success: false,error: 'A manager must confirm removal' };
+    if(record.itemsRemovedAt) return { success: true };
+    const removedAt=new Date();
+    await db.update(storageBookings).set({
+      status: 'completed',checkoutStatus: 'completed',
+      checkoutApprovedAt: removedAt,checkoutApprovedBy: resolvedBy,updatedAt: removedAt
+    })
+      .where(eq(storageBookings.id,record.storageBookingId));
     await detectOverstays();
-    await createOverstayHistoryEntry(overstayRecordId, record.status as OverstayStatus,
-      record.status as OverstayStatus, 'resolution', 'manager',
-      `Items removed; final penalty requires review${resolutionNotes ? `: ${resolutionNotes}` : ''}`,
-      { itemsRemovedAt: removedAt.toISOString() }, resolvedBy);
+    await createOverstayHistoryEntry(overstayRecordId,record.status as OverstayStatus,
+      record.status as OverstayStatus,'resolution','manager',
+      `Items removed; final penalty requires review${resolutionNotes? `: ${resolutionNotes}`:''}`,
+      { itemsRemovedAt: removedAt.toISOString() },resolvedBy);
     return { success: true };
   }
-  if (settledStatuses.includes(record.status as OverstayStatus)) {
-    return { success: false, error: `Cannot resolve an overstay in status: ${record.status}` };
+  if(settledStatuses.includes(record.status as OverstayStatus)) {
+    return { success: false,error: `Cannot resolve an overstay in status: ${record.status}` };
   }
 
-  if (resolutionType === 'extended') {
-    const [booking] = await db.select({ endDate: storageBookings.endDate }).from(storageBookings)
-      .where(eq(storageBookings.id, record.storageBookingId)).limit(1);
-    if (!booking || new Date(booking.endDate).getTime() <= new Date(record.endDate).getTime()) {
-      return { success: false, error: 'Approve an actual booking extension before resolving this overstay as extended' };
+  if(resolutionType==='extended') {
+    const [booking]=await db.select({ endDate: storageBookings.endDate }).from(storageBookings)
+      .where(eq(storageBookings.id,record.storageBookingId)).limit(1);
+    if(!booking||new Date(booking.endDate).getTime()<=new Date(record.endDate).getTime()) {
+      return { success: false,error: 'Approve an actual booking extension before resolving this overstay as extended' };
     }
   }
 
-  const previousStatus = record.status as OverstayStatus;
-  const newStatus: OverstayStatus = resolutionType === 'escalated' ? 'escalated' : 'resolved';
+  const previousStatus=record.status as OverstayStatus;
+  const newStatus: OverstayStatus=resolutionType==='escalated'? 'escalated':'resolved';
 
-  await db
-    .update(storageOverstayRecords)
-    .set({
-      status: newStatus,
-      resolvedAt: new Date(),
-      resolutionType,
-      resolutionNotes,
-      updatedAt: new Date(),
-    })
-    .where(eq(storageOverstayRecords.id, overstayRecordId));
+  await db.transaction(async tx => {
+    const [changedOutcome]=await tx
+      .update(storageOverstayRecords)
+      .set({
+        status: newStatus,
+        resolvedAt: new Date(),
+        resolutionType,
+        resolutionNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(storageOverstayRecords.id,overstayRecordId)).returning({ id: storageOverstayRecords.id });
+    if(!changedOutcome) throw new Error("Overstay changed; reconcile the outcome");
 
-  await createOverstayHistoryEntry(
-    overstayRecordId,
-    previousStatus,
-    newStatus,
-    'resolution',
-    resolvedBy ? 'manager' : 'system',
-    `Resolved: ${resolutionType}${resolutionNotes ? ` - ${resolutionNotes}` : ''}`,
-    { resolutionType, resolutionNotes },
-    resolvedBy
-  );
+    await createOverstayHistoryEntry(
+      overstayRecordId,
+      previousStatus,
+      newStatus,
+      'resolution',
+      resolvedBy? 'manager':'system',
+      `Resolved: ${resolutionType}${resolutionNotes? ` - ${resolutionNotes}`:''}`,
+      { resolutionType,resolutionNotes },
+      resolvedBy,tx);
+
+  });
+
 
   return { success: true };
 }
@@ -1628,57 +1388,64 @@ export async function resolveOverstay(
 // HISTORY & AUDIT FUNCTIONS
 // ============================================================================
 
-export async function disputeOverstayPenalty(id: number, chefId: number, reason: string) {
-  if (typeof reason !== 'string' || reason.trim().length < 10) return { success: false, error: 'Explain the dispute in at least 10 characters' };
-  const record = await getOverstayRecord(id);
-  if (!record || record.status !== 'penalty_approved' || !record.chefDisputeDeadline ||
-    Date.now() >= record.chefDisputeDeadline.getTime()) return { success: false, error: 'This penalty is not within its dispute window' };
-  const [booking] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings)
-    .where(eq(storageBookings.id, record.storageBookingId)).limit(1);
-  if (booking?.chefId !== chefId) return { success: false, error: 'Penalty not found or unauthorized' };
-  const [updated] = await db.update(storageOverstayRecords).set({ status: 'escalated',
-    chefDisputedAt: new Date(), chefDisputeReason: reason.trim(), updatedAt: new Date() })
-    .where(and(eq(storageOverstayRecords.id, id), eq(storageOverstayRecords.status, 'penalty_approved'),
-      sql`${storageOverstayRecords.chefDisputeDeadline} > CURRENT_TIMESTAMP`))
-    .returning({ id: storageOverstayRecords.id });
-  if (!updated) return { success: false, error: 'Penalty changed; reload before disputing' };
-  await createOverstayHistoryEntry(id, 'penalty_approved', 'escalated', 'chef_dispute', 'chef', reason.trim(), { chefId }, chefId);
-  try {
-    const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
-    const { notificationService } = await import('./notification.service');
-    for (const admin of admins) await notificationService.createForManager({ managerId: admin.id,
-      type: 'booking_new', priority: 'high', title: 'Overstay penalty disputed',
-      message: `Chef requested review of penalty #${id}. Collection is paused.`,
-      actionUrl: '/admin?section=escalated-penalties', actionLabel: 'Review dispute', metadata: { overstayId: id } });
-  } catch (error) { logger.error('Overstay dispute saved; admin notification failed', error); }
+export async function disputeOverstayPenalty(id: number,chefId: number,reason: string) {
+  if(typeof reason!=='string'||reason.trim().length<10) return { success: false,error: 'Explain the dispute in at least 10 characters' };
+  const record=await getOverstayRecord(id);
+  if(!record||record.status!=='penalty_approved'||!record.chefDisputeDeadline||
+    Date.now()>=record.chefDisputeDeadline.getTime()) return { success: false,error: 'This penalty is not within its dispute window' };
+  const [booking]=await db.select({ chefId: storageBookings.chefId }).from(storageBookings)
+    .where(eq(storageBookings.id,record.storageBookingId)).limit(1);
+  if(booking?.chefId!==chefId) return { success: false,error: 'Penalty not found or unauthorized' };
+  const updated=await db.transaction(async tx => {
+    const [updated]=await tx.update(storageOverstayRecords).set({
+      status: 'escalated',
+      chefDisputedAt: new Date(),chefDisputeReason: reason.trim(),updatedAt: new Date()
+    })
+      .where(and(eq(storageOverstayRecords.id,id),eq(storageOverstayRecords.status,'penalty_approved'),
+        sql`${storageOverstayRecords.chefDisputeDeadline} > CURRENT_TIMESTAMP`))
+      .returning({ id: storageOverstayRecords.id });
+    if(!updated) return undefined;
+    await createOverstayHistoryEntry(id,'penalty_approved','escalated','chef_dispute','chef',reason.trim(),{ chefId },chefId,tx);
+    return updated;
+  });
+  if(!updated) return { success: false,error: 'Penalty changed; reload before disputing' };
+  await attemptOutcomeDelivery();
   return { success: true };
 }
 
-export async function reviewOverstayDispute(id: number, adminId: number, amountCents: number, reason: string) {
-  const record = await getOverstayRecord(id);
-  if (!record || record.status !== 'escalated' || !record.chefDisputedAt || record.disputeReviewedAt)
-    return { success: false, error: 'No unresolved chef dispute found' };
-  if (!Number.isSafeInteger(amountCents) || amountCents < 0 || amountCents > (record.finalPenaltyCents ?? 0))
-    return { success: false, error: 'Reviewed amount must be between zero and the disputed final amount' };
-  if (typeof reason !== 'string' || reason.trim().length < 10) return { success: false, error: 'Explain the decision in at least 10 characters' };
-  const status = amountCents === 0 ? 'penalty_waived' : 'penalty_approved';
-  const [updated] = await db.update(storageOverstayRecords).set({ status, finalPenaltyCents: amountCents,
-    disputeReviewedAt: new Date(), disputeReviewedBy: adminId, disputeDecisionReason: reason.trim(),
-    ...(amountCents === 0 ? { penaltyWaived: true, waiveReason: reason.trim(), resolvedAt: new Date(), resolutionType: 'waived' } : {}),
-    updatedAt: new Date() }).where(and(eq(storageOverstayRecords.id, id), eq(storageOverstayRecords.status, 'escalated'),
+export async function reviewOverstayDispute(id: number,adminId: number,amountCents: number,reason: string) {
+  const record=await getOverstayRecord(id);
+  if(!record||record.status!=='escalated'||!record.chefDisputedAt||record.disputeReviewedAt)
+    return { success: false,error: 'No unresolved chef dispute found' };
+  if(!Number.isSafeInteger(amountCents)||amountCents<0||amountCents>(record.finalPenaltyCents??0))
+    return { success: false,error: 'Reviewed amount must be between zero and the disputed final amount' };
+  if(typeof reason!=='string'||reason.trim().length<10) return { success: false,error: 'Explain the decision in at least 10 characters' };
+  const status=amountCents===0? 'penalty_waived':'penalty_approved';
+  const updated=await db.transaction(async tx => {
+    const [updated]=await tx.update(storageOverstayRecords).set({
+      status,finalPenaltyCents: amountCents,
+      disputeReviewedAt: new Date(),disputeReviewedBy: adminId,disputeDecisionReason: reason.trim(),
+      ...(amountCents===0? { penaltyWaived: true,waiveReason: reason.trim(),resolvedAt: new Date(),resolutionType: 'waived' }:{}),
+      updatedAt: new Date()
+    }).where(and(eq(storageOverstayRecords.id,id),eq(storageOverstayRecords.status,'escalated'),
       sql`${storageOverstayRecords.disputeReviewedAt} IS NULL`)).returning({ id: storageOverstayRecords.id });
-  if (!updated) return { success: false, error: 'Dispute changed; reload before reviewing' };
-  await createOverstayHistoryEntry(id, 'escalated', status, 'dispute_review', 'admin', reason.trim(), { amountCents }, adminId);
+    if(!updated) return undefined;
+    await createOverstayHistoryEntry(id,'escalated',status,'dispute_review','admin',reason.trim(),{ amountCents },adminId,tx);
+    return updated;
+  });
+  if(!updated) return { success: false,error: 'Dispute changed; reload before reviewing' };
   try {
-    const [booking] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings)
-      .where(eq(storageBookings.id, record.storageBookingId)).limit(1);
-    if (booking?.chefId) {
-      const { notificationService } = await import('./notification.service');
-      await notificationService.createForChef({ chefId: booking.chefId, type: 'booking_new', priority: 'high',
-        title: 'Overstay dispute reviewed', message: `${reason.trim()} Final amount: $${(amountCents / 100).toFixed(2)} CAD.`,
-        actionUrl: '/dashboard?view=issues-refunds&tab=overstay-penalties', actionLabel: 'View decision', metadata: { overstayId: id } });
+    const [booking]=await db.select({ chefId: storageBookings.chefId }).from(storageBookings)
+      .where(eq(storageBookings.id,record.storageBookingId)).limit(1);
+    if(booking?.chefId) {
+      const { notificationService }=await import('./notification.service');
+      await notificationService.createForChef({
+        chefId: booking.chefId,type: 'booking_new',priority: 'high',
+        title: 'Overstay dispute reviewed',message: `${reason.trim()} Final amount: $${(amountCents/100).toFixed(2)} CAD.`,
+        actionUrl: '/dashboard?view=issues-refunds&tab=overstay-penalties',actionLabel: 'View decision',metadata: { overstayId: id }
+      });
     }
-  } catch (error) { logger.error('Overstay decision saved; chef notification failed', error); }
+  } catch(error) { logger.error('Overstay decision saved; chef notification failed',error); }
   return { success: true };
 }
 
@@ -1696,15 +1463,17 @@ export async function reviewOverstayDispute(id: number, adminId: number, amountC
  */
 async function createOverstayHistoryEntry(
   overstayRecordId: number,
-  previousStatus: OverstayStatus | null,
+  previousStatus: OverstayStatus|null,
   newStatus: OverstayStatus,
   eventType: string,
   eventSource: string,
   description?: string,
-  metadata?: Record<string, unknown>,
-  createdBy?: number
+  metadata?: Record<string,unknown>,
+  createdBy?: number,
+  tx?: Parameters<Parameters<typeof db.transaction>[0]>[0]
 ): Promise<void> {
-  await db
+  if(!tx) return db.transaction(inner => createOverstayHistoryEntry(overstayRecordId,previousStatus,newStatus,eventType,eventSource,description,metadata,createdBy,inner));
+  const [history]=await tx
     .insert(storageOverstayHistory)
     .values({
       overstayRecordId,
@@ -1713,9 +1482,10 @@ async function createOverstayHistoryEntry(
       eventType,
       eventSource,
       description,
-      metadata: metadata || {},
+      metadata: metadata||{},
       createdBy,
-    });
+    }).returning();
+  if(eventType!=="notification_sent"&&eventType!=="escalation_payment_link_sent") await queueOverstayOutcome(tx,history);
 }
 
 /**
@@ -2259,10 +2029,11 @@ async function sendOverstayNotificationEmails(data: OverstayEmailData): Promise<
         isInGracePeriod: data.isInGracePeriod,
         calculatedPenaltyCents: data.calculatedPenaltyCents,
       });
-      await sendEmail(chefEmail, {
+      const accepted = await sendEmail(chefEmail, {
         trackingId: `overstay_chef_${data.storageBookingId}_${Date.now()}`
       });
-      logger.info(`[OverstayService] Sent overstay notification email to chef: ${booking.chefEmail}`);
+      if (accepted) logger.info(`[OverstayService] SMTP accepted overstay notification for chef`);
+      else logger.warn(`[OverstayService] Overstay chef notification was not accepted; inspect email delivery logs`);
     }
 
     // Send email to manager
@@ -2279,10 +2050,11 @@ async function sendOverstayNotificationEmails(data: OverstayEmailData): Promise<
         isInGracePeriod: data.isInGracePeriod,
         calculatedPenaltyCents: data.calculatedPenaltyCents,
       });
-      await sendEmail(managerEmail, {
+      const accepted = await sendEmail(managerEmail, {
         trackingId: `overstay_manager_${data.storageBookingId}_${Date.now()}`
       });
-      logger.info(`[OverstayService] Sent overstay notification email to manager: ${location.notificationEmail}`);
+      if (accepted) logger.info(`[OverstayService] SMTP accepted overstay notification for manager`);
+      else logger.warn(`[OverstayService] Overstay manager notification was not accepted; inspect email delivery logs`);
     }
   } catch (error) {
     logger.error(`[OverstayService] Error sending overstay notification emails:`, error);
@@ -2292,61 +2064,8 @@ async function sendOverstayNotificationEmails(data: OverstayEmailData): Promise<
 /**
  * Send penalty charged email to chef
  */
-async function sendPenaltyChargedEmail(
-  overstayRecordId: number,
-  penaltyAmountCents: number,
-  daysOverdue: number
-): Promise<void> {
-  try {
-    const { sendEmail, generatePenaltyChargedEmail } = await import("../email");
-
-    // Get overstay record with booking details
-    const [record] = await db
-      .select({
-        storageBookingId: storageOverstayRecords.storageBookingId,
-      })
-      .from(storageOverstayRecords)
-      .where(eq(storageOverstayRecords.id, overstayRecordId))
-      .limit(1);
-
-    if (!record) return;
-
-    // Get booking details with chef email from users table
-    const [booking] = await db
-      .select({
-        chefEmail: users.username,
-        storageListingId: storageBookings.storageListingId,
-      })
-      .from(storageBookings)
-      .leftJoin(users, eq(storageBookings.chefId, users.id))
-      .where(eq(storageBookings.id, record.storageBookingId))
-      .limit(1);
-
-    if (!booking || !booking.chefEmail) return;
-
-    // Get storage name
-    const [listing] = await db
-      .select({ name: storageListings.name })
-      .from(storageListings)
-      .where(eq(storageListings.id, booking.storageListingId))
-      .limit(1);
-
-    const email = generatePenaltyChargedEmail({
-      chefEmail: booking.chefEmail,
-      chefName: booking.chefEmail,
-      storageName: listing?.name || 'Storage',
-      penaltyAmountCents,
-      daysOverdue,
-      chargeDate: new Date(),
-    });
-
-    await sendEmail(email, {
-      trackingId: `penalty_charged_${overstayRecordId}_${Date.now()}`
-    });
-    logger.info(`[OverstayService] Sent penalty charged email to chef: ${booking.chefEmail}`);
-  } catch (error) {
-    logger.error(`[OverstayService] Error sending penalty charged email:`, error);
-  }
+async function sendPenaltyChargedEmail(_overstayRecordId: number, _penaltyAmountCents: number, _daysOverdue: number): Promise<void> {
+  await attemptOutcomeDelivery();
 }
 
 /**
@@ -2475,59 +2194,59 @@ export async function refundOverstayPenalty(
 ): Promise<{ success: boolean; error?: string; refundId?: string }> {
   try {
     // Get the overstay record
-    const [record] = await db
+    const [record]=await db
       .select()
       .from(storageOverstayRecords)
-      .where(eq(storageOverstayRecords.id, overstayRecordId))
+      .where(eq(storageOverstayRecords.id,overstayRecordId))
       .limit(1);
 
-    if (!record) {
-      return { success: false, error: 'Overstay record not found' };
+    if(!record) {
+      return { success: false,error: 'Overstay record not found' };
     }
 
     // Validate status - can only refund charged penalties
-    if (record.status !== 'charge_succeeded') {
-      return { 
-        success: false, 
-        error: `Cannot refund penalty in status '${record.status}'. Only 'charge_succeeded' penalties can be refunded.` 
+    if(record.status!=='charge_succeeded') {
+      return {
+        success: false,
+        error: `Cannot refund penalty in status '${record.status}'. Only 'charge_succeeded' penalties can be refunded.`
       };
     }
 
     // Must have a payment intent ID to refund
-    if (!record.stripePaymentIntentId) {
-      return { success: false, error: 'No payment intent found for this penalty. Manual refund required in Stripe Dashboard.' };
+    if(!record.stripePaymentIntentId) {
+      return { success: false,error: 'No payment intent found for this penalty. Manual refund required in Stripe Dashboard.' };
     }
 
-    const chargedAmount = record.finalPenaltyCents ?? record.calculatedPenaltyCents ?? 0;
-    const refundAmount = partialAmountCents || chargedAmount;
+    const chargedAmount=record.finalPenaltyCents??record.calculatedPenaltyCents??0;
+    const refundAmount=partialAmountCents||chargedAmount;
 
     // Validate refund amount
-    if (refundAmount <= 0) {
-      return { success: false, error: 'Refund amount must be greater than 0' };
+    if(refundAmount<=0) {
+      return { success: false,error: 'Refund amount must be greater than 0' };
     }
-    if (refundAmount > chargedAmount) {
-      return { success: false, error: `Refund amount ($${(refundAmount/100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount/100).toFixed(2)})` };
+    if(refundAmount>chargedAmount) {
+      return { success: false,error: `Refund amount ($${(refundAmount/100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount/100).toFixed(2)})` };
     }
 
     // Initialize Stripe
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      return { success: false, error: 'Stripe not configured' };
+    const stripeSecretKey=process.env.STRIPE_SECRET_KEY;
+    if(!stripeSecretKey) {
+      return { success: false,error: 'Stripe not configured' };
     }
 
-    const stripe = new Stripe(stripeSecretKey, {
+    const stripe=new Stripe(stripeSecretKey,{
       apiVersion: '2026-02-25.clover',
     });
 
     // Issue Stripe refund
-    logger.info(`[OverstayPenalty] Issuing refund for overstay ${overstayRecordId}:`, {
+    logger.info(`[OverstayPenalty] Issuing refund for overstay ${overstayRecordId}:`,{
       paymentIntentId: record.stripePaymentIntentId,
       chargedAmount: `$${(chargedAmount/100).toFixed(2)}`,
       refundAmount: `$${(refundAmount/100).toFixed(2)}`,
       reason: refundReason,
     });
 
-    const refund = await stripe.refunds.create({
+    const refund=await stripe.refunds.create({
       payment_intent: record.stripePaymentIntentId,
       amount: refundAmount,
       reason: 'requested_by_customer',
@@ -2538,134 +2257,78 @@ export async function refundOverstayPenalty(
       },
     });
 
-    const isFullRefund = refundAmount >= chargedAmount;
-    const newStatus = isFullRefund ? 'resolved' : 'charge_succeeded'; // Partial refunds stay in charge_succeeded
+    const isFullRefund=refundAmount>=chargedAmount;
+    const newStatus=isFullRefund? 'resolved':'charge_succeeded'; // Partial refunds stay in charge_succeeded
 
-    // Update the overstay record
-    await db
-      .update(storageOverstayRecords)
-      .set({
-        status: newStatus as OverstayStatus,
-        resolvedAt: isFullRefund ? new Date() : record.resolvedAt,
-        resolutionType: isFullRefund ? 'refunded' : record.resolutionType,
-        resolutionNotes: isFullRefund 
-          ? `Full refund issued: ${refundReason}` 
-          : `Partial refund of $${(refundAmount/100).toFixed(2)}: ${refundReason}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(storageOverstayRecords.id, overstayRecordId));
+    await db.transaction(async tx => {
+      // Update the overstay record
+      await tx
+        .update(storageOverstayRecords)
+        .set({
+          status: newStatus as OverstayStatus,
+          resolvedAt: isFullRefund? new Date():record.resolvedAt,
+          resolutionType: isFullRefund? 'refunded':record.resolutionType,
+          resolutionNotes: isFullRefund
+            ? `Full refund issued: ${refundReason}`
+            :`Partial refund of $${(refundAmount/100).toFixed(2)}: ${refundReason}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(storageOverstayRecords.id,overstayRecordId));
 
-    // Create history entry
-    await db
-      .insert(storageOverstayHistory)
-      .values({
-        overstayRecordId,
-        previousStatus: 'charge_succeeded',
-        newStatus: newStatus as OverstayStatus,
-        eventType: 'refund',
-        eventSource: 'manager',
-        createdBy: refundedBy,
-        description: `${isFullRefund ? 'Full' : 'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
-        metadata: {
-          refundId: refund.id,
-          refundAmount,
-          chargedAmount,
-          isFullRefund,
-          reason: refundReason,
-        },
-      });
-
+      // Create history entry
+      const [history]=await tx
+        .insert(storageOverstayHistory)
+        .values({
+          overstayRecordId,
+          previousStatus: 'charge_succeeded',
+          newStatus: newStatus as OverstayStatus,
+          eventType: 'refund',
+          eventSource: 'manager',
+          createdBy: refundedBy,
+          description: `${isFullRefund? 'Full':'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
+          metadata: {
+            refundId: refund.id,
+            refundAmount,
+            chargedAmount,
+            isFullRefund,
+            reason: refundReason,
+          },
+        }).returning();
+      await queueOverstayOutcome(tx,history);
+    });
     // Update payment_transactions if exists
     try {
-      const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./payment-transactions-service');
-      const ptRecord = await findPaymentTransactionByIntentId(record.stripePaymentIntentId, db);
-      if (ptRecord) {
-        await updatePaymentTransaction(ptRecord.id, {
-          status: isFullRefund ? 'refunded' : 'partially_refunded',
+      const { findPaymentTransactionByIntentId,updatePaymentTransaction }=await import('./payment-transactions-service');
+      const ptRecord=await findPaymentTransactionByIntentId(record.stripePaymentIntentId,db);
+      if(ptRecord) {
+        await updatePaymentTransaction(ptRecord.id,{
+          status: isFullRefund? 'refunded':'partially_refunded',
           refundAmount,
           refundId: refund.id,
           refundedAt: new Date(),
-        }, db);
+        },db);
       }
-    } catch (ptError) {
-      logger.warn(`[OverstayPenalty] Could not update payment_transactions for refund:`, ptError as Error);
+    } catch(ptError) {
+      logger.warn(`[OverstayPenalty] Could not update payment_transactions for refund:`,ptError as Error);
     }
 
-    // Send refund notification email + in-app notification to chef
-    try {
-      const [booking] = await db
-        .select({
-          chefId: storageBookings.chefId,
-          storageName: storageListings.name,
-        })
-        .from(storageBookings)
-        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-        .where(eq(storageBookings.id, record.storageBookingId))
-        .limit(1);
-
-      if (booking?.chefId) {
-        const [chef] = await db
-          .select({ email: users.username })
-          .from(users)
-          .where(eq(users.id, booking.chefId))
-          .limit(1);
-
-        // In-app notification
-        try {
-          const { notificationService } = await import('./notification.service');
-          await notificationService.notifyChefOverstayRefunded({
-            chefId: booking.chefId,
-            overstayId: overstayRecordId,
-            storageName: booking.storageName || 'Storage',
-            kitchenName: 'Kitchen',
-            daysOverdue: record.daysOverdue,
-            penaltyAmountCents: record.calculatedPenaltyCents,
-            refundAmountCents: refundAmount,
-            refundReason,
-          });
-        } catch (notifError) {
-          logger.error(`[OverstayPenalty] Error sending refund in-app notification:`, notifError);
-        }
-
-        // Email
-        if (chef?.email) {
-          const { sendEmail } = await import('../email');
-          await sendEmail({
-            to: chef.email,
-            subject: `Overstay Penalty Refund - $${(refundAmount/100).toFixed(2)}`,
-            html: `
-              <h2>Overstay Penalty Refund</h2>
-              <p>A ${isFullRefund ? 'full' : 'partial'} refund has been issued for your overstay penalty.</p>
-              <p><strong>Storage:</strong> ${booking.storageName || 'Storage Unit'}</p>
-              <p><strong>Refund Amount:</strong> $${(refundAmount/100).toFixed(2)}</p>
-              <p><strong>Reason:</strong> ${refundReason}</p>
-              <p>The refund should appear on your statement within 5-10 business days.</p>
-            `,
-            text: `Overstay Penalty Refund\n\nA ${isFullRefund ? 'full' : 'partial'} refund of $${(refundAmount/100).toFixed(2)} has been issued for your overstay penalty.\n\nStorage: ${booking.storageName || 'Storage Unit'}\nReason: ${refundReason}`,
-          });
-          logger.info(`[OverstayPenalty] Sent refund notification email to chef ${chef.email}`);
-        }
-      }
-    } catch (emailError) {
-      logger.error(`[OverstayPenalty] Error sending refund notification email:`, emailError);
-    }
-
-    logger.info(`[OverstayPenalty] ✅ Refund successful for overstay ${overstayRecordId}:`, {
+    logger.info(`[OverstayPenalty] ✅ Refund successful for overstay ${overstayRecordId}:`,{
       refundId: refund.id,
       amount: `$${(refundAmount/100).toFixed(2)}`,
       isFullRefund,
     });
 
-    return { success: true, refundId: refund.id };
-  } catch (error: any) {
-    logger.error(`[OverstayPenalty] Error refunding penalty ${overstayRecordId}:`, error);
-    
+    await attemptOutcomeDelivery();
+    return { success: true,refundId: refund.id };
+  } catch(error: any) {
+    logger.error(`[OverstayPenalty] Error refunding penalty ${overstayRecordId}:`,error);
+
     // Handle Stripe-specific errors
-    if (error.type === 'StripeInvalidRequestError') {
-      return { success: false, error: `Stripe error: ${error.message}` };
+    if(error.type==='StripeInvalidRequestError') {
+      return { success: false,error: `Stripe error: ${error.message}` };
     }
-    
-    return { success: false, error: error.message || 'Failed to process refund' };
+
+    return { success: false,error: error.message||'Failed to process refund' };
   }
 }
 

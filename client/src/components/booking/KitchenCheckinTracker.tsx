@@ -13,7 +13,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, FileWarning, LogIn, LogOut, Calendar, XCircle, Lock, Info } from "lucide-react"
+import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, FileWarning, LogIn, LogOut, Calendar, XCircle,  Info } from "lucide-react"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -24,7 +24,6 @@ import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/componen
 import { AppDialogContent } from "@/components/ui/app-dialog";
 import { cn } from "@/lib/utils"
 import { FormLegend } from "@/components/ui/form-legend"
-import { format } from "date-fns"
 import { toast } from "sonner"
 import { useKitchenCheckin, type KitchenCheckinStatus } from "@/hooks/use-kitchen-checkin"
 import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist"
@@ -61,7 +60,7 @@ interface KitchenCheckinTrackerProps {
 function formatTimestamp(ts: string | null | undefined): string {
   if (!ts) return ""
   try {
-    return format(new Date(ts), "MMM d, yyyy 'at' h:mm a")
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/St_Johns', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ts)) + ' Newfoundland time'
   } catch {
     return ""
   }
@@ -132,6 +131,9 @@ export function KitchenCheckinTracker({
   const {
     status: data,
     isLoading,
+    isError,
+    error,
+    refetch,
     canCheckin,
     canCheckout,
     checkin,
@@ -141,7 +143,15 @@ export function KitchenCheckinTracker({
   } = useKitchenCheckin(open ? bookingId : null, selectedVisitId)
 
   // Fetch manager-defined checklist for this location
-  const { data: checklist } = useLocationChecklist(data?.locationId, data?.kitchenId)
+  const { data: currentChecklist } = useLocationChecklist(data?.locationId, data?.kitchenId)
+  const duties = data?.visitDuties;
+  const checklist = duties ? { ...currentChecklist,
+    checkinItems: duties.arrival.enabled ? duties.arrival.items as ChecklistItem[] : [],
+    checkoutItems: duties.departure.enabled ? duties.departure.items as ChecklistItem[] : [],
+    checkinPhotoRequirements: duties.arrival.enabled ? duties.arrival.photos as PhotoRequirement[] : [],
+    checkoutPhotoRequirements: duties.departure.enabled ? duties.departure.photos as PhotoRequirement[] : [],
+    checkinInstructions: duties.arrival.instructions, checkoutInstructions: duties.departure.instructions,
+  } : currentChecklist;
 
   const [checkinNotes, setCheckinNotes] = useState("")
   const [checkoutNotes, setCheckoutNotes] = useState("")
@@ -152,8 +162,8 @@ export function KitchenCheckinTracker({
   const [checkoutPhotos, setCheckoutPhotos] = useState<Record<string, string[]>>({})
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
 
+  useEffect(() => { setSelectedVisitId(null) }, [bookingId])
   useEffect(() => {
-    setSelectedVisitId(null)
     setCheckinNotes("")
     setCheckoutNotes("")
     setCheckinPhotos({})
@@ -161,19 +171,20 @@ export function KitchenCheckinTracker({
     setCheckedItems(new Set())
     setShowCheckinForm(false)
     setShowCheckoutForm(false)
-  }, [bookingId])
+  }, [bookingId, data?.visitId])
 
   const checkinStatus: KitchenCheckinStatus =
     (data?.checkinStatus as KitchenCheckinStatus) || "not_checked_in"
 
-  const steps = buildSteps(checkinStatus, data, t)
+  const steps = buildSteps(checkinStatus, data, t).filter(step =>
+    step.label !== t('kciCheckIn', 'Check In') || data?.checkinEnabled || data?.checkedInAt)
 
-  // All checklist items are required by design — chefs must check every one.
+  // Only configured mandatory items block submission.
   const allCheckinItemsChecked = (checklist?.checkinItems || []).every(
-    (i: ChecklistItem) => checkedItems.has(i.id),
+    (i: ChecklistItem) => i.required === false || checkedItems.has(i.id),
   )
   const allCheckoutItemsChecked = (checklist?.checkoutItems || []).every(
-    (i: ChecklistItem) => checkedItems.has(i.id),
+    (i: ChecklistItem) => i.required === false || checkedItems.has(i.id),
   )
 
   const checkinPhotoReqs: PhotoRequirement[] = checklist?.checkinPhotoRequirements || []
@@ -294,6 +305,17 @@ export function KitchenCheckinTracker({
           </div>
         )}
 
+        {isError && <div role="alert" className="rounded-lg border p-3 text-sm space-y-2">
+          <p>{error instanceof Error ? error.message : 'Could not load visit duties.'} Your evidence is retained. Retry or contact the kitchen manager.</p>
+          <Button variant="outline" onClick={() => void refetch()}>Retry visit details</Button>
+        </div>}
+        {!isLoading && data && <div className="mt-4 rounded-lg border p-3 text-sm space-y-2">
+          {checklist?.checkinInstructions && <p>Arrival: {checklist.checkinInstructions}</p>}
+          {checklist?.checkoutInstructions && <p>Departure: {checklist.checkoutInstructions}</p>}
+          {data.checkoutReviewDeadline && <p>Kitchen manager inspection response due: {formatTimestamp(data.checkoutReviewDeadline)}. A checkout request is separate from clearance or a claim.</p>}
+          <p>Missed a tap or unable to upload? Contact the kitchen manager using your booking contact details. The manager can record audited assistance; missing actions do not prove absence or a charge.</p>
+        </div>}
+
         {/* Policy times first — same numbers as booking details, before check-in / checkout. */}
         {!isLoading &&
           data &&
@@ -318,7 +340,7 @@ export function KitchenCheckinTracker({
                 ? t("bdCheckInBody")
                 : t(
                     "baCheckinWindowBody",
-                    "Check-in opens at the time below. Missing check-in does not establish non-attendance. No-shows require an explicit report after the whole booking ends.",
+                    "Check-in opens at the time below. A missing check-in does not mean the chef was absent. No-shows require an explicit report after the whole booking ends.",
                   )
             }
           />
@@ -375,7 +397,7 @@ export function KitchenCheckinTracker({
                         No-Show Recorded
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Review the attendance report in booking details. Contact
+                        Review the visit report in booking details. Contact
                         Local Cooks Support if the record is incorrect. Older records may lack explicit report history.
                       </p>
                     </div>
@@ -497,37 +519,6 @@ export function KitchenCheckinTracker({
                       <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkinInstructions}</p>
                     </div>
                   )}
-
-                  {/* Smart Lock Instructions + Access Code */}
-                  {data?.smartLockEnabled && (() => {
-                    const slConfig = data?.smartLockConfig;
-                    const accessCode = slConfig?.accessCode as string | undefined;
-                    const visibility = (slConfig?.codeVisibility as string) || 'at_checkin';
-                    const showCode = accessCode && (
-                      visibility === 'on_booking' ||
-                      (visibility === 'at_checkin' && canCheckin)
-                    );
-                    return (accessCode || checklist?.smartLockCheckinInstructions) ? (
-                      <div className="rounded-lg border p-3 space-y-2">
-                        <div className="flex items-center gap-1.5">
-                          <Lock className="size-3.5 text-muted-foreground" />
-                          <p className="text-xs font-medium">{t("kciSmartLockAccess")}</p>
-                        </div>
-                        {checklist?.smartLockCheckinInstructions && (
-                          <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.smartLockCheckinInstructions}</p>
-                        )}
-                        {showCode ? (
-                          <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 border">
-                            <span className="text-lg font-mono font-bold tracking-[0.2em]">{accessCode}</span>
-                          </div>
-                        ) : accessCode && visibility === 'at_checkin' && !canCheckin ? (
-                          <p className="text-xs text-muted-foreground italic">{t("kciAccessCodeWhenWindowOpens")}</p>
-                        ) : accessCode && visibility === 'manual' ? (
-                          <p className="text-xs text-muted-foreground italic">{t("kciContactManagerForAccessCode")}</p>
-                        ) : null}
-                      </div>
-                    ) : null;
-                  })()}
 
                   {/* Checklist Items */}
                   {(checklist?.checkinItems || []).length > 0 && (
@@ -778,11 +769,7 @@ function buildSteps(
   const steps: Step[] = []
 
   // Step 1: Check In
-  const isCheckedIn =
-    checkinStatus === "checked_in" ||
-    checkinStatus === "checkout_requested" ||
-    checkinStatus === "checked_out" ||
-    checkinStatus === "checkout_claim_filed"
+  const isCheckedIn = !!data?.checkedInAt
 
   const isNoShow = checkinStatus === "no_show"
 
@@ -839,7 +826,7 @@ function buildSteps(
     description: isCheckoutRequested
       ? t("kciDescWaitingManager", "Waiting for manager to review and clear")
       : checkoutDone
-        ? t("kciDescManagerReviewed", "Manager reviewed your checkout")
+        ? 'Inspection review completed; open booking details for the recorded outcome'
         : t("kciDescSubmitPhotos", "Submit photos and request checkout when leaving"),
     state: isCheckoutRequested
       ? "active"
@@ -854,7 +841,7 @@ function buildSteps(
   if (checkinStatus === "checked_out") {
     steps.push({
       label: t("kciCleared", "Cleared"),
-      description: t("kciClearedDesc", "No issues found — your session is complete"),
+      description: 'Inspection cleared or its response window expired. This does not confirm kitchen use or a charge.',
       state: "completed",
       timestamp: data?.checkoutApprovedAt,
       icon: <ShieldCheck className="h-4 w-4" />,

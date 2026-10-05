@@ -4,6 +4,7 @@ import { tLocale } from "../i18n";
 import { db } from "../db";
 import { paymentTransactions } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import type { ChangeSchedule } from '@shared/kitchen-booking-change';
 import { getStripePaymentAmounts } from "./stripe-service";
 import {
   buildChefBookingReceiptBreakdown,
@@ -77,8 +78,20 @@ export async function generateInvoicePDF(
         logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}, stripeFee=${stripeProcessingFeeCents}, managerRevenue=${managerRevenueCents}, tax=${storedTaxAmountCents}`);
       }
     } catch (error) {
-      logger.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
+      logger.warn('[Invoice] Could not verify the original financial receipt:', error);
+      throw new Error('The original financial receipt could not be verified. Please retry or contact Local Cooks.');
     }
+  }
+  // The original financial record owns its receipt schedule. Unchanged receipts
+  // keep the existing path and do not depend on the change table being installed.
+  const original = ptMetadata.originalBookingSchedule as ChangeSchedule | undefined;
+  if (original && paymentIntentId === (booking.paymentIntentId || booking.payment_intent_id)) {
+    if (!original.slots?.length) throw Error('Original receipt schedule requires financial review');
+    booking = { ...booking, bookingDate: `${original.date}T12:00:00Z`, booking_date: `${original.date}T12:00:00Z`,
+      startTime: original.slots[0].startTime, start_time: original.slots[0].startTime,
+      endTime: original.slots.at(-1)!.endTime, end_time: original.slots.at(-1)!.endTime,
+      selectedSlots: original.slots, selected_slots: original.slots, durationHours: original.slots.length,
+      duration_hours: original.slots.length, ...(original.pricingMode ? { pricingMode: original.pricingMode, pricing_mode: original.pricingMode } : {}) };
   }
   // kitchen_bookings.service_fee has always represented the booking's platform
   // commission. Prefer it for legacy rows where payment_transactions.service_fee

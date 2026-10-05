@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ rows: [] as unknown[][], transaction: vi.fn() }));
 vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), attemptTourDelivery: vi.fn(async () => ({ failed: false })), deliverTourEvents: vi.fn() }));
+vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn(async () => ({ checkinWindowMinutesBefore: 20 })) }));
 vi.mock("../db", () => ({
   db: { select: () => {
-    const chain: any = { from: () => chain, innerJoin: () => chain, where: () => chain,
+    const chain: any = { from: () => chain, innerJoin: () => chain, leftJoin: () => chain, orderBy: () => chain, where: () => chain,
       limit: () => Promise.resolve(mocks.rows.shift() ?? []),
       then: (resolve: (value: unknown) => void) => resolve(mocks.rows.shift() ?? []) };
     return chain;
@@ -24,7 +25,53 @@ const settings = { isActive: true, defaultDurationMinutes: 30, bufferBeforeMinut
 function handler(path: string, method: string) {
   return (router as any).stack.find((entry: any) => entry.route?.path === path && entry.route.methods[method]).route.stack.at(-1).handle;
 }
-function response() { return { status: vi.fn().mockReturnThis(), json: vi.fn() }; }
+function response() { return { status: vi.fn().mockReturnThis(), json: vi.fn(), setHeader: vi.fn() }; }
+
+describe('kitchen tour guidance settings', () => {
+  beforeEach(() => { vi.clearAllMocks(); mocks.rows.length = 0; });
+  it('persists validated notes through the existing owned-kitchen settings route and allows clearing them', async () => {
+    let saved: any = { ...settings, kitchenId: 40 };
+    const tx = { execute: vi.fn(), select: () => ({ from: () => ({ where: () => ({ limit: async () => [saved] }) }) }),
+      update: () => ({ set: (value: any) => ({ where: () => ({ returning: async () => { saved = { ...saved, ...value }; return [saved]; } }) }) }) };
+    mocks.transaction.mockImplementation(async run => run(tx));
+    const put = (body: unknown) => {
+      mocks.rows.push([{ id: 40 }]);
+      const res = response();
+      return handler('/settings/:kitchenId', 'put')({ params: { kitchenId: '40' }, neonUser: { id: 2 }, body }, res).then(() => res);
+    };
+    const result = await put({ arrivalNotes: '  Meet at reception\nAsk for Sam  ', departureNotes: 'Return your badge' });
+    expect(result.json).toHaveBeenCalledWith(expect.objectContaining({ arrivalNotes: 'Meet at reception\nAsk for Sam', departureNotes: 'Return your badge' }));
+    mocks.rows.push([{ id: 40 }], [saved], [], []);
+    const read = response();
+    await handler('/settings/:kitchenId', 'get')({ params: { kitchenId: '40' }, neonUser: { id: 2 } }, read);
+    expect(read.json).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({ arrivalNotes: 'Meet at reception\nAsk for Sam' }) }));
+    expect((await put({ arrivalNotes: '', departureNotes: '' })).json).toHaveBeenCalledWith(expect.objectContaining({ arrivalNotes: '', departureNotes: '' }));
+    const writeCount = mocks.transaction.mock.calls.length;
+    expect((await put({ arrivalNotes: 123 })).status).toHaveBeenCalledWith(400);
+    expect((await put({ departureNotes: 'x'.repeat(2001) })).status).toHaveBeenCalledWith(400);
+    expect(mocks.transaction).toHaveBeenCalledTimes(writeCount);
+    mocks.rows.push([]);
+    const denied = response();
+    await handler('/settings/:kitchenId', 'put')({ params: { kitchenId: '40' }, neonUser: { id: 99 }, body: { arrivalNotes: 'Unauthorized' } }, denied);
+    expect(denied.status).toHaveBeenCalledWith(404);
+    expect(mocks.transaction).toHaveBeenCalledTimes(writeCount);
+  });
+  it('only exposes arrival notes for confirmed tours, retaining departure guidance after an arrived tour ends', async () => {
+    const notes = { arrivalNotes: 'Side entrance', departureNotes: 'Return badge' };
+    const base = { id: 10, locationId: 33, targetedKitchenId: 40, scheduledAt: new Date('2099-10-05T12:30:00Z'), durationMinutes: 30, updatedAt: new Date() };
+    mocks.rows.push([
+      { viewing: { ...base, status: 'pending' }, ...notes },
+      { viewing: { ...base, id: 11, status: 'confirmed' }, ...notes },
+      { viewing: { ...base, id: 12, status: 'completed', checkedInAt: new Date('2099-10-05T12:30:00Z') }, ...notes },
+    ]);
+    const res = response();
+    await handler('/chef', 'get')({ neonUser: { id: 8 }, query: {} }, res);
+    const rows = res.json.mock.calls[0][0];
+    expect(rows[0]).toMatchObject({ arrivalNotes: null, departureNotes: null });
+    expect(rows[1]).toMatchObject(notes);
+    expect(rows[2]).toMatchObject({ arrivalNotes: null, departureNotes: 'Return badge' });
+  });
+});
 function chefRequest(date: Date, durationMinutes = 30) {
   return { neonUser: { id: 8 }, firebaseUser: { email_verified: true },
     body: { locationId: 33, targetedKitchenId: 40, scheduledAt: date.toISOString(), durationMinutes } };
@@ -34,6 +81,34 @@ function primeKitchen() {
 }
 
 describe("tour availability enforcement", () => {
+  it('rejects foreign self-exclusion before reading public choices', async () => {
+    mocks.rows.push([{ id: 99, chefId: 9, targetedKitchenId: 40, status: 'confirmed', scheduledAt: new Date('2099-10-05') }]);
+    const res = response();
+    await handler('/available-slots/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { date: '2099-10-05', viewingId: '99' }, neonUser: { id: 8 } }, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).not.toHaveBeenCalledWith(expect.objectContaining({ slots: expect.anything() }));
+  });
+  it('offers the authorized customer their own buffered slot but retains a competing reservation', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const config = { ...settings, bufferAfterMinutes: 0 };
+    mocks.rows.push([{ id: 9, chefId: 8, targetedKitchenId: 40, status: 'confirmed', scheduledAt: new Date('2026-10-03T12:30:00Z'), durationMinutes: 30 }], [config],
+      [{ timezone: 'America/St_Johns' }], [config], [{ dayOfWeek: 6, startTime: '10:00', endTime: '11:00', isAvailable: true }], [],
+      [{ id: 10, status: 'confirmed', scheduledAt: '2026-10-03T13:00:00Z', durationMinutes: 30 }], [config]);
+    const res = response();
+    await handler('/available-slots/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { date: '2026-10-03', viewingId: '9' }, neonUser: { id: 8 } }, res);
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    expect(res.json.mock.calls[0][0].slots.map((slot: any) => slot.startTime)).toEqual(['10:00']);
+  });
+  it('excludes that same authorized tour from fully-booked calendar dates', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const config = { ...settings, bufferAfterMinutes: 0 };
+    const tour = { id: 9, chefId: 8, targetedKitchenId: 40, status: 'confirmed', scheduledAt: new Date('2026-10-03T12:30:00Z'), durationMinutes: 30 };
+    mocks.rows.push([tour], [config], [{ timezone: 'America/St_Johns' }], [config],
+      [{ dayOfWeek: 6, startTime: '10:00', endTime: '10:30', isAvailable: true }], [], [tour]);
+    const res = response();
+    await handler('/calendar-availability/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { viewingId: '9' }, neonUser: { id: 8 } }, res);
+    expect(res.json.mock.calls[0][0].fullyBookedDates).not.toContain('2026-10-03');
+  });
   beforeEach(() => { vi.clearAllMocks(); mocks.rows.length = 0; });
   afterEach(() => { vi.useRealTimers(); });
   async function slotsOn(date: string, hours: unknown[], blackouts: unknown[] = [], reservations: unknown[] = []) {

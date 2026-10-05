@@ -2,8 +2,10 @@ import { logger } from "./logger";
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initializeFirebaseAdmin } from './firebase-setup';
 import { db } from './db';
-import { chefKitchenApplications, locations, users } from '@shared/schema';
+import { chefKitchenApplications, users } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
+import { sharedChatEligibility } from './services/shared-chat-access';
+import { firestoreDatabaseId } from '@shared/firestore-database';
 
 let adminDb: FirebaseFirestore.Firestore | null = null;
 
@@ -16,7 +18,7 @@ export async function getAdminDb() {
     if (!app) {
       throw new Error('Failed to initialize Firebase Admin');
     }
-    adminDb = getFirestore(app);
+    adminDb = getFirestore(app, firestoreDatabaseId(process.env.FIRESTORE_DATABASE_ID, process.env.VERCEL_ENV));
     // Explicitly set settings to ignore undefined values globally for this instance
     adminDb.settings({ ignoreUndefinedProperties: true });
   }
@@ -28,93 +30,82 @@ export interface SystemMessageData {
   data?: any;
 }
 
-/**
- * Initialize a conversation for an application
- * Called when an application is created or approved
- */
-export async function initializeConversation(applicationData: {
-  id: number;
-  chefId: number;
-  locationId: number;
-}): Promise<string | null> {
+/** Compatibility entry point; caller data never establishes ownership. */
+export async function initializeConversation(applicationData: { id: number; chefId: number; locationId: number }): Promise<string | null> {
   try {
-    const adminDb = await getAdminDb();
-
-    // Get manager ID from location using Drizzle ORM
-    const [location] = await db
-      .select({ managerId: locations.managerId })
-      .from(locations)
-      .where(eq(locations.id, applicationData.locationId))
-      .limit(1);
-
-    if (!location || !location.managerId) {
-      logger.error('Location not found or has no manager');
-      return null;
-    }
-
-    const managerId = location.managerId;
-
-    const participants = await db
-      .select({ id: users.id, firebaseUid: users.firebaseUid })
-      .from(users)
-      .where(inArray(users.id, [applicationData.chefId, managerId]));
-    const chefFirebaseUid = participants.find((participant) => participant.id === applicationData.chefId)?.firebaseUid;
-    const managerFirebaseUid = participants.find((participant) => participant.id === managerId)?.firebaseUid;
-
-    if (!chefFirebaseUid || !managerFirebaseUid) {
-      logger.error('Cannot initialize chat without Firebase UIDs for both participants', {
-        applicationId: applicationData.id,
-        hasChefFirebaseUid: Boolean(chefFirebaseUid),
-        hasManagerFirebaseUid: Boolean(managerFirebaseUid),
-      });
-      return null;
-    }
-
-    // Check if conversation already exists
-    const existingQuery = await adminDb
-      .collection('conversations')
-      .where('applicationId', '==', applicationData.id)
-      .limit(1)
-      .get();
-
-    if (!existingQuery.empty) {
-      const existingConversation = existingQuery.docs[0];
-      await existingConversation.ref.set({
-        chefId: applicationData.chefId,
-        managerId,
-        chefFirebaseUid,
-        managerFirebaseUid,
-      }, { merge: true });
-      await db
-        .update(chefKitchenApplications)
-        .set({ chat_conversation_id: existingConversation.id })
-        .where(eq(chefKitchenApplications.id, applicationData.id));
-      return existingConversation.id;
-    }
-
-    // Create new conversation
-    const conversationRef = await adminDb.collection('conversations').add({
-      applicationId: applicationData.id,
-      chefId: applicationData.chefId,
-      managerId: managerId,
-      chefFirebaseUid,
-      managerFirebaseUid,
-      locationId: applicationData.locationId,
-      createdAt: FieldValue.serverTimestamp(),
-      lastMessageAt: FieldValue.serverTimestamp(),
-      unreadChefCount: 0,
-      unreadManagerCount: 0,
-    });
-
-    // Update application with conversation ID
-    await db
-      .update(chefKitchenApplications)
-      .set({ chat_conversation_id: conversationRef.id })
-      .where(eq(chefKitchenApplications.id, applicationData.id));
-
-    return conversationRef.id;
+  const [application] = await db.select().from(chefKitchenApplications)
+    .where(eq(chefKitchenApplications.id, applicationData.id)).limit(1);
+  if (!application || application.status !== 'approved' || application.chefId !== applicationData.chefId
+      || application.locationId !== applicationData.locationId) return null;
+  return initializeSharedConversation(application.chefId, application.locationId);
   } catch (error) {
-    logger.error('Error initializing conversation:', error);
+    logger.error('Error resolving chat application:', error);
+    return null;
+  }
+}
+
+/** Server-owned mapping serializes tour/application opens without merging histories. */
+export async function initializeSharedConversation(chefId: number, locationId: number): Promise<string | null> {
+  try {
+    const eligibility = await sharedChatEligibility(chefId, locationId);
+    if (!eligibility) return null;
+    const { location, applications } = eligibility;
+    const managerId = location.managerId!;
+    const participants = await db.select({ id: users.id, firebaseUid: users.firebaseUid }).from(users)
+      .where(inArray(users.id, [chefId, managerId]));
+    const chefFirebaseUid = participants.find(user => user.id === chefId)?.firebaseUid;
+    const managerFirebaseUid = participants.find(user => user.id === managerId)?.firebaseUid;
+    if (!chefFirebaseUid || !managerFirebaseUid) return null;
+    const firestore = await getAdminDb();
+    const conversations = firestore.collection('conversations');
+    const key = `chef-${chefId}-location-${locationId}`;
+    const mapping = firestore.collection('chatRelationships').doc(key);
+    const approvedIds = new Set(applications.map(application => application.id));
+    const valid = (data: FirebaseFirestore.DocumentData | undefined) => !!data
+      && (data.chefId === chefId && data.locationId === locationId
+        || approvedIds.has(data.applicationId) && (data.chefId == null || data.chefId === chefId)
+          && (data.locationId == null || data.locationId === locationId));
+    const candidates: string[] = [];
+    for (const application of [...applications].sort((a, b) => a.id - b.id)) {
+      if (application.chat_conversation_id) candidates.push(application.chat_conversation_id);
+    }
+    for (const application of applications) {
+      const recorded = application.chat_conversation_id
+        ? await conversations.doc(application.chat_conversation_id).get() : null;
+      if (recorded?.exists && valid(recorded.data())) continue;
+      const matches = await conversations.where('applicationId', '==', application.id).get();
+      candidates.push(...matches.docs.map(doc => doc.id).sort());
+    }
+    const conversationId = await firestore.runTransaction(async transaction => {
+      const mapped = await transaction.get(mapping);
+      const mappedData = mapped.data();
+      if (mapped.exists && (mappedData?.chefId !== chefId || mappedData?.locationId !== locationId
+          || typeof mappedData?.conversationId !== 'string')) throw new Error('Invalid shared chat mapping');
+      const ids = Array.from(new Set([...(mapped.exists ? [mappedData!.conversationId as string] : []), ...candidates, key]));
+      const snapshots = await Promise.all(ids.map(id => transaction.get(conversations.doc(id))));
+      if (mapped.exists && (!snapshots[0].exists || !valid(snapshots[0].data())))
+        throw new Error('Invalid mapped conversation');
+      const adopted = snapshots.find(snapshot => snapshot.exists && valid(snapshot.data()));
+      const stable = snapshots.find(snapshot => snapshot.id === key)!;
+      if (!adopted && stable.exists) throw new Error('Shared conversation ID has foreign ownership');
+      const ref = adopted?.ref || conversations.doc(key);
+      const metadata = { chefId, locationId, managerId, chefFirebaseUid, managerFirebaseUid,
+        ...(!adopted?.data()?.applicationId && applications[0] ? { applicationId: applications[0].id } : {}),
+        relationshipKey: key, identityVersion: 1,
+        linkedApplicationIds: applications.map(application => application.id),
+        eligibleViewingIds: eligibility.viewingIds };
+      transaction.set(ref, adopted ? metadata : { ...metadata,
+        ...(applications[0] ? { applicationId: applications[0].id } : {}),
+        createdAt: FieldValue.serverTimestamp(), lastMessageAt: FieldValue.serverTimestamp(),
+        unreadChefCount: 0, unreadManagerCount: 0 }, { merge: true });
+      transaction.set(mapping, { chefId, locationId, conversationId: ref.id });
+      return ref.id;
+    });
+    for (const application of applications) await db.update(chefKitchenApplications)
+      .set({ chat_conversation_id: conversationId }).where(eq(chefKitchenApplications.id, application.id));
+    return conversationId;
+  } catch (error) {
+    logger.error('Error initializing shared conversation:', error);
     return null;
   }
 }

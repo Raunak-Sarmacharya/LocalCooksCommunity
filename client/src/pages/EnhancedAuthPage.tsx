@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { authReturn } from "@/lib/auth-return";
 import { useTranslation } from "react-i18next";
 import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import Logo from "@/components/ui/logo";
@@ -182,7 +183,7 @@ export default function EnhancedAuthPage() {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const redirectPath = urlParams.get('redirect') || '/';
-      return redirectPath === '/auth' ? '/' : redirectPath;
+      return authReturn(redirectPath);
     } catch {
       return '/';
     }
@@ -510,7 +511,7 @@ export default function EnhancedAuthPage() {
 
         logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
         redirectTimeoutRef.current = setTimeout(() => {
-          navigateAfterAuth(`/accept-terms?redirect=${targetPath}`);
+          navigateAfterAuth(`/accept-terms?redirect=${encodeURIComponent(targetPath)}`);
         }, 300);
         return;
       }

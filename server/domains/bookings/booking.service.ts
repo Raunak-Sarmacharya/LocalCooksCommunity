@@ -22,6 +22,7 @@ import { eq, and, ne, gt } from "drizzle-orm";
 import { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } from "../../email";
 import { kitchenService } from "../kitchens/kitchen.service";
 import { addHour, calendarDateForOperatingTime, getHourlySlotStarts, intervalsOverlapOnOperatingDay, isRangeWithinOperatingWindow, normalizeBookingSlots, occupiedIntervals, operatingSlotsOverlapAcrossDates } from "@shared/operating-hours";
+import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
 import { getActiveKitchenHolds } from "../../services/kitchen-checkout-holds";
 import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking-dst';
 
@@ -403,12 +404,13 @@ export class BookingService {
         const operatingDate = new Date(data.bookingDate).toISOString().slice(0, 10);
         const { withKitchenDayLock } = await import('../../services/kitchen-checkout-holds');
         return withKitchenDayLock(data.kitchenId, operatingDate, async () => {
-        const availability = await this.validateBookingAvailability(data.kitchenId, new Date(data.bookingDate), data.startTime, data.endTime);
+        const availability = await this.validateBookingAvailability(data.kitchenId, new Date(data.bookingDate), data.startTime, data.endTime, { selectedSlots: data.selectedSlots });
         if (!availability.valid) throw new Error(availability.error || 'Booking unavailable');
         // Map portal/external structure to DB schema (flatten externalContact)
         const dbData = {
             ...data,
             operatingWindowStartTime: availability.windowStartTime,
+            selectedSlots: availability.slots,
             // If externalContact object is passed, flatten it
             externalContactName: data.externalContact?.name,
             externalContactEmail: data.externalContact?.email,
@@ -478,6 +480,9 @@ export class BookingService {
         options: {
             selectedSlots?: Array<{ startTime: string; endTime: string }>;
             fullDay?: boolean;
+            // Server-owned post-confirmation change context; never forwarded from client input.
+            excludeBookingId?: number;
+            excludeHoldId?: string;
         } = {}
     ): Promise<{ valid: boolean; error?: string; slots?: BookingInterval[]; windowStartTime?: string }> {
         try {
@@ -523,9 +528,10 @@ export class BookingService {
             let requestedIntervals: BookingInterval[];
             try {
                 requestedIntervals = normalizeBookingSlots(
-                    options.selectedSlots ?? [], startTime, endTime,
+                    options.selectedSlots === undefined ? [] : options.selectedSlots, startTime, endTime,
                     availabilityStartTime, availabilityEndTime, !!options.fullDay,
                 );
+                assertConsecutiveBookingSlots(requestedIntervals, availabilityStartTime);
             } catch (error) {
                 return { valid: false, error: error instanceof Error ? error.message : 'Invalid selected slots' };
             }
@@ -538,7 +544,7 @@ export class BookingService {
             if (requestedIntervals.some(slot => !isUnambiguousBookingSlot(dateStr, slot, availabilityStartTime, timezone))) {
                 return { valid: false, error: 'This hour is affected by a daylight saving clock change and is unavailable for self-service booking' };
             }
-            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.status !== 'cancelled');
+            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.status !== 'cancelled' && booking.id !== options.excludeBookingId);
 
             // A full-day booking requires the entire day to be free. Hourly bookings only
             // conflict with the discrete slots submitted by the client.
@@ -553,7 +559,7 @@ export class BookingService {
                 return { valid: false, error: "One or more selected time slots are no longer available" };
             }
             const holds = await getActiveKitchenHolds(kitchenId);
-            if (holds.some(hold => requestedIntervals.some(slot => occupiesOperatingSlot(
+            if (holds.filter(hold => hold.id !== options.excludeHoldId).some(hold => requestedIntervals.some(slot => occupiesOperatingSlot(
                 { startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
                 hold.operatingDate, hold.windowStartTime, slot, dateStr, availabilityStartTime,
             )))) {

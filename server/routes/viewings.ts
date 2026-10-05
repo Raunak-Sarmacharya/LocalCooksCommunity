@@ -12,6 +12,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import { initializeSharedConversation } from '../chat-service';
 import { eq, and, sql, desc, gte, lte, or, ne, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from "../firebase-auth-middleware";
@@ -23,11 +24,15 @@ import { activeBookingIdsOnOperatingDate, hasOverlappingOperatingDays } from "@s
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { formatTourDate, formatTourClock, tourDateKey } from "@shared/tour-time";
 import { tourBookingOverlaps } from "@shared/tour-booking-overlap";
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { DomainError } from '../shared/errors/domain-error';
 import { buildTourConfirmationPdf, tourReference } from "../services/tour-confirmation-pdf";
 import { queueTourEvent, attemptTourDelivery } from '../services/tour-delivery-service';
 import { publicTour, hasTourConfirmation } from '@shared/tour-outcome';
+import { tourAttendance, type TourAttendanceEntry } from '@shared/tour-attendance';
+import { getCheckinSettings } from '../services/kitchen-checkout-service';
+import { validateAttendanceAssistance } from '../services/visit-assistance';
+import { affectedTours, queueScheduleProblems } from '../services/commitment-problems';
 
 import {
   kitchenViewingSettings,
@@ -62,7 +67,14 @@ router.get('/delivery-worker', async (req, res) => {
   if (!secret || !supplied || received.length !== expected.length || !timingSafeEqual(received, expected)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  try { return res.json(await (await import('../services/tour-outcome-service')).remindUnrecordedTourOutcomes({ budgetMs: 20_000 })); }
+  const started = performance.now();
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const { runRecurringWorker } = await import('../services/recurring-worker');
+    const { processExpiredCancellationRequests } = await import('../services/scheduled-cancellations');
+    const result = await runRecurringWorker(processExpiredCancellationRequests, started);
+    return res.status('taskFailures' in result && result.taskFailures.length ? 503 : 200).json(result);
+  }
   catch { logger.error('[Tours] Scheduled delivery worker failed'); return res.status(503).json({ error: 'Tour delivery worker unavailable' }); }
 });
 
@@ -387,6 +399,30 @@ async function calculateAvailableSlots(
 // PUBLIC ROUTES: Availability Info
 // ===================================
 
+// Public initial search remains public. Self-exclusion always authenticates and
+// checks the actual customer/kitchen before either calendar or slot calculation.
+const authenticateSelfExclusion = (req: Request, res: Response, next: any) =>
+  req.query.viewingId === undefined ? next() : requireFirebaseAuthWithUser(req, res, next);
+async function authorizedSelfExclusion(req: Request, kitchenId: number) {
+  if (req.query.viewingId === undefined) return undefined;
+  const id = Number(req.query.viewingId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('FORBIDDEN', 'Choose your confirmed tour', 403);
+  const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
+  if (!tour || tour.chefId !== req.neonUser?.id || tour.targetedKitchenId !== kitchenId || tour.status !== 'confirmed' || tour.scheduledAt.getTime() <= Date.now())
+    throw new DomainError('FORBIDDEN', 'Only your upcoming confirmed tour may be excluded', 403);
+  const [settings] = await db.select().from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
+  if (!settings?.isActive || settings.defaultDurationMinutes !== tour.durationMinutes)
+    throw new DomainError('TOUR_SETTINGS_CHANGED', 'Tour settings changed; contact Local Cooks before requesting another time', 409);
+  return id;
+}
+
+async function publicTourAttendance(tour: typeof kitchenViewings.$inferSelect,
+  settingsByLocation: Map<number, ReturnType<typeof getCheckinSettings>>) {
+  if (!settingsByLocation.has(tour.locationId)) settingsByLocation.set(tour.locationId, getCheckinSettings(tour.locationId));
+  const settings = await settingsByLocation.get(tour.locationId)!;
+  return { ...publicTour(tour), attendance: tourAttendance(tour, settings.checkinWindowMinutesBefore) };
+}
+
 /**
  * GET /api/viewings/calendar-availability/:kitchenId
  * Get calendar metadata (availability by day of week & blackouts) for a kitchen.
@@ -394,9 +430,13 @@ async function calculateAvailableSlots(
  */
 router.get(
   "/calendar-availability/:kitchenId",
+  authenticateSelfExclusion,
   async (req: Request, res: Response) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
+
+      const ignoreViewingId = await authorizedSelfExclusion(req, kitchenId);
+      if (ignoreViewingId) res.setHeader('Cache-Control', 'private, no-store');
 
       const [kitchenContext] = await db
         .select({ timezone: locations.timezone })
@@ -463,7 +503,7 @@ router.get(
         const d = new TZDate(today, DEFAULT_TIMEZONE);
         d.setDate(d.getDate() + i);
         const dateStr = tourDateKey(d);
-        const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, prefetched);
+        const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, prefetched, { ignoreViewingId });
         if (slots.length === 0) {
           fullyBookedDates.push(dateStr);
         }
@@ -607,6 +647,11 @@ router.put(
           .returning();
       }
 
+      if (existing && ['isActive', 'defaultDurationMinutes', 'bufferBeforeMinutes', 'bufferAfterMinutes'].some(key =>
+        (existing as any)[key] !== (result as any)[key]))
+        await queueScheduleProblems(tx, { kitchenId, actorId: managerId, tourIds: await affectedTours(tx, kitchenId),
+          change: { active: result.isActive, duration: result.defaultDurationMinutes, before: result.bufferBeforeMinutes, after: result.bufferAfterMinutes, occurrence: randomUUID() },
+          description: 'Tour settings changed. Your confirmed tour is still recorded at its original time. Please review this request to confirm your visit arrangements.' });
       return { result, existing };
       });
       logger.info(`[Viewings] Settings ${result.existing ? "updated" : "created"} for kitchen ${kitchenId} by manager ${managerId}`);
@@ -714,6 +759,7 @@ router.put(
       // Delete existing and insert new in a transaction
       await db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 7)`);
+        const previous = await tx.select().from(kitchenViewingAvailability).where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
         await tx
           .delete(kitchenViewingAvailability)
           .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
@@ -729,6 +775,11 @@ router.put(
             }))
           );
         }
+        const canonical = (rows: any[]) => rows.map(row => ({ dayOfWeek: row.dayOfWeek, startTime: row.startTime, endTime: row.endTime, isAvailable: row.isAvailable ?? true }))
+          .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+        if (JSON.stringify(canonical(previous)) !== JSON.stringify(canonical(slots)))
+          await queueScheduleProblems(tx, { kitchenId, actorId: managerId, tourIds: await affectedTours(tx, kitchenId),
+            change: { slots: canonical(slots), occurrence: randomUUID() }, description: 'Tour availability changed. Your confirmed tour is still recorded at its original time. Please review this request for updated arrangements.' });
       });
 
       // Fetch the updated list
@@ -829,7 +880,7 @@ router.post(
         const acknowledged = Array.isArray(req.body.acknowledgedBookingIds) && req.body.acknowledgedBookingIds.every(Number.isSafeInteger)
           ? [...req.body.acknowledgedBookingIds].sort((a: number, b: number) => a - b) : [];
         affectedIds.sort((a, b) => a - b);
-        if (affectedIds.length && JSON.stringify(affectedIds) !== JSON.stringify(acknowledged)) {
+        if (JSON.stringify(affectedIds) !== JSON.stringify(acknowledged)) {
           throw new TourBlackoutAffectsBookingsError(affectedIds);
         }
         for (const item of pendingBookings) {
@@ -842,6 +893,12 @@ router.post(
           const [created] = await tx.insert(kitchenViewingBlackouts).values({ kitchenId: id,
             ...window, reason: parsed.data.reason ?? null }).returning();
           if (id === kitchenId) sourceBlackout = created;
+        }
+        for (const id of targetIds) {
+          if (!pendingTours.includes(id) && !pendingBookings.some(item => item.kitchenId === id)) continue;
+          await queueScheduleProblems(tx, { kitchenId: id, actorId: managerId, bookingIds: affectedIds,
+            tourIds: await affectedTours(tx, id, dates), change: { dates, scope, reason: parsed.data.reason ?? null, occurrence: sourceBlackout?.id || randomUUID() },
+            description: `Kitchen/tour closure ${startKey}–${endKey}. ${parsed.data.reason || ''} Please review this request for help with your affected visit.` });
         }
         return { blackout: sourceBlackout, appliedKitchenIds: targetIds,
           skippedBookingDates: scope === "tour-kitchen" ? 0 : targetIds.length * dates.length - pendingBookings.length };
@@ -925,6 +982,15 @@ router.delete(
         }
         for (const row of bookingRows) await tx.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.id, row.id));
         for (const row of matching) await tx.delete(kitchenViewingBlackouts).where(eq(kitchenViewingBlackouts.id, row.id));
+        for (const id of targetIds) {
+          if (!matching.some(row => row.kitchenId === id) && !bookingRows.some(row => row.kitchenId === id)) continue;
+          const bookings = scope === 'tour-kitchen' ? [] : await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status })
+            .from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
+          await queueScheduleProblems(tx, { kitchenId: id, actorId: managerId,
+            bookingIds: dates.flatMap(date => activeBookingIdsOnOperatingDate(bookings, date)), tourIds: await affectedTours(tx, id, dates),
+            change: { removedBlackoutId: blackoutId, scope },
+            description: 'Kitchen/tour availability was restored. Please review this request to confirm your visit arrangements.' });
+        }
         return { deleted: true, appliedKitchenIds: matching.map(row => row.kitchenId), removedBookingDates: bookingRows.length };
       });
       res.json(result);
@@ -947,10 +1013,13 @@ router.delete(
  */
 router.get(
   "/available-slots/:kitchenId",
+  authenticateSelfExclusion,
   async (req: Request, res: Response) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const dateStr = req.query.date as string; // YYYY-MM-DD
+      const ignoreViewingId = await authorizedSelfExclusion(req, kitchenId);
+      if (ignoreViewingId) res.setHeader('Cache-Control', 'private, no-store');
 
       if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
         return res.status(400).json({ error: "date query parameter is required in YYYY-MM-DD format" });
@@ -972,7 +1041,7 @@ router.get(
       }
 
       const timezone = DEFAULT_TIMEZONE;
-      const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone);
+      const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, undefined, { ignoreViewingId });
 
       // Also get settings for the frontend (duration, max booking days, etc.)
       const [settings] = await db
@@ -1223,11 +1292,14 @@ router.get(
           kitchenName: kitchens.name,
           managerId: locations.managerId,
           chefEmail: users.username,
+          arrivalNotes: kitchenViewingSettings.arrivalNotes,
+          departureNotes: kitchenViewingSettings.departureNotes,
         })
         .from(kitchenViewings)
         .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
         .leftJoin(kitchens, eq(kitchenViewings.targetedKitchenId, kitchens.id))
         .leftJoin(users, eq(kitchenViewings.chefId, users.id))
+        .leftJoin(kitchenViewingSettings, eq(kitchenViewings.targetedKitchenId, kitchenViewingSettings.kitchenId))
         .where(eq(kitchenViewings.chefId, chefId))
         .orderBy(desc(kitchenViewings.updatedAt), desc(kitchenViewings.id));
 
@@ -1242,10 +1314,13 @@ router.get(
       const managerIds = Array.from(new Set(filtered.map((r) => r.managerId).filter((id): id is number => id != null)));
       const managerNames = new Map(await Promise.all(managerIds.map(async (id) => [id, await getUserDisplayName(id, "manager")] as const)));
       const managerContacts = new Map(await Promise.all(managerIds.map(async (id) => [id, (await db.select({ email: users.username, phone: users.phoneNumber }).from(users).where(eq(users.id, id)).limit(1))[0]] as const)));
+      const attendanceSettings = new Map<number, ReturnType<typeof getCheckinSettings>>();
       const withNames = await Promise.all(
         filtered.map(async (r) => ({
           ...r,
-          viewing: publicTour(r.viewing),
+          viewing: await publicTourAttendance(r.viewing, attendanceSettings),
+          arrivalNotes: r.viewing.status === "confirmed" ? r.arrivalNotes : null,
+          departureNotes: r.viewing.status === "confirmed" || (r.viewing.checkedInAt && !r.viewing.checkedOutAt) ? r.departureNotes : null,
           locationContactEmail: r.viewing.status === "confirmed" ? r.locationContactEmail || (r.managerId && managerContacts.get(r.managerId)?.email) || null : null,
           locationContactPhone: r.viewing.status === "confirmed" ? r.locationContactPhone || (r.managerId && managerContacts.get(r.managerId)?.phone) || null : null,
           managerName: r.managerId ? managerNames.get(r.managerId) : null,
@@ -1320,6 +1395,124 @@ router.get(
 );
 
 /** Keep the confirmed slot until the manager accepts a chef's change request. */
+router.get('/chef/:id/attendance', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
+    if (!tour || tour.chefId !== req.neonUser!.id) return res.status(404).json({ error: 'Tour not found' });
+    const settings = await getCheckinSettings(tour.locationId);
+    return res.json(tourAttendance(tour, settings.checkinWindowMinutesBefore));
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.post('/chef/:id/check-in', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    const result = await db.transaction(async tx => {
+      const { tour } = await lockedTour(tx, id);
+      if (tour.chefId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+      const settings = await getCheckinSettings(tour.locationId);
+      const now = new Date(), attendance = tourAttendance(tour, settings.checkinWindowMinutesBefore, now);
+      if (attendance.safetyReason) throw new DomainError('TOUR_CHANGED', attendance.safetyReason, 409);
+      // A lost response can be retried with the prior version, without creating another event.
+      if (tour.checkedInAt) return { attendance, changed: false };
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
+      if (!attendance.canCheckIn) throw new DomainError('TOUR_ARRIVAL_UNAVAILABLE', attendance.reason!, 409);
+      const entry: TourAttendanceEntry = { action: 'check_in', actorId: req.neonUser!.id, source: 'visitor',
+        actualAt: now.toISOString(), recordedAt: now.toISOString(), scheduledAt: tour.scheduledAt.toISOString() };
+      const [updated] = await tx.update(kitchenViewings).set({ checkedInAt: now,
+        attendanceHistory: [...(Array.isArray(tour.attendanceHistory) ? tour.attendanceHistory : []), entry],
+        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)),
+      }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, 'confirmed'),
+        eq(kitchenViewings.scheduledAt, tour.scheduledAt), sql`${kitchenViewings.checkedInAt} IS NULL`,
+        sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`)).returning();
+      if (!updated) throw new DomainError('TOUR_CHANGED', 'This tour has changed. Refresh and try again', 409);
+      await queueTourEvent(tx, { kind: 'visitor_checkin', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'chef' });
+      return { attendance: tourAttendance(updated, settings.checkinWindowMinutesBefore, now), changed: true };
+    });
+    const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
+    return res.json({ ...result.attendance, notificationDeliveryFailed: delivery.failed });
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.get('/manager/:id/attendance', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    // Use current location ownership, never the historical tour.managerId.
+    const attendance = await db.transaction(async tx => {
+      const { tour, location } = await lockedTour(tx, id);
+      if (location.managerId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+      const settings = await getCheckinSettings(tour.locationId);
+      return tourAttendance(tour, settings.checkinWindowMinutesBefore);
+    });
+    return res.json(attendance);
+  } catch (error) { return errorResponse(res, error); }
+});
+
+async function recordTourAction(req: Request, res: Response, assisted: boolean) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    const result = await db.transaction(async tx => {
+      const { tour, location } = await lockedTour(tx, id);
+      const actorId = req.neonUser!.id;
+      if (assisted ? location.managerId !== actorId : tour.chefId !== actorId)
+        throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+      const settings = await getCheckinSettings(tour.locationId);
+      const now = new Date(), attendance = tourAttendance(tour, settings.checkinWindowMinutesBefore, now);
+      let actual = now, reason: string | undefined;
+      if (assisted) {
+        try { ({ actual, reason } = validateAttendanceAssistance(req.body || {}, now)); }
+        catch (error) { throw new DomainError('TOUR_ASSISTANCE_INVALID', (error as Error).message, 400); }
+        if (req.body.scheduledAt !== attendance.scheduledAt)
+          throw new DomainError('TOUR_CHANGED', 'The reported action must belong to the saved tour schedule; refresh and review', 409);
+      }
+      const arrival = assisted && req.body.action === 'arrival';
+      const field = arrival ? 'checkedInAt' : 'checkedOutAt';
+      const safety = arrival ? (attendance.assistArrivalReason === 'Arrival already recorded' ? null : attendance.assistArrivalReason)
+        : attendance.departureSafetyReason;
+      if (safety) throw new DomainError('TOUR_ATTENDANCE_INVALID', safety, 409);
+      if (tour[field]) {
+        // Lost responses return original evidence; assistance cannot overwrite a visitor action.
+        if (assisted) {
+          const entry = attendance.attendanceHistory.find(entry => entry.action === (arrival ? 'check_in' : 'check_out'));
+          if (!entry || entry.source !== 'manager_assisted' || entry.actorId !== actorId
+            || entry.actualAt !== actual.toISOString() || entry.reason !== reason)
+            throw new DomainError('TOUR_ALREADY_RECORDED', 'This action is already recorded; existing evidence is preserved', 409);
+        }
+        return { attendance, changed: false };
+      }
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
+      if (arrival && (actual < new Date(attendance.checkInOpensAt) || actual > new Date(attendance.checkInClosesAt)))
+        throw new DomainError('TOUR_ASSISTANCE_INVALID', 'Reported arrival must be within the effective tour arrival window', 400);
+      if (!arrival && actual < new Date(attendance.checkedInAt!))
+        throw new DomainError('TOUR_ASSISTANCE_INVALID', 'Departure cannot precede the recorded arrival', 400);
+      const entry: TourAttendanceEntry = { action: arrival ? 'check_in' : 'check_out', actorId,
+        source: assisted ? 'manager_assisted' : 'visitor', actualAt: actual.toISOString(), recordedAt: now.toISOString(),
+        scheduledAt: attendance.scheduledAt, ...(reason ? { reason } : {}) };
+      const [updated] = await tx.update(kitchenViewings).set({ [field]: actual,
+        attendanceHistory: [...(Array.isArray(tour.attendanceHistory) ? tour.attendanceHistory : []), entry],
+        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)),
+      }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.scheduledAt, tour.scheduledAt),
+        sql`${kitchenViewings[field]} IS NULL`,
+        ...(!arrival ? [eq(kitchenViewings.checkedInAt, tour.checkedInAt!)] : []),
+        sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`)).returning();
+      if (!updated) throw new DomainError('TOUR_CHANGED', 'This tour has changed. Refresh and try again', 409);
+      await queueTourEvent(tx, { kind: assisted ? 'attendance_assisted' : 'visitor_checkout', before: tour, after: updated,
+        actorId, actorRole: assisted ? 'manager' : 'chef' });
+      return { attendance: tourAttendance(updated, settings.checkinWindowMinutesBefore, now), changed: true };
+    });
+    const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
+    return res.json({ ...result.attendance, notificationDeliveryFailed: delivery.failed });
+  } catch (error) { return errorResponse(res, error); }
+}
+
+router.post('/chef/:id/check-out', requireFirebaseAuthWithUser, requireChef, (req, res) => recordTourAction(req, res, false));
+router.post('/manager/:id/attendance-assistance', requireFirebaseAuthWithUser, requireManager, (req, res) => recordTourAction(req, res, true));
+
 router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id), requestedAt = new Date(req.body?.scheduledAt);
@@ -1328,6 +1521,7 @@ router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, as
       const { tour, location } = await lockedTour(tx, id);
       if (tour.chefId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
       checkTourVersion(tour, req.body?.expectedUpdatedAt);
+      if (tour.checkedInAt) throw new DomainError('TOUR_ARRIVED', 'Tour time cannot change after arrival', 409);
       if (tour.status !== "confirmed" || tour.scheduledAt.getTime() <= Date.now()) throw new DomainError('TOUR_CHANGED', 'Only upcoming confirmed tours can be changed', 409);
       if (tour.requestedRescheduleAt) throw new DomainError('TOUR_CHANGED', 'A date change request is already awaiting review', 409);
       if (!tour.targetedKitchenId || requestedAt.getTime() === tour.scheduledAt.getTime()) throw new DomainError('TOUR_TIME_INVALID', 'Choose a different available time', 400);
@@ -1372,14 +1566,15 @@ router.patch("/manager/:id/reschedule", requireFirebaseAuthWithUser, requireMana
       const { tour, location } = await lockedTour(tx, id);
       if (location.managerId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Access denied', 403);
       checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
-      if (tour.status !== "confirmed" || !tour.requestedRescheduleAt || tour.scheduledAt.getTime() <= Date.now()) throw new DomainError('TOUR_CHANGED', 'No active date change request', 409);
+      if (tour.status !== "confirmed" || !tour.requestedRescheduleAt || (tour.scheduledAt.getTime() <= Date.now() && (accepted || !tour.checkedInAt))) throw new DomainError('TOUR_CHANGED', 'No active date change request', 409);
+      if (accepted && tour.checkedInAt) throw new DomainError('TOUR_ARRIVED', 'Tour time cannot change after arrival', 409);
       if (accepted) await checkTourAcceptance(tx, tour, tour.requestedRescheduleAt, req.body);
       const [updated] = await tx.update(kitchenViewings).set({
         ...(accepted ? { scheduledAt: tour.requestedRescheduleAt } : {}), managerId: location.managerId,
         requestedRescheduleAt: null, rescheduleRequestedAt: null, updatedAt: new Date(),
       }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, "confirmed"), sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
         eq(kitchenViewings.scheduledAt, tour.scheduledAt), eq(kitchenViewings.requestedRescheduleAt, tour.requestedRescheduleAt),
-        sql`${kitchenViewings.scheduledAt} > clock_timestamp()`)).returning();
+        accepted || !tour.checkedInAt ? sql`${kitchenViewings.scheduledAt} > clock_timestamp()` : undefined)).returning();
       if (!updated) throw new DomainError('TOUR_CHANGED', 'This request was already handled. Refresh the tour list', 409);
       await queueTourEvent(tx, { kind: accepted ? 'reschedule_accepted' : 'reschedule_declined', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'manager' });
       return { tour, location, updated };
@@ -1433,10 +1628,11 @@ router.get(
         ? results.filter((r) => r.viewing.status === status)
         : results;
 
+      const attendanceSettings = new Map<number, ReturnType<typeof getCheckinSettings>>();
       const withNames = await Promise.all(
         filtered.map(async (r) => ({
           ...r,
-          viewing: publicTour(r.viewing),
+          viewing: await publicTourAttendance(r.viewing, attendanceSettings),
           chefName: r.viewing.chefId ? await getUserDisplayName(r.viewing.chefId, 'chef') : 'A chef',
           chefPhone: r.viewing.chefId ? await getChefPhone(r.viewing.chefId) : null,
         }))
@@ -1556,8 +1752,14 @@ router.patch(
         await queueTourEvent(tx, { kind: decision === 'approved' ? 'review_approved' : 'review_denied', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'admin' });
         return updated;
       });
+      let chatProvisioningFailed = false;
+      if (decision === 'approved') {
+        try { chatProvisioningFailed = !(await initializeSharedConversation(updated.chefId, updated.locationId)); }
+        catch (error) { chatProvisioningFailed = true; logger.error('Tour approved; chat provision needs retry', error); }
+      }
       const delivery = await attemptTourDelivery(updated.id);
-      res.json({ ...updated, notificationDeliveryFailed: delivery.failed });
+      res.json({ ...updated, notificationDeliveryFailed: delivery.failed, chatProvisioningFailed,
+        ...(chatProvisioningFailed ? { chatProvisioningMessage: 'Tour approved. Messaging could not be prepared; open Messages to retry.' } : {}) });
     } catch (error) {
       logger.error("Error reviewing tour request for Local Cooks:", error);
       return errorResponse(res, error);
@@ -1641,7 +1843,7 @@ router.patch(
           throw new DomainError('TOUR_DECISION_INVALID', "The tour has not ended yet", 409);
         }
         if ((['completed', 'no_show'].includes(parsed.data.status) || parsed.data.disruptionReason) && !hasTourConfirmation(viewing)) {
-          throw new DomainError('TOUR_DECISION_INVALID', 'Only a previously confirmed tour can have an attendance or disruption outcome. Historical confirmation evidence is required.', 409);
+          throw new DomainError('TOUR_DECISION_INVALID', 'This tour was not confirmed. Close the request instead of recording a visit result.', 409);
         }
         if (parsed.data.disruptionReason && parsed.data.status !== 'cancelled') {
           throw new DomainError('TOUR_DECISION_INVALID', 'Record a disruption separately from attendance', 400);

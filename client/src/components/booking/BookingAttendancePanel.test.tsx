@@ -1,36 +1,62 @@
-import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import en from '@shared/i18n/locales/en-CA/chef.json';
-import fr from '@shared/i18n/locales/fr-CA/chef.json';
-import uk from '@shared/i18n/locales/uk/chef.json';
-const state = vi.hoisted(() => ({ data: undefined as any }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: state.data, refetch: vi.fn() }) }));
-vi.mock('@/lib/firebase', () => ({ auth: { currentUser: null } }));
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, expect, it, vi } from 'vitest';
 import { BookingAttendancePanel } from './BookingAttendancePanel';
-import { BookingOperationsStatus } from './BookingOperationsStatus';
-const booking = { id: 10, bookingDate: '2026-10-02', startTime: '09:00', endTime: '17:00', status: 'confirmed' };
-describe('attendance presentation (isolated static render)', () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02T20:00:00Z')); state.data = { bookingId: 10, status: 'confirmed', checkinStatus: null, updatedAt: '2026-10-02T00:00:00Z', scheduledEnd: '2026-10-02T19:30:00Z', operationsComplete: true, visits: [], history: [] }; });
-  afterEach(() => vi.useRealTimers());
-  it('keeps optional unknown attendance separate from operations', () => {
-    const html = renderToStaticMarkup(<BookingAttendancePanel bookingId={10} manager={false} onSaved={async () => {}} />);
-    expect(html).toContain('bookingAttendanceEnded'); expect(html).toContain('bookingAttendanceUnknown');
-    expect(html).not.toContain('bookingAttendanceNoShow');
-  });
-  it('renders explicit manager reporting disclosures and controls', () => {
-    const html = renderToStaticMarkup(<BookingAttendancePanel bookingId={10} manager onSaved={async () => {}} />);
-    expect(html).toContain('bookingAttendanceAbsent'); expect(html).toContain('bookingAttendanceMessage');
-    expect(html).toContain('bookingAttendanceAttended');
-  });
-  it('shows completed operations for confirmed records without changing reservation state', () => {
-    expect(renderToStaticMarkup(<BookingOperationsStatus booking={booking} />)).toContain('bookingAttendanceEnded');
-    expect(booking.status).toBe('confirmed');
-    expect(renderToStaticMarkup(<BookingOperationsStatus booking={{ ...booking, status: 'cancelled' }} />)).toBe('');
-  });
-  it('has matching attendance translation keys in every supported locale', () => {
-    const keys = Object.keys(en).filter(key => key.startsWith('bookingAttendance'));
-    expect(keys.length).toBeGreaterThan(20);
-    for (const locale of [fr, uk]) for (const key of keys) expect((locale as Record<string, string>)[key]).toBeTruthy();
-  });
+vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'fixture-token' } } }));
+vi.mock('react-i18next', async () => {
+  const labels = (await import('@shared/i18n/locales/en-CA/chef.json')).default as Record<string,string>;
+  return { useTranslation: () => ({ t: (key: string) => labels[key] || key }) };
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+const record = { bookingId:10,status:'confirmed',checkinStatus:'not_checked_in',updatedAt:'2026-10-04T12:00:00Z',
+  scheduledEnd:'2026-10-03T12:00:00Z',operationsComplete:true,assistanceHistory:[],
+  visits:[{id:5,startTime:'09:00',endTime:'11:00',checkinStatus:'not_checked_in',updatedAt:'2026-10-04T12:00:00Z',scheduledEnd:'2026-10-03T12:00:00Z',operationsComplete:true}],history:[] };
+function mount(manager:boolean, data:any=record) {
+  const fetcher=vi.fn(async()=>({ok:true,json:async()=>data})); vi.stubGlobal('fetch',fetcher);
+  const onSaved=vi.fn(async()=>{});
+  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+  render(<QueryClientProvider client={client}><BookingAttendancePanel bookingId={10} manager={manager} onSaved={onSaved}/></QueryClientProvider>);
+  return {client,fetcher,onSaved};
+}
+it('shows a compact read-only visit record to the chef with no routine forms', async()=>{
+  const {client}=mount(false,{...record,history:[{id:1,visitId:5,action:'report_no_show',actorRole:'manager',sharedMessage:'Chef confirmed they could not attend',createdAt:'2026-10-04T12:00:00Z'}]});
+  expect(await screen.findByText('Chef confirmed they could not attend',{exact:false})).toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:'Visit record'})).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Manage visit'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Operations complete|Booking attendance/)).not.toBeInTheDocument(); client.clear();
+});
+it('opens manager exceptions on demand, selects a single visit automatically and can cancel without posting',async()=>{
+  vi.spyOn(Date,'now').mockReturnValue(Date.parse('2026-10-04T12:00:00Z'));
+  const {client,fetcher}=mount(true);
+  fireEvent.click(await screen.findByRole('button',{name:'Manage visit'}));
+  expect(screen.getByRole('dialog',{name:'Manage visit'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Report a no-show or correct a visit'}));
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Chef confirmed they could not attend'}});
+  expect(screen.getByRole('button',{name:'Report chef no-show'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByRole('button',{name:'Report chef no-show'})).toBeEnabled();
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(fetcher.mock.calls.some(([,options]:any)=>options.method==='POST')).toBe(false); client.clear();
+});
+it('saves missed checkout through the existing assistance endpoint and returns to the visit record',async()=>{
+  const {client,fetcher,onSaved}=mount(true);
+  fireEvent.click(await screen.findByRole('button',{name:'Manage visit'}));
+  fireEvent.click(screen.getByRole('button',{name:'Record missed check-in or checkout'}));
+  fireEvent.change(screen.getByLabelText(/Actual reported/),{target:{value:'2026-10-03T11:00'}});
+  fireEvent.change(screen.getByLabelText(/Reason and evidence/),{target:{value:'Chef confirmed departure after upload failed'}});
+  fireEvent.click(screen.getByRole('button',{name:'Record assistance'}));
+  await waitFor(()=>expect(onSaved).toHaveBeenCalledOnce());
+  await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const post=fetcher.mock.calls.find(([,options]:any)=>options.method==='POST')!;
+  expect(post[0]).toBe('/api/manager/bookings/10/assist-visit');
+  expect(JSON.parse((post[1] as any).body)).toMatchObject({visitId:5,action:'departure',expectedUpdatedAt:record.visits[0].updatedAt}); client.clear();
+});
+it.each(['pending','cancelled'])('does not add visit controls to a %s booking without a recorded visit',async status=>{
+  const {client}=mount(true,{...record,status});
+  await waitFor(()=>expect(client.isFetching()).toBe(0));
+  expect(screen.queryByRole('heading',{name:'Visit record'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Manage visit'})).not.toBeInTheDocument(); client.clear();
 });

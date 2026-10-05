@@ -2,6 +2,7 @@
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { publicTour } from '@shared/tour-outcome';
+import type { TourAttendance } from '@shared/tour-attendance';
 
 export type ViewingStatusBadge = {
   variant: "warning" | "success" | "destructive" | "outline" | "secondary" | "info";
@@ -18,12 +19,17 @@ export type ChefTourRow = {
   locationAddress: string | null;
   locationContactEmail: string | null;
   locationContactPhone: string | null;
+  arrivalNotes?: string | null;
+  departureNotes?: string | null;
   kitchenName: string | null;
   status: string;
   adminReviewDecision: string | null;
   cancelledBy: string | null;
   scheduledAt: string;
   updatedAt: string;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+  attendance?: TourAttendance;
   requestedRescheduleAt: string | null;
   durationMinutes: number | null;
   chefNotes: string | null;
@@ -44,8 +50,17 @@ export type ChefTourRow = {
   intakeEntries: [string, unknown][];
 };
 
+/** Use the server's effective action window for every visitor entry point. */
+export function chefTourVisitAction(tour: Pick<ChefTourRow, 'status' | 'checkedInAt' | 'checkedOutAt' | 'attendance'> & { disruptionReason?: string | null }, now = Date.now()): 'arrival' | 'departure' | null {
+  const visit = tour.attendance;
+  if (tour.checkedInAt && !tour.checkedOutAt && visit?.canCheckOut) return 'departure';
+  if (tour.status === 'confirmed' && !tour.disruptionReason && !tour.checkedInAt && visit?.canCheckIn
+    && now >= Date.parse(visit.checkInOpensAt) && now <= Date.parse(visit.checkInClosesAt)) return 'arrival';
+  return null;
+}
+
 export function viewingStatusBadge(status: string, adminReviewDecision?: string | null, cancelledBy?: string | null, disruptionReason?: string | null): ViewingStatusBadge {
-  if (disruptionReason) return { variant: "destructive", labelKey: "tourStatusDisrupted", defaultLabel: "Disrupted" };
+  if (disruptionReason) return { variant: "destructive", labelKey: "tourStatusDisrupted", defaultLabel: "Couldn’t take place" };
   if (status === "cancelled" && (adminReviewDecision === "denied" || cancelledBy === "manager_declined")) {
     return { variant: "destructive", labelKey: "tourStatusRejected", defaultLabel: "Rejected" };
   }
@@ -108,12 +123,17 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     locationAddress: row.locationAddress || viewing.location?.address || null,
     locationContactEmail: row.locationContactEmail || null,
     locationContactPhone: row.locationContactPhone || null,
+    arrivalNotes: row.arrivalNotes || null,
+    departureNotes: row.departureNotes || null,
     kitchenName: row.kitchenName || viewing.kitchen?.name || null,
     status: viewing.status || "pending",
     adminReviewDecision: viewing.adminReviewDecision ?? null,
     cancelledBy: viewing.cancelledBy ?? null,
     scheduledAt: viewing.scheduledAt,
     updatedAt: viewing.updatedAt || viewing.createdAt || viewing.scheduledAt,
+    checkedInAt: viewing.checkedInAt ?? null,
+    checkedOutAt: viewing.checkedOutAt ?? null,
+    attendance: viewing.attendance,
     requestedRescheduleAt: viewing.requestedRescheduleAt ?? null,
     durationMinutes: viewing.durationMinutes ?? null,
     chefNotes: viewing.chefNotes ?? null,
@@ -137,6 +157,7 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
 
 export function chefTourRowHasDetails(row: ChefTourRow): boolean {
   return Boolean(
+    row.checkedInAt || row.checkedOutAt ||
     row.submittedAt ||
     row.chefNotes?.trim() ||
       row.sharedManagerNotes?.trim() ||

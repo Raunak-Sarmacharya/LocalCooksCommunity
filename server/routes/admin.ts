@@ -36,7 +36,7 @@ import {
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { hashPassword, comparePasswords } from "../passwordUtils";
-import { getFirestore } from 'firebase-admin/firestore';
+import { getAdminDb } from '../chat-service';
 import { initializeFirebaseAdmin } from '../firebase-setup';
 // getAdminPaymentTransactions kept in service file for future use; query is inlined in route handler
 
@@ -52,10 +52,7 @@ async function getFirestoreDisplayNames(firebaseUids: string[]): Promise<Record<
 
     try {
         if (!firestoreDb) {
-            const app = initializeFirebaseAdmin();
-            if (!app) return nameMap;
-            firestoreDb = getFirestore(app);
-            firestoreDb.settings({ ignoreUndefinedProperties: true });
+            firestoreDb = await getAdminDb();
         }
 
         // Firestore getAll supports up to 100 docs at a time
@@ -109,10 +106,7 @@ async function markUserConversationsUnavailable(
 ): Promise<number> {
     try {
         if (!firestoreDb) {
-            const app = initializeFirebaseAdmin();
-            if (!app) return 0;
-            firestoreDb = getFirestore(app);
-            firestoreDb.settings({ ignoreUndefinedProperties: true });
+            firestoreDb = await getAdminDb();
         }
 
         // A user can be referenced by either column depending on their role, but
@@ -241,8 +235,7 @@ router.delete("/users/:id/complete", requireFirebaseAuthWithUser, requireAdmin, 
                 // Postgres row, so a failure here leaves no authoritative data
                 // behind and must not fail the request.
                 try {
-                    const { getFirestore } = await import('firebase-admin/firestore');
-                    await getFirestore(app).collection('users').doc(user.firebaseUid).delete();
+                    await (await getAdminDb()).collection('users').doc(user.firebaseUid).delete();
                 } catch (firestoreError: any) {
                     logger.error(`Deleted Firebase Auth user ${user.firebaseUid}, but Firestore cleanup failed:`, firestoreError);
                 }
@@ -1701,7 +1694,9 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
             }
         }
 
-        const updated = await locationService.updateLocation({ id: locationId, ...updates });
+        // Chat operations hold this location row FOR SHARE through their server
+        // operation. The UPDATE waits, then subsequent requests see this manager.
+        const updated = await locationService.updateLocation({ id: locationId, ...updates }, true);
         if (!updated) {
             return res.status(404).json({ error: "Location not found" });
         }
@@ -1819,7 +1814,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const { name, description, isActive, locationId, taxRatePercent, smartLockAvailable } = req.body;
+        const { name, description, isActive, locationId, taxRatePercent } = req.body;
 
         const updates: any = {};
         const changesList: string[] = [];
@@ -1858,21 +1853,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
                  changesList.push(`Tax rate changed to ${newRate ? newRate + '%' : 'None'}`);
              }
         }
-        // Admin-controlled smart lock capability gate.
-        // When disabled, cascade-disable the manager's smart_lock_enabled flag so
         // no stale "enabled" state survives the capability being revoked.
-        if (smartLockAvailable !== undefined) {
-            const newAvailable = Boolean(smartLockAvailable);
-            if (newAvailable !== currentKitchen.smartLockAvailable) {
-                updates.smartLockAvailable = newAvailable;
-                changesList.push(`Smart door ${newAvailable ? 'enabled' : 'disabled'} by admin`);
-
-                // Cascade: revoking the capability forces the operational flag off.
-                if (!newAvailable && currentKitchen.smartLockEnabled) {
-                    updates.smartLockEnabled = false;
-                }
-            }
-        }
 
         if (Object.keys(updates).length === 0) {
             return res.json(currentKitchen);
@@ -3524,6 +3505,7 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
             search,
             status,
             bookingType,
+            bookingId,
             locationId,
             kitchenId,
             chefId,
@@ -3539,6 +3521,13 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
 
         // Build WHERE conditions
         const conditions: ReturnType<typeof sql>[] = [];
+
+        // Lifecycle links identify a kitchen commitment, not a storage/equipment ID with the same number.
+        if (bookingId !== undefined) {
+            const parsedBookingId = Number(bookingId);
+            if (!Number.isSafeInteger(parsedBookingId) || parsedBookingId <= 0) return res.status(400).json({ error: 'Invalid kitchen booking ID' });
+            conditions.push(sql`pt.booking_id = ${parsedBookingId} AND pt.booking_type IN ('kitchen', 'bundle')`);
+        }
 
         if (status && ['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded'].includes(status as string)) {
             conditions.push(sql`pt.status = ${status as string}`);
@@ -3770,6 +3759,7 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
  * amount up to the full remaining refundable balance, or reject the request.
  */
 router.post("/transactions/:transactionId/full-refund-request/decision", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    let refundAttemptKey: string | undefined;
     try {
         const adminId = req.neonUser!.id;
         const transactionId = Number(req.params.transactionId);
@@ -3790,6 +3780,9 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
         const metadata = transaction.metadata && typeof transaction.metadata === 'object'
             ? transaction.metadata as Record<string, any>
             : {};
+        if (decision === 'approve' && metadata.cancellationRefundOperation && metadata.cancellationRefundOperation.status !== 'succeeded') {
+          throw Object.assign(new Error('Verify the reserved cancellation refund before approving another refund'), { status: 409 });
+        }
         const request = metadata.fullRefundRequest;
         if (!request || request.status !== 'pending') {
             throw Object.assign(new Error("No pending full refund request exists for this transaction"), { status: 409 });
@@ -3832,8 +3825,8 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
             (sum: number, refund: any) => sum + Math.max(0, Number(refund?.platformServiceFeeReturned || 0)),
             0,
         );
-        const remainingManagerShare = Math.max(0, managerRevenue - managerAlreadyDebited);
-        const remainingServiceFee = Math.max(0, serviceFee - platformAlreadyReturned);
+        const remainingManagerShare = Math.max(0, managerRevenue - managerAlreadyDebited - Number(metadata.cancellationRefundOperation?.retainedUsedAddonCents || 0));
+        const remainingServiceFee = Math.min(Math.max(0, serviceFee - platformAlreadyReturned), metadata.cancellationRefundOperation?.serviceFeeReview ?? serviceFee);
         const maxRefundable = Math.min(
             Math.max(0, totalAmount - stripeFee - alreadyRefunded),
             remainingManagerShare + remainingServiceFee,
@@ -3846,18 +3839,23 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
         const { reverseTransferAndRefund } = await import("../services/stripe-service");
         const managerDebitCents = Math.min(requestedAdminAmount, remainingManagerShare);
         const platformServiceFeeCents = requestedAdminAmount - managerDebitCents;
+        refundAttemptKey = `admin-refund-${transactionId}-${request.requestedAt}`;
         const stripeResult = await reverseTransferAndRefund(
             transaction.payment_intent_id,
             requestedAdminAmount,
             'requested_by_customer',
             {
                 idempotencyKey: `admin-refund-${transactionId}-${request.requestedAt}`,
+                sourceConnection: tx,
                 reverseTransferAmount: managerDebitCents,
                 refundApplicationFee: false,
                 metadata: {
                     transaction_id: String(transactionId),
                     approved_by: String(adminId),
                     refund_model: 'admin_controlled',
+                    customer_receives: String(requestedAdminAmount),
+                    manager_debited: String(managerDebitCents),
+                    platform_service_fee_returned: String(platformServiceFeeCents),
                 },
             },
         );
@@ -3927,6 +3925,11 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
         });
         return res.json(result);
     } catch (error: any) {
+        if (refundAttemptKey) {
+          try { const { recordRefundRecovery } = await import('../services/outcome-delivery');
+            await recordRefundRecovery(Number(req.params.transactionId), refundAttemptKey); }
+          catch (recoveryError) { logger.error('Refund recovery task could not be persisted', recoveryError); }
+        }
         logger.error('[Admin Full Refund Decision] Error:', error);
         return res.status(error?.status || 500).json({ error: error?.message || 'Failed to resolve refund request' });
     }
@@ -4300,176 +4303,7 @@ router.put("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, a
 });
 
 // ============================================================================
-// PHASE 4: ACCESS CODE ADMIN ENDPOINTS
 // ============================================================================
-
-/**
- * GET /admin/access-codes/active
- * List all currently active access codes across all kitchens.
- * Supports ?kitchenId= filter and ?page/&limit pagination.
- */
-router.get("/access-codes/active", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
-    try {
-        const kitchenId = req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined;
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-        const offset = (page - 1) * limit;
-
-        const { kitchenBookings, kitchens, locations, users } = await import('@shared/schema');
-        const { desc } = await import('drizzle-orm');
-
-        const conditions = [
-            eq(kitchenBookings.status, 'confirmed'),
-            sql`access_code_hash IS NOT NULL`,
-            sql`access_code_valid_until > NOW()`,
-        ];
-        if (kitchenId) {
-            conditions.push(eq(kitchenBookings.kitchenId, kitchenId));
-        }
-
-        const codes = await db
-            .select({
-                bookingId: kitchenBookings.id,
-                kitchenId: kitchenBookings.kitchenId,
-                kitchenName: kitchens.name,
-                locationName: locations.name,
-                chefId: kitchenBookings.chefId,
-                chefEmail: users.username,
-                accessCodeFormat: kitchenBookings.accessCodeFormat,
-                accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
-                accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
-                bookingDate: kitchenBookings.bookingDate,
-                startTime: kitchenBookings.startTime,
-                endTime: kitchenBookings.endTime,
-                checkinStatus: kitchenBookings.checkinStatus,
-            })
-            .from(kitchenBookings)
-            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-            .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
-            .where(and(...conditions))
-            .orderBy(desc(kitchenBookings.accessCodeValidUntil))
-            .limit(limit)
-            .offset(offset);
-
-        // Total count for pagination
-        const [{ count }] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(kitchenBookings)
-            .where(and(...conditions));
-
-        res.json({
-            codes,
-            pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
-        });
-    } catch (error: any) {
-        logger.error('[Admin Access Codes] Error listing active codes:', error?.message || error);
-        res.status(500).json({ error: "Failed to list active access codes" });
-    }
-});
-
-/**
- * GET /admin/access-codes/audit
- * Access code audit trail with filtering.
- * Supports ?bookingId=, ?kitchenId=, ?action=, ?dateFrom=, ?dateTo=, ?page/&limit.
- */
-router.get("/access-codes/audit", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
-    try {
-        const bookingId = req.query.bookingId ? parseInt(req.query.bookingId as string) : undefined;
-        const kitchenId = req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined;
-        const action = req.query.action as string | undefined;
-        const dateFrom = req.query.dateFrom as string | undefined;
-        const dateTo = req.query.dateTo as string | undefined;
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-        const offset = (page - 1) * limit;
-
-        const { accessCodeAudit } = await import('@shared/schema');
-        const { desc } = await import('drizzle-orm');
-
-        const conditions: any[] = [];
-        if (bookingId) conditions.push(eq(accessCodeAudit.bookingId, bookingId));
-        if (kitchenId) conditions.push(eq(accessCodeAudit.kitchenId, kitchenId));
-        if (action) conditions.push(eq(accessCodeAudit.action, action));
-        if (dateFrom) conditions.push(sql`${accessCodeAudit.createdAt} >= ${dateFrom}::timestamp`);
-        if (dateTo) conditions.push(sql`${accessCodeAudit.createdAt} <= ${dateTo}::timestamp`);
-
-        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-        const entries = await db
-            .select()
-            .from(accessCodeAudit)
-            .where(whereClause)
-            .orderBy(desc(accessCodeAudit.createdAt))
-            .limit(limit)
-            .offset(offset);
-
-        const [{ count }] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(accessCodeAudit)
-            .where(whereClause);
-
-        res.json({
-            entries,
-            pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
-        });
-    } catch (error: any) {
-        logger.error('[Admin Access Codes] Error listing audit trail:', error?.message || error);
-        res.status(500).json({ error: "Failed to list audit trail" });
-    }
-});
-
-/**
- * GET /admin/access-codes/analytics
- * Aggregate analytics for access code usage.
- * Supports ?kitchenId=, ?dateFrom=, ?dateTo=.
- */
-router.get("/access-codes/analytics", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
-    try {
-        const { getAccessCodeAnalytics } = await import('../services/kitchen-checkout-service');
-        const analytics = await getAccessCodeAnalytics({
-            kitchenId: req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined,
-            dateFrom: req.query.dateFrom as string | undefined,
-            dateTo: req.query.dateTo as string | undefined,
-        });
-        res.json(analytics);
-    } catch (error: any) {
-        logger.error('[Admin Access Codes] Error getting analytics:', error?.message || error);
-        res.status(500).json({ error: "Failed to get analytics" });
-    }
-});
-
-/**
- * POST /admin/access-codes/emergency-revoke
- * Emergency revoke all active access codes for a kitchen or specific booking.
- * Body: { kitchenId?: number, bookingId?: number, reason: string }
- * At least one of kitchenId or bookingId must be provided.
- */
-router.post("/access-codes/emergency-revoke", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
-    try {
-        const { kitchenId, bookingId, reason } = req.body;
-        if (!kitchenId && !bookingId) {
-            return res.status(400).json({ error: "Must specify kitchenId or bookingId" });
-        }
-        if (!reason || reason.trim().length < 5) {
-            return res.status(400).json({ error: "Reason must be at least 5 characters" });
-        }
-
-        const { emergencyRevokeAccessCodes } = await import('../services/kitchen-checkout-service');
-        const result = await emergencyRevokeAccessCodes({
-            kitchenId,
-            bookingId,
-            reason: reason.trim(),
-            revokedBy: req.neonUser!.id,
-        });
-
-        logger.info(`[Admin Access Codes] Emergency revocation by admin ${req.neonUser?.id}: ${result.revoked} codes revoked (reason: ${reason})`);
-        res.json(result);
-    } catch (error: any) {
-        logger.error('[Admin Access Codes] Error in emergency revocation:', error?.message || error);
-        res.status(500).json({ error: "Failed to revoke access codes" });
-    }
-});
 
 // ===================================
 // ADMIN: GENERATE PASSWORD RESET LINK
@@ -4540,7 +4374,7 @@ router.post("/generate-password-reset-link", requireFirebaseAuthWithUser, requir
 });
 
 const CHEF_MANAGER_ROLES = ["chef", "manager", "chef_and_manager"] as const;
-const EMAIL_LOG_STATUSES = ["sent", "failed", "skipped_duplicate"] as const;
+const EMAIL_LOG_STATUSES = ["sent", "failed", "queued", "scheduled", "suppressed", "skipped_duplicate"] as const;
 const EMAIL_LOG_ROLES = [
     "chefs_and_managers",
     "chef",
@@ -4560,7 +4394,7 @@ router.get("/email-logs/stats", requireFirebaseAuthWithUser, requireAdmin, async
         const [row] = await db
             .select({
                 total: sql<number>`count(*)::int`,
-                sent: sql<number>`count(*) filter (where status = 'sent')::int`,
+                sent: sql<number>`count(*) filter (where status = 'sent' AND category NOT IN ('advance_reminder', 'lifecycle_outcome'))::int`,
                 failed: sql<number>`count(*) filter (where status = 'failed')::int`,
                 skipped: sql<number>`count(*) filter (where status = 'skipped_duplicate')::int`,
                 last24h: sql<number>`count(*) filter (where created_at >= now() - interval '24 hours')::int`,
@@ -4590,6 +4424,25 @@ router.get("/email-logs/stats", requireFirebaseAuthWithUser, requireAdmin, async
  * GET /admin/email-logs
  * Paginated outgoing email history for chefs, managers, and other recipients.
  */
+router.get('/email-logs/pending-events', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { pendingDecisionDeliveries } = await import('../services/delivery-visibility');
+        const offset = Math.max(0, Math.min(Number(req.query.offset) || 0, 1000000));
+        if (!Number.isSafeInteger(offset)) return res.status(400).json({ error: 'Invalid pending event offset' });
+        res.json({ events: await pendingDecisionDeliveries(offset) });
+    } catch { res.status(500).json({ error: 'Could not load pending delivery events' }); }
+});
+router.post('/email-logs/events/:source/:id/retry', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    const source = req.params.source, id = Number(req.params.id);
+    if (!['booking', 'tour'].includes(source) || !Number.isSafeInteger(id) || id < 1)
+        return res.status(400).json({ error: 'Invalid delivery event' });
+    try {
+        const { retryDecisionDelivery } = await import('../services/delivery-visibility');
+        const result = await retryDecisionDelivery(source as 'booking' | 'tour', id);
+        logger.info('[Admin Email Logs] Original event recovery', { adminId: req.neonUser?.id, source, eventId: id, success: result.success });
+        res.status(result.success ? 200 : 409).json(result);
+    } catch { res.status(500).json({ error: 'Event recovery failed; original intent remains pending' }); }
+});
 router.get("/email-logs", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const {
@@ -4606,6 +4459,14 @@ router.get("/email-logs", requireFirebaseAuthWithUser, requireAdmin, async (req:
 
         const conditions: SQL[] = [];
 
+        if (status === 'due') {
+            conditions.push(sql`(
+                (${emailLogs.category} = 'lifecycle_outcome' AND ${emailLogs.status} IN ('queued', 'failed'))
+                OR (${emailLogs.category} = 'advance_reminder' AND ${emailLogs.status} IN ('scheduled', 'failed')
+                    AND (CASE WHEN ${emailLogs.category} = 'advance_reminder'
+                        THEN ${emailLogs.textBody}::jsonb->'reminder'->>'due' END)::timestamptz <= CURRENT_TIMESTAMP)
+            )`);
+        }
         if (status && EMAIL_LOG_STATUSES.includes(status as typeof EMAIL_LOG_STATUSES[number])) {
             conditions.push(sql`${emailLogs.status} = ${status as string}`);
         }
@@ -4645,31 +4506,7 @@ router.get("/email-logs", requireFirebaseAuthWithUser, requireAdmin, async (req:
             .where(whereClause);
 
         const logs = await db
-            .select({
-                id: emailLogs.id,
-                recipientEmail: emailLogs.recipientEmail,
-                recipientUserId: emailLogs.recipientUserId,
-                recipientRole: emailLogs.recipientRole,
-                subject: emailLogs.subject,
-                previewText: emailLogs.previewText,
-                category: emailLogs.category,
-                status: emailLogs.status,
-                errorMessage: emailLogs.errorMessage,
-                trackingId: emailLogs.trackingId,
-                smtpMessageId: emailLogs.smtpMessageId,
-                fromAddress: emailLogs.fromAddress,
-                retryCount: emailLogs.retryCount,
-                retriedAt: emailLogs.retriedAt,
-                retryOfId: emailLogs.retryOfId,
-                createdAt: emailLogs.createdAt,
-                canRetry: sql<boolean>`(
-                    ${emailLogs.status} = 'failed'
-                    AND (
-                        COALESCE(LENGTH(${emailLogs.htmlBody}), 0) > 0
-                        OR COALESCE(LENGTH(${emailLogs.textBody}), 0) > 0
-                    )
-                )`,
-            })
+            .select()
             .from(emailLogs)
             .where(whereClause)
             .orderBy(desc(emailLogs.createdAt))
@@ -4677,7 +4514,7 @@ router.get("/email-logs", requireFirebaseAuthWithUser, requireAdmin, async (req:
             .offset(parsedOffset);
 
         res.json({
-            logs,
+            logs: await (await import("../services/delivery-visibility")).visibleEmailLogs(logs),
             total: Number(countRow?.total ?? 0),
             limit: parsedLimit,
             offset: parsedOffset,
@@ -4708,7 +4545,7 @@ router.post("/email-logs/:id/retry", requireFirebaseAuthWithUser, requireAdmin, 
         }
 
         logger.info(`[Admin Email Logs] Admin ${req.neonUser?.id} retried email log ${logId}`);
-        res.json({ success: true, message: "Email resent successfully" });
+        res.json({ success: true, message: result.message || "Original delivery reconciled; provider acceptance recorded; inbox unverified" });
     } catch (error) {
         logger.error("[Admin Email Logs] Error retrying email:", error);
         res.status(500).json({ error: "Failed to retry email" });

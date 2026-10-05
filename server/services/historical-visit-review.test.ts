@@ -23,7 +23,7 @@ describe('historical attendance review', () => {
     expect(await detectKitchenVisitNoShows()).toBe(0); expect(state.writes).toEqual([]);
   });
   it('keeps an old multi-visit record available for admin review', async () => {
-    state.rows.push([], [{ visit: { id: 1, startTime: '09:00' }, booking: oldBooking, kitchenName: 'Kitchen', timezone: 'America/St_Johns' }]);
+    state.rows.push([], [{ visit: { id: 1, startTime: '09:00', endTime: '10:00' }, booking: oldBooking, kitchenName: 'Kitchen', timezone: 'America/St_Johns' }]);
     expect((await getHistoricalVisitReviewQueue())[0].visit.id).toBe(1);
   });
   it('includes legacy single-visit bookings without manufacturing visit rows', async () => {
@@ -31,7 +31,7 @@ describe('historical attendance review', () => {
     expect((await getHistoricalVisitReviewQueue())[0].visit.id).toBe(0);
   });
   it('uses the overnight visit start rather than the booking date for review eligibility', async () => {
-    state.rows.push([], [{ visit: { id: 2, startTime: '01:00' }, booking: { ...oldBooking,
+    state.rows.push([], [{ visit: { id: 2, startTime: '01:00', endTime: '02:00' }, booking: { ...oldBooking,
       bookingDate: new Date('2026-09-29'), startTime: '20:00', operatingWindowStartTime: '20:00' },
       kitchenName: 'Kitchen', timezone: 'America/St_Johns' }]);
     expect(await getHistoricalVisitReviewQueue()).toEqual([]);

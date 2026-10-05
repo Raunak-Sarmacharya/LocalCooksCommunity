@@ -8,7 +8,7 @@
 
 import { useState, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { CheckCircle, Clock, User, Loader2, MoreHorizontal, Calendar, LogIn, LogOut, XCircle, ShieldCheck, FileWarning, RefreshCw, Camera, Upload, X, KeyRound } from "@/components/ui/manager-icons"
+import { CheckCircle, Clock, User, Loader2, MoreHorizontal, Calendar, LogIn, LogOut, XCircle, ShieldCheck, FileWarning,  Camera, Upload, X,  } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -66,12 +66,6 @@ interface TodayBooking {
   checkoutManagerMessage?: string | null
   checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null
   checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null
-  accessCode: string | null
-  accessCodeFormat: string | null
-  accessCodeValidFrom: string | null
-  accessCodeValidUntil: string | null
-  hasAccessCodeHash: boolean | null
-  smartLockEnabled: boolean | null
   kitchenName: string | null
   locationName: string | null
   chefEmail: string | null
@@ -166,7 +160,6 @@ export function TodaysKitchenBookings() {
   const [claimDescription, setClaimDescription] = useState("")
   const [claimAmount, setClaimAmount] = useState("")
   const [evidencePhotos, setEvidencePhotos] = useState<string[]>([])
-  const [editAccessCode, setEditAccessCode] = useState("")
 
   const { uploadFile: uploadEvidenceFile, isUploading: isUploadingEvidence, uploadProgress: evidenceUploadProgress } = useSessionFileUpload({
     maxSize: 4.5 * 1024 * 1024,
@@ -190,83 +183,6 @@ export function TodaysKitchenBookings() {
       e.target.value = ''
     }
   }, [uploadEvidenceFile, evidencePhotos.length])
-
-  // Set access code mutation
-  const setAccessCodeMutation = useMutation({
-    mutationFn: async ({ bookingId, accessCode }: { bookingId: number; accessCode: string }) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(`/api/manager/bookings/${bookingId}/access-code`, {
-        method: "PUT",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ accessCode }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || "Failed to set access code")
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/bookings/today"] })
-      toast.success(tt("accessCodeUpdated"))
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
-  // Revoke access code mutation
-  const revokeAccessCodeMutation = useMutation({
-    mutationFn: async (bookingId: number) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(`/api/manager/bookings/${bookingId}/revoke-access-code`, {
-        method: "POST",
-        headers,
-        credentials: "include",
-      })
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || "Failed to revoke access code")
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/bookings/today"] })
-      toast.success(tt("accessCodeRevoked"))
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
-  // Regenerate access code mutation
-  const regenerateAccessCodeMutation = useMutation({
-    mutationFn: async (bookingId: number) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(`/api/manager/bookings/${bookingId}/regenerate-access-code`, {
-        method: "POST",
-        headers,
-        credentials: "include",
-      })
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || "Failed to regenerate access code")
-      }
-      return response.json()
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/bookings/today"] })
-      if (data.accessCode) {
-        toast.success(`New access code: ${data.accessCode}`)
-      } else {
-        toast.success(tt("accessCodeRegenerated"))
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
 
   // Fetch upcoming bookings
   const { data, isLoading, refetch } = useQuery<TodayResponse>({
@@ -435,7 +351,6 @@ export function TodaysKitchenBookings() {
     setClaimDescription("")
     setClaimAmount("")
     setEvidencePhotos([])
-    setEditAccessCode("")
   }
 
   const openAction = (
@@ -449,7 +364,6 @@ export function TodaysKitchenBookings() {
     setClaimDescription("")
     setClaimAmount("")
     setEvidencePhotos([])
-    setEditAccessCode("")
   }
 
   // Stats
@@ -526,7 +440,6 @@ export function TodaysKitchenBookings() {
                 <p className="break-words text-sm">{booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}</p>
                 {booking.visitId && <p className="text-xs text-muted-foreground">Visit {(booking.visitBlockIndex ?? 0) + 1}</p>}
                 {booking.referenceCode && <p className="break-all font-mono text-xs text-muted-foreground">{booking.referenceCode}</p>}
-                {booking.hasAccessCodeHash && <p className="text-xs text-blue-600">{mt("codeSet")}</p>}
                 <div className="flex flex-wrap gap-2 border-t pt-3">
                   <Button variant="outline" size="sm" onClick={() => openAction(booking, "view")}>{mt("viewDetails")}</Button>
                   {booking.checkinStatus === "checkout_requested" && <>
@@ -587,10 +500,6 @@ export function TodaysKitchenBookings() {
                           PENDING
                         </Badge>
                       )}
-                      {booking.hasAccessCodeHash && (
-                          <div className="text-xs text-blue-600 font-mono flex items-center gap-1 mt-0.5">
-                            <KeyRound className="h-3 w-3" />{mt("codeSet")}</div>
-                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
@@ -925,123 +834,6 @@ export function TodaysKitchenBookings() {
                 )}
 
                 <Separator />
-
-                {/* Access Code Section (Phase 2 Enhanced) */}
-                {selectedBooking.smartLockEnabled && (
-                  <div className="rounded-lg border bg-blue-50/50 border-blue-200 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <KeyRound className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-800">{mt("doorAccessCode")}</span>
-                        {selectedBooking.accessCodeFormat && (
-                          <Badge variant="outline" className="text-[10px] h-5 border-blue-300 text-blue-600">
-                            {selectedBooking.accessCodeFormat === 'alphanumeric' ? 'ABC' : '123'}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {selectedBooking.hasAccessCodeHash && (
-                          <Badge className="bg-amber-100 text-amber-700 text-xs">
-                            <Clock className="h-3 w-3 mr-1" />{mt("active")}</Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {selectedBooking.hasAccessCodeHash ? (
-                      <>
-                          <p className="text-sm font-mono text-blue-700 tracking-wider">
-                            ••••••
-                          </p>
-                        {selectedBooking.accessCodeValidFrom && selectedBooking.accessCodeValidUntil && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            Valid: {formatTime(selectedBooking.accessCodeValidFrom.split('T')[1]?.substring(0, 5) || '')} – {formatTime(selectedBooking.accessCodeValidUntil.split('T')[1]?.substring(0, 5) || '')}
-                          </p>
-                        )}
-                        {/* Action buttons */}
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => regenerateAccessCodeMutation.mutate(selectedBooking.id)}
-                            disabled={regenerateAccessCodeMutation.isPending}
-                          >
-                            {regenerateAccessCodeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                            Regenerate
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => revokeAccessCodeMutation.mutate(selectedBooking.id)}
-                            disabled={revokeAccessCodeMutation.isPending}
-                          >
-                            {revokeAccessCodeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
-                            Revoke
-                          </Button>
-                        </div>
-                        {/* Manual code override */}
-                        <div className="mt-2 flex items-center gap-2">
-                          <Input
-                            value={editAccessCode}
-                            onChange={(e) => setEditAccessCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase())}
-                            placeholder={mt("manualCode")}
-                            className="h-8 w-32 font-mono text-sm"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (editAccessCode.length >= 4) {
-                                setAccessCodeMutation.mutate({ bookingId: selectedBooking.id, accessCode: editAccessCode })
-                              } else if (editAccessCode.length < 4) {
-                                toast.error(tt("codeMustBe4To8Chars"))
-                              }
-                            }}
-                            disabled={setAccessCodeMutation.isPending || editAccessCode.length < 4}
-                          >
-                            {setAccessCodeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Set"}
-                          </Button>
-                        </div>
-                        <p className="text-xs text-blue-500 mt-1">{mt("overrideWithACodeYouProgrammedIntoTheLock")}</p>
-                      </>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-xs text-blue-600">{mt("noAccessCodeSetGenerateOneAutomaticallyOrEnterACodeManually")}</p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => regenerateAccessCodeMutation.mutate(selectedBooking.id)}
-                            disabled={regenerateAccessCodeMutation.isPending}
-                          >
-                            {regenerateAccessCodeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                            Auto-Generate
-                          </Button>
-                          <span className="text-xs text-blue-400">or</span>
-                          <Input
-                            value={editAccessCode}
-                            onChange={(e) => setEditAccessCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase())}
-                            placeholder={mt("eGA7K9MX")}
-                            className="h-8 w-28 font-mono text-sm"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (editAccessCode.length >= 4) {
-                                setAccessCodeMutation.mutate({ bookingId: selectedBooking.id, accessCode: editAccessCode })
-                              } else {
-                                toast.error(tt("codeMustBe4To8Chars"))
-                              }
-                            }}
-                            disabled={setAccessCodeMutation.isPending || editAccessCode.length < 4}
-                          >
-                            {setAccessCodeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Set"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Clear Checkout */}
                 {actionMode === "clear-checkout" && (

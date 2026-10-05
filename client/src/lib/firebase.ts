@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { firestoreDatabaseId } from '@shared/firestore-database';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -24,7 +25,7 @@ let db: any = null;
 if (isFirebaseConfigured) {
   app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
-  db = getFirestore(app);
+  db = getFirestore(app, firestoreDatabaseId(import.meta.env.VITE_FIRESTORE_DATABASE_ID, import.meta.env.VITE_VERCEL_ENV));
 } else {
   logger.warn('Firebase is not configured. Google authentication will be disabled.');
 }

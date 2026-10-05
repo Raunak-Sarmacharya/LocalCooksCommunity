@@ -19,6 +19,9 @@ interface EmailLogSectionProps {
 }
 
 interface EmailLogRecord {
+  delivery?: { source: string; sourceId: number | null; eventId: number | null; resource: string; channel: string;
+    originalLogId: number; dueAt: string | null; nextAttemptAt: string | null; attempts: number | null;
+    lastAttemptAt: string | null; state: string; destination: string; recipientDestination?: string; recovery: string; suppression: string | null };
   id: number;
   recipientEmail: string;
   recipientUserId: number | null;
@@ -60,12 +63,16 @@ const PAGE_SIZE = 50;
 
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All categories" },
+  { value: "advance_reminder", label: "Scheduled actions" },
+  { value: "advance_reminder_attempt", label: "Reminder attempts" },
+  { value: "lifecycle_outcome_attempt", label: "Outcome attempts" },
   { value: "booking", label: "Booking" },
   { value: "application", label: "Application" },
   { value: "verification", label: "Verification" },
   { value: "welcome", label: "Welcome" },
   { value: "promo", label: "Promo" },
   { value: "damage_claim", label: "Damage claim" },
+  { value: "lifecycle_outcome", label: "Outcome intent" },
   { value: "overstay", label: "Overstay" },
   { value: "Kitchen Tour", label: "Kitchen Tour" },
   { value: "license", label: "License" },
@@ -118,11 +125,14 @@ function categoryLabel(category: string): string {
 }
 
 function statusBadge(status: string) {
+  if (status === "scheduled") return <Badge variant="secondary">Scheduled action</Badge>;
+  if (status === "suppressed") return <Badge variant="secondary">Obsolete action suppressed</Badge>;
+  if (status === "queued") return <Badge variant="secondary">Pending delivery</Badge>;
   if (status === "sent") {
     return (
       <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
         <CheckCircle className="mr-1 h-3 w-3" />
-        Sent
+        Acknowledged
       </Badge>
     );
   }
@@ -152,6 +162,31 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
   const [category, setCategory] = useState("all");
   const [page, setPage] = useState(0);
   const [selectedLog, setSelectedLog] = useState<EmailLogRecord | null>(null);
+  const [eventPage, setEventPage] = useState(0);
+  const pendingQuery = useQuery<{ events: { source: string; id: number; reservationId: number;
+    attempts: number | null; dueAt: string; nextAttemptAt: string; leaseUntil: string | null; destination: string; acknowledgmentCount: number;
+    recoveryOwnerIds: number[]; recipients: { recipient: string; channel: string; acknowledged: boolean }[] }[] }>({
+    queryKey: ['/api/admin/email-logs/pending-events', eventPage],
+    queryFn: async () => {
+      const token = await getFirebaseToken();
+      const response = await fetch(`/api/admin/email-logs/pending-events?offset=${eventPage * 50}`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+      if (!response.ok) throw new Error('Pending delivery events unavailable');
+      return response.json();
+    }, staleTime: 15_000,
+  });
+  const eventRetry = useMutation({
+    mutationFn: async (event: { source: string; id: number }) => {
+      const token = await getFirebaseToken();
+      const response = await fetch(`/api/admin/email-logs/events/${event.source}/${event.id}/retry`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Original event remains pending');
+      return data;
+    }, onSuccess: data => toast.success('Recovery checked', { description: data.message }),
+    onError: (error: Error) => toast.error('Recovery pending', { description: error.message }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['/api/admin/email-logs'] }).then(() =>
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/email-logs/pending-events'] })),
+  });
 
   const offset = page * PAGE_SIZE;
 
@@ -205,26 +240,20 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
       }
       return data as { success: boolean; message?: string };
     },
-    onSuccess: (_data, logId) => {
-      toast.success("Email resent", {
-        description: "A new delivery attempt was logged.",
+    onSuccess: (data) => {
+      toast.success("Delivery reconciled", {
+        description: data.message || "Original acknowledgment recorded; inbox receipt is not confirmed.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email-logs/stats"] });
-      setSelectedLog((current) =>
-        current && current.id === logId
-          ? {
-              ...current,
-              retryCount: (current.retryCount || 0) + 1,
-              retriedAt: new Date().toISOString(),
-            }
-          : current
-      );
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email-logs/pending-events"] });
+      setSelectedLog(null);
     },
     onError: (error: Error) => {
       toast.error("Retry failed", { description: error.message });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email-logs/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email-logs/pending-events"] });
     },
   });
 
@@ -288,9 +317,31 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Email Log</h1>
         <p className="text-muted-foreground">
-          Track every email sent to chefs and managers, including whether delivery succeeded.
+          Track scheduled actions, original outcomes and attempts. Email acknowledgment means SMTP acceptance; inbox receipt is unverified. In-app acknowledgment is separate.
         </p>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle>Pending original decisions</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p>Local Cooks owns delivery recovery. These events may have no email attempt yet. Retry preserves original acknowledgments and decision ordering. Verify contact and missed response opportunity in the current source.</p>
+          {pendingQuery.isError ? <p role="alert">Pending decisions could not be loaded. Refresh to retry.</p> : pendingQuery.isLoading ? <p>Loading pending decisions…</p> : !pendingQuery.data?.events.length ? <p>No pending original decision events.</p> : pendingQuery.data.events.map(event => (
+            <div className="rounded border p-3 flex flex-wrap items-center gap-3" key={`${event.source}:${event.id}`}>
+              <span>{event.source} #{event.reservationId} · event #{event.id} · {event.acknowledgmentCount} channel acknowledgments · next attempt {formatDateTimeSt(event.nextAttemptAt)}{event.leaseUntil ? ` · lease until ${formatDateTimeSt(event.leaseUntil)}` : ''}</span>
+              <span>Due {formatDateTimeSt(event.dueAt)} · assigned recovery owners: {event.recoveryOwnerIds.join(', ') || 'Local Cooks; assignment occurs on first failure'} · attempts: {event.attempts ?? 'not counted by ledger'}</span>
+              <span>{event.recipients.map(person => `${person.recipient} (${person.channel}: ${person.acknowledged ? 'acknowledged' : 'pending'})`).join('; ') || 'No pending email recipients; inspect current source'}</span>
+              <a className="underline" href={event.destination}>Open current source</a>
+              <Button variant="outline" size="sm" disabled={eventRetry.isPending || !!(event.leaseUntil && Date.parse(event.leaseUntil) > Date.now())} onClick={() => eventRetry.mutate(event)}>Recover original event</Button>
+            </div>
+          ))}
+          <p>Up to 50 pending events per source per page; earlier decisions remain ahead of later ones until acknowledged or assigned recovery ownership.</p>
+          <div className="flex gap-2 items-center">
+            <Button variant="outline" size="sm" disabled={!eventPage} onClick={() => setEventPage(page => page - 1)}>Previous events</Button>
+            <span>Page {eventPage + 1}</span>
+            <Button variant="outline" size="sm" disabled={pendingQuery.isFetching || !['booking', 'tour'].some(source => (pendingQuery.data?.events.filter(event => event.source === source).length || 0) >= 50)} onClick={() => setEventPage(page => page + 1)}>Next events</Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
@@ -304,11 +355,11 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Sent</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Accepted</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{stats?.sent ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Accepted by the mail server</p>
+            <p className="text-xs text-muted-foreground mt-1">SMTP attempt records; excludes intent and in-app rows</p>
           </CardContent>
         </Card>
         <Card>
@@ -375,8 +426,12 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="due">Due / overdue intents</SelectItem>
+            <SelectItem value="sent">Acknowledged</SelectItem>
+            <SelectItem value="scheduled">Scheduled actions</SelectItem>
+            <SelectItem value="suppressed">Obsolete actions suppressed</SelectItem>
+            <SelectItem value="queued">Pending delivery</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
             <SelectItem value="skipped_duplicate">Skipped</SelectItem>
           </SelectContent>
         </Select>
@@ -413,7 +468,7 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Sent</TableHead>
+                  <TableHead>Logged</TableHead>
                   <TableHead>Recipient</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Subject</TableHead>
@@ -448,10 +503,10 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
                       <TableCell className="text-xs text-muted-foreground">
                         {categoryLabel(log.category)}
                       </TableCell>
-                      <TableCell>{statusBadge(log.status)}</TableCell>
+                      <TableCell>{statusBadge(log.status)}{log.delivery && <div className="mt-1 text-xs">{log.delivery.channel} · {log.delivery.state}<br />Due {formatDateTimeSt(log.delivery.dueAt)}</div>}</TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
-                          {log.status === "failed" && (
+                          {["failed", "queued", "scheduled"].includes(log.status) && (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -473,8 +528,8 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   {log.canRetry
-                                    ? "Resend this email"
-                                    : "Original content was not stored, so this send cannot be retried"}
+                                    ? "Check current action and reconcile original delivery"
+                                    : "Future, accepted, suppressed, leased or unsupported legacy action: open details for recovery"}
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -549,9 +604,19 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
                 <span>{categoryLabel(selectedLog.category)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Sent at</span>
+                <span className="text-muted-foreground">Logged at</span>
                 <span>{formatDateTimeSt(selectedLog.createdAt)}</span>
               </div>
+              {selectedLog.delivery && <div className="rounded border p-3 space-y-2">
+                <p>{selectedLog.delivery.state} · {selectedLog.delivery.channel}</p>
+                <p>Source: {selectedLog.delivery.source} #{selectedLog.delivery.sourceId ?? 'unavailable'} · original {selectedLog.delivery.eventId ? 'attempt log' : 'intent/log'} #{selectedLog.delivery.originalLogId}{selectedLog.delivery.eventId ? ` · event #${selectedLog.delivery.eventId}` : ''} · {selectedLog.delivery.resource}</p>
+                <p>Due: {formatDateTimeSt(selectedLog.delivery.dueAt)} · next attempt: {formatDateTimeSt(selectedLog.delivery.nextAttemptAt)} (first eligible worker run)</p>
+                <p>Recorded attempts: {selectedLog.delivery.attempts ?? 'not counted by original ledger'} · last: {formatDateTimeSt(selectedLog.delivery.lastAttemptAt)}</p>
+                {selectedLog.delivery.suppression && <p>{selectedLog.delivery.suppression}</p>}
+                <p>{selectedLog.delivery.recovery}</p>
+                {selectedLog.delivery.recipientDestination && <p>Intended participant action: {selectedLog.delivery.recipientDestination} (requires that participant’s role and ownership).</p>}
+                <a className="underline" href={selectedLog.delivery.destination}>Open current source as Local Cooks</a>
+              </div>}
               {selectedLog.fromAddress && (
                 <div className="flex items-start justify-between gap-4">
                   <span className="text-muted-foreground">From</span>
@@ -591,7 +656,7 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
                   <span className="font-mono text-xs">#{selectedLog.retryOfId}</span>
                 </div>
               )}
-              {selectedLog.status === "failed" && (
+              {["failed", "queued", "scheduled"].includes(selectedLog.status) && (
                 <Button
                   className="w-full"
                   disabled={!selectedLog.canRetry || retryMutation.isPending}
@@ -602,7 +667,7 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
                   ) : (
                     <RotateCcw className="h-4 w-4 mr-2" />
                   )}
-                  Retry send
+                  Check current action / retry original
                 </Button>
               )}
               {selectedLog.previewText && (
