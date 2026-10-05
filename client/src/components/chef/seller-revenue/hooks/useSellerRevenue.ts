@@ -3,6 +3,8 @@ import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
 import { tt } from "@/i18n/common-ns";
 import { ct } from "@/i18n/chef-ns";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import type { Application } from "@shared/schema";
 
 // ─── Shop URLs ──────────────────────────────────────────────────────────────
 
@@ -133,15 +135,32 @@ export interface OrdersResponse {
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export function useShopStatus(enabled = true) {
+  const { user } = useFirebaseAuth();
+  const { data: applications } = useQuery<Application[]>({
+    queryKey: ["/api/firebase/applications/my", user?.uid],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/firebase/applications/my", { headers });
+      if (!res.ok) throw new Error(ct("failedToFetchShopStatus"));
+      return res.json();
+    },
+    enabled: enabled && Boolean(user),
+    staleTime: 30_000,
+  });
+  // Match requireApprovedSeller: only the newest application grants access.
+  const latest = applications?.reduce<Application | undefined>((current, app) =>
+    !current || app.id > current.id ? app : current, undefined);
+  const approved = latest?.status === "approved" && latest.foodSafetyLicenseStatus === "approved"
+    && (!latest.foodEstablishmentCertUrl || latest.foodEstablishmentCertStatus === "approved");
   return useQuery<ShopStatus>({
-    queryKey: ["/api/chef/seller/shop-status"],
+    queryKey: ["/api/chef/seller/shop-status", user?.uid],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const res = await fetch("/api/chef/seller/shop-status", { headers });
       if (!res.ok) throw new Error(ct("failedToFetchShopStatus"));
       return res.json();
     },
-    enabled,
+    enabled: enabled && Boolean(user) && approved,
     staleTime: 60_000,
   });
 }

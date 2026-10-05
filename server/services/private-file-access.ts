@@ -15,6 +15,10 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   const listings = await db.select({ imageUrl: kitchens.imageUrl, galleryImages: kitchens.galleryImages }).from(kitchens)
     .where(or(like(kitchens.imageUrl, `%${filename}`), sql`${kitchens.galleryImages} @> ${JSON.stringify([url])}::jsonb`));
   if (listings.some(row => row.imageUrl === url || (row.galleryImages as string[] | null)?.includes(url))) return true;
+  // Location branding is displayed to visitors and chefs without document grants.
+  const logos = await db.select({ logoUrl: locations.logoUrl }).from(locations)
+    .where(eq(locations.logoUrl, url)).limit(1);
+  if (logos.some(row => row.logoUrl === url)) return true;
   if (!actor) return false;
   if (actor.role === 'admin') return true;
   if (filename.startsWith(`${actor.id}_`)) return true;
