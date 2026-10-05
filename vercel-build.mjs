@@ -67,7 +67,7 @@ if (fs.existsSync('dist/public')) {
     
     if (fs.statSync(srcPath).isDirectory()) {
       // Copy directory recursively
-      runCommand(`cp -r "${srcPath}" "${destPath}"`);
+      fs.cpSync(srcPath, destPath, { recursive: true });
     } else {
       // Copy file
       fs.copyFileSync(srcPath, destPath);
