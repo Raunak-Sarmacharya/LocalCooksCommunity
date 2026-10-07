@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), conversation: {} as any, message: {} as any,
-  mapping: undefined as any, person: {} as any, keys: new Set<string>(), firestore: vi.fn(), pools: [] as any[], fetch: vi.fn() }));
+  mapping: undefined as any, person: {} as any, keys: new Set<string>(), firestore: vi.fn(), pools: [] as any[], fetch: vi.fn(), diagnostics: vi.fn() }));
 vi.mock('../../functions/node_modules/firebase-admin', () => ({ initializeApp: vi.fn() }));
 vi.mock('../../functions/node_modules/firebase-admin/lib/esm/firestore/index.js', () => ({ getFirestore: state.firestore }));
 state.firestore.mockImplementation(() => ({ collection: (name: string) => ({ doc: () => ({
@@ -17,6 +17,7 @@ const fire = (authType = 'service_account', snapshot = state.message) => (onNewC
   params: { conversationId: 'thread', messageId: 'm1' }, authId: 'server-service-account', authType });
 beforeEach(() => {
   vi.clearAllMocks(); state.keys.clear();
+  vi.spyOn(console, 'info').mockImplementation(state.diagnostics);
   vi.stubEnv('INNGEST_EVENT_KEY', 'fixture-production-key'); vi.stubEnv('STAGING_INNGEST_EVENT_KEY', 'fixture-staging-key');
   vi.stubGlobal('fetch', state.fetch); state.fetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({ status: 200, ids: ['event-id'] }) });
   state.conversation = { chefId: 3, managerId: 2, locationId: 5, chefFirebaseUid: 'actual-chef', managerFirebaseUid: 'actual-manager' };
@@ -33,9 +34,31 @@ beforeEach(() => {
     return { rows: [] };
   });
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const inserts = () => state.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT'));
 describe('actual service-account trigger wired to real canonical transactional producer', () => {
+  it('diagnoses auth skips, committed outcomes and retry failures without exposing private values', async () => {
+    await fire('unknown');
+    let entries = state.diagnostics.mock.calls.map(([value]) => JSON.parse(value));
+    expect(entries).toContainEqual(expect.objectContaining({ stage: 'skipped', reason: 'untrusted-auth-type', authType: 'unknown', conversationId: 'thread', messageId: 'm1' }));
+    expect(state.query).not.toHaveBeenCalled();
+    Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
+    await fire();
+    entries = state.diagnostics.mock.calls.map(([value]) => JSON.parse(value));
+    expect(entries).toContainEqual(expect.objectContaining({ stage: 'committed', result: 'queued', starting: true }));
+    expect(entries).toContainEqual(expect.objectContaining({ stage: 'published' }));
+    const commitIndex = state.query.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
+    const logIndex = state.diagnostics.mock.calls.findIndex(([value]) => JSON.parse(value).stage === 'committed');
+    expect(state.query.mock.invocationCallOrder[commitIndex]).toBeLessThan(state.diagnostics.mock.invocationCallOrder[logIndex]);
+    const failure = Object.assign(Error('private content https://inn.gs/e/private-key actual-chef'), { code: 'ECONNRESET' });
+    state.fetch.mockRejectedValueOnce(failure);
+    await expect(fire()).rejects.toBe(failure);
+    entries = state.diagnostics.mock.calls.map(([value]) => JSON.parse(value));
+    expect(entries).toContainEqual(expect.objectContaining({ stage: 'error', failedStage: 'publish-start', code: 'ECONNRESET' }));
+    const output = JSON.stringify(entries);
+    for (const privateValue of ['private content', 'private-key', 'actual-chef', 'actual-manager', 'Tour coordination', 'fixture-production-key'])
+      expect(output).not.toContain(privateValue);
+  });
   it('commits a starting-message alert/reminder before publishing an idempotent wakeup; consecutive messages stay quiet', async () => {
     Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
     await fire(); await fire();
@@ -59,6 +82,28 @@ describe('actual service-account trigger wired to real canonical transactional p
     vi.stubEnv('STAGING_DATABASE_URL', 'postgresql://fixture@staging.invalid/fixture');
     await (staging.onNewStagingChatMessage as any).run({ data: { data: () => state.message }, params: { conversationId: 'thread', messageId: 'm1' }, authType: 'service_account' });
     expect(state.fetch.mock.calls[0][0]).toBe('https://inn.gs/e/fixture-staging-key');
+  });
+  it.each(['firebase-adminsdk-fbsvc@formauth-9e620.iam.gserviceaccount.com', '104768754596329400480'])('accepts an unknown staging auth type only for its pinned server writer %s', async authId => {
+    Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
+    await (staging.onNewStagingChatMessage as any).run({ data: { data: () => state.message }, params: { conversationId: 'thread', messageId: 'm1' }, authType: 'unknown', authId });
+    expect(inserts()).toHaveLength(3);
+    expect(state.fetch).toHaveBeenCalledTimes(1);
+    expect(state.fetch.mock.calls[0][0]).toBe('https://inn.gs/e/fixture-staging-key');
+    expect(JSON.stringify(state.diagnostics.mock.calls)).not.toContain(authId);
+  });
+  it.each([
+    ['unknown', undefined], ['unknown', 'unrelated-service-account'], ['api_key', 'firebase-adminsdk-fbsvc@formauth-9e620.iam.gserviceaccount.com'],
+    ['unauthenticated', '104768754596329400480'], ['system', '104768754596329400480'],
+  ])('rejects staging auth type %s with an absent, foreign or inappropriate writer identity', async (authType, authId) => {
+    await (staging.onNewStagingChatMessage as any).run({ data: { data: () => state.message }, params: { conversationId: 'thread', messageId: 'm1' }, authType, authId });
+    expect(state.query).not.toHaveBeenCalled();
+    expect(state.fetch).not.toHaveBeenCalled();
+  });
+  it('still validates SQL authorship for the pinned unknown staging writer', async () => {
+    state.message.senderFirebaseUid = 'forged';
+    await (staging.onNewStagingChatMessage as any).run({ data: { data: () => state.message }, params: { conversationId: 'thread', messageId: 'm1' }, authType: 'unknown', authId: '104768754596329400480' });
+    expect(inserts()).toHaveLength(0);
+    expect(state.fetch).not.toHaveBeenCalled();
   });
   it('exports only a staging trigger, pinned to staging Firestore and its separate SQL secret', async () => {
     expect(Object.keys(staging)).toEqual(['onNewStagingChatMessage']);

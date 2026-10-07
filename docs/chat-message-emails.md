@@ -25,6 +25,34 @@ For activation:
 
 Older persisted messages without episode metadata retain their legacy one-hour digest/recovery path. No historical notification backfill is performed.
 
+## Staging inspection — October 7, 2026
+
+The browser inspection confirmed both `starting-chat-message-email` and the two-minute recurring worker are registered in the Staging Inngest app. Recent recurring runs completed. The sole starting-message run inspected received `data: {}` and failed with `Invalid starting chat message identity`; this does not demonstrate actual chat-event publication or email delivery.
+
+Read-only Firebase inspection found `onNewStagingChatMessage` active on the named staging database, but still deployed from October 5 with only `STAGING_DATABASE_URL` bound. `STAGING_INNGEST_EVENT_KEY` did not exist in Secret Manager. The current source additionally requires that event secret and publishes after committing the durable intents. The deployed producer therefore has not received the new starting-email integration.
+
+The latest inspected manager-to-chef test message was unread and had a valid starting episode and recipient. The SQL database configured by the deployed trigger matched the workspace configuration, contained its confirmed tour and both participants, and contained no chat-email intents. Read suppression does not explain that message's missing email. Activation of the current producer must be verified before concluding SMTP or inbox delivery works.
+
+The local staging audit now requires exactly both staging secret bindings, checks access to each, and rejects access to production secrets. The deployment helper adds an explicit `event-secret` operation. Supply `STAGING_INNGEST_EVENT_KEY` from the **same Staging Inngest environment** as the portal; the helper never falls back to `INNGEST_EVENT_KEY`. A portal's `INNGEST_EVENT_KEY` variable may also hold that staging key, so the variable name alone does not identify a production key.
+
+When authorized to activate staging, provision the explicit key with `node scripts/firebase-staging-deploy.mjs event-secret`, ensure the restricted staging service identity can access it, compile/deploy the updated staging function with the existing helper, and verify using the updated audit. Then test new unread messages in both directions, inspect their real event identities and delivery records, and verify actual inbox delivery. Previously persisted messages do not automatically emit another document-created event.
+
+Verification of the source integration: 94 mocked server checks passed, including Inngest, Firebase publication, local delivery, and notice production. Two isolated staging-tooling checks, script syntax checks, Functions TypeScript checking, and whitespace checking passed. This inspection did not provision a secret, change IAM, deploy, replay events, create a message, or send an email.
+
+### Authorized staging activation completed
+
+Later on October 7, the user explicitly authorized provisioning the staging event key, granting the staging trigger access, and deploying only `onNewStagingChatMessage`. The staging secret was created and the updated function deployment succeeded. The post-deployment audit verified both staging secret bindings and access policies, the named staging database, private invocation by the restricted staging service account, and unchanged production function and default Firestore-rules fingerprints.
+
+The existing unread test message passed a read-only current participant/tour eligibility check. No chat-email intent had appeared at the immediate post-deployment check. Inbox delivery therefore remains to be verified with a fresh starting message: fully read the earlier episode, close the recipient conversation, send a new message, and check the resulting Inngest event, durable intent, SMTP acceptance, and inbox. Repeat in the other direction. No historical message replay or synthetic test email was performed during activation.
+
+### Fresh-message producer failure identified
+
+After activation, the user's fresh first-unread message at 16:32 IST reached the new Firebase revision but produced no SQL email intent or Inngest event. The recipient had read the preceding episode, and read-only checks confirmed current participant and tour eligibility. A diagnostic-only staging deployment then identified the next fresh message's exact early exit: `authType: unknown`, `reason: untrusted-auth-type`. The trigger had required `service_account` before reaching its canonical authorization checks.
+
+The staging source now also permits `unknown` only when the event's `authId` equals the pinned server service account's email or numeric IAM identity. That identity was checked against the existing server credential configuration and a read-only IAM lookup. Missing/foreign identities and other authentication types remain rejected; current SQL ownership, sender role/UID, canonical relationship, eligibility and read/reply checks still run. Production does not gain this fallback. Thirty trigger checks and Functions TypeScript checking passed. Actual event publication, SMTP acceptance and inbox delivery still require a fresh message after this fix is deployed.
+
+Structured producer diagnostics record event/message identifiers, authentication type, whether a writer identity is present/trusted, named skip stages, SQL commit outcome and successful event publication. They exclude message content, recipient addresses, sender UIDs and secrets. Retry errors record only the failed stage and a safe error code.
+
 ## Preview
 
 Run `npm run preview:tour-emails` and filter the harness to **Conversation**. Starting messages, attachments and unread reminders are shown for both chefs and managers using fictional recipients and the actual renderers.
