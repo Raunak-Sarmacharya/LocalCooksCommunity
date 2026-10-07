@@ -1,5 +1,6 @@
 /** Shared delivery theme, independent of the application's display mode. */
-export const emailBrandLogoUrl = 'https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png';
+// Pin the published asset so staging emails do not depend on a later main-branch merge.
+export const emailBrandLogoUrl = 'https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/144ba725c1260c6b763c266b2b392a8d5dce0d65/attached_assets/emailHeader-brand-red.png';
 
 const darkRules = `
 body.lc-email{background:#171717 !important;color:#f5f5f4 !important}
@@ -49,9 +50,10 @@ export function prepareEmailHtml(html: string): string;
 export function prepareEmailHtml(html: undefined): undefined;
 export function prepareEmailHtml(html: string | undefined): string | undefined;
 export function prepareEmailHtml(html: string | undefined): string | undefined {
-  if (!html || html.includes('data-lc-email-theme="1"')) return html;
-  let themed = html.replace(/(<img\b[^>]*\bsrc=["'])https:\/\/raw\.githubusercontent\.com\/Raunak-Sarmacharya\/LocalCooksCommunity\/refs\/heads\/main\/attached_assets\/(?:emailHeader|Logo_LocalCooks)\.png(["'][^>]*>)/gi,
+  if (!html) return html;
+  let themed = html.replace(/(<img\b[^>]*\bsrc=["'])https:\/\/raw\.githubusercontent\.com\/Raunak-Sarmacharya\/LocalCooksCommunity\/refs\/heads\/main\/attached_assets\/(?:emailHeader(?:-brand-red)?|Logo_LocalCooks)\.png(["'][^>]*>)/gi,
     `$1${emailBrandLogoUrl}$2`);
+  if (themed.includes('data-lc-email-theme="1"')) return themed;
   if (!/<body\b/i.test(themed)) themed = `<!DOCTYPE html><html><head></head><body>${themed}</body></html>`;
   themed = themed.replace(/<([a-z][\w:-]*)\b([^<>]*?)>/gi, (tag, name: string, attributes: string) => {
     const classes: string[] = name.toLowerCase() === 'body' ? ['lc-email'] : [];

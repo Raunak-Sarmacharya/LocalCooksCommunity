@@ -3,6 +3,7 @@ vi.mock('./phone-utils', () => ({ stripCountryCode: (value: string) => value }))
 vi.mock('./logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 import { generateTourConfirmedEmail, generateTourRequestedChefEmail, generateTourRequestedManagerEmail,
   generateTourRequestedLocalCooksEmail, generateTourRejectedChefEmail, generateTourManagerChangeEmail, getSubdomainUrl, renderTransactionalEmail } from './email';
+import { emailBrandLogoUrl } from './email-theme';
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
@@ -12,6 +13,16 @@ const base = { tourId: 42, durationMinutes: 30, isManager: false, email: 'chef@e
 const calendar = (email: ReturnType<typeof generateTourConfirmedEmail>) => String(email.attachments?.[0]?.content);
 
 describe('tour time and downloadable calendar', () => {
+  it('uses the published logo in confirmation and post-tour transactional headers', () => {
+    const emails = [generateTourConfirmedEmail(base), generateTourConfirmedEmail({ ...base, isManager: true }),
+      renderTransactionalEmail({ to: 'admin@example.test', subject: 'Tour feedback missing after 24 hours', recipientName: 'Local Cooks',
+        message: 'Review the missing responses.', facts: [], actionLabel: 'Review tour', actionUrl: 'https://dev-admin.localcooks.ca/admin' })];
+    for (const email of emails) {
+      expect(email.html).toContain(`src="${emailBrandLogoUrl}"`);
+      expect(email.html).not.toContain('/refs/heads/main/attached_assets/emailHeader-brand-red.png');
+    }
+  });
+
   it('opens manager review and alternative-time actions from pending request emails', () => {
     const email = generateTourRequestedManagerEmail({ ...base, tourDate: '2099-10-07T11:30:00Z', managerEmail: 'manager@example.test', managerName: 'Morgan', chefName: 'Alex' });
     expect(email.text).toContain('Confirm tour:');
