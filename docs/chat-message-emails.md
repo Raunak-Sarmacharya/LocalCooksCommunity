@@ -57,6 +57,18 @@ The fix deployed successfully as staging revision `onnewstagingchatmessage-00004
 
 The reverse chef-to-manager message `oGnR7HhGO2LUfip70mYA` also passed the pinned writer check, committed and published. Original intent 2415 and SMTP attempt 2417 were `sent`; the attempt contained an SMTP message ID, and reminder 2416 remained scheduled. The user confirmed inbox delivery works in both directions. No historical messages were replayed, and no agent-created test messages or synthetic emails were sent. The one-hour reminder's real timing was not separately exercised during this investigation.
 
+## Admin messages to both participants — October 7 follow-up
+
+The user reported manager notifications missing again and clarified that Local Cooks messages in the shared tour conversation should notify **both the chef and the manager**. The previous admin writer only incremented the chef's unread count and created a chef email episode; managers could see the shared message but had no notification obligation. The latest inspected admin-to-chef message was sent successfully. The earlier chef-to-manager initial message was also sent; its following unread continuation was intentionally suppressed. A fresh chef-to-manager failure has not yet been observed in the inspected staging records.
+
+New admin messages retain one shared message with server-owned `adminAudience: both` and independent `recipientStates` for chef/manager, each containing canonical recipient ID, episode ID and read timestamp. SQL ownership and role/UID validation choose the current participants. Each reader acknowledges only their own state; the participant messages endpoint projects the caller's read receipt. Older admin messages retain their original chef-only behavior without backfill.
+
+The producer queues each recipient independently using existing durable recipient-specific keys. Starting admin broadcasts publish separate stable chef/manager wakeups; the Inngest handler validates the optional recipient role and dispatches only its matching canonical intent. Ordinary/legacy event payloads remain compatible. Local delivery watches both recipients' initial/reminder keys. Reading or replying as one participant cannot suppress the other's email, and an old manager's state cannot decrement a reassigned manager's unread count. Admin tour labels now explicitly identify both recipients.
+
+Verification: 169 integrated server checks, 5 Inngest checks, and 22 focused client checks passed. Functions TypeScript and the server esbuild bundle passed. The broader server TypeScript check has existing errors in tour tests. Activation requires both the updated staging Firebase producer and a Vercel staging portal deployment; source verification alone does not prove inbox delivery. Test a fresh admin broadcast with both old episodes read and both conversations closed, then test a fresh chef-to-manager message and independent per-recipient reads.
+
+The staging Firebase producer update deployed successfully, and the post-deployment audit verified its secret bindings, restricted invocation and unchanged production fingerprints. The user deferred the Vercel staging portal redeployment until phase 3 work is complete. The new admin broadcast behavior therefore remains pending portal deployment and live inbox verification; do not report it as already active on the staging portals. A current fresh chef-to-manager failure also remains unverified.
+
 ## Preview
 
 Run `npm run preview:tour-emails` and filter the harness to **Conversation**. Starting messages, attachments and unread reminders are shown for both chefs and managers using fictional recipients and the actual renderers.

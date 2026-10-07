@@ -13,6 +13,45 @@ afterEach(() => {
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
 describe('admin tour incident links', () => {
+  it('reviews both private responses and requires an explanation for an unverified closure', async () => {
+    const version = '2026-10-05T13:00:00Z';
+    const rows = [{ viewing: { id: 42, status: 'confirmed', confirmationVerified: true, scheduledAt: '2026-10-05T12:00:00Z', durationMinutes: 30, createdAt: version, updatedAt: version }, chefName: 'Fixture chef' }];
+    const feedback = { available: false, scheduledAt: rows[0].viewing.scheduledAt, appointmentRevision: 1, response: null, chefSubmitted: true, managerSubmitted: true, conflict: true,
+      responses: [{ id: 1, respondentId: 7, respondentRole: 'chef', happened: true, comments: 'Chef private account' }, { id: 2, respondentId: 8, respondentRole: 'manager', happened: false, reason: 'Could not gain access', comments: 'Manager private account' }] };
+    const fetcher = vi.fn(async (url: string, options?: any) => ({ ok: true, json: async () => options?.method === 'PATCH' ? { id: 42, status: 'cancelled' } : url.endsWith('/feedback') ? feedback : url.includes('delivery-status') ? [] : rows }));
+    vi.stubGlobal('fetch', fetcher); window.history.replaceState({}, '', '/admin?section=tour-requests&viewing=42');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><AdminTourRequestsSection /></QueryClientProvider>);
+    await screen.findByText('Chef private account'); expect(screen.getByText('Manager private account')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Record outcome' }));
+    const save = screen.getByRole('button', { name: 'Save outcome' }); expect(save).toBeDisabled();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Tour outcome' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Close without a verified outcome' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message to chef' }), { target: { value: 'The available responses conflict; the actual result cannot be verified.' } });
+    expect(save).toBeEnabled(); fireEvent.click(save);
+    await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true));
+    expect(JSON.parse(fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')![1].body)).toMatchObject({ status: 'cancelled', disruptionReason: 'outcome_unknown', sharedManagerNotes: 'The available responses conflict; the actual result cannot be verified.' });
+    client.clear();
+  });
+  it('removes a soft change signal from Pending once the visitor arrives', async () => {
+    const rows = [{ viewing: { id: 90, status: 'confirmed', checkedInAt: '2026-10-07T12:00:00Z', scheduledAt: '2099-10-08T12:00:00Z', durationMinutes: 30, createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' }, reconfirmation: { reply: 'reschedule', needsStaffAttention: false }, chefName: 'Fixture visitor' }];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('delivery-status') ? [] : rows })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><AdminTourRequestsSection /></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'History (1)' })).toBeInTheDocument());
+    expect(screen.getByRole('tab', { name: 'Pending (0)' })).toBeInTheDocument();
+    client.clear();
+  });
+  it('keeps a confirmed pending time change visible in Pending without offering staff takeover', async () => {
+    const rows = [{ viewing: { id: 90, status: 'confirmed', scheduledAt: '2099-10-08T12:00:00Z', requestedRescheduleAt: '2099-10-09T12:00:00Z', durationMinutes: 30, createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' }, chefName: 'Fixture visitor' }];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('delivery-status') ? [] : rows })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><AdminTourRequestsSection /></QueryClientProvider>);
+    expect(await screen.findByText(/A tour reply or time-change decision needs attention/)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Pending (1)' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('button', { name: 'Review and confirm overdue request' })).not.toBeInTheDocument();
+    client.clear();
+  });
   it('reviews an overdue forwarded request with current overlap acknowledgement and a shared reason before confirmation', async () => {
     const version = '2026-10-01T10:00:00Z';
     const rows = [{ viewing: { id: 88, status: 'pending', scheduledAt: '2099-10-08T12:00:00Z', durationMinutes: 30, createdAt: version, adminReviewedAt: version, updatedAt: version }, chefName: 'Fixture visitor', managerName: 'Fixture owner' }];

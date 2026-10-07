@@ -26,6 +26,16 @@ describe('thin Inngest entry point and existing protected worker routes', () => 
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'production', LIFECYCLE_ENVIRONMENT: 'production' })).toBe(true);
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'preview', LIFECYCLE_ENVIRONMENT: 'staging', LIFECYCLE_STAGING_REHEARSAL: 'true' })).toBe(true);
   });
+  it('delivers broadcast wakeups independently by validated recipient role', async () => {
+    const step = { sleep: vi.fn(async () => {}), run: vi.fn(async (_id: string, action: () => Promise<unknown>) => action()) };
+    worker.chat.mockReset().mockResolvedValue({ completed: 1, errors: 0 });
+    for (const recipientRole of ['chef', 'manager'] as const) {
+      await runStartingChatEmail({ event: { data: { conversationId: 'thread', messageId: 'broadcast', senderId: 1, recipientRole } }, step });
+      expect(worker.chat).toHaveBeenCalledWith('thread', 'broadcast', 1, recipientRole);
+    }
+    await expect(runStartingChatEmail({ event: { data: { conversationId: 'thread', messageId: 'broadcast', senderId: 1, recipientRole: 'admin' as any } }, step })).rejects.toThrow('Invalid');
+    expect(worker.chat).toHaveBeenCalledTimes(2);
+  });
   it('rejects unsigned Inngest execution and unauthenticated legacy aliases; valid Bearer retains callable recovery', async () => {
     vi.stubEnv('CRON_SECRET', 'controlled-local-secret');
     vi.stubEnv('INNGEST_SIGNING_KEY', `signkey-test-${'a'.repeat(64)}`);

@@ -3,6 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
 import React, { useCallback, useState } from 'react';
 import { auth } from "@/lib/firebase";
+import emailBrandLogo from "@assets/emailHeader-brand-red.png";
 
 // Import design components
 import { EmailDesignStudio } from "./email-design-system/EmailDesignStudio";
@@ -298,7 +299,7 @@ const PromoCodeSender: React.FC = () => {
         breakpoints: { mobile: '480px', tablet: '768px', desktop: '1024px' }
       },
       branding: {
-        logoUrl: '/assets/Logo_LocalCooks.png',
+        logoUrl: emailBrandLogo,
         brandColors: ['#F51042', '#000000'],
         fontFamily: 'Inter',
         tone: 'professional'
@@ -570,4 +571,4 @@ const PromoCodeSender: React.FC = () => {
   );
 };
 
-export default PromoCodeSender; 
+export default PromoCodeSender;

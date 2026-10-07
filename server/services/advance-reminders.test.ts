@@ -7,8 +7,8 @@ const state = vi.hoisted(() => ({ db: null as any, booking: null as any, tour: n
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) }));
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
-import { dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders,
-  selectedReminderPolicy, type ReminderPolicy } from './advance-reminders';
+import { dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder,
+  selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
 import { currentDeadlineReminders, deadlineWarningDue } from './deadline-reminders';
 import { retryFailedEmail } from './email-log-service';
 import { describeDelivery } from './delivery-visibility';
@@ -119,8 +119,7 @@ it('uses current kitchen tour notes in visitor emails, without booking instructi
   state.tour.checkedInAt = new Date('2026-10-05T11:00:00Z');
   state.tour.attendanceHistory = [{ action: 'check_in', actorId: 3, source: 'visitor', actualAt: '2026-10-05T11:00:00.000Z', recordedAt: '2026-10-05T11:00:00.000Z', scheduledAt: '2026-10-05T11:00:00.000Z' }];
   const departure = (await currentReminders(state.db, 'tour', 20, policy, new Date('2026-10-05T11:05:00Z'))).find(item => item.kind === 'departure');
-  expect(departure?.departureNotes).toBe('Return visitor badge');
-  expect(departure?.arrivalNotes).toBeUndefined();
+  expect(departure).toBeUndefined();
 });
 
 describe('recurring reconciliation against a moving runtime clock', () => {
@@ -217,7 +216,7 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     expect(state.logs.every(r => JSON.parse(r.textBody).reminder.kind === 'arrival')).toBe(true);
     await dispatch(new Date('2026-10-05T07:00:00Z'));
     expect(state.send.mock.calls.map(c => c[0].to)).toEqual(['chef@example.test', 'host@example.test']);
-    expect(state.send.mock.calls[0][0].html).toContain('View details');
+    expect(state.send.mock.calls[0][0].html).toContain('View tour');
   });
   it('leaves failure retryable, owns recovery and never starves another reservation', async () => {
     state.tour.scheduledAt = new Date('2026-10-04T09:00:00Z');
@@ -400,6 +399,15 @@ describe('Tour C authoritative timed communication', () => {
   };
   const tourSchedule = (clock: string) => state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date(clock)));
   const tourDispatch = (clock: string) => dispatchAdvanceReminders({ now: new Date(clock), limit: 30 });
+  it('omits Running late from an arrival reminder configured earlier than the coordination window', async () => {
+    state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z');
+    state.settings.tour_arrival_reminder_minutes = '120';
+    await tourSchedule('2026-10-05T09:00:00Z');
+    await tourDispatch('2026-10-05T09:00:00Z');
+    const mail = state.send.mock.calls.find(([mail]) => mail.to === 'chef@example.test')?.[0];
+    expect(mail).toBeDefined();
+    expect(mail.html).not.toContain('I’m running late');
+  });
   it('uses tour-day Newfoundland default/custom clock and moves pending leads without repeating accepted channels', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T14:30:00Z'); // noon NDT
     await tourSchedule('2026-10-04T08:00:00Z');
@@ -422,7 +430,7 @@ describe('Tour C authoritative timed communication', () => {
     ['2026-10-06T02:00:00Z', '2026-10-05T09:30:00.000Z'],
   ])('uses real Newfoundland calendar/DST for %s and elapsed overnight duration', async (start, prep) => {
     state.tour.scheduledAt = new Date(start); state.tour.durationMinutes = 120;
-    const r = await currentReminders(state.db, 'tour', 20);
+    const r = await currentReminders(state.db, 'tour', 20, policy, new Date(Date.parse(start) - 86400000));
     expect(r.find(r => r.kind === 'preparation')!.due).toBe(prep);
     expect(Date.parse(r[0].end) - Date.parse(r[0].start)).toBe(120 * 60000);
   });
@@ -433,31 +441,29 @@ describe('Tour C authoritative timed communication', () => {
     await tourSchedule('2026-10-05T14:31:00Z'); await tourDispatch('2026-10-05T14:31:00Z');
     expect(state.send).toHaveBeenCalledTimes(2);
   });
-  it.each(['completed', 'no_show', 'cancelled'])('keeps mandatory departure useful after %s with valid matching arrival', async status => {
+  it.each(['completed', 'no_show', 'cancelled'])('does not generate departure actions after %s, even with historical arrival', async status => {
     state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z'); state.tour.durationMinutes = 30;
     arrival(); state.tour.status = status; state.tour.disruptionReason = status === 'cancelled' ? 'weather' : null;
-    await tourSchedule('2026-10-05T11:05:00Z'); expect(state.logs).toHaveLength(2);
-    expect(JSON.parse(state.logs[0].textBody).reminder).toMatchObject({ kind: 'departure', due: '2026-10-05T11:20:00.000Z' });
-    await tourDispatch('2026-10-05T11:20:00Z'); expect(state.send).toHaveBeenCalledTimes(1);
-    expect(state.send.mock.calls[0][0].html).toContain('Record departure');
+    await tourSchedule('2026-10-05T11:05:00Z'); expect(state.logs).toHaveLength(0);
+    await tourDispatch('2026-10-05T11:20:00Z'); expect(state.send).not.toHaveBeenCalled();
     expect(state.tour.status).toBe(status);
   });
-  it('clamps a short departure to start, waits for arrival, and suppresses saved departure', async () => {
+  it('never creates tour departure actions for short visits or historical arrival/departure', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z'); state.tour.durationMinutes = 5;
     await tourSchedule('2026-10-05T10:00:00Z');
     expect(state.logs.every(log => JSON.parse(log.textBody).reminder.kind !== 'departure')).toBe(true);
     arrival(); await tourSchedule('2026-10-05T11:01:00Z');
     const departure = state.logs.filter(log => JSON.parse(log.textBody).reminder.kind === 'departure');
-    expect(JSON.parse(departure[0].textBody).reminder.due).toBe('2026-10-05T11:00:00.000Z');
+    expect(departure).toHaveLength(0);
     state.tour.checkedOutAt = new Date('2026-10-05T11:02:00Z');
     state.tour.attendanceHistory.push({ ...state.tour.attendanceHistory[0], action: 'check_out', actualAt: state.tour.checkedOutAt.toISOString(), recordedAt: state.tour.checkedOutAt.toISOString() });
     await tourSchedule('2026-10-05T11:03:00Z');
     expect(departure.every(log => log.status === 'suppressed')).toBe(true); expect(state.send).not.toHaveBeenCalled();
   });
-  it('suppresses invalid evidence, unconfirmed/disrupted tours and disabled notices', async () => {
+  it('suppresses unconfirmed/disrupted tours and disabled notices without using historical taps as current instructions', async () => {
     state.tour.status = 'pending'; expect(await currentReminders(state.db, 'tour', 20)).toEqual([]);
     state.tour.status = 'confirmed'; state.tour.disruptionReason = 'weather'; expect(await currentReminders(state.db, 'tour', 20)).toEqual([]);
-    state.tour.disruptionReason = null; state.tour.checkedInAt = now; expect(await currentReminders(state.db, 'tour', 20)).toEqual([]);
+    state.tour.disruptionReason = null; state.tour.checkedInAt = now; expect(await currentReminders(state.db, 'tour', 20)).not.toEqual([]);
     state.tour.checkedInAt = null; state.settings = { tour_preparation_enabled: '0', tour_arrival_enabled: '0', tour_departure_enabled: '0' };
     expect(await currentReminders(state.db, 'tour', 20)).toEqual([]);
   });
@@ -481,7 +487,7 @@ describe('Tour C authoritative timed communication', () => {
     await tourSchedule('2026-10-05T10:00:00Z'); await tourDispatch('2026-10-05T10:00:00Z');
     const chef = state.send.mock.calls.find(([mail]) => mail.to === 'chef@example.test')![0];
     expect(chef.html).toContain('I’m running late');
-    expect(chef.html).toMatch(/href="mailto:[^"]+" class="cta-button" style="[^"]*background:#ffffff/);
+    expect(chef.html).toMatch(/href="mailto:[^"]+" style="[^"]*color:#292524/);
     const link = chef.text.match(/mailto:\S+/)![0];
     expect(link).toMatch(/^mailto:morgan%2Btour@example.test\?subject=/);
     expect(decodeURIComponent(link)).toContain('mailto:morgan+tour@example.test?subject=Running late · TOUR-20');
@@ -489,7 +495,8 @@ describe('Tour C authoritative timed communication', () => {
     expect(decodeURIComponent(link)).toContain('Hi Morgan Lee,');
     expect(decodeURIComponent(link)).toContain('Thank you,\nAlex Chen');
     expect(chef.text).toContain('Hi Alex Chen,'); expect(chef.text).toContain('Kitchen manager: Morgan Lee');
-    for (const label of ['Date:', 'Time:', 'Kitchen:', 'Location:', 'Address:', 'Check-in opens:', 'Contact email:']) expect(chef.text).toContain(label);
+    for (const label of ['Date:', 'Time:', 'Kitchen:', 'Location:', 'Address:', 'Contact email:']) expect(chef.text).toContain(label);
+    expect(chef.text).not.toMatch(/Check-in opens:|check in when|check out when/i);
     expect(chef.text).not.toMatch(/saved arrival|remain separate|Record arrival|Record departure/i);
     expect(chef.text).toContain('Tap Send');
     expect(state.send.mock.calls.find(([mail]) => mail.to === 'morgan+tour@example.test')![0].html).not.toContain('I’m running late');
@@ -531,13 +538,30 @@ it('reconciles a tour SMTP acceptance after interrupted acknowledgment using the
   await dispatchAdvanceReminders({ now: new Date('2026-10-05T10:00:00Z'), limit: 1, onlyLogId: intent.id });
   expect(state.send).toHaveBeenCalledTimes(1); expect(intent.status).toBe('sent');
 });
-it('saves a real rendered departure sample after authoritative arrival', async () => {
+it('does not send a departure reminder after historical arrival', async () => {
   const start='2026-10-05T11:00:00.000Z'; state.tour.scheduledAt = new Date(start); state.tour.checkedInAt = new Date(start);
   state.tour.attendanceHistory = [{ action: 'check_in', actorId: 3, source: 'visitor', actualAt: start, recordedAt: start, scheduledAt: start }];
   await state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date('2026-10-05T11:10:00Z')));
   await dispatchAdvanceReminders({ now: new Date('2026-10-05T11:20:00Z') });
-  const mail=state.send.mock.calls[0][0]; expect(mail.text).toContain('check out when you leave'); expect(mail.text).toContain('viewing=20');
-  if (process.env.TOUR_C_SAVE_SAMPLES === '1') { const fs=await import('node:fs'); const dir='docs/phase-progress/evidence/tour-c-samples'; fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(`${dir}/departure.html`, mail.html); fs.writeFileSync(`${dir}/departure.txt`, mail.text); }
+  expect(state.send).not.toHaveBeenCalled(); expect(state.logs).toEqual([]);
+});
+
+it.each(['departure', 'checkin_open'])('suppresses queued legacy tour %s intents without sending manual action prompts', async kind => {
+  state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z');
+  await schedule('tour', 20);
+  const saved = state.logs.find(log => JSON.parse(log.textBody).channel === 'email');
+  const body = JSON.parse(saved.textBody); body.reminder.kind = kind; body.reminder.due = '2026-10-05T10:00:00Z';
+  body.reminder.message = 'Check in now and check out when you leave.'; body.reminder.checkinOpensAt = '2026-10-05T10:00:00Z';
+  saved.textBody = JSON.stringify(body); saved.trackingId = saved.trackingId.replace(':arrival:', `:${kind}:`);
+  await dispatchAdvanceReminders({ now: new Date('2026-10-05T10:00:00Z'), onlyLogId: saved.id, limit: 1 });
+  expect(saved.status).toBe('suppressed'); expect(state.send).not.toHaveBeenCalled();
+});
+
+it('renders retained tour arrival guidance without manual tracking labels even for older snapshot fields', () => {
+  const mail = renderTourReminder({ source: 'tour', kind: 'arrival', reservationId: 20, role: 'chef', email: 'chef@example.test',
+    start: '2026-10-05T11:00:00Z', end: '2026-10-05T11:30:00Z', path: '/dashboard?view=viewings&viewing=20',
+    title: 'Kitchen tour', message: 'Review arrival guidance.', checkinOpensAt: '2026-10-05T10:00:00Z' } as any);
+  expect(mail.text).toContain('View tour:'); expect(mail.text).not.toMatch(/Check-in opens|Record arrival|Record departure/);
 });
 
 it('does not resend accepted pre-C key versions for the same tour/action/recipient', async () => {
@@ -549,4 +573,12 @@ it('does not resend accepted pre-C key versions for the same tour/action/recipie
   await state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date('2026-10-05T10:01:00Z')));
   await dispatchAdvanceReminders({ now: new Date('2026-10-05T10:01:00Z') });
   expect(state.logs).toHaveLength(4); expect(state.send).toHaveBeenCalledTimes(2);
+});
+
+
+it('activates tour reminders by an explicit flag independently of booking prose approval', () => {
+  const reminder = { source: 'tour', kind: 'arrival', due: '2026-10-04T07:00:00Z', start: '2026-10-04T09:00:00Z', end: '2026-10-04T09:30:00Z' } as any;
+  expect(reminderEligibility(reminder, now, { ...policy, approval: '', tourEnabled: true })).toBe('due');
+  expect(reminderEligibility(reminder, now, { ...policy, tourEnabled: false })).toBe('policy_pending');
+  expect(reminderEligibility({ ...reminder, source: 'booking' }, now, { ...policy, approval: '', tourEnabled: true })).toBe('policy_pending');
 });

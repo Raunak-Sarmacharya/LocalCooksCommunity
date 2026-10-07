@@ -61,14 +61,7 @@ describe("manager overview states", () => {
       checkedInAt: '2025-01-01T12:00:00Z', attendanceHistory: [{ action: 'check_in', actorId: 8, source: 'visitor',
         actualAt: '2025-01-01T12:00:00Z', recordedAt: '2025-01-01T12:00:00Z', scheduledAt: '2025-01-01T12:00:00.000Z' }] };
     state.viewings = [{ viewing: tour }];
-    expect(render()).toContain('overviewTourDepartureAssistance');
-    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
-    const onNavigate = vi.fn();
-    const mounted = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={onNavigate} />);
-    fireEvent.click(mounted.getByRole('button', { name: /guestChef/ }));
-    expect(onNavigate).toHaveBeenCalledWith('viewings');
-    expect(new URLSearchParams(window.location.search).get('viewing')).toBe('77');
-    mounted.unmount(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/');
+    expect(render()).not.toContain('overviewTourDepartureAssistance');
     state.viewings = [{ viewing: { ...tour, checkedOutAt: '2025-01-01T12:30:00Z' } }];
     expect(render()).not.toContain('overviewTourDepartureAssistance');
   });
@@ -79,7 +72,7 @@ describe("manager overview states", () => {
     ] } }];
     const html = render();
     expect(html).toContain('activityTourDisrupted'); expect(html).toContain('activityTourCorrected');
-    expect(html).not.toContain('overviewTourOutcomes');
+    expect(html).not.toContain('overviewTourFeedback');
   });
   it("keeps four scrollable card slots in an empty workspace without readiness progress", () => {
     const html = render();
@@ -90,24 +83,22 @@ describe("manager overview states", () => {
   });
   it("shows ended confirmed tours in attention and removes recorded outcomes", () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 }, chefName: "Jamie" }];
-    expect(render()).toContain("overviewTourOutcomes");
+    expect(render()).toContain("overviewTourFeedback");
     vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
     const onNavigate = vi.fn();
     const screen = renderDom(<KitchenDashboardOverview selectedLocation={location()} locations={[location()]} kitchens={state.kitchens} onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByRole("button", { name: /Jamie/ }));
-    expect(onNavigate).toHaveBeenCalledWith("viewings");
-    expect(new URL(window.location.href).searchParams.get("viewing")).toBe("77");
+    expect(screen.getByRole("link", { name: /Jamie/ })).toHaveAttribute('href', '/manager/tours/77?feedback=1');
     screen.unmount();
     vi.unstubAllGlobals();
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "no_show", scheduledAt: "2025-01-01T12:00:00Z", durationMinutes: 30 } }];
-    expect(render()).not.toContain("overviewTourOutcomes");
+    expect(render()).not.toContain("overviewTourFeedback");
   });
   it("puts confirmed future tours in the schedule without creating a manager action", () => {
     state.viewings = [{ viewing: { id: 77, locationId: 1, status: "confirmed", scheduledAt: "2099-01-01T12:00:00Z", durationMinutes: 30 }, chefName: "Future Chef" }];
     const html = render();
     expect(html).toContain("overviewUpcomingBookings");
     expect(html).toContain("Future Chef");
-    expect(html).not.toContain("overviewTourOutcomes");
+    expect(html).not.toContain("overviewTourFeedback");
   });
   it("shows messages and active storage before any kitchen bookings", () => {
     state.activity.unreadMessages = 3;

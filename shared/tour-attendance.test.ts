@@ -15,17 +15,18 @@ describe('tour attendance evidence contract', () => {
   });
   it('uses effective windows including boundaries and does not infer legacy attendance', () => {
     expect(tourAttendance(tour, 15, now).canCheckIn).toBe(true);
-    expect(tourAttendance(tour, 5, now).reason).toContain('not opened');
+    expect(tourAttendance(tour, 5, now).reason).toBe('visit_window_not_open');
     expect(tourAttendance(tour, 15, new Date('2026-10-05T12:45:00Z')).canCheckIn).toBe(true);
-    expect(tourAttendance(tour, 15, new Date('2026-10-05T12:45:00.001Z')).reason).toContain('closed');
+    expect(tourAttendance(tour, 15, new Date('2026-10-05T12:45:00.001Z')).reason).toBe('visit_window_closed');
     expect(tourAttendance({ ...tour, status: 'completed', checkedInAt: null, attendanceHistory: null }, 15, now))
       .toMatchObject({ checkedInAt: null, checkedOutAt: null, attendanceHistory: [], canCheckIn: false });
   });
-  it('keeps attendance through public list projection while omitting internal notes', () => {
+  it('preserves legacy evidence internally while hiding retired attendance and private notes from public lists', () => {
     const evidence = { ...tour, checkedInAt: now, attendanceHistory: [{ action: 'check_in', actorId: 8, source: 'visitor', actualAt: now.toISOString(), recordedAt: now.toISOString(), scheduledAt: tour.scheduledAt.toISOString() }], managerNotes: 'private' };
-    expect(publicTour(evidence)).toMatchObject({ checkedInAt: now, attendanceHistory: evidence.attendanceHistory });
+    expect(publicTour(evidence)).toMatchObject({ checkedInAt: null, attendanceHistory: [] });
+    expect(evidence.checkedInAt).toBe(now);
     expect(publicTour(evidence)).not.toHaveProperty('managerNotes');
-    expect(tourAttendance({ ...evidence, scheduledAt: new Date('2026-10-06T12:15:00Z') }, 15, now).safetyReason).toContain('different or unknown');
+    expect(tourAttendance({ ...evidence, scheduledAt: new Date('2026-10-06T12:15:00Z') }, 15, now).safetyReason).toBe('visit_records_review');
   });
   const entry = { action: 'check_in', actorId: 8, source: 'visitor', actualAt: now.toISOString(),
     recordedAt: now.toISOString(), scheduledAt: tour.scheduledAt.toISOString() };
@@ -47,10 +48,10 @@ describe('tour attendance evidence contract', () => {
   ])('rejects unsafe stored evidence without enabling a write', evidence => {
     const result = tourAttendance({ ...tour, ...evidence }, 15, now);
     expect(result.canCheckOut).toBe(false); expect(result.canAssistArrival).toBe(false);
-    expect(result.departureSafetyReason).toContain('invalid evidence');
+    expect(result.departureSafetyReason).toBe('visit_records_review');
   });
   it('requires arrival and separates assistance reason from private metadata', () => {
-    expect(tourAttendance(tour, 15, now).checkOutReason).toContain('arrival before departure');
+    expect(tourAttendance(tour, 15, now).checkOutReason).toBe('visit_arrival_required');
     const assisted = { ...entry, source: 'manager_assisted', actorId: 2, reason: 'Visitor reported lost connection', internalNotes: 'SECRET' };
     const result = tourAttendance({ ...tour, checkedInAt: now, attendanceHistory: [assisted] }, 15, now);
     expect(result.attendanceHistory[0]).toMatchObject({ reason: assisted.reason, source: 'manager_assisted', actorId: 2 });

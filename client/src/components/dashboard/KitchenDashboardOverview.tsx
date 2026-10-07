@@ -243,7 +243,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     const label = tourNextAction(tour.viewing);
     const decision = tourRequestDecision(tour.viewing);
     const due = decision?.stage === 'manager' && decision.dueAt ? ` · ${mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: ${formatTourWhen(decision.dueAt, null, 'America/St_Johns')}` : '';
-    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}${due}`, view: "viewings", param: "viewing" });
+    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}${due}`, view: "viewings", param: "viewing", ...(label === 'overviewTourFeedback' ? { href: `/manager/tours/${tour.viewing.id}?feedback=1` } : {}) });
   }
   for (const application of pendingApplications) addTask("overviewPendingApplications", { id: String(application.id), title: application.fullName || `#${application.id}`, view: "applications", param: "application" });
   for (const storage of activity.storageBookings) if (!bookings.some(booking => booking.id === storage.kitchenBookingId && booking.paymentDecision?.state === 'pending') && ["pending", "cancellation_requested"].includes(storage.status ?? "")) addTask(storage.cancellationAcceptedAt ? 'overviewStorageOutcomes' : "overviewStorageRequests", { id: String(storage.id), title: recordTitle(storage), detail: storage.cancellationAcceptedAt ? mt("storageRemovalConfirmationRequired") : undefined, view: "storage-bookings", param: "storageBooking" });

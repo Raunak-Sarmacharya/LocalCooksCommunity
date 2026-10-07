@@ -8,8 +8,13 @@ vi.mock('../db', () => ({ pool: {}, db: { select: () => {
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock('../services/participant-chat', () => ({
   serializeChat: (value: any) => value, orphanChatHistory: async () => [],
-  withParticipantChat: async (_actor: any, _uid: any, id: string, action: any) => action({ live: true,
-    ref: { id, get: async () => ({ data: () => ({ chefId: 3, locationId: 5 }) }) } }),
+  withParticipantChat: async (_actor: any, _uid: any, id: string, action: any) => action({ live: true, role: _actor.role,
+    ref: { id, get: async () => ({ data: () => ({ chefId: 3, locationId: 5 }) }), collection: () => {
+      const chain: any = { orderBy: () => chain, limit: () => chain, get: async () => ({ docs: [
+        { id: 'shared', data: () => ({ senderRole: 'admin', adminAudience: 'both', readAt: null,
+          recipientStates: { chef: { readAt: 'chef-read' }, manager: { readAt: null } } }) }
+      ] }) }; return chain;
+    } } }),
 }));
 vi.mock('../domains/locations/location.service', () => ({ LocationService: class { getLocationById() { return Promise.resolve(state.location); } } }));
 vi.mock('../domains/applications/chef-application.service', () => ({ chefApplicationService: { getApplicationById: () => state.application } }));
@@ -33,6 +38,22 @@ beforeEach(() => { vi.clearAllMocks(); state.tour = { id: 20, chefId: 3, locatio
   state.application = { id: 8, chefId: 3, locationId: 5, status: 'approved' };
 });
 describe('participant shared chat routes', () => {
+  it('opens exact tour chat through the admin route with current manager context', async () => {
+    const path = '/firebase/admin/chat/viewings/:viewingId/conversation';
+    const response = await open(path, { id: 9, role: 'admin' });
+    expect(response.json).toHaveBeenCalledWith({ conversationId: 'history', chefId: 3, managerId: 2, locationId: 5, chefName: 'Participant 3' });
+    expect(state.provision).toHaveBeenCalledWith(3, 5);
+    expect(JSON.stringify(response.json.mock.calls)).not.toContain('secret');
+    expect(route(path).stack).toHaveLength(3);
+  });
+  it('rejects non-admins and unforwarded tours before admin chat provisioning', async () => {
+    const path = '/firebase/admin/chat/viewings/:viewingId/conversation';
+    expect((await open(path)).status).toHaveBeenCalledWith(403);
+    expect(state.provision).not.toHaveBeenCalled();
+    state.tour.status = 'pending_local_cooks';
+    expect((await open(path, { id: 9, role: 'admin' })).status).toHaveBeenCalledWith(409);
+    expect(state.provision).not.toHaveBeenCalled();
+  });
   it.each([{ id: 3, role: 'chef' }, { id: 2, role: 'manager' }])('opens the exact approved tour for $role with server labels and exact return', async actor => {
     const response = await open(exact, actor);
     expect(state.provision).toHaveBeenCalledWith(3, 5);
@@ -66,5 +87,9 @@ describe('participant shared chat routes', () => {
     const response = await open('/firebase/chat/applications/:applicationId/conversation');
     expect(state.provision).toHaveBeenCalledWith(state.application);
     expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ id: 'history' }));
+  });
+  it.each([{ id: 3, role: 'chef', readAt: 'chef-read' }, { id: 2, role: 'manager', readAt: null }])('projects only the $role read receipt for shared admin messages', async actor => {
+    const response = await open('/firebase/chat/conversations/:conversationId/messages', actor, { conversationId: 'history' } as any);
+    expect(response.json).toHaveBeenCalledWith([expect.objectContaining({ id: 'shared', readAt: actor.readAt })]);
   });
 });

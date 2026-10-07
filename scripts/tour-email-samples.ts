@@ -36,7 +36,7 @@ export async function buildTourEmailSamples() {
     samples.push({ id: String(samples.length), scenario, group, role, to: email.to, subject: email.subject,
       html: email.html || '', text: email.text || '', attachments: (email.attachments || []).map(file => ({ filename: file.filename, content: String(file.content) })) });
   };
-  const events: { scenario: string; group: string; kind: Payload['kind']; before?: Partial<Tour>; after?: Partial<Tour>; actorRole?: string }[] = [
+  const events: { scenario: string; group: string; kind: Payload['kind']; before?: Partial<Tour>; after?: Partial<Tour>; actorRole?: string; feedbackStatus?: Payload['feedbackStatus'] }[] = [
     { scenario: 'Request received', group: 'Requests', kind: 'requested', before: { status: 'pending_local_cooks' }, after: { status: 'pending_local_cooks' } },
     { scenario: 'Request ready for manager', group: 'Requests', kind: 'review_approved', before: { status: 'pending_local_cooks' }, after: { status: 'pending' } },
     { scenario: 'Request declined by Local Cooks', group: 'Requests', kind: 'review_denied', before: { status: 'pending_local_cooks' }, after: { status: 'cancelled', adminReviewReason: 'The kitchen is unavailable at your requested time.' }, actorRole: 'admin' },
@@ -59,21 +59,21 @@ export async function buildTourEmailSamples() {
     { scenario: 'Disrupted tour corrected to completed', group: 'Corrections', kind: 'status', before: { status: 'cancelled', disruptionReason: 'weather' }, after: { status: 'completed' } },
     { scenario: 'Confirmed overnight tour', group: 'Edge cases', kind: 'status', before: { status: 'pending' }, after: { scheduledAt: new Date('2026-10-15T02:15:00Z') } },
     { scenario: 'Tour across daylight saving change', group: 'Edge cases', kind: 'status', before: { status: 'pending' }, after: { scheduledAt: new Date('2026-11-01T04:15:00Z') } },
-    { scenario: 'Visitor checks in', group: 'Notifications only', kind: 'visitor_checkin' },
-    { scenario: 'Visitor checks out', group: 'Notifications only', kind: 'visitor_checkout' },
-    { scenario: 'Manager helps save a visit time', group: 'Notifications only', kind: 'attendance_assisted' },
-    { scenario: 'Manager prompted for tour outcome', group: 'Notifications only', kind: 'reminder' },
+    { scenario: 'Private feedback requested', group: 'Feedback', kind: 'feedback_requested', after: { scheduledAt: new Date('2026-10-07T14:30:00Z'), confirmationVerified: true }, feedbackStatus: { chef: false, manager: false, conflict: false } },
+    { scenario: 'Feedback ready for review', group: 'Feedback', kind: 'feedback_submitted', after: { scheduledAt: new Date('2026-10-07T14:30:00Z'), confirmationVerified: true }, feedbackStatus: { chef: true, manager: true, conflict: false } },
+    { scenario: 'Conflicting feedback', group: 'Feedback', kind: 'feedback_submitted', after: { scheduledAt: new Date('2026-10-07T14:30:00Z'), confirmationVerified: true }, feedbackStatus: { chef: true, manager: true, conflict: true } },
+    { scenario: 'Feedback missing after 24 hours', group: 'Feedback', kind: 'feedback_missing', after: { scheduledAt: new Date('2026-10-07T14:30:00Z'), confirmationVerified: true }, feedbackStatus: { chef: true, manager: false, conflict: false } },
   ];
   for (const event of events) {
     const payload: Payload = { kind: event.kind, before: { ...tour, ...event.before }, after: { ...tour, ...event.after },
-      actorRole: event.actorRole || 'manager', chef, manager, admins: [admin], locationName: location.name, kitchenName: kitchen.name, address: location.address };
+      actorRole: event.actorRole || 'manager', feedbackStatus: event.feedbackStatus, chef, manager, admins: [admin], locationName: location.name, kitchenName: kitchen.name, address: location.address };
     const messages = tourEventMessages(payload, 1);
     for (const message of messages) if (message.email) add(event.scenario, event.group,
-      message.key === 'chef-email' ? 'Chef' : message.key === 'manager-email' ? 'Manager' : 'Local Cooks', message.email);
+      message.email.to === chef.email ? 'Chef' : message.email.to === manager.email ? 'Manager' : 'Local Cooks', message.email);
     if (!messages.some(message => message.email)) notificationOnly.push({ scenario: event.scenario, recipients: messages.flatMap(message => message.notification ? [message.notification.target === 'chef' ? 'Chef' : message.notification.userId === manager.id ? 'Manager' : 'Local Cooks'] : []) });
     if (event.scenario === 'Tour confirmed' || event.scenario === 'Time change requested' || event.scenario === 'Tour completed') {
       for (const message of messages) if (message.email) add(`Delayed delivery: ${event.scenario.toLowerCase()}`, 'Delivery recovery',
-        message.key === 'chef-email' ? 'Chef' : message.key === 'manager-email' ? 'Manager' : 'Local Cooks',
+        message.email.to === chef.email ? 'Chef' : message.email.to === manager.email ? 'Manager' : 'Local Cooks',
         renderHistoricalTourEmail({ email: message.email, key: message.key, payload, viewingId: tour.id,
           createdAt: tour.updatedAt, currentStatus: 'Cancelled' }));
     }
@@ -101,10 +101,10 @@ export async function buildTourEmailSamples() {
     } };
     const reminders = await currentReminders(reader as any, 'tour', tour.id, selectedReminderPolicy, now);
     for (const reminder of reminders) add(`${scenario} · ${reminder.kind}`, 'Reminders', reminder.role === 'chef' ? 'Chef' : 'Manager',
-      renderTourReminder(reminder, `${getSubdomainUrl(reminder.role === 'chef' ? 'chef' : 'kitchen')}${reminder.path}`));
+      renderTourReminder(reminder, `${getSubdomainUrl(reminder.role === 'chef' ? 'chef' : 'kitchen')}${reminder.path}`, now.getTime()));
   };
-  await reminderSamples('Before the tour', tour, new Date('2026-10-14T08:00:00Z'));
-  await reminderSamples('Manager email unavailable', tour, new Date('2026-10-14T08:00:00Z'), '');
+  await reminderSamples('Before the tour', tour, new Date('2026-10-14T13:30:00Z'));
+  await reminderSamples('Manager email unavailable', tour, new Date('2026-10-14T13:30:00Z'), '');
   const actualAt = new Date('2026-10-14T14:30:00Z');
   await reminderSamples('Before you leave', { ...tour, checkedInAt: actualAt, attendanceHistory: [{ action: 'check_in', actorId: chef.id,
     source: 'visitor', actualAt: actualAt.toISOString(), recordedAt: actualAt.toISOString(), scheduledAt: tour.scheduledAt.toISOString() }] }, new Date('2026-10-14T14:45:00Z'));

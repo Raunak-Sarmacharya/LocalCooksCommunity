@@ -27,16 +27,18 @@ export const lifecycleTick = inngest.createFunction({ id: 'lifecycle-recurring-w
 }));
 
 export async function runStartingChatEmail({ event, step }: {
-  event: { data: { conversationId: string; messageId: string; senderId: number } };
+  event: { data: { conversationId: string; messageId: string; senderId: number; recipientRole?: 'chef' | 'manager' } };
   step: { sleep: (id: string, duration: '15s') => Promise<unknown>; run: (id: string, action: () => Promise<unknown>) => Promise<unknown> };
 }) {
-  const { conversationId, messageId, senderId } = event.data;
+  const { conversationId, messageId, senderId, recipientRole } = event.data;
   if (typeof conversationId !== 'string' || !conversationId || conversationId.includes('/') ||
-      typeof messageId !== 'string' || !messageId || messageId.includes('/') || !Number.isSafeInteger(senderId) || senderId <= 0)
+      typeof messageId !== 'string' || !messageId || messageId.includes('/') || !Number.isSafeInteger(senderId) || senderId <= 0 ||
+      (recipientRole !== undefined && !['chef', 'manager'].includes(recipientRole)))
     throw Error('Invalid starting chat message identity');
   await step.sleep('allow-recipient-to-read', '15s');
   return step.run('deliver-original-starting-message', async () => {
-    const result = await deliverStartingChatMessage(conversationId, messageId, senderId);
+    const result = recipientRole ? await deliverStartingChatMessage(conversationId, messageId, senderId, recipientRole)
+      : await deliverStartingChatMessage(conversationId, messageId, senderId);
     if (result.errors) throw Error('Starting message email remains retryable');
     return result;
   });

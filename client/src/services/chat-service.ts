@@ -15,6 +15,7 @@ export interface ChatMessage {
   id?: string;
   senderId: number;
   senderRole: ChatSenderRole;
+  adminAudience?: 'both';
   content: string;
   type: 'text' | 'file' | 'system';
   fileUrl?: string;
@@ -95,6 +96,9 @@ export async function createConversation(id: number, _chef: number, _manager: nu
 export async function resolveTourConversation(id: number) {
   return chatRequest('chat/viewings/' + id + '/conversation');
 }
+export async function resolveAdminTourConversation(id: number) {
+  return chatRequest('admin/chat/viewings/' + id + '/conversation');
+}
 export async function sendMessage(id: string, _senderId: number, _role: 'chef' | 'manager' | 'admin',
   content: string, type: 'text' | 'file' = 'text', fileUrl?: string, fileName?: string, bookingId?: number): Promise<string> {
   const result = await chatRequest(threadPath(id) + '/messages', post({ content, type, fileUrl, fileName, bookingId }));
@@ -123,7 +127,7 @@ export function subscribeToMessages(id: string, callback: (messages: ChatMessage
 export async function markAsRead(id: string, _userId: number, role: 'chef' | 'manager' | 'admin', messages: ChatMessage[]) {
   if (role === 'admin') return;
   const messageIds = Array.from(new Set(messages.filter(m => m.id && !m.readAt &&
-    (role === 'chef' ? ['manager', 'admin'].includes(m.senderRole) : m.senderRole === 'chef')).map(m => m.id!)));
+    (role === 'chef' ? ['manager', 'admin'].includes(m.senderRole) : m.senderRole === 'chef' || m.senderRole === 'admin' && m.adminAudience === 'both')).map(m => m.id!)));
   if (messageIds.length) await chatRequest(threadPath(id) + '/read', post({ messageIds }));
 }
 export async function uploadChatFile(id: string, file: File): Promise<string> {

@@ -12,6 +12,7 @@ import { useLocation } from "wouter";
 import { z } from "zod";
 import { phoneNumberSchema, normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
 import { useQuery } from "@tanstack/react-query";
+import { tourApplicationDefaults, type TourApplicationReference } from '@shared/tour-application';
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
 import { DateField } from "@/components/ui/date-field";
@@ -228,6 +229,8 @@ interface KitchenApplicationFormProps {
   globalApp?: any;
   onSuccess?: (submittedTier: number) => void;
   onCancel?: () => void;
+  tourReference?: TourApplicationReference;
+  sourceTourId?: number;
 }
 
 // Business type / frequency options — shared with registration “Request to apply” modal
@@ -325,9 +328,11 @@ export default function KitchenApplicationForm({
   globalApp,
   onSuccess,
   onCancel,
+  tourReference,
+  sourceTourId,
 }: KitchenApplicationFormProps) {
   const { user } = useFirebaseAuth();
-  const { t } = useTranslation("kitchen");
+  const { t, i18n } = useTranslation("kitchen");
   const { toast } = useToast();
   const [, navigate] = useLocation();
   // A refusal at submit time would waste a long, multi-step form. The guard blocks
@@ -590,8 +595,8 @@ export default function KitchenApplicationForm({
       foodEstablishmentCertExpiry: z.string().optional(),
       usageFrequency: optionalText,
       sessionDuration: optionalText,
-      termsAgree: z.literal(true, { message: t("valAcceptKitchenTerms", { defaultValue: "Please agree to the kitchen terms and policies" }) }),
-      accuracyAgree: z.literal(true, { message: t("valConfirmApplicationAccuracy", { defaultValue: "Please confirm your application is accurate" }) }),
+      termsAgree: z.boolean().refine(value => value === true, t("valAcceptKitchenTerms", { defaultValue: "Please agree to the kitchen terms and policies" })),
+      accuracyAgree: z.boolean().refine(value => value === true, t("valConfirmApplicationAccuracy", { defaultValue: "Please confirm your application is accurate" })),
       kitchenExperienceDescription: z.string().optional(),
     };
 
@@ -783,8 +788,12 @@ export default function KitchenApplicationForm({
       console.warn('Failed to parse fallbackRegistrationData', e);
     }
 
-    return defaults;
-  }, [requirements, defaultFirstName, defaultLastName, user?.email, application, currentTier, globalApp, chefProfile?.phone]);
+    const intendedUse = tourReference?.intendedUse;
+    const useLabels: Record<string, string> = { catering: 'Catering', meal_prep: 'Meal preparation', food_truck: 'Food truck', baking: 'Baking', other: 'Other' };
+    const reference = tourReference && intendedUse && useLabels[intendedUse]
+      ? { ...tourReference, intendedUse: t(`tourIntakeUse_${intendedUse}`, { ns: 'common', defaultValue: useLabels[intendedUse] }) } : tourReference;
+    return tourApplicationDefaults(defaults, reference, !!application);
+  }, [requirements, defaultFirstName, defaultLastName, user?.email, application, currentTier, globalApp, chefProfile?.phone, tourReference, i18n?.resolvedLanguage]);
 
   // Create a stable resolver that updates when dynamicSchema changes
   const resolver = useMemo(() => zodResolver(dynamicSchema), [dynamicSchema]);
@@ -795,10 +804,13 @@ export default function KitchenApplicationForm({
     mode: "onChange",
   });
 
+  // Subscribe so asynchronous defaults preserve the chef's edits.
+  const dirtyFields = form.formState.dirtyFields;
+  void dirtyFields;
   // Re-initialize form when requirements change - also trigger revalidation with new schema
   useEffect(() => {
     if (requirements) {
-      form.reset(getDefaultValues);
+      form.reset(getDefaultValues, { keepDirtyValues: true });
       // Trigger revalidation with the new schema
       form.trigger();
     }
@@ -1422,6 +1434,7 @@ export default function KitchenApplicationForm({
       formData.append("email", data.email || application?.email || "");
       formData.append("phone", chefProfile?.phone || data.phone || application?.phone || "");
       formData.append("kitchenPreference", application?.kitchenPreference || "commercial");
+      if (sourceTourId) formData.append('sourceTourId', String(sourceTourId));
 
       // Business info - store in businessDescription field
       let existingBusinessInfo: Record<string, any> = {};

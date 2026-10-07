@@ -187,6 +187,11 @@ export async function deleteUserDependents(
   await del(tx, "chef_location_profiles", sql`
     DELETE FROM chef_location_profiles WHERE chef_id = ${id}`, counts);
 
+  // Private responses are the user's activity; remove them before the restrictive tour FK.
+  await del(tx, "tour_feedback_responses", sql`
+    DELETE FROM tour_feedback_responses WHERE respondent_id = ${id}
+      OR viewing_id IN (SELECT id FROM kitchen_viewings WHERE chef_id = ${id})`, counts);
+
   await del(tx, "kitchen_viewings", sql`
     DELETE FROM kitchen_viewings WHERE chef_id = ${id}`, counts);
 

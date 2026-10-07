@@ -1693,5 +1693,19 @@
   "tourIntakeNotDecided": "Ще не визначено",
   "tourIntakeRequired": "Дайте відповідь на всі чотири запитання, щоб продовжити.",
   "tourIntakeContinue": "Продовжити",
-  "tourIntakeEdit": "Редагувати відповіді"
+  "tourIntakeEdit": "Редагувати відповіді",
+  "discardUnsentTourDetails": "Ненадіслані дані туру буде видалено. Збережені запити на тур залишаться незмінними.",
+  "tourApplicationReferenceTitle": "Ваш огляд кухні",
+  "tourApplicationReferenceHelp": "Заплановане використання може заповнити порожній опис бізнесу. Перевірте й відредагуйте його перед поданням. Інші відповіді наведено для довідки; вимоги до заявки залишаються чинними.",
+  "tourApplicationChefNotes": "Ваші нотатки огляду",
+  "tourApplicationSharedNotes": "Спільні нотатки огляду",
+  "tourApplicationUnavailable": "Наступний крок заявки для цього огляду недоступний",
+  "tourApplicationUnavailableHelp": "Огляд або кухня могли змінитися. Перевірте огляд або спробуйте ще раз.",
+  "tourApplicationRetry": "Перевірити знову",
+  "tourApplicationBack": "Переглянути огляд",
+  "tourApplicationViewTitle": "Ваша заявка або доступ до кухні",
+  "tourApplicationViewHelp": "Ви вже маєте заявку або доступ до кухні. Перегляньте поточний стан і наступний крок.",
+  "tourApplicationViewNext": "Продовжіть наявну заявку до кухні.",
+  "tourApplicationViewAction": "Переглянути мої заявки",
+  "tourApplicationCheckFailed": "Не вдалося перевірити інформацію про ваш огляд"
 }

@@ -41,6 +41,7 @@ interface ApplicationDetails {
 }
 
 interface UnifiedChatViewProps {
+  initialDraft?: string;
   userId: number;
   role: 'chef' | 'manager';
   initialConversationId?: string | null;
@@ -58,7 +59,7 @@ interface UnifiedChatViewProps {
 }
 const EMPTY_CONVERSATIONS: Conversation[] = [];
 
-export default function UnifiedChatView({ userId, role, initialConversationId, initialTourId, onNavigate, chefHasApplications = false, managerHasKitchen = true, hideConversationList = false }: UnifiedChatViewProps) {
+export default function UnifiedChatView({ userId, role, initialConversationId, initialTourId, initialDraft, onNavigate, chefHasApplications = false, managerHasKitchen = true, hideConversationList = false }: UnifiedChatViewProps) {
   const { t } = useTranslation('chef');
   const { toast } = useToast();
   const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
@@ -385,6 +386,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
         {applicationContextError && <div role="alert" className="p-3 text-sm">{applicationContextError} <Button variant="link" onClick={() => void refetch()}>Retry</Button></div>}
         {selectedConversation ? (
           <ChatPanel
+            initialDraft={initialDraft}
             key={selectedConversation.id}
             conversationId={selectedConversation.id}
             bookingId={initialConversationId === selectedConversation.id && /^\d+$/.test(new URLSearchParams(window.location.search).get('booking') || '') ? Number(new URLSearchParams(window.location.search).get('booking')) : undefined}

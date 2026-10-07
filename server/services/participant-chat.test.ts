@@ -30,6 +30,10 @@ vi.mock('../chat-service', () => ({ getAdminDb: async () => {
         write(data.lastMessageAt ? 'badge' : 'read', target, data);
         const saved = target.path.includes('/messages/') ? state.messages[target.id] : state.conversation;
         for (const [key, value] of Object.entries(data)) {
+          if (key.startsWith('recipientStates.')) {
+            saved.recipientStates[key.split('.')[1]].readAt = value;
+            continue;
+          }
           if (value === 'delete') delete saved[key];
           else saved[key] = typeof value === 'object' && value && 'increment' in value ? (saved[key] || 0) + (value as any).increment : value;
         }
@@ -49,6 +53,48 @@ beforeEach(() => {
   state.messages = { one: { senderRole: 'manager', readAt: null }, two: { senderRole: 'admin', readAt: null }, own: { senderRole: 'chef', readAt: null } };
 });
 describe('server-mediated participant chat', () => {
+  it('saves one admin message for both live recipients and independently clears each read episode', async () => {
+    const admin = { id: 1, role: 'admin', firebaseUid: 'admin-uid' };
+    state.users.push(admin); state.conversation.unreadChefCount = 0;
+    state.conversation.archivedChefAt = 'before'; state.conversation.archivedManagerAt = 'before';
+    const send = () => withParticipantChat(admin, admin.firebaseUid, 'history', async ({ firestore, ref, data, managerId }) =>
+      persistChatMessage(firestore, ref, { senderId: 1, senderRole: 'admin', senderFirebaseUid: admin.firebaseUid,
+        content: 'shared reply', type: 'text', fileUrl: null, fileName: null }, data.chefId, managerId!), { admin: true });
+    const first = await send(), second = await send();
+    expect(state.messages[first.id]).toMatchObject({ adminAudience: 'both', recipientStates: {
+      chef: { recipientId: 3, episodeId: first.id, readAt: null }, manager: { recipientId: 2, episodeId: first.id, readAt: null }
+    } });
+    expect(state.conversation.archivedChefAt).toBeUndefined(); expect(state.conversation.archivedManagerAt).toBeUndefined();
+    await readParticipantMessages(chef, chef.firebaseUid, 'history', [first.id]);
+    expect(state.conversation.emailChefEpisode.id).toBe(first.id);
+    await readParticipantMessages(chef, chef.firebaseUid, 'history', [first.id, second.id]);
+    expect(state.conversation.unreadChefCount).toBe(0); expect(state.conversation.emailChefEpisode).toBeUndefined();
+    expect(state.conversation.unreadManagerCount).toBe(2);
+    expect(state.messages[first.id].recipientStates.manager.readAt).toBeNull();
+    await readParticipantMessages(manager, manager.firebaseUid, 'history', [first.id, second.id]);
+    expect(state.conversation.unreadManagerCount).toBe(0); expect(state.conversation.emailManagerEpisode).toBeUndefined();
+    const next = await send(); expect(state.messages[next.id].recipientStates.manager.episodeId).toBe(next.id);
+  });
+  it('uses live SQL manager ownership for admin sends and refuses revoked or noncanonical relationships', async () => {
+    const admin = { id: 1, role: 'admin', firebaseUid: 'admin-uid' };
+    state.users.push(admin, { id: 4, role: 'manager', firebaseUid: 'replacement' }); state.location.managerId = 4;
+    expect(await withParticipantChat(admin, admin.firebaseUid, 'history', async context => context.managerId, { admin: true })).toBe(4);
+    await expect(withParticipantChat(admin, 'old-admin-uid', 'history', vi.fn(), { admin: true })).rejects.toThrow('unavailable');
+    state.mapping = 'canonical';
+    await expect(withParticipantChat(admin, admin.firebaseUid, 'history', vi.fn(), { admin: true })).rejects.toThrow('repair');
+  });
+  it('does not let a manager acknowledge legacy admin messages', async () => {
+    await readParticipantMessages(manager, manager.firebaseUid, 'history', ['two']);
+    expect(state.messages.two.readAt).toBeNull();
+  });
+  it('does not acknowledge shared admin states missing or belonging to the former manager', async () => {
+    state.conversation.unreadManagerCount = 2;
+    state.messages.missing = { senderRole: 'admin', adminAudience: 'both', recipientStates: {} };
+    state.messages.former = { senderRole: 'admin', adminAudience: 'both', recipientStates: { manager: { recipientId: 9, readAt: null } } };
+    await readParticipantMessages(manager, manager.firebaseUid, 'history', ['missing', 'former']);
+    expect(state.conversation.unreadManagerCount).toBe(2);
+    expect(state.writes.filter(write => write.path.includes('/messages/'))).toEqual([]);
+  });
   it.each([chef, manager])('queues local email only after the $role message and authorization transaction commit', async actor => {
     vi.stubEnv('NODE_ENV', 'development'); vi.stubEnv('VERCEL', '');
     const sent = await sendParticipantMessage(actor, actor.firebaseUid, 'history', { content: 'hello', type: 'text' });

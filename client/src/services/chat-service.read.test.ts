@@ -5,6 +5,14 @@ const request = vi.fn();
 beforeEach(() => { request.mockReset(); vi.stubGlobal('fetch', request); });
 const ok = (data: any) => ({ ok: true, json: async () => data });
 describe('server participant protocol', () => {
+  it('acknowledges shared admin messages for managers while keeping legacy admin messages chef-only', async () => {
+    request.mockResolvedValue(ok({ ok: true }));
+    await markAsRead('thread', 2, 'manager', [
+      { id: 'shared', senderRole: 'admin', adminAudience: 'both' }, { id: 'legacy', senderRole: 'admin' },
+      { id: 'chef', senderRole: 'chef' }, { id: 'read', senderRole: 'admin', adminAudience: 'both', readAt: new Date() }
+    ] as any);
+    expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({ messageIds: ['shared', 'chef'] });
+  });
   it('keeps two tour-only locations distinct with authoritative labels and original timestamp/archive values', async () => {
     request.mockResolvedValue(ok({ conversations: [1, 2].map(locationId => ({ conversationId: 'original-' + locationId,
       chefId: 3, managerId: 2, locationId, chefName: 'Ada Chef', managerName: 'Real Manager', locationName: 'Kitchen ' + locationId,

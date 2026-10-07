@@ -28,6 +28,8 @@ import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { TourIntakeChoice } from "@/components/tour/TourIntakeChoice";
+import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
 import { requiredViewingIntakeDataSchema, type ViewingIntakeData } from "@shared/schema";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -115,6 +117,7 @@ export function ScheduleViewingWidget({
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { t } = useTranslation("kitchen");
+  const { t: common } = useTranslation("common");
   const { user, loading: authLoading, refreshUserData } = useFirebaseAuth();
   const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
@@ -616,14 +619,23 @@ export function ScheduleViewingWidget({
       persistProgress({ step: next });
       setStep(next);
     }}>
-      <div className="space-y-2">
-        <Label htmlFor="tour-intended-use">{t("tourIntendedUse", "What do you plan to use the kitchen for?")}</Label>
-        <Textarea id="tour-intended-use" required value={intakeData.intendedUse || ""} onChange={event => setIntakeData({ ...intakeData, intendedUse: event.target.value })} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="tour-weekly-hours">{t("tourWeeklyHours", "About how many hours per week would you need?")}</Label>
-        <Input id="tour-weekly-hours" required value={intakeData.estimatedWeeklyHours || ""} onChange={event => setIntakeData({ ...intakeData, estimatedWeeklyHours: event.target.value })} />
-      </div>
+      <TourIntakeChoice key={`use-${targetedKitchenId}`} id="tour-intended-use"
+        label={t("tourIntendedUse", "What do you plan to use the kitchen for?")}
+        value={intakeData.intendedUse}
+        choices={[
+          { value: "catering", label: common("tourIntakeUse_catering", "Catering") },
+          { value: "meal_prep", label: common("tourIntakeUse_meal_prep", "Meal preparation") },
+          { value: "food_truck", label: common("tourIntakeUse_food_truck", "Food truck") },
+          { value: "baking", label: common("tourIntakeUse_baking", "Baking") },
+        ]}
+        onChange={intendedUse => setIntakeData({ ...intakeData, intendedUse })} />
+      <TourIntakeChoice key={`hours-${targetedKitchenId}`} id="tour-weekly-hours"
+        label={t("tourWeeklyHours", "About how many hours per week would you need?")}
+        value={intakeData.estimatedWeeklyHours}
+        choices={["1-5", "6-10", "11-20", "21-30", "31-40", "40+"].map(hours => ({
+          value: hours, label: common("tourIntakeHoursPerWeek", { defaultValue: `${hours} hours per week`, hours })
+        }))}
+        onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{t("tourHasLicense", "Do you have a food handler license?")}</legend>
         <div className="flex gap-6">
@@ -785,10 +797,7 @@ export function ScheduleViewingWidget({
           <h4 className="font-semibold">{t("tourGuideStepIntake", "Your plans")}</h4>
           <Button variant="ghost" size="sm" onClick={() => setStep("intake")}>{t("tourIntakeEdit", "Edit answers")}</Button>
         </div>
-        <p>{t("tourIntendedUse", "What do you plan to use the kitchen for?")} <span className="font-medium">{intakeData.intendedUse}</span></p>
-        <p>{t("tourWeeklyHours", "About how many hours per week would you need?")} <span className="font-medium">{intakeData.estimatedWeeklyHours}</span></p>
-        <p>{t("tourHasLicense", "Do you have a food handler license?")} <span className="font-medium">{intakeData.hasLicense === true ? t("tourIntakeYes", "Yes") : intakeData.hasLicense === false ? t("tourIntakeNo", "No") : ""}</span></p>
-        <p>{t("tourTargetStartDate", "When would you like to start renting?")} <span className="font-medium">{intakeData.targetStartDate === "not_decided" ? t("tourIntakeNotDecided", "Not decided yet") : intakeData.targetStartDate}</span></p>
+        <TourIntakeDetails data={intakeData} />
       </div>
 
       {/* Optional after required summary */}

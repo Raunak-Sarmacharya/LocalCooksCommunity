@@ -60,6 +60,7 @@ import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
 import { Separator } from "@/components/ui/separator";
 
 interface ChatPanelProps {
+  initialDraft?: string;
   conversationId: string;
   applicationId?: number;
   canBook?: boolean;
@@ -101,6 +102,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({
+  initialDraft,
   conversationId,
   applicationId,
   canBook = false,
@@ -392,6 +394,7 @@ export default function ChatPanel({
           </div>
         ) : (
           <ChatInput
+            initialDraft={initialDraft}
             onSend={onSend}
             isLoading={isSending}
             disabled={!role}

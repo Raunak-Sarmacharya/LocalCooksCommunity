@@ -98,13 +98,13 @@ describe('admin tour current manager contact', () => {
     expect(state.select).toHaveBeenCalledWith({ id: users.id, email: users.username, phone: users.phoneNumber, profile: users.managerProfileData });
     expect(state.select).toHaveBeenCalledTimes(2);
     expect(vi.mocked(getUserDisplayName).mock.calls.filter(([, role]) => role === 'manager')).toEqual([[3, 'manager']]);
-    expect(res.json).toHaveBeenCalledWith(state.adminRows.map(row => ({ ...row, managerName: 'Manager 3',
+    expect(res.json).toHaveBeenCalledWith(state.adminRows.map(row => expect.objectContaining({ ...row, managerName: 'Manager 3',
       managerEmail: 'current@example.com', managerPhone: '+17095551234', chefName: 'Fixture chef', chefPhone: null })));
   });
   it('never falls back to a former manager for new unassigned requests or removed assignments', async () => {
     state.adminRows = [null, 2].map((managerId, index) => ({ viewing: { id: index, chefId: 8, managerId }, managerId: null }));
     const res = await request('/admin', 'get');
-    expect(res.json).toHaveBeenCalledWith(state.adminRows.map(row => ({ ...row, managerId: null,
+    expect(res.json).toHaveBeenCalledWith(state.adminRows.map(row => expect.objectContaining({ ...row, managerId: null,
       managerName: null, managerEmail: null, managerPhone: null, chefName: 'Fixture chef', chefPhone: null })));
     expect(state.select).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getUserDisplayName).mock.calls.some(([, role]) => role === 'manager')).toBe(false);

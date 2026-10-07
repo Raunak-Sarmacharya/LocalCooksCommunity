@@ -62,11 +62,13 @@ const trigger = onDocumentCreatedWithAuthContext({
   stage = 'connect-sql';
   const client = await getPool().connect();
   let starting = false;
+  let startingRecipients: Array<{ role: 'chef' | 'manager'; trackingId: string }> = [];
   try {
     stage = 'queue-intents';
     await client.query('BEGIN');
     const result = await queueChatNotice(client, conversationId, messageId, convData, persisted as PersistedChatMessage, mapping.data() as ChatRelationship);
-    starting = 'initialTrackingId' in result && !!result.initialTrackingId;
+    startingRecipients = result.initialRecipients ?? [];
+    starting = startingRecipients.length > 0 || ('initialTrackingId' in result && !!result.initialTrackingId);
     stage = 'commit-intents';
     await client.query('COMMIT');
     log('committed', { result: 'queued' in result ? 'queued' : 'duplicate' in result ? 'duplicate' : 'skipped', starting });
@@ -78,7 +80,13 @@ const trigger = onDocumentCreatedWithAuthContext({
   // duplicate starts reuse the same durable intent and event id.
   if (starting) {
     stage = 'publish-start';
-    await wakeStartingChatEmail(conversationId, messageId, message.senderId, process.env[eventSecret]);
+    if (startingRecipients.length) {
+      for (const recipient of startingRecipients) {
+        await wakeStartingChatEmail(conversationId, messageId, message.senderId, process.env[eventSecret], recipient.role);
+      }
+    } else {
+      await wakeStartingChatEmail(conversationId, messageId, message.senderId, process.env[eventSecret]);
+    }
     log('published');
   }
   } catch (error) {

@@ -35,6 +35,8 @@ describe("tour intake answers with the app's configured ICU translations", () =>
     await i18n.changeLanguage("en-CA");
     const { container, rerender } = showAnswers({ estimatedWeeklyHours: "Evenings and weekends", targetStartDate: "2026-10-07", legacyQuestion: "Saved answer", hasLicense: null, additionalInfo: " " });
     expect(screen.getByText("Evenings and weekends")).toBeInTheDocument();
+    expect(screen.getByText("Weekly availability")).toBeInTheDocument();
+    expect(screen.queryByText("Estimated weekly hours")).not.toBeInTheDocument();
     expect(screen.getByText("2026-10-07")).toBeInTheDocument();
     expect(screen.getByText("Saved answer")).toBeInTheDocument();
     expect(container.querySelectorAll("dd")).toHaveLength(3);

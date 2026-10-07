@@ -8,7 +8,7 @@ import { getUserDisplayName } from '../utils/user-display';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { deliveryReserve, workerRemaining, assertWorkerTime, isWorkerBudgetError, WorkerBudgetExhausted, workerAfter, workerRecord, workerPageEnd } from './worker-context';
 import chatNotice, { type ChatConversation, type PersistedChatMessage, type ChatSql, type ChatRelationship } from '../../functions/src/chat-notice';
-const { queueChatNotice, resolveChatNoticeContext } = chatNotice;
+const { queueChatNotice, resolveChatNoticeContext, chatMessageForRecipient } = chatNotice;
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 function chatSql(tx: Transaction): ChatSql {
@@ -70,21 +70,32 @@ export function parseChatDigest(value: string | null): ChatDigestIntent {
 
 /** Event retries queue through the same producer and then claim the original
  * initial intent. Repeated wakeups never create another email obligation. */
-export async function deliverStartingChatMessage(conversationId: string, messageId: string, senderId: number) {
+export async function deliverStartingChatMessage(conversationId: string, messageId: string, senderId: number, recipientRole?: 'chef' | 'manager') {
   const result = await notifyPersistedChatMessage(conversationId, messageId, senderId);
-  if (!('initialTrackingId' in result) || !result.initialTrackingId) return { completed: 0, errors: 0 };
-  const [intent] = await db.select({ id: emailLogs.id }).from(emailLogs)
-    .where(and(eq(emailLogs.category, 'chat_digest'), eq(emailLogs.trackingId, result.initialTrackingId))).limit(1);
-  return intent ? dispatchChatDigests(1, 20000, intent.id) : { completed: 0, errors: 0 };
+  const keys = result.initialRecipients
+    ? result.initialRecipients.filter(recipient => !recipientRole || recipient.role === recipientRole).map(recipient => recipient.trackingId)
+    : result.initialTrackingId && !recipientRole ? [result.initialTrackingId] : [];
+  const total = { completed: 0, errors: 0 };
+  for (const key of keys) {
+    const [intent] = await db.select({ id: emailLogs.id }).from(emailLogs)
+      .where(and(eq(emailLogs.category, 'chat_digest'), eq(emailLogs.trackingId, key))).limit(1);
+    if (intent) {
+      const delivered = await dispatchChatDigests(1, 20000, intent.id);
+      total.completed += delivered.completed; total.errors += delivered.errors;
+    }
+  }
+  return total;
 }
 
 async function deliverChatEpisode(tx: Transaction, intent: typeof emailLogs.$inferSelect, source: ChatDigestIntent, now: Date, deadline: number) {
   const snapshots = await readConversationMessages(source.conversationId, [source.messageId]);
   const conversation = snapshots.conversation.data() as ChatConversation | undefined;
-  const message = snapshots.messages[0].data() as PersistedChatMessage | undefined;
+  const persisted = snapshots.messages[0].data() as PersistedChatMessage | undefined;
+  const role = intent.recipientRole === 'chef' ? 'chef' : 'manager';
+  const message = persisted && chatMessageForRecipient(persisted, role);
   const context = conversation && message && message.senderId === source.senderId && message.senderRole === source.senderRole &&
     message.emailEpisodeId === source.episodeId && message.emailRecipientId === intent.recipientUserId
-    ? await resolveChatNoticeContext(chatSql(tx), source.conversationId, conversation, message, snapshots.relationship?.data() as ChatRelationship | undefined) : null;
+    ? await resolveChatNoticeContext(chatSql(tx), source.conversationId, conversation, persisted!, snapshots.relationship?.data() as ChatRelationship | undefined, persisted?.adminAudience === 'both' ? role : undefined) : null;
   const marker = intent.recipientRole === 'chef' ? conversation?.emailChefEpisode : conversation?.emailManagerEpisode;
   const count = intent.recipientRole === 'chef' ? conversation?.unreadChefCount : conversation?.unreadManagerCount;
   const [accepted] = await tx.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.trackingId, intent.trackingId!), eq(emailLogs.status, 'sent'))).limit(1);

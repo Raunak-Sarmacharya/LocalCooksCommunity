@@ -144,7 +144,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     // arrivals racing this acknowledgment retain their own unread state.
     if (!messages.some(message => !message.readAt && (role === 'chef'
       ? message.senderRole === 'manager' || message.senderRole === 'admin'
-      : message.senderRole === 'chef'))) return;
+      : message.senderRole === 'chef' || message.senderRole === 'admin' && message.adminAudience === 'both'))) return;
     void markAsRead(conversationId, currentUserId, role, messages).then(() => {
       void queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
       onUnreadCountUpdateRef.current?.();

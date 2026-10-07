@@ -9,6 +9,7 @@ import { findMissingRequiredCustomFields } from '../../domains/applications/tier
 import { fromZodError } from 'zod-validation-error';
 // Import Domain Services
 import { chefApplicationService } from '../../domains/applications/chef-application.service';
+import { DomainError } from '../../shared/errors/domain-error';
 import { approvalDocumentUpdates, type ApprovalDocumentField } from '../../domains/applications/document-approval';
 import { LocationRepository } from '../../domains/locations/location.repository';
 import { LocationService } from '../../domains/locations/location.service';
@@ -69,6 +70,13 @@ router.post('/firebase/chef/kitchen-applications',
                     error: "Please verify your email before submitting an application.",
                     code: "EMAIL_NOT_VERIFIED",
                 });
+            }
+
+            const rawSourceTourId = req.body.sourceTourId;
+            const sourceTourId = rawSourceTourId == null ? undefined : Number(rawSourceTourId);
+            if (rawSourceTourId != null && (typeof rawSourceTourId !== 'string' && typeof rawSourceTourId !== 'number'
+                || !/^\d+$/.test(String(rawSourceTourId)) || !Number.isSafeInteger(sourceTourId) || sourceTourId! <= 0 || sourceTourId! > 2147483647)) {
+                return res.status(400).json({ error: 'A valid source tour is required.', code: 'INVALID_SOURCE_TOUR' });
             }
 
             // Handle file uploads if present
@@ -651,7 +659,7 @@ router.post('/firebase/chef/kitchen-applications',
                 parsedDataCustomFields: parsedData.data.customFieldsData
             });
             
-            const application = await chefApplicationService.createApplication(applicationData as any);
+            const application = await chefApplicationService.createApplication(applicationData as any, { sourceTourId });
 
             logger.info(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
@@ -851,6 +859,9 @@ router.post('/firebase/chef/kitchen-applications',
             });
         } catch (error) {
             logger.error('Error creating kitchen application:', error);
+            if (error instanceof DomainError) {
+                return res.status(error.statusCode).json({ error: error.message, code: error.code });
+            }
             res.status(500).json({
                 error: 'Failed to submit kitchen application',
                 message: error instanceof Error ? error.message : 'Unknown error'
@@ -1493,9 +1504,13 @@ router.get(participantPath, requireFirebaseAuthWithUser, async (req, res) => {
 router.get(`${participantPath}/messages`, requireFirebaseAuthWithUser, async (req, res) => {
     try {
         const result = await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId,
-            async ({ ref }) => {
+            async ({ ref, role }) => {
                 const snapshot = await ref.collection('messages').orderBy('createdAt', 'desc').limit(50).get();
-                return snapshot.docs.reverse().map(doc => serializeChat({ id: doc.id, ...doc.data() }));
+                return snapshot.docs.reverse().map(doc => {
+                    const data = doc.data();
+                    return serializeChat({ id: doc.id, ...data, ...(data.senderRole === 'admin' && data.adminAudience === 'both'
+                        ? { readAt: data.recipientStates?.[role]?.readAt ?? null } : {}) });
+                });
             });
         return res.json(result);
     } catch (error) { return participantRequestError(res, error); }
@@ -1560,7 +1575,7 @@ router.get('/firebase/chat/viewings/:viewingId/conversation', requireFirebaseAut
         if (!Number.isSafeInteger(viewingId) || viewingId <= 0) return res.status(400).json({ error: 'Invalid tour' });
         const [tour] = await db.select({ id: kitchenViewings.id, chefId: kitchenViewings.chefId,
             locationId: kitchenViewings.locationId, status: kitchenViewings.status,
-            adminReviewDecision: kitchenViewings.adminReviewDecision, outcomeHistory: kitchenViewings.outcomeHistory })
+            adminReviewDecision: kitchenViewings.adminReviewDecision, confirmedAt: kitchenViewings.confirmedAt, outcomeHistory: kitchenViewings.outcomeHistory })
             .from(kitchenViewings).where(eq(kitchenViewings.id, viewingId)).limit(1);
         const location = tour ? await locationService.getLocationById(tour.locationId) : null;
         if (!tour || !location || !isChatParticipant(req.neonUser!, tour.chefId, location.managerId))
@@ -1575,6 +1590,23 @@ router.get('/firebase/chat/viewings/:viewingId/conversation', requireFirebaseAut
 
 // Local Cooks chat is server mediated: Firestore client rules only admit the
 // chef and kitchen manager to a conversation.
+router.get('/firebase/admin/chat/viewings/:viewingId/conversation', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        if (req.neonUser?.role !== 'admin') return res.status(403).json({ error: 'Access denied' });
+        const viewingId = Number(req.params.viewingId);
+        if (!Number.isSafeInteger(viewingId) || viewingId <= 0) return res.status(400).json({ error: 'Invalid tour' });
+        const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, viewingId)).limit(1);
+        if (!tour) return res.status(404).json({ error: 'Tour not found' });
+        if (!tourGrantsChat(tour)) return res.status(409).json({ error: 'Messaging opens after Local Cooks forwards this request' });
+        const location = await locationService.getLocationById(tour.locationId);
+        const conversationId = await initializeSharedConversation(tour.chefId, tour.locationId);
+        if (!location || !conversationId) return res.status(409).json({ error: 'Messaging unavailable. Please retry.' });
+        const snapshot = await (await getAdminDb()).collection('conversations').doc(conversationId).get();
+        if (!snapshot.exists || snapshot.data()?.unavailable) return res.status(409).json({ error: 'Conversation unavailable' });
+        return res.json({ conversationId, chefId: tour.chefId, managerId: location.managerId, locationId: tour.locationId,
+            chefName: await getUserDisplayName(tour.chefId, 'chef') });
+    } catch (error) { return sharedChatError(res, error); }
+});
 router.get('/firebase/chat/applications/:applicationId/conversation', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         const id = Number(req.params.applicationId);
@@ -1630,11 +1662,8 @@ router.post('/firebase/admin/chat/conversations/:conversationId/messages', requi
         if (typeof content !== 'string' || content.length > 10000 || (fileUrl != null && (typeof fileUrl !== 'string' || !storedFileUrl(fileUrl))) || (fileName != null && typeof fileName !== 'string') || (!content.trim() && !fileUrl)) {
             return res.status(400).json({ error: 'Invalid message' });
         }
-        const adminDb = await getAdminDb();
-        const conversation = adminDb.collection('conversations').doc(req.params.conversationId);
-        const existing = await conversation.get();
-        if (!existing.exists || existing.data()?.unavailable === true) return res.status(409).json({ error: 'Conversation is unavailable' });
-        const sent = await persistChatMessage(adminDb, conversation, {
+        const sent = await withParticipantChat(req.neonUser!, req.firebaseUser!.uid, req.params.conversationId,
+            async ({ firestore, ref, data, managerId }) => persistChatMessage(firestore, ref, {
             senderId: req.neonUser!.id,
             senderRole: 'admin',
             senderFirebaseUid: req.firebaseUser!.uid,
@@ -1642,10 +1671,11 @@ router.post('/firebase/admin/chat/conversations/:conversationId/messages', requi
             type: fileUrl ? 'file' : 'text',
             fileUrl: fileUrl || null,
             fileName: fileName || null,
-        }, existing.data()!.chefId);
+        }, data.chefId, managerId!), { admin: true });
         res.status(201).json(sent);
     } catch (error) {
         logger.error('Failed to send Local Cooks chat message:', error);
+        if (error instanceof ChatAccessError) return res.status(error.status).json({ error: error.message });
         res.status(500).json({ error: 'Failed to send message' });
     }
 });

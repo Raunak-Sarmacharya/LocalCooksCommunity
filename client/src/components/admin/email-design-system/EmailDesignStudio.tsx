@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import emailBrandLogo from "@assets/emailHeader-brand-red.png";
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -336,7 +337,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           breakpoints: { mobile: '480px', tablet: '768px', desktop: '1024px' }
         },
         branding: {
-          logoUrl: '/assets/Logo_LocalCooks.png',
+          logoUrl: emailBrandLogo,
           brandColors: ['#F51042', '#000000'],
           fontFamily: 'Inter',
           tone: 'professional'
@@ -3077,10 +3078,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 )}
 
                 <img
-                  src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png"
+                  src={emailBrandLogo}
                   alt="Local Cooks"
                   style={{
-                    maxWidth: '280px',
+                    width: '200px',
+                    maxWidth: '100%',
                     height: 'auto',
                     display: 'block',
                     margin: '0 auto'
@@ -3599,4 +3601,4 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       </div>
     </div>
   );
-}; 
+};

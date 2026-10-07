@@ -8,7 +8,7 @@ describe('real red shared conversation digest', () => {
     const email = generateChatDigestEmail('chef@example.test', 2, 'Sam <Manager>', 'Harbour & Kitchen', url, [10, 11]);
     expect(email.html).toContain('Sam &lt;Manager&gt;'); expect(email.html).toContain('Harbour &amp; Kitchen');
     expect(email.html).toContain('&amp;extra=&quot;quoted&quot;');
-    expect(email.html!.match(/class="cta-button"/g)).toHaveLength(1);
+    expect(email.html!.match(/class="[^"]*\bcta-button\b[^"]*"/g)).toHaveLength(1);
     expect(email.html).toContain('background:#e11d48');
     expect(email.text).toContain('Read messages and reply: ' + url);
     expect(email.text).toContain('- Booking #10'); expect(email.text).toContain('- Booking #11');

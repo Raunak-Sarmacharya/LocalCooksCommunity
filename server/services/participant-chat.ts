@@ -33,7 +33,7 @@ export async function withParticipantChat<T>(actor: ChatActor, uid: string, id: 
   action: (context: { firestore: FirebaseFirestore.Firestore; ref: FirebaseFirestore.DocumentReference;
     data: FirebaseFirestore.DocumentData; role: 'chef' | 'manager'; live: boolean;
     applicationIds: number[]; managerId: number | null }) => Promise<T>,
-  options: { discovery?: boolean } = {}): Promise<T> {
+  options: { discovery?: boolean; admin?: boolean } = {}): Promise<T> {
   if (!id || id.includes('/') || id.length > 300) throw new ChatAccessError(400, 'Invalid conversation');
   const firestore = await getAdminDb(), ref = firestore.collection('conversations').doc(id);
   const snapshot = await ref.get(), data = snapshot.data();
@@ -42,11 +42,15 @@ export async function withParticipantChat<T>(actor: ChatActor, uid: string, id: 
     const [location] = await tx.select().from(locations).where(eq(locations.id, data.locationId)).for('share');
     const participants = await tx.select().from(users).where(inArray(users.id,
       Array.from(new Set([data.chefId, location?.managerId, actor.id].filter((id): id is number => Number.isSafeInteger(id)))))).for('share');
-    assertChatActor(actor, uid, data, location, participants);
+    if (options.admin) {
+      if (actor.role !== 'admin' || !participants.some(user => user.id === actor.id && user.role === 'admin' && user.firebaseUid === uid) || !location)
+        throw new ChatAccessError(404, 'Conversation is unavailable for this account');
+    } else assertChatActor(actor, uid, data, location, participants);
     const mapping = await firestore.collection('chatRelationships').doc(`chef-${data.chefId}-location-${data.locationId}`).get();
     // Orphan history has no provisioning source; it remains readable for its survivor.
     const live = participants.some(user => user.id === data.chefId && user.role === 'chef' && !!user.firebaseUid) &&
       participants.some(user => user.id === location.managerId && user.role === 'manager' && !!user.firebaseUid);
+    if (options.admin && !live) throw new ChatAccessError(409, 'The other account is no longer available');
     const applications = await tx.select({ id: chefKitchenApplications.id }).from(chefKitchenApplications).where(and(
       eq(chefKitchenApplications.chefId, data.chefId), eq(chefKitchenApplications.locationId, data.locationId),
       eq(chefKitchenApplications.status, 'approved'))).for('share');
@@ -154,11 +158,26 @@ export async function sendParticipantMessage(actor: ChatActor, uid: string, id: 
  * commit together; Firestore retries competing sends/reads against this document. */
 export async function persistChatMessage(firestore: FirebaseFirestore.Firestore, ref: FirebaseFirestore.DocumentReference,
   payload: { senderId: number; senderRole: 'chef' | 'manager' | 'admin'; senderFirebaseUid: string;
-    content: string; type: string; fileUrl: string | null; fileName: string | null; bookingId?: number }, recipientId: number) {
+    content: string; type: string; fileUrl: string | null; fileName: string | null; bookingId?: number }, recipientId: number, managerId?: number) {
   const message = ref.collection('messages').doc();
   await firestore.runTransaction(async tx => {
     const snapshot = await tx.get(ref), conversation = snapshot.data();
     if (!conversation || conversation.unavailable) throw new ChatAccessError(409, 'Conversation is unavailable');
+    if (payload.senderRole === 'admin' && managerId != null) {
+      const recipientStates: Record<string, any> = {}, updates: Record<string, any> = {};
+      for (const [role, id] of [['Chef', recipientId], ['Manager', managerId]] as const) {
+        const prior = conversation[`email${role}Episode`];
+        const episodeId = prior?.recipientId === id && typeof prior.id === 'string' && prior.id && !prior.id.includes('/') ? prior.id : message.id;
+        recipientStates[role.toLowerCase()] = { recipientId: id, episodeId, readAt: null };
+        updates[`unread${role}Count`] = FieldValue.increment(1);
+        updates[`archived${role}At`] = FieldValue.delete();
+        updates[`email${role}Episode`] = { id: episodeId, recipientId: id };
+      }
+      tx.set(message, { ...payload, adminAudience: 'both', recipientStates, createdAt: FieldValue.serverTimestamp(), readAt: null });
+      tx.update(ref, { ...updates, lastMessageAt: FieldValue.serverTimestamp(),
+        lastMessageText: payload.type === 'file' ? payload.fileName || 'Attachment' : payload.content.slice(0, 240) });
+      return;
+    }
     const recipientRole = payload.senderRole === 'chef' ? 'Manager' : 'Chef';
     const field = `email${recipientRole}Episode`;
     const prior = conversation[field];
@@ -183,9 +202,18 @@ export async function readParticipantMessages(actor: ChatActor, uid: string, id:
     await firestore.runTransaction(async tx => {
       const conversation = await tx.get(ref);
       const messages = await Promise.all(Array.from(new Set(ids)).map(id => tx.get(ref.collection('messages').doc(id))));
-      const unread = messages.filter(message => message.exists && !message.data()?.readAt &&
-        (role === 'chef' ? ['manager', 'admin'].includes(message.data()!.senderRole) : message.data()!.senderRole === 'chef'));
-      unread.forEach(message => tx.update(message.ref, { readAt: FieldValue.serverTimestamp() }));
+      const unread = messages.filter(message => {
+        const data = message.data();
+        if (!message.exists) return false;
+        if (data?.senderRole === 'admin' && data.adminAudience === 'both') {
+          const recipient = data.recipientStates?.[role];
+          return recipient?.recipientId === actor.id && !recipient.readAt;
+        }
+        return !data?.readAt && (role === 'chef' ? ['manager', 'admin'].includes(data!.senderRole) : data!.senderRole === 'chef');
+      });
+      unread.forEach(message => tx.update(message.ref, {
+        [message.data()?.senderRole === 'admin' && message.data()?.adminAudience === 'both' ? `recipientStates.${role}.readAt` : 'readAt']: FieldValue.serverTimestamp()
+      }));
       const field = role === 'chef' ? 'unreadChefCount' : 'unreadManagerCount';
       const remaining = Math.max(0, (conversation.data()?.[field] || 0) - unread.length);
       tx.update(ref, { [field]: remaining,

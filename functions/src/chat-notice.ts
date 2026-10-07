@@ -10,6 +10,8 @@ export interface PersistedChatMessage {
   senderId: number; senderRole: string; senderFirebaseUid?: string; type: string; content?: string;
   bookingId?: number; createdAt?: { toDate(): Date }; readAt?: unknown;
   emailEpisodeId?: string; emailRecipientId?: number; fileName?: string;
+  adminAudience?: 'both';
+  recipientStates?: Partial<Record<'chef' | 'manager', { recipientId: number; episodeId: string; readAt?: unknown }>>;
 }
 export interface ChatNoticeContext {
   recipientId: number; recipientRole: 'chef' | 'manager'; recipientEmail: string;
@@ -18,7 +20,7 @@ export interface ChatNoticeContext {
 export type ChatSql = { query: (text: string, values?: any[]) => Promise<{ rows: any[] }> };
 export type ChatRelationship = { chefId: number; locationId: number; conversationId: string };
 
-export async function resolveChatNoticeContext(db: ChatSql, conversationId: string, conversation: ChatConversation, message: PersistedChatMessage, relationship: ChatRelationship | undefined): Promise<ChatNoticeContext | null> {
+export async function resolveChatNoticeContext(db: ChatSql, conversationId: string, conversation: ChatConversation, message: PersistedChatMessage, relationship: ChatRelationship | undefined, requestedRole?: 'chef' | 'manager'): Promise<ChatNoticeContext | null> {
   if (!conversationId || conversationId.includes('/') || conversation.unavailable || message.type === 'system' ||
       !['chef', 'manager', 'admin'].includes(message.senderRole) || typeof message.senderFirebaseUid !== 'string' || !message.senderFirebaseUid.trim() ||
       ![conversation.chefId, conversation.locationId, message.senderId].every(id => Number.isSafeInteger(id) && id > 0) ||
@@ -71,7 +73,14 @@ export async function resolveChatNoticeContext(db: ChatSql, conversationId: stri
       WHERE b.id = $1 AND b.chef_id = $2 AND k.location_id = $3 AND b.status IN ('confirmed', 'cancellation_requested', 'completed') FOR SHARE OF b, k`, [message.bookingId, conversation.chefId, conversation.locationId]);
     if (!booking) return null;
   }
-  const chef = message.senderRole !== 'chef';
+  if (requestedRole && !(message.senderRole === 'admin' && message.adminAudience === 'both')) return null;
+  const chef = requestedRole ? requestedRole === 'chef' : message.senderRole !== 'chef';
+  if (message.adminAudience === 'both') {
+    if (message.senderRole !== 'admin' || !requestedRole) return null;
+    const state = message.recipientStates?.[requestedRole];
+    if (!state || state.recipientId !== (chef ? row.chef_id : row.manager_id) ||
+        typeof state.episodeId !== 'string' || !state.episodeId || state.episodeId.includes('/')) return null;
+  }
   const role = chef ? 'chef' : 'manager';
   const names = [row.sender_profile?.displayName, row.sender_profile?.fullName,
     message.senderRole === 'chef' ? row.sender_application_name : null];
@@ -85,10 +94,35 @@ export async function resolveChatNoticeContext(db: ChatSql, conversationId: stri
 
 /** Caller owns BEGIN/COMMIT. The lock serializes duplicate producers without
  * requiring a live schema migration or a check-then-insert race. */
-export async function queueChatNotice(db: ChatSql, conversationId: string, messageId: string, conversation: ChatConversation, message: PersistedChatMessage, relationship: ChatRelationship | undefined) {
+type QueueResult = { skipped?: true; duplicate?: true; queued?: true; initialTrackingId?: string;
+  initialRecipients?: Array<{ role: 'chef' | 'manager'; trackingId: string }> };
+
+/** A recipient's read only acknowledges their own obligation. */
+export function chatMessageForRecipient(message: PersistedChatMessage, role: 'chef' | 'manager'): PersistedChatMessage | null {
+  if (message.adminAudience !== 'both') return message;
+  const state = message.recipientStates?.[role];
+  return message.senderRole === 'admin' && state ? { ...message, emailEpisodeId: state.episodeId, emailRecipientId: state.recipientId, readAt: state.readAt } : null;
+}
+
+export async function queueChatNotice(db: ChatSql, conversationId: string, messageId: string, conversation: ChatConversation, message: PersistedChatMessage, relationship: ChatRelationship | undefined): Promise<QueueResult> {
+  if (message.adminAudience !== 'both') return queueRecipientNotice(db, conversationId, messageId, conversation, message, relationship);
+  const initialRecipients: NonNullable<QueueResult['initialRecipients']> = [];
+  let queued = false, duplicate = false;
+  for (const role of ['chef', 'manager'] as const) {
+    const result = await queueRecipientNotice(db, conversationId, messageId, conversation, message, relationship, role);
+    queued ||= !!result.queued; duplicate ||= !!result.duplicate;
+    if (result.initialTrackingId) initialRecipients.push({ role, trackingId: result.initialTrackingId });
+  }
+  return { ...(queued ? { queued: true as const } : duplicate ? { duplicate: true as const } : { skipped: true as const }), initialRecipients };
+}
+
+async function queueRecipientNotice(db: ChatSql, conversationId: string, messageId: string, conversation: ChatConversation, message: PersistedChatMessage, relationship: ChatRelationship | undefined, requestedRole?: 'chef' | 'manager'): Promise<QueueResult> {
   if (!messageId || messageId.includes('/')) return { skipped: true };
-  const context = await resolveChatNoticeContext(db, conversationId, conversation, message, relationship);
+  const context = await resolveChatNoticeContext(db, conversationId, conversation, message, relationship, requestedRole);
   if (!context) return { skipped: true };
+  const projected = chatMessageForRecipient(message, context.recipientRole);
+  if (!projected) return { skipped: true };
+  message = projected;
   const createdAt = message.createdAt?.toDate();
   if (!createdAt || !Number.isFinite(createdAt.getTime())) return { skipped: true };
   if (message.emailEpisodeId !== undefined && (typeof message.emailEpisodeId !== 'string' || !message.emailEpisodeId ||
@@ -131,4 +165,4 @@ export async function queueChatNotice(db: ChatSql, conversationId: string, messa
 
 // The portal loads this TypeScript through tsx, while Functions compiles it to
 // CommonJS. An explicit default object works with both module-loading paths.
-export default { queueChatNotice, resolveChatNoticeContext };
+export default { queueChatNotice, resolveChatNoticeContext, chatMessageForRecipient };

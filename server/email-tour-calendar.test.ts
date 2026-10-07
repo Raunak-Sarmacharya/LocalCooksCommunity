@@ -66,7 +66,7 @@ describe('tour time and downloadable calendar', () => {
         kitchenName: 'Room <b>A</b>', notes: 'Door & "bell"', contactEmail: 'host@example.test' });
       const role = isManager ? 'kitchen' : 'chef';
       const url = `https://${environment === 'preview' ? 'dev-' : ''}${role}.localcooks.ca${isManager ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=42`;
-      expect(email.text).toContain(url); expect(email.html).toContain(`href="${url.replace(/&/g, '&amp;')}" class="cta-button"`);
+      expect(email.text).toContain(url); expect(email.html).toContain(`href="${url.replace(/&/g, '&amp;')}"`);
       expect(email.html).toContain('>View details</a>');
       expect(email.html).toContain('Pat &lt;script&gt;'); expect(email.html).toContain('Room &lt;b&gt;A&lt;/b&gt;');
       expect(email.html).toContain('Door &amp; &quot;bell&quot;'); expect(email.html).not.toContain('<script>');
@@ -74,7 +74,9 @@ describe('tour time and downloadable calendar', () => {
         expect(content).toContain('TOUR-42'); expect(content).toContain('host@example.test');
         expect(content).toContain('Add to Google Calendar'); expect(content).toContain('NDT');
       }
-      expect(email.text).toContain('Door & "bell"'); expect(email.html).toContain('emailHeader.png');
+      expect(email.text).toContain('Door & "bell"'); expect(email.html).toContain('emailHeader-brand-red.png');
+      expect(email.text).toContain('Your appointment'); expect(email.text).toContain('Getting there');
+      expect(email.text).not.toContain('Confirmed at:');
       expect(email.html).not.toContain('callback.example.test');
     }
   });
@@ -82,7 +84,8 @@ describe('tour time and downloadable calendar', () => {
     vi.stubEnv('EMAIL_USER', 'notifications@example.test');
     const email = generateTourConfirmedEmail(base);
     expect(email.text).toContain('Arrival help: support@example.test');
-    expect(email.html).toContain('<strong>Arrival help:</strong> support@example.test');
+    expect(email.html).toContain('Arrival help</p>');
+    expect(email.html).toContain('support@example.test</p>');
   });
   it.each([
     ['2026-10-07T11:30:00Z', 'Oct 7, 2026', '9:00 AM', '20261007T120000Z'],
@@ -110,7 +113,7 @@ describe('tour time and downloadable calendar', () => {
       expect(calendar(email)).toContain('UID:tour-42@localcooks.com');
       expect(calendar(email)).toContain('METHOD:PUBLISH');
       expect(email.attachments?.[0]?.contentType).toContain('method=PUBLISH');
-      expect(email.html).toContain('do not update automatically');
+      expect(email.html).toContain('update the event in your calendar too');
     }
   });
   it('names the overnight end date and distinguishes repeated daylight-saving clocks', () => {

@@ -7,7 +7,7 @@ import type { TourAttendance } from '@shared/tour-attendance';
 export type ViewingStatusBadge = {
   variant: "warning" | "success" | "destructive" | "outline" | "secondary" | "info";
   labelKey: 'tourStatusDisrupted' | 'tourStatusRejected' | 'tourStatusPending' | 'tourStatusConfirmed'
-    | 'tourStatusCompleted' | 'tourStatusCancelled' | 'tourStatusNoShow' | 'tourStatusUnknown';
+    | 'tourStatusCompleted' | 'tourStatusCancelled' | 'tourStatusNoShow' | 'tourStatusUnknown' | 'tourStatusUnverified';
   defaultLabel: string;
 };
 
@@ -28,7 +28,11 @@ export type ChefTourRow = {
   scheduledAt: string;
   updatedAt: string;
   confirmedAt?: string | null;
+  confirmationVerified?: boolean;
+  chefFeedbackSubmitted?: boolean;
+  visitEvidenceState?: string;
   requestExpiredAt?: string | null;
+  reconfirmation?: { revision: string; askAt: string | null; escalateAt: string | null; reply: 'still_coming' | 'reschedule' | 'cant_make_it' | null; repliedAt: string | null; canReply: boolean; needsStaffAttention: boolean };
   checkedInAt?: string | null;
   checkedOutAt?: string | null;
   attendance?: TourAttendance;
@@ -47,6 +51,7 @@ export type ChefTourRow = {
   cancelledAt: string | null;
   completedAt: string | null;
   managerName: string | null;
+  managerEmail?: string | null;
   chefName: string | null;
   chefEmail: string | null;
   submittedAt: string;
@@ -63,7 +68,13 @@ export function chefTourVisitAction(tour: Pick<ChefTourRow, 'status' | 'checkedI
   return null;
 }
 
+/** Keep future tours quiet; server eligibility supplies the configured arrival window. */
+export function showTourVisitPanel(tour: { checkedInAt?: string | null; visitEvidenceState?: string; attendance?: Pick<TourAttendance, 'checkInOpensAt'> }, now = Date.now()) {
+  return !!tour.checkedInAt || tour.visitEvidenceState === 'review' || !!tour.attendance && now >= Date.parse(tour.attendance.checkInOpensAt);
+}
+
 export function viewingStatusBadge(status: string, adminReviewDecision?: string | null, cancelledBy?: string | null, disruptionReason?: string | null): ViewingStatusBadge {
+  if (disruptionReason === 'outcome_unknown') return { variant: 'outline', labelKey: 'tourStatusUnverified', defaultLabel: 'Tour closed — outcome not verified' };
   if (disruptionReason) return { variant: "destructive", labelKey: "tourStatusDisrupted", defaultLabel: "Couldn’t take place" };
   if (status === "cancelled" && (adminReviewDecision === "denied" || cancelledBy === "manager_declined")) {
     return { variant: "destructive", labelKey: "tourStatusRejected", defaultLabel: "Rejected" };
@@ -132,7 +143,10 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     kitchenName: row.kitchenName || viewing.kitchen?.name || null,
     status: viewing.status || "pending",
     confirmedAt: viewing.confirmedAt || null,
+    chefFeedbackSubmitted: viewing.chefFeedbackSubmitted === true,
+    confirmationVerified: viewing.confirmationVerified, visitEvidenceState: viewing.visitEvidenceState,
     requestExpiredAt: viewing.requestExpiredAt || null,
+    reconfirmation: row.reconfirmation,
     adminReviewDecision: viewing.adminReviewDecision ?? null,
     cancelledBy: viewing.cancelledBy ?? null,
     scheduledAt: viewing.scheduledAt,
@@ -155,6 +169,7 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     cancelledAt: viewing.cancelledAt ?? null,
     completedAt: viewing.completedAt ?? null,
     managerName: row.managerName || null,
+    managerEmail: row.managerEmail || null,
     chefName: row.chefName || null,
     chefEmail: row.chefEmail || null,
     submittedAt: viewing.createdAt || viewing.submittedAt || "",

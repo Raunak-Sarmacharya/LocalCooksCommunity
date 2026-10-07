@@ -77,6 +77,22 @@ describe('actual service-account trigger wired to real canonical transactional p
     expect(state.release).toHaveBeenCalledTimes(1); expect(inserts()).toHaveLength(3);
     await fire(); expect(inserts()).toHaveLength(3); expect(state.fetch).toHaveBeenCalledTimes(2);
   });
+  it('publishes independently retryable admin wakeups for both canonical recipients after committing', async () => {
+    Object.assign(state.person, { sender_role: 'admin', sender_uid: 'actual-admin' });
+    Object.assign(state.message, { senderId: 1, senderRole: 'admin', senderFirebaseUid: 'actual-admin', adminAudience: 'both',
+      recipientStates: { chef: { recipientId: 3, episodeId: 'm1', readAt: null }, manager: { recipientId: 2, episodeId: 'm1', readAt: null } } });
+    // A partial event publication retries using the same durable recipient keys.
+    state.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 200, ids: ['event'] }) }).mockResolvedValueOnce({ ok: false });
+    await expect(fire()).rejects.toThrow('not accepted');
+    const count = inserts().length;
+    await fire();
+    expect(inserts()).toHaveLength(count);
+    expect(state.fetch).toHaveBeenCalledTimes(4);
+    const payloads = state.fetch.mock.calls.map(([, request]) => JSON.parse(request.body));
+    expect(payloads.map(p => p.id)).toEqual(['chat-start:thread:m1:chef', 'chat-start:thread:m1:manager', 'chat-start:thread:m1:chef', 'chat-start:thread:m1:manager']);
+    expect(payloads.map(p => p.data.recipientRole)).toEqual(['chef', 'manager', 'chef', 'manager']);
+    expect(state.query.mock.invocationCallOrder[state.query.mock.calls.findIndex(([sql]) => sql === 'COMMIT')]).toBeLessThan(state.fetch.mock.invocationCallOrder[0]);
+  });
   it('publishes staging starts only with the staging event key', async () => {
     Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
     vi.stubEnv('STAGING_DATABASE_URL', 'postgresql://fixture@staging.invalid/fixture');

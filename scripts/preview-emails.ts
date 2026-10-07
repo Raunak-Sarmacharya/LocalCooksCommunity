@@ -9,7 +9,13 @@
  */
 
 import express from 'express';
-import {
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { emailBrandLogoUrl, emailDarkRules } from '../server/email-theme';
+// Closed preview process: never load credentials, connect to a real database, or send.
+process.env.DATABASE_URL = 'postgres://preview:preview@127.0.0.1:1/preview';
+process.env.E2E_SUPPRESS_OUTBOUND = '1';
+const {
   generateStatusChangeEmail,
   generateFullVerificationEmail,
   generateApplicationWithDocumentsEmail,
@@ -56,7 +62,7 @@ import {
   generateDamageClaimDecisionEmail,
   generateDamageClaimChargedEmail,
   generateNewUserRegistrationAdminEmail,
-} from '../server/email';
+} = await import('../server/email');
 
 // Set minimal env vars for template rendering
 process.env.EMAIL_USER = process.env.EMAIL_USER || 'noreply@localcooks.ca';
@@ -475,6 +481,7 @@ function generateAllTemplates(): TemplateEntry[] {
 // ── Serve the preview ──
 const app = express();
 const PORT = 3847;
+const previewLogo = 'data:image/png;base64,' + (await readFile(path.resolve('attached_assets/emailHeader-brand-red.png'))).toString('base64');
 
 app.get('/', (_req, res) => {
   const templates = generateAllTemplates();
@@ -583,6 +590,7 @@ app.get('/', (_req, res) => {
       <div class="toolbar-meta" id="toolbar-meta"></div>
       <button class="toolbar-btn" id="btn-mobile" onclick="toggleView('mobile')">📱 Mobile</button>
       <button class="toolbar-btn active" id="btn-desktop" onclick="toggleView('desktop')">🖥️ Desktop</button>
+      <button class="toolbar-btn" id="btn-theme" onclick="toggleTheme()">Dark preview</button>
       <button class="toolbar-btn" id="btn-source" onclick="toggleSource()">{ } Source</button>
     </div>
     <div class="preview-container">
@@ -603,6 +611,15 @@ app.get('/', (_req, res) => {
     const templates = ${templatesJson};
     let currentIdx = -1;
     let viewMode = 'desktop';
+    let emailTheme = 'light';
+    const darkStyles = ${JSON.stringify(emailDarkRules)};
+    const logoUrl = ${JSON.stringify(emailBrandLogoUrl)}, previewLogo = ${JSON.stringify(previewLogo)};
+    function toggleTheme() {
+      emailTheme = emailTheme === 'light' ? 'dark' : 'light';
+      document.getElementById('preview-frame').style.colorScheme = emailTheme;
+      document.getElementById('btn-theme').textContent = emailTheme === 'dark' ? 'Light preview' : 'Dark preview';
+      showTemplate(currentIdx);
+    }
 
     function showTemplate(idx) {
       currentIdx = idx;
@@ -623,7 +640,8 @@ app.get('/', (_req, res) => {
       empty.classList.add('hidden');
       frame.classList.remove('hidden');
       
-      frame.srcdoc = t.html;
+      frame.srcdoc = t.html.replaceAll(logoUrl, previewLogo).replace('@media(prefers-color-scheme:dark)', '@media(min-width:99999px)').replace('</head>', (emailTheme === 'dark' ? '<style>' + darkStyles + '</style>' : '') + '</head>');
+      frame.style.colorScheme = emailTheme;
       
       // Update source
       document.getElementById('source-code').value = t.html;
@@ -685,10 +703,17 @@ app.get('/', (_req, res) => {
 </html>`);
 });
 
-app.listen(PORT, () => {
+if (!process.argv.includes('--export-only')) app.listen(PORT, () => {
   console.log(`\\n📧 Email Template Preview Server`);
   console.log(`   ${templates.length} templates loaded`);
   console.log(`   Open: http://localhost:${PORT}\\n`);
 });
 
 const templates = generateAllTemplates();
+const outputIndex = process.argv.indexOf('--output');
+if (outputIndex >= 0) {
+  const directory = path.resolve(process.argv[outputIndex + 1]);
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, 'all-email-samples.json'), JSON.stringify(templates, null, 2));
+  console.log(`Exported ${templates.length} fixture-only email templates.`);
+}

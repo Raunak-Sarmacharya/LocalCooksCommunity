@@ -1,4 +1,9 @@
+import { AdminTourVisitEvidence } from '@/components/tour/AdminTourVisitEvidence';
+import { TourFunnel } from '@/components/tour/TourFunnel';
+import { TourFeedbackPanel } from '@/components/tour/TourFeedbackPanel';
 import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
+import { TourHistoryPanel } from '@/components/tour/TourHistoryPanel';
+import { TourChatButton } from '@/components/chat/TourChatButton';
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearch } from "wouter";
@@ -28,6 +33,7 @@ type TourRequest = {
     chefNotes: string | null;
     intakeData: Record<string, unknown> | null;
     status: string;
+    confirmationVerified?: boolean; visitEvidenceState?: string;
     cancelledBy: string | null;
     adminReviewDecision: "approved" | "denied" | null;
     adminReviewReason: string | null;
@@ -35,6 +41,8 @@ type TourRequest = {
     createdAt: string;
     updatedAt: string;
     rescheduleProposedSlots?: string[];
+    requestedRescheduleAt?: string | null;
+    checkedInAt?: string | null;
     rescheduleProposedAt?: string | null;
     requestExpiredAt?: string | null;
     managerNotes?: string | null;
@@ -54,6 +62,7 @@ type TourRequest = {
   managerName?: string | null;
   managerEmail?: string | null;
   managerPhone?: string | null;
+  reconfirmation?: { reply: string | null; needsStaffAttention: boolean };
 };
 
 async function authHeaders() {
@@ -89,18 +98,20 @@ export function AdminTourRequestsSection() {
   const linkedTourId = Number(new URLSearchParams(useSearch()).get('viewing'));
   const openedLink = useRef<number | null>(null);
   const [outcomeTour, setOutcomeTour] = useState<TourRequest | null>(null);
-  const [outcome, setOutcome] = useState<'completed' | 'no_show' | 'disrupted'>('completed');
+  const [outcome, setOutcome] = useState<'completed' | 'no_show' | 'disrupted' | 'unknown'>('completed');
   const [outcomeReason, setOutcomeReason] = useState('');
   const [outcomeNotes, setOutcomeNotes] = useState('');
   const needsOutcome = (request: TourRequest) => request.viewing.status === 'confirmed'
     && new Date(request.viewing.scheduledAt).getTime() + request.viewing.durationMinutes * 60_000 <= Date.now();
+  const pendingConfirmedDecision = (request: TourRequest) => request.viewing.status === 'confirmed' && !request.viewing.checkedInAt && Date.parse(request.viewing.scheduledAt) > Date.now() &&
+    (!!request.viewing.requestedRescheduleAt || !!request.viewing.rescheduleProposedSlots?.length || !!request.reconfirmation?.needsStaffAttention || ['reschedule', 'cant_make_it'].includes(request.reconfirmation?.reply || ''));
   const recordOutcome = useMutation({
     mutationFn: async () => {
       if (!outcomeTour) throw new Error('Select a tour');
       const response = await fetch(`/api/viewings/${outcomeTour.viewing.id}/status`, {
         method: 'PATCH', headers: await authHeaders(), credentials: 'include',
-        body: JSON.stringify({ expectedUpdatedAt: outcomeTour.viewing.updatedAt, status: outcome === 'disrupted' ? 'cancelled' : outcome,
-          noShowReason: outcome === 'no_show' ? 'visitor_absent' : undefined, disruptionReason: outcome === 'disrupted' ? outcomeReason : undefined,
+        body: JSON.stringify({ expectedUpdatedAt: outcomeTour.viewing.updatedAt, status: ['disrupted', 'unknown'].includes(outcome) ? 'cancelled' : outcome,
+          noShowReason: outcome === 'no_show' ? 'visitor_absent' : undefined, disruptionReason: outcome === 'unknown' ? 'outcome_unknown' : outcome === 'disrupted' ? outcomeReason : undefined,
           sharedManagerNotes: outcomeNotes.trim() || undefined }),
       });
       const body = await response.json().catch(() => ({}));
@@ -133,7 +144,7 @@ export function AdminTourRequestsSection() {
     if (!linkedTourId) { openedLink.current = null; return; }
     const tour = requests.find(request => request.viewing.id === linkedTourId);
     if (!tour) return;
-    setTab(tourRequestDecision(tour.viewing)?.overdue ? 'overdue' : tour.viewing.status === 'pending_local_cooks' && Date.parse(tour.viewing.scheduledAt) > Date.now() ? 'pending' : needsOutcome(tour) ? 'outcomes' : 'history');
+    setTab(tourRequestDecision(tour.viewing)?.overdue ? 'overdue' : pendingConfirmedDecision(tour) || tour.viewing.status === 'pending_local_cooks' && Date.parse(tour.viewing.scheduledAt) > Date.now() ? 'pending' : needsOutcome(tour) ? 'outcomes' : 'history');
     openedLink.current = linkedTourId;
     requestAnimationFrame(() => document.getElementById(`admin-tour-${linkedTourId}`)?.scrollIntoView?.({ block: 'center' }));
   }, [linkedTourId, requests]);
@@ -141,7 +152,7 @@ export function AdminTourRequestsSection() {
     const response = await fetch(`/api/viewings/admin/${viewingId}/retry-delivery`, { method: 'POST', headers: await authHeaders(), credentials: 'include' });
     const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Retry failed'); return body;
   }, onSuccess: (body) => { queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin/delivery-status'] });
-    toast({ title: body.notificationDeliveryFailed ? 'Some delivery remains pending' : 'Tour communications delivered', description: 'The tour result and visit times were not changed.' }); },
+    toast({ title: body.notificationDeliveryFailed ? 'Some delivery remains pending' : 'Tour communications delivered', description: 'The tour result and kitchen tour times were not changed.' }); },
   onError: (error: Error) => toast({ title: 'Delivery retry failed', description: error.message, variant: 'destructive' }) });
 
   const review = useMutation({
@@ -172,7 +183,7 @@ export function AdminTourRequestsSection() {
   });
 
   const visibleRequests = requests.filter((request) =>
-    tab === 'overdue' ? !!tourRequestDecision(request.viewing)?.overdue : tab === "pending" ? request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()
+    tab === 'overdue' ? !!tourRequestDecision(request.viewing)?.overdue : tab === "pending" ? pendingConfirmedDecision(request) || request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()
       : tab === 'outcomes' ? needsOutcome(request) : request.viewing.status !== 'pending_local_cooks' || new Date(request.viewing.scheduledAt).getTime() <= Date.now()
   );
   useEffect(() => {
@@ -192,6 +203,7 @@ export function AdminTourRequestsSection() {
       {!isLoading && !isError && linkedTourId > 0 && !requests.some(request => request.viewing.id === linkedTourId) &&
         <div role="alert"><p>This tour is unavailable. Check your access or try again.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
       <HistoricalVisitReviews />
+      {!linkedTourId && <TourFunnel role="admin" />}
       {pendingDeliveries.length > 0 && <Card><CardHeader><CardTitle>Tour communications pending ({pendingDeliveries.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">{Array.from(new Set(pendingDeliveries.map(event => event.viewingId))).map(id => <div key={id} className="flex items-center justify-between gap-3">
           <span>TOUR-{id} · {pendingDeliveries.filter(event => event.viewingId === id).length} pending events</span>
@@ -207,8 +219,8 @@ export function AdminTourRequestsSection() {
       <Tabs value={tab} onValueChange={(value) => setTab(value as "pending" | "overdue" | "outcomes" | "history")}>
         <TabsList>
           <TabsTrigger value="overdue">{t('tourOverdueQueue', 'Overdue decisions')} ({requests.filter(request => tourRequestDecision(request.viewing)?.overdue).length})</TabsTrigger>
-          <TabsTrigger value="pending">Pending ({requests.filter((request) => request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()).length})</TabsTrigger>
-          <TabsTrigger value="outcomes">Past tours · visit results ({requests.filter(needsOutcome).length})</TabsTrigger>
+          <TabsTrigger value="pending">Pending ({requests.filter((request) => pendingConfirmedDecision(request) || request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()).length})</TabsTrigger>
+          <TabsTrigger value="outcomes">Past kitchen tours · results ({requests.filter(needsOutcome).length})</TabsTrigger>
           <TabsTrigger value="history">History ({requests.filter((request) => request.viewing.status !== 'pending_local_cooks' || new Date(request.viewing.scheduledAt).getTime() <= Date.now()).length})</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -220,7 +232,7 @@ export function AdminTourRequestsSection() {
       ) : visibleRequests.length === 0 ? (
         <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">{tab === "pending" ? "No tour requests are waiting for Local Cooks review." : "No reviewed tour requests yet."}</CardContent></Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className={linkedTourId ? "grid gap-4" : "grid gap-4 lg:grid-cols-2"}>
           {visibleRequests.map((request) => (
             <Card key={request.viewing.id} id={`admin-tour-${request.viewing.id}`} className={request.viewing.id === linkedTourId ? 'border-primary' : undefined}>
               <CardHeader className="pb-3">
@@ -239,7 +251,11 @@ export function AdminTourRequestsSection() {
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+              <CardContent className={linkedTourId ? "grid items-start gap-4 text-sm lg:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-4 text-sm"}>
+                <div className="min-w-0 space-y-3">
+                <TourChatButton tour={request.viewing} role="admin" buttonLabel={t('tourChatParticipants', 'Chat with chef and manager')} />
+                {request.viewing.status === 'pending_local_cooks' && <p className="text-xs text-muted-foreground">{t('tourChatAfterReview', 'Messaging becomes available after this request is forwarded to the kitchen manager.')}</p>}
+                {pendingConfirmedDecision(request) && <p className="rounded-lg border p-3 text-xs">{t('tourConfirmedDecisionPending', 'A tour reply or time-change decision needs attention. The appointment remains confirmed; the current manager owns any requested time change.')}</p>}
                 {(() => { const stage = tourRequestDecision(request.viewing); return stage && <div className="rounded-lg border p-3 text-xs">
                   <p>{t('tourDecisionOwner', 'Responsible')}: {stage.stage === 'triage' ? 'Local Cooks' : stage.stage === 'chef_offer' ? request.chefName || 'Visitor' : request.managerName || 'Kitchen manager'}</p>
                   <p>{stage.stage === 'chef_offer' ? t('tourOfferResponseBefore', 'Invitation response before') : t('tourDecisionDue', 'Decision due')}: {stage.dueAt ? formatTourWhen(stage.dueAt, null, 'America/St_Johns') : t('tourDecisionTimeUnknown', 'Time not recorded')}</p>
@@ -265,11 +281,9 @@ export function AdminTourRequestsSection() {
                 {request.viewing.adminReviewReason && <p className="rounded-md bg-muted p-3"><span className="font-medium">Review reason:</span> {request.viewing.adminReviewReason}</p>}
                 {request.viewing.sharedManagerNotes && <p><strong>Message shared with chef:</strong> {request.viewing.sharedManagerNotes}</p>}
                 {request.viewing.managerNotes && <p className="rounded-md border p-3"><strong>Internal notes · admin only:</strong> {request.viewing.managerNotes}</p>}
-                {request.viewing.disruptionReason && <p><strong>Disruption:</strong> {tourDisruptionReasons[request.viewing.disruptionReason as keyof typeof tourDisruptionReasons] || request.viewing.disruptionReason}</p>}
-                {!!request.viewing.outcomeHistory?.length && <details><summary>Outcome audit history</summary>{request.viewing.outcomeHistory.map((entry, index) => <div key={index} className="border-t py-2">
-                  <p>{entry.from} → {entry.to} · {entry.actorRole} · {entry.recordedAt ? formatTourWhen(entry.recordedAt, null, 'America/St_Johns') : 'Timestamp not recorded'}</p>
-                  {entry.notes && <p>Internal notes · admin only: {entry.notes}</p>}{entry.sharedNotes && <p>Message shared with chef: {entry.sharedNotes}</p>}
-                </div>)}</details>}
+                {request.viewing.disruptionReason && <p>{request.viewing.disruptionReason === 'outcome_unknown' ? t('tourFeedbackUnverified') : <><strong>Disruption:</strong> {tourDisruptionReasons[request.viewing.disruptionReason as keyof typeof tourDisruptionReasons] || request.viewing.disruptionReason}</>}</p>}
+                {hasTourConfirmation(request.viewing) && Date.parse(request.viewing.scheduledAt) + request.viewing.durationMinutes * 60_000 <= Date.now() && <TourFeedbackPanel id={request.viewing.id} role="admin" version={request.viewing.updatedAt} />}
+                <AdminTourVisitEvidence id={request.viewing.id} version={request.viewing.updatedAt} needsReview={request.viewing.visitEvidenceState === 'review'} />
                 {request.viewing.adminReviewedAt && <p><span className="font-medium">Reviewed:</span> {formatTourWhen(request.viewing.adminReviewedAt, null, request.locationTimezone || "America/St_Johns")}</p>}
                 {request.viewing.intakeData && Object.keys(request.viewing.intakeData).length > 0 && (
                   <div className="rounded-md border p-3"><TourIntakeDetails data={request.viewing.intakeData} /></div>
@@ -284,6 +298,8 @@ export function AdminTourRequestsSection() {
                     setOutcomeTour(request); setOutcome(request.viewing.status === 'completed' ? 'no_show' : 'completed');
                     setOutcomeReason(''); setOutcomeNotes('');
                   }}>{needsOutcome(request) ? 'Record outcome' : 'Correct outcome'}</Button>}
+                </div>
+                <aside className="min-w-0"><TourHistoryPanel id={request.viewing.id} version={request.viewing.updatedAt} role="admin" /></aside>
               </CardContent>
             </Card>
           ))}
@@ -304,20 +320,20 @@ export function AdminTourRequestsSection() {
       <Dialog open={Boolean(outcomeTour)} onOpenChange={(open) => !open && setOutcomeTour(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Record tour outcome</DialogTitle>
-            <DialogDescription>Confirm what happened. Correction explanations are shared with the chef. Disruptions are not visitor no-shows.</DialogDescription></DialogHeader>
-          <Select value={outcome} onValueChange={(value) => { setOutcome(value as 'completed' | 'no_show' | 'disrupted'); setOutcomeReason(''); }}>
+            <DialogDescription>Review both private feedback responses before choosing the final outcome. Explain every decision to the chef and manager, including missing or conflicting responses. Absence is never inferred from silence.</DialogDescription></DialogHeader>
+          <Select value={outcome} onValueChange={(value) => { setOutcome(value as 'completed' | 'no_show' | 'disrupted' | 'unknown'); setOutcomeReason(''); }}>
             <SelectTrigger aria-label="Tour outcome"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="completed" disabled={outcomeTour?.viewing.status === 'completed'}>Completed</SelectItem><SelectItem value="no_show" disabled={outcomeTour?.viewing.status === 'no_show'}>Visitor did not attend</SelectItem><SelectItem value="disrupted" disabled={!!outcomeTour?.viewing.disruptionReason}>Disrupted</SelectItem></SelectContent>
+            <SelectContent><SelectItem value="completed" disabled={outcomeTour?.viewing.status === 'completed'}>Completed</SelectItem><SelectItem value="no_show" disabled={outcomeTour?.viewing.status === 'no_show'}>Visitor did not attend</SelectItem><SelectItem value="disrupted" disabled={!!outcomeTour?.viewing.disruptionReason}>Disrupted</SelectItem><SelectItem value="unknown">Close without a verified outcome</SelectItem></SelectContent>
           </Select>
-          {outcome === 'no_show' && <p className="text-sm text-muted-foreground">Only choose this if the chef did not come. If the manager was unavailable, access failed or weather prevented the visit, record why the tour couldn’t take place instead.</p>}
+          {outcome === 'no_show' && <p className="text-sm text-muted-foreground">Only choose this if the chef did not come. If the manager was unavailable, access failed or weather prevented the kitchen tour, record why the tour couldn’t take place instead.</p>}
           {outcome === 'disrupted' && <Select value={outcomeReason} onValueChange={setOutcomeReason}>
             <SelectTrigger aria-label="Disruption reason"><SelectValue placeholder="Select disruption" /></SelectTrigger>
             <SelectContent>{Object.entries(tourDisruptionReasons).map(([reason, label]) => <SelectItem key={reason} value={reason}>{label}</SelectItem>)}</SelectContent>
           </Select>}
-          <Textarea aria-label="Message to chef" value={outcomeNotes} onChange={(event) => setOutcomeNotes(event.target.value)} placeholder="Message to chef · shared with the chef and manager" />
+          <Textarea aria-label="Message to chef" required minLength={10} maxLength={2000} value={outcomeNotes} onChange={(event) => setOutcomeNotes(event.target.value)} placeholder="Explain the final decision · shared with the chef and manager" />
           <DialogFooter><Button variant="outline" onClick={() => setOutcomeTour(null)}>Cancel</Button>
             <Button disabled={recordOutcome.isPending || (outcome === 'disrupted' && !outcomeReason)
-              || (!!outcomeTour && (['completed', 'no_show'].includes(outcomeTour.viewing.status) || !!outcomeTour.viewing.disruptionReason || (outcome === 'disrupted' && outcomeReason === 'other')) && !outcomeNotes.trim())}
+              || outcomeNotes.trim().length < 10}
               onClick={() => recordOutcome.mutate()}>{recordOutcome.isPending ? 'Saving…' : 'Save outcome'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>

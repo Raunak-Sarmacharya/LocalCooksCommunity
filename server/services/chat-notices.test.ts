@@ -20,7 +20,7 @@ vi.mock('../db', () => {
         expect(sql).not.toContain('::jsonb'); expect(sql).not.toContain('::timestamptz');
         if (!sql.includes('"status" in')) {
           const key = params.find((p: any) => typeof p === 'string' && p.startsWith('chat-message:'));
-          return sql.includes('"status" =') ? state.accepted.has(key) ? [{ id: 99 }] : []
+          return sql.includes('"status" =') ? typeof key === 'string' && state.accepted.has(key) ? [{ id: 99 }] : []
             : state.logs.filter(row => row.trackingId === key);
         }
         const dueIndex = /::timestamptz <= \$(\d+)/.exec(sql);
@@ -293,5 +293,46 @@ describe('actual durable unread dispatcher with controlled Firestore/SMTP sinks'
     await expect(notifyPersistedChatMessage('thread', 'm1', 99)).rejects.toThrow('not owned');
     state.mapping.conversationId = 'different'; await notifyPersistedChatMessage('thread', 'm1', 3);
     expect(state.logs).toEqual([]); expect(state.notices).toEqual([]);
+  });
+});
+
+describe('admin broadcast delivery isolation', () => {
+  function broadcast() {
+    state.logs = [];
+    Object.assign(state.person, { sender_uid: 'actual-admin', sender_role: 'admin' });
+    state.messages.m1 = { senderId: 1, senderRole: 'admin', senderFirebaseUid: 'actual-admin', type: 'text', content: 'Tour update',
+      createdAt: { toDate: () => new Date('2026-10-04T08:00:00Z') }, adminAudience: 'both',
+      recipientStates: { chef: { recipientId: 3, episodeId: 'm1', readAt: null }, manager: { recipientId: 2, episodeId: 'm1', readAt: null } } };
+    Object.assign(state.conversation, { emailChefEpisode: { id: 'm1', recipientId: 3 }, emailManagerEpisode: { id: 'm1', recipientId: 2 }, unreadChefCount: 1, unreadManagerCount: 1 });
+  }
+  it('role events deliver each original intent once without stealing the other target', async () => {
+    broadcast();
+    await deliverStartingChatMessage('thread', 'm1', 1, 'manager');
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs.find(row => row.recipientRole === 'chef' && !row.trackingId.endsWith(':reminder')).status).toBe('scheduled');
+    await deliverStartingChatMessage('thread', 'm1', 1, 'chef');
+    await deliverStartingChatMessage('thread', 'm1', 1, 'manager');
+    expect(state.send).toHaveBeenCalledTimes(2);
+  });
+  it.each(['chef', 'manager'] as const)('a %s read does not suppress the other email', async role => {
+    broadcast(); state.messages.m1.recipientStates[role].readAt = new Date();
+    delete state.conversation[role === 'chef' ? 'emailChefEpisode' : 'emailManagerEpisode'];
+    await deliverStartingChatMessage('thread', 'm1', 1);
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs.find(row => row.recipientRole === role && !row.trackingId.endsWith(':reminder')).status).toBe('suppressed');
+    expect(state.logs.find(row => row.recipientRole !== role && !row.trackingId.endsWith(':reminder')).status).toBe('sent');
+  });
+  it.each(['chef', 'manager'] as const)('a %s reply only obsoletes that episode', async role => {
+    broadcast(); delete state.conversation[role === 'chef' ? 'emailChefEpisode' : 'emailManagerEpisode'];
+    await deliverStartingChatMessage('thread', 'm1', 1);
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs.find(row => row.recipientRole === role && !row.trackingId.endsWith(':reminder')).status).toBe('suppressed');
+  });
+  it('suppresses a manager intent after reassignment while delivering the chef intent', async () => {
+    broadcast(); await notifyPersistedChatMessage('thread', 'm1', 1);
+    state.person.manager_id = 7;
+    for (const row of state.logs.filter(row => !row.trackingId.endsWith(':reminder'))) await dispatchChatDigests(1, 20000, row.id);
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs.find(row => row.recipientRole === 'manager' && !row.trackingId.endsWith(':reminder')).status).toBe('suppressed');
   });
 });

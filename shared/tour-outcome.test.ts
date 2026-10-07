@@ -17,7 +17,7 @@ describe('tour evidence and note visibility', () => {
     const original = { status: 'confirmed', managerNotes: 'ADMIN PRIVATE', sharedManagerNotes: 'Message to chef',
       outcomeHistory: [null, { from: 'confirmed', to: 'completed', notes: 'ADMIN HISTORY', sharedNotes: 'Attended' }] };
     expect(JSON.stringify(publicTour(original))).not.toContain('ADMIN');
-    expect(publicTour(original)).toMatchObject({ sharedManagerNotes: 'Message to chef', outcomeHistory: [{ sharedNotes: 'Attended' }] });
+    expect(publicTour(original)).toMatchObject({ sharedManagerNotes: 'Message to chef', outcomeHistory: [] });
     expect(original.managerNotes).toBe('ADMIN PRIVATE');
   });
   it('requires confirmation evidence rather than interpreting old terminal labels', () => {

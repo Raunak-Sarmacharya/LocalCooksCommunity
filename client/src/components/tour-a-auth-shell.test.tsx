@@ -68,7 +68,7 @@ describe('Tour A coordinator exact-task review reproductions', () => {
       scheduledAt: '2099-10-07T11:30:00Z', durationMinutes: 30, updatedAt: '2026-10-05T11:00:00Z', intakeData: {} },
       locationName: 'Exact kitchen', chefName: 'Chef Sam' };
     vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () =>
-      url.includes('/viewings/manager') ? [row] : { problems: [], reportingAvailable: false } })));
+      url.endsWith('/history') ? { complete: true, events: [] } : url.includes('/viewings/manager') ? [row] : { problems: [], reportingAvailable: false } })));
     render(<QueryClientProvider client={client()}><ManagerBookingDashboard /></QueryClientProvider>);
     await screen.findByRole('heading', { name: 'TOUR-42 · Chef Sam' });
     fireEvent.click(screen.getByRole('button', { name: 'kitchenTours' }));
@@ -82,14 +82,14 @@ describe('Tour A coordinator exact-task review reproductions', () => {
       scheduledAt: '2099-10-07T11:30:00Z', durationMinutes: 30, updatedAt: '2026-10-05T11:00:00Z', intakeData: {} },
       locationName: 'Exact kitchen', chefName: 'Chef Sam' };
     vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () =>
-      url.includes('/viewings/manager') ? [row] : url.includes('/api/manager/locations/22') ? { id: 22, name: 'Exact' }
+      url.endsWith('/history') ? { complete: true, events: [] } : url.includes('/viewings/manager') ? [row] : url.includes('/api/manager/locations/22') ? { id: 22, name: 'Exact' }
         : { problems: [], reportingAvailable: false } })));
     render(<QueryClientProvider client={client()}><ManagerBookingDashboard /></QueryClientProvider>);
     expect(await screen.findByRole('heading', { name: 'TOUR-42 · Chef Sam' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Breadcrumbs' })).toHaveTextContent('kitchenToursTOUR-42');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText('Controlled tour table')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'tourEditVisitNotes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'tourVisitNotesButton' }));
     await waitFor(() => expect(screen.getByTestId('notes-kitchen')).toHaveTextContent('40'));
     const destination = new URL(window.location.href);
     expect(destination.pathname).toBe('/manager/dashboard');
@@ -148,7 +148,7 @@ describe('Tour A coordinator exact-task review reproductions', () => {
       locationName: `Controlled location ${locationId}`, chefName: 'Controlled chef' });
     const first = row(7, 11), exact = row(42, 22);
     vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () =>
-      url.includes('/attendance') ? { viewingId: 42, checkedInAt: null, checkedOutAt: null, canAssistArrival: false, canAssistDeparture: false,
+      url.endsWith('/history') ? { complete: true, events: [] } : url.includes('/attendance') ? { viewingId: 42, checkedInAt: null, checkedOutAt: null, canAssistArrival: false, canAssistDeparture: false,
         checkInOpensAt: '2099-10-07T11:15:00Z', checkInClosesAt: '2099-10-07T12:00:00Z', attendanceHistory: [] }
         : url.includes('locationId=11') ? [first] : url.includes('locationId=22') ? [exact] : url.includes('/viewings/manager') ? [first, exact]
         : url.includes('/api/manager/locations') ? [{ id: 11, name: 'First' }, { id: 22, name: 'Exact' }]

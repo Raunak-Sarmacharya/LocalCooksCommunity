@@ -4,7 +4,9 @@ vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 import { scheduleAdvanceReminders } from './advance-reminders';
 const state = vi.hoisted(() => ({ event: null as any, sentLogs: [] as any[], notifications: [] as any[],
   email: vi.fn(), notify: vi.fn(), insert: vi.fn(), readFails: false, currentTour: null as any,
-  managerId: 2 as number | null, people: [] as any[] }));
+  managerId: 2 as number | null, people: [] as any[], applicationNextStep: vi.fn(), feedbackStatus: vi.fn() }));
+vi.mock('./tour-application-service', () => ({ resolveTourApplicationNextStep: state.applicationNextStep }));
+vi.mock('./tour-feedback-service', () => ({ readTourFeedbackStatus: state.feedbackStatus }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: vi.fn(async (id: number, role: string) => {
   const person = state.people.find(person => person.id === id);
   return person?.profile?.displayName || person?.profile?.fullName || (role === 'chef' ? 'Chef' : 'Manager');
@@ -45,11 +47,11 @@ vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
 vi.mock('../email', async importOriginal => ({ ...await importOriginal<typeof import('../email')>(), sendEmail: state.email }));
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 import { db } from '../db';
-import { queueTourEvent, tourEventMessages, deliverTourEvents, attemptTourDelivery, renderHistoricalTourEmail, tourRequestEscalationDue, tourRequestEscalationKey } from './tour-delivery-service';
+import { queueTourEvent, tourEventMessages, deliverTourEvents, attemptTourDelivery, renderHistoricalTourEmail, tourRequestEscalationDue, tourRequestEscalationKey, tourReconfirmationNoticeCurrent } from './tour-delivery-service';
 import { getUserDisplayName } from '../utils/user-display';
 const tour = { id: 10, chefId: 8, managerId: 2, locationId: 33, targetedKitchenId: 40, scheduledAt: new Date('2026-10-08T02:15:00Z'),
   durationMinutes: 30, status: 'confirmed', updatedAt: new Date('2026-10-01T10:00:00Z'), managerNotes: 'ADMIN PRIVATE', sharedManagerNotes: 'Shared entrance instructions' } as any;
-function payload(kind = 'status', status = 'cancelled') { return { kind, before: tour, after: { ...tour, status, cancellationReason: 'Closed' },
+function payload(kind = 'status', status = 'cancelled') { return { kind, before: { ...tour }, after: { ...tour, status, cancellationReason: 'Closed' },
   actorRole: 'manager', chef: { id: 8, email: 'chef@example.test', name: 'Fixture chef' }, manager: { id: 2, email: 'manager@example.test', name: 'Fixture manager' }, admins: [], locationName: 'Fixture kitchen', kitchenName: 'Fixture room', address: 'Fixture address' } as any; }
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
@@ -57,10 +59,33 @@ beforeEach(() => {
   state.currentTour = { ...tour }; state.managerId = 2;
   state.people = [{ id: 8, email: 'chef@example.test', role: 'chef', profile: {} }, { id: 2, email: 'manager@example.test', role: 'manager', profile: {} }, { id: 30, email: 'admin@example.test', role: 'admin', profile: {} }];
   state.email.mockResolvedValue(true); state.notify.mockImplementation(async message => { state.notifications.push(message); });
+  state.applicationNextStep.mockResolvedValue({ action: 'apply', href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
+  state.feedbackStatus.mockResolvedValue({ chef: false, manager: false, conflict: false, closed: false, bothReady: false, missing: true });
   state.insert.mockResolvedValue(undefined);
   state.event = { id: 1, viewingId: 10, eventKey: '10:status:version', createdAt: new Date('2026-10-01T10:00:00Z'), payload: payload(), deliveredKeys: [], attempts: 0, completedAt: null };
 });
 describe('durable tour delivery', () => {
+  it('retires the legacy missing-result manager/admin cadence', () => {
+    const event = payload('reminder','confirmed'); event.admins=[{ id:30,email:'admin@example.test',name:'Admin' }];
+    const messages = tourEventMessages(event);
+    expect(messages).toEqual([]);
+  });
+  it('suppresses a missing-result email if the result was recorded before retry', async () => {
+    state.event.payload=payload('reminder','confirmed'); state.currentTour.status='completed';
+    await deliverTourEvents(10); expect(state.email).not.toHaveBeenCalled();
+  });
+  it('localizes visit results for the recipient without exposing internal notes', () => {
+    const event = payload('status','completed'); event.before.status='confirmed';event.chef.locale='fr-CA';
+    const message = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
+    expect(message.subject).toContain('Visite de cuisine terminée');expect(message.text).toContain('a confirmé que la visite');
+    expect(message.text).not.toContain('ADMIN PRIVATE');
+  });
+  it('sends one unanswered reconfirmation follow-up to the chef, while staff have a separate escalation', () => {
+    const event=payload('reconfirmation_reminder','confirmed');event.after.reconfirmationReply=null;
+    const messages=tourEventMessages(event);
+    expect(messages.map(message=>message.key)).toEqual(['chef','chef-email']);
+    expect(messages.find(message=>message.email)?.email?.subject).toContain('Reminder: are you still coming');
+  });
   it('escalates only unresolved requests from exactly six hours until the held original start', () => {
     const pending = { ...tour, status: 'pending', rescheduleProposedSlots: ['2026-10-09T11:30:00Z'] };
     const start = pending.scheduledAt.getTime();
@@ -68,7 +93,9 @@ describe('durable tour delivery', () => {
     expect(tourRequestEscalationDue(pending, start - 6 * 3600000)).toBe(true);
     expect(tourRequestEscalationDue(pending, start - 1)).toBe(true);
     expect(tourRequestEscalationDue(pending, start)).toBe(false);
-    for (const status of ['confirmed', 'cancelled', 'completed', 'no_show']) expect(tourRequestEscalationDue({ ...pending, status }, start - 1)).toBe(false);
+    for (const status of ['cancelled', 'completed', 'no_show']) expect(tourRequestEscalationDue({ ...pending, status }, start - 1)).toBe(false);
+    expect(tourRequestEscalationDue({ ...pending, status: 'confirmed' }, start - 1)).toBe(true);
+    expect(tourRequestEscalationDue({ ...pending, status: 'confirmed', rescheduleProposedSlots: [] }, start - 1)).toBe(false);
     expect(tourRequestEscalationDue({ ...pending, status: 'pending_local_cooks' }, start - 1)).toBe(true);
   });
   it('identifies new review, offer and requested-start decisions without using unrelated edits', () => {
@@ -358,44 +385,15 @@ describe('durable tour delivery', () => {
     expect(getUserDisplayName).toHaveBeenCalledWith(8, 'chef', expect.anything());
     expect(tourEventMessages(event).find(message => message.key === 'chef-email')!.email!.text).toContain('Hi Alex Chen,');
   });
-  it.each(['visitor_checkout', 'attendance_assisted'] as const)('queues %s participant acknowledgements atomically with no email/calendar/admin fan-out', async kind => {
-    const after = { ...tour, attendanceHistory: [{ action: 'check_out', actorId: kind === 'attendance_assisted' ? 2 : 8,
-      source: kind === 'attendance_assisted' ? 'manager_assisted' : 'visitor', actualAt: '2026-10-05T11:50:00Z',
-      recordedAt: '2026-10-05T12:00:00Z', scheduledAt: tour.scheduledAt.toISOString(), reason: 'Visitor reported leaving by phone' }] };
-    await db.transaction(tx => queueTourEvent(tx as any, { kind, before: tour, after, actorId: 2, actorRole: 'manager' }));
-    expect(state.notifications.map(message => message.userId)).toEqual([8, 2]);
-    expect(state.notifications[0].actionUrl).toContain('viewing=10');
-    if (kind === 'attendance_assisted') expect(state.notifications[0].message).toContain('saved your departure time');
+  it.each(['visitor_checkin', 'visitor_checkout', 'attendance_assisted'] as const)('suppresses retired %s notices when queued or retried', async kind => {
+    await db.transaction(tx => queueTourEvent(tx as any, { kind, before: tour, after: tour, actorId: 8, actorRole: 'chef' }));
     const saved = state.insert.mock.calls[0][0];
-    expect(saved.deliveredKeys).toEqual(['chef', 'manager']);
-    expect(tourEventMessages(saved.payload).every(message => !message.email)).toBe(true);
-    state.event = { ...state.event, payload: saved.payload, deliveredKeys: saved.deliveredKeys };
-    state.notify.mockClear(); await deliverTourEvents(10);
+    expect(saved.deliveredKeys).toEqual([]); expect(tourEventMessages(saved.payload)).toEqual([]);
+    expect(state.notifications).toEqual([]);
+    state.event = { ...state.event, payload: saved.payload, deliveredKeys: [] };
+    await deliverTourEvents(10);
     expect(state.notify).not.toHaveBeenCalled(); expect(state.email).not.toHaveBeenCalled();
-  });
-  it.each(['notification', 'outbox'])('rolls assistance acknowledgements back on %s failure', async boundary => {
-    if (boundary === 'notification') state.notify.mockRejectedValueOnce(Error('notification failed'));
-    else state.insert.mockRejectedValueOnce(Error('outbox failed'));
-    await expect(db.transaction(tx => queueTourEvent(tx as any, { kind: 'attendance_assisted', before: tour, after: tour }))).rejects.toThrow();
-    expect(state.notifications).toEqual([]);
-  });
-  it('queues arrival receipts for visitor and current host only, with exact role/tour links and no mail', async () => {
-    await db.transaction(tx => queueTourEvent(tx as any, { kind: 'visitor_checkin', before: tour, after: tour, actorId: 8, actorRole: 'chef' }));
-    expect(state.notifications).toHaveLength(2);
-    expect(state.notifications).toEqual(expect.arrayContaining([
-      expect.objectContaining({ userId: 8, target: 'chef', actionUrl: '/dashboard?view=viewings&viewing=10' }),
-      expect.objectContaining({ userId: 2, target: 'manager', actionUrl: '/manager/dashboard?view=viewings&viewing=10' }),
-    ]));
-    const event = state.insert.mock.calls[0][0];
-    expect(event.eventKey).toContain(':visitor_checkin:'); expect(event.deliveredKeys).toEqual(['chef', 'manager']);
-    expect(tourEventMessages(event.payload).every(message => !message.email)).toBe(true);
-    expect(state.email).not.toHaveBeenCalled();
-  });
-  it.each(['notification', 'outbox'])('rolls back arrival receipts when %s fails', async boundary => {
-    if (boundary === 'notification') state.notify.mockRejectedValueOnce(Error('notification failed'));
-    else state.insert.mockRejectedValueOnce(Error('outbox failed'));
-    await expect(db.transaction(tx => queueTourEvent(tx as any, { kind: 'visitor_checkin', before: tour, after: tour }))).rejects.toThrow();
-    expect(state.notifications).toEqual([]);
+    expect(state.event.completedAt).toBeInstanceOf(Date);
   });
   it.each(['reschedule_accepted', 'reschedule_declined'])('renders an actionable branded %s receipt from saved times', kind => {
     const event = payload(kind, 'confirmed');
@@ -420,11 +418,11 @@ describe('durable tour delivery', () => {
     expect(email.html).toContain('Room &lt;b&gt;A&lt;/b&gt;');
     if (!accepted) expect(email.html).toContain('Harbour &amp; Main');
     expect(email.html).not.toContain('<script>');
-    expect(email.html).toContain('emailHeader.png');
+    expect(email.html).toContain('class="email-brand"');
     expect(email.html).toContain('background:#e11d48');
     expect(email.text).toContain('The Local Cooks Team');
     if (accepted) expect(email.attachments?.[0].content).toContain('UID:tour-10@localcooks.com'); else expect(email.attachments).toBeUndefined();
-    if (accepted) { expect(email.text).toContain('11:45 PM'); expect(email.text).toContain('9:00 AM'); expect(email.text).toContain('do not update automatically'); }
+    if (accepted) { expect(email.text).toContain('11:45 PM'); expect(email.text).toContain('9:00 AM'); expect(email.text).toContain('update the event in your calendar too'); }
   });
   it.each(['chef', 'manager', 'admin'])('brands ordinary cancellation by %s for existing recipients', actorRole => {
     const event = payload(); event.actorRole = actorRole;
@@ -442,11 +440,11 @@ describe('durable tour delivery', () => {
       for (const content of [email.text!, email.html!]) {
         expect(content).toContain('TOUR-10'); expect(content).toContain('Oct 7, 2026');
         expect(content).toContain('11:45 PM'); expect(content).toMatch(/N[DS]T/);
-        expect(content).toContain('View cancelled tour'); expect(content).toContain('remove the cancelled tour');
+        expect(content).toContain('View cancelled tour'); expect(content).toMatch(/remove.*tour.*calendar/i);
         expect(content).not.toContain('ADMIN PRIVATE');
       }
       expect(email.html).toContain('Door &lt;b&gt;A&lt;/b&gt; &amp; &quot;bell&quot;');
-      expect(email.html).toContain('emailHeader.png');
+      expect(email.html).toContain('class="email-brand"');
       if (role === 'admin') expect(email.text).toContain(actorRole === 'chef' ? 'Fixture chef' : actorRole === 'admin' ? 'cancelled by Local Cooks' : 'cancelled by the manager');
       else {
         expect(email.text).toContain('This confirmed kitchen tour was cancelled.');
@@ -503,7 +501,7 @@ describe('durable tour delivery', () => {
     const event = payload('status', 'completed'); event.before = { ...tour, status: 'no_show' };
     event.admins = [{ id: 30, email: 'admin@example.test', name: 'Admin' }];
     const messages = tourEventMessages(event);
-    for (const key of ['chef', 'manager', 'admin:30']) expect(messages.find(message => message.key === key)?.notification?.title).toBe('Kitchen tour outcome corrected');
+    for (const key of ['chef', 'manager', 'admin:30']) expect(messages.find(message => message.key === key)?.notification?.title).toBe('Kitchen tour details corrected');
     expect(messages.find(message => message.key === 'chef-email')?.email?.subject).toContain('corrected');
   });
   it('keeps platform review separate from manager confirmation and private to its participants', () => {
@@ -560,7 +558,7 @@ describe('durable tour delivery', () => {
   });
   it('keeps disruptions distinct from visitor non-attendance', () => {
     const event = payload(); event.after.disruptionReason = 'manager_absent';
-    expect(tourEventMessages(event)[0].notification?.title).toBe('Kitchen tour disrupted');
+    expect(tourEventMessages(event)[0].notification?.title).toBe('Your kitchen tour couldn’t go ahead');
     expect(tourEventMessages(event)[0].notification?.message).toContain('Manager did not attend');
   });
   it('continues independent channels and retries only the failed channel', async () => {
@@ -647,7 +645,7 @@ describe('Tour A connected request channels', () => {
       expect(state.event.completedAt).toBeInstanceOf(Date);
       const emails = state.email.mock.calls.map(call => call[0]);
       for (const email of emails) {
-        expect(email.html).toContain('emailHeader.png'); expect(email.text).toContain('TOUR-10');
+        expect(email.html).toContain('class="email-brand"'); expect(email.text).toContain('TOUR-10');
         expect(email.text).not.toContain('ADMIN PRIVATE'); expect(email.html).not.toContain('<Chef>');
         expect(email.text).toContain('viewing=10'); expect(email.html).toContain('viewing=10');
       }
@@ -870,6 +868,250 @@ describe('Tour A connected request channels', () => {
   });
 });
 
+describe('private tour feedback notices', () => {
+  const feedbackEvent = (kind = 'feedback_requested') => {
+    const event = payload(kind, 'confirmed'); event.after.scheduledAt = new Date('2026-10-04T10:00:00Z');
+    event.after.confirmationVerified = true; event.after.appointmentRevision = 2;
+    event.admins = [{ id: 30, email: 'admin@example.test', name: 'Admin' }];
+    event.feedbackStatus = { chef: false, manager: false, conflict: false };
+    return event;
+  };
+  const setup = (kind = 'feedback_requested') => { state.event.payload = feedbackEvent(kind); state.currentTour = { ...state.event.payload.after }; };
+  it('invites chef and current manager with private feedback and guarded request-to-apply links', () => {
+    const event = feedbackEvent(); event.feedbackStatus.responses = [{ comments: 'PRIVATE FEEDBACK' }];
+    const messages = tourEventMessages(event);
+    expect(messages.filter(message => message.email).map(message => message.key)).toEqual(['feedback-chef-email:8', 'feedback-manager-email:2']);
+    for (const message of messages) {
+      expect(JSON.stringify(message)).not.toContain('PRIVATE FEEDBACK');
+      expect(JSON.stringify(message)).not.toContain('ADMIN PRIVATE');
+      expect(message.email?.text || message.notification?.actionUrl).toContain('feedback=1');
+    }
+    expect(messages.find(message => message.key === 'feedback-chef-email:8')!.email!.text).toContain('Request to apply:');
+    expect(messages.find(message => message.key === 'feedback-manager-email:2')!.email!.text).not.toContain('apply-kitchen');
+  });
+  it('sends immediately at scheduled end and skips a party who already responded', async () => {
+    setup(); vi.setSystemTime(new Date('2026-10-04T10:30:00Z'));
+    state.feedbackStatus.mockResolvedValue({ chef: true, manager: false, conflict: false, closed: false, bothReady: false, missing: true });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.map(([mail]) => mail.to)).toEqual(['manager@example.test']);
+    expect(state.email.mock.calls[0][0].subject).not.toContain('Recorded notice');
+    expect(state.applicationNextStep).not.toHaveBeenCalled();
+  });
+  it('resolves the latest existing application before chef feedback email', async () => {
+    setup(); state.applicationNextStep.mockResolvedValue({ action: 'continue', href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
+    await deliverTourEvents(10, 1);
+    const chef = state.email.mock.calls.find(([mail]) => mail.to === 'chef@example.test')![0];
+    expect(chef.text).toContain('Continue application:'); expect(chef.text).not.toContain('Request to apply:');
+  });
+  it('does not fall back to an application invitation when current access is unavailable', async () => {
+    setup(); state.applicationNextStep.mockResolvedValue({ action: 'unavailable' });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.find(([mail]) => mail.to === 'chef@example.test')![0].text).not.toContain('apply-kitchen');
+  });
+  it.each(['early', 'revised', 'closed', 'unknown', 'unverified', 'lifecycle closed'])('suppresses stale feedback invitations after %s', condition => {
+    setup();
+    if (condition === 'early') vi.setSystemTime(new Date('2026-10-04T10:29:59Z'));
+    if (condition === 'revised') state.currentTour.appointmentRevision = 3;
+    if (condition === 'closed') state.currentTour.status = 'completed';
+    if (condition === 'unverified') state.currentTour.confirmationVerified = false;
+    if (condition === 'lifecycle closed') state.currentTour.lifecycleState = 'closed';
+    if (condition === 'unknown') Object.assign(state.currentTour, { status: 'cancelled', visitResult: 'unrecorded', disruptionReason: 'outcome_unknown' });
+    return deliverTourEvents(10, 1).then(() => {
+      expect(state.email).not.toHaveBeenCalled(); expect(state.notify).not.toHaveBeenCalled();
+      expect(state.event.completedAt).toBeInstanceOf(Date);
+    });
+  });
+  it('suppresses a response received between in-app and email delivery', async () => {
+    setup();
+    state.notify.mockImplementation(async notice => {
+      if (notice.userId === 8) state.feedbackStatus.mockResolvedValue({ chef: true, manager: false, conflict: false, closed: false, bothReady: false, missing: true });
+    });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.map(([mail]) => mail.to)).toEqual(['manager@example.test']);
+  });
+  it('reassigns pending manager channels without sending to the former manager', async () => {
+    setup(); state.managerId = 7; state.people.push({ id: 7, role: 'manager', email: 'replacement@example.test' });
+    state.event.deliveredKeys = ['feedback-chef:8', 'feedback-chef-email:8', 'feedback-manager:2', 'feedback-manager-email:2'];
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.map(([mail]) => mail.to)).toEqual(['replacement@example.test']);
+    expect(state.event.deliveredKeys).toEqual(expect.arrayContaining(['feedback-manager:7', 'feedback-manager-email:7']));
+  });
+  it('keeps a missing or unauthorized manager delivery recoverable and sends after role repair', async () => {
+    setup(); state.people[1].role = 'chef'; state.event.deliveredKeys = ['feedback-chef:8', 'feedback-chef-email:8'];
+    const failed = await deliverTourEvents(10, 1);
+    expect(failed.errors).toBeGreaterThan(0); expect(state.event.completedAt).toBeNull(); expect(state.email).not.toHaveBeenCalled();
+    state.people[1].role = 'manager'; await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls[0][0].to).toBe('manager@example.test'); expect(state.event.completedAt).toBeInstanceOf(Date);
+  });
+  it.each([false, true])('alerts only admins when both private responses are ready (conflict=%s)', async conflict => {
+    setup('feedback_submitted'); state.feedbackStatus.mockResolvedValue({ chef: true, manager: true, bothReady: true, conflict, missing: false, closed: false });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.map(([mail]) => mail.to)).toEqual(['admin@example.test']);
+    expect(state.notifications.every(notice => notice.userId === 30)).toBe(true);
+    expect(state.email.mock.calls[0][0].text).toContain('Review and close tour:');
+    expect(state.email.mock.calls[0][0].subject).toContain(conflict ? 'needs review' : 'ready for review');
+  });
+  it('alerts only admin after 24 hours and displays which party is missing', async () => {
+    setup('feedback_missing'); vi.setSystemTime(new Date('2026-10-05T10:30:00Z'));
+    state.feedbackStatus.mockResolvedValue({ chef: true, manager: false, bothReady: false, conflict: false, missing: true, closed: false });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.map(([mail]) => mail.to)).toEqual(['admin@example.test']);
+    const text = state.email.mock.calls[0][0].text;
+    expect(text).toContain('Chef feedback: Received'); expect(text).toContain('Current manager feedback: Missing');
+    expect(text).not.toMatch(/no-show|absent visitor/i);
+  });
+  it.each(['early', 'both', 'closed'])('suppresses the 24-hour admin alert if %s', condition => {
+    setup('feedback_missing');
+    if (condition === 'early') vi.setSystemTime(new Date('2026-10-05T10:29:59Z'));
+    if (condition === 'both') state.feedbackStatus.mockResolvedValue({ chef: true, manager: true, bothReady: true, conflict: false, missing: false, closed: false });
+    if (condition === 'closed') state.feedbackStatus.mockResolvedValue({ chef: false, manager: false, bothReady: false, conflict: false, missing: true, closed: true });
+    return deliverTourEvents(10, 1).then(() => { expect(state.email).not.toHaveBeenCalled(); expect(state.notify).not.toHaveBeenCalled(); });
+  });
+  it('rechecks closure before every pending admin feedback channel', async () => {
+    setup('feedback_missing'); state.notify.mockImplementation(async () => { state.currentTour.status = 'completed'; });
+    await deliverTourEvents(10, 1); expect(state.email).not.toHaveBeenCalled();
+  });
+  it('retains retry and suppresses a failed invitation after admin closure', async () => {
+    setup(); state.email.mockResolvedValue(false); await deliverTourEvents(10, 1);
+    expect(state.event.completedAt).toBeNull(); state.currentTour.status = 'completed'; state.email.mockClear();
+    await deliverTourEvents(10, 1); expect(state.email).not.toHaveBeenCalled(); expect(state.event.completedAt).toBeInstanceOf(Date);
+  });
+  it('records unknown closure without implying cancellation, absence or completed attendance', () => {
+    const event = payload('status', 'cancelled'); event.after.disruptionReason = 'outcome_unknown'; event.after.visitResult = 'unrecorded';
+    event.after.sharedManagerNotes = 'Neither participant could verify what happened.';
+    const chef = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
+    expect(chef.subject).toContain('Kitchen tour closed'); expect(chef.text).toContain(event.after.sharedManagerNotes);
+    expect(chef.text).not.toMatch(/was cancelled|tour disrupted|visitor no-show|check out when/i);
+    expect(chef.text).not.toContain('apply-kitchen');
+  });
+});
+
+describe('single completion application receipt', () => {
+  it.each(['admin', 'manager', 'automated'])('renders missed results without inventing a manager decision: %s', actorRole => {
+    const event = payload('status', 'no_show'); event.actorRole = actorRole;
+    event.after.noShowReason = 'visitor_absent'; event.after.sharedManagerNotes = 'Shared visit note';
+    const text = tourEventMessages(event).find(message => message.key === 'manager')!.notification!.message;
+    expect(text).toContain('didn’t attend the kitchen tour');
+    expect(text).toContain('Shared visit note');
+    expect(text).not.toContain('kitchen manager marked');
+  });
+  const completed = () => {
+    state.event.payload = payload('status', 'completed');
+    state.event.payload.after.confirmationVerified = true;
+    state.currentTour = { ...state.event.payload.after };
+  };
+  it('includes one guarded kitchen application link, tour, manager messaging and Support in the existing receipt', () => {
+    const event = payload('status', 'completed'); event.after.confirmationVerified = true;
+    const messages = tourEventMessages(event);
+    const emails = messages.filter(message => message.key === 'chef-email');
+    expect(emails).toHaveLength(1);
+    const mail = emails[0].email!;
+    expect(mail.text).toContain("Apply when you're ready:");
+    expect(mail.text).toContain('/apply-kitchen/33?tourId=10&kitchenId=40');
+    expect(mail.text).toContain('viewing=10&action=message');
+    expect(mail.text).toContain('View tour:');
+    expect(mail.text).toContain('dashboard?view=support');
+    expect(mail.text).not.toMatch(/due date|deadline|must apply|by tomorrow/i);
+  });
+  it.each(['continue', 'view'] as const)('resolves an existing application to its current %s action immediately before delivery', async action => {
+    completed();
+    state.applicationNextStep.mockResolvedValue({ action, applicationId: 91, href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
+    await deliverTourEvents(10, 1);
+    const mail = state.email.mock.calls.find(call => call[0].to === 'chef@example.test')![0];
+    expect(mail.text).toContain(action === 'continue' ? 'Continue application:' : 'View application:');
+    expect(mail.text).not.toContain("Apply when you're ready");
+    expect(mail.text).toContain('/apply-kitchen/33?tourId=10&kitchenId=40');
+    expect(state.applicationNextStep).toHaveBeenCalledWith(expect.anything(), state.currentTour, { id: 8, role: 'chef' });
+  });
+  it('keeps an unavailable kitchen receipt factual and preserves tour, manager and support routes', async () => {
+    completed(); state.applicationNextStep.mockResolvedValue({ action: 'unavailable' });
+    await deliverTourEvents(10, 1);
+    const mail = state.email.mock.calls.find(call => call[0].to === 'chef@example.test')![0];
+    expect(mail.text).not.toMatch(/apply-kitchen|Apply when you're ready|Continue application:/);
+    expect(mail.text).toContain('View tour:');
+    expect(mail.text).toContain('action=message'); expect(mail.text).toContain('view=support');
+  });
+  it('labels existing access truthfully when there is no application to view', async () => {
+    completed(); state.applicationNextStep.mockResolvedValue({ action: 'view', applicationId: null, href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
+    await deliverTourEvents(10, 1);
+    const mail = state.email.mock.calls[0][0];
+    expect(mail.text).toContain('View kitchen access:');
+    expect(mail.text).not.toMatch(/View application:|Apply when you're ready/);
+  });
+  it.each(['no_show', 'cancelled', 'completed'])('does not repeat the application invitation on a correction/repeated result from %s', status => {
+    const event = payload('status', 'completed'); event.before.status = status;
+    const mail = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
+    expect(mail.text).not.toMatch(/apply-kitchen|Apply when you're ready|Continue application:/);
+  });
+  it.each(['no_show', 'cancelled', 'changed-notes'])('suppresses the unsent original completion after %s', change => {
+    completed();
+    if (change === 'changed-notes') state.currentTour.sharedManagerNotes = 'Corrected visit notes';
+    else state.currentTour.status = change;
+    return deliverTourEvents(10, 1).then(() => {
+      expect(state.email).not.toHaveBeenCalled();
+      expect(state.notify.mock.calls.some(([notice]) => notice.userId === 8)).toBe(false);
+      expect(state.applicationNextStep).not.toHaveBeenCalled();
+      expect(state.event.completedAt).toBeInstanceOf(Date);
+    });
+  });
+  it('suppresses completion corrected between notification and email channels', async () => {
+    completed();
+    state.notify.mockImplementation(async notice => { if (notice.userId === 8) state.currentTour.status = 'no_show'; });
+    await deliverTourEvents(10, 1);
+    expect(state.email).not.toHaveBeenCalled(); expect(state.applicationNextStep).not.toHaveBeenCalled();
+  });
+  it('rechecks the visitor role and current contact immediately before the receipt', async () => {
+    completed();
+    state.notify.mockImplementation(async notice => { if (notice.userId === 8) state.people[0].email = 'current@example.test'; });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.map(([mail]) => mail.to)).toEqual(['current@example.test']);
+    completed(); state.event.completedAt = null; state.event.deliveredKeys = ['chef', 'manager']; state.email.mockClear();
+    state.people[0].role = 'admin';
+    const outcome = await deliverTourEvents(10, 1);
+    expect(state.email).not.toHaveBeenCalled(); expect(outcome.errors).toBeGreaterThan(0);
+    expect(state.event.completedAt).toBeNull();
+  });
+  it('uses the latest application action when it changes after the in-app notice', async () => {
+    completed();
+    state.notify.mockImplementation(async notice => {
+      if (notice.userId === 8) state.applicationNextStep.mockResolvedValue({ action: 'continue', href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
+    });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls[0][0].text).toContain('Continue application:');
+    expect(state.email.mock.calls[0][0].text).not.toContain("Apply when you're ready");
+  });
+  it('retains durable retry and receipt deduplication after failed delivery', async () => {
+    completed(); state.email.mockResolvedValueOnce(false);
+    await deliverTourEvents(10, 1);
+    expect(state.event.completedAt).toBeNull(); expect(state.event.deliveredKeys).not.toContain('chef-email');
+    state.email.mockClear(); await deliverTourEvents(10, 1);
+    expect(state.email).toHaveBeenCalledTimes(1); expect(state.event.completedAt).toBeInstanceOf(Date);
+    await deliverTourEvents(10, 1); expect(state.email).toHaveBeenCalledTimes(1);
+  });
+  it('keeps delivery pending when application resolution fails and resolves the latest application on recovery', async () => {
+    completed(); state.applicationNextStep.mockRejectedValueOnce(new Error('Database unavailable'));
+    await deliverTourEvents(10, 1);
+    expect(state.email).not.toHaveBeenCalled(); expect(state.event.completedAt).toBeNull();
+    expect(state.event.deliveredKeys).not.toContain('chef-email');
+    state.applicationNextStep.mockResolvedValue({ action: 'view', href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls[0][0].text).toContain('View application:');
+    expect(state.event.completedAt).toBeInstanceOf(Date);
+  });
+  it('does not revive apply marketing during explicit replay', async () => {
+    completed(); await deliverTourEvents(10, 1, 20000, undefined, true);
+    expect(state.email.mock.calls[0][0].text).not.toMatch(/apply-kitchen|Apply when you're ready/);
+    expect(state.email.mock.calls[0][0].subject).toContain('Recorded notice:');
+    expect(state.applicationNextStep).not.toHaveBeenCalled();
+  });
+  it.each(['fr-CA', 'uk'])('localizes the application invitation for %s', locale => {
+    const event = payload('status', 'completed'); event.chef.locale = locale;
+    const mail = tourEventMessages(event).find(message => message.key === 'chef-email')!.email!;
+    expect(mail.text).toContain(locale === 'fr-CA' ? 'Présentez votre demande quand vous serez prêt:' : 'Подайте заявку, коли будете готові:');
+    expect(mail.text).not.toContain("Apply when you're ready");
+  });
+});
+
 describe('Tour C outcomes and factual retry recovery', () => {
   const sample = (name: string, mail: any) => {
     if (process.env.TOUR_C_SAVE_SAMPLES !== '1') return;
@@ -896,7 +1138,7 @@ describe('Tour C outcomes and factual retry recovery', () => {
     if (['manager_absent', 'access_unavailable', 'weather'].includes(branch)) event.after.disruptionReason = branch;
     if (branch === 'corrected') event.before = { ...tour, status: 'no_show', noShowReason: 'visitor_absent' };
     const mail = tourEventMessages(event, 100).find(message => message.key === 'chef-email')!.email!;
-    expect(mail.html).toContain('emailHeader.png'); expect(mail.text).not.toContain('Arrived: Not recorded');
+    expect(mail.html).toContain('class="email-brand"'); expect(mail.text).not.toContain('Arrived: Not recorded');
     expect(mail.text).not.toContain('Outcome recorded by'); expect(mail.text).not.toContain('Update recorded at');
     expect(mail.text).not.toMatch(/attendance/i);
     expect(mail.text).toContain('dashboard?view=support'); expect(mail.text).toContain('viewing=10');
@@ -949,4 +1191,66 @@ it.each(['pending', 'pending_local_cooks'])('labels a chef withdrawal of %s as w
   expect(chef.subject).toContain('withdrawn'); expect(chef.text).not.toMatch(/rejected|declined/);
   expect(notices.find(message => message.key === 'chef')!.notification!.title).toContain('withdrawn');
   if (status === 'pending_local_cooks') expect(notices.some(message => message.key === 'manager-email')).toBe(false);
+});
+
+
+describe('soft reconfirmation notices', () => {
+  it('queues short-notice asks in the confirmation transaction and waits twelve hours to escalate', async () => {
+    state.event = null;
+    const after = { ...tour, scheduledAt: new Date(Date.now() + 20 * 3600000), appointmentConfirmedAt: new Date(), appointmentRevision: 1 };
+    await queueTourEvent(db as any, { kind: 'status', before: { ...tour, status: 'pending' }, after, actorRole: 'manager' });
+    expect(state.insert.mock.calls.map(([value]) => value.payload.kind)).toEqual(['status', 'reconfirmation_requested']);
+    expect(state.notifications.some(notification => notification.title === 'Are you still coming to your kitchen tour?')).toBe(true);
+    expect(state.email).not.toHaveBeenCalled();
+  });
+  it('separates queued asks when the manager changes without a tour record edit', async () => {
+    await queueTourEvent(db as any, { kind: 'reconfirmation_requested', before: tour, after: tour });
+    const first = state.insert.mock.calls[0][0].eventKey;
+    state.managerId = 3;
+    await queueTourEvent(db as any, { kind: 'reconfirmation_requested', before: tour, after: tour });
+    expect(state.insert.mock.calls[1][0].eventKey).not.toBe(first);
+  });
+  it('asks the chef to reply without a mutating email URL or cancelling the appointment', () => {
+    const event = payload('reconfirmation_requested', 'confirmed'); event.after.appointmentRevision = 1;
+    const notices = tourEventMessages(event);
+    expect(notices.filter(message => message.email)).toHaveLength(1);
+    const email = notices.find(message => message.key === 'chef-email')!.email!;
+    expect(email.text).toContain('&action=reconfirm');
+    expect(email.text).toContain('remains confirmed');
+    expect(email.text).not.toContain('/reconfirmation');
+    expect(event.after.status).toBe('confirmed');
+  });
+  it.each(['still_coming', 'reschedule', 'cant_make_it'])('records %s as a soft reply and informs staff once', reply => {
+    const event = payload('reconfirmation_replied', 'confirmed'); event.after.reconfirmationReply = reply;
+    event.admins = [{ id: 30, name: 'Admin', email: 'admin@example.test' }];
+    const notices = tourEventMessages(event);
+    expect(notices.filter(message => message.email)).toHaveLength(3);
+    expect(notices.find(message => message.key === 'chef-email')!.email!.text).not.toMatch(/was cancelled|has been rescheduled/);
+    expect(event.after.status).toBe('confirmed');
+  });
+  it('suppresses an old appointment or answered ask before draining an action', () => {
+    const event = payload('reconfirmation_requested', 'confirmed'); event.after.scheduledAt = new Date('2026-10-06T12:00:00Z'); event.after.appointmentRevision = 1;
+    const current = { ...event.after };
+    expect(tourReconfirmationNoticeCurrent(event, current, 2, Date.parse('2026-10-05T13:00:00Z'))).toBe(true);
+    expect(tourReconfirmationNoticeCurrent(event, { ...current, appointmentRevision: 2 }, 2, Date.parse('2026-10-05T13:00:00Z'))).toBe(false);
+    expect(tourReconfirmationNoticeCurrent(event, current, 3, Date.parse('2026-10-05T13:00:00Z'))).toBe(false);
+    expect(tourReconfirmationNoticeCurrent(event, { ...current, reconfirmationReply: 'still_coming', reconfirmationReplyRevision: '1:2' }, 2, Date.parse('2026-10-05T13:00:00Z'))).toBe(false);
+  });
+});
+
+
+it('escalates a confirmed time-change decision without asking the manager to reconfirm the original tour', () => {
+  const event = payload('request_escalation', 'confirmed');
+  event.after.scheduledAt = new Date('2026-10-08T12:00:00Z');
+  event.after.rescheduleProposedSlots = [];
+  event.after.requestedRescheduleAt = new Date('2026-10-09T12:00:00Z');
+  event.after.rescheduleRequestedAt = new Date('2026-10-04T12:00:00Z');
+  event.admins = [{ id: 30, name: 'Admin', email: 'admin@example.test' }];
+  const notices = tourEventMessages(event);
+  const manager = notices.find(message => message.key === 'manager-email')!.email!;
+  expect(manager.text).toContain('12-hour decision window has passed');
+  expect(manager.text).toContain('&action=review-reschedule');
+  expect(manager.text).not.toContain('Confirm tour:');
+  expect(notices.find(message => message.key === 'chef-email')!.email!.text).toContain('original tour remains confirmed');
+  expect(notices.find(message => message.key === 'admin-email:30')!.email!.text).toContain('pending time change');
 });

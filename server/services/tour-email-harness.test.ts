@@ -9,9 +9,14 @@ describe('tour email preview harness', () => {
     const { samples, notificationOnly } = await buildTourEmailSamples();
     expect(samples.length).toBeGreaterThan(50);
     expect(new Set(samples.map(sample => sample.role))).toEqual(new Set(['Chef', 'Manager', 'Local Cooks']));
-    expect(new Set(samples.map(sample => sample.group))).toEqual(new Set(['Requests', 'Confirmation', 'Time changes', 'Cancellations', 'Outcomes', 'Corrections', 'Edge cases', 'Delivery recovery', 'Reminders', 'Conversation']));
-    expect(notificationOnly).toHaveLength(4);
+    expect(new Set(samples.map(sample => sample.group))).toEqual(new Set(['Requests', 'Confirmation', 'Time changes', 'Cancellations', 'Outcomes', 'Feedback', 'Corrections', 'Edge cases', 'Delivery recovery', 'Reminders', 'Conversation']));
+    expect(notificationOnly).toEqual([]);
     expect(samples.map(sample => sample.id)).toEqual(samples.map((_, index) => String(index)));
+    expect(samples.filter(sample => sample.scenario === 'Private feedback requested').map(sample => sample.role)).toEqual(['Chef', 'Manager']);
+    for (const scenario of ['Feedback ready for review', 'Conflicting feedback', 'Feedback missing after 24 hours']) {
+      expect(samples.filter(sample => sample.scenario === scenario).map(sample => sample.role)).toEqual(['Local Cooks']);
+    }
+    expect(samples.some(sample => sample.scenario === 'Manager prompted for tour outcome')).toBe(false);
     for (const sample of samples) {
       expect(sample.to).toMatch(/@example.com$/); expect(sample.subject).toBeTruthy();
       expect(sample.html).toContain('<!DOCTYPE html>'); expect(sample.text).toBeTruthy();
@@ -27,8 +32,9 @@ describe('tour email preview harness', () => {
       expect(email.text).toContain(role === 'Chef' ? 'Message manager:' : 'Message chef:');
       expect(email.text).toContain('viewing=42&action=message');
       expect(email.text).toContain('Get directions: https://www.google.com/maps/dir/');
-      expect(email.html).toContain('margin:0 auto;width:160px');
-      expect(email.html).toContain('display:block !important;width:100% !important');
+      expect(email.html).toContain('class="email-brand"');
+      expect(email.html).not.toContain('emailHeader.png');
+      expect(email.html).toContain('.email-outer{padding:0 !important}');
       expect(email.html.indexOf('&amp;action=reschedule')).toBeLessThan(email.html.indexOf('&amp;action=message'));
     }
     const arrival = samples.find(sample => sample.scenario === 'Before the tour · arrival' && sample.role === 'Chef')!;

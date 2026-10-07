@@ -22,6 +22,9 @@ import { KitchenBookingPreferencesPanel } from "@/components/kitchen-application
 import KitchenJourneyAuth, { useKitchenJourneyEmailVerified } from "@/components/auth/KitchenJourneyAuth";
 import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-application/KitchenJourneyLayout";
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
+import { apiRequest } from '@/lib/queryClient';
+import type { TourApplicationNextStep } from '@shared/tour-application';
+import { TourIntakeDetails } from '@/components/tour/TourIntakeDetails';
 
 interface PublicLocation {
   id: number;
@@ -42,6 +45,15 @@ export default function ApplyToKitchen() {
   const params = useParams<{ locationId: string }>();
   const locationId = params.locationId ? parseInt(params.locationId) : null;
   const kitchenId = new URLSearchParams(window.location.search).get("kitchenId");
+  const tourParam = new URLSearchParams(window.location.search).get('tourId');
+  const tourId = tourParam && /^[1-9]\d*$/.test(tourParam) && Number.isSafeInteger(Number(tourParam)) ? Number(tourParam) : null;
+  const { data: tourNextStep, isLoading: tourLoading, isError: tourError, refetch: refetchTour } = useQuery<TourApplicationNextStep | null>({
+    queryKey: ['/api/viewings/chef', user?.uid, tourId, locationId, 'application-next-step'],
+    queryFn: async () => (await apiRequest('GET', tourId ? `/api/viewings/chef/${tourId}/application-next-step`
+      : `/api/viewings/chef/application-reference/${locationId}`)).json(),
+    enabled: !!user && !!locationId && emailVerified && (tourParam === null || !!tourId),
+    staleTime: 0,
+  });
   const progressKey = `kitchen_apply_progress_${kitchenId || locationId}`;
   const [requestStep, setRequestStep] = useState<"plan" | "details">(() => {
     try { return (localStorage.getItem(progressKey) || sessionStorage.getItem(progressKey)) === "details" ? "details" : "plan"; }
@@ -120,7 +132,7 @@ export default function ApplyToKitchen() {
   const step2Submitted = locationApplication ? hasStep2BeenSubmitted(locationApplication) : false;
   const documentsSubmitted = step2Submitted || (submittedTier !== null && submittedTier >= 2);
 
-  const isLoading = authLoading || locationLoading || kitchensLoading || (!!user && locationAppLoading);
+  const isLoading = authLoading || locationLoading || kitchensLoading || (!!user && locationAppLoading) || (!!user && emailVerified && tourLoading);
 
   // Loading content
   const loadingContent = (
@@ -171,10 +183,19 @@ export default function ApplyToKitchen() {
         />
       ) : (
         <>
+      {tourNextStep?.prefill && <Card className="shadow-none"><CardContent className="space-y-3 p-5">
+        <h2 className="font-semibold">{t('tourApplicationReferenceTitle', { defaultValue: 'Your kitchen tour' })}</h2>
+        <p className="text-sm text-muted-foreground">{t('tourApplicationReferenceHelp', { defaultValue: 'Intended use can fill a blank business description. Review and edit it before submitting. The other answers are reference only; application requirements still apply.' })}</p>
+        <TourIntakeDetails data={Object.fromEntries(Object.entries(tourNextStep.prefill).filter(([key]) => !['chefNotes', 'sharedManagerNotes'].includes(key)))} />
+        {tourNextStep.prefill.chefNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationChefNotes', { defaultValue: 'Your tour notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.chefNotes}</p></div>}
+        {tourNextStep.prefill.sharedManagerNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationSharedNotes', { defaultValue: 'Shared visit notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.sharedManagerNotes}</p></div>}
+      </CardContent></Card>}
       {/* Application Form */}
       <KitchenApplicationForm
         location={location!}
         globalApp={globalApp}
+        tourReference={tourNextStep?.prefill}
+        sourceTourId={tourNextStep?.action === 'apply' ? tourNextStep.sourceTourId : undefined}
         onSuccess={(tier) => {
           try { localStorage.removeItem(progressKey); sessionStorage.removeItem(progressKey); } catch { /* storage unavailable */ }
           setSubmittedTier(tier);
@@ -200,6 +221,27 @@ export default function ApplyToKitchen() {
   const getContent = () => {
     if (isLoading) return loadingContent;
     if (!locationId || locationError || !location) return notFoundContent;
+    if (tourError && tourParam === null) return <Alert variant="destructive">
+      <AlertTitle>{t('tourApplicationCheckFailed', { defaultValue: 'Could not check your tour information' })}</AlertTitle>
+      <AlertDescription><Button variant="outline" onClick={() => void refetchTour()}>{t('tourApplicationRetry', { defaultValue: 'Check again' })}</Button></AlertDescription>
+    </Alert>;
+    if (tourParam !== null && (!tourId || tourError || !tourNextStep || tourNextStep.action === 'unavailable'
+      || tourNextStep.locationId !== locationId || (!!kitchenId && tourNextStep.kitchenId !== Number(kitchenId)))) return (
+      <Alert variant="destructive">
+        <AlertTitle>{t('tourApplicationUnavailable', { defaultValue: 'This tour’s application next step is unavailable' })}</AlertTitle>
+        <AlertDescription className="space-y-3">
+          <p>{t('tourApplicationUnavailableHelp', { defaultValue: 'The visit or kitchen may have changed. Check your tour or try again.' })}</p>
+          {tourError && <Button variant="outline" onClick={() => void refetchTour()}>{t('tourApplicationRetry', { defaultValue: 'Check again' })}</Button>}
+          <Button variant="outline" onClick={() => navigate(`/dashboard?view=viewings&viewing=${tourId || ''}`)}>{t('tourApplicationBack', { defaultValue: 'View tour' })}</Button>
+        </AlertDescription>
+      </Alert>
+    );
+    if (tourNextStep?.action === 'view') return <ApplicationSubmissionSummary kitchenName={location.name}
+      title={t('tourApplicationViewTitle', { defaultValue: 'Your kitchen application' })}
+      description={t('tourApplicationViewHelp', { defaultValue: 'You already have an application or kitchen access. View its current status and next step.' })}
+      nextStep={t('tourApplicationViewNext', { defaultValue: 'Continue through your existing kitchen request.' })}
+      actionLabel={t('tourApplicationViewAction', { defaultValue: 'View my applications' })}
+      onAction={() => navigate('/dashboard?view=kitchen-requests')} />;
     if (locationAppError) return (
       <Alert variant="destructive">
         <AlertTitle>Couldn’t check your application</AlertTitle>

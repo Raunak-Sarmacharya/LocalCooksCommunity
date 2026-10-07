@@ -10,6 +10,35 @@ vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<type
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/'); });
 describe('chef tour notification links', () => {
+  it('shows saved feedback and pending admin review instead of asking the chef to submit twice', async () => {
+    const rows = [{ viewing: { id: 77, status: 'confirmed', chefFeedbackSubmitted: true, confirmationVerified: true,
+      scheduledAt: '2020-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' }];
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : { events: [], problems: [] } })));
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
+    expect(await screen.findByText('Your feedback is saved. Local Cooks will record the final kitchen tour result.')).toBeInTheDocument();
+    expect(screen.queryByText('The tour time has ended. Share your feedback; Local Cooks will review both responses and record the final outcome.')).not.toBeInTheDocument();
+    client.clear();
+  });
+  it('uses actual listing names in preparation and opens explicit cancellation after a soft reply without cancelling', async () => {
+    const tour = { id: 77, status: 'confirmed', targetedKitchenId: 40, scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30, intakeData: { intendedUse: 'meal_prep' } };
+    const rows = [{ viewing: tour, locationName: 'Fixture kitchen', managerEmail: 'current-manager@example.test', reconfirmation: { revision: '1:12', canReply: true, reply: null, needsStaffAttention: false } }];
+    const fetcher = vi.fn(async (path: string, options?: any) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : path.includes('equipment-listings') ? { included: [{ equipmentType: 'convection_oven' }], rental: [] } : path.includes('storage-listings') ? [{ name: 'Cold shelf A' }] : path.includes('/reconfirmation') ? { ...tour, updatedAt: '2026-10-04T12:01:00Z' } : { problems: [], reportingAvailable: false } }));
+    vi.stubGlobal('fetch', fetcher); window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77&action=reconfirm');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
+    expect(await screen.findByText(/Listed equipment: convection oven/)).toBeInTheDocument();
+    expect(screen.getByText(/Listed storage: Cold shelf A/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Running late' })).not.toBeInTheDocument();
+    expect(fetcher.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Can’t make it' }));
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(fetcher.mock.calls.some(([path]) => path.endsWith('/status'))).toBe(false);
+    const reply = fetcher.mock.calls.find(([path]) => path.endsWith('/reconfirmation'))![1];
+    expect(JSON.parse(reply.body)).toEqual({ reply: 'cant_make_it', appointmentRevision: '1:12', expectedUpdatedAt: tour.updatedAt });
+    client.clear();
+  });
   it('shows persisted expiry distinctly and never invents a historical confirmation date', async () => {
     const rows = [{ viewing: { id: 77, status: 'cancelled', requestExpiredAt: '2026-10-05T12:30:00Z', scheduledAt: '2026-10-05T12:30:00Z', updatedAt: '2026-10-05T12:30:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' }];
     vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : { problems: [], reportingAvailable: false } })));
@@ -29,7 +58,9 @@ describe('chef tour notification links', () => {
     window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
-    expect(await screen.findByRole('heading', { name: 'Confirmed on' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Confirmed on' })).not.toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([path]) => path === '/api/viewings/chef/77/history')).toBe(true));
     expect(screen.queryByText('Approved')).not.toBeInTheDocument();
     client.clear();
   });
@@ -71,7 +102,7 @@ describe('chef tour notification links', () => {
     await waitFor(() => expect(fetcher).toHaveBeenCalledWith('/api/viewings/77/status', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ status: 'cancelled', cancellationReason: 'Tour cancelled', expectedUpdatedAt: '2026-10-04T12:00:00Z' }) })));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(window.location.search).toContain('viewing=77');
-    expect(screen.getByRole('heading', { name: 'Visit details' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Cancel tour' })).toHaveLength(1);
     client.clear();
   });
@@ -126,7 +157,7 @@ describe('chef tour notification links', () => {
     render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
     expect(await screen.findByRole('region', { name: 'What to do next' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Visit details' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
     expect(screen.getByText('Please contact Support if this is incorrect')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Notes and updates' })).toBeInTheDocument();
     expect(document.querySelector('#tour-details-77 details')).toBeNull();
@@ -208,7 +239,7 @@ describe('chef table and dedicated tour page', () => {
     const row = within(table).getByText('Kitchen 77').closest('tr')!;
     expect(row).toHaveAttribute('tabindex', '0');
     fireEvent.keyDown(row, { key: 'Enter' });
-    expect(await screen.findByRole('heading', { name: 'Visit details' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
     expect(window.location.search).toBe('?view=viewings&viewing=77');
     expect(screen.queryByTestId('data-table-desktop')).not.toBeInTheDocument();
     expect(screen.queryByText('Kitchen 88')).not.toBeInTheDocument();
@@ -219,7 +250,7 @@ describe('chef table and dedicated tour page', () => {
     expect(screen.getByRole('button', { name: 'Download confirmation' })).toBeInTheDocument();
     page.unmount();
     const reloaded = render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
-    expect(await screen.findByRole('heading', { name: 'Visit details' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kitchen tour details' })).toBeInTheDocument();
     window.history.replaceState({}, '', '/dashboard?view=viewings');
     window.dispatchEvent(new PopStateEvent('popstate'));
     expect(await screen.findByTestId('data-table-desktop')).toBeInTheDocument();
@@ -230,7 +261,7 @@ describe('chef table and dedicated tour page', () => {
     window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=99');
     const { client } = mountPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('This tour is unavailable');
-    expect(screen.queryByRole('heading', { name: 'Visit details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Kitchen tour details' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
     window.history.replaceState({}, '', '/dashboard?view=viewings');
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -249,14 +280,15 @@ describe('chef next steps and information rail', () => {
     ['pending', '2020-10-05T12:30:00Z', 'The requested time passed before confirmation.', null],
   ])('gives %s an actionable next step and preserves its public information', async (status, scheduledAt, nextStep, action) => {
     const rows = [{ viewing: { id: 77, locationId: 4, status, scheduledAt, durationMinutes: 30, chefNotes: 'Bring equipment questions', intakeData: { purpose: 'Bakery' } }, locationName: 'Fixture kitchen', locationAddress: '123 Water Street', managerName: 'Sam', arrivalNotes: 'Use the side entrance' }];
-    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : { problems: [], reportingAvailable: false } })));
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : path.endsWith('/application-next-step')
+      ? { action: 'apply', applicationId: null, sourceTourId: 77, href: '/apply-kitchen/4?tourId=77' } : { problems: [], reportingAvailable: false } })));
     window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
     const banner = await screen.findByRole('region', { name: 'What to do next' });
     expect(banner).toHaveTextContent(nextStep!);
     const rail = screen.getByRole('complementary', { name: 'Tour summary' });
-    expect(rail).toHaveTextContent('TOUR-77');
+    expect(rail).toHaveTextContent('Fixture kitchen');
     expect(within(rail).getByRole('link', { name: '123 Water Street' })).toHaveAttribute('href', expect.stringContaining('123%20Water%20Street'));
     expect(screen.getByText('Use the side entrance')).toBeInTheDocument();
     expect(screen.getByText('Bring equipment questions')).toBeInTheDocument();
@@ -268,8 +300,28 @@ describe('chef next steps and information rail', () => {
     }
     if (status === 'pending') expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('Departure instructions are available after your tour is confirmed.');
     if (status === 'completed' || status === 'no_show') expect(screen.getByRole('region', { name: 'Departure notes' })).toHaveTextContent('Instructions are unavailable for this tour.');
-    if (status === 'completed') expect(within(banner).getByRole('link', { name: 'Apply to this kitchen' })).toHaveAttribute('href', '/apply-kitchen/4');
+    if (status === 'completed') expect(await within(banner).findByRole('link', { name: 'Apply when you’re ready' })).toHaveAttribute('href', '/apply-kitchen/4?tourId=77');
     if (status === 'no_show' || (status === 'pending' && !action)) expect(within(banner).getByRole('link', { name: 'Discover Kitchens' })).toHaveAttribute('href', '/dashboard?view=discover-kitchens');
+    client.clear();
+  });
+});
+
+describe('tour inventory previews', () => {
+  it.each([
+    { count: 4, rental: false, buttons: 0 },
+    { count: 5, rental: false, buttons: 2 },
+    { count: 4, rental: true, buttons: 1 },
+  ])('shows four items and only needed links: $count items, rental $rental', async ({ count, rental, buttons }) => {
+    const rows = [{ viewing: { id: 77, status: 'confirmed', targetedKitchenId: 40, scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30 }, locationName: 'Fixture kitchen' }];
+    const items = Array.from({ length: count }, (_, i) => ({ id: i, equipmentType: `Item ${i + 1}` }));
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : path.includes('equipment-listings') ? { included: rental ? items.slice(0, -1) : items, rental: rental ? items.slice(-1) : [] } : path.includes('storage-listings') ? items.map(item => ({ id: item.id, name: item.equipmentType, storageType: 'dry' })) : { events: [], problems: [], reportingAvailable: false } })));
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ChefViewingsList /></QueryClientProvider>);
+    expect(await screen.findByText(/Listed equipment: Item 1, Item 2, Item 3, Item 4/)).toBeInTheDocument();
+    expect(screen.getByText(/Listed storage: Item 1, Item 2, Item 3, Item 4/)).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: 'Show all' })).toHaveLength(buttons);
+    expect(screen.queryByText(/Item 5/)).not.toBeInTheDocument();
     client.clear();
   });
 });

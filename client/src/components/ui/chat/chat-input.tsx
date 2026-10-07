@@ -15,6 +15,7 @@ const ChatInputSchema = z.object({
 type ChatInputFormType = z.infer<typeof ChatInputSchema>
 
 interface ChatInputProps {
+  initialDraft?: string;
   onSend: (message: string, files?: File[]) => Promise<void>
   onFileSelect?: (files: File[]) => void
   disabled?: boolean
@@ -25,6 +26,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ 
+  initialDraft = "",
   onSend, 
   disabled, 
   isLoading, 
@@ -40,7 +42,7 @@ export function ChatInput({
   const form = useForm<ChatInputFormType>({
     resolver: zodResolver(ChatInputSchema),
     defaultValues: {
-      message: "",
+      message: initialDraft,
     },
   })
 
@@ -53,7 +55,7 @@ export function ChatInput({
     setSendError(null)
     try {
       await onSend(data.message, files.length ? files : undefined)
-      form.reset()
+      form.reset({ message: "" })
       setFiles([])
       if (fileInputRef.current) fileInputRef.current.value = ""
     } catch (error) {

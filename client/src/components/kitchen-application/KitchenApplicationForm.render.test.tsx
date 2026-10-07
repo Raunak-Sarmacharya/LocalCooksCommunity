@@ -198,6 +198,26 @@ beforeEach(() => {
 });
 
 describe("KitchenApplicationForm render harness", () => {
+  const tourReference = { intendedUse: 'Meals for catering', estimatedWeeklyHours: '5-10', hasLicense: false,
+    targetStartDate: 'not_decided', chefNotes: 'My note', sharedManagerNotes: 'Shared note', additionalInfo: '' };
+  it('prefills intended use and preserves an edit when asynchronous tour defaults refresh', () => {
+    const { rerender } = render(<KitchenApplicationForm location={location} tourReference={tourReference} sourceTourId={83} />);
+    const description = screen.getByPlaceholderText('Brief description of what you prepare, your target market, etc.');
+    expect(description).toHaveValue('Meals for catering');
+    fireEvent.change(description, { target: { value: 'My edited business plan' } });
+    rerender(<KitchenApplicationForm location={location} tourReference={{ ...tourReference, intendedUse: 'New shared description' }} sourceTourId={83} />);
+    expect(description).toHaveValue('My edited business plan');
+  });
+  it('preserves a saved application description instead of filling it from a repeat tour', () => {
+    state.application = { status: 'rejected', current_tier: 1, businessDescription: JSON.stringify({ description: 'Saved plan' }) };
+    render(<KitchenApplicationForm location={location} tourReference={tourReference} />);
+    expect(screen.getByPlaceholderText('Brief description of what you prepare, your target market, etc.')).toHaveValue('Saved plan');
+  });
+  it('preserves an intentionally blank saved application answer', () => {
+    state.application = { status: 'rejected', current_tier: 1, businessDescription: JSON.stringify({ description: '' }) };
+    render(<KitchenApplicationForm location={location} tourReference={tourReference} />);
+    expect(screen.getByPlaceholderText('Brief description of what you prepare, your target market, etc.')).toHaveValue('');
+  });
   it("renders tier 1 without throwing", () => {
     expect(() =>
       render(<KitchenApplicationForm location={location} />),
@@ -207,12 +227,15 @@ describe("KitchenApplicationForm render harness", () => {
     expect(screen.getAllByTestId("kitchen-application-submit").length).toBeGreaterThan(0);
   });
 
-  it("requires an explicit choice for both application agreements", () => {
+  it("requires an explicit choice for both application agreements", async () => {
     render(<KitchenApplicationForm location={location} />);
     const agreements = screen.getAllByRole("checkbox");
     expect(agreements).toHaveLength(2);
     agreements.forEach((checkbox) => expect(checkbox).toHaveAttribute("data-state", "unchecked"));
     screen.getAllByTestId("kitchen-application-submit").forEach((button) => expect(button).toBeDisabled());
+    expect(await screen.findByText('Please agree to the kitchen terms and policies')).toBeInTheDocument();
+    expect(screen.getByText('Please confirm your application is accurate')).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid literal value/)).not.toBeInTheDocument();
     fireEvent.click(agreements[0]);
     expect(agreements[0]).toHaveAttribute("data-state", "checked");
     expect(agreements[1]).toHaveAttribute("data-state", "unchecked");

@@ -118,3 +118,29 @@ describe('persisted message notice producer used by Cloud Function and aliases',
     expect(await resolveChatNoticeContext(fixture({ apps_count: 0, tours: [{ status: 'confirmed' }] }), 'thread', conversation, message)).toBeNull();
   });
 });
+
+ describe('admin broadcast notice recipients', () => {
+  const broadcast = (states = {}) => ({ ...message, senderId: 1, senderRole: 'admin', senderFirebaseUid: 'actual-admin', adminAudience: 'both',
+    recipientStates: { chef: { recipientId: 3, episodeId: 'both', readAt: null }, manager: { recipientId: 2, episodeId: 'both', readAt: null }, ...states } });
+  const adminDb = () => fixture({ sender_role: 'admin', sender_uid: 'actual-admin' });
+  it('queues independent keys and preserves both starts on duplicate retries', async () => {
+    const db = adminDb();
+    const result = await queueChatNotice(db, 'thread', 'both', conversation, broadcast());
+    expect(result.initialRecipients).toEqual([{ role: 'chef', trackingId: 'chat-message:thread:both:3' }, { role: 'manager', trackingId: 'chat-message:thread:both:2' }]);
+    expect(await queueChatNotice(db, 'thread', 'both', conversation, broadcast())).toEqual({ duplicate: true, initialRecipients: result.initialRecipients });
+    expect(db.query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO email_logs'))).toHaveLength(4);
+  });
+  it.each(['chef', 'manager'] as const)('reading as %s only suppresses that initial', async role => {
+    const db = adminDb(), id = role === 'chef' ? 3 : 2;
+    await queueChatNotice(db, 'thread', 'both', conversation, broadcast({ [role]: { recipientId: id, episodeId: 'both', readAt: new Date() } }));
+    const initials = db.query.mock.calls.filter(([sql, args]) => sql.includes('INSERT INTO email_logs') && JSON.parse(args![7]).phase === 'initial');
+    expect(initials.find(([, args]) => args![2] === role)![1]![5]).toBe('suppressed');
+    expect(initials.find(([, args]) => args![2] !== role)![1]![5]).toBe('scheduled');
+  });
+  it('rejects stale manager recipient without discarding the valid chef target', async () => {
+    const db = adminDb();
+    expect(await queueChatNotice(db, 'thread', 'both', conversation, broadcast({ manager: { recipientId: 9, episodeId: 'both', readAt: null } })))
+      .toEqual({ queued: true, initialRecipients: [{ role: 'chef', trackingId: 'chat-message:thread:both:3' }] });
+    expect(db.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO manager_notifications'))).toBe(false);
+  });
+});

@@ -3,7 +3,7 @@ import { chefKitchenApplications, kitchenViewings, locations } from '@shared/sch
 import { hasTourConfirmation } from '@shared/tour-outcome';
 import { db } from '../db';
 
-export function tourGrantsChat(tour: { status: string; adminReviewDecision: string | null; outcomeHistory?: unknown }) {
+export function tourGrantsChat(tour: { status: string; adminReviewDecision: string | null; confirmedAt?: Date | string | null; outcomeHistory?: unknown }) {
   if (tour.adminReviewDecision === 'denied' || tour.status === 'pending_local_cooks') return false;
   return tour.adminReviewDecision === 'approved' || (!tour.adminReviewDecision && hasTourConfirmation(tour));
 }
@@ -19,7 +19,7 @@ export async function sharedChatEligibility(chefId: number, locationId: number) 
     eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId),
     eq(chefKitchenApplications.status, 'approved')));
   const tours = await db.select({ id: kitchenViewings.id, status: kitchenViewings.status,
-    adminReviewDecision: kitchenViewings.adminReviewDecision, outcomeHistory: kitchenViewings.outcomeHistory })
+    adminReviewDecision: kitchenViewings.adminReviewDecision, confirmedAt: kitchenViewings.confirmedAt, outcomeHistory: kitchenViewings.outcomeHistory })
     .from(kitchenViewings).where(and(
     eq(kitchenViewings.chefId, chefId), eq(kitchenViewings.locationId, locationId)));
   const viewingIds = tours.filter(tourGrantsChat).map(tour => tour.id);

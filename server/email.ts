@@ -1,3 +1,4 @@
+import { prepareEmailHtml } from "./email-theme";
 import { logger } from "./logger.js";
 import { escapeHtml } from './security';
 import { isE2eOutboundSuppressed } from "./e2e-outbound-guard.js";
@@ -894,27 +895,28 @@ const getUniformEmailStyles = () => `
     color: #475569; 
     margin: 0; 
     padding: 0; 
-    background: #f1f5f9;
+    background: #ffffff;
   }
   .email-container { 
-    max-width: 600px; 
+    max-width: 640px;
     margin: 0 auto; 
     background: white; 
     border-radius: 12px; 
     overflow: hidden; 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    box-shadow: none;
   }
   .header { 
-    background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); 
-    color: white; 
-    padding: 24px 32px; 
-    text-align: center; 
+    background: #ffffff;
+    color: #292524;
+    padding: 16px 32px 24px;
+    text-align: left;
   }
   .header-image {
-    max-width: 280px;
+    width: 200px;
+    max-width: 100%;
     height: auto;
     display: block;
-    margin: 0 auto;
+    margin: 0;
   }
   .content { 
     padding: 40px 32px; 
@@ -997,10 +999,10 @@ const getUniformEmailStyles = () => `
     color: #1e293b;
     font-weight: 600;
   }
-  .footer { 
-    background: #f8fafc; 
+  .footer {
+    background: #ffffff;
     padding: 24px 32px; 
-    text-align: center; 
+    text-align: left;
     border-top: 1px solid #e2e8f0;
   }
   .footer-text {
@@ -1111,7 +1113,7 @@ export const generateStatusChangeEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1186,7 +1188,7 @@ The Local Cooks Team
     to: applicationData.email,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -1227,7 +1229,7 @@ export const generateFullVerificationEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1302,7 +1304,7 @@ The Local Cooks Team
     to: userData.email,
     subject: 'Chef Account Approved',
     text,
-    html,
+    html: prepareEmailHtml(html),
     headers: {
       'X-Priority': '3',
       'X-MSMail-Priority': 'Normal',
@@ -1333,7 +1335,7 @@ export const generateApplicationWithDocumentsEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1380,7 +1382,7 @@ The Local Cooks Team
     to: applicationData.email,
     subject: 'Application and Documents Received',
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -1405,7 +1407,7 @@ export const generateApplicationWithoutDocumentsEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1453,7 +1455,7 @@ The Local Cooks Team
     to: applicationData.email,
     subject: 'Application Received - Next Steps',
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -1523,7 +1525,7 @@ export const generateDocumentStatusChangeEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1579,7 +1581,7 @@ The Local Cooks Team
     to: userData.email,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -1622,7 +1624,7 @@ export async function sendApplicationReceivedEmail(applicationData: any) {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1670,7 +1672,7 @@ The Local Cooks Team
   return sendEmail({
     to: applicationData.email,
     subject,
-    html: htmlContent,
+    html: prepareEmailHtml(htmlContent),
     text: textContent
   });
 }
@@ -1694,7 +1696,7 @@ export async function sendApplicationRejectedEmail(applicationData: any, reason?
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1746,7 +1748,7 @@ The Local Cooks Team
   return sendEmail({
     to: applicationData.email,
     subject,
-    html: htmlContent,
+    html: prepareEmailHtml(htmlContent),
     text: textContent
   });
 }
@@ -1774,7 +1776,7 @@ export const generatePasswordResetEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1823,7 +1825,7 @@ The Local Cooks Team
     to: userData.email,
     subject: 'Password Reset Request - Local Cooks',
     text,
-    html,
+    html: prepareEmailHtml(html),
     headers: {
       'X-Priority': '3',
       'X-MSMail-Priority': 'Normal',
@@ -1856,7 +1858,7 @@ export const generateEmailVerificationEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1903,7 +1905,7 @@ The Local Cooks Team
     to: userData.email,
     subject: 'Verify Your Email - Local Cooks',
     text,
-    html,
+    html: prepareEmailHtml(html),
     headers: {
       'X-Transactional-Type': 'account-verification'
     }
@@ -1941,7 +1943,7 @@ export const generateMagicLinkEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -1988,7 +1990,7 @@ The Local Cooks Team
     to: userData.email,
     subject,
     text,
-    html,
+    html: prepareEmailHtml(html),
     headers: {
       'X-Priority': '1',
       'X-MSMail-Priority': 'High',
@@ -2054,7 +2056,7 @@ export const generateWelcomeEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -2137,7 +2139,7 @@ The Local Cooks Team
     to: userData.email,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -2328,7 +2330,7 @@ export const generateDocumentUpdateEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -2355,7 +2357,7 @@ export const generateDocumentUpdateEmail = (
     to: userData.email,
     subject: "Document Update Received - Local Cooks",
     text: `Hi ${firstName},\n\nThank you for updating your documents. Our team will review them and update your verification status as soon as possible.\n\nYou'll receive another email once your documents have been reviewed.\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html,
+    html: prepareEmailHtml(html),
     headers: {
       'X-Priority': '3',
       'X-MSMail-Priority': 'Normal',
@@ -3157,7 +3159,7 @@ Visit: ${getPromoUrl()}
       overflow: hidden;
     ">
       <img 
-        src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
+        src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png"
         alt="Local Cooks" 
         style="max-width: 280px; height: auto; display: block; margin: 0 auto${userData.header?.title ? '; margin-bottom: 16px' : ''}"
       />
@@ -3244,7 +3246,7 @@ Visit: ${getPromoUrl()}
     to: userData.email,
     subject,
     text: generatePlainText(userData.email, userData.promoCode, finalMessage),
-    html,
+    html: prepareEmailHtml(html),
     headers: {
       'X-Priority': '3',
       'X-MSMail-Priority': 'Normal',
@@ -3278,7 +3280,7 @@ export const generateChefAllDocumentsApprovedEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -3336,7 +3338,7 @@ The Local Cooks Team
     to: userData.email,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -3363,7 +3365,7 @@ export const generateManagerMagicLinkEmail = (userData: { email: string; name: s
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -3420,7 +3422,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: userData.email, subject, text, html };
+  return { to: userData.email, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Manager credentials email with username and password
@@ -3441,7 +3443,7 @@ export const generateManagerCredentialsEmail = (userData: { email: string; name:
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -3493,7 +3495,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: userData.email, subject, text, html };
+  return { to: userData.email, subject, text, html: prepareEmailHtml(html) };
 };
 
 export const generateBookingNotificationEmail = (bookingData: { managerEmail: string; managerName?: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; bookingId: number; referenceCode?: string | null; operatingWindowStartTime?: string | null; selectedSlots?: unknown }): EmailContent => {
@@ -3533,7 +3535,7 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
@@ -3607,7 +3609,7 @@ The Local Cooks Team
     to: bookingData.managerEmail,
     subject,
     text,
-    html,
+    html: prepareEmailHtml(html),
     attachments: [{
       filename: 'kitchen-booking.ics',
       content: icsContent,
@@ -3647,7 +3649,7 @@ export const generateBookingPaymentReceivedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Payment Received</h2>
@@ -3704,7 +3706,7 @@ The Local Cooks Team
     to: data.managerEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -3725,7 +3727,7 @@ export const generateBookingCancellationNotificationEmail = (bookingData: { mana
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Booking Cancelled</h2>
@@ -3773,7 +3775,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: bookingData.managerEmail, subject, text, html };
+  return { to: bookingData.managerEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Booking confirmed notification email for managers (when manager confirms a booking)
@@ -3820,7 +3822,7 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
@@ -3898,7 +3900,7 @@ The Local Cooks Team
     to: bookingData.managerEmail,
     subject,
     text,
-    html,
+    html: prepareEmailHtml(html),
     attachments: [{
       filename: 'kitchen-booking.ics',
       content: icsContent,
@@ -3939,7 +3941,7 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4009,7 +4011,7 @@ ${new Date().getFullYear()} Local Cooks
     to: bookingData.chefEmail,
     subject,
     text,
-    html,
+    html: prepareEmailHtml(html),
     attachments: [{
       filename: 'kitchen-booking.ics',
       content: icsContent,
@@ -4085,7 +4087,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4161,7 +4163,7 @@ The Local Cooks Team
     to: bookingData.chefEmail,
     subject,
     text,
-    html,
+    html: prepareEmailHtml(html),
     attachments: [{
       filename: 'kitchen-booking.ics',
       content: icsContent,
@@ -4187,7 +4189,7 @@ export const generateBookingCancellationEmail = (bookingData: { chefEmail: strin
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4238,7 +4240,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: bookingData.chefEmail, subject, text, html };
+  return { to: bookingData.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Kitchen availability change notification email for chefs
@@ -4258,7 +4260,7 @@ export const generateKitchenAvailabilityChangeEmail = (data: { chefEmail: string
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4301,7 +4303,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Kitchen settings change notification email for chefs and managers
@@ -4324,7 +4326,7 @@ export const generateKitchenSettingsChangeEmail = (data: { email: string; name: 
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4365,7 +4367,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.email, subject, text, html };
+  return { to: data.email, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Chef profile request notification email for managers
@@ -4385,7 +4387,7 @@ export const generateChefProfileRequestEmail = (data: { managerEmail: string; ch
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">New Chef Access Request</h2>
@@ -4430,7 +4432,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.managerEmail, subject, text, html };
+  return { to: data.managerEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Chef location access approved notification email for chefs
@@ -4451,7 +4453,7 @@ export const generateChefLocationAccessApprovedEmail = (data: { chefEmail: strin
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4481,7 +4483,7 @@ export const generateChefLocationAccessApprovedEmail = (data: { chefEmail: strin
 
   const text = `Hi ${firstName},\n\nYour chef profile has been approved for kitchen access at ${data.locationName}. You can now book kitchen facilities at this location.\n\nView available kitchens: ${bookingsUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`;
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Chef kitchen access approved notification email for chefs (when manager approves kitchen profile)
@@ -4502,7 +4504,7 @@ export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail: string
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4532,7 +4534,7 @@ export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail: string
 
   const text = `Hi ${firstName},\n\nYour chef profile has been approved for kitchen access at ${data.kitchenName}. You can now book this kitchen from your dashboard.\n\nView available kitchens: ${bookingsUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`;
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Location notification email changed notification email
@@ -4552,7 +4554,7 @@ export const generateLocationEmailChangedEmail = (data: { email: string; locatio
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Notification Email Updated</h2>
@@ -4580,7 +4582,7 @@ export const generateLocationEmailChangedEmail = (data: { email: string; locatio
 
   const text = `Notification Email Updated\n\nThis email address has been set as the notification email for ${data.locationName}. You'll now receive notifications for bookings, cancellations, and other important updates.\n\nLocation: ${data.locationName}\nEmail: ${data.email}\n\nView dashboard: ${dashboardUrl}\n\nIf you didn't make this change, contact us at support@localcook.shop\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`;
 
-  return { to: data.email, subject, text, html };
+  return { to: data.email, subject, text, html: prepareEmailHtml(html) };
 };
 
 // ===================================
@@ -4614,7 +4616,7 @@ export const generateStorageExtensionPendingApprovalEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Storage Extension Request</h2>
@@ -4650,7 +4652,7 @@ export const generateStorageExtensionPendingApprovalEmail = (data: {
     to: data.managerEmail,
     subject,
     text: `Storage Extension Request\n\nChef: ${data.chefName}\nStorage: ${data.storageName}\nExtension: ${data.extensionDays} days\nNew End Date: ${formattedDate}\nAmount: ${formattedPrice}\nStatus: Awaiting Approval\n\nReview: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -4681,7 +4683,7 @@ export const generateStorageExtensionPaymentReceivedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4717,7 +4719,7 @@ export const generateStorageExtensionPaymentReceivedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nYour payment for the storage extension has been received.\n\nStorage: ${data.storageName}\nExtension: ${data.extensionDays} days\nNew End Date: ${formattedDate}\nAmount: ${formattedPrice}\nStatus: Awaiting Approval\n\nView bookings: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -4746,7 +4748,7 @@ export const generateStorageExtensionApprovedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4780,7 +4782,7 @@ export const generateStorageExtensionApprovedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nYour storage extension has been approved.\n\nStorage: ${data.storageName}\nExtension: ${data.extensionDays} days\nNew End Date: ${formattedDate}\n\nView bookings: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -4810,7 +4812,7 @@ export const generateStorageExtensionRejectedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4847,7 +4849,7 @@ export const generateStorageExtensionRejectedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nYour storage extension request has been declined.\n\nStorage: ${data.storageName}\nRequested Extension: ${data.extensionDays} days\n${data.rejectionReason ? `Reason: ${data.rejectionReason}\n` : ''}\n${refundPlainText}\n\nView bookings: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -4886,7 +4888,7 @@ export const generateStorageExpiringWarningEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -4945,7 +4947,7 @@ export const generateStorageExpiringWarningEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nYour storage booking for ${data.storageName} is expiring on ${formattedEndDate}. Please extend or remove your items to avoid overstay penalties.\n\nGrace period: ${data.gracePeriodDays} days\nPenalty rate: ${(data.penaltyRate * 100).toFixed(0)}% of daily rate ($${penaltyPerDay}/day)\n\nManage bookings: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -4984,7 +4986,7 @@ export const generateOverstayDetectedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5031,7 +5033,7 @@ export const generateOverstayDetectedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nYour storage booking for ${data.storageName} has exceeded its end date (${formattedEndDate}). Days overdue: ${data.daysOverdue}. ${data.isInGracePeriod ? `Grace period ends: ${formattedGraceEnd}. No penalties yet.` : `Calculated penalty: $${penaltyAmount} CAD (pending manager review).`}\n\nManage bookings: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5062,7 +5064,7 @@ export const generatePenaltyChargedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5098,7 +5100,7 @@ export const generatePenaltyChargedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nAn overstay penalty of $${penaltyAmount} CAD has been charged for ${data.storageName}.\n\nDays overdue: ${data.daysOverdue}\nCharge date: ${formattedDate}\n\nView bookings: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5128,7 +5130,7 @@ export const generatePenaltyApprovedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5178,7 +5180,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Chef notice: Penalty waived by manager
@@ -5206,7 +5208,7 @@ export const generatePenaltyWaivedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5256,7 +5258,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Manager notice: New overstay requires review
@@ -5295,7 +5297,7 @@ export const generateOverstayManagerNotificationEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Overstay Alert</h2>
@@ -5332,7 +5334,7 @@ export const generateOverstayManagerNotificationEmail = (data: {
     to: data.managerEmail,
     subject,
     text: `Overstay Alert: ${data.storageName} at ${data.kitchenName}\n\nChef: ${data.chefName} (${data.chefEmail})\nDays overdue: ${data.daysOverdue}\nCalculated penalty: $${penaltyAmount} CAD\n${data.isInGracePeriod ? 'Grace period active.' : 'Action required - please review.'}\n\nReview: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5367,7 +5369,7 @@ export const generateNewKitchenApplicationManagerEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
@@ -5426,7 +5428,7 @@ The Local Cooks Team
     to: data.managerEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5439,7 +5441,7 @@ export const generateKitchenApplicationClearedManagerEmail = (data: {
   to: data.managerEmail,
   subject: `Application cleared by Local Cooks - ${data.chefName}`,
   text: `Hi ${data.managerName},\n\nLocal Cooks approved ${data.chefName}'s request to apply for ${data.locationName}. The application is now visible in your dashboard. You will be notified when the chef submits their Chef Application Requirements for your review.\n\n${getSubdomainUrl('kitchen')}/manager/dashboard?view=applications\n\nThe Local Cooks Team`,
-  html: `<p>Hi ${data.managerName},</p><p>Local Cooks approved <strong>${data.chefName}</strong>'s request to apply for <strong>${data.locationName}</strong>.</p><p>The application is now visible in your dashboard. You will be notified when the chef submits their Chef Application Requirements for your review.</p><p><a href="${getSubdomainUrl('kitchen')}/manager/dashboard?view=applications">View application</a></p>${getUniformEmailFooter()}`,
+  html: prepareEmailHtml(`<p>Hi ${data.managerName},</p><p>Local Cooks approved <strong>${data.chefName}</strong>'s request to apply for <strong>${data.locationName}</strong>.</p><p>The application is now visible in your dashboard. You will be notified when the chef submits their Chef Application Requirements for your review.</p><p><a href="${getSubdomainUrl('kitchen')}/manager/dashboard?view=applications">View application</a></p>${getUniformEmailFooter()}`),
 });
 
 // Notify the kitchen manager when an admin-approved chef submits the
@@ -5465,7 +5467,7 @@ export const generateKitchenCoordinationSubmittedManagerEmail = (data: {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head>
 <body>
   <div class="email-container">
-    <div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div>
+    <div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" /></div>
     <div class="content">
       <h2 class="greeting">Hi ${managerFirstName},</h2>
       <p class="message"><strong>${data.chefName}</strong> has submitted their Chef Application Requirements for <strong>${data.locationName}</strong>.</p>
@@ -5482,7 +5484,7 @@ export const generateKitchenCoordinationSubmittedManagerEmail = (data: {
     to: data.managerEmail,
     subject,
     text: `Hi ${managerFirstName},\n\n${data.chefName} has submitted their Chef Application Requirements for ${data.locationName}. Please review them in your dashboard so the chef can complete kitchen access.\n\nReview: ${dashboardUrl}\nApplication #${data.applicationId}`,
-    html,
+    html: prepareEmailHtml(html),
   };
 };
 
@@ -5509,7 +5511,7 @@ export const generateKitchenApplicationReceivedChefEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5582,7 +5584,7 @@ The Local Cooks Team
     to: data.chefEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5609,7 +5611,7 @@ export const generateKitchenApplicationStep2ReceivedChefEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5682,7 +5684,7 @@ The Local Cooks Team
     to: data.chefEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5709,7 +5711,7 @@ export const generateKitchenApplicationSubmittedChefEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5796,7 +5798,7 @@ The Local Cooks Team
     to: data.chefEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5825,7 +5827,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5896,7 +5898,7 @@ The Local Cooks Team
     to: data.chefEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5923,7 +5925,7 @@ export const generateKitchenApplicationRejectedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -5957,7 +5959,7 @@ export const generateKitchenApplicationRejectedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nThank you for your interest. Unfortunately, your kitchen application to ${data.locationName} could not be approved at this time.${data.feedback ? `\n\nFeedback: ${data.feedback}` : ''}\n\nYou may reapply or explore other locations: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -5988,7 +5990,7 @@ export const generateKitchenLicenseApprovedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6056,7 +6058,7 @@ The Local Cooks Team
     to: data.managerEmail,
     subject,
     text,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6083,7 +6085,7 @@ export const generateKitchenLicenseRejectedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6117,7 +6119,7 @@ export const generateKitchenLicenseRejectedEmail = (data: {
     to: data.managerEmail,
     subject,
     text: `Hi ${firstName},\n\nYour kitchen license for ${data.locationName} requires attention.${data.feedback ? `\n\nFeedback: ${data.feedback}` : ''}\n\nPlease upload a new license: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6151,7 +6153,7 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${isUpdate ? 'Kitchen License Update Pending Review' : 'Kitchen License Pending Review'}</h2>
@@ -6192,7 +6194,7 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
     to: data.adminEmail,
     subject,
     text: textBody,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6273,7 +6275,7 @@ export const generateKitchenLicenseExpiringEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6314,7 +6316,7 @@ The Local Cooks Team
     to: data.managerEmail,
     subject: copy.subject,
     text,
-    html,
+    html: prepareEmailHtml(html),
   };
 };
 
@@ -6350,7 +6352,7 @@ export const generateDamageClaimFiledEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6387,7 +6389,7 @@ export const generateDamageClaimFiledEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nA damage claim has been filed against your booking at ${data.locationName}.\n\nClaim: ${data.claimTitle}\nAmount: ${data.claimedAmount}\nDeadline: ${data.responseDeadline}\n\nRespond: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6426,7 +6428,7 @@ export const generateDamageClaimResponseEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
@@ -6461,7 +6463,7 @@ export const generateDamageClaimResponseEmail = (data: {
     to: data.managerEmail,
     subject,
     text: `Hi ${managerFirstName},\n\n${data.chefName} has ${data.response} your damage claim "${data.claimTitle}" for ${data.claimedAmount}.${data.chefResponse ? `\n\nResponse: ${data.chefResponse}` : ''}\n\n${isAccepted ? 'You can now charge from your dashboard.' : 'Local Cooks will review the disputed claim.'}\n\nView claim: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6492,7 +6494,7 @@ export const generateDamageClaimDisputedAdminEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Damage Claim Dispute &#8212; Review Required</h2>
@@ -6528,7 +6530,7 @@ export const generateDamageClaimDisputedAdminEmail = (data: {
     to: data.adminEmail,
     subject,
     text: `Damage Claim Dispute - Review Required\n\nClaim: ${data.claimTitle}\nAmount: ${data.claimedAmount}\nLocation: ${data.locationName}\nManager: ${data.managerName}\nChef: ${data.chefName} (${data.chefEmail})\n\nDispute Reason: ${data.chefResponse}\n\nReview: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6591,7 +6593,7 @@ export const generateDamageClaimDecisionEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6628,7 +6630,7 @@ export const generateDamageClaimDecisionEmail = (data: {
     to: data.recipientEmail,
     subject,
     text: `Hi ${firstName},\n\nLocal Cooks has ${decisionLabels[data.decision].toLowerCase()} the damage claim "${data.claimTitle}".\n\n${data.decisionReason}\n\nView details: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6657,7 +6659,7 @@ export const generateDamageClaimChargedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6692,7 +6694,7 @@ export const generateDamageClaimChargedEmail = (data: {
     to: data.chefEmail,
     subject,
     text: `Hi ${firstName},\n\nA payment of ${data.chargedAmount} has been processed for the damage claim "${data.claimTitle}" at ${data.locationName}.\n\nView details: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6724,7 +6726,7 @@ export const generateNewSellerApplicationAdminEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">New Seller Application</h2>
@@ -6758,7 +6760,7 @@ export const generateNewSellerApplicationAdminEmail = (data: {
     to: data.adminEmail,
     subject,
     text: `New Seller Application\n\nA chef has submitted a seller application.\n\nName: ${data.chefName}\nEmail: ${data.chefEmail}\nSubmitted: ${formattedDate}\nDocuments: ${data.hasDocuments ? 'Included' : 'Not yet uploaded'}\n\nReview at: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6794,7 +6796,7 @@ export const generateNewUserRegistrationAdminEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">New User Registration</h2>
@@ -6827,7 +6829,7 @@ export const generateNewUserRegistrationAdminEmail = (data: {
     to: data.adminEmail,
     subject,
     text: `New ${roleLabel} Registration\n\nName: ${data.newUserName}\nEmail: ${data.newUserEmail}\nRegistered: ${formattedDate}\n\nView users: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
-    html
+    html: prepareEmailHtml(html)
   };
 };
 
@@ -6866,7 +6868,7 @@ export const generateCancellationAcceptedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -6917,7 +6919,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Chef notice: Cancellation request declined by manager
@@ -6951,7 +6953,7 @@ export const generateCancellationDeclinedEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7002,7 +7004,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // ===================================
@@ -7043,7 +7045,7 @@ export const generateBookingRefundEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7096,7 +7098,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // ===================================
@@ -7132,7 +7134,7 @@ export const generateKitchenCheckinManagerEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7175,7 +7177,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.managerEmail, subject, text, html };
+  return { to: data.managerEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Notify chef when their check-in is confirmed
@@ -7206,7 +7208,7 @@ export const generateKitchenCheckinChefEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7249,7 +7251,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Notify manager when a chef requests checkout
@@ -7277,7 +7279,7 @@ export const generateKitchenCheckoutRequestManagerEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7318,7 +7320,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.managerEmail, subject, text, html };
+  return { to: data.managerEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Reminder email sent to chef in the morning for today's kitchen booking check-in
@@ -7349,7 +7351,7 @@ export const generateKitchenCheckinReminderEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7394,7 +7396,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Reminder email sent to chef in the morning for today's storage booking check-in
@@ -7422,7 +7424,7 @@ export const generateStorageCheckinReminderEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7464,7 +7466,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Notify chef when their checkout is cleared
@@ -7497,7 +7499,7 @@ export const generateKitchenCheckoutClearedChefEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7540,7 +7542,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Notify manager when a no-show is detected
@@ -7572,7 +7574,7 @@ export const generateKitchenNoShowManagerEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7616,7 +7618,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.managerEmail, subject, text, html };
+  return { to: data.managerEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 // Notify chef when their booking is marked as no-show
@@ -7647,7 +7649,7 @@ export const generateKitchenNoShowChefEmail = (data: {
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
@@ -7692,7 +7694,7 @@ The Local Cooks Team
 © ${new Date().getFullYear()} Local Cooks
   `.trim();
 
-  return { to: data.chefEmail, subject, text, html };
+  return { to: data.chefEmail, subject, text, html: prepareEmailHtml(html) };
 };
 
 type TourRequestEmailDetails = {
@@ -7713,7 +7715,8 @@ function tourRequestFacts(data: TourRequestEmailDetails) {
 export const generateTourRequestedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string }): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
     subject: 'Tour request received — ' + data.kitchenName,
-    message: 'Your kitchen tour request has been received. The requested time is not yet confirmed. We’ll email you when there is an update.',
+    heading: 'Your kitchen tour request is sent',
+    message: 'We’ve received your request to tour ' + data.kitchenName + '. Your requested time is not yet confirmed. We’ll email you when it’s confirmed or declined. Please wait for confirmation before visiting.',
     facts: tourRequestFacts(data), actionLabel: 'View details',
     actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId,
     ...(new Date(data.tourDate).getTime() > Date.now() ? { secondaryButton: { label: 'Edit tour request', url: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId + '&action=reschedule' } } : {}),
@@ -7751,6 +7754,7 @@ export const generateTourManagerChangeEmail = (data: { tourId: number; durationM
 export const generateTourRequestedManagerEmail = (data: TourRequestEmailDetails & { managerEmail: string; managerName: string; chefName: string; chefNotes?: string }): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName,
     subject: 'Tour request from ' + data.chefName + ' — ' + data.kitchenName,
+    heading: data.chefName + ' would like to tour your kitchen',
     message: data.chefName + ' requested a tour of ' + data.kitchenName + '. Confirm the requested time, offer alternatives, or decline the request.',
     facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data),
       ...(data.chefNotes ? [{ label: 'Visitor notes', value: data.chefNotes }] : [])],
@@ -7807,27 +7811,29 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
 
   return {
     ...renderTransactionalEmail({ to: data.email, subject: `${data.previousTourDate ? 'Tour rescheduled' : 'Confirmed: Kitchen Tour'} at ${data.kitchenName}`,
-      recipientName: data.recipientName, message: data.previousTourDate ? 'Your kitchen tour was rescheduled. Your new appointment is confirmed below.' : 'Your kitchen tour is confirmed.',
-      facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: 'Meeting with', value: data.otherPartyName },
+      recipientName: data.recipientName, message: data.previousTourDate ? 'Your new tour time is confirmed. Check the updated details below and replace any event you saved in your calendar.'
+        : data.isManager ? `${data.otherPartyName} is coming to tour ${data.kitchenName}. Here are the details for your meeting.`
+        : `You’re set to tour ${data.kitchenName} with ${data.otherPartyName}. Here’s everything you need for your visit.`,
+      facts: [], sections: [{ title: 'Your appointment', facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: 'Meeting with', value: data.otherPartyName },
         { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
         ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes)}` }] : []),
+        { label: 'Reference', value: `TOUR-${data.tourId}` }], links: [{ label: 'Add to Google Calendar', url: googleCalendarUrl }] },
+        { title: 'Getting there', facts: [
         { label: 'Address', value: data.locationAddress },
         ...(data.arrivalNotes?.trim() ? [{ label: 'Arrival instructions', value: data.arrivalNotes.trim() }] : []),
         ...(data.departureNotes?.trim() ? [{ label: 'Departure instructions', value: data.departureNotes.trim() }] : []),
+        { label: 'Arrival help', value: data.contactEmail || getSupportEmail() }],
+          links: data.locationAddress ? [{ label: 'Get directions', url: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(data.locationAddress) }] : [] },
+        { title: 'Meeting notes', facts: [
         ...(data.sharedManagerNotes?.trim() ? [{ label: 'Message from the kitchen manager', value: data.sharedManagerNotes.trim() }] : []),
-        ...(data.notes ? [{ label: data.isManager ? 'Chef notes' : 'Shared notes', value: data.notes }] : []),
-        { label: 'Confirmed at', value: data.confirmedAt ? `${formatTourDate(data.confirmedAt)}, ${formatTourClock(data.confirmedAt)}` : 'Confirmation time not recorded' },
-        { label: 'Arrival help', value: data.contactEmail || getSupportEmail() },
-        { label: 'Reference', value: `TOUR-${data.tourId}` }],
+        ...(data.notes ? [{ label: data.isManager ? 'Chef notes' : 'Shared notes', value: data.notes }] : [])] }],
       heading: data.previousTourDate ? 'Your tour has been rescheduled' : 'Your kitchen tour is confirmed',
       actionLabel: 'View details', actionUrl,
       secondaryButton: canReschedule ? { label: 'Reschedule tour', url: actionUrl + '&action=reschedule' } : { label: data.isManager ? 'Message chef' : 'Message manager', url: actionUrl + '&action=message' },
       actions: [...(canReschedule ? [{ label: data.isManager ? 'Message chef' : 'Message manager', url: actionUrl + '&action=message' }] : []),
-        { label: 'Add to Google Calendar', url: googleCalendarUrl },
-        ...(data.locationAddress ? [{ label: 'Get directions', url: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(data.locationAddress) }] : []),
         ...(canCancel ? [{ label: 'Cancel tour', url: actionUrl + '&action=cancel' }] : []),
         { label: 'Get support', url: `${getSubdomainUrl(data.isManager ? 'kitchen' : 'chef')}${data.isManager ? '/manager/dashboard' : '/dashboard'}?view=support` }],
-      note: 'A calendar file is attached. Saved calendar events do not update automatically when a tour changes.',
+      note: 'A calendar file is attached. If your tour changes, update the event in your calendar too.',
     }),
     attachments: [calendarAttachment]
   };
@@ -7850,40 +7856,46 @@ export function renderTransactionalEmail(data: {
   facts: { label: string; value: string }[]; actionLabel: string; actionUrl: string; note?: string; secondaryLink?: { label: string; url: string };
   secondaryButton?: { label: string; url: string }; heading?: string;
   actions?: { label: string; url: string }[];
+  sections?: { title: string; facts: { label: string; value: string }[]; links?: { label: string; url: string }[] }[];
 }): EmailContent {
-  const heading = data.heading || data.subject;
-  const buttonStyle = 'display:block;text-align:center;padding:14px 18px;background:#e11d48;color:#ffffff !important;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;line-height:22px;';
-  const secondaryStyle = buttonStyle.replace('background:#e11d48;color:#ffffff !important;', 'background:#ffffff;color:#be123c !important;border:1px solid #e7e5e4;');
-  const actionRows = (actions: { label: string; url: string }[], primary = false) =>
-    `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="table-layout:fixed;margin:20px 0;"><tbody>${actions.map((action, index) =>
-      `${index % 2 === 0 ? '<tr>' : ''}<td class="action-cell" width="${actions.length === 1 ? '100%' : '50%'}" valign="top" style="padding:4px;"><a href="${escapeHtml(action.url)}" class="cta-button" style="${primary && index === 0 ? buttonStyle : secondaryStyle}">${escapeHtml(action.label)}</a></td>${index % 2 === 1 || index === actions.length - 1 ? '</tr>' : ''}`).join('')}</tbody></table>`;
+  const heading = data.heading || data.subject.replace(/\s*· TOUR-\d+$/, '');
+  const buttonStyle = 'display:block;text-align:center;padding:16px 20px;background:#e11d48;color:#ffffff !important;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;line-height:24px;';
+  const linkStyle = 'color:#292524;text-decoration:underline;font-size:15px;line-height:24px;';
+  const sections: NonNullable<typeof data.sections> = (data.sections || [{ title: 'Details', facts: data.facts }]).filter(section => section.facts.length);
+  const actionLinks = (actions: { label: string; url: string }[]) => actions.map(action =>
+    `<p style="margin:12px 0;"><a href="${escapeHtml(action.url)}" style="${linkStyle}">${escapeHtml(action.label)}</a></p>`).join('');
   const primaryActions = [{ label: data.actionLabel, url: data.actionUrl }, ...(data.secondaryButton ? [data.secondaryButton] : [])];
-  const moreActions = [...(data.actions || []), ...(data.secondaryLink ? [data.secondaryLink] : [])];
+  const moreActions = [...(data.actions || []), ...(data.secondaryLink ? [data.secondaryLink] : [])]
+    .filter((action, index, all) => !primaryActions.some(primary => primary.url === action.url)
+      && !sections.some(section => section.links?.some(link => link.url === action.url))
+      && all.findIndex(other => other.url === action.url) === index);
   return {
     to: data.to, subject: data.subject,
-    text: `${heading}\n\nHi ${data.recipientName},\n\n${data.message}\n\n${primaryActions.map(action => `${action.label}: ${action.url}`).join('\n')}\n\nDetails\n${data.facts.map(fact => `${fact.label}: ${fact.value}`).join('\n')}${moreActions.length ? '\n\n' + moreActions.map(action => `${action.label}: ${action.url}`).join('\n') : ''}${data.note ? `\n\n${data.note}` : ''}\n\nQuestions? Contact ${getSupportEmail()}\nThe Local Cooks Team`,
-    html: `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(data.subject)}</title>
-<style>@media only screen and (max-width:560px){.email-body{padding:24px 16px !important}.email-title{font-size:26px !important}.action-cell{display:block !important;width:100% !important;box-sizing:border-box !important}}</style></head>
-<body style="margin:0;padding:0;background:#f5f5f4;font-family:Arial,Helvetica,sans-serif;color:#292524;line-height:1.6;">
+    text: `${heading}\n\nHi ${data.recipientName},\n\n${data.message}\n\n${primaryActions.map(action => `${action.label}: ${action.url}`).join('\n')}\n\n${sections.map(section => `${section.title}\n${section.facts.map(fact => `${fact.label}: ${fact.value}`).join('\n')}${section.links?.length ? '\n' + section.links.map(link => `${link.label}: ${link.url}`).join('\n') : ''}`).join('\n\n')}${moreActions.length ? '\n\n' + moreActions.map(action => `${action.label}: ${action.url}`).join('\n') : ''}${data.note ? `\n\n${data.note}` : ''}\n\nNeed a hand? Contact ${getSupportEmail()}\nThe Local Cooks Team`,
+    html: prepareEmailHtml(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(data.subject)}</title>
+<style>@media only screen and (max-width:560px){.email-body,.email-brand,.email-footer{padding-left:24px !important;padding-right:24px !important}.email-title{font-size:24px !important}.email-outer{padding:0 !important}}</style></head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#292524;line-height:1.6;">
 <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${escapeHtml(data.message)}</div>
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;">
-<tr><td align="center" style="padding:24px;background:#e11d48;text-align:center;border-radius:12px 12px 0 0;">
-<img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" width="160" style="display:block;margin:0 auto;width:160px;max-width:100%;height:auto;" /></td></tr>
-<tr><td class="email-body" style="padding:32px 32px;overflow-wrap:anywhere;">
-<h1 class="email-title" style="font-size:30px;line-height:1.2;letter-spacing:-0.5px;margin:0 0 20px;">${escapeHtml(heading)}</h1>
-<p style="margin:0 0 12px;font-size:15px;">Hi ${escapeHtml(data.recipientName)},</p>
-<p style="margin:0 0 20px;font-size:16px;">${escapeHtml(data.message)}</p>
-${actionRows(primaryActions, true)}
-<h2 style="font-size:18px;margin:0 0 12px;">Details</h2>
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e7e5e4;">
-${data.facts.map(fact => `<tr><td style="padding:12px 0;border-bottom:1px solid #e7e5e4;"><p style="white-space:pre-line;margin:0;font-size:15px;"><strong>${escapeHtml(fact.label)}:</strong> ${escapeHtml(fact.value)}</p></td></tr>`).join('')}
-</table>
-${moreActions.length ? actionRows(moreActions) : ''}
-${data.note ? `<p style="font-size:13px;color:#57534e;margin:20px 0 0;">${escapeHtml(data.note)}</p>` : ''}
-</td></tr><tr><td style="padding:20px 24px;border-top:1px solid #e7e5e4;font-size:13px;color:#57534e;">
-Questions? <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#be123c;">Contact Local Cooks</a><br>The Local Cooks Team<br>&copy; ${new Date().getFullYear()} Local Cooks
-</td></tr></table></td></tr></table></body></html>`,
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td class="email-outer" align="center" style="padding:16px 12px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;">
+<tr><td class="email-brand" style="padding:16px 40px 24px;">
+<img class="email-logo" src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" width="200" height="68" style="display:block;width:200px;max-width:100%;height:auto;border:0;" /></td></tr>
+<tr><td class="email-body" style="padding:0 40px 32px;overflow-wrap:anywhere;">
+<h1 class="email-title" style="font-size:26px;line-height:1.25;letter-spacing:-0.4px;margin:0 0 24px;">${escapeHtml(heading)}</h1>
+<p style="margin:0 0 12px;font-size:16px;">Hi ${escapeHtml(data.recipientName)},</p>
+<p style="margin:0 0 24px;font-size:16px;line-height:1.6;white-space:pre-line;">${escapeHtml(data.message)}</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 28px;"><tr><td>
+<a href="${escapeHtml(data.actionUrl)}" class="cta-button" style="${buttonStyle}">${escapeHtml(data.actionLabel)}</a>
+${data.secondaryButton ? actionLinks([data.secondaryButton]) : ''}</td></tr></table>
+${sections.map(section => `<h2 style="font-size:20px;line-height:1.35;margin:28px 0 16px;padding-top:24px;border-top:1px solid #e7e5e4;">${escapeHtml(section.title)}</h2>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+${section.facts.map(fact => `<tr><td style="padding:0 0 16px;"><p style="margin:0;font-size:13px;color:#57534e;">${escapeHtml(fact.label)}</p><p style="white-space:pre-line;margin:3px 0 0;font-size:16px;line-height:1.5;">${escapeHtml(fact.value)}</p></td></tr>`).join('')}
+</table>${actionLinks(section.links || [])}`).join('')}
+${moreActions.length ? `<div style="margin-top:8px;">${actionLinks(moreActions)}</div>` : ''}
+${data.note ? `<p style="font-size:14px;line-height:1.6;color:#57534e;margin:24px 0 0;white-space:pre-line;">${escapeHtml(data.note)}</p>` : ''}
+</td></tr><tr><td class="email-footer" style="padding:24px 40px 32px;border-top:1px solid #e7e5e4;font-size:13px;color:#57534e;">
+Need a hand? <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#292524;text-decoration:underline;">Contact Local Cooks</a><br>&copy; ${new Date().getFullYear()} Local Cooks
+</td></tr></table></td></tr></table></body></html>`),
   };
 }
 
@@ -7914,7 +7926,7 @@ export async function sendChefReportEmail(chefEmail: string, chefName: string, p
 <body>
   <div class="email-container">
     <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${chefName.split(' ')[0]},</h2>
@@ -7945,7 +7957,7 @@ The Local Cooks Team
   return sendEmail({
     to: chefEmail,
     subject,
-    html: htmlContent,
+    html: prepareEmailHtml(htmlContent),
     text: textContent,
     attachments: [
       {

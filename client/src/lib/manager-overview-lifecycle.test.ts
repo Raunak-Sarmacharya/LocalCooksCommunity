@@ -11,14 +11,14 @@ const now = Date.parse("2026-09-30T12:00:00Z");
 describe("manager lifecycle actions", () => {
   it("offers visit results for ended confirmed tours until an outcome is recorded", () => {
     const tour = { status: "confirmed", scheduledAt: "2026-09-29T12:00:00Z", durationMinutes: 30 };
-    expect(tourNextAction(tour, now)).toBe("overviewTourOutcomes");
+    expect(tourNextAction(tour, now)).toBe("overviewTourFeedback");
     for (const status of ["completed", "no_show", "cancelled", "rejected"]) expect(tourNextAction({ ...tour, status }, now)).toBeNull();
     expect(tourNextAction({ ...tour, scheduledAt: "2026-10-01T12:00:00Z" }, now)).toBeNull();
     expect(tourNextAction({ ...tour, scheduledAt: "2026-10-01T12:00:00Z", requestedRescheduleAt: "2026-10-02T12:00:00Z" }, now)).toBe("overviewTourReschedules");
   });
   it('does not leave expired requests or reschedules on the action list', () => {
     expect(tourNextAction({ status: 'pending', scheduledAt: '2026-09-29T12:00:00Z' }, now)).toBeNull();
-    expect(tourNextAction({ status: 'confirmed', scheduledAt: '2026-09-29T12:00:00Z', requestedRescheduleAt: '2026-10-02T12:00:00Z' }, now)).toBe('overviewTourOutcomes');
+    expect(tourNextAction({ status: 'confirmed', scheduledAt: '2026-09-29T12:00:00Z', requestedRescheduleAt: '2026-10-02T12:00:00Z' }, now)).toBe('overviewTourFeedback');
   });
   it('does not suggest a hidden arrival action for closed tours, but keeps departure help after arrival', () => {
     const tour = { status: 'completed', scheduledAt: '2026-09-29T12:00:00Z', durationMinutes: 30,
@@ -27,14 +27,14 @@ describe("manager lifecycle actions", () => {
       expect(tourNextAction({ ...tour, status }, now)).toBeNull();
     }
     expect(tourNextAction({ ...tour, checkedInAt: '2026-09-29T12:00:00Z',
-      attendance: { canAssistDeparture: true } as any }, now)).toBe('overviewTourDepartureAssistance');
+      attendance: { canAssistDeparture: true } as any }, now)).toBeNull();
     expect(tourNextAction({ ...tour, checkedInAt: '2026-09-29T12:00:00Z', checkedOutAt: '2026-09-29T12:30:00Z' }, now)).toBeNull();
   });
   it("offers visit results exactly at the scheduled end, including across midnight", () => {
     const tour = { status: "confirmed", scheduledAt: "2026-10-01T23:45:00Z", durationMinutes: 30 };
     const end = Date.parse("2026-10-02T00:15:00Z");
     expect(tourNextAction(tour, end - 1)).toBeNull();
-    expect(tourNextAction(tour, end)).toBe("overviewTourOutcomes");
+    expect(tourNextAction(tour, end)).toBe("overviewTourFeedback");
     expect(tourNextAction({ ...tour, scheduledAt: "invalid" }, end)).toBeNull();
   });
   it("waits for the operating day's booking end and respects recorded outcomes", () => {

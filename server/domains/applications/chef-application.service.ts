@@ -7,9 +7,11 @@ import { logger } from "../../logger";
  */
 
 import { db, getDbError } from "../../db";
-import { chefKitchenApplications, locations, users, chefLocationAccess, type ChefKitchenApplication, type InsertChefKitchenApplication } from "@shared/schema";
+import { chefKitchenApplications, locations, users, chefLocationAccess, kitchenViewings, type ChefKitchenApplication, type InsertChefKitchenApplication } from "@shared/schema";
 import { eq, and, desc, inArray, getTableColumns, isNotNull, gte, or } from "drizzle-orm";
 import { KitchenRepository } from "../kitchens/kitchen.repository";
+import { DomainError } from "../../shared/errors/domain-error";
+import { resolveTourApplicationNextStep } from "../../services/tour-application-service";
 
 /**
  * The kitchen predicate "may a chef see this?" lives on the repository. This file only asks it, so
@@ -439,73 +441,108 @@ export class ChefApplicationService {
     /**
      * Create or update chef kitchen application (resubmission support)
      */
-    async createApplication(data: InsertChefKitchenApplication): Promise<ChefKitchenApplication> {
+    async createApplication(data: InsertChefKitchenApplication, options: { sourceTourId?: number } = {}): Promise<ChefKitchenApplication> {
         try {
-            // Check for existing application to handle resubmission
-            const [existing] = await db
-                .select()
-                .from(chefKitchenApplications)
-                .where(
-                    and(
-                        eq(chefKitchenApplications.chefId, data.chefId),
-                        eq(chefKitchenApplications.locationId, data.locationId)
+            // Serialize both ordinary and tour submissions before deciding whether this is a new application.
+            return await db.transaction(async tx => {
+                const [chef] = await tx.select({ id: users.id, role: users.role }).from(users)
+                    .where(eq(users.id, data.chefId)).for('update');
+                if (!chef) throw new DomainError('CHEF_NOT_FOUND', 'Chef account not found.', 404);
+                // Attribution is server-owned; never accept it through the editable application data.
+                const { sourceTourId: _untrustedSource, ...answers } = data as InsertChefKitchenApplication & { sourceTourId?: unknown };
+                if (options.sourceTourId !== undefined) {
+                    if (chef.role !== 'chef')
+                        throw new DomainError('SOURCE_TOUR_FORBIDDEN', 'Only the chef can submit an application from this tour.', 403);
+                    if (!Number.isSafeInteger(options.sourceTourId) || options.sourceTourId <= 0 || options.sourceTourId > 2147483647)
+                        throw new DomainError('INVALID_SOURCE_TOUR', 'A valid tour is required.', 400);
+                    const [contextTour] = await tx.select().from(kitchenViewings)
+                        .where(eq(kitchenViewings.id, options.sourceTourId)).for('update');
+                    if (!contextTour || contextTour.chefId !== data.chefId || contextTour.locationId !== data.locationId)
+                        throw new DomainError('SOURCE_TOUR_NOT_FOUND', 'Tour not found for this kitchen application.', 404);
+                }
+                // Check for existing application to handle resubmission
+                const [existing] = await tx
+                    .select()
+                    .from(chefKitchenApplications)
+                    .where(
+                        and(
+                            eq(chefKitchenApplications.chefId, data.chefId),
+                            eq(chefKitchenApplications.locationId, data.locationId)
+                        )
                     )
-                )
-                .limit(1);
+                    .limit(1);
 
-            if (existing) {
-                // Determine the appropriate status for the update:
-                // - If existing is 'approved' (Step 1 approved, chef submitting Step 2), preserve 'approved'
-                // - If chef is submitting Step 2 (tier ≥ 2 / tier2_completed_at), set 'approved'
-                //   so managers can review (covers legacy buggy Step 1 approvals left as inReview)
-                // - If existing is 'rejected' or 'cancelled', reset to 'inReview' for resubmission
-                // - If existing is 'inReview' (Step 1 still pending), keep 'inReview'
-                const incomingTier = (data as any).current_tier ?? 1;
-                const isStep2Submit =
-                    incomingTier >= 2 || Boolean((data as any).tier2_completed_at);
-                const newStatus =
-                    existing.status === 'approved' || isStep2Submit
-                        ? 'approved'
-                        : 'inReview';
+                if (existing) {
+                    // Determine the appropriate status for the update:
+                    // - If existing is 'approved' (Step 1 approved, chef submitting Step 2), preserve 'approved'
+                    // - If chef is submitting Step 2 (tier ≥ 2 / tier2_completed_at), set 'approved'
+                    //   so managers can review (covers legacy buggy Step 1 approvals left as inReview)
+                    // - If existing is 'rejected' or 'cancelled', reset to 'inReview' for resubmission
+                    // - If existing is 'inReview' (Step 1 still pending), keep 'inReview'
+                    const incomingTier = (data as any).current_tier ?? 1;
+                    const isStep2Submit =
+                        incomingTier >= 2 || Boolean((data as any).tier2_completed_at);
+                    const newStatus =
+                        existing.status === 'approved' || isStep2Submit
+                            ? 'approved'
+                            : 'inReview';
                 
-                // Only clear feedback if this is a true resubmission (rejected/cancelled -> inReview)
-                const shouldClearFeedback = existing.status === 'rejected' || existing.status === 'cancelled';
+                    // Only clear feedback if this is a true resubmission (rejected/cancelled -> inReview)
+                    const shouldClearFeedback = existing.status === 'rejected' || existing.status === 'cancelled';
                 
-                const [updated] = await db
-                    .update(chefKitchenApplications)
-                    .set({
-                        ...(data as any),
-                        status: newStatus,
-                        ...(shouldClearFeedback && {
-                            feedback: null,
-                            reviewedBy: null,
-                            reviewedAt: null,
-                            current_tier: 1,
-                            tier1_completed_at: null,
-                            tier2_completed_at: null,
-                            tier_data: {},
-                            foodEstablishmentCertUrl: null,
-                            foodEstablishmentCertStatus: null,
-                            foodEstablishmentCertExpiry: null,
-                        }),
+                    const [updated] = await tx
+                        .update(chefKitchenApplications)
+                        .set({
+                            ...(answers as any),
+                            status: newStatus,
+                            ...(shouldClearFeedback && {
+                                feedback: null,
+                                reviewedBy: null,
+                                reviewedAt: null,
+                                current_tier: 1,
+                                tier1_completed_at: null,
+                                tier2_completed_at: null,
+                                tier_data: {},
+                                foodEstablishmentCertUrl: null,
+                                foodEstablishmentCertStatus: null,
+                                foodEstablishmentCertExpiry: null,
+                            }),
+                            updatedAt: new Date()
+                        })
+                        .where(eq(chefKitchenApplications.id, existing.id))
+                        .returning();
+                    return updated as ChefKitchenApplication;
+                }
+
+                let sourceTourId: number | null = null;
+                if (chef.role === 'chef') {
+                    // Associate every entry point with the latest completed or elapsed confirmed visit.
+                    // Pending admin review is provenance only; the funnel credits verified completion later.
+                    // This records the agreed journey origin, not proof that any particular button caused the application.
+                    const candidates = await tx.select().from(kitchenViewings).where(and(
+                        eq(kitchenViewings.chefId, data.chefId), eq(kitchenViewings.locationId, data.locationId),
+                        inArray(kitchenViewings.status, ['completed', 'confirmed']),
+                    )).orderBy(desc(kitchenViewings.scheduledAt), desc(kitchenViewings.id)).for('update');
+                    for (const tour of candidates) {
+                        if ((await resolveTourApplicationNextStep(tx, tour, chef)).action === 'apply') {
+                            sourceTourId = tour.id;
+                            break;
+                        }
+                    }
+                }
+                // Create new application
+                const [created] = await tx
+                    .insert(chefKitchenApplications)
+                    .values({
+                        ...(answers as any),
+                        sourceTourId,
+                        status: 'inReview',
+                        createdAt: new Date(),
                         updatedAt: new Date()
                     })
-                    .where(eq(chefKitchenApplications.id, existing.id))
                     .returning();
-                return updated as ChefKitchenApplication;
-            }
-
-            // Create new application
-            const [created] = await db
-                .insert(chefKitchenApplications)
-                .values({
-                    ...(data as any),
-                    status: 'inReview',
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                })
-                .returning();
-            return created as ChefKitchenApplication;
+                return created as ChefKitchenApplication;
+            });
         } catch (error) {
             logger.error("[ChefApplicationService] Error creating/updating application:", error);
             throw error;

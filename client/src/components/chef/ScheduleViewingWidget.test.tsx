@@ -16,7 +16,7 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, fall
 vi.mock('@/i18n/chef-ns', () => ({ ct: (key: string) => key }));
 
 const slot = { scheduledAt: '2099-10-07T11:30:00Z', startTime: '11:30', endTime: '12:00' };
-const answers = { intendedUse: 'Meal prep', estimatedWeeklyHours: '10-20', hasLicense: false, targetStartDate: '2099-11-01' };
+const answers = { intendedUse: 'meal_prep', estimatedWeeklyHours: '11-20', hasLicense: false, targetStartDate: '2099-11-01' };
 const clients: QueryClient[] = [];
 function signIn(uid = 'chef-a', verified = true) {
   session.user = { uid, email: 'chef@example.com', isVerified: verified };
@@ -35,8 +35,8 @@ async function reachIntake() {
   expect(screen.getByLabelText('What do you plan to use the kitchen for?')).toBeInTheDocument();
 }
 function fillIntake(notDecided = false) {
-  fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: '  Meal prep  ' } });
-  fireEvent.change(screen.getByLabelText('About how many hours per week would you need?'), { target: { value: '10-20' } });
+  fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: 'meal_prep' } });
+  fireEvent.change(screen.getByLabelText('About how many hours per week would you need?'), { target: { value: '11-20' } });
   fireEvent.click(screen.getByRole('radio', { name: 'No' }));
   if (notDecided) fireEvent.click(screen.getByRole('checkbox', { name: 'Not decided yet' }));
   else fireEvent.change(screen.getByLabelText('When would you like to start renting?'), { target: { value: answers.targetStartDate } });
@@ -51,12 +51,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; vi.unstubAllGlobals(); });
 
 describe('required tour intake', () => {
+  it('requires descriptions for Other and restores custom answers after reload', async () => {
+    signIn(); const view = mount(); await reachIntake(); fillIntake(true);
+    fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: 'other' } });
+    fireEvent.change(screen.getByLabelText('About how many hours per week would you need?'), { target: { value: 'other' } });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    const descriptions = screen.getAllByLabelText('Please describe');
+    fireEvent.change(descriptions[0], { target: { value: 'Recipe development' } });
+    fireEvent.change(descriptions[1], { target: { value: 'Weekends, depending on orders' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('Recipe development')).toBeInTheDocument();
+    expect(screen.getByText('Weekends, depending on orders')).toBeInTheDocument();
+    view.unmount(); mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit answers' }));
+    expect(screen.getAllByRole('combobox').slice(0, 2).map(input => (input as HTMLSelectElement).value)).toEqual(['other', 'other']);
+    expect(screen.getAllByLabelText('Please describe')[1]).toHaveValue('Weekends, depending on orders');
+  });
   it.each(['guest', 'verified chef'])('requires explicit answers for %s after choosing a slot', async actor => {
     if (actor === 'verified chef') signIn();
     mount(); await reachIntake();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: 'Meal prep' } });
-    fireEvent.change(screen.getByLabelText('About how many hours per week would you need?'), { target: { value: '10-20' } });
+    fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: 'meal_prep' } });
+    fireEvent.change(screen.getByLabelText('About how many hours per week would you need?'), { target: { value: '11-20' } });
     fireEvent.change(screen.getByLabelText('When would you like to start renting?'), { target: { value: answers.targetStartDate } });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     expect(screen.getByRole('radio', { name: 'No' })).not.toBeChecked();
@@ -121,7 +137,7 @@ describe('required tour intake', () => {
     expect(await screen.findByTestId('tour-request-submit')).toBeEnabled();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/viewings/book')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Edit answers' }));
-    fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('What do you plan to use the kitchen for?'), { target: { value: 'other' } });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
 

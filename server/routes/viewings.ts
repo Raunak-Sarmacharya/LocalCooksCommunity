@@ -30,12 +30,17 @@ import { DomainError } from '../shared/errors/domain-error';
 import { buildTourConfirmationPdf, tourReference } from "../services/tour-confirmation-pdf";
 import { queueTourEvent, attemptTourDelivery } from '../services/tour-delivery-service';
 import { publicTour, hasTourConfirmation } from '@shared/tour-outcome';
-import { tourAttendance, type TourAttendanceEntry } from '@shared/tour-attendance';
+import { tourAttendance, publicTourAttendanceState } from '@shared/tour-attendance';
 import { tourHistory } from '@shared/tour-history';
 import { tourRequestDecision } from '@shared/tour-request-decision';
+import { tourReconfirmation, tourReconfirmationReplies, resetTourReconfirmation } from '@shared/tour-reconfirmation';
+import { withVisitEvidence, visitEvents, changeVisitEvidence } from '../services/tour-visit-events';
 import { getCheckinSettings } from '../services/kitchen-checkout-service';
-import { validateAttendanceAssistance } from '../services/visit-assistance';
+import { validateTourVisitInput } from '@shared/tour-visit-input';
 import { affectedTours, queueScheduleProblems } from '../services/commitment-problems';
+import { resolveTourApplicationNextStep } from '../services/tour-application-service';
+import { getTourFunnel } from '../services/tour-funnel-service';
+import { getTourFeedback, submitTourFeedback, readTourFeedbackStatus } from '../services/tour-feedback-service';
 
 import {
   kitchenViewingSettings,
@@ -63,6 +68,91 @@ import { TZDate } from "@date-fns/tz";
 import { addMinutes, isBefore, isAfter, differenceInHours } from "date-fns";
 
 const router = Router();
+
+router.get('/chef/application-reference/:locationId', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const locationId = Number(req.params.locationId);
+    if (!Number.isSafeInteger(locationId) || locationId <= 0) return res.status(400).json({ error: 'Choose a valid kitchen location' });
+    const tours = await db.select().from(kitchenViewings).where(and(eq(kitchenViewings.chefId, req.neonUser!.id),
+      eq(kitchenViewings.locationId, locationId), inArray(kitchenViewings.status, ['completed', 'confirmed'])))
+      .orderBy(desc(kitchenViewings.scheduledAt), desc(kitchenViewings.id));
+    for (const tour of tours) {
+      const next = await resolveTourApplicationNextStep(db, tour, req.neonUser!);
+      if (next.action !== 'unavailable') return res.json(next);
+    }
+    return res.json(null);
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.get('/funnel', requireFirebaseAuthWithUser, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const role = req.neonUser!.role;
+    if (role !== 'manager' && role !== 'admin') return res.status(403).json({ error: 'Staff access required' });
+    if (Object.values(req.query).some(value => typeof value !== 'string')) return res.status(400).json({ error: 'Choose valid report filters' });
+    return res.json(await getTourFunnel({ role, userId: req.neonUser!.id,
+      from: req.query.from as string | undefined, to: req.query.to as string | undefined,
+      locationId: req.query.locationId }));
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.get('/chef/:id/application-next-step', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    const [tour] = await db.select().from(kitchenViewings).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.chefId, req.neonUser!.id))).limit(1);
+    if (!tour || tour.chefId !== req.neonUser!.id) return res.status(404).json({ error: 'Tour not found' });
+    return res.json(await resolveTourApplicationNextStep(db, tour, req.neonUser!));
+  } catch (error) { return errorResponse(res, error); }
+});
+
+for (const role of ['chef', 'manager', 'admin'] as const) {
+  const guard = role === 'chef' ? requireChef : role === 'manager' ? requireManager : requireAdmin;
+  router.get(`/${role}/:id/feedback`, requireFirebaseAuthWithUser, guard, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('TOUR_INPUT_INVALID', 'Choose a valid tour', 400);
+      const feedback = await db.transaction(async tx => {
+        const { tour, location } = await lockedTour(tx, id);
+        if (req.neonUser!.role !== role || role === 'chef' && tour.chefId !== req.neonUser!.id
+          || role === 'manager' && (location.managerId !== req.neonUser!.id || !managerCanSeeTour(tour)))
+          throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+        return getTourFeedback(tx, tour, { id: req.neonUser!.id, role });
+      });
+      return res.json(feedback);
+    } catch (error) { return errorResponse(res, error); }
+  });
+  if (role === 'admin') continue;
+  router.post(`/${role}/:id/feedback`, requireFirebaseAuthWithUser, guard, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('TOUR_INPUT_INVALID', 'Choose a valid tour', 400);
+      const result = await db.transaction(async tx => {
+        const { tour, location } = await lockedTour(tx, id);
+        if (req.neonUser!.role !== role || role === 'chef' && tour.chefId !== req.neonUser!.id
+          || role === 'manager' && (location.managerId !== req.neonUser!.id || !managerCanSeeTour(tour)))
+          throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+        return submitTourFeedback(tx, tour, { id: req.neonUser!.id, role }, req.body || {});
+      });
+      const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
+      return res.json({ ...result.feedback, notificationDeliveryFailed: delivery.failed });
+    } catch (error) { return errorResponse(res, error); }
+  });
+}
+
+// Old clients cannot keep recording attendance after the feedback workflow replaces it.
+for (const role of ['chef', 'manager', 'admin'] as const) {
+  const guard = role === 'chef' ? requireChef : role === 'manager' ? requireManager : requireAdmin;
+  for (const action of ['check-in', 'check-out', 'attendance-assistance'])
+    router.post(`/${role}/:id/${action}`, requireFirebaseAuthWithUser, guard, (_req, res) =>
+      res.status(410).json({ error: 'Arrival and departure recording has been replaced by tour feedback.' }));
+  if (role !== 'admin') router.get(`/${role}/:id/attendance`, requireFirebaseAuthWithUser, guard, (_req, res) =>
+    res.status(410).json({ error: 'Arrival and departure recording has been replaced by tour feedback.' }));
+}
 
 function managerCanSeeTour(tour: typeof kitchenViewings.$inferSelect) {
   if (tour.status === 'pending_local_cooks' || tour.adminReviewDecision === 'denied') return false;
@@ -130,7 +220,7 @@ async function lockedTour(tx: TourTransaction, id: number) {
   const [location] = await tx.select({ managerId: locations.managerId, name: locations.name }).from(locations)
     .where(eq(locations.id, tour.locationId)).limit(1).for('share');
   if (!location) throw new DomainError('TOUR_NOT_FOUND', 'Tour location not found', 404);
-  return { tour, location };
+  return { tour: await withVisitEvidence(tx, tour), location };
 }
 
 function checkTourVersion(tour: typeof kitchenViewings.$inferSelect, expected: unknown, required = false) {
@@ -434,10 +524,11 @@ async function authorizedSelfExclusion(req: Request, kitchenId: number) {
 }
 
 async function publicTourAttendance(tour: typeof kitchenViewings.$inferSelect,
-  settingsByLocation: Map<number, ReturnType<typeof getCheckinSettings>>) {
-  if (!settingsByLocation.has(tour.locationId)) settingsByLocation.set(tour.locationId, getCheckinSettings(tour.locationId));
-  const settings = await settingsByLocation.get(tour.locationId)!;
-  return { ...publicTour(tour), attendance: tourAttendance(tour, settings.checkinWindowMinutesBefore) };
+  _settingsByLocation: Map<number, ReturnType<typeof getCheckinSettings>>) {
+  const verified = await withVisitEvidence(db, tour);
+  const feedback = tour.scheduledAt.getTime() + tour.durationMinutes * 60000 <= Date.now()
+    ? await readTourFeedbackStatus(db, tour) : null;
+  return { ...publicTour(verified), chefFeedbackSubmitted: feedback?.chef || false, managerFeedbackSubmitted: feedback?.manager || false };
 }
 
 function chefTourResponse<T extends object>(tour: T): Omit<T, 'adminReviewReason' | 'adminReviewerId' | 'adminReviewedAt'> {
@@ -1358,9 +1449,11 @@ router.get(
         filtered.map(async (r) => ({
           ...r,
           viewing: chefTourResponse(await publicTourAttendance(r.viewing, attendanceSettings)),
+          reconfirmation: tourReconfirmation(r.viewing, r.managerId),
           arrivalNotes: r.viewing.status === "confirmed" ? r.arrivalNotes : null,
           departureNotes: r.viewing.status === "confirmed" || (r.viewing.checkedInAt && !r.viewing.checkedOutAt) ? r.departureNotes : null,
           locationContactEmail: r.viewing.status === "confirmed" ? r.locationContactEmail || (r.managerId && managerContacts.get(r.managerId)?.email) || null : null,
+          managerEmail: r.viewing.status === 'confirmed' && r.managerId ? managerContacts.get(r.managerId)?.email || null : null,
           locationContactPhone: r.viewing.status === "confirmed" ? r.locationContactPhone || (r.managerId && managerContacts.get(r.managerId)?.phone) || null : null,
           managerName: r.managerId ? managerNames.get(r.managerId) : null,
           chefName,
@@ -1438,138 +1531,84 @@ router.get(
   }
 );
 
-/** Keep the confirmed slot until the manager accepts a chef's change request. */
-router.get('/chef/:id/attendance', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
-    const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
-    if (!tour || tour.chefId !== req.neonUser!.id) return res.status(404).json({ error: 'Tour not found' });
-    const settings = await getCheckinSettings(tour.locationId);
-    return res.json(tourAttendance(tour, settings.checkinWindowMinutesBefore));
-  } catch (error) { return errorResponse(res, error); }
-});
-
-router.post('/chef/:id/check-in', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
-    const result = await db.transaction(async tx => {
-      const { tour } = await lockedTour(tx, id);
-      if (tour.chefId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
-      const settings = await getCheckinSettings(tour.locationId);
-      const now = new Date(), attendance = tourAttendance(tour, settings.checkinWindowMinutesBefore, now);
-      if (attendance.safetyReason) throw new DomainError('TOUR_CHANGED', attendance.safetyReason, 409);
-      // A lost response can be retried with the prior version, without creating another event.
-      if (tour.checkedInAt) return { attendance, changed: false };
-      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
-      if (!attendance.canCheckIn) throw new DomainError('TOUR_ARRIVAL_UNAVAILABLE', attendance.reason!, 409);
-      const entry: TourAttendanceEntry = { action: 'check_in', actorId: req.neonUser!.id, source: 'visitor',
-        actualAt: now.toISOString(), recordedAt: now.toISOString(), scheduledAt: tour.scheduledAt.toISOString() };
-      const [updated] = await tx.update(kitchenViewings).set({ checkedInAt: now,
-        attendanceHistory: [...(Array.isArray(tour.attendanceHistory) ? tour.attendanceHistory : []), entry],
-        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)),
-      }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, 'confirmed'),
-        eq(kitchenViewings.scheduledAt, tour.scheduledAt), sql`${kitchenViewings.checkedInAt} IS NULL`,
-        sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`)).returning();
-      if (!updated) throw new DomainError('TOUR_CHANGED', 'This tour has changed. Refresh and try again', 409);
-      await queueTourEvent(tx, { kind: 'visitor_checkin', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'chef' });
-      return { attendance: tourAttendance(updated, settings.checkinWindowMinutesBefore, now), changed: true };
-    });
-    const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
-    return res.json({ ...result.attendance, notificationDeliveryFailed: delivery.failed });
-  } catch (error) { return errorResponse(res, error); }
-});
-
-router.get('/manager/:id/history', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+for (const role of ['chef', 'manager', 'admin'] as const) router.get(`/${role}/:id/history`, requireFirebaseAuthWithUser,
+  role === 'chef' ? requireChef : role === 'manager' ? requireManager : requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
     const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
     const [location] = tour ? await db.select({ managerId: locations.managerId }).from(locations).where(eq(locations.id, tour.locationId)).limit(1) : [];
-    if (!tour || !managerCanSeeTour(tour) || req.neonUser?.role !== 'manager' || location?.managerId !== req.neonUser.id)
+    if (!tour || req.neonUser?.role !== role || role === 'chef' && tour.chefId !== req.neonUser.id
+      || role === 'manager' && (!managerCanSeeTour(tour) || location?.managerId !== req.neonUser.id))
       return res.status(404).json({ error: 'Tour not found' });
     const events = await db.select({ id: tourDeliveryEvents.id, createdAt: tourDeliveryEvents.createdAt, payload: tourDeliveryEvents.payload })
       .from(tourDeliveryEvents).where(eq(tourDeliveryEvents.viewingId, id)).orderBy(tourDeliveryEvents.createdAt, tourDeliveryEvents.id);
-    return res.json(tourHistory(tour, events));
+    const history = tourHistory(tour, events, tour.visitEvidenceMigratedAt ? await visitEvents(db, id) : undefined);
+    if (role !== 'admin') history.events = history.events.filter(event => !['review_approved', 'visitor_checkin', 'visitor_checkout', 'attendance_assisted', 'attendance_corrected', 'evidence_repaired'].includes(event.kind))
+      .map(event => event.kind === 'review_denied' ? { ...event, kind: 'status' as const, status: 'cancelled', outcome: 'declined' as const } : event);
+    if (role === 'chef') history.events = history.events.filter(event => event.kind !== 'reconfirmation_escalated');
+    return res.json(history);
   } catch (error) { return errorResponse(res, error); }
 });
 
-router.get('/manager/:id/attendance', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+router.post('/chef/:id/reconfirmation', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
-    // Use current location ownership, never the historical tour.managerId.
-    const attendance = await db.transaction(async tx => {
+    if (!Number.isSafeInteger(id) || id <= 0 || !tourReconfirmationReplies.includes(req.body?.reply)) return res.status(400).json({ error: 'Choose a valid tour response' });
+    const updated = await db.transaction(async tx => {
       const { tour, location } = await lockedTour(tx, id);
-      if (location.managerId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
-      const settings = await getCheckinSettings(tour.locationId);
-      return tourAttendance(tour, settings.checkinWindowMinutesBefore);
-    });
-    return res.json(attendance);
-  } catch (error) { return errorResponse(res, error); }
-});
-
-async function recordTourAction(req: Request, res: Response, assisted: boolean) {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
-    const result = await db.transaction(async tx => {
-      const { tour, location } = await lockedTour(tx, id);
-      const actorId = req.neonUser!.id;
-      if (assisted ? location.managerId !== actorId : tour.chefId !== actorId)
-        throw new DomainError('FORBIDDEN', 'Tour not found', 404);
-      const settings = await getCheckinSettings(tour.locationId);
-      const now = new Date(), attendance = tourAttendance(tour, settings.checkinWindowMinutesBefore, now);
-      let actual = now, reason: string | undefined;
-      if (assisted) {
-        try { ({ actual, reason } = validateAttendanceAssistance(req.body || {}, now)); }
-        catch (error) { throw new DomainError('TOUR_ASSISTANCE_INVALID', (error as Error).message, 400); }
-        if (req.body.scheduledAt !== attendance.scheduledAt)
-          throw new DomainError('TOUR_CHANGED', 'The reported action must belong to the saved tour schedule; refresh and review', 409);
-      }
-      const arrival = assisted && req.body.action === 'arrival';
-      const field = arrival ? 'checkedInAt' : 'checkedOutAt';
-      const safety = arrival ? (attendance.assistArrivalReason === 'Arrival already recorded' ? null : attendance.assistArrivalReason)
-        : attendance.departureSafetyReason;
-      if (safety) throw new DomainError('TOUR_ATTENDANCE_INVALID', safety, 409);
-      if (tour[field]) {
-        // Lost responses return original evidence; assistance cannot overwrite a visitor action.
-        if (assisted) {
-          const entry = attendance.attendanceHistory.find(entry => entry.action === (arrival ? 'check_in' : 'check_out'));
-          if (!entry || entry.source !== 'manager_assisted' || entry.actorId !== actorId
-            || entry.actualAt !== actual.toISOString() || entry.reason !== reason)
-            throw new DomainError('TOUR_ALREADY_RECORDED', 'This action is already recorded; existing evidence is preserved', 409);
-        }
-        return { attendance, changed: false };
-      }
+      if (tour.chefId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+      const state = tourReconfirmation(tour, location.managerId);
+      if (!state.canReply || req.body?.appointmentRevision !== state.revision) throw new DomainError('TOUR_CHANGED', 'This appointment has changed. Review the current tour', 409);
+      if (state.reply === req.body.reply) return tour;
       checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
-      if (arrival && (actual < new Date(attendance.checkInOpensAt) || actual > new Date(attendance.checkInClosesAt)))
-        throw new DomainError('TOUR_ASSISTANCE_INVALID', 'Reported arrival must be within the effective tour arrival window', 400);
-      if (!arrival && actual < new Date(attendance.checkedInAt!))
-        throw new DomainError('TOUR_ASSISTANCE_INVALID', 'Departure cannot precede the recorded arrival', 400);
-      const entry: TourAttendanceEntry = { action: arrival ? 'check_in' : 'check_out', actorId,
-        source: assisted ? 'manager_assisted' : 'visitor', actualAt: actual.toISOString(), recordedAt: now.toISOString(),
-        scheduledAt: attendance.scheduledAt, ...(reason ? { reason } : {}) };
-      const [updated] = await tx.update(kitchenViewings).set({ [field]: actual,
-        attendanceHistory: [...(Array.isArray(tour.attendanceHistory) ? tour.attendanceHistory : []), entry],
-        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)),
-      }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.scheduledAt, tour.scheduledAt),
-        sql`${kitchenViewings[field]} IS NULL`,
-        ...(!arrival ? [eq(kitchenViewings.checkedInAt, tour.checkedInAt!)] : []),
-        sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`)).returning();
-      if (!updated) throw new DomainError('TOUR_CHANGED', 'This tour has changed. Refresh and try again', 409);
-      await queueTourEvent(tx, { kind: assisted ? 'attendance_assisted' : 'visitor_checkout', before: tour, after: updated,
-        actorId, actorRole: assisted ? 'manager' : 'chef' });
-      return { attendance: tourAttendance(updated, settings.checkinWindowMinutesBefore, now), changed: true };
+      const [saved] = await tx.update(kitchenViewings).set({ reconfirmationReply: req.body.reply, reconfirmationReplyRevision: state.revision,
+        reconfirmationRepliedAt: new Date(), updatedAt: new Date(Math.max(Date.now(), tour.updatedAt.getTime() + 1)) })
+        .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, 'confirmed'), eq(kitchenViewings.scheduledAt, tour.scheduledAt),
+          sql`${kitchenViewings.checkedInAt} IS NULL`, sql`${kitchenViewings.scheduledAt} > clock_timestamp()`,
+          sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`)).returning();
+      if (!saved) throw new DomainError('TOUR_CHANGED', 'This appointment changed. Review it again', 409);
+      await queueTourEvent(tx, { kind: 'reconfirmation_replied', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'chef' });
+      return saved;
     });
-    const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
-    return res.json({ ...result.attendance, notificationDeliveryFailed: delivery.failed });
+    const delivery = await attemptTourDelivery(id);
+    return res.json({ ...chefTourResponse(publicTour(updated)), notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
-}
+});
 
-router.post('/chef/:id/check-out', requireFirebaseAuthWithUser, requireChef, (req, res) => recordTourAction(req, res, false));
-router.post('/manager/:id/attendance-assistance', requireFirebaseAuthWithUser, requireManager, (req, res) => recordTourAction(req, res, true));
+router.get('/admin/:id/visit-evidence', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('TOUR_INPUT_INVALID', 'Choose a valid tour', 400);
+    const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
+    if (!tour) throw new DomainError('TOUR_NOT_FOUND', 'Tour not found', 404);
+    const verified = await withVisitEvidence(db, tour);
+    const settings = await getCheckinSettings(tour.locationId);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({ tour: verified, events: await visitEvents(db, id), attendance: publicTourAttendanceState(tourAttendance(verified, settings.checkinWindowMinutesBefore)) });
+  } catch (error) { return errorResponse(res, error); }
+});
+
+for (const role of ['manager', 'admin'] as const) for (const action of ['attendance-correction', 'evidence-repair'] as const) {
+  if (action === 'evidence-repair' && role !== 'admin') continue;
+  router.post(`/${role}/:id/${action}`, requireFirebaseAuthWithUser, role === 'admin' ? requireAdmin : requireManager, async (req, res) => {
+    if (role !== 'admin') return res.status(410).json({ error: 'Arrival and departure recording has been replaced by tour feedback.' });
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('TOUR_INPUT_INVALID', 'Choose a valid tour', 400);
+      const result = await db.transaction(async tx => {
+        const { tour, location } = await lockedTour(tx, id);
+        const settings = await getCheckinSettings(tour.locationId);
+        const result = await changeVisitEvidence(tx, tour, req.body || {}, req.neonUser!.id, role, settings.checkinWindowMinutesBefore, action === 'evidence-repair');
+        if (result.changed) await queueTourEvent(tx, { kind: action === 'evidence-repair' ? 'evidence_repaired' : 'attendance_corrected',
+          before: tour, after: result.tour, actorId: req.neonUser!.id, actorRole: role });
+        return { attendance: publicTourAttendanceState(tourAttendance(result.tour, settings.checkinWindowMinutesBefore)), changed: result.changed };
+      });
+      const delivery = result.changed ? await attemptTourDelivery(id) : { failed: false };
+      return res.json({ ...result.attendance, notificationDeliveryFailed: delivery.failed });
+    } catch (error) { return errorResponse(res, error); }
+  });
+}
 
 router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, async (req: Request, res: Response) => {
   try {
@@ -1706,7 +1745,7 @@ router.patch('/chef/:id/reschedule-proposal', requireFirebaseAuthWithUser, requi
         await checkTourAcceptance(tx, tour, scheduledAt, { overlapReviewKey: createHash('sha256').update('[]').digest('hex') });
       }
       const now = new Date();
-      const [saved] = await tx.update(kitchenViewings).set({ scheduledAt, ...(decision === 'accept' ? { status: 'confirmed' as const, managerId: location.managerId,
+      const [saved] = await tx.update(kitchenViewings).set({ scheduledAt, ...(decision === 'accept' ? { ...resetTourReconfirmation(tour), status: 'confirmed' as const, managerId: location.managerId,
         ...(tour.status === 'pending' ? { confirmedAt: now } : {}), requestedRescheduleAt: null, rescheduleRequestedAt: null } : {}),
         rescheduleProposedSlots: [], rescheduleProposedAt: null,
         updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)) })
@@ -1734,7 +1773,7 @@ router.patch("/manager/:id/reschedule", requireFirebaseAuthWithUser, requireMana
       if (accepted && tour.checkedInAt) throw new DomainError('TOUR_ARRIVED', 'Tour time cannot change after arrival', 409);
       if (accepted) await checkTourAcceptance(tx, tour, tour.requestedRescheduleAt, req.body);
       const [updated] = await tx.update(kitchenViewings).set({
-        ...(accepted ? { scheduledAt: tour.requestedRescheduleAt } : {}), managerId: location.managerId,
+        ...(accepted ? { scheduledAt: tour.requestedRescheduleAt, ...resetTourReconfirmation(tour) } : {}), managerId: location.managerId,
         requestedRescheduleAt: null, rescheduleRequestedAt: null, updatedAt: new Date(Math.max(Date.now(), tour.updatedAt.getTime() + 1)),
       }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, "confirmed"), sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
         eq(kitchenViewings.scheduledAt, tour.scheduledAt), eq(kitchenViewings.requestedRescheduleAt, tour.requestedRescheduleAt),
@@ -1799,6 +1838,7 @@ router.get(
           ...r,
           viewing: await publicTourAttendance(r.viewing, attendanceSettings),
           requestDecision: tourRequestDecision(r.viewing),
+          reconfirmation: tourReconfirmation(r.viewing, managerId),
           chefName: r.viewing.chefId ? await getUserDisplayName(r.viewing.chefId, 'chef') : 'A chef',
           chefPhone: r.viewing.chefId ? await getChefPhone(r.viewing.chefId) : null,
         }))
@@ -1856,6 +1896,7 @@ router.get(
       res.json(await Promise.all(results.map(async (result) => ({
         ...result,
         requestDecision: tourRequestDecision(result.viewing),
+        reconfirmation: tourReconfirmation(result.viewing, result.managerId),
         managerId: result.managerId != null && managerContacts.has(result.managerId) ? result.managerId : null,
         managerName: result.managerId != null ? managerContacts.get(result.managerId)?.name ?? null : null,
         managerEmail: result.managerId != null ? managerContacts.get(result.managerId)?.email ?? null : null,
@@ -1976,7 +2017,7 @@ router.patch(
       const { tour: viewing, location: tourLocation } = await lockedTour(tx, viewingId);
 
       // Authorization: chef can only cancel their own, manager can update their location's viewings
-      const isChef = viewing.chefId === userId;
+      const isChef = req.neonUser!.role === 'chef' && viewing.chefId === userId;
       const isManager = req.neonUser!.role === 'manager' && tourLocation?.managerId === userId;
       const isAdmin = req.neonUser!.role === "admin";
       viewing.managerId = tourLocation?.managerId ?? null;
@@ -2014,6 +2055,13 @@ router.patch(
         if (typeof req.body?.takeoverReason !== 'string' || req.body.takeoverReason.trim().length < 10 || req.body.takeoverReason.trim().length > 2000)
           throw new DomainError('TOUR_DECISION_INVALID', 'Explain why Local Cooks is confirming this overdue request', 400);
       }
+
+      const recordingResult = ['completed', 'no_show'].includes(parsed.data.status) || !!parsed.data.disruptionReason;
+      if (recordingResult && !isAdmin)
+        throw new DomainError('TOUR_DECISION_INVALID', 'Local Cooks reviews tour feedback and records the final outcome.', 403);
+      if (recordingResult && (!parsed.data.sharedManagerNotes || parsed.data.sharedManagerNotes.trim().length < 10
+        || parsed.data.sharedManagerNotes.trim().length > 2000))
+        throw new DomainError('TOUR_DECISION_INVALID', 'Explain the final tour outcome in the shared message (10–2000 characters).', 400);
       if (isManager && viewing.status === 'pending' && parsed.data.status === 'cancelled' && (!parsed.data.cancellationReason?.trim() || parsed.data.cancellationReason.trim().length > 500))
         throw new DomainError('TOUR_DECISION_INVALID', 'A shared reason is required when declining a tour request', 400);
 
@@ -2030,6 +2078,7 @@ router.patch(
         if (["completed", "no_show"].includes(parsed.data.status) && viewing.scheduledAt.getTime() + viewing.durationMinutes * 60_000 > Date.now()) {
           throw new DomainError('TOUR_DECISION_INVALID', "The tour has not ended yet", 409);
         }
+        if ((['completed', 'no_show'].includes(parsed.data.status) || parsed.data.disruptionReason) && viewing.visitEvidenceState === 'review') throw new DomainError('TOUR_CHANGED', 'visit_records_review', 409);
         if ((['completed', 'no_show'].includes(parsed.data.status) || parsed.data.disruptionReason) && !hasTourConfirmation(viewing)) {
           throw new DomainError('TOUR_DECISION_INVALID', 'This tour was not confirmed. Close the request instead of recording a visit result.', 409);
         }
@@ -2066,7 +2115,7 @@ router.patch(
       const updateData: any = {
         status: parsed.data.status,
         updatedAt: new Date(),
-        ...(parsed.data.status === 'confirmed' ? { managerId: tourLocation.managerId, confirmedAt: viewing.confirmedAt || new Date() } : {}),
+        ...(parsed.data.status === 'confirmed' ? { managerId: tourLocation.managerId, confirmedAt: viewing.confirmedAt || new Date(), appointmentConfirmedAt: viewing.appointmentConfirmedAt || new Date() } : {}),
       };
       if (["cancelled", "completed", "no_show"].includes(parsed.data.status)) {
         updateData.requestedRescheduleAt = null;

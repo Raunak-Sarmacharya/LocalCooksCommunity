@@ -77,7 +77,7 @@ describe('Tour A exact task consumers', () => {
   it('opens admin history from an old review link and retains exact return through login/terms', async () => {
     const path = '/admin?section=tour-requests&viewing=42'; window.history.replaceState({}, '', path);
     mount(<AdminTourRequestsSection />, ['/api/viewings/admin'], [row]);
-    expect(await screen.findByText('TOUR-42')).toBeInTheDocument();
+    expect(await screen.findAllByText('TOUR-42')).toHaveLength(2);
     expect(screen.getByRole('tab', { name: 'Overdue decisions (1)' })).toHaveAttribute('data-state', 'active');
     expect(screen.queryByRole('button', { name: 'Approve for manager' })).not.toBeInTheDocument();
     expect(authReturn(path)).toBe(path); expect(postTermsRedirect({ hostname: 'admin.localhost', redirectParam: path, role: 'admin' })).toBe(path);

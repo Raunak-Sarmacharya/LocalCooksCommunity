@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { phoneNumberSchema, optionalPhoneNumberSchema } from './phone-validation';
@@ -1647,6 +1647,8 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   id: serial("id").primaryKey(),
   chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  // Latest qualifying tour association, assigned once; reporting waits for the admin's final result.
+  sourceTourId: integer("source_tour_id").references((): AnyPgColumn => kitchenViewings.id, { onDelete: "restrict" }),
 
   // Personal Info (collected per application)
   fullName: text("full_name").notNull(),
@@ -1723,6 +1725,7 @@ export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchen
   customFieldsData: z.record(z.any()).optional(), // Custom fields data as JSON object
 }).omit({
   id: true,
+  sourceTourId: true,
   status: true,
   createdAt: true,
   updatedAt: true,
@@ -2315,9 +2318,20 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager assigned to conduct the tour
   status: viewingStatusEnum("status").default("pending").notNull(),
+  lifecycleState: text('lifecycle_state').default('pending').notNull(),
+  visitResult: text('visit_result'),
+  confirmationVerified: boolean('confirmation_verified').default(false).notNull(),
+  visitEvidenceState: text('visit_evidence_state').default('ready').notNull(),
+  visitEvidenceIssue: text('visit_evidence_issue'),
+  visitEvidenceMigratedAt: timestamp('visit_evidence_migrated_at').defaultNow(),
   scheduledAt: timestamp("scheduled_at").notNull(), // The tour date/time
   confirmedAt: timestamp("confirmed_at"), // First recorded confirmation; unknown historical facts remain null.
   requestExpiredAt: timestamp("request_expired_at"), // Effective requested start; never a visit/no-show outcome.
+  appointmentRevision: integer("appointment_revision").default(1).notNull(),
+  appointmentConfirmedAt: timestamp("appointment_confirmed_at"), // Current agreed appointment; confirmedAt retains the first confirmation.
+  reconfirmationReply: text("reconfirmation_reply"),
+  reconfirmationRepliedAt: timestamp("reconfirmation_replied_at"),
+  reconfirmationReplyRevision: text("reconfirmation_reply_revision"),
   requestedRescheduleAt: timestamp("requested_reschedule_at"),
   rescheduleRequestedAt: timestamp("reschedule_requested_at"),
   rescheduleProposedSlots: jsonb("reschedule_proposed_slots").$type<string[]>().default([]).notNull(),
@@ -2347,12 +2361,51 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   outcomeRecordedBy: integer("outcome_recorded_by").references(() => users.id, { onDelete: "set null" }),
   outcomeHistory: jsonb("outcome_history").default([]),
   outcomeReminderSentAt: timestamp("outcome_reminder_sent_at"), // Reminder enqueue marker; actual delivery is tracked in tour_delivery_events.
+  feedbackRequestedAt: timestamp('feedback_requested_at'), // Current appointment markers; event keys carry durable revision-specific identity.
+  feedbackEscalatedAt: timestamp('feedback_escalated_at'),
   outcomeNotificationPending: boolean("outcome_notification_pending").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Outgoing email log — every sendEmail() attempt is recorded for admin tracking
+// Durable visit facts are independent of notification leases and delivery snapshots.
+export const tourVisitEvents = pgTable('tour_visit_events', {
+  id: serial('id').primaryKey(),
+  viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: 'cascade' }).notNull(),
+  kind: text('kind').notNull(), // arrival | departure | result | legacy_evidence | repair
+  eventKey: text('event_key').notNull().unique(),
+  supersedesId: integer('supersedes_id'), // SQL migration enforces the self-reference and single successor.
+  actorId: integer('actor_id'), // Preserve recorded provenance even if the account is later removed.
+  actorRole: text('actor_role'),
+  source: text('source').notNull(),
+  actualAt: timestamp('actual_at', { withTimezone: true }),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+  appointmentRevision: integer('appointment_revision').default(1).notNull(),
+  result: text('result'),
+  sharedExplanation: text('shared_explanation'),
+  internalNotes: text('internal_notes'),
+  data: jsonb('data').default({}).notNull(),
+});
+
+// Private participant reports are immutable facts, independent of the admin's final tour result.
+export const tourFeedbackResponses = pgTable('tour_feedback_responses', {
+  id: serial('id').primaryKey(),
+  viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: 'restrict' }).notNull(),
+  respondentId: integer('respondent_id').notNull(), // Preserve submitted identity after account changes.
+  respondentRole: text('respondent_role').$type<'chef' | 'manager'>().notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+  appointmentRevision: integer('appointment_revision').notNull(),
+  happened: boolean('happened').notNull(),
+  rating: integer('rating'),
+  comments: text('comments'),
+  suggestions: text('suggestions'),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => [uniqueIndex('tour_feedback_respondent_unique').on(table.viewingId, table.appointmentRevision, table.respondentRole, table.respondentId)]);
+export type TourFeedbackResponse = typeof tourFeedbackResponses.$inferSelect;
+
 // Owned recovery state is independent of attendance, money and resource occupancy.
 export const commitmentProblems = pgTable('commitment_problems', {
   id: serial('id').primaryKey(),
@@ -2499,9 +2552,9 @@ export const updateKitchenViewingStatusSchema = z.object({
   id: z.number(),
   status: z.enum(['pending', 'confirmed', 'cancelled', 'completed', 'no_show']),
   managerNotes: z.string().max(500).optional(),
-  sharedManagerNotes: z.string().trim().max(500).optional(),
+  sharedManagerNotes: z.string().trim().max(2000).optional(),
   noShowReason: z.literal('visitor_absent').optional(),
-  disruptionReason: z.enum(['manager_absent', 'access_unavailable', 'weather', 'other']).optional(),
+  disruptionReason: z.enum(['manager_absent', 'access_unavailable', 'weather', 'other', 'outcome_unknown']).optional(),
   cancellationReason: z.string().max(500).optional(),
   cancelledBy: z.enum(['chef', 'manager']).optional(),
 });

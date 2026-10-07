@@ -1693,5 +1693,19 @@
   "tourIntakeNotDecided": "Pas encore décidé",
   "tourIntakeRequired": "Répondez aux quatre questions pour continuer.",
   "tourIntakeContinue": "Continuer",
-  "tourIntakeEdit": "Modifier les réponses"
+  "tourIntakeEdit": "Modifier les réponses",
+  "discardUnsentTourDetails": "Les détails non envoyés seront supprimés. Toute demande déjà enregistrée restera inchangée.",
+  "tourApplicationReferenceTitle": "Votre visite de cuisine",
+  "tourApplicationReferenceHelp": "L’utilisation prévue peut remplir une description d’entreprise vide. Vérifiez et modifiez-la avant l’envoi. Les autres réponses servent de référence; les exigences de la demande s’appliquent toujours.",
+  "tourApplicationChefNotes": "Vos notes de visite",
+  "tourApplicationSharedNotes": "Notes de visite partagées",
+  "tourApplicationUnavailable": "La prochaine étape de demande liée à cette visite est indisponible",
+  "tourApplicationUnavailableHelp": "La visite ou la cuisine a peut-être changé. Vérifiez votre visite ou réessayez.",
+  "tourApplicationRetry": "Vérifier de nouveau",
+  "tourApplicationBack": "Voir la visite",
+  "tourApplicationViewTitle": "Votre demande ou accès à la cuisine",
+  "tourApplicationViewHelp": "Vous avez déjà une demande ou un accès à la cuisine. Consultez son état et la prochaine étape.",
+  "tourApplicationViewNext": "Continuez avec votre demande de cuisine existante.",
+  "tourApplicationViewAction": "Voir mes demandes",
+  "tourApplicationCheckFailed": "Impossible de vérifier les renseignements de votre visite"
 }

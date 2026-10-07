@@ -41,3 +41,13 @@ it('a confirmation committed under the row lock prevents concurrent pending expi
   await clients[0].query('COMMIT');
   expect((await expiry).rowCount).toBe(0);
 });
+it('applies reconfirmation migration twice, recovers a recorded replacement, and retains original confirmation', async () => {
+  await clients[0].query("INSERT INTO kitchen_viewings(id,status,scheduled_at,confirmed_at) VALUES(4,'confirmed','2030-01-02','2026-01-01')");
+  await clients[0].query(`INSERT INTO tour_delivery_events VALUES(4,'2026-01-03','{"kind":"reschedule_accepted","after":{"status":"confirmed","scheduledAt":"2030-01-02T00:00:00.000Z"}}')`);
+  const migration = readFileSync('migrations/0066_tour_reconfirmation.sql', 'utf8');
+  await clients[0].query(migration); await clients[0].query(migration);
+  const result = await clients[0].query('SELECT appointment_revision,appointment_confirmed_at,confirmed_at,reconfirmation_reply FROM kitchen_viewings WHERE id=4');
+  expect(result.rows[0]).toMatchObject({ appointment_revision: 1, reconfirmation_reply: null });
+  expect(result.rows[0].appointment_confirmed_at.toISOString()).toBe('2026-01-03T00:00:00.000Z');
+  expect(result.rows[0].confirmed_at.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+});

@@ -1,4 +1,6 @@
+import type { TourAttendance } from '@shared/tour-attendance';
 import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails"
+import { TourFunnel } from '@/components/tour/TourFunnel';
 /**
  * ViewingsDashboard
  *
@@ -8,7 +10,7 @@ import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails"
  */
 
 import { useState, useEffect, useRef, type MutableRefObject } from "react"
-import { CommitmentProblems } from '@/components/support/CommitmentProblems';
+import { TourSupportCard } from '@/components/tour/TourSupportCard';
 import { useLocation, useSearch } from "wouter"
 import type { ColumnDef } from "@tanstack/react-table"
 import { mt } from "@/i18n/manager"
@@ -35,7 +37,7 @@ import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display"
 import { useTourClock } from "@/hooks/use-tour-clock"
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome'
 import { TourChatButton } from '@/components/chat/TourChatButton'
-import { TourAttendancePanel } from '@/components/tour/TourAttendancePanel'
+import { TourFeedbackPanel } from '@/components/tour/TourFeedbackPanel'
 import { formatTourWhen } from "@/lib/chef-viewing-display"
 import { DateField } from '@/components/ui/date-field'
 import { tourAvailableDate, type TourCalendarAvailability } from '@/lib/tour-available-date'
@@ -62,6 +64,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 interface TourDecisionContext { updatedAt: string; scheduledAt: string; overlapReviewKey: string; overlaps: TourBookingOverlap[] }
 
 interface ViewingRecord {
+  reconfirmation?: { reply: string | null; canReply: boolean; needsStaffAttention: boolean };
   viewing: {
     id: number
     locationId: number
@@ -74,6 +77,9 @@ interface ViewingRecord {
     chefNotes: string | null
     sharedManagerNotes: string | null
     disruptionReason: string | null
+    confirmationVerified?: boolean
+    managerFeedbackSubmitted?: boolean
+    visitEvidenceState?: string
     outcomeHistory?: Array<{ from: string; to: string; actorRole: string; recordedAt: string; sharedNotes?: string | null }>
     noShowReason: string | null
     intakeData: Record<string, any>
@@ -86,6 +92,7 @@ interface ViewingRecord {
     completedAt: string | null
     createdAt: string
     updatedAt: string
+    attendance?: TourAttendance
     checkedInAt?: string | null
     checkedOutAt?: string | null
     requestedRescheduleAt: string | null
@@ -105,6 +112,7 @@ interface ViewingRecord {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getStatusBadge(status: string, cancelledBy?: string | null, adminReviewDecision?: string | null, disruptionReason?: string | null) {
+  if (disruptionReason === 'outcome_unknown') return <Badge variant="outline">{mt('tourHistory_status_unverified')}</Badge>
   if (disruptionReason) return <Badge variant="destructive">{mt('tourDisrupted')}</Badge>
   if (status === "cancelled" && (cancelledBy === "manager_declined" || adminReviewDecision === "denied")) {
     return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />{mt("rejected")}</Badge>
@@ -259,15 +267,13 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   }, [viewings])
 
   const correctingOutcome = !!selectedViewing && (["completed", "no_show"].includes(selectedViewing.viewing.status) || !!selectedViewing.viewing.disruptionReason)
-  const outcomeEligible = !!selectedViewing && hasTourConfirmation(selectedViewing.viewing)
-    && (['confirmed', 'completed', 'no_show'].includes(selectedViewing.viewing.status) || !!selectedViewing.viewing.disruptionReason)
-    && new Date(selectedViewing.viewing.scheduledAt).getTime() + selectedViewing.viewing.durationMinutes * 60_000 <= Date.now()
-  const nextStepKey = selectedViewing && ['view', 'confirm', 'cancel'].includes(statusAction)
-    ? selectedViewing.viewing.status === 'pending'
+  const feedbackAfterEnd = !!selectedViewing && hasTourConfirmation(selectedViewing.viewing) && Date.parse(selectedViewing.viewing.scheduledAt) + selectedViewing.viewing.durationMinutes * 60_000 <= Date.now()
+  const nextStepKey = selectedViewing && ['view', 'confirm', 'cancel', 'complete', 'no_show', 'disrupt'].includes(statusAction)
+    ? selectedViewing.viewing.visitEvidenceState === 'review' ? 'tourNextEvidenceReview' : selectedViewing.viewing.status === 'pending'
       ? new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? selectedViewing.viewing.rescheduleProposedSlots?.length ? 'tourPendingProposalAwaitingHelp' : 'tourNextReview' : 'tourNextExpired'
       : canReviewReschedule(selectedViewing.viewing) ? 'tourNextReschedule'
       : selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
-        ? outcomeEligible ? 'tourNextOutcome'
+        ? feedbackAfterEnd ? selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : 'tourNextFeedback'
           : new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextPrepare' : 'tourNextHost'
         : null
     : null
@@ -298,6 +304,8 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     if (deepLinkAction === 'review-reschedule' && canReviewReschedule(current)) rescheduleReview.current?.focus()
     if (deepLinkAction === 'cancel' && ['pending', 'confirmed'].includes(current.status) && Date.parse(current.scheduledAt) > Date.now()
       && !current.disruptionReason && !current.checkedInAt) setStatusAction('cancel')
+    if (deepLinkAction === 'result' && current.status === 'confirmed' && hasTourConfirmation(current)
+      && Date.parse(current.scheduledAt) + current.durationMinutes * 60_000 <= Date.now()) heading.current?.focus()
   }, [exactId, deepLinkAction, exactRecord, exactQuery.isFetching, selectedViewing?.viewing.id])
   const { data: proposalCalendar, isFetching: proposalCalendarLoading, error: proposalCalendarError } = useQuery<TourCalendarAvailability>({
     queryKey: ['manager-tour-reschedule-calendar', selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt],
@@ -616,7 +624,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   </>
                 )}
                     {statusAction !== "view" && (
-                <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-5 sm:p-6 [&>button]:h-9 [&>button]:text-sm">
+                <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-5 sm:p-6 [&>button]:h-9 [&>button]:text-xs">
                   <Button
                     variant="ghost"
                     onClick={requestClose}
@@ -673,6 +681,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
         {exactId && !exactQuery.isLoading && (exactQuery.isError || !exactRecord) &&
           <div role="alert"><p>This tour is unavailable. Check your location access or try again.</p><Button variant="outline" onClick={() => void exactQuery.refetch()}>Try again</Button></div>}
         {!exactId && <>
+        <TourFunnel role="manager" locationId={locationId} />
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -707,7 +716,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
         </>}
       </div>}
 
-      {selectedViewing && <section aria-label={mt('sheetViewingDetails')} className="space-y-6">
+      {selectedViewing && <section aria-label={mt('sheetViewingDetails')} className="space-y-6 [&_button]:text-xs">
           {selectedViewing && (
             <>
               <header className="flex flex-wrap items-start justify-between gap-4">
@@ -717,8 +726,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                 </div>
                 {selectedViewing.viewing.requestExpiredAt ? <Badge variant="secondary">{mt('tourRequestExpired')}</Badge> : getStatusBadge(selectedViewing.viewing.status, selectedViewing.viewing.cancelledBy, selectedViewing.viewing.adminReviewDecision, selectedViewing.viewing.disruptionReason)}
               </header>
-              {nextStepKey && <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5" aria-label={mt('tourNextStep')}>
+              {nextStepKey && <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm [&_button]:text-xs" aria-label={mt('tourNextStep')}>
                 <h2 className="text-sm font-semibold leading-5">{mt('tourNextStep')}</h2>
+                {selectedViewing.reconfirmation?.canReply && <p className="text-xs text-muted-foreground">{mt(selectedViewing.reconfirmation.reply === 'still_coming' ? 'tourVisitorStillComing' : selectedViewing.reconfirmation.reply === 'reschedule' || selectedViewing.reconfirmation.reply === 'cant_make_it' ? 'tourVisitorChangeSignal' : selectedViewing.reconfirmation.needsStaffAttention ? 'tourVisitorReplyOverdue' : 'tourVisitorReplyPending')}</p>}
                 {(() => { const decision = tourRequestDecision(selectedViewing.viewing); return decision?.stage === 'manager' && decision.dueAt && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() ? <p className={cn('text-xs', decision.overdue ? 'text-destructive font-medium' : 'text-muted-foreground')}>{mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: {formatTourWhen(decision.dueAt, null, 'America/St_Johns')}</p> : null; })()}
                 <p className="text-sm">{(() => {
                   const text = mt(nextStepKey)
@@ -727,22 +737,23 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   if (idx < 0) return text
                   return <>{text.slice(0, idx)}<button type="button" className="underline underline-offset-2" onClick={() => { const el = document.getElementById('tour-visit-notes'); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.focus({ preventScroll: true }); setHighlightNotes(true) }}>{phrase}</button>{text.slice(idx + phrase.length)}</>
                 })()}</p>
-                {statusAction === 'view' && <div className="flex flex-wrap gap-2 border-t pt-4 [&>button]:h-9 [&>button]:px-3 [&>button]:text-sm">
+                {statusAction === 'view' && <div className="flex flex-wrap gap-2 border-t pt-4 [&>button]:h-9 [&>button]:px-3 [&>button]:text-xs">
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending || proposeReschedule.isPending || !!selectedViewing.viewing.rescheduleProposedSlots?.length}>{mt('acceptViewing')}</Button>}
                   {canProposeChange && <Button ref={proposalTrigger} variant="outline" disabled={updateStatusMutation.isPending || proposeReschedule.isPending} onClick={() => setProposalOpen(true)}>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</Button>}
                   {!!selectedViewing.viewing.rescheduleProposedSlots?.length && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !!selectedViewing.viewing.checkedInAt} onClick={() => proposeReschedule.mutate('withdraw')}>{mt('tourWithdrawProposal')}</Button>}
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('declineRequest')}</Button>}
-                  {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('cancelViewing')}</Button>}
+                  {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" className="text-destructive hover:text-destructive" disabled={proposeReschedule.isPending || reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('cancelViewing')}</Button>}
                 </div>}
                 {['confirm', 'cancel'].includes(statusAction) && <div className="space-y-4 border-t pt-4">{decisionKind === "confirm" && decisionReviewPanel}{decisionActionPanel}</div>}
+                {['complete', 'no_show', 'disrupt'].includes(statusAction) && <div className="space-y-4 border-t pt-4">{decisionActionPanel}</div>}
                 {!!selectedViewing.viewing.rescheduleProposedSlots?.length && ['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && <section className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5" aria-label={mt('tourProposalPendingTitle')}>
                   <div className="space-y-1"><h2 className="text-sm font-semibold leading-5">{mt('tourProposalPendingTitle')}</h2><p className="text-sm text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalPendingHelp')}</p></div>
                   <ul className="space-y-2">{selectedViewing.viewing.rescheduleProposedSlots.map(time => <li key={time} className="rounded-lg border bg-background px-3 py-2 text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</li>)}</ul>
                 </section>}
                 {canReviewReschedule(selectedViewing.viewing) && (
                   <div ref={rescheduleReview} tabIndex={-1} className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4 focus:outline-none">
-                    <p className="text-sm font-medium">{mt("tourRescheduleRequest")}</p>
-                    <p className="text-sm">Requested: {formatTourWhen(selectedViewing.viewing.requestedRescheduleAt!, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</p>
+                    <p className="text-sm font-semibold leading-5">{mt("tourRescheduleRequest")}</p>
+                    <p className="text-sm">{mt('tourRequestedTime')}: {formatTourWhen(selectedViewing.viewing.requestedRescheduleAt!, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</p>
                     {decisionKind === "reschedule" && decisionReviewPanel}
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Button className="h-11 w-full" disabled={reviewReschedule.isPending || updateStatusMutation.isPending || !acceptanceReady} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "accept" })}>{mt('tourApproveNewTime')}</Button>
@@ -768,16 +779,24 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   {!!Object.keys(selectedViewing.viewing.intakeData || {}).length && <div className="space-y-3 border-t pt-3">
                     <TourIntakeDetails data={selectedViewing.viewing.intakeData} />
                   </div>}
+                  {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <div className="space-y-3 border-t pt-4" aria-label={mt('tourPrepareBriefing')}>
+                    <h3 className="text-sm font-semibold">{mt('tourPrepareBriefing')}</h3>
+                    <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground">
+                      <li>{mt('tourPrepareSpace')}</li>
+                      <li>{mt('tourPrepareAccess')}</li>
+                      <li>{mt('tourPrepareQuestions')}</li>
+                    </ul>
+                  </div>}
                 </section>
-                {selectedViewing.viewing.checkedInAt && <TourAttendancePanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} />}
-                {!['confirm', 'cancel'].includes(statusAction) && decisionActionPanel}
+                {feedbackAfterEnd && <TourFeedbackPanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} />}
+                {!nextStepKey && !['confirm', 'cancel'].includes(statusAction) && decisionActionPanel}
 
                 <Dialog open={proposalOpen && (canProposeChange || proposeReschedule.isPending)} onOpenChange={open => {
                   if (proposeReschedule.isPending) return
                   setProposalOpen(open)
                   if (!open) { setProposalDate(''); setProposedSlots([]) }
                 }}>
-                  <DialogContent className="max-w-xl p-5 sm:p-6" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
+                  <DialogContent className="max-w-xl p-5 sm:p-6 [&_button]:text-xs" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
                     <DialogHeader className="pr-10">
                       <DialogTitle>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</DialogTitle>
                       <DialogDescription>{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalHelp' : 'tourProposalHelp')}</DialogDescription>
@@ -810,7 +829,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   <p className="text-xs font-medium text-muted-foreground">{mt('tourMessageToChefOptional')}</p>
                   <p className="rounded bg-muted/50 p-2 text-sm whitespace-pre-wrap">{selectedViewing.viewing.sharedManagerNotes}</p>
                 </div>}
-                {selectedViewing.viewing.disruptionReason && <p className="text-sm">{mt('tourDisruptionReason')}: {mt(`tourDisruption_${selectedViewing.viewing.disruptionReason}`)}</p>}
+                {selectedViewing.viewing.disruptionReason && <p className="text-sm">{selectedViewing.viewing.disruptionReason === 'outcome_unknown' ? mt('tourHistory_status_unverified') : <>{mt('tourDisruptionReason')}: {mt(`tourDisruption_${selectedViewing.viewing.disruptionReason}`)}</>}</p>}
                 {!!selectedViewing.viewing.outcomeHistory?.length && statusAction === 'view' && <details className="rounded border p-3 text-sm">
                   <summary>{mt('tourOutcomeHistory')}</summary>
                   {selectedViewing.viewing.outcomeHistory.map((entry, index) => <div key={index} className="border-t py-2">
@@ -820,16 +839,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                 </details>}
               </div>
 
-              {statusAction === "view" && outcomeEligible && (
-                <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-5 sm:p-6 [&>button]:h-9 [&>button]:text-sm">
-                  {!selectedViewing.viewing.disruptionReason && <Button variant="outline" onClick={() => { setManagerNotes(''); setStatusAction('disrupt') }}>{mt('tourRecordDisruption')}</Button>}
-                  {selectedViewing.viewing.status !== 'no_show' && <Button variant="outline" onClick={() => { if (correctingOutcome) setManagerNotes(''); setStatusAction('no_show') }}>{mt('markNoShow')}</Button>}
-                  {selectedViewing.viewing.status !== 'completed' && <Button onClick={() => { if (correctingOutcome) setManagerNotes(''); setStatusAction('complete') }}>{mt('markCompleted')}</Button>}
-                </div>
-              )}
               {statusAction === 'view' && selectedViewing.viewing.status === 'pending' && new Date(selectedViewing.viewing.scheduledAt).getTime() <= Date.now() && <div className="rounded-xl border bg-card p-5 sm:p-6"><Button variant="outline" size="sm" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button></div>}
 
-              <div data-testid="manager-tour-help" className="[&>section]:rounded-xl [&>section]:p-5 sm:[&>section]:p-6"><CommitmentProblems kind="tour" id={selectedViewing.viewing.id} role="manager" canReport /></div>
+              <div data-testid="manager-tour-help" className="[&>section]:rounded-xl [&>section]:p-5 sm:[&>section]:p-6"><TourSupportCard role="manager" /></div>
               </div>
               <aside className="space-y-4">
                 <section id="tour-visit-notes" tabIndex={-1} aria-label={mt('tourVisitorContactTitle')} className={cn("space-y-4 rounded-xl border bg-card p-5 sm:p-6 text-sm outline-none transition-colors", highlightNotes && "border-primary bg-primary/5")}>

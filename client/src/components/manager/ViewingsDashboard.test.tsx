@@ -30,6 +30,41 @@ function mount(overlaps: any[] = [], writeStatus = 200) {
   return { client, fetcher };
 }
 describe('manager acceptance review', () => {
+  it.each(['completed', 'no_show', 'cancelled'])('does not ask for new feedback after admin closes a %s tour', status => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status,
+      scheduledAt: new Date(Date.now() - 86400000).toISOString(), confirmationVerified: true,
+      disruptionReason: status === 'cancelled' ? 'outcome_unknown' : null } }]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false }) })));
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(screen.queryByText('tourNextFeedback')).not.toBeInTheDocument();
+    expect(screen.queryByText('tourNextFeedbackSubmitted')).not.toBeInTheDocument();
+    client.clear();
+  });
+  it('shows pending admin review after the manager submits feedback instead of asking for a second response', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed',
+      scheduledAt: new Date(Date.now() - 86400000).toISOString(), confirmationVerified: true, managerFeedbackSubmitted: true } }]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false }) })));
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(screen.getByText('tourNextFeedbackSubmitted')).toBeInTheDocument();
+    expect(screen.queryByText('tourNextFeedback')).not.toBeInTheDocument();
+    client.clear();
+  });
+  it('adds preparation guidance to the existing confirmed request briefing and keeps silence confirmed', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed', intakeData: { intendedUse: 'meal_prep', targetStartDate: 'not_decided', hasLicense: false, estimatedWeeklyHours: '10-20' } }, reconfirmation: { canReply: true, reply: null, needsStaffAttention: true } }]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) })));
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(screen.getByRole('heading', { name: 'tourPrepareBriefing' })).toBeInTheDocument();
+    expect(screen.getByText('tourPrepareAccess')).toBeInTheDocument();
+    expect(screen.getByText('tourVisitorReplyOverdue')).toBeInTheDocument();
+    expect(screen.getByText('confirmed')).toBeInTheDocument();
+    client.clear();
+  });
   it('requires a shared reason for a pending decline while leaving confirmed cancellation optional', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(['/api/viewings/manager'], [record]);
@@ -172,17 +207,12 @@ describe('tour attendance and privacy controls', () => {
     expect(screen.getByRole('button', { name: 'tourCloseExpiredRequest' })).toBeInTheDocument();
     client.clear();
   });
-  it('requires a shared explanation when correcting a confirmed no-show', async () => {
-    const { client, fetcher } = mountPast('no_show', [{ from: 'confirmed', to: 'no_show' }]);
-    fireEvent.click(screen.getByRole('button', { name: 'markCompleted' }));
-    expect(screen.getByRole('button', { name: 'markCompleted' })).toBeDisabled();
+  it('keeps final outcome correction with Local Cooks and hides manager attendance controls', () => {
+    const { client } = mountPast('no_show', [{ from: 'confirmed', to: 'no_show' }]);
+    expect(screen.queryByRole('button', { name: 'markCompleted' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'markNoShow' })).not.toBeInTheDocument();
     expect(screen.queryByText('ADMIN ONLY LEGACY')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'You attended late; corrected.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'markCompleted' }));
-    await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true));
-    const update = fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')!;
-    expect(JSON.parse(update[1].body)).toMatchObject({ status: 'completed', sharedManagerNotes: 'You attended late; corrected.', expectedUpdatedAt: version });
-    expect(JSON.parse(update[1].body)).not.toHaveProperty('managerNotes');
+    expect(screen.getByRole('region', { name: 'tourFeedbackTitle' })).toBeInTheDocument();
     client.clear();
   });
   it('does not infer confirmation evidence from a legacy terminal label', () => {

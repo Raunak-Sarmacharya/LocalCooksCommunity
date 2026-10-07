@@ -3,6 +3,21 @@ import { tourHistory } from './tour-history';
 const time = (hour: number) => `2026-10-01T${String(hour).padStart(2, '0')}:00:00.000Z`;
 const row = (id: number, kind: string, after = {}, before = {}) => ({ id, createdAt: time(id), payload: { kind, before, after, actorRole: 'manager', actorId: 123, chef: { email: 'private@test' }, admins: [{ email: 'admin@test' }], managerNotes: 'PRIVATE' } });
 describe('public recorded tour history', () => {
+  it('includes a known legacy confirmation date without inventing one for unrecorded tours', () => {
+    expect(tourHistory({ createdAt: time(1), confirmedAt: time(2) }, []).events).toEqual([
+      expect.objectContaining({ kind: 'requested', recordedAt: time(1) }),
+      expect.objectContaining({ kind: 'status', status: 'confirmed', recordedAt: time(2) }),
+    ]);
+    expect(tourHistory({ createdAt: time(1) }, []).events).toHaveLength(1);
+    expect(tourHistory({ confirmedAt: time(2) }, [row(2, 'status', { status: 'confirmed' }, { status: 'pending' })]).events).toHaveLength(1);
+  });
+  it('shows reconfirmation requests, safe replies and staff follow-up without private payload data', () => {
+    const result = tourHistory({}, [row(1, 'reconfirmation_requested'), row(2, 'reconfirmation_replied', { reconfirmationReply: 'reschedule' }), row(3, 'reconfirmation_escalated'), row(4, 'reconfirmation_replied', { reconfirmationReply: 'PRIVATE' })]);
+    expect(result.events.map(event => event.kind)).toEqual(['reconfirmation_requested', 'reconfirmation_replied', 'reconfirmation_escalated', 'reconfirmation_replied']);
+    expect(result.events[1].reply).toBe('reschedule');
+    expect(result.events[3]).not.toHaveProperty('reply');
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE|email|actorId|admins/);
+  });
   it('distinguishes safe cancellation outcomes without leaking arbitrary reasons', () => {
     const result = tourHistory({}, [row(1, 'status', { status: 'cancelled', disruptionReason: 'weather' }), row(2, 'status', { status: 'cancelled', cancelledBy: 'manager_declined' }), row(3, 'status', { status: 'cancelled', disruptionReason: 'PRIVATE', cancellationReason: 'PRIVATE' })]);
     expect(result.events.map(event => event.outcome)).toEqual(['disrupted', 'declined', 'cancelled']);
@@ -34,11 +49,11 @@ describe('public recorded tour history', () => {
     expect(result.events[3].proposedSlots).toEqual([time(10)]);
     expect(JSON.stringify(result)).not.toMatch(/PRIVATE|email|actorId|admins|pending_local_cooks/);
   });
-  it('excludes internal review and delivery activity and whitelists every lifecycle kind', () => {
+  it('shows safe review transitions while excluding delivery activity and whitelists every lifecycle kind', () => {
     const kinds = ['requested', 'request_updated', 'reschedule_requested', 'reschedule_accepted', 'reschedule_declined', 'reschedule_proposed', 'reschedule_proposal_accepted', 'reschedule_proposal_declined', 'reschedule_proposal_withdrawn', 'status', 'expired', 'visitor_checkin', 'visitor_checkout', 'attendance_assisted'];
     const events = kinds.map((kind, index) => row(index + 1, kind, { status: 'confirmed', scheduledAt: time(20), requestedRescheduleAt: time(21), checkedInAt: time(18), checkedOutAt: time(19) }, { status: 'pending', scheduledAt: time(17) }));
     events.push(...['review_approved', 'review_denied', 'reminder', 'request_escalation', 'unknown'].map(kind => row(15, kind)));
-    expect(tourHistory({}, events).events.map(event => event.kind)).toEqual(kinds);
+    expect(tourHistory({}, events).events.map(event => event.kind)).toEqual([...kinds, 'review_approved', 'review_denied']);
     expect(tourHistory({}, [row(1, 'status', { status: 'secret' })]).events[0]).not.toHaveProperty('status');
   });
   it('returns reliable partial legacy evidence without inventing transitions from updatedAt or scheduledAt', () => {

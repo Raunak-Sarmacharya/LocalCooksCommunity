@@ -123,6 +123,12 @@ describe('deleteUserDependents', () => {
       indexOf(statements, 'DELETE FROM kitchen_bookings'),
     );
   });
+  it('removes private tour feedback before deleting the chef tours it references', async () => {
+    const { tx, statements } = createTx();
+    await deleteUserDependents(tx, 42);
+    expect(indexOf(statements, 'DELETE FROM tour_feedback_responses')).toBeLessThan(indexOf(statements, 'DELETE FROM kitchen_viewings'));
+    expect(statements.join('\n')).toContain('OR viewing_id IN (SELECT id FROM kitchen_viewings WHERE chef_id');
+  });
 
   it('nulls the manager on a kitchen instead of deleting the kitchen', async () => {
     const { tx, statements } = createTx();

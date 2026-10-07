@@ -2,7 +2,6 @@ import { calendarDateForBookingTime } from "@shared/operating-hours";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { kitchenLicenseState, isReplacementUnderReview, toCalendarDate, type KitchenLicenseFields } from "@shared/kitchen-license";
 import { overstayCollectionError } from "@shared/overstay-collection";
-import { tourAttendance } from '@shared/tour-attendance';
 import type { TourAttendance } from '@shared/tour-attendance';
 
 export function storageHasEnded(endDate?: string, now = new Date()) {
@@ -30,19 +29,15 @@ export function licenseNextAction(license: KitchenLicenseFields, now = new Date(
 }
 
 export function tourNextAction(tour: { status: string; scheduledAt: string; durationMinutes?: number; requestedRescheduleAt?: string | null;
+  managerFeedbackSubmitted?: boolean;
   rescheduleProposedSlots?: string[] | null; updatedAt?: string; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; outcomeHistory?: unknown; targetedKitchenId?: number | null; attendance?: TourAttendance }, now = Date.now()) {
   const start = Date.parse(tour.scheduledAt);
   if (!Number.isFinite(start)) return null;
   if (tour.status === "pending") return start > now && !tour.rescheduleProposedSlots?.length ? "overviewPendingTours" : null;
-  const end = start + (tour.durationMinutes ?? 30) * 60_000;
-  if (tour.checkedInAt && !tour.checkedOutAt && now >= end) {
-    const attendance = tour.attendance || tourAttendance({ ...tour, id: 0, updatedAt: tour.updatedAt || tour.scheduledAt,
-      durationMinutes: tour.durationMinutes ?? 30 }, 0, new Date(now));
-    if (attendance.canAssistDeparture) return 'overviewTourDepartureAssistance';
-  }
+
   if (tour.status !== "confirmed") return null;
   if (tour.requestedRescheduleAt && start > now) return "overviewTourReschedules";
-  return now >= start + (tour.durationMinutes ?? 30) * 60_000 ? "overviewTourOutcomes" : null;
+  return !tour.managerFeedbackSubmitted && now >= start + (tour.durationMinutes ?? 30) * 60_000 ? "overviewTourFeedback" : null;
 }
 
 export function bookingNextAction(booking: { status: string; paymentDecision?: { state?: string } | null; checkinStatus?: string | null; attendanceReviewComplete?: boolean; bookingDate: string; startTime: string; endTime: string; operatingWindowStartTime?: string | null }, timezone = DEFAULT_TIMEZONE, now = Date.now()) {

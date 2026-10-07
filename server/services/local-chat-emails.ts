@@ -36,10 +36,11 @@ async function tick() {
 export async function queueLocalChatMessageEmail(conversationId: string, messageId: string, senderId: number) {
   if (!enabled()) return;
   const result = await notifyPersistedChatMessage(conversationId, messageId, senderId);
-  if (!('initialTrackingId' in result) || !result.initialTrackingId) return;
+  const keys = result.initialRecipients?.map(recipient => recipient.trackingId) || (result.initialTrackingId ? [result.initialTrackingId] : []);
+  if (!keys.length) return;
   const rows = await db.select({ id: emailLogs.id }).from(emailLogs).where(and(
     eq(emailLogs.category, 'chat_digest'),
-    inArray(emailLogs.trackingId, [result.initialTrackingId, `${result.initialTrackingId}:reminder`]),
+    inArray(emailLogs.trackingId, keys.flatMap(key => [key, `${key}:reminder`])),
     inArray(emailLogs.status, ['scheduled', 'failed']),
   ));
   rows.forEach(row => pending.add(row.id));

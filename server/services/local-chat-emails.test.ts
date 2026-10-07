@@ -70,3 +70,9 @@ describe('local chat delivery ownership', () => {
     expect(state.dispatch).toHaveBeenCalledTimes(2);
   });
 });
+
+it('watches both broadcast recipients and reminders', async () => {
+  state.notify.mockResolvedValue({ queued: true, initialRecipients: [{ role: 'chef', trackingId: 'chat-message:thread:m1:3' }, { role: 'manager', trackingId: 'chat-message:thread:m1:2' }] });
+  await queue('thread', 'm1', 1);
+  expect(new PgDialect().sqlToQuery(state.conditions[0]).params).toEqual(['chat_digest', 'chat-message:thread:m1:3', 'chat-message:thread:m1:3:reminder', 'chat-message:thread:m1:2', 'chat-message:thread:m1:2:reminder', 'scheduled', 'failed']);
+});
