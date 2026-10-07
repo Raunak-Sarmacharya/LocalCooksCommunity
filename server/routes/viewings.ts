@@ -23,6 +23,7 @@ import { blackoutDateKeys, bookingClosuresForTours, copyableTourHours, tourBlack
 import { activeBookingIdsOnOperatingDate, hasOverlappingOperatingDays } from "@shared/operating-schedule";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { formatTourDate, formatTourClock, tourDateKey } from "@shared/tour-time";
+import { canChefRequestReschedule, canManagerProposeReschedule, tourRescheduleCutoff } from '@shared/tour-reschedule';
 import { tourBookingOverlaps } from "@shared/tour-booking-overlap";
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { DomainError } from '../shared/errors/domain-error';
@@ -48,7 +49,7 @@ import {
   kitchens,
   users,
   applications,
-  insertKitchenViewingSchema,
+  requestKitchenViewingSchema,
   updateKitchenViewingStatusSchema,
   updateKitchenViewingSettingsSchema,
   insertKitchenViewingBlackoutSchema,
@@ -147,7 +148,7 @@ async function tourBookingContext(connection: TourConnection, tour: typeof kitch
   return { overlaps, overlapReviewKey: createHash('sha256').update(JSON.stringify(overlaps)).digest('hex') };
 }
 
-async function checkTourAcceptance(tx: TourTransaction, tour: typeof kitchenViewings.$inferSelect, scheduledAt: Date, body: any) {
+async function checkTourKitchenSettings(tx: TourTransaction, tour: typeof kitchenViewings.$inferSelect) {
   if (!tour.targetedKitchenId) throw new DomainError('TOUR_KITCHEN_MISSING', 'This tour no longer has an available kitchen', 409);
   const [kitchen] = await tx.select({ locationId: kitchens.locationId, isActive: kitchens.isActive, listingStatus: kitchens.listingStatus })
     .from(kitchens).where(eq(kitchens.id, tour.targetedKitchenId)).limit(1).for('share');
@@ -158,7 +159,12 @@ async function checkTourAcceptance(tx: TourTransaction, tour: typeof kitchenView
   if (!settings?.isActive || settings.defaultDurationMinutes !== tour.durationMinutes) {
     throw new DomainError('TOUR_SETTINGS_CHANGED', 'Tour settings have changed. Review this request before accepting it', 409);
   }
-  const slots = await calculateAvailableSlots(tour.targetedKitchenId, tourDateKey(scheduledAt), DEFAULT_TIMEZONE,
+  return tour.targetedKitchenId;
+}
+
+async function checkTourAcceptance(tx: TourTransaction, tour: typeof kitchenViewings.$inferSelect, scheduledAt: Date, body: any) {
+  const kitchenId = await checkTourKitchenSettings(tx, tour);
+  const slots = await calculateAvailableSlots(kitchenId, tourDateKey(scheduledAt), DEFAULT_TIMEZONE,
     undefined, { connection: tx, ignoreViewingId: tour.id, ignoreAdvanceNotice: true });
   if (scheduledAt.getTime() <= Date.now() || !slots.some(slot => new Date(slot.scheduledAt).getTime() === scheduledAt.getTime())) {
     throw new DomainError('SLOT_TAKEN', 'That tour time is no longer available', 409);
@@ -339,7 +345,7 @@ async function calculateAvailableSlots(
 
       // Check advance notice
       const hoursUntil = differenceInHours(actualTourStart, now);
-      if (!options.ignoreAdvanceNotice && hoursUntil < settings.advanceNoticeHours) {
+      if (actualTourStart <= now || (!options.ignoreAdvanceNotice && hoursUntil < settings.advanceNoticeHours)) {
         slotStart = slotEnd; // Move to next slot position
         continue;
       }
@@ -408,8 +414,10 @@ async function authorizedSelfExclusion(req: Request, kitchenId: number) {
   const id = Number(req.query.viewingId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new DomainError('FORBIDDEN', 'Choose your confirmed tour', 403);
   const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
-  if (!tour || tour.chefId !== req.neonUser?.id || tour.targetedKitchenId !== kitchenId || tour.status !== 'confirmed' || tour.scheduledAt.getTime() <= Date.now())
-    throw new DomainError('FORBIDDEN', 'Only your upcoming confirmed tour may be excluded', 403);
+  const [owner] = tour && req.neonUser?.role === 'manager' ? await db.select({ managerId: locations.managerId }).from(locations).where(eq(locations.id, tour.locationId)).limit(1) : [];
+  const allowedStatuses = req.neonUser?.role === 'manager' ? ['pending', 'confirmed'] : ['pending_local_cooks', 'pending', 'confirmed'];
+  if (!tour || !(req.neonUser?.role === 'manager' ? owner?.managerId === req.neonUser.id : tour.chefId === req.neonUser?.id) || tour.targetedKitchenId !== kitchenId || !allowedStatuses.includes(tour.status) || tour.checkedInAt || tour.scheduledAt.getTime() <= Date.now())
+    throw new DomainError('FORBIDDEN', 'Only your upcoming tour may be excluded', 403);
   const [settings] = await db.select().from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
   if (!settings?.isActive || settings.defaultDurationMinutes !== tour.durationMinutes)
     throw new DomainError('TOUR_SETTINGS_CHANGED', 'Tour settings changed; contact Local Cooks before requesting another time', 409);
@@ -1018,6 +1026,9 @@ router.get(
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const dateStr = req.query.date as string; // YYYY-MM-DD
+      const proposal = req.query.proposal === 'true';
+      if (proposal && (req.neonUser?.role !== 'manager' || req.query.viewingId === undefined))
+        throw new DomainError('FORBIDDEN', 'Only the current kitchen manager can select replacement tour times', 403);
       const ignoreViewingId = await authorizedSelfExclusion(req, kitchenId);
       if (ignoreViewingId) res.setHeader('Cache-Control', 'private, no-store');
 
@@ -1041,7 +1052,23 @@ router.get(
       }
 
       const timezone = DEFAULT_TIMEZONE;
-      const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, undefined, { ignoreViewingId });
+      let slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, undefined, { ignoreViewingId });
+      if (proposal) {
+        const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, ignoreViewingId!)).limit(1);
+        if (!tour || !canManagerProposeReschedule(tour)) throw new DomainError('TOUR_CHANGED', 'This tour cannot receive manager time proposals', 409);
+        // One bounded booking query serves every candidate, including overnight operating days.
+        const day = Date.parse(`${dateStr}T00:00:00Z`);
+        const bookings = await db.select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId,
+          referenceCode: kitchenBookings.referenceCode, status: kitchenBookings.status, bookingDate: kitchenBookings.bookingDate,
+          startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime, selectedSlots: kitchenBookings.selectedSlots,
+          operatingWindowStartTime: kitchenBookings.operatingWindowStartTime }).from(kitchenBookings).where(and(
+          eq(kitchenBookings.kitchenId, kitchenId), inArray(kitchenBookings.status, ['pending', 'confirmed', 'cancellation_requested']),
+          gte(kitchenBookings.bookingDate, new Date(day - 86400000)), lte(kitchenBookings.bookingDate, new Date(day + 86400000))));
+        try {
+          slots = slots.filter(slot => new Date(slot.scheduledAt).getTime() !== tour.scheduledAt.getTime()
+            && !tourBookingOverlaps(bookings, kitchenId, new Date(slot.scheduledAt), tour.durationMinutes).length);
+        } catch (error) { throw new DomainError('BOOKING_TIME_INVALID', (error as Error).message, 409); }
+      }
 
       // Also get settings for the frontend (duration, max booking days, etc.)
       const [settings] = await db
@@ -1092,7 +1119,7 @@ router.post(
         });
       }
 
-      const parsed = insertKitchenViewingSchema.safeParse({
+      const parsed = requestKitchenViewingSchema.safeParse({
         ...req.body,
         chefId,
       });
@@ -1241,7 +1268,7 @@ router.post(
             scheduledAt: scheduledDate,
             durationMinutes: tourDuration,
             chefNotes: chefNotes || null,
-            intakeData: intakeData || {},
+            intakeData,
           })
           .returning();
         await queueTourEvent(tx, { kind: 'requested', before: newViewing, after: newViewing, actorId: chefId, actorRole: 'chef' });
@@ -1520,19 +1547,25 @@ router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, as
     const { tour, location, updated } = await db.transaction(async tx => {
       const { tour, location } = await lockedTour(tx, id);
       if (tour.chefId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
-      checkTourVersion(tour, req.body?.expectedUpdatedAt);
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
       if (tour.checkedInAt) throw new DomainError('TOUR_ARRIVED', 'Tour time cannot change after arrival', 409);
-      if (tour.status !== "confirmed" || tour.scheduledAt.getTime() <= Date.now()) throw new DomainError('TOUR_CHANGED', 'Only upcoming confirmed tours can be changed', 409);
-      if (tour.requestedRescheduleAt) throw new DomainError('TOUR_CHANGED', 'A date change request is already awaiting review', 409);
-      if (!tour.targetedKitchenId || requestedAt.getTime() === tour.scheduledAt.getTime()) throw new DomainError('TOUR_TIME_INVALID', 'Choose a different available time', 400);
+      const editingRequest = ['pending_local_cooks', 'pending'].includes(tour.status);
+      if (!['confirmed', 'pending_local_cooks', 'pending'].includes(tour.status) || tour.scheduledAt.getTime() <= Date.now()) throw new DomainError('TOUR_CHANGED', 'Only upcoming tour requests or confirmed tours can be changed', 409);
+      if (tour.requestedRescheduleAt) throw new DomainError('TOUR_CHANGED', 'A reschedule request is already awaiting review', 409);
+      if (!canChefRequestReschedule(tour)) throw new DomainError('TOUR_RESCHEDULE_CLOSED', 'Self-service changes close at the start of your confirmed tour day. Message the kitchen manager to arrange another time', 409);
+      if (!tour.targetedKitchenId || requestedAt.getTime() <= Date.now() || requestedAt.getTime() === tour.scheduledAt.getTime()) throw new DomainError('TOUR_TIME_INVALID', 'Choose a different future available appointment', 400);
+      await checkTourKitchenSettings(tx, tour);
       const slots = await calculateAvailableSlots(tour.targetedKitchenId, tourDateKey(requestedAt), DEFAULT_TIMEZONE,
         undefined, { connection: tx, ignoreViewingId: tour.id });
       if (!slots.some(slot => new Date(slot.scheduledAt).getTime() === requestedAt.getTime())) throw new DomainError('SLOT_TAKEN', 'That time is no longer available', 409);
-      const [updated] = await tx.update(kitchenViewings).set({ requestedRescheduleAt: requestedAt, rescheduleRequestedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, "confirmed"), eq(kitchenViewings.scheduledAt, tour.scheduledAt),
-          sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`, sql`${kitchenViewings.scheduledAt} > clock_timestamp()`, sql`${kitchenViewings.requestedRescheduleAt} IS NULL`)).returning();
+      const now = new Date();
+      const [updated] = await tx.update(kitchenViewings).set({ ...(editingRequest ? { scheduledAt: requestedAt } : { requestedRescheduleAt: requestedAt, rescheduleRequestedAt: now }),
+        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)) })
+        .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, tour.status), eq(kitchenViewings.scheduledAt, tour.scheduledAt),
+          sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
+          editingRequest ? sql`${kitchenViewings.scheduledAt} > clock_timestamp()` : sql`clock_timestamp() < ${tourRescheduleCutoff(tour.scheduledAt)}::timestamp`, sql`${kitchenViewings.requestedRescheduleAt} IS NULL`)).returning();
       if (!updated) throw new DomainError('TOUR_CHANGED', 'This tour has changed. Refresh and try again', 409);
-      await queueTourEvent(tx, { kind: 'reschedule_requested', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'chef' });
+      await queueTourEvent(tx, { kind: editingRequest ? 'request_updated' : 'reschedule_requested', before: tour, after: updated, actorId: req.neonUser!.id, actorRole: 'chef' });
       return { tour, location, updated };
     });
     const delivery = await attemptTourDelivery(updated.id);
@@ -1558,20 +1591,119 @@ router.get('/manager/:id/decision-context', requireFirebaseAuthWithUser, async (
   } catch (error) { return errorResponse(res, error); }
 });
 
+/** A proposal holds the saved appointment; alternatives are revalidated when accepted. */
+router.post('/manager/:id/reschedule-proposal', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const id = Number(req.params.id), values = req.body?.proposedSlots;
+    if (!Number.isSafeInteger(id) || id <= 0 || !Array.isArray(values) || values.length < 1 || values.length > 3
+      || values.some(value => typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))))
+      return res.status(400).json({ error: 'Choose one to three available tour times' });
+    const proposedSlots = values.map(value => new Date(value).toISOString()).sort();
+    if (new Set(proposedSlots).size !== proposedSlots.length) return res.status(400).json({ error: 'Choose different alternative times' });
+    const updated = await db.transaction(async tx => {
+      const { tour, location } = await lockedTour(tx, id);
+      if (location.managerId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Access denied', 403);
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
+      if (!canManagerProposeReschedule(tour)) throw new DomainError('TOUR_CHANGED', 'This tour cannot receive another time proposal. Refresh its details', 409);
+      for (const value of proposedSlots) {
+        const candidate = new Date(value);
+        if (candidate.getTime() === tour.scheduledAt.getTime()) throw new DomainError('TOUR_TIME_INVALID', 'Choose an alternative to the requested time', 400);
+        if (!tour.targetedKitchenId) throw new DomainError('TOUR_KITCHEN_MISSING', 'This tour no longer has an available kitchen', 409);
+        const slots = await calculateAvailableSlots(tour.targetedKitchenId, tourDateKey(candidate), DEFAULT_TIMEZONE, undefined,
+          { connection: tx, ignoreViewingId: tour.id });
+        if (!slots.some(slot => new Date(slot.scheduledAt).getTime() === candidate.getTime())) throw new DomainError('SLOT_TAKEN', 'That replacement time is no longer available or does not meet the kitchen notice period', 409);
+        await checkTourAcceptance(tx, tour, candidate, { overlapReviewKey: createHash('sha256').update('[]').digest('hex') });
+      }
+      const now = new Date();
+      const [saved] = await tx.update(kitchenViewings).set({ rescheduleProposedSlots: proposedSlots, rescheduleProposedAt: now,
+        managerId: location.managerId, updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)) })
+        .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, tour.status),
+          sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
+          sql`${kitchenViewings.scheduledAt} > clock_timestamp()`)).returning();
+      if (!saved) throw new DomainError('TOUR_CHANGED', 'This tour changed. Refresh and try again', 409);
+      await queueTourEvent(tx, { kind: 'reschedule_proposed', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'manager' });
+      return saved;
+    });
+    const delivery = await attemptTourDelivery(id);
+    return res.json({ ...publicTour(updated), notificationDeliveryFailed: delivery.failed });
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.patch('/manager/:id/reschedule-proposal', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || req.body?.decision !== 'withdraw') return res.status(400).json({ error: 'Choose a valid proposal action' });
+    const updated = await db.transaction(async tx => {
+      const { tour, location } = await lockedTour(tx, id);
+      if (location.managerId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Access denied', 403);
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
+      if (!['pending', 'confirmed'].includes(tour.status) || tour.checkedInAt || tour.requestedRescheduleAt || tour.scheduledAt.getTime() <= Date.now() || !tour.rescheduleProposedSlots?.length)
+        throw new DomainError('TOUR_CHANGED', 'This tour no longer has an active proposal', 409);
+      const now = new Date();
+      const [saved] = await tx.update(kitchenViewings).set({ rescheduleProposedSlots: [], rescheduleProposedAt: null,
+        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)) })
+        .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, tour.status),
+          sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
+          sql`${kitchenViewings.scheduledAt} > clock_timestamp()`)).returning();
+      if (!saved) throw new DomainError('TOUR_CHANGED', 'This tour changed. Refresh and try again', 409);
+      await queueTourEvent(tx, { kind: 'reschedule_proposal_withdrawn', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'manager' });
+      return saved;
+    });
+    const delivery = await attemptTourDelivery(id);
+    return res.json({ ...publicTour(updated), notificationDeliveryFailed: delivery.failed });
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.patch('/chef/:id/reschedule-proposal', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+  try {
+    const id = Number(req.params.id), decision = req.body?.decision;
+    if (!Number.isSafeInteger(id) || id <= 0 || !['accept', 'decline'].includes(decision)) return res.status(400).json({ error: 'Choose a valid time proposal decision' });
+    const updated = await db.transaction(async tx => {
+      const { tour, location } = await lockedTour(tx, id);
+      if (tour.chefId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Tour not found', 404);
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
+      if (!['pending', 'confirmed'].includes(tour.status) || tour.checkedInAt || tour.requestedRescheduleAt || tour.scheduledAt.getTime() <= Date.now() || !tour.rescheduleProposedSlots?.length)
+        throw new DomainError('TOUR_CHANGED', 'This tour no longer has an active time proposal', 409);
+      // A reassigned manager must review an inherited proposal before offering times again.
+      if (decision === 'accept' && tour.managerId !== location.managerId) throw new DomainError('TOUR_CHANGED', 'The kitchen manager changed. Message the current manager to arrange a new time', 409);
+      let scheduledAt = tour.scheduledAt;
+      if (decision === 'accept') {
+        const value = typeof req.body.scheduledAt === 'string' && Number.isFinite(Date.parse(req.body.scheduledAt)) ? new Date(req.body.scheduledAt).toISOString() : '';
+        if (!tour.rescheduleProposedSlots.includes(value)) throw new DomainError('TOUR_TIME_INVALID', 'Choose one of the offered times', 400);
+        scheduledAt = new Date(value);
+        await checkTourAcceptance(tx, tour, scheduledAt, { overlapReviewKey: createHash('sha256').update('[]').digest('hex') });
+      }
+      const now = new Date();
+      const [saved] = await tx.update(kitchenViewings).set({ scheduledAt, ...(decision === 'accept' ? { status: 'confirmed' as const, managerId: location.managerId,
+        ...(tour.status === 'pending' ? { confirmedAt: now } : {}), requestedRescheduleAt: null, rescheduleRequestedAt: null } : {}),
+        rescheduleProposedSlots: [], rescheduleProposedAt: null,
+        updatedAt: new Date(Math.max(now.getTime(), tour.updatedAt.getTime() + 1)) })
+        .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, tour.status),
+          sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
+          sql`${kitchenViewings.scheduledAt} > clock_timestamp()`)).returning();
+      if (!saved) throw new DomainError('TOUR_CHANGED', 'This proposal was already handled. Refresh your tour', 409);
+      await queueTourEvent(tx, { kind: decision === 'accept' ? 'reschedule_proposal_accepted' : 'reschedule_proposal_declined', before: tour, after: saved, actorId: req.neonUser!.id, actorRole: 'chef' });
+      return saved;
+    });
+    const delivery = await attemptTourDelivery(id);
+    return res.json({ ...publicTour(updated), notificationDeliveryFailed: delivery.failed });
+  } catch (error) { return errorResponse(res, error); }
+});
+
 router.patch("/manager/:id/reschedule", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id), accepted = req.body?.decision === 'accept';
-    if (!Number.isSafeInteger(id) || id <= 0 || !["accept", "decline"].includes(req.body?.decision)) return res.status(400).json({ error: "Invalid date change decision" });
+    if (!Number.isSafeInteger(id) || id <= 0 || !["accept", "decline"].includes(req.body?.decision)) return res.status(400).json({ error: "Invalid reschedule decision" });
     const { tour, location, updated } = await db.transaction(async tx => {
       const { tour, location } = await lockedTour(tx, id);
       if (location.managerId !== req.neonUser!.id) throw new DomainError('FORBIDDEN', 'Access denied', 403);
       checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
-      if (tour.status !== "confirmed" || !tour.requestedRescheduleAt || (tour.scheduledAt.getTime() <= Date.now() && (accepted || !tour.checkedInAt))) throw new DomainError('TOUR_CHANGED', 'No active date change request', 409);
+      if (tour.status !== "confirmed" || !tour.requestedRescheduleAt || (tour.scheduledAt.getTime() <= Date.now() && (accepted || !tour.checkedInAt))) throw new DomainError('TOUR_CHANGED', 'No active reschedule request', 409);
       if (accepted && tour.checkedInAt) throw new DomainError('TOUR_ARRIVED', 'Tour time cannot change after arrival', 409);
       if (accepted) await checkTourAcceptance(tx, tour, tour.requestedRescheduleAt, req.body);
       const [updated] = await tx.update(kitchenViewings).set({
         ...(accepted ? { scheduledAt: tour.requestedRescheduleAt } : {}), managerId: location.managerId,
-        requestedRescheduleAt: null, rescheduleRequestedAt: null, updatedAt: new Date(),
+        requestedRescheduleAt: null, rescheduleRequestedAt: null, updatedAt: new Date(Math.max(Date.now(), tour.updatedAt.getTime() + 1)),
       }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, "confirmed"), sql`date_trunc('milliseconds', ${kitchenViewings.updatedAt}) = ${tour.updatedAt.toISOString()}::timestamp`,
         eq(kitchenViewings.scheduledAt, tour.scheduledAt), eq(kitchenViewings.requestedRescheduleAt, tour.requestedRescheduleAt),
         accepted || !tour.checkedInAt ? sql`${kitchenViewings.scheduledAt} > clock_timestamp()` : undefined)).returning();
@@ -1663,6 +1795,7 @@ router.get(
           locationAddress: locations.address,
           locationTimezone: locations.timezone,
           kitchenName: kitchens.name,
+          managerId: locations.managerId,
           chefUsername: users.username,
           chefEmail: users.username,
         })
@@ -1677,8 +1810,21 @@ router.get(
         ))
         .orderBy(desc(kitchenViewings.updatedAt));
 
+      const managerIds = Array.from(new Set(results.map(result => result.managerId).filter((id): id is number => id != null)));
+      const managers = managerIds.length ? await db.select({ id: users.id, email: users.username, phone: users.phoneNumber, profile: users.managerProfileData })
+        .from(users).where(inArray(users.id, managerIds)) : [];
+      const managerContacts = new Map(await Promise.all(managers.map(async manager => {
+        const profilePhone = manager.profile && typeof manager.profile === 'object' && !Array.isArray(manager.profile)
+          && 'phone' in manager.profile && typeof manager.profile.phone === 'string' ? manager.profile.phone : null;
+        return [manager.id, { name: await getUserDisplayName(manager.id, "manager"),
+          email: manager.email || null, phone: manager.phone || profilePhone || null }] as const;
+      })));
       res.json(await Promise.all(results.map(async (result) => ({
         ...result,
+        managerId: result.managerId != null && managerContacts.has(result.managerId) ? result.managerId : null,
+        managerName: result.managerId != null ? managerContacts.get(result.managerId)?.name ?? null : null,
+        managerEmail: result.managerId != null ? managerContacts.get(result.managerId)?.email ?? null : null,
+        managerPhone: result.managerId != null ? managerContacts.get(result.managerId)?.phone ?? null : null,
         chefName: await getUserDisplayName(result.viewing.chefId, "chef"),
         chefPhone: await getChefPhone(result.viewing.chefId),
       }))));
@@ -1736,7 +1882,7 @@ router.patch(
       const updated = await db.transaction(async tx => {
         const { tour, location } = await lockedTour(tx, viewingId);
         if (tour.status !== 'pending_local_cooks') throw new DomainError('TOUR_CHANGED', 'This tour request has already been reviewed', 409);
-        checkTourVersion(tour, req.body?.expectedUpdatedAt);
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
         if (decision === 'approved' && tour.scheduledAt.getTime() <= Date.now()) throw new DomainError('TOUR_CHANGED', 'The requested tour time has already passed', 409);
         record.viewing = tour;
         record.viewing.managerId = location.managerId;
@@ -1868,7 +2014,10 @@ router.patch(
         }
       }
 
-      if (parsed.data.status === 'confirmed') await checkTourAcceptance(tx, viewing, viewing.scheduledAt, req.body);
+      if (parsed.data.status === 'confirmed') {
+        if (viewing.rescheduleProposedSlots?.length) throw new DomainError('TOUR_CHANGED', 'Withdraw the offered alternatives before confirming the original request', 409);
+        await checkTourAcceptance(tx, viewing, viewing.scheduledAt, req.body);
+      }
 
       // Build update data
       const updateData: any = {
@@ -1879,6 +2028,8 @@ router.patch(
       if (["cancelled", "completed", "no_show"].includes(parsed.data.status)) {
         updateData.requestedRescheduleAt = null;
         updateData.rescheduleRequestedAt = null;
+        updateData.rescheduleProposedSlots = [];
+        updateData.rescheduleProposedAt = null;
       }
 
       if (parsed.data.managerNotes) {

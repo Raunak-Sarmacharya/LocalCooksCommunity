@@ -6,6 +6,7 @@ import { serve } from 'inngest/express';
 import { runRecurringWorker } from './services/recurring-worker';
 import { processExpiredCancellationRequests } from './services/scheduled-cancellations';
 import { workerPool, assertWorkerSessionConnection, initializeWorkerSession } from './services/recurring-worker';
+import { deliverStartingChatMessage } from './services/chat-notices';
 
 const requestClock = new AsyncLocalStorage<number>();
 export const workerRequestStarted = () => requestClock.getStore() || performance.now();
@@ -25,8 +26,28 @@ export const lifecycleTick = inngest.createFunction({ id: 'lifecycle-recurring-w
   return result;
 }));
 
+export async function runStartingChatEmail({ event, step }: {
+  event: { data: { conversationId: string; messageId: string; senderId: number } };
+  step: { sleep: (id: string, duration: '15s') => Promise<unknown>; run: (id: string, action: () => Promise<unknown>) => Promise<unknown> };
+}) {
+  const { conversationId, messageId, senderId } = event.data;
+  if (typeof conversationId !== 'string' || !conversationId || conversationId.includes('/') ||
+      typeof messageId !== 'string' || !messageId || messageId.includes('/') || !Number.isSafeInteger(senderId) || senderId <= 0)
+    throw Error('Invalid starting chat message identity');
+  await step.sleep('allow-recipient-to-read', '15s');
+  return step.run('deliver-original-starting-message', async () => {
+    const result = await deliverStartingChatMessage(conversationId, messageId, senderId);
+    if (result.errors) throw Error('Starting message email remains retryable');
+    return result;
+  });
+}
+export const startingChatEmail = inngest.createFunction({ id: 'starting-chat-message-email', retries: 3,
+  concurrency: { limit: 1, key: 'event.data.conversationId' },
+  triggers: [{ event: 'localcooks/chat.message.start' }],
+}, runStartingChatEmail);
+
 export function registerInngest(app: Express) {
-  const handler = serve({ client: inngest, functions: [lifecycleTick],
+  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail],
     servePath: '/api/inngest', serveOrigin: process.env.INNGEST_SERVE_ORIGIN });
   app.use('/api/inngest', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');

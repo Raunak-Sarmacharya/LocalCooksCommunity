@@ -20,7 +20,7 @@ import { ApplicationService } from '../../domains/applications/application.servi
 import { getAdminDb, initializeConversation, initializeSharedConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
 import { isChatParticipant, participantChatRelationships, sharedChatEligibility, tourGrantsChat } from '../../services/shared-chat-access';
 import { FieldValue } from 'firebase-admin/firestore';
-import { ChatAccessError, withParticipantChat, serializeChat, sendParticipantMessage, readParticipantMessages, orphanChatHistory } from '../../services/participant-chat';
+import { ChatAccessError, withParticipantChat, serializeChat, sendParticipantMessage, persistChatMessage, readParticipantMessages, orphanChatHistory } from '../../services/participant-chat';
 import { storedFileUrl } from '../../services/chat-file-access';
 import { and, eq, isNotNull, ne, inArray } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
@@ -1634,9 +1634,7 @@ router.post('/firebase/admin/chat/conversations/:conversationId/messages', requi
         const conversation = adminDb.collection('conversations').doc(req.params.conversationId);
         const existing = await conversation.get();
         if (!existing.exists || existing.data()?.unavailable === true) return res.status(409).json({ error: 'Conversation is unavailable' });
-        const message = conversation.collection('messages').doc();
-        const batch = adminDb.batch();
-        batch.set(message, {
+        const sent = await persistChatMessage(adminDb, conversation, {
             senderId: req.neonUser!.id,
             senderRole: 'admin',
             senderFirebaseUid: req.firebaseUser!.uid,
@@ -1644,17 +1642,8 @@ router.post('/firebase/admin/chat/conversations/:conversationId/messages', requi
             type: fileUrl ? 'file' : 'text',
             fileUrl: fileUrl || null,
             fileName: fileName || null,
-            createdAt: FieldValue.serverTimestamp(),
-            readAt: null,
-        });
-        batch.update(conversation, {
-            lastMessageAt: FieldValue.serverTimestamp(),
-            lastMessageText: fileUrl ? (fileName || 'Attachment') : content.trim().slice(0, 240),
-            unreadChefCount: FieldValue.increment(1),
-            archivedChefAt: FieldValue.delete(),
-        });
-        await batch.commit();
-        res.status(201).json({ id: message.id });
+        }, existing.data()!.chefId);
+        res.status(201).json(sent);
     } catch (error) {
         logger.error('Failed to send Local Cooks chat message:', error);
         res.status(500).json({ error: 'Failed to send message' });

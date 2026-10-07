@@ -42,6 +42,8 @@ describe('operator delivery summaries', () => {
     row.textBody = JSON.stringify({ reminder, channel: 'notification' });
     expect(describeDelivery(row, row, undefined, now).state).toBe('In-app acknowledgment recorded');
     row.status = 'scheduled'; row.textBody = JSON.stringify({ reminder: { ...reminder, kind: 'departure' }, channel: 'email' });
+    expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Scheduled', canRetry: false });
+    row.textBody = JSON.stringify({ reminder: { ...reminder, source: 'booking', kind: 'departure' }, channel: 'email' });
     expect(describeDelivery(row, row, undefined, now)).toMatchObject({ state: 'Policy pending', canRetry: false });
   });
   it('does not promise retry for a leased or acknowledged original decision or legacy action', () => {

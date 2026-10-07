@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ select: vi.fn() }));
 vi.mock("../db", () => ({ db: { select: state.select } }));
 vi.mock("../logger", () => ({ logger: { warn: vi.fn(), error: vi.fn() } }));
-import { withChefDisplayNames } from "./user-display";
+import { getUserDisplayName, withChefDisplayNames } from "./user-display";
 
 beforeEach(() => {
   state.select.mockReset();
@@ -11,6 +11,11 @@ beforeEach(() => {
 });
 
 describe("chef names in manager responses", () => {
+  it('uses the supplied transaction for email name resolution', async () => {
+    const select = vi.fn().mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ managerProfileData: { fullName: 'Alex Chen' } }] }) }) });
+    expect(await getUserDisplayName(5, 'chef', { select } as any)).toBe('Alex Chen');
+    expect(select).toHaveBeenCalledTimes(1); expect(state.select).not.toHaveBeenCalled();
+  });
   it("resolves repeated chefs once and preserves record fields", async () => {
     const rows = await withChefDisplayNames([{ chefId: 5, chefName: "morgan@example.com", id: 1 }, { chefId: 5, id: 2 }]);
     expect(rows.map(row => row.chefName)).toEqual(["Morgan Lee", "Morgan Lee"]);

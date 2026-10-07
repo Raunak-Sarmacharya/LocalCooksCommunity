@@ -3915,7 +3915,7 @@ export default function KitchenPreviewPage() {
         : tourCta?.kind === "confirmed"
           ? t("tourConfirmedChipHint", "View time and details in My Tours")
           : tourCta?.kind === "pending"
-            ? t("tourPendingChipHint", "Review in progress — open My Tours")
+            ? t("tourPendingChipHint", "Request pending — open My Tours")
             : tourCta?.kind === "history"
               ? "See scheduled and previous visits"
             : t("requestATourHint", "Visit kitchen before applying");

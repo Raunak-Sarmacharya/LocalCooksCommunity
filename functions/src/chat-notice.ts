@@ -1,12 +1,15 @@
 /** Shared by the persisted-message trigger and legacy server aliases. No SMTP
- * here: one immediate in-app receipt and one durable ordinary unread intent. */
+ * here: an in-app receipt and durable, episode-scoped email intents. */
 export interface ChatConversation {
   applicationId?: number; chefId: number; managerId: number; locationId: number;
   chefFirebaseUid: string; managerFirebaseUid: string; unavailable?: boolean;
+  emailChefEpisode?: { id: string; recipientId: number }; emailManagerEpisode?: { id: string; recipientId: number };
+  unreadChefCount?: number; unreadManagerCount?: number;
 }
 export interface PersistedChatMessage {
   senderId: number; senderRole: string; senderFirebaseUid?: string; type: string; content?: string;
   bookingId?: number; createdAt?: { toDate(): Date }; readAt?: unknown;
+  emailEpisodeId?: string; emailRecipientId?: number; fileName?: string;
 }
 export interface ChatNoticeContext {
   recipientId: number; recipientRole: 'chef' | 'manager'; recipientEmail: string;
@@ -88,10 +91,13 @@ export async function queueChatNotice(db: ChatSql, conversationId: string, messa
   if (!context) return { skipped: true };
   const createdAt = message.createdAt?.toDate();
   if (!createdAt || !Number.isFinite(createdAt.getTime())) return { skipped: true };
+  if (message.emailEpisodeId !== undefined && (typeof message.emailEpisodeId !== 'string' || !message.emailEpisodeId ||
+      message.emailEpisodeId.includes('/') || message.emailRecipientId !== context.recipientId)) return { skipped: true };
+  const starting = message.emailEpisodeId === messageId;
   const key = `chat-message:${conversationId}:${messageId}:${context.recipientId}`;
   await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
   const { rows } = await db.query('SELECT id FROM email_logs WHERE tracking_id = $1 LIMIT 1', [key]);
-  if (rows.length) return { duplicate: true };
+  if (rows.length) return { duplicate: true, ...(starting ? { initialTrackingId: key } : {}) };
   const preview = (message.content || 'Sent an attachment').slice(0, 100);
   const title = `New message from ${context.senderName}`;
   const metadata = JSON.stringify({ conversationId, messageId, applicationId: conversation.applicationId, bookingId: context.bookingId, senderId: message.senderId });
@@ -107,13 +113,20 @@ export async function queueChatNotice(db: ChatSql, conversationId: string, messa
     await db.query(`INSERT INTO chef_notifications (chef_id, type, title, message, priority, action_url, metadata)
       VALUES ($1, 'message_received', $2, $3, 'normal', $4, $5)`, [context.recipientId, title, preview, context.path, metadata]);
   }
-  const saved = JSON.stringify({ conversationId, messageId, applicationId: conversation.applicationId, bookingId: context.bookingId,
+  const source = { conversationId, messageId, applicationId: conversation.applicationId, bookingId: context.bookingId,
     senderId: message.senderId, senderRole: message.senderRole,
-    dueAt: new Date(createdAt.getTime() + 60 * 60 * 1000).toISOString(), path: context.path });
-  await db.query(`INSERT INTO email_logs (recipient_email, recipient_user_id, recipient_role, subject, preview_text, category, status, tracking_id, text_body)
+    path: context.path, ...(message.emailEpisodeId ? { episodeId: message.emailEpisodeId } : {}) };
+  const phases = starting ? ['initial', 'reminder'] as const : [message.emailEpisodeId ? 'continuation' : undefined];
+  for (const phase of phases) {
+    const saved = JSON.stringify({ ...source, ...(phase ? { phase } : {}),
+      dueAt: new Date(createdAt.getTime() + (phase === 'initial' ? 15_000 : 60 * 60 * 1000)).toISOString() });
+    await db.query(`INSERT INTO email_logs (recipient_email, recipient_user_id, recipient_role, subject, preview_text, category, status, tracking_id, text_body)
     VALUES ($1, $2, $3, $4, $5, 'chat_digest', $6, $7, $8)`,
-  [context.recipientEmail, context.recipientId, context.recipientRole, 'Unread kitchen messages', 'Open your conversation to read and reply.', message.readAt ? 'suppressed' : 'scheduled', key, saved]);
-  return { queued: true };
+    [context.recipientEmail, context.recipientId, context.recipientRole, phase === 'initial' ? title : 'Unread kitchen messages',
+      'Open your conversation to read and reply.', phase === 'continuation' || (message.readAt && phase !== 'reminder') ? 'suppressed' : 'scheduled',
+      phase === 'reminder' ? `${key}:reminder` : key, saved]);
+  }
+  return { queued: true, ...(starting ? { initialTrackingId: key } : {}) };
 }
 
 // The portal loads this TypeScript through tsx, while Functions compiles it to

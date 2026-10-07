@@ -326,5 +326,21 @@
   "chefPartnerLink": "For chefs",
   "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca",
   "phoneVerificationRequired": "Phone numbers require OTP verification to link with your account.",
-  "selectDate": "Select a date"
+  "selectDate": "Select a date",
+  "tourIntakeLabel_intendedUse": "Intended use",
+  "tourIntakeLabel_estimatedWeeklyHours": "Estimated weekly hours",
+  "tourIntakeLabel_hasLicense": "Food handler licence",
+  "tourIntakeLabel_targetStartDate": "Target start date",
+  "tourIntakeLabel_additionalInfo": "Additional information",
+  "tourIntakeYes": "Yes",
+  "tourIntakeNo": "No",
+  "tourIntakeHoursPerWeek": "{hours} hours per week",
+  "tourIntakeNotDecided": "Not decided yet",
+  "tourManagerContactTitle": "Kitchen manager",
+  "tourManagerUnassigned": "No manager assigned",
+  "tourManagerContactUnavailable": "Manager contact details are unavailable",
+  "tourIntakeUse_catering": "Catering",
+  "tourIntakeUse_meal_prep": "Meal preparation",
+  "tourIntakeUse_food_truck": "Food truck",
+  "tourIntakeUse_other": "Other"
 }

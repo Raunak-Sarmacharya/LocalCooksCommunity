@@ -217,7 +217,7 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     expect(state.logs.every(r => JSON.parse(r.textBody).reminder.kind === 'arrival')).toBe(true);
     await dispatch(new Date('2026-10-05T07:00:00Z'));
     expect(state.send.mock.calls.map(c => c[0].to)).toEqual(['chef@example.test', 'host@example.test']);
-    expect(state.send.mock.calls[0][0].html).toContain('View arrival details');
+    expect(state.send.mock.calls[0][0].html).toContain('View details');
   });
   it('leaves failure retryable, owns recovery and never starves another reservation', async () => {
     state.tour.scheduledAt = new Date('2026-10-04T09:00:00Z');
@@ -439,7 +439,7 @@ describe('Tour C authoritative timed communication', () => {
     await tourSchedule('2026-10-05T11:05:00Z'); expect(state.logs).toHaveLength(2);
     expect(JSON.parse(state.logs[0].textBody).reminder).toMatchObject({ kind: 'departure', due: '2026-10-05T11:20:00.000Z' });
     await tourDispatch('2026-10-05T11:20:00Z'); expect(state.send).toHaveBeenCalledTimes(1);
-    expect(state.send.mock.calls[0][0].html).toContain('View departure details');
+    expect(state.send.mock.calls[0][0].html).toContain('Record departure');
     expect(state.tour.status).toBe(status);
   });
   it('clamps a short departure to start, waits for arrival, and suppresses saved departure', async () => {
@@ -476,16 +476,23 @@ describe('Tour C authoritative timed communication', () => {
   });
   it('offers a styled prefilled late email only to the visitor, addressed to the current manager', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z');
-    state.location.managerId = 7; state.people.push({ id: 7, username: 'current@example.test', role: 'manager' });
+    state.people.find(person => person.id === 3).managerProfileData = { displayName: 'Alex Chen' };
+    state.location.managerId = 7; state.people.push({ id: 7, username: 'morgan+tour@example.test', role: 'manager', managerProfileData: { fullName: 'Morgan Lee' } });
     await tourSchedule('2026-10-05T10:00:00Z'); await tourDispatch('2026-10-05T10:00:00Z');
     const chef = state.send.mock.calls.find(([mail]) => mail.to === 'chef@example.test')![0];
     expect(chef.html).toContain('I’m running late');
-    expect(chef.html).toContain('class="cta-button" style="background:#ffffff;color:#e11d48 !important;');
+    expect(chef.html).toMatch(/href="mailto:[^"]+" class="cta-button" style="[^"]*background:#ffffff/);
     const link = chef.text.match(/mailto:\S+/)![0];
-    expect(decodeURIComponent(link)).toContain('mailto:current@example.test?subject=Running late · TOUR-20');
+    expect(link).toMatch(/^mailto:morgan%2Btour@example.test\?subject=/);
+    expect(decodeURIComponent(link)).toContain('mailto:morgan+tour@example.test?subject=Running late · TOUR-20');
     expect(decodeURIComponent(link)).toContain('I may be running late');
+    expect(decodeURIComponent(link)).toContain('Hi Morgan Lee,');
+    expect(decodeURIComponent(link)).toContain('Thank you,\nAlex Chen');
+    expect(chef.text).toContain('Hi Alex Chen,'); expect(chef.text).toContain('Kitchen manager: Morgan Lee');
+    for (const label of ['Date:', 'Time:', 'Kitchen:', 'Location:', 'Address:', 'Check-in opens:', 'Contact email:']) expect(chef.text).toContain(label);
+    expect(chef.text).not.toMatch(/saved arrival|remain separate|Record arrival|Record departure/i);
     expect(chef.text).toContain('Tap Send');
-    expect(state.send.mock.calls.find(([mail]) => mail.to === 'current@example.test')![0].html).not.toContain('I’m running late');
+    expect(state.send.mock.calls.find(([mail]) => mail.to === 'morgan+tour@example.test')![0].html).not.toContain('I’m running late');
     if (process.env.TOUR_LATE_SAVE_SAMPLE === '1') {
       const fs = await import('node:fs');
       fs.writeFileSync('docs/phase-progress/evidence/tour-late-arrival-preview.html', chef.html);
@@ -529,7 +536,7 @@ it('saves a real rendered departure sample after authoritative arrival', async (
   state.tour.attendanceHistory = [{ action: 'check_in', actorId: 3, source: 'visitor', actualAt: start, recordedAt: start, scheduledAt: start }];
   await state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date('2026-10-05T11:10:00Z')));
   await dispatchAdvanceReminders({ now: new Date('2026-10-05T11:20:00Z') });
-  const mail=state.send.mock.calls[0][0]; expect(mail.text).toContain('departure'); expect(mail.text).toContain('viewing=20');
+  const mail=state.send.mock.calls[0][0]; expect(mail.text).toContain('check out when you leave'); expect(mail.text).toContain('viewing=20');
   if (process.env.TOUR_C_SAVE_SAMPLES === '1') { const fs=await import('node:fs'); const dir='docs/phase-progress/evidence/tour-c-samples'; fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(`${dir}/departure.html`, mail.html); fs.writeFileSync(`${dir}/departure.txt`, mail.text); }
 });
 

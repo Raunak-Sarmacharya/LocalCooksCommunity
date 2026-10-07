@@ -4,7 +4,7 @@ vi.mock('./logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.f
 import { generateTourConfirmedEmail, generateTourRequestedChefEmail, generateTourRequestedManagerEmail,
   generateTourRequestedLocalCooksEmail, generateTourRejectedChefEmail, generateTourManagerChangeEmail, getSubdomainUrl, renderTransactionalEmail } from './email';
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 const base = { tourId: 42, durationMinutes: 30, isManager: false, email: 'chef@example.com',
   recipientName: 'Chef', otherPartyName: 'Manager', kitchenName: 'Kitchen', locationAddress: 'Harbour Road',
@@ -12,6 +12,40 @@ const base = { tourId: 42, durationMinutes: 30, isManager: false, email: 'chef@e
 const calendar = (email: ReturnType<typeof generateTourConfirmedEmail>) => String(email.attachments?.[0]?.content);
 
 describe('tour time and downloadable calendar', () => {
+  it('opens manager review and alternative-time actions from pending request emails', () => {
+    const email = generateTourRequestedManagerEmail({ ...base, tourDate: '2099-10-07T11:30:00Z', managerEmail: 'manager@example.test', managerName: 'Morgan', chefName: 'Alex' });
+    expect(email.text).toContain('Confirm tour:');
+    expect(email.text).toContain('viewing=42&action=confirm');
+    expect(email.text).toContain('Offer alternative times:');
+    expect(email.text).toContain('viewing=42&action=reschedule');
+    expect(email.text).toContain('Decline request:');
+    expect(email.text).toContain('viewing=42&action=cancel');
+  });
+  it('offers role-specific scheduling actions and closes chef rescheduling at Newfoundland midnight', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-07T02:29:59Z'));
+    const beforeCutoff = generateTourConfirmedEmail(base);
+    expect(beforeCutoff.text).toContain('Reschedule tour:');
+    expect(beforeCutoff.text).toContain('viewing=42&action=reschedule');
+    expect(beforeCutoff.text).toContain('Cancel tour:');
+    expect(beforeCutoff.text).toContain('viewing=42&action=cancel');
+    vi.setSystemTime(new Date('2026-10-07T02:30:00Z'));
+    expect(generateTourConfirmedEmail(base).text).not.toContain('Reschedule tour:');
+    expect(generateTourConfirmedEmail({ ...base, isManager: true }).text).toContain('Reschedule tour:');
+    expect(generateTourConfirmedEmail({ ...base, isManager: true, canReschedule: false }).text).not.toContain('Reschedule tour:');
+    vi.setSystemTime(new Date('2026-10-07T11:30:00Z'));
+    expect(generateTourConfirmedEmail({ ...base, isManager: true }).text).not.toContain('Cancel tour:');
+  });
+  it('states pending confirmation without describing internal review routing', () => {
+    const details = { ...base, chefEmail: base.email, chefName: 'Alex Chen', managerEmail: 'manager@example.test', managerName: 'Morgan Lee' };
+    const chef = generateTourRequestedChefEmail(details), manager = generateTourRequestedManagerEmail(details);
+    expect(chef.text).toContain('requested time is not yet confirmed');
+    expect(manager.text).toContain('Alex Chen requested a tour');
+    for (const email of [chef, manager]) {
+      expect(email.html).toContain('<h1'); expect(email.html).toContain('<h2');
+      expect(email.text).not.toMatch(/review it first|reviewed and forwarded|If forwarded/);
+      expect(email.html).not.toContain('application/ld+json');
+    }
+  });
   it.each(['preview', 'production'])('uses the visitor portal independently of callback origin in %s', environment => {
     vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('VERCEL_ENV', environment);
     vi.stubEnv('BASE_DOMAIN', 'localcooks.ca');
@@ -32,7 +66,8 @@ describe('tour time and downloadable calendar', () => {
         kitchenName: 'Room <b>A</b>', notes: 'Door & "bell"', contactEmail: 'host@example.test' });
       const role = isManager ? 'kitchen' : 'chef';
       const url = `https://${environment === 'preview' ? 'dev-' : ''}${role}.localcooks.ca${isManager ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=42`;
-      expect(email.text).toContain(url); expect(email.html).toContain(`href="${url.replace(/&/g, '&amp;')}" class="cta-button">View your tour`);
+      expect(email.text).toContain(url); expect(email.html).toContain(`href="${url.replace(/&/g, '&amp;')}" class="cta-button"`);
+      expect(email.html).toContain('>View details</a>');
       expect(email.html).toContain('Pat &lt;script&gt;'); expect(email.html).toContain('Room &lt;b&gt;A&lt;/b&gt;');
       expect(email.html).toContain('Door &amp; &quot;bell&quot;'); expect(email.html).not.toContain('<script>');
       for (const content of [email.text!, email.html!]) {
@@ -90,12 +125,13 @@ describe('tour time and downloadable calendar', () => {
     expect(() => generateTourConfirmedEmail({ ...base, ...change })).toThrow('Invalid tour calendar details');
   });
 
-  it('describes a cancelled confirmed tour and identifies Local Cooks accurately', () => {
+  it('describes a cancelled confirmed tour without identifying who cancelled', () => {
     const email = generateTourRejectedChefEmail({ tourId: 42, durationMinutes: 30, chefEmail: base.email, chefName: 'Chef', kitchenName: base.kitchenName,
-      tourDate: base.tourDate, startTime: 'ignored', cancelled: true, reviewer: 'Local Cooks' });
+      tourDate: base.tourDate, startTime: 'ignored', cancelled: true });
     expect(email.subject).toContain('Kitchen Tour Cancelled');
     expect(email.html).toContain('confirmed kitchen tour');
-    expect(email.html).toContain('cancelled by Local Cooks');
+    expect(email.html).toContain('confirmed kitchen tour was cancelled.');
+    expect(email.text + email.html).not.toMatch(/cancelled by|\badmin\b/i);
     expect(email.html).toContain('remove the cancelled tour from your calendar');
   });
 

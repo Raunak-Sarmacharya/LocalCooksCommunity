@@ -31,6 +31,8 @@ export type ChefTourRow = {
   checkedOutAt?: string | null;
   attendance?: TourAttendance;
   requestedRescheduleAt: string | null;
+  rescheduleProposedSlots: string[];
+  rescheduleProposedAt: string | null;
   durationMinutes: number | null;
   chefNotes: string | null;
   sharedManagerNotes: string | null;
@@ -135,6 +137,8 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     checkedOutAt: viewing.checkedOutAt ?? null,
     attendance: viewing.attendance,
     requestedRescheduleAt: viewing.requestedRescheduleAt ?? null,
+    rescheduleProposedSlots: Array.isArray(viewing.rescheduleProposedSlots) ? viewing.rescheduleProposedSlots : [],
+    rescheduleProposedAt: viewing.rescheduleProposedAt ?? null,
     durationMinutes: viewing.durationMinutes ?? null,
     chefNotes: viewing.chefNotes ?? null,
     sharedManagerNotes: viewing.sharedManagerNotes ?? null,

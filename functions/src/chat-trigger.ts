@@ -5,9 +5,11 @@ import * as admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import { Pool } from 'pg';
 import { queueChatNotice, type ChatConversation, type PersistedChatMessage, type ChatRelationship } from './chat-notice';
+import { wakeStartingChatEmail } from './chat-email-event';
 
 const app = admin.initializeApp();
 export function createChatNoticeTrigger(database: '(default)' | 'staging', sqlSecret: 'DATABASE_URL' | 'STAGING_DATABASE_URL', region: string) {
+const eventSecret = database === 'staging' ? 'STAGING_INNGEST_EVENT_KEY' : 'INNGEST_EVENT_KEY';
 let pool: Pool | null = null;
 function getPool() {
   if (!pool) {
@@ -22,7 +24,7 @@ function getPool() {
 const trigger = onDocumentCreatedWithAuthContext({
   document: 'conversations/{conversationId}/messages/{messageId}', database, region,
   memory: '256MiB', timeoutSeconds: 30, maxInstances: 10, retry: true,
-  secrets: [sqlSecret],
+  secrets: [sqlSecret, eventSecret],
   ...(database === 'staging' ? { serviceAccount: 'localcooks-staging-chat@formauth-9e620.iam.gserviceaccount.com' } : {}),
 }, async event => {
   if (!event.data) return;
@@ -46,14 +48,19 @@ const trigger = onDocumentCreatedWithAuthContext({
       persisted?.senderFirebaseUid !== message.senderFirebaseUid) return;
 
   const client = await getPool().connect();
+  let starting = false;
   try {
     await client.query('BEGIN');
-    await queueChatNotice(client, conversationId, messageId, convData, persisted as PersistedChatMessage, mapping.data() as ChatRelationship);
+    const result = await queueChatNotice(client, conversationId, messageId, convData, persisted as PersistedChatMessage, mapping.data() as ChatRelationship);
+    starting = 'initialTrackingId' in result && !!result.initialTrackingId;
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error; // retry retains both the in-app and digest obligation
   } finally { client.release(); }
+  // Queue commits before publishing. A failed publish retries the producer;
+  // duplicate starts reuse the same durable intent and event id.
+  if (starting) await wakeStartingChatEmail(conversationId, messageId, message.senderId, process.env[eventSecret]);
 });
 process.on('SIGTERM', async () => { if (pool) await pool.end(); });
 return trigger;

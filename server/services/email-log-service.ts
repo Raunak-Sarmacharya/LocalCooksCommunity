@@ -232,9 +232,9 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
     const { dispatchChatDigests } = await import('./chat-notices');
     await dispatchChatDigests(1, 20000, originalId);
     const [original] = await db.select().from(emailLogs).where(eq(emailLogs.id, originalId)).limit(1);
-    return original?.status === 'sent' ? { success: true, message: 'Original unread digest acknowledged; inbox unverified.' }
+    return original?.status === 'sent' ? { success: true, message: 'Original message email acknowledged; inbox unverified.' }
       : original?.status === 'suppressed' ? { success: true, message: 'Read or obsolete conversation suppressed; no email sent.' }
-      : { success: false, error: 'Unread digest remains future, in backoff, concurrently claimed or unaccepted.' };
+      : { success: false, error: 'Message email remains future, in backoff, concurrently claimed or unaccepted.' };
   }
 
   if (log.category === 'advance_reminder' || log.category === 'advance_reminder_attempt') {

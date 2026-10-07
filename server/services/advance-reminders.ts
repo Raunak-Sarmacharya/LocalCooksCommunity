@@ -12,6 +12,7 @@ import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-t
 import { getCheckinSettings } from './kitchen-checkout-service';
 import { getAppBaseUrl } from '../config';
 import { sendEmail, renderTransactionalEmail } from '../email';
+import { getUserDisplayName } from '../utils/user-display';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { notificationService } from './notification.service';
 import { deliveryReserve } from './worker-context';
@@ -29,6 +30,15 @@ export type Reminder = {
   managerEmail?: string;
   arrivalNotes?: string;
   departureNotes?: string;
+  recipientName?: string;
+  visitorName?: string;
+  managerName?: string;
+  kitchenName?: string;
+  locationName?: string;
+  address?: string;
+  contactEmail?: string;
+  checkinOpensAt?: string;
+  meetingNotes?: string;
 };
 /** Required activation decisions. No implicit catch-up/quiet-hours policy. */
 export type ReminderPolicy = { quietHours: 'none'; late: 'consolidate_before_start'; shortVisit?: 'at_start' | 'arrival_guidance'; approval: string;
@@ -158,6 +168,12 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
   const combined = prep >= arrivalDue && !!timing.tourArrivalEnabled;
   const chef = people.find(person => person.id === row.tour.chefId && person.role === 'chef');
   const manager = people.find(person => person.id === hostId && person.role === 'manager');
+  const [visitorName, managerName] = await Promise.all([
+    chef ? getUserDisplayName(chef.id, 'chef', tx) : Promise.resolve('Chef'),
+    manager ? getUserDisplayName(manager.id, 'manager', tx) : Promise.resolve('Kitchen manager'),
+  ]);
+  const [kitchen] = row.tour.targetedKitchenId ? await tx.select({ name: kitchens.name }).from(kitchens)
+    .where(eq(kitchens.id, row.tour.targetedKitchenId)).limit(1) : [];
   const [tourSettings] = row.tour.targetedKitchenId ? await tx.select().from(kitchenViewingSettings)
     .where(eq(kitchenViewingSettings.kitchenId, row.tour.targetedKitchenId)).limit(1) : [];
   // Keep the existing recipient/channel policy: visitor preparation, both arrivals,
@@ -172,11 +188,15 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     return kinds.map(kind => {
       const due = kind === 'preparation' ? prep : kind === 'arrival' ? arrivalDue : Math.max(start.getTime(), end.getTime() - timing.tourDepartureReminderMinutes * 60000);
       const contact = role === 'chef' ? manager?.username : chef?.username;
-      const message = kind === 'departure' ? 'Record your departure in your tour when you leave. Your saved arrival and the manager’s outcome remain separate.'
-        : role === 'manager' ? 'Your confirmed tour is approaching. Open the exact tour to coordinate with the visitor.'
-        : `${kind === 'preparation' || timing.tourPreparationEnabled ? 'Prepare for your confirmed tour. ' : ''}Record arrival when you reach the kitchen. Arrival opens ${formatTourDate(new Date(attendance.checkInOpensAt))}, ${formatInTimezone(new Date(attendance.checkInOpensAt), 'h:mm a', timezone)} Newfoundland time. Record departure when you leave.`;
+      const message = kind === 'departure' ? 'Your kitchen tour is ending soon. Open your tour and check out when you leave.'
+        : role === 'manager' ? `${visitorName} is visiting for a confirmed kitchen tour. Open the tour details to coordinate their arrival.`
+        : `Your kitchen tour is confirmed. ${kind === 'preparation' ? 'Review the details below before your visit.' : 'Open your tour and check in when you arrive.'}`;
       return { source, reservationId: id, resource: `location-${row.location.id}`, kind, recipientId: person.id, role,
         email: person.username || '', timezone, start: start.toISOString(), end: end.toISOString(), due: new Date(due).toISOString(),
+        recipientName: role === 'chef' ? visitorName : managerName, visitorName, managerName,
+        kitchenName: kitchen?.name || row.location.name, locationName: row.location.name, address: row.location.address || 'See tour details',
+        contactEmail: contact || undefined, checkinOpensAt: attendance.checkInOpensAt,
+        meetingNotes: row.tour.sharedManagerNotes || undefined,
         ...(role === 'chef' && kind === 'arrival' && manager?.username ? { managerEmail: manager.username } : {}),
         ...(role === 'chef' && kind !== 'departure' && tourSettings?.arrivalNotes ? { arrivalNotes: tourSettings.arrivalNotes } : {}),
         ...(role === 'chef' && tourSettings?.departureNotes ? { departureNotes: tourSettings.departureNotes } : {}),
@@ -184,7 +204,7 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
         revision: hash([start.toISOString(), end.toISOString(), row.location.id, row.tour.targetedKitchenId, person.id]),
         arrivalLeadHours: timing.tourArrivalEnabled ? timing.tourArrivalReminderMinutes / 60 : 0, combined: combined && !!timing.tourPreparationEnabled,
         path: role === 'chef' ? `/dashboard?view=viewings&viewing=${id}` : `/manager/dashboard?view=viewings&viewing=${id}`,
-        title: `Kitchen tour #${id}`, message: `${message} ${row.location.name}. Address: ${row.location.address || 'See tour details'}. ${formatTourDate(start)}, ${formatTourSlotRange(start, row.tour.durationMinutes)}. ${row.tour.sharedManagerNotes || ''} Contact: ${contact || 'Use Support in your dashboard'}.`, shortVisit: end.getTime() - start.getTime() <= 30 * 60000 };
+        title: `Kitchen tour at ${kitchen?.name || row.location.name}`, message, shortVisit: end.getTime() - start.getTime() <= 30 * 60000 };
     });
   });
 }
@@ -259,14 +279,31 @@ export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPol
 
 export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`) {
   const lateEmail = r.role === 'chef' && r.kind === 'arrival' && r.managerEmail
-    ? `mailto:${encodeURIComponent(r.managerEmail)}?subject=${encodeURIComponent(`Running late · TOUR-${r.reservationId}`)}&body=${encodeURIComponent(`Hi,\n\nI may be running late for my kitchen tour.\n\nReference: TOUR-${r.reservationId}\nScheduled: ${formatTourDate(new Date(r.start))}, ${formatInTimezone(new Date(r.start), 'h:mm a', DEFAULT_TIMEZONE)} Newfoundland time.\n\nThank you.`)}` : undefined;
-  return renderTransactionalEmail({ to: r.email, recipientName: r.role === 'chef' ? 'Chef' : 'Manager',
-    subject: `${r.kind === 'departure' ? 'Before you leave' : r.kind === 'preparation' ? 'Prepare for' : 'Arrival details for'} ${r.title}`,
-    message: r.message, facts: [{ label: 'Reference', value: `TOUR-${r.reservationId}` },
+    ? `mailto:${r.managerEmail.trim().split('@').map(part => encodeURIComponent(part)).join('@')}?subject=${encodeURIComponent(`Running late · TOUR-${r.reservationId}`)}&body=${encodeURIComponent(`Hi ${r.managerName || 'there'},\n\nI may be running late for my kitchen tour at ${r.kitchenName || r.title}.\n\nReference: TOUR-${r.reservationId}\nScheduled: ${formatTourDate(new Date(r.start))}, ${formatInTimezone(new Date(r.start), 'h:mm a', DEFAULT_TIMEZONE)} Newfoundland time.\n\nMy estimated arrival time is: [please add a time]\n\nThank you,\n${r.recipientName || 'Visitor'}`)}` : undefined;
+  const heading = r.kind === 'departure' ? 'Your kitchen tour is ending soon' : r.role === 'manager' ? 'Your visitor is arriving soon' : r.kind === 'preparation' ? 'Your kitchen tour is confirmed' : 'Your kitchen tour is coming up';
+  return renderTransactionalEmail({ to: r.email, recipientName: r.recipientName || (r.role === 'chef' ? 'Chef' : 'Manager'),
+    heading, subject: `${r.kind === 'departure' ? 'Before you leave' : r.kind === 'preparation' ? 'Prepare for' : 'Arrival details for'} ${r.title} · TOUR-${r.reservationId}`,
+    message: r.message, facts: [
+      ...(r.kitchenName ? [{ label: 'Kitchen', value: r.kitchenName }] : []),
+      ...(r.locationName ? [{ label: 'Location', value: r.locationName }] : []),
+      { label: 'Date', value: formatTourDate(new Date(r.start)) },
+      { label: 'Time', value: formatTourSlotRange(r.start, (Date.parse(r.end) - Date.parse(r.start)) / 60000) },
+      ...(r.address ? [{ label: 'Address', value: r.address }] : []),
+      { label: r.role === 'chef' ? 'Kitchen manager' : 'Visitor', value: (r.role === 'chef' ? r.managerName : r.visitorName) || 'See tour details' },
+      ...(r.contactEmail ? [{ label: 'Contact email', value: r.contactEmail }] : []),
+      { label: 'Reference', value: `TOUR-${r.reservationId}` },
+      ...(r.role === 'chef' && r.kind !== 'departure' && r.checkinOpensAt ? [{ label: 'Check-in opens', value: `${formatTourDate(new Date(r.checkinOpensAt))}, ${formatInTimezone(new Date(r.checkinOpensAt), 'h:mm a', DEFAULT_TIMEZONE)} Newfoundland time` }] : []),
+      ...(r.meetingNotes ? [{ label: 'Meeting instructions', value: r.meetingNotes }] : []),
       ...(r.arrivalNotes ? [{ label: 'Arrival notes', value: r.arrivalNotes }] : []),
       ...(r.departureNotes ? [{ label: 'Departure notes', value: r.departureNotes }] : [])],
-    actionLabel: r.kind === 'departure' ? 'View departure details' : r.role === 'manager' ? 'View tour' : 'View arrival details',
-    actionUrl: url, secondaryButton: lateEmail ? { label: "I’m running late", url: lateEmail } : undefined,
+    actionLabel: r.role === 'chef' && r.kind === 'departure' ? 'Record departure'
+      : r.role === 'chef' && r.kind === 'arrival' && r.checkinOpensAt && Date.now() >= Date.parse(r.checkinOpensAt) ? 'Record arrival' : 'View details',
+    actionUrl: url, secondaryButton: { label: r.role === 'chef' ? 'Message manager' : 'Message chef', url: url + '&action=message' },
+    actions: [
+      ...(lateEmail ? [{ label: "I’m running late", url: lateEmail }] : []),
+      ...(lateEmail ? [{ label: 'Message manager', url: url + '&action=message' }] : []),
+      ...(r.address ? [{ label: 'Get directions', url: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(r.address) }] : []),
+    ],
     note: lateEmail ? 'Opens a prefilled email to your kitchen manager. Tap Send to let them know.' : undefined,
     secondaryLink: { label: 'Get support', url: `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.role === 'chef' ? '/dashboard?view=support' : '/manager/dashboard?view=support'}` } });
 }

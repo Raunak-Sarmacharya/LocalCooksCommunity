@@ -25,6 +25,26 @@ function fixture(overrides = {}) {
   return { query };
 }
 describe('persisted message notice producer used by Cloud Function and aliases', () => {
+  it('queues only an initial alert and one reminder for the starting message; continuations are suppressed', async () => {
+    const db = fixture();
+    const first = { ...message, emailEpisodeId: 'first', emailRecipientId: 2 };
+    expect(await queueChatNotice(db, 'thread', 'first', conversation, first)).toMatchObject({ initialTrackingId: 'chat-message:thread:first:2' });
+    await queueChatNotice(db, 'thread', 'second', conversation, first);
+    await queueChatNotice(db, 'thread', 'first', conversation, first);
+    const intents = db.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO email_logs')).map(([, args]) => ({ status: args![5], key: args![6], ...JSON.parse(args![7]) }));
+    expect(intents).toEqual([
+      expect.objectContaining({ phase: 'initial', episodeId: 'first', dueAt: '2026-10-04T08:00:15.000Z', status: 'scheduled' }),
+      expect.objectContaining({ phase: 'reminder', episodeId: 'first', dueAt: '2026-10-04T09:00:00.000Z', key: 'chat-message:thread:first:2:reminder', status: 'scheduled' }),
+      expect.objectContaining({ phase: 'continuation', episodeId: 'first', status: 'suppressed' }),
+    ]);
+  });
+  it('rejects episode metadata for a previous recipient and malformed episode ids', async () => {
+    for (const episode of [{ emailEpisodeId: 'first', emailRecipientId: 7 }, { emailEpisodeId: 'bad/path', emailRecipientId: 2 }]) {
+      const db = fixture();
+      expect(await queueChatNotice(db, 'thread', 'first', conversation, { ...message, ...episode })).toEqual({ skipped: true });
+      expect(db.query.mock.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(false);
+    }
+  });
   it('queues one normal receipt and one one-hour durable intent; repeat is acknowledged', async () => {
     const db = fixture();
     await queueChatNotice(db, 'thread', 'message', conversation, message);

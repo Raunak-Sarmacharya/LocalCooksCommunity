@@ -326,5 +326,21 @@
   "chefPartnerLink": "For chefs",
   "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca",
   "phoneVerificationRequired": "Номери телефону потрібно підтвердити кодом, перш ніж прив’язувати їх до облікового запису.",
-  "selectDate": "Оберіть дату"
+  "selectDate": "Оберіть дату",
+  "tourIntakeLabel_intendedUse": "Планове використання",
+  "tourIntakeLabel_estimatedWeeklyHours": "Очікувана кількість годин на тиждень",
+  "tourIntakeLabel_hasLicense": "Посвідчення з безпечного поводження з харчовими продуктами",
+  "tourIntakeLabel_targetStartDate": "Запланована дата початку",
+  "tourIntakeLabel_additionalInfo": "Додаткова інформація",
+  "tourIntakeYes": "Так",
+  "tourIntakeNo": "Ні",
+  "tourIntakeHoursPerWeek": "{hours} годин на тиждень",
+  "tourIntakeNotDecided": "Ще не визначено",
+  "tourManagerContactTitle": "Менеджер кухні",
+  "tourManagerUnassigned": "Менеджера не призначено",
+  "tourManagerContactUnavailable": "Контактні дані менеджера недоступні",
+  "tourIntakeUse_catering": "Кейтеринг",
+  "tourIntakeUse_meal_prep": "Приготування страв",
+  "tourIntakeUse_food_truck": "Фудтрак",
+  "tourIntakeUse_other": "Інше"
 }

@@ -1,10 +1,10 @@
 /**
  * ScheduleViewingWidget — request an in-person kitchen tour (visit only, not an application).
- * Guest: Date → Time → Account → Verify → Confirm → Success
- * Signed-in (including veterans): Date → Time → Confirm → Success
+ * Guest: Date → Time → Intake → Account → Verify → Confirm → Success
+ * Signed-in (including veterans): Date → Time → Intake → Confirm → Success
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -27,6 +27,8 @@ import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { requiredViewingIntakeDataSchema, type ViewingIntakeData } from "@shared/schema";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -71,7 +73,7 @@ interface AvailabilityResponse {
   } | null;
 }
 
-type TourStep = "date" | "time" | "account" | "verify" | "confirm" | "success";
+type TourStep = "date" | "time" | "intake" | "account" | "verify" | "confirm" | "success";
 
 interface ScheduleViewingWidgetProps {
   locationId: number;
@@ -113,7 +115,7 @@ export function ScheduleViewingWidget({
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { t } = useTranslation("kitchen");
-  const { user, refreshUserData } = useFirebaseAuth();
+  const { user, loading: authLoading, refreshUserData } = useFirebaseAuth();
   const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
   const isAuthenticated = !!user && !isPendingGoogleRegistration(auth.currentUser?.uid);
@@ -123,10 +125,14 @@ export function ScheduleViewingWidget({
   const skipVerify = skipKitchenVerify(actor, emailVerified);
 
   const [step, setStep] = useState<TourStep>("date");
-  const [progressRestored, setProgressRestored] = useState(false);
+  const [progressRestored, setProgressRestored] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [chefNotes, setChefNotes] = useState("");
+  const [intakeData, setIntakeData] = useState<ViewingIntakeData>({});
+  const intakeResult = requiredViewingIntakeDataSchema.safeParse(intakeData);
+  const intakeComplete = intakeResult.success;
+  const draftOwnerUid = useRef<string | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [isCheckingVerification, setIsCheckingVerification] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -134,7 +140,7 @@ export function ScheduleViewingWidget({
   const [resendCooldown, setResendCooldown] = useState(0);
 
   const hasProgress =
-    step !== "date" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0;
+    step !== "date" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0 || Object.keys(intakeData).length > 0;
   const isDataTaking = open && step !== "success";
 
   const storageKey = `viewing_booking_${targetedKitchenId}`;
@@ -145,50 +151,72 @@ export function ScheduleViewingWidget({
       slot: TimeSlot | null;
       step: TourStep;
       chefNotes: string;
+      intakeData: ViewingIntakeData;
       registeredInFlow: boolean;
     }>) => {
+      if (authLoading || progressRestored !== storageKey) return;
+      if (draftOwnerUid.current && draftOwnerUid.current !== auth.currentUser?.uid) return;
       const date = next?.date !== undefined ? next.date : selectedDate;
       const slot = next?.slot !== undefined ? next.slot : selectedSlot;
       const st = next?.step ?? step;
       const notes = next?.chefNotes ?? chefNotes;
+      const intake = next?.intakeData ?? intakeData;
       const registering = next?.registeredInFlow ?? registeredInFlow;
       if (st === "success") {
         localStorage.removeItem(storageKey);
         return;
       }
-      if (date || slot || st !== "date" || notes) {
+      if (date || slot || st !== "date" || notes || Object.keys(intake).length) {
+        draftOwnerUid.current = auth.currentUser?.uid || draftOwnerUid.current;
         localStorage.setItem(
           storageKey,
-          JSON.stringify({ date, slot, step: st, chefNotes: notes, registeredInFlow: registering })
+          JSON.stringify({ date, slot, step: st, chefNotes: notes, intakeData: intake, registeredInFlow: registering, ownerUid: draftOwnerUid.current })
         );
       } else {
         localStorage.removeItem(storageKey);
       }
     },
-    [selectedDate, selectedSlot, step, chefNotes, storageKey, registeredInFlow]
+    [selectedDate, selectedSlot, step, chefNotes, intakeData, storageKey, registeredInFlow, authLoading, progressRestored]
   );
 
   useEffect(() => {
-    if (!open || step === "success" || !progressRestored) return;
+    if (!open || authLoading || step === "success" || progressRestored !== storageKey) return;
     persistProgress();
-  }, [open, persistProgress, step, progressRestored]);
+  }, [open, authLoading, persistProgress, step, progressRestored, storageKey]);
 
   useEffect(() => {
+    if (authLoading) return;
     try {
+      setSelectedDate(undefined);
+      setSelectedSlot(null);
+      setChefNotes("");
+      setIntakeData({});
+      setRegisteredInFlow(false);
+      setStep("date");
+      draftOwnerUid.current = null;
       const savedData = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
       if (!savedData) return;
       const parsed = JSON.parse(savedData);
+      if (parsed.ownerUid && parsed.ownerUid !== auth.currentUser?.uid) {
+        localStorage.removeItem(storageKey);
+        sessionStorage.removeItem(storageKey);
+        return;
+      }
+      draftOwnerUid.current = parsed.ownerUid || auth.currentUser?.uid || null;
       if (parsed.date) setSelectedDate(new Date(parsed.date));
       if (parsed.slot) setSelectedSlot(parsed.slot);
       if (parsed.chefNotes) setChefNotes(parsed.chefNotes || "");
+      const restoredIntake = parsed.intakeData || {};
+      setIntakeData(restoredIntake);
       const registering = parsed.registeredInFlow === true;
       setRegisteredInFlow(registering);
       const restoreActor = kitchenActor(isAuthenticated, registering);
       const rawStep: string =
-        parsed.step === "intake" || parsed.step === "register"
+        parsed.step === "register"
           ? "account"
           : parsed.step || (parsed.slot ? "time" : "date");
-      const restored = coerceTourStepForActor(
+      const needsIntake = parsed.slot && !requiredViewingIntakeDataSchema.safeParse(restoredIntake).success && ["intake", "account", "verify", "confirm"].includes(rawStep);
+      const restored = needsIntake ? "intake" : coerceTourStepForActor(
         rawStep,
         restoreActor,
         !!parsed.slot,
@@ -199,15 +227,16 @@ export function ScheduleViewingWidget({
     } catch (e) {
       console.error("Failed to restore tour booking data", e);
     } finally {
-      setProgressRestored(true);
+      setProgressRestored(storageKey);
     }
     // Re-coerce once auth hydrates so signed-in chefs don't land on verify.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationId, isAuthenticated]);
+  }, [storageKey, isAuthenticated, authLoading, user?.uid]);
 
   // After login / in-flow register, advance when we have a slot.
   useEffect(() => {
     if (!selectedSlot) return;
+    if (!intakeComplete) return;
     if (step === "time" || step === "date" || step === "success") return;
     const next = nextTourStepAfterSlot(actor, emailVerified);
     if (next === "confirm" && (step === "verify" || step === "account")) {
@@ -217,7 +246,7 @@ export function ScheduleViewingWidget({
       setStep("verify");
       onRequireOpen?.();
     }
-  }, [actor, emailVerified, selectedSlot, step, onRequireOpen]);
+  }, [actor, emailVerified, selectedSlot, step, onRequireOpen, intakeComplete]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -258,6 +287,8 @@ export function ScheduleViewingWidget({
   const bookMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSlot) throw new Error(ct("noTimeSlotSelected"));
+      const intake = requiredViewingIntakeDataSchema.safeParse(intakeData);
+      if (!intake.success) throw new Error(t("tourIntakeRequired", "Answer all four questions to continue."));
       const headers = await getAuthHeaders(true);
       const response = await fetch("/api/viewings/book", {
         method: "POST",
@@ -268,14 +299,15 @@ export function ScheduleViewingWidget({
           targetedKitchenId,
           scheduledAt: selectedSlot.scheduledAt,
           chefNotes: chefNotes || undefined,
+          intakeData: intake.data,
         }),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         if (err.code === "SLOT_TAKEN") {
-          throw new Error(
+          throw Object.assign(new Error(
             t("timeSlotJustTaken", "This time slot was just taken. Please pick another.")
-          );
+          ), { code: "SLOT_TAKEN" });
         }
         if (err.code === "ACTIVE_TOUR_EXISTS") {
           throw new Error(
@@ -298,9 +330,9 @@ export function ScheduleViewingWidget({
       if (data.notificationDeliveryFailed) toast.warning(t("tourSavedDeliveryFailed", "Your tour request is saved, but some notifications could not be delivered."));
       else toast.success(t("kitchenTourBookedSuccess", "Tour request sent"));
     },
-    onError: (error: Error) => {
+    onError: (error: Error & { code?: string }) => {
       toast.error(error.message);
-      if (error.message.includes("slot")) {
+      if (error.code === "SLOT_TAKEN") {
         setSelectedSlot(null);
         setStep("time");
       }
@@ -321,16 +353,17 @@ export function ScheduleViewingWidget({
       sessionStorage.removeItem("pending_application_modal");
       saveAuthIntentFromCurrentPage("tour", locationId, targetedKitchenId);
 
-      const next = nextTourStepAfterSlot(actor, emailVerified);
+      const next = "intake";
       persistProgress({ slot, step: next });
       setStep(next);
     },
-    [actor, emailVerified, locationId, targetedKitchenId, persistProgress]
+    [locationId, targetedKitchenId, persistProgress]
   );
 
   const handleBack = useCallback(() => {
     if (step === "time") setStep("date");
-    else if (step === "account") setStep("time");
+    else if (step === "intake") setStep("time");
+    else if (step === "account") setStep("intake");
     else if (step === "verify") setStep(isAuthenticated ? "time" : "account");
     else if (step === "confirm") setStep("time");
   }, [step, isAuthenticated]);
@@ -340,6 +373,8 @@ export function ScheduleViewingWidget({
     setSelectedDate(undefined);
     setSelectedSlot(null);
     setChefNotes("");
+    setIntakeData({});
+    draftOwnerUid.current = null;
     setRegisteredInFlow(false);
     localStorage.removeItem(storageKey);
     sessionStorage.removeItem(storageKey);
@@ -440,6 +475,11 @@ export function ScheduleViewingWidget({
             "Sign in or create an account to continue your tour request."
           ),
         };
+      case "intake":
+        return {
+          title: t("tourIntakeTitle", "Tell us about your plans"),
+          subtext: t("tourIntakeSubtext", "Answer all four questions so the kitchen team can prepare for your visit."),
+        };
       case "verify":
         return {
           title: t("tourModalVerifyTitle", "We’re waiting on you"),
@@ -480,11 +520,13 @@ export function ScheduleViewingWidget({
       ? [
           { id: "date", label: t("tourGuideStepDate") },
           { id: "time", label: t("tourGuideStepTime") },
+          { id: "intake", label: t("tourGuideStepIntake", "Your plans") },
           { id: "confirm", label: t("tourGuideStepConfirmShort") },
         ]
       : [
           { id: "date", label: t("tourGuideStepDate") },
           { id: "time", label: t("tourGuideStepTime") },
+          { id: "intake", label: t("tourGuideStepIntake", "Your plans") },
           { id: "account", label: isAuthenticated && !emailVerified ? "Verify email" : t("tourGuideStepAccount") },
           { id: "confirm", label: t("tourGuideStepConfirm") },
         ];
@@ -493,14 +535,14 @@ export function ScheduleViewingWidget({
         ? 0
         : step === "time"
           ? 1
-          : 2
+          : step === "intake" ? 2 : 3
       : step === "date"
         ? 0
         : step === "time"
           ? 1
-          : step === "account" || step === "verify"
-            ? 2
-            : 3;
+          : step === "intake" ? 2 : step === "account" || step === "verify"
+            ? 3
+            : 4;
 
     return <KitchenJourneySteps steps={steps.map((s) => s.label.replace(/^\d+\.\s*/, ""))} current={railIdx} />;
   };
@@ -564,6 +606,47 @@ export function ScheduleViewingWidget({
         </div>
       )}
     </div>
+  );
+
+  const renderIntakeStep = () => (
+    <form className="space-y-5" onSubmit={(event) => {
+      event.preventDefault();
+      if (!intakeComplete) return;
+      const next = nextTourStepAfterSlot(actor, emailVerified);
+      persistProgress({ step: next });
+      setStep(next);
+    }}>
+      <div className="space-y-2">
+        <Label htmlFor="tour-intended-use">{t("tourIntendedUse", "What do you plan to use the kitchen for?")}</Label>
+        <Textarea id="tour-intended-use" required value={intakeData.intendedUse || ""} onChange={event => setIntakeData({ ...intakeData, intendedUse: event.target.value })} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="tour-weekly-hours">{t("tourWeeklyHours", "About how many hours per week would you need?")}</Label>
+        <Input id="tour-weekly-hours" required value={intakeData.estimatedWeeklyHours || ""} onChange={event => setIntakeData({ ...intakeData, estimatedWeeklyHours: event.target.value })} />
+      </div>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">{t("tourHasLicense", "Do you have a food handler license?")}</legend>
+        <div className="flex gap-6">
+          {[true, false].map(answer => <label key={String(answer)} className="flex items-center gap-2 text-sm">
+            <input type="radio" name="tour-license" required checked={intakeData.hasLicense === answer} onChange={() => setIntakeData({ ...intakeData, hasLicense: answer })} />
+            {answer ? t("tourIntakeYes", "Yes") : t("tourIntakeNo", "No")}
+          </label>)}
+        </div>
+      </fieldset>
+      <div className="space-y-2">
+        <Label htmlFor="tour-start-date">{t("tourTargetStartDate", "When would you like to start renting?")}</Label>
+        <Input id="tour-start-date" type="date" required={intakeData.targetStartDate !== "not_decided"} disabled={intakeData.targetStartDate === "not_decided"} value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""} onChange={event => setIntakeData({ ...intakeData, targetStartDate: event.target.value })} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={intakeData.targetStartDate === "not_decided"} onChange={event => setIntakeData({ ...intakeData, targetStartDate: event.target.checked ? "not_decided" : "" })} />
+          {t("tourIntakeNotDecided", "Not decided yet")}
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("tourIntakeRequired", "Answer all four questions to continue.")}</p>
+      <div className="flex gap-3">
+        <Button type="button" variant="outline" onClick={handleBack}>{t("modalBack", "Back")}</Button>
+        <Button type="submit" className="flex-1" disabled={!intakeComplete}>{t("tourIntakeContinue", "Continue")}</Button>
+      </div>
+    </form>
   );
 
   const renderAccountStep = () => (
@@ -697,6 +780,17 @@ export function ScheduleViewingWidget({
         </CardContent>
       </Card>
 
+      <div className="rounded-xl border p-4 space-y-2 text-sm">
+        <div className="flex justify-between items-center">
+          <h4 className="font-semibold">{t("tourGuideStepIntake", "Your plans")}</h4>
+          <Button variant="ghost" size="sm" onClick={() => setStep("intake")}>{t("tourIntakeEdit", "Edit answers")}</Button>
+        </div>
+        <p>{t("tourIntendedUse", "What do you plan to use the kitchen for?")} <span className="font-medium">{intakeData.intendedUse}</span></p>
+        <p>{t("tourWeeklyHours", "About how many hours per week would you need?")} <span className="font-medium">{intakeData.estimatedWeeklyHours}</span></p>
+        <p>{t("tourHasLicense", "Do you have a food handler license?")} <span className="font-medium">{intakeData.hasLicense === true ? t("tourIntakeYes", "Yes") : intakeData.hasLicense === false ? t("tourIntakeNo", "No") : ""}</span></p>
+        <p>{t("tourTargetStartDate", "When would you like to start renting?")} <span className="font-medium">{intakeData.targetStartDate === "not_decided" ? t("tourIntakeNotDecided", "Not decided yet") : intakeData.targetStartDate}</span></p>
+      </div>
+
       {/* Optional after required summary */}
       <div className="space-y-2">
         <Label className="text-sm">
@@ -722,7 +816,7 @@ export function ScheduleViewingWidget({
         // Left enabled for unverified users so the guard can explain the refusal
         // instead of presenting a dead control with no reason attached.
         onClick={() => guard(() => bookMutation.mutate())}
-        disabled={bookMutation.isPending || !isAuthenticated}
+        disabled={bookMutation.isPending || !isAuthenticated || !intakeComplete}
       >
         {bookMutation.isPending ? (
           <>
@@ -755,14 +849,10 @@ export function ScheduleViewingWidget({
           <h3 className="text-lg font-semibold">
             {t("kitchenTourRequested", "Kitchen Tour Requested")}
           </h3>
-          <InfoChip variant="warning">{t("underReview", "Under review")}</InfoChip>
+          <InfoChip variant="warning">{t("tourRequestPendingLabel", "Pending")}</InfoChip>
         </div>
         <p className="text-sm text-muted-foreground">
-          {t("kitchenTourRequestedAwaitingApproval", {
-            defaultValue:
-              "Your kitchen tour at {locationName} has been sent for review.",
-            locationName: locationName || t("theKitchen", "the kitchen"),
-          })}
+          {t("kitchenTourRequestedAwaitingApproval", "Your tour request is pending. We’ll notify you when it’s confirmed or declined.")}
         </p>
       </div>
 
@@ -816,6 +906,7 @@ export function ScheduleViewingWidget({
     <div className={presentation === "page" ? undefined : "min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
       {step === "date" && renderDateStep()}
       {step === "time" && renderTimeStep()}
+      {step === "intake" && renderIntakeStep()}
       {step === "account" && renderAccountStep()}
       {step === "verify" && renderVerifyStep()}
       {step === "confirm" && renderConfirmStep()}

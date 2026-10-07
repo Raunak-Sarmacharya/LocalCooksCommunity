@@ -30,10 +30,10 @@ export function licenseNextAction(license: KitchenLicenseFields, now = new Date(
 }
 
 export function tourNextAction(tour: { status: string; scheduledAt: string; durationMinutes?: number; requestedRescheduleAt?: string | null;
-  updatedAt?: string; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; outcomeHistory?: unknown; targetedKitchenId?: number | null; attendance?: TourAttendance }, now = Date.now()) {
+  rescheduleProposedSlots?: string[] | null; updatedAt?: string; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; outcomeHistory?: unknown; targetedKitchenId?: number | null; attendance?: TourAttendance }, now = Date.now()) {
   const start = Date.parse(tour.scheduledAt);
   if (!Number.isFinite(start)) return null;
-  if (tour.status === "pending") return start > now ? "overviewPendingTours" : null;
+  if (tour.status === "pending") return start > now && !tour.rescheduleProposedSlots?.length ? "overviewPendingTours" : null;
   const end = start + (tour.durationMinutes ?? 30) * 60_000;
   if (tour.checkedInAt && !tour.checkedOutAt && now >= end) {
     const attendance = tour.attendance || tourAttendance({ ...tour, id: 0, updatedAt: tour.updatedAt || tour.scheduledAt,

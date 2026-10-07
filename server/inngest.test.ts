@@ -1,12 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import { once } from 'node:events';
-const worker = vi.hoisted(() => ({ run: vi.fn(), query: vi.fn(), connect: vi.fn(), initialize: vi.fn() }));
+const worker = vi.hoisted(() => ({ run: vi.fn(), query: vi.fn(), connect: vi.fn(), initialize: vi.fn(), chat: vi.fn() }));
 vi.mock('./services/recurring-worker', () => ({ runRecurringWorker: worker.run, workerPool: { query: worker.query, connect: worker.connect }, assertWorkerSessionConnection: vi.fn(), initializeWorkerSession: worker.initialize }));
 vi.mock('./services/scheduled-cancellations', () => ({ processExpiredCancellationRequests: vi.fn() }));
-import { recurringCronEnabled, registerInngest, registerLifecycleWorkerEndpoints } from './lifecycle-inngest';
+vi.mock('./services/chat-notices', () => ({ deliverStartingChatMessage: worker.chat }));
+import { recurringCronEnabled, registerInngest, registerLifecycleWorkerEndpoints, runStartingChatEmail } from './lifecycle-inngest';
 afterEach(() => vi.unstubAllEnvs());
 describe('thin Inngest entry point and existing protected worker routes', () => {
+  it('durably waits 15 seconds, delivers only the persisted starting message and retries unaccepted delivery', async () => {
+    const calls: string[] = [];
+    const step = { sleep: vi.fn(async () => { calls.push('grace'); }), run: vi.fn(async (_id: string, action: () => Promise<unknown>) => { calls.push('delivery'); return action(); }) };
+    const event = { data: { conversationId: 'thread', messageId: 'first', senderId: 3 } };
+    worker.chat.mockResolvedValueOnce({ completed: 1, errors: 0 }).mockResolvedValueOnce({ completed: 0, errors: 1 });
+    await runStartingChatEmail({ event, step });
+    expect(calls).toEqual(['grace', 'delivery']); expect(step.sleep).toHaveBeenCalledWith('allow-recipient-to-read', '15s');
+    expect(worker.chat).toHaveBeenCalledWith('thread', 'first', 3);
+    await expect(runStartingChatEmail({ event, step })).rejects.toThrow('retryable');
+    await expect(runStartingChatEmail({ event: { data: { ...event.data, messageId: 'foreign/path' } }, step })).rejects.toThrow('Invalid');
+  });
   it('keeps staging cron disabled by default, including staging deployed as a Vercel production project', () => {
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'preview' })).toBe(false);
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'false', VERCEL_ENV: 'production' })).toBe(false);

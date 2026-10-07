@@ -1,3 +1,4 @@
+import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails"
 /**
  * ViewingsDashboard
  *
@@ -12,10 +13,11 @@ import { useLocation, useSearch } from "wouter"
 import type { ColumnDef } from "@tanstack/react-table"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, Search, X } from "@/components/ui/manager-icons"
+import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, MessageSquare, Search, X } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DataTable } from "@/components/ui/data-table"
@@ -27,7 +29,7 @@ import { Separator } from "@/components/ui/separator"
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { formatTourDate, formatTourClock } from "@shared/tour-time"
+import { formatTourDate, formatTourClock, formatTourSlotRange } from "@shared/tour-time"
 import type { TourBookingOverlap } from "@shared/tour-booking-overlap"
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display"
 import { useTourClock } from "@/hooks/use-tour-clock"
@@ -35,6 +37,9 @@ import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome
 import { TourChatButton } from '@/components/chat/TourChatButton'
 import { TourAttendancePanel } from '@/components/tour/TourAttendancePanel'
 import { formatTourWhen } from "@/lib/chef-viewing-display"
+import { DateField } from '@/components/ui/date-field'
+import { tourAvailableDate, type TourCalendarAvailability } from '@/lib/tour-available-date'
+import { canManagerProposeReschedule } from '@shared/tour-reschedule'
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 
@@ -80,6 +85,8 @@ interface ViewingRecord {
     checkedInAt?: string | null
     checkedOutAt?: string | null
     requestedRescheduleAt: string | null
+    rescheduleProposedSlots?: string[]
+    rescheduleProposedAt?: string | null
   }
   locationName: string | null
   locationAddress: string | null
@@ -129,17 +136,6 @@ function getStatusBadge(status: string, cancelledBy?: string | null, adminReview
   }
 }
 
-function getIntakeLabel(key: string): string {
-  const labels: Record<string, string> = {
-    intendedUse: mt("viewingIntakeIntendedUse"),
-    estimatedWeeklyHours: mt("viewingIntakeWeeklyHours"),
-    hasLicense: mt("viewingIntakeHasLicense"),
-    targetStartDate: mt("viewingIntakeTargetStart"),
-    additionalInfo: mt("viewingIntakeNotes"),
-  }
-  return labels[key] || key.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " ")
-}
-
 function canReviewReschedule(viewing: ViewingRecord["viewing"]): boolean {
   return viewing.status === "confirmed" && !!viewing.requestedRescheduleAt && new Date(viewing.scheduledAt).getTime() > Date.now()
 }
@@ -165,6 +161,10 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   const queryClient = useQueryClient()
   const [, navigate] = useLocation()
   const heading = useRef<HTMLHeadingElement>(null)
+  const proposalTrigger = useRef<HTMLButtonElement>(null)
+  const proposalMutationPending = useRef(false)
+  const rescheduleReview = useRef<HTMLDivElement>(null)
+  const handledDeepLinkAction = useRef<string | null>(null)
   const [selectedViewing, setSelectedViewing] = useState<ViewingRecord | null>(null)
   const [statusAction, setStatusAction] = useState<string>("")
   const [managerNotes, setManagerNotes] = useState("")
@@ -172,13 +172,18 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   const [disruptionReason, setDisruptionReason] = useState("")
   const [cancellationReason, setCancellationReason] = useState("")
   const [acceptBookingOverlap, setAcceptBookingOverlap] = useState(false)
+  const [proposalOpen, setProposalOpen] = useState(false)
+  const [proposalDate, setProposalDate] = useState('')
+  const [proposedSlots, setProposedSlots] = useState<string[]>([])
   const [confirmExit, setConfirmExit] = useState(false)
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [highlightNotes, setHighlightNotes] = useState(false)
   const openedDeepLink = useRef<string | null>(null)
   const selectedDeepLinkLocation = useRef<string | null>(null)
   const tourSearch = useSearch()
   const exactId = tourId || new URLSearchParams(tourSearch).get('viewing')
+  const deepLinkAction = new URLSearchParams(tourSearch).get('action')
   const pendingNavigation = useRef<(() => void) | null>(null)
 
   // Fetch viewings
@@ -232,12 +237,15 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     if (!id) { openedDeepLink.current = null; return }
     if (openedDeepLink.current === id) return
     const record = exactRecord
-    if (!record) return
+    if (!record || exactQuery.isFetching) return
     openedDeepLink.current = id
     setSelectedViewing(record)
     setStatusAction("view")
     setManagerNotes(record.viewing.sharedManagerNotes ?? "")
-  }, [exactRecord, exactId])
+  }, [exactRecord, exactId, exactQuery.isFetching])
+  useEffect(() => {
+    if (exactRecord) setSelectedViewing(current => current?.viewing.id === exactRecord.viewing.id ? exactRecord : current)
+  }, [exactRecord])
   useEffect(() => {
     setSelectedViewing(current => current
       ? viewings?.find(record => record.viewing.id === current.viewing.id) ?? current
@@ -250,7 +258,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     && new Date(selectedViewing.viewing.scheduledAt).getTime() + selectedViewing.viewing.durationMinutes * 60_000 <= Date.now()
   const nextStepKey = selectedViewing && statusAction === 'view'
     ? selectedViewing.viewing.status === 'pending'
-      ? new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextReview' : 'tourNextExpired'
+      ? new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? selectedViewing.viewing.rescheduleProposedSlots?.length ? 'tourPendingProposalAwaitingHelp' : 'tourNextReview' : 'tourNextExpired'
       : canReviewReschedule(selectedViewing.viewing) ? 'tourNextReschedule'
       : selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
         ? outcomeEligible ? 'tourNextOutcome'
@@ -260,6 +268,60 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
 
   const decisionKind = selectedViewing && canReviewReschedule(selectedViewing.viewing)
     ? "reschedule" : statusAction === "confirm" ? "confirm" : null
+  const canProposeChange = !!selectedViewing && !selectedViewing.viewing.disruptionReason && canManagerProposeReschedule(selectedViewing.viewing)
+  useEffect(() => {
+    if (proposalMutationPending.current) return
+    setProposalOpen(false); setProposalDate(''); setProposedSlots([])
+  }, [selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt])
+
+  useEffect(() => {
+    if (!highlightNotes) return;
+    const timer = setTimeout(() => setHighlightNotes(false), 3000);
+    return () => clearTimeout(timer);
+  }, [highlightNotes]);
+
+  useEffect(() => {
+    const key = `${exactId}:${deepLinkAction}`
+    if (!exactId) { handledDeepLinkAction.current = null; return }
+    if (exactQuery.isFetching || !exactRecord || selectedViewing?.viewing.id !== exactRecord.viewing.id || handledDeepLinkAction.current === key) return
+    handledDeepLinkAction.current = key
+    const current = exactRecord.viewing
+    if (deepLinkAction === 'reschedule' && !current.disruptionReason && canManagerProposeReschedule(current)) setProposalOpen(true)
+    if (deepLinkAction === 'confirm' && current.status === 'pending' && Date.parse(current.scheduledAt) > Date.now()
+      && !current.disruptionReason && !current.rescheduleProposedSlots?.length) setStatusAction('confirm')
+    if (deepLinkAction === 'review-reschedule' && canReviewReschedule(current)) rescheduleReview.current?.focus()
+    if (deepLinkAction === 'cancel' && ['pending', 'confirmed'].includes(current.status) && Date.parse(current.scheduledAt) > Date.now()
+      && !current.disruptionReason && !current.checkedInAt) setStatusAction('cancel')
+  }, [exactId, deepLinkAction, exactRecord, exactQuery.isFetching, selectedViewing?.viewing.id])
+  const { data: proposalCalendar, isFetching: proposalCalendarLoading, error: proposalCalendarError } = useQuery<TourCalendarAvailability>({
+    queryKey: ['manager-tour-reschedule-calendar', selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt],
+    enabled: proposalOpen && canProposeChange && !!selectedViewing?.viewing.targetedKitchenId,
+    queryFn: async () => {
+      const response = await fetch(`/api/viewings/calendar-availability/${selectedViewing!.viewing.targetedKitchenId}?viewingId=${selectedViewing!.viewing.id}`, { headers: await getAuthHeaders(), cache: 'no-store' })
+      if (!response.ok) throw new Error(mt('tourProposalAvailabilityFailed'))
+      return response.json()
+    },
+  })
+  const { data: proposalChoices = [], isFetching: proposalSlotsLoading, error: proposalSlotsError } = useQuery<{ scheduledAt: string }[]>({
+    queryKey: ['manager-tour-reschedule-slots', selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt, proposalDate],
+    enabled: proposalOpen && canProposeChange && !!proposalDate && !!selectedViewing?.viewing.targetedKitchenId,
+    queryFn: async () => {
+      const response = await fetch(`/api/viewings/available-slots/${selectedViewing!.viewing.targetedKitchenId}?date=${proposalDate}&viewingId=${selectedViewing!.viewing.id}&proposal=true`, { headers: await getAuthHeaders(), cache: 'no-store' })
+      if (!response.ok) throw new Error(mt('tourProposalAvailabilityFailed'))
+      const body = await response.json()
+      return (Array.isArray(body) ? body : body.slots || []).filter((item: { scheduledAt: string }) => Date.parse(item.scheduledAt) > Date.now() && Date.parse(item.scheduledAt) !== Date.parse(selectedViewing!.viewing.scheduledAt))
+    },
+  })
+  const proposalTimeOptions = proposalChoices.map(item => {
+    const start = new Date(item.scheduledAt)
+    const duration = selectedViewing?.viewing.durationMinutes ?? 30
+    const compact = formatTourClock(start) + ' – ' + formatTourClock(new Date(start.getTime() + duration * 60_000))
+    const full = formatTourSlotRange(item.scheduledAt, duration)
+    return { ...item, compact, full, zone: full.startsWith(compact + ' ') ? full.slice(compact.length + 1) : null }
+  })
+  const compactProposalTimes = proposalTimeOptions.every(item => item.zone !== null)
+    && new Set(proposalTimeOptions.map(item => item.zone)).size === 1
+    && new Set(proposalTimeOptions.map(item => item.compact)).size === proposalTimeOptions.length
   const { data: decisionContext, isFetching: contextLoading, error: contextError, refetch: refetchContext } = useQuery<TourDecisionContext>({
     queryKey: ["tour-decision-context", selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt, decisionKind],
     enabled: !!selectedViewing && !!decisionKind,
@@ -281,7 +343,10 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     if (error.status === 409) {
       setAcceptBookingOverlap(false)
       queryClient.invalidateQueries({ queryKey: [queryUrl] })
+      queryClient.invalidateQueries({ queryKey: ['/api/viewings/manager', 'exact-tour'] })
       queryClient.invalidateQueries({ queryKey: ["tour-decision-context"] })
+      queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-calendar'] })
+      queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-slots'] })
     }
   }
   const refreshOverview = (updated: ViewingRecord['viewing']) => {
@@ -306,8 +371,28 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     },
     onError: decisionError,
   })
+  const proposeReschedule = useMutation({
+    mutationFn: async (decision: 'propose' | 'withdraw') => {
+      const response = await fetch(`/api/viewings/manager/${selectedViewing!.viewing.id}/reschedule-proposal`, { method: decision === 'withdraw' ? 'PATCH' : 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ ...(decision === 'withdraw' ? { decision } : { proposedSlots }), expectedUpdatedAt: selectedViewing!.viewing.updatedAt }) })
+      const body = await response.json()
+      if (!response.ok) throw Object.assign(new Error(body.error || mt('tourDecisionFailed')), { status: response.status })
+      return body
+    },
+    onSuccess: (updated, decision) => {
+      refreshOverview(updated)
+      queryClient.setQueryData<ViewingRecord[]>([queryUrl], current => current?.map(record => record.viewing.id === updated.id ? { ...record, viewing: { ...record.viewing, ...updated } } : record))
+      setSelectedViewing(current => current && current.viewing.id === updated.id ? { ...current, viewing: { ...current.viewing, ...updated } } : current)
+      setProposalOpen(false); setProposalDate(''); setProposedSlots([])
+      queryClient.invalidateQueries({ queryKey: [queryUrl] })
+      queryClient.invalidateQueries({ queryKey: ['/api/viewings/manager', 'exact-tour'] })
+      if (updated.notificationDeliveryFailed) toast.warning(mt('tourSavedDeliveryFailed'))
+      else toast.success(mt(decision === 'withdraw' ? 'tourProposalWithdrawn' : 'tourProposalSent'))
+    },
+    onError: decisionError,
+  })
 
   // Status update mutation
+  proposalMutationPending.current = proposeReschedule.isPending
   const updateStatusMutation = useMutation({
     mutationFn: async ({
       viewingId,
@@ -367,11 +452,13 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     setDisruptionReason("")
     setCancellationReason("")
     setAcceptBookingOverlap(false)
+    setProposalOpen(false); setProposalDate(''); setProposedSlots([])
     if (exactId) onBackToTours?.()
   }
 
-  const hasUnsavedInput = !!selectedViewing && (managerNotes !== (selectedViewing.viewing.sharedManagerNotes || "") || !!noShowReason || !!disruptionReason || !!cancellationReason.trim())
+  const hasUnsavedInput = !!selectedViewing && (managerNotes !== (selectedViewing.viewing.sharedManagerNotes || "") || !!noShowReason || !!disruptionReason || !!cancellationReason.trim() || !!proposalDate || proposedSlots.length > 0)
   const guardNavigation = (navigate: () => void) => {
+    if (proposeReschedule.isPending || updateStatusMutation.isPending || reviewReschedule.isPending) return false
     if (!hasUnsavedInput) return true
     pendingNavigation.current = navigate
     setConfirmExit(true)
@@ -429,9 +516,37 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     { id: "scheduledAt", accessorFn: (row) => row.viewing.scheduledAt, header: mt("dateTime"), cell: ({ row }) => <div><div className="font-medium">{formatTourDate(new Date(row.original.viewing.scheduledAt))}</div><div className="text-xs text-muted-foreground">{formatTourClock(new Date(row.original.viewing.scheduledAt))} · {mt("minutesShort", { count: row.original.viewing.durationMinutes })}</div></div> },
     { id: "chef", header: mt("chef"), cell: ({ row }) => <div><div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />{row.original.chefName || row.original.chefUsername?.split("@")[0] || `Chef #${row.original.viewing.chefId}`}</div>{Object.keys(row.original.viewing.intakeData || {}).length > 0 && <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><FileText className="h-3 w-3" />{mt("hasIntakeData")}</div>}</div> },
     { id: "kitchen", header: mt("navLocation"), cell: ({ row }) => <div><div>{row.original.locationName || "—"}</div><div className="text-xs text-muted-foreground">{row.original.kitchenName}</div></div> },
-    { id: "status", header: mt("status"), cell: ({ row }) => <div className="flex flex-col items-start gap-1">{row.original.viewing.status === "pending" && new Date(row.original.viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">Request expired</Badge> : getStatusBadge(row.original.viewing.status, row.original.viewing.cancelledBy, row.original.viewing.adminReviewDecision, row.original.viewing.disruptionReason)}{row.original.viewing.requestedRescheduleAt && <Badge variant="outline">Date change requested</Badge>}</div> },
+    { id: "status", header: mt("status"), cell: ({ row }) => <div className="flex flex-col items-start gap-1">{row.original.viewing.status === "pending" && new Date(row.original.viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">Request expired</Badge> : getStatusBadge(row.original.viewing.status, row.original.viewing.cancelledBy, row.original.viewing.adminReviewDecision, row.original.viewing.disruptionReason)}{row.original.viewing.requestedRescheduleAt && <Badge variant="outline">{mt("tourRescheduleRequested")}</Badge>}{!!row.original.viewing.rescheduleProposedSlots?.length && ["pending", "confirmed"].includes(row.original.viewing.status) && Date.parse(row.original.viewing.scheduledAt) > Date.now() && <Badge variant="outline">{mt("tourProposalPendingTitle")}</Badge>}</div> },
     { id: "actions", header: "", meta: { mobileHidden: true }, cell: ({ row }) => <div className="flex gap-2"><TourChatButton tour={row.original.viewing} role="manager" /><Button variant="outline" size="sm" onClick={() => handleStatusAction(row.original, "view")}>{mt("viewDetails")}</Button></div> },
   ]
+
+  const decisionReviewPanel = selectedViewing && (
+    <div className="space-y-3 rounded-md border p-4" aria-live="polite">
+      <p className="text-sm font-medium">{mt("tourOverlappingBookings")}</p>
+      <p className="text-xs text-muted-foreground">{mt("tourOverlapAllowed")}</p>
+      {contextLoading && <p className="text-sm">{mt("tourDecisionContextLoading")}</p>}
+      {(contextError || (decisionContext && decisionContext.updatedAt !== selectedViewing.viewing.updatedAt)) && (
+        <div className="space-y-2"><p role="alert" className="text-sm">{contextError?.message || mt("tourDecisionChanged")}</p>
+          <Button variant="outline" size="sm" onClick={() => { refetch(); refetchContext() }}>{mt("tourReviewAgain")}</Button></div>
+      )}
+      {decisionContext && !contextError && decisionContext.updatedAt === selectedViewing.viewing.updatedAt && (
+        <>
+          {!decisionContext.overlaps.length && <p className="text-sm">{mt("tourNoOverlappingBookings")}</p>}
+          {decisionContext.overlaps.map(overlap => (
+            <div key={`${overlap.bookingId}-${overlap.start}`} className="space-y-1 text-sm">
+              <p className="font-medium">{overlap.reference} · {mt(overlap.status === "pending" ? "tourOverlapPending" : overlap.status === "confirmed" ? "tourOverlapConfirmed" : "tourOverlapCancellationRequested")}</p>
+              <p>{formatTourWhen(overlap.start, (new Date(overlap.end).getTime() - new Date(overlap.start).getTime()) / 60_000, "America/St_Johns")}</p>
+              {overlap.timeUncertain && <p className="text-xs text-muted-foreground">{mt("tourOverlapAmbiguousTime")}</p>}
+            </div>
+          ))}
+          {!!decisionContext.overlaps.length && <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={acceptBookingOverlap} onChange={event => setAcceptBookingOverlap(event.target.checked)} className="mt-1" />
+            <span>{mt("tourAcceptBookingOverlap")}</span>
+          </label>}
+        </>
+      )}
+    </div>
+  )
 
   return (
     <>
@@ -486,11 +601,35 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
               </header>
               {nextStepKey && <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5" aria-label={mt('tourNextStep')}>
                 <h2 className="font-semibold">{mt('tourNextStep')}</h2>
-                <p className="text-sm">{mt(nextStepKey)}</p>
-                {nextStepKey === 'tourNextReview' && <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending}>{mt('acceptViewing')}</Button>
-                  <Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('declineRequest')}</Button>
-                </div>}
+                <p className="text-sm">{(() => {
+                  const text = mt(nextStepKey)
+                  const phrase = 'Share meeting instructions'
+                  const idx = nextStepKey === 'tourNextPrepare' ? text.indexOf(phrase) : -1
+                  if (idx < 0) return text
+                  return <>{text.slice(0, idx)}<button type="button" className="underline underline-offset-2" onClick={() => { const el = document.getElementById('tour-visit-notes'); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.focus({ preventScroll: true }); setHighlightNotes(true) }}>{phrase}</button>{text.slice(idx + phrase.length)}</>
+                })()}</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending || proposeReschedule.isPending || !!selectedViewing.viewing.rescheduleProposedSlots?.length}>{mt('acceptViewing')}</Button>}
+                  {canProposeChange && <Button ref={proposalTrigger} variant="outline" disabled={updateStatusMutation.isPending || proposeReschedule.isPending} onClick={() => setProposalOpen(true)}>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</Button>}
+                  {!!selectedViewing.viewing.rescheduleProposedSlots?.length && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !!selectedViewing.viewing.checkedInAt} onClick={() => proposeReschedule.mutate('withdraw')}>{mt('tourWithdrawProposal')}</Button>}
+                  {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('declineRequest')}</Button>}
+                  {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('cancelViewing')}</Button>}
+                </div>
+                {!!selectedViewing.viewing.rescheduleProposedSlots?.length && ['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && <section className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5" aria-label={mt('tourProposalPendingTitle')}>
+                  <div className="space-y-1"><h2 className="font-semibold">{mt('tourProposalPendingTitle')}</h2><p className="text-sm text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalPendingHelp')}</p></div>
+                  <ul className="space-y-2">{selectedViewing.viewing.rescheduleProposedSlots.map(time => <li key={time} className="rounded-lg border bg-background px-3 py-2 text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</li>)}</ul>
+                </section>}
+                {canReviewReschedule(selectedViewing.viewing) && (
+                  <div ref={rescheduleReview} tabIndex={-1} className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4 focus:outline-none">
+                    <p className="text-sm font-medium">{mt("tourRescheduleRequest")}</p>
+                    <p className="text-sm">Requested: {formatTourWhen(selectedViewing.viewing.requestedRescheduleAt!, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</p>
+                    {decisionKind === "reschedule" && decisionReviewPanel}
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button className="h-11 w-full" disabled={reviewReschedule.isPending || updateStatusMutation.isPending || !acceptanceReady} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "accept" })}>{mt('tourApproveNewTime')}</Button>
+                      <Button variant="outline" className="h-11 w-full" disabled={reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "decline" })}>{mt('tourKeepOriginalTime')}</Button>
+                    </div>
+                  </div>
+                )}
               </section>}
               <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
               <div className="min-w-0 space-y-4 rounded-xl border bg-card">
@@ -515,50 +654,44 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   </dl>
                   <div className="space-y-1 border-t pt-3"><p className="text-sm font-medium">{mt('chefSNotes')}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{selectedViewing.viewing.chefNotes?.trim() || mt('tourNoChefNotes')}</p></div>
                   {!!Object.keys(selectedViewing.viewing.intakeData || {}).length && <div className="space-y-3 border-t pt-3">
-                    <dl className="grid min-w-0 gap-4 sm:grid-cols-2">{Object.entries(selectedViewing.viewing.intakeData)
-                      .filter(([, value]) => value != null && value !== '' && ['string','number','boolean'].includes(typeof value))
-                      .map(([key,value]) => <div key={key}><dt className="text-xs text-muted-foreground">{getIntakeLabel(key)}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{typeof value === 'boolean' ? mt(value ? 'yes' : 'no') : String(value).replaceAll('_',' ')}</dd></div>)}</dl>
+                    <TourIntakeDetails data={selectedViewing.viewing.intakeData} />
                   </div>}
                 </section>
                 {selectedViewing.viewing.checkedInAt && <TourAttendancePanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} />}
-                {decisionKind && (
-                  <div className="space-y-3 rounded-md border p-4" aria-live="polite">
-                    <p className="text-sm font-medium">{mt("tourOverlappingBookings")}</p>
-                    <p className="text-xs text-muted-foreground">{mt("tourOverlapAllowed")}</p>
-                    {contextLoading && <p className="text-sm">{mt("tourDecisionContextLoading")}</p>}
-                    {(contextError || (decisionContext && decisionContext.updatedAt !== selectedViewing.viewing.updatedAt)) && (
-                      <div className="space-y-2"><p role="alert" className="text-sm">{contextError?.message || mt("tourDecisionChanged")}</p>
-                        <Button variant="outline" size="sm" onClick={() => { refetch(); refetchContext() }}>{mt("tourReviewAgain")}</Button></div>
-                    )}
-                    {decisionContext && !contextError && decisionContext.updatedAt === selectedViewing.viewing.updatedAt && (
-                      <>
-                        {!decisionContext.overlaps.length && <p className="text-sm">{mt("tourNoOverlappingBookings")}</p>}
-                        {decisionContext.overlaps.map(overlap => (
-                          <div key={`${overlap.bookingId}-${overlap.start}`} className="space-y-1 text-sm">
-                            <p className="font-medium">{overlap.reference} · {mt(overlap.status === "pending" ? "tourOverlapPending" : overlap.status === "confirmed" ? "tourOverlapConfirmed" : "tourOverlapCancellationRequested")}</p>
-                            <p>{formatTourWhen(overlap.start, (new Date(overlap.end).getTime() - new Date(overlap.start).getTime()) / 60_000, "America/St_Johns")}</p>
-                            {overlap.timeUncertain && <p className="text-xs text-muted-foreground">{mt("tourOverlapAmbiguousTime")}</p>}
-                          </div>
-                        ))}
-                        {!!decisionContext.overlaps.length && <label className="flex items-start gap-2 text-sm">
-                          <input type="checkbox" checked={acceptBookingOverlap} onChange={event => setAcceptBookingOverlap(event.target.checked)} className="mt-1" />
-                          <span>{mt("tourAcceptBookingOverlap")}</span>
-                        </label>}
-                      </>
-                    )}
-                  </div>
-                )}
+                {decisionKind === "confirm" && decisionReviewPanel}
 
-                {canReviewReschedule(selectedViewing.viewing) && (
-                  <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4">
-                    <p className="text-sm font-medium">Date change requested</p>
-                    <p className="text-sm">Requested: {formatTourWhen(selectedViewing.viewing.requestedRescheduleAt!, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button variant="outline" className="w-full sm:w-auto" disabled={reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "decline" })}>Keep original time</Button>
-                      <Button className="w-full sm:w-auto" disabled={reviewReschedule.isPending || updateStatusMutation.isPending || !acceptanceReady} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "accept" })}>Approve new time</Button>
+                <Dialog open={proposalOpen && (canProposeChange || proposeReschedule.isPending)} onOpenChange={open => {
+                  if (proposeReschedule.isPending) return
+                  setProposalOpen(open)
+                  if (!open) { setProposalDate(''); setProposedSlots([]) }
+                }}>
+                  <DialogContent className="max-w-xl p-5 sm:p-6" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
+                    <DialogHeader className="pr-10">
+                      <DialogTitle>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</DialogTitle>
+                      <DialogDescription>{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalHelp' : 'tourProposalHelp')}</DialogDescription>
+                    </DialogHeader>
+                    <Button variant="ghost" size="icon" className="absolute right-3 top-3" aria-label={mt('close')} disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}><X className="h-4 w-4" /></Button>
+                    <p className="rounded-lg border bg-muted/30 p-3 text-sm">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p>
+                    <div className="space-y-4">
+                    {(proposalCalendarError || proposalSlotsError) && <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{(proposalCalendarError || proposalSlotsError)?.message}</p><Button variant="outline" size="sm" onClick={() => { void queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-calendar'] }); void queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-slots'] }) }}>{mt('tourReviewAgain')}</Button></div>}
+                    <div className="space-y-1.5"><Label htmlFor="tour-proposal-date">{mt('tourNewDate')}</Label><DateField id="tour-proposal-date" value={proposalDate} onChange={setProposalDate} placeholder={mt('tourChooseDate')} disabled={proposeReschedule.isPending || proposalCalendarLoading || !!proposalCalendarError || !proposalCalendar} disabledDate={day => !tourAvailableDate(day, proposalCalendar)} /></div>
+                    <p className="text-sm text-muted-foreground">{mt('tourChooseTimesHelp')}</p>
+                    {proposalDate && <section className="space-y-3" aria-label={mt('tourAvailableTime')}>
+                      <h3 className="text-sm font-semibold">{formatTourDate(new Date(proposalDate + 'T12:00:00Z'))}</h3>
+                      <p className="text-xs text-muted-foreground">{mt('tourTimesTimezone')}</p>
+                      {proposalSlotsLoading && <p role="status" className="text-sm text-muted-foreground">{mt('tourLoadingTimes')}</p>}
+                      {!proposalSlotsLoading && !proposalSlotsError && !proposalChoices.length && <p role="status" className="text-sm text-muted-foreground">{mt('tourNoAvailableTimes')}</p>}
+                      {!proposalSlotsLoading && !proposalSlotsError && <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{proposalTimeOptions.map(item => {
+                        const selected = proposedSlots.includes(item.scheduledAt)
+                        return <Button key={item.scheduledAt} variant={selected ? 'default' : 'outline'} className="h-11 px-2 text-sm" aria-pressed={selected} disabled={proposeReschedule.isPending || !!proposalCalendarError || (!selected && proposedSlots.length >= 3)} onClick={() => setProposedSlots(current => current.includes(item.scheduledAt) ? current.filter(time => time !== item.scheduledAt) : [...current, item.scheduledAt].sort())}>{compactProposalTimes ? item.compact : item.full}</Button>
+                      })}</div>}
+                    </section>}
+                    {proposedSlots.length > 0 && <section className="space-y-2" aria-label={mt('tourSelectedTimes')}><h3 className="text-sm font-semibold">{mt('tourSelectedTimes')}</h3><ul className="space-y-2">{proposedSlots.map(time => <li key={time} className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><span className="text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}</span><Button variant="ghost" size="icon" aria-label={`${mt('tourRemoveAlternative')}: ${formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}`} disabled={proposeReschedule.isPending} onClick={() => setProposedSlots(current => current.filter(item => item !== time))}><X className="h-4 w-4" /></Button></li>)}</ul></section>}
+                    <p className="text-xs text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalOriginalHeld')}</p>
+                    <div className="grid gap-2 sm:grid-cols-2"><Button variant="outline" className="h-11 w-full" disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}>{mt('cancel')}</Button><Button className="h-11 w-full" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !proposedSlots.length || proposedSlots.some(time => Date.parse(time) <= Date.now()) || proposalSlotsLoading || !!proposalCalendarError || !!proposalSlotsError} onClick={() => proposeReschedule.mutate('propose')}>{proposeReschedule.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mt('tourSendProposal')}</Button></div>
                     </div>
-                  </div>
-                )}
+                  </DialogContent>
+                </Dialog>
 
                 {/* Intake Data */}
                 {selectedViewing.viewing.sharedManagerNotes && statusAction === 'view' && <div className="space-y-2">
@@ -569,7 +702,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                 {!!selectedViewing.viewing.outcomeHistory?.length && statusAction === 'view' && <details className="rounded border p-3 text-sm">
                   <summary>{mt('tourOutcomeHistory')}</summary>
                   {selectedViewing.viewing.outcomeHistory.map((entry, index) => <div key={index} className="border-t py-2">
-                    <p>{entry.from} → {entry.to} · {entry.actorRole} · {entry.recordedAt ? formatTourWhen(entry.recordedAt, null, 'America/St_Johns') : '—'}</p>
+                    <p>{entry.from} → {entry.to} · {entry.recordedAt ? formatTourWhen(entry.recordedAt, null, 'America/St_Johns') : '—'}</p>
                     {entry.sharedNotes && <p className="whitespace-pre-wrap">{entry.sharedNotes}</p>}
                   </div>)}
                 </details>}
@@ -655,8 +788,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     }
                     disabled={
                       updateStatusMutation.isPending ||
+                      proposeReschedule.isPending ||
                       reviewReschedule.isPending ||
-                      (statusAction === "confirm" && !acceptanceReady) ||
+                      (statusAction === "confirm" && (!acceptanceReady || !!selectedViewing.viewing.rescheduleProposedSlots?.length)) ||
                       (statusAction === "no_show" && !noShowReason) || (statusAction === "disrupt" && !disruptionReason) || ((correctingOutcome || (statusAction === "disrupt" && disruptionReason === "other")) && !managerNotes.trim())
                     }
                     className={cn(
@@ -686,22 +820,29 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
               )}
               {statusAction === 'view' && selectedViewing.viewing.status === 'pending' && new Date(selectedViewing.viewing.scheduledAt).getTime() <= Date.now() && <div className="border-t px-6 py-4"><Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button></div>}
 
-              {statusAction === "view" && selectedViewing.viewing.status === "confirmed" && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && (
-                <div className="border-t px-6 py-4 sm:space-x-0">
-                  <Button variant="outline" onClick={() => setStatusAction("cancel")}>{mt("cancelViewing")}</Button>
-                </div>
-              )}
+
               </div>
               <aside className="space-y-4">
-                {['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() + selectedViewing.viewing.durationMinutes * 60_000 > Date.now() && <Card><CardContent className="space-y-3 p-5">
-                  <h2 className="font-semibold">{mt('tourVisitNotesTitle')}</h2>
-                  <p className="text-sm text-muted-foreground">{mt('tourNotesOptionalHelp')}</p>
-                  {selectedViewing.viewing.targetedKitchenId && onConfigureNotes && <Button variant="outline" className="w-full" onClick={() => requestNavigation(() => onConfigureNotes(selectedViewing.viewing.targetedKitchenId!, selectedViewing.viewing.locationId))}>{mt('tourEditVisitNotes')}</Button>}
-                </CardContent></Card>}
-                <Card><CardContent className="space-y-3 p-5">
-                  <h2 className="font-semibold">{mt('tourVisitorContactTitle')}</h2>
-                  <p className="text-sm text-muted-foreground">{mt('tourVisitorContactHelp')}</p>
-                  <TourChatButton tour={selectedViewing.viewing} role="manager" onNavigate={path => requestNavigation(() => navigate(path))} />
+                <Card className="overflow-hidden"><CardContent className="p-0">
+                  <div className="border-b bg-muted/30 px-5 py-4">
+                    <h2 className="text-base font-semibold tracking-tight">{mt('tourVisitorContactTitle')}</h2>
+                  </div>
+                  <div className="divide-y">
+                    {['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() + selectedViewing.viewing.durationMinutes * 60_000 > Date.now() && <div id="tour-visit-notes" tabIndex={-1} className={`space-y-4 p-5 outline-none transition-all duration-500 ${highlightNotes ? "bg-primary/5 shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.5)]" : ""}`}>
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><FileText className="h-4 w-4" aria-hidden="true" /></span>
+                        <div className="space-y-1.5"><h3 className="text-sm font-semibold leading-5">{mt('tourVisitNotesTitle')}</h3><p className="text-sm leading-relaxed text-muted-foreground">{mt('tourNotesOptionalHelp')}</p></div>
+                      </div>
+                      {selectedViewing.viewing.targetedKitchenId && onConfigureNotes && <Button variant="outline" className="h-12 w-full whitespace-normal px-3 text-center text-sm leading-tight" onClick={() => requestNavigation(() => onConfigureNotes(selectedViewing.viewing.targetedKitchenId!, selectedViewing.viewing.locationId))}>{mt('tourEditVisitNotes')}</Button>}
+                    </div>}
+                    <div className="space-y-4 p-5">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><MessageSquare className="h-4 w-4" aria-hidden="true" /></span>
+                        <div className="space-y-1.5"><h3 className="text-sm font-semibold leading-5">{mt('navMessages')}</h3><p className="text-sm leading-relaxed text-muted-foreground">{mt('tourVisitorContactHelp')}</p></div>
+                      </div>
+                      <TourChatButton tour={selectedViewing.viewing} role="manager" openFromLink buttonClassName="h-12 w-full whitespace-normal px-3 text-center text-sm leading-tight" />
+                    </div>
+                  </div>
                 </CardContent></Card>
                 <CommitmentProblems kind="tour" id={selectedViewing.viewing.id} role="manager" canReport />
               </aside>

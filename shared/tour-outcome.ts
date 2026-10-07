@@ -1,8 +1,13 @@
 /** Public tour responses must never leak legacy/internal note text. */
 import { attendanceEntries } from './tour-attendance';
+/** Older clients saved the cancelling role as a reason; it is not a shared explanation. */
+export function publicTourCancellationReason(value?: string | null): string | null {
+  return value && !/^cancelled by (chef|manager|admin|local cooks)\.?$/i.test(value.trim()) ? value : null;
+}
 export function publicTour<T extends { managerNotes?: unknown; outcomeHistory?: unknown }>(tour: T) {
   const { managerNotes: _internal, outcomeHistory, ...publicFields } = tour;
-  return { ...publicFields, ...('attendanceHistory' in tour ? { attendanceHistory: attendanceEntries(tour.attendanceHistory) } : {}), outcomeHistory: Array.isArray(outcomeHistory)
+  return { ...publicFields, ...('cancellationReason' in tour ? { cancellationReason: publicTourCancellationReason(typeof tour.cancellationReason === 'string' ? tour.cancellationReason : null) } : {}),
+    ...('attendanceHistory' in tour ? { attendanceHistory: attendanceEntries(tour.attendanceHistory) } : {}), outcomeHistory: Array.isArray(outcomeHistory)
     ? outcomeHistory.filter(entry => entry && typeof entry === 'object').map(({ notes: _notes, ...entry }) => entry) : [] };
 }
 

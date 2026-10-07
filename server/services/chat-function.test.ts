@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), conversation: {} as any, message: {} as any,
-  mapping: undefined as any, person: {} as any, keys: new Set<string>(), firestore: vi.fn(), pools: [] as any[] }));
+  mapping: undefined as any, person: {} as any, keys: new Set<string>(), firestore: vi.fn(), pools: [] as any[], fetch: vi.fn() }));
 vi.mock('../../functions/node_modules/firebase-admin', () => ({ initializeApp: vi.fn() }));
 vi.mock('../../functions/node_modules/firebase-admin/lib/esm/firestore/index.js', () => ({ getFirestore: state.firestore }));
 state.firestore.mockImplementation(() => ({ collection: (name: string) => ({ doc: () => ({
@@ -17,6 +17,8 @@ const fire = (authType = 'service_account', snapshot = state.message) => (onNewC
   params: { conversationId: 'thread', messageId: 'm1' }, authId: 'server-service-account', authType });
 beforeEach(() => {
   vi.clearAllMocks(); state.keys.clear();
+  vi.stubEnv('INNGEST_EVENT_KEY', 'fixture-production-key'); vi.stubEnv('STAGING_INNGEST_EVENT_KEY', 'fixture-staging-key');
+  vi.stubGlobal('fetch', state.fetch); state.fetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({ status: 200, ids: ['event-id'] }) });
   state.conversation = { chefId: 3, managerId: 2, locationId: 5, chefFirebaseUid: 'actual-chef', managerFirebaseUid: 'actual-manager' };
   state.mapping = { chefId: 3, locationId: 5, conversationId: 'thread' };
   state.message = { senderId: 3, senderRole: 'chef', senderFirebaseUid: 'actual-chef', type: 'text', content: 'Tour coordination',
@@ -31,13 +33,38 @@ beforeEach(() => {
     return { rows: [] };
   });
 });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 const inserts = () => state.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT'));
 describe('actual service-account trigger wired to real canonical transactional producer', () => {
+  it('commits a starting-message alert/reminder before publishing an idempotent wakeup; consecutive messages stay quiet', async () => {
+    Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
+    await fire(); await fire();
+    expect(inserts()).toHaveLength(3); expect(state.fetch).toHaveBeenCalledTimes(2);
+    const [url, request] = state.fetch.mock.calls[0];
+    expect(url).toBe('https://inn.gs/e/fixture-production-key');
+    expect(JSON.parse(request.body)).toEqual({ id: 'chat-start:thread:m1', name: 'localcooks/chat.message.start', data: { conversationId: 'thread', messageId: 'm1', senderId: 3 } });
+    expect(state.query.mock.invocationCallOrder[state.query.mock.calls.findIndex(([sql]) => sql === 'COMMIT')]).toBeLessThan(state.fetch.mock.invocationCallOrder[0]);
+    state.message.emailEpisodeId = 'earlier-start'; state.keys.clear(); state.fetch.mockClear();
+    await fire(); expect(state.fetch).not.toHaveBeenCalled();
+  });
+  it('retries a rejected event after SQL commit without duplicating durable intents', async () => {
+    Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
+    state.fetch.mockResolvedValueOnce({ ok: false });
+    await expect(fire()).rejects.toThrow('not accepted');
+    expect(state.release).toHaveBeenCalledTimes(1); expect(inserts()).toHaveLength(3);
+    await fire(); expect(inserts()).toHaveLength(3); expect(state.fetch).toHaveBeenCalledTimes(2);
+  });
+  it('publishes staging starts only with the staging event key', async () => {
+    Object.assign(state.message, { emailEpisodeId: 'm1', emailRecipientId: 2 });
+    vi.stubEnv('STAGING_DATABASE_URL', 'postgresql://fixture@staging.invalid/fixture');
+    await (staging.onNewStagingChatMessage as any).run({ data: { data: () => state.message }, params: { conversationId: 'thread', messageId: 'm1' }, authType: 'service_account' });
+    expect(state.fetch.mock.calls[0][0]).toBe('https://inn.gs/e/fixture-staging-key');
+  });
   it('exports only a staging trigger, pinned to staging Firestore and its separate SQL secret', async () => {
     expect(Object.keys(staging)).toEqual(['onNewStagingChatMessage']);
     const fn = staging.onNewStagingChatMessage as any;
     expect(fn.__endpoint.eventTrigger.eventFilters.database).toBe('staging');
-    expect(fn.__endpoint.secretEnvironmentVariables).toEqual([{ key: 'STAGING_DATABASE_URL' }]);
+    expect(fn.__endpoint.secretEnvironmentVariables).toEqual([{ key: 'STAGING_DATABASE_URL' }, { key: 'STAGING_INNGEST_EVENT_KEY' }]);
     expect(fn.__endpoint.serviceAccountEmail).toBe('localcooks-staging-chat@formauth-9e620.iam.gserviceaccount.com');
     const previous = process.env.STAGING_DATABASE_URL;
     process.env.STAGING_DATABASE_URL = 'postgresql://fixture@staging.invalid/fixture';

@@ -9,8 +9,8 @@ describe('real red shared conversation digest', () => {
     expect(email.html).toContain('Sam &lt;Manager&gt;'); expect(email.html).toContain('Harbour &amp; Kitchen');
     expect(email.html).toContain('&amp;extra=&quot;quoted&quot;');
     expect(email.html!.match(/class="cta-button"/g)).toHaveLength(1);
-    expect(email.html).toContain('hsl(347, 91%, 51%)');
-    expect(email.text).toContain('Open conversation: ' + url);
+    expect(email.html).toContain('background:#e11d48');
+    expect(email.text).toContain('Read messages and reply: ' + url);
     expect(email.text).toContain('- Booking #10'); expect(email.text).toContain('- Booking #11');
     expect(email.subject).not.toContain('undefined');
   });
@@ -26,7 +26,7 @@ describe('real red shared conversation digest', () => {
     vi.stubEnv('APP_BASE_DOMAIN', 'localcooks.ca'); vi.stubEnv('PORT', '5001');
     const path = `${role === 'chef' ? '' : '/manager'}/dashboard?view=messages&conversation=${encodeURIComponent('original#history')}`;
     const email = generateChatDigestEmail('recipient@example.test', 1, 'Local Cooks', 'Harbour Kitchen', getAppBaseUrl(role) + path, []);
-    expect(email.text).toContain('Open conversation: ' + expectedHost + path); expect(email.html).not.toContain('Booking context');
+    expect(email.text).toContain('Read messages and reply: ' + expectedHost + path); expect(email.html).not.toContain('Booking context');
     expect(email.text).toContain('1 unread message from Local Cooks');
   });
 });

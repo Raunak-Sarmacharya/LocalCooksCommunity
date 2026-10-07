@@ -74,7 +74,8 @@ describe('kitchen tour guidance settings', () => {
 });
 function chefRequest(date: Date, durationMinutes = 30) {
   return { neonUser: { id: 8 }, firebaseUser: { email_verified: true },
-    body: { locationId: 33, targetedKitchenId: 40, scheduledAt: date.toISOString(), durationMinutes } };
+    body: { locationId: 33, targetedKitchenId: 40, scheduledAt: date.toISOString(), durationMinutes,
+      intakeData: { intendedUse: 'Catering', estimatedWeeklyHours: '5-10', hasLicense: false, targetStartDate: 'not_decided' } } };
 }
 function primeKitchen() {
   mocks.rows.push([{ name: "Kitchen", managerId: 1, timezone: "UTC" }], [], [settings]);
@@ -99,6 +100,47 @@ describe("tour availability enforcement", () => {
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
     expect(res.json.mock.calls[0][0].slots.map((slot: any) => slot.startTime)).toEqual(['10:00']);
   });
+  it('offers the current manager self-exclusion without trusting the historical tour manager', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const config = { ...settings, bufferAfterMinutes: 0 };
+    mocks.rows.push([{ id: 9, chefId: 8, managerId: 1, locationId: 33, targetedKitchenId: 40, status: 'confirmed', scheduledAt: new Date('2026-10-03T12:30:00Z'), durationMinutes: 30 }], [{ managerId: 2 }], [config],
+      [{ timezone: 'America/St_Johns' }], [config], [{ dayOfWeek: 6, startTime: '10:00', endTime: '11:00', isAvailable: true }], [],
+      [{ id: 10, status: 'confirmed', scheduledAt: '2026-10-03T13:00:00Z', durationMinutes: 30 }], [config]);
+    const res = response();
+    await handler('/available-slots/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { date: '2026-10-03', viewingId: '9' }, neonUser: { id: 2, role: 'manager' } }, res);
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    expect(res.json.mock.calls[0][0].slots.map((slot: any) => slot.startTime)).toEqual(['10:00']);
+  });
+  it('rejects the former manager from self-exclusion even when recorded on the tour', async () => {
+    mocks.rows.push([{ id: 9, chefId: 8, managerId: 1, locationId: 33, targetedKitchenId: 40, status: 'confirmed', scheduledAt: new Date('2099-10-05') }], [{ managerId: 2 }]);
+    const res = response();
+    await handler('/available-slots/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { date: '2099-10-05', viewingId: '9' }, neonUser: { id: 1, role: 'manager' } }, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+  it('filters the original tour and active booking overlaps from manager replacement choices', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const config = { ...settings, bufferAfterMinutes: 0 };
+    const tour = { id: 9, chefId: 8, managerId: 2, locationId: 33, targetedKitchenId: 40, status: 'confirmed', scheduledAt: new Date('2026-10-03T12:30:00Z'), durationMinutes: 30 };
+    const booking = { id: 11, kitchenId: 40, referenceCode: 'KB-11', status: 'confirmed', bookingDate: '2026-10-03', startTime: '10:30', endTime: '11:00' };
+    mocks.rows.push([tour], [{ managerId: 2 }], [config], [{ timezone: 'America/St_Johns' }], [config],
+      [{ dayOfWeek: 6, startTime: '10:00', endTime: '12:00', isAvailable: true }], [], [], [tour], [booking], [config]);
+    const res = response();
+    await handler('/available-slots/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { date: '2026-10-03', viewingId: '9', proposal: 'true' }, neonUser: { id: 2, role: 'manager' } }, res);
+    expect(res.json.mock.calls[0][0].slots.map((slot: any) => slot.startTime)).toEqual(['11:00', '11:30']);
+    expect(mocks.rows).toHaveLength(0);
+  });
+  it('limits manager replacement discovery to an authenticated owned tour', async () => {
+    for (const req of [
+      { query: { date: '2026-10-03', proposal: 'true' } },
+      { query: { date: '2026-10-03', viewingId: '9', proposal: 'true' }, neonUser: { id: 8, role: 'chef' } },
+      { query: { date: '2026-10-03', proposal: 'true' }, neonUser: { id: 2, role: 'manager' } },
+    ]) {
+      const res = response();
+      await handler('/available-slots/:kitchenId', 'get')({ params: { kitchenId: '40' }, ...req }, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    }
+    expect(mocks.rows).toHaveLength(0);
+  });
   it('excludes that same authorized tour from fully-booked calendar dates', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
     const config = { ...settings, bufferAfterMinutes: 0 };
@@ -107,6 +149,16 @@ describe("tour availability enforcement", () => {
       [{ dayOfWeek: 6, startTime: '10:00', endTime: '10:30', isAvailable: true }], [], [tour]);
     const res = response();
     await handler('/calendar-availability/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { viewingId: '9' }, neonUser: { id: 8 } }, res);
+    expect(res.json.mock.calls[0][0].fullyBookedDates).not.toContain('2026-10-03');
+  });
+  it.each(['pending_local_cooks', 'pending'])('lets the chef exclude their %s request during a time revision', async status => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const config = { ...settings, bufferAfterMinutes: 0 };
+    const tour = { id: 9, chefId: 8, targetedKitchenId: 40, status, scheduledAt: new Date('2026-10-03T12:30:00Z'), durationMinutes: 30 };
+    mocks.rows.push([tour], [config], [{ timezone: 'America/St_Johns' }], [config],
+      [{ dayOfWeek: 6, startTime: '10:00', endTime: '10:30', isAvailable: true }], [], [tour]);
+    const res = response();
+    await handler('/calendar-availability/:kitchenId', 'get')({ params: { kitchenId: '40' }, query: { viewingId: '9' }, neonUser: { id: 8, role: 'chef' } }, res);
     expect(res.json.mock.calls[0][0].fullyBookedDates).not.toContain('2026-10-03');
   });
   beforeEach(() => { vi.clearAllMocks(); mocks.rows.length = 0; });

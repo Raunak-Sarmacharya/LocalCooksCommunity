@@ -4,6 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "preview:tour-emails": "tsx watch scripts/preview-tour-emails.ts",
     "dev": "cross-env NODE_ENV=development tsx --import ./server/instrument.ts server/index.ts",
     "build": "tsc -b && vite build",
     "build:production": "node vercel-build.mjs",

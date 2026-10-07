@@ -10,6 +10,8 @@ import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from 
 import { matchingLocalInstants } from '@shared/booking-dst';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { formatTourDate, formatTourClock, formatTourSlotRange } from '@shared/tour-time';
+import { publicTourCancellationReason } from '@shared/tour-outcome';
+import { canChefRequestReschedule, canManagerProposeReschedule } from '@shared/tour-reschedule';
 
 // Dynamic import for timezone-utils to handle Vercel serverless path resolution
 // Use a cached function that falls back to a local implementation if import fails
@@ -1582,67 +1584,26 @@ The Local Cooks Team
 };
 
 
-// Generate chat digest email using unified design
-export const generateChatDigestEmail = (
-  to: string,
-  unreadCount: number,
-  senderName: string,
-  locationName: string,
-  primaryUrl: string,
-  bookings: number[]
-): EmailContent => {
-  const subject = `Unread messages from ${senderName} — ${locationName}`;
-  const unreadText = `${unreadCount} unread message${unreadCount === 1 ? '' : 's'}`;
+// Both message alerts and unread reminders use the same transactional shell.
+export const generateChatMessageEmail = (to: string, recipientName: string, senderName: string,
+  locationName: string, primaryUrl: string, preview: string, bookingId?: number): EmailContent =>
+  renderTransactionalEmail({ to, recipientName, subject: `New message from ${senderName} — ${locationName}`,
+    message: `${senderName} sent you a message about ${locationName}. Open the conversation to reply.`,
+    facts: [{ label: 'From', value: senderName }, { label: 'Kitchen', value: locationName },
+      { label: 'Message', value: preview.length > 500 ? preview.slice(0, 500) + '…' : preview },
+      ...(bookingId ? [{ label: 'Booking', value: `#${bookingId}` }] : [])],
+    actionLabel: 'Read message and reply', actionUrl: primaryUrl,
+    note: 'Reply in Local Cooks to keep your conversation together.' });
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(subject)}</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${escapeHtml(subject)}</h2>
-      <p class="message" style="margin-bottom: 20px;">You have ${unreadText} from ${escapeHtml(senderName)} at ${escapeHtml(locationName)}.</p>
-
-      <div style="margin: 24px 0; text-align: center;">
-        <a href="${escapeHtml(primaryUrl)}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Open conversation</a>
-      </div>
-
-      ${bookings.length > 0 ? `
-      <div style="margin: 24px 0; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-        <p style="font-size: 14px; color: #475569; margin: 0 0 8px 0; font-weight: 500;">Booking context:</p>
-        <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #64748b;">
-          ${bookings.map(b => `<li style="margin-bottom: 4px;">Booking #${escapeHtml(String(b))}</li>`).join('')}
-        </ul>
-      </div>` : ''}
-
-      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
-        <p style="font-size: 15px; color: #64748b; margin: 0;">Local Cooks</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  const text = `
-You have ${unreadText} from ${senderName} at ${locationName}.
-
-Open conversation: ${primaryUrl}
-${bookings.length > 0 ? `\nBooking context:\n${bookings.map(b => `- Booking #${b}`).join('\n')}` : ''}
-
-Local Cooks
-  `.trim();
-
-  return { to, subject, text, html };
-};
+export const generateChatDigestEmail = (to: string, unreadCount: number, senderName: string,
+  locationName: string, primaryUrl: string, bookings: number[], recipientName = 'there'): EmailContent =>
+  renderTransactionalEmail({ to, recipientName, subject: `Unread messages from ${senderName} — ${locationName}`,
+    heading: 'You have unread kitchen messages',
+    message: `You have ${unreadCount} unread message${unreadCount === 1 ? '' : 's'} from ${senderName} at ${locationName}. Open the conversation to read and reply.`,
+    facts: [{ label: 'From', value: senderName }, { label: 'Kitchen', value: locationName },
+      { label: 'Unread messages', value: String(unreadCount) },
+      ...bookings.map(id => ({ label: 'Booking', value: `- Booking #${id}` }))],
+    actionLabel: 'Read messages and reply', actionUrl: primaryUrl });
 
 export async function sendApplicationReceivedEmail(applicationData: any) {
   const firstName = applicationData.fullName ? applicationData.fullName.split(' ')[0] : 'there';
@@ -5179,7 +5140,7 @@ export const generatePenaltyApprovedEmail = (data: {
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Penalty Amount:</span> <strong style="color: #dc2626;">$${penaltyAmount} CAD</strong></p>
       </div>
       <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
-        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">You can dispute this final amount from your bookings dashboard during the configured response window. Collection waits until that window ends and any dispute has been reviewed by an admin.</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">You can dispute this final amount from your bookings dashboard during the configured response window. Collection waits until that window ends and any dispute has been reviewed by Local Cooks.</p>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
@@ -5207,7 +5168,7 @@ Storage: ${data.storageName}
 Days Overdue: ${data.daysOverdue}
 Penalty Amount: $${penaltyAmount} CAD
 
-You can dispute this final amount from your bookings dashboard during the configured response window. Collection waits until that window ends and any dispute has been reviewed by an admin.
+You can dispute this final amount from your bookings dashboard during the configured response window. Collection waits until that window ends and any dispute has been reviewed by Local Cooks.
 
 View bookings: ${dashboardUrl}
 
@@ -5419,7 +5380,7 @@ export const generateNewKitchenApplicationManagerEmail = (data: {
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: #f8fafc; color: #1e293b !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0; border: 1px solid #e2e8f0;">View Dashboard</a>
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What to expect:</p>
-      <p class="message" style="margin-bottom: 20px;">No action is needed from you right now. When ${chefFirstName} completes their Chef Application Requirements after admin approval, you&#8217;ll review and approve their documents in your dashboard.</p>
+      <p class="message" style="margin-bottom: 20px;">No action is needed from you right now. We&#8217;ll notify you when ${chefFirstName}'s documents are ready for your review.</p>
       <div style="margin: 0 0 8px 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Dashboard</a>
       </div>
@@ -5447,7 +5408,7 @@ Chef Information:
 Name: ${data.chefName}
 
 What to expect:
-No action is needed from you right now. When ${chefFirstName} completes their Chef Application Requirements after admin approval, you'll review and approve their documents in your dashboard.
+No action is needed from you right now. We'll notify you when ${chefFirstName}'s documents are ready for your review.
 
 View dashboard at: ${dashboardUrl}
 
@@ -6126,7 +6087,7 @@ export const generateKitchenLicenseRejectedEmail = (data: {
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Your kitchen license submission requires attention. The admin team was unable to approve it at this time.</p>
+      <p class="message" style="margin-bottom: 20px;">Your kitchen license submission requires attention. It could not be approved at this time.</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
         ${data.feedback ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Feedback:</span> <strong style="color: #1e293b;">${data.feedback}</strong></p>` : ''}
@@ -6403,7 +6364,7 @@ export const generateDamageClaimFiledEmail = (data: {
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Response Deadline:</span> <strong style="color: #dc2626;">${data.responseDeadline}</strong></p>
       </div>
       <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
-        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">You can accept the claim or dispute it for admin review. If you don&#8217;t respond by the deadline, the claim may be automatically approved.</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">You can accept the claim or ask Local Cooks to review it. If you don&#8217;t respond by the deadline, the claim may be automatically approved.</p>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review &amp; Respond</a>
@@ -6451,7 +6412,7 @@ export const generateDamageClaimResponseEmail = (data: {
   const badgeBorder = isAccepted ? '#dcfce7' : '#fecaca';
   const nextSteps = isAccepted
     ? 'You can now charge the chef&#8217;s saved payment method from your dashboard.'
-    : 'The claim has been escalated to admin for review. You will be notified of the decision.';
+    : 'Local Cooks will review the disputed claim. You will be notified of the decision.';
 
   const html = `
 <!DOCTYPE html>
@@ -6499,7 +6460,7 @@ export const generateDamageClaimResponseEmail = (data: {
   return {
     to: data.managerEmail,
     subject,
-    text: `Hi ${managerFirstName},\n\n${data.chefName} has ${data.response} your damage claim "${data.claimTitle}" for ${data.claimedAmount}.${data.chefResponse ? `\n\nResponse: ${data.chefResponse}` : ''}\n\n${isAccepted ? 'You can now charge from your dashboard.' : 'Escalated to admin for review.'}\n\nView claim: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
+    text: `Hi ${managerFirstName},\n\n${data.chefName} has ${data.response} your damage claim "${data.claimTitle}" for ${data.claimedAmount}.${data.chefResponse ? `\n\nResponse: ${data.chefResponse}` : ''}\n\n${isAccepted ? 'You can now charge from your dashboard.' : 'Local Cooks will review the disputed claim.'}\n\nView claim: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
     html
   };
 };
@@ -6634,7 +6595,7 @@ export const generateDamageClaimDecisionEmail = (data: {
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">The admin has made a decision on the disputed damage claim.</p>
+      <p class="message" style="margin-bottom: 20px;">Local Cooks has made a decision on the disputed damage claim.</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Claim:</span> <strong style="color: #1e293b;">${data.claimTitle}</strong></p>
         ${data.decision === 'partially_approved' && data.finalAmount
@@ -6666,7 +6627,7 @@ export const generateDamageClaimDecisionEmail = (data: {
   return {
     to: data.recipientEmail,
     subject,
-    text: `Hi ${firstName},\n\nThe admin has ${decisionLabels[data.decision].toLowerCase()} the damage claim "${data.claimTitle}".\n\n${data.decisionReason}\n\nView details: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
+    text: `Hi ${firstName},\n\nLocal Cooks has ${decisionLabels[data.decision].toLowerCase()} the damage claim "${data.claimTitle}".\n\n${data.decisionReason}\n\nView details: ${dashboardUrl}\n\nBest,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
     html
   };
 };
@@ -7752,9 +7713,14 @@ function tourRequestFacts(data: TourRequestEmailDetails) {
 export const generateTourRequestedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string }): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
     subject: 'Tour request received — ' + data.kitchenName,
-    message: 'We received your tour request. Local Cooks will review it first. If forwarded, the kitchen manager will decide whether to confirm the requested time. Your tour is not yet confirmed.',
-    facts: tourRequestFacts(data), actionLabel: 'View request',
-    actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId });
+    message: 'Your kitchen tour request has been received. The requested time is not yet confirmed. We’ll email you when there is an update.',
+    facts: tourRequestFacts(data), actionLabel: 'View details',
+    actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId,
+    ...(new Date(data.tourDate).getTime() > Date.now() ? { secondaryButton: { label: 'Edit tour request', url: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId + '&action=reschedule' } } : {}),
+    actions: new Date(data.tourDate).getTime() > Date.now() ? [
+      { label: 'Cancel tour', url: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId + '&action=cancel' },
+    ] : [],
+    secondaryLink: { label: 'Get support', url: getSubdomainUrl('chef') + '/dashboard?view=support' } });
 
 export const generateTourRequestedLocalCooksEmail = (data: TourRequestEmailDetails & { recipientEmail: string; chefName: string }): EmailContent =>
   renderTransactionalEmail({ to: data.recipientEmail, recipientName: 'Local Cooks',
@@ -7763,27 +7729,21 @@ export const generateTourRequestedLocalCooksEmail = (data: TourRequestEmailDetai
     facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data)], actionLabel: 'Review tour request',
     actionUrl: getSubdomainUrl('admin') + '/admin?section=tour-requests&viewing=' + data.tourId });
 
-export const generateTourDeclinedByLocalCooksEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string; reason?: string }): EmailContent =>
-  renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
-    subject: 'Tour request declined — ' + data.kitchenName,
-    message: 'Local Cooks declined your tour request. This appointment was not confirmed.',
-    facts: [...tourRequestFacts(data), ...(data.reason ? [{ label: 'Reason', value: data.reason }] : [])],
-    actionLabel: 'View request', actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId });
-
 export const generateTourManagerChangeEmail = (data: { tourId: number; durationMinutes: number; managerEmail: string; managerName?: string; chefName: string; kitchenName: string; locationName?: string; address?: string; kind: 'cancelled' | 'reschedule_requested'; scheduledAt: Date; requestedAt?: Date; timezone: string }): EmailContent => {
   const when = (date: Date) => `${formatTourDate(date)}, ${formatTourSlotRange(date, data.durationMinutes)}`;
   const cancelled = data.kind === 'cancelled';
   return renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName || 'Manager',
-    subject: `${cancelled ? 'Kitchen tour cancelled by chef' : 'Kitchen tour time change requested'} · TOUR-${data.tourId}`,
-    message: cancelled ? `${data.chefName} cancelled their tour.` : `${data.chefName} requested a new tour time. The original slot remains booked until you decide.`,
+    subject: `${cancelled ? 'Kitchen tour cancelled' : 'Kitchen tour reschedule requested'} · TOUR-${data.tourId}`,
+    message: cancelled ? 'This kitchen tour was cancelled.' : `${data.chefName} requested to reschedule their tour. The original slot remains booked until you decide.`,
     facts: [{ label: 'Kitchen', value: data.kitchenName },
       ...(data.locationName ? [{ label: 'Location', value: data.locationName }] : []),
       ...(data.address ? [{ label: 'Address', value: data.address }] : []),
       { label: cancelled ? 'Former time' : 'Original time', value: when(data.scheduledAt) },
       ...(!cancelled && data.requestedAt ? [{ label: 'Proposed time', value: when(data.requestedAt) }] : []),
       { label: 'Reference', value: `TOUR-${data.tourId}` }],
-    actionLabel: cancelled ? 'View cancelled tour' : 'Review time change',
-    actionUrl: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}`,
+    actionLabel: cancelled ? 'View cancelled tour' : 'Review reschedule request',
+    actionUrl: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}${cancelled ? '' : '&action=review-reschedule'}`,
+    ...(!cancelled ? { secondaryButton: { label: 'Message chef', url: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${data.tourId}&action=message` } } : {}),
     note: cancelled ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined,
   });
 };
@@ -7791,10 +7751,13 @@ export const generateTourManagerChangeEmail = (data: { tourId: number; durationM
 export const generateTourRequestedManagerEmail = (data: TourRequestEmailDetails & { managerEmail: string; managerName: string; chefName: string; chefNotes?: string }): EmailContent =>
   renderTransactionalEmail({ to: data.managerEmail, recipientName: data.managerName,
     subject: 'Tour request from ' + data.chefName + ' — ' + data.kitchenName,
-    message: 'Local Cooks reviewed and forwarded this request from ' + data.chefName + '. Review the requested time to confirm or decline. You can open the conversation from the tour to coordinate.',
+    message: data.chefName + ' requested a tour of ' + data.kitchenName + '. Confirm the requested time, offer alternatives, or decline the request.',
     facts: [{ label: 'Visitor', value: data.chefName }, ...tourRequestFacts(data),
       ...(data.chefNotes ? [{ label: 'Visitor notes', value: data.chefNotes }] : [])],
-    actionLabel: 'Review tour request', actionUrl: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId });
+    actionLabel: 'Confirm tour', actionUrl: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=confirm',
+    secondaryButton: { label: 'Offer alternative times', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=reschedule' },
+    actions: [{ label: 'Message chef', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=message' },
+      { label: 'Decline request', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=cancel' }] });
 
 export function generateTourCalendarAttachment(data: {
   tourId: number; durationMinutes: number; tourDate: string | Date; kitchenName: string; locationAddress: string;
@@ -7814,7 +7777,7 @@ export function generateTourCalendarAttachment(data: {
       { sequence: data.calendarSequence ?? 0, modifiedAt: data.updatedAt, cancelled: data.cancelled }) };
 }
 
-export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date }): EmailContent => {
+export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date; canReschedule?: boolean; canCancel?: boolean }): EmailContent => {
   const startDateTimeObj = new Date(data.tourDate);
   const endDateTimeObj = new Date(startDateTimeObj.getTime() + data.durationMinutes * 60_000);
   if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(startDateTimeObj.getTime())
@@ -7825,6 +7788,8 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
   const startTime = formatTourSlotRange(startDateTimeObj, data.durationMinutes);
   const title = `Kitchen Tour at ${data.kitchenName}`;
   const actionUrl = `${getSubdomainUrl(data.isManager ? 'kitchen' : 'chef')}${data.isManager ? '/manager/dashboard' : '/dashboard'}?view=viewings&viewing=${data.tourId}`;
+  const canReschedule = data.canReschedule !== false && (data.isManager ? canManagerProposeReschedule : canChefRequestReschedule)({ status: 'confirmed', scheduledAt: data.tourDate });
+  const canCancel = data.canCancel !== false && startDateTimeObj.getTime() > Date.now();
 
   const calendarAttachment = generateTourCalendarAttachment(data);
 
@@ -7837,8 +7802,8 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
   );
 
   return {
-    ...renderTransactionalEmail({ to: data.email, subject: `${data.previousTourDate ? 'Tour time changed' : 'Confirmed: Kitchen Tour'} at ${data.kitchenName}`,
-      recipientName: data.recipientName, message: data.previousTourDate ? 'Your tour time change was approved. Your tour is confirmed for the new time below.' : 'Your kitchen tour is confirmed.',
+    ...renderTransactionalEmail({ to: data.email, subject: `${data.previousTourDate ? 'Tour rescheduled' : 'Confirmed: Kitchen Tour'} at ${data.kitchenName}`,
+      recipientName: data.recipientName, message: data.previousTourDate ? 'Your kitchen tour was rescheduled. Your new appointment is confirmed below.' : 'Your kitchen tour is confirmed.',
       facts: [{ label: 'Kitchen', value: data.kitchenName }, { label: 'Meeting with', value: data.otherPartyName },
         { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
         ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes)}` }] : []),
@@ -7846,43 +7811,71 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
         ...(data.notes ? [{ label: 'Meeting instructions', value: data.notes }] : []),
         { label: 'Arrival help', value: data.contactEmail || getSupportEmail() },
         { label: 'Reference', value: `TOUR-${data.tourId}` }],
-      actionLabel: data.previousTourDate ? 'View updated tour' : 'View your tour', actionUrl,
-      secondaryLink: { label: 'Add to Google Calendar', url: googleCalendarUrl },
+      heading: data.previousTourDate ? 'Your tour has been rescheduled' : 'Your kitchen tour is confirmed',
+      actionLabel: 'View details', actionUrl,
+      secondaryButton: canReschedule ? { label: 'Reschedule tour', url: actionUrl + '&action=reschedule' } : { label: data.isManager ? 'Message chef' : 'Message manager', url: actionUrl + '&action=message' },
+      actions: [...(canReschedule ? [{ label: data.isManager ? 'Message chef' : 'Message manager', url: actionUrl + '&action=message' }] : []),
+        { label: 'Add to Google Calendar', url: googleCalendarUrl },
+        ...(data.locationAddress ? [{ label: 'Get directions', url: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(data.locationAddress) }] : []),
+        ...(canCancel ? [{ label: 'Cancel tour', url: actionUrl + '&action=cancel' }] : []),
+        { label: 'Get support', url: `${getSubdomainUrl(data.isManager ? 'kitchen' : 'chef')}${data.isManager ? '/manager/dashboard' : '/dashboard'}?view=support` }],
       note: 'A calendar file is attached. Saved calendar events do not update automatically when a tour changes.',
     }),
     attachments: [calendarAttachment]
   };
 };
 
-export const generateTourRejectedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string; cancellationReason?: string; managerNotes?: string; cancelled?: boolean; reviewer?: 'Local Cooks' | 'Manager' }): EmailContent =>
+export const generateTourRejectedChefEmail = (data: TourRequestEmailDetails & { chefEmail: string; chefName: string; cancellationReason?: string; managerNotes?: string; cancelled?: boolean }): EmailContent =>
   renderTransactionalEmail({ to: data.chefEmail, recipientName: data.chefName,
     subject: (data.cancelled ? 'Kitchen Tour Cancelled' : 'Kitchen Tour Request Declined') + ' — ' + data.kitchenName,
-    message: 'Your ' + (data.cancelled ? 'confirmed kitchen tour was cancelled' : 'kitchen tour request was declined') + ' by ' + (data.reviewer === 'Local Cooks' ? 'Local Cooks' : 'the manager') + '.',
+    message: 'Your ' + (data.cancelled ? 'confirmed kitchen tour was cancelled.' : 'kitchen tour request was declined. This appointment was not confirmed.'),
     facts: [...tourRequestFacts(data).map(fact => fact.label === 'Requested time' && data.cancelled ? { ...fact, label: 'Former time' } : fact),
-      ...(data.cancellationReason ? [{ label: 'Reason', value: data.cancellationReason }] : []),
+      ...(publicTourCancellationReason(data.cancellationReason) ? [{ label: 'Reason', value: publicTourCancellationReason(data.cancellationReason)! }] : []),
       ...(data.managerNotes ? [{ label: 'Shared meeting notes', value: data.managerNotes }] : [])],
     actionLabel: 'View your tour', actionUrl: getSubdomainUrl('chef') + '/dashboard?view=viewings&viewing=' + data.tourId,
+    secondaryLink: { label: 'Get support', url: getSubdomainUrl('chef') + '/dashboard?view=support' },
     note: data.cancelled ? 'Saved calendar events do not update automatically; remove the cancelled tour from your calendar.' : undefined });
 
 /** Explicit opt-in shell: supplied content stays literal in HTML and plain text. */
 export function renderTransactionalEmail(data: {
   to: string; subject: string; recipientName: string; message: string;
   facts: { label: string; value: string }[]; actionLabel: string; actionUrl: string; note?: string; secondaryLink?: { label: string; url: string };
-  secondaryButton?: { label: string; url: string };
+  secondaryButton?: { label: string; url: string }; heading?: string;
+  actions?: { label: string; url: string }[];
 }): EmailContent {
+  const heading = data.heading || data.subject;
+  const buttonStyle = 'display:block;text-align:center;padding:14px 18px;background:#e11d48;color:#ffffff !important;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;line-height:22px;';
+  const secondaryStyle = buttonStyle.replace('background:#e11d48;color:#ffffff !important;', 'background:#ffffff;color:#be123c !important;border:1px solid #e7e5e4;');
+  const actionRows = (actions: { label: string; url: string }[], primary = false) =>
+    `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="table-layout:fixed;margin:20px 0;"><tbody>${actions.map((action, index) =>
+      `${index % 2 === 0 ? '<tr>' : ''}<td class="action-cell" width="${actions.length === 1 ? '100%' : '50%'}" valign="top" style="padding:4px;"><a href="${escapeHtml(action.url)}" class="cta-button" style="${primary && index === 0 ? buttonStyle : secondaryStyle}">${escapeHtml(action.label)}</a></td>${index % 2 === 1 || index === actions.length - 1 ? '</tr>' : ''}`).join('')}</tbody></table>`;
+  const primaryActions = [{ label: data.actionLabel, url: data.actionUrl }, ...(data.secondaryButton ? [data.secondaryButton] : [])];
+  const moreActions = [...(data.actions || []), ...(data.secondaryLink ? [data.secondaryLink] : [])];
   return {
     to: data.to, subject: data.subject,
-    text: `Hi ${data.recipientName},\n\n${data.message}\n\n${data.facts.map(fact => `${fact.label}: ${fact.value}`).join('\n')}\n\n${data.actionLabel}: ${data.actionUrl}${data.secondaryButton ? `\n${data.secondaryButton.label}: ${data.secondaryButton.url}` : ''}${data.secondaryLink ? `\n${data.secondaryLink.label}: ${data.secondaryLink.url}` : ''}${data.note ? `\n\n${data.note}` : ''}\n\nThe Local Cooks Team`,
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(data.subject)}</title>${getUniformEmailStyles()}</head>
-<body><div class="email-container"><div class="header">
-<img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-</div><div class="content"><h2 class="greeting">Hi ${escapeHtml(data.recipientName)},</h2>
-<p class="message">${escapeHtml(data.message)}</p><div class="info-box">
-${data.facts.map(fact => `<p style="white-space:pre-line;"><strong>${escapeHtml(fact.label)}:</strong> ${escapeHtml(fact.value)}</p>`).join('')}
-</div><p><a href="${escapeHtml(data.actionUrl)}" class="cta-button">${escapeHtml(data.actionLabel)}</a></p>
-${data.secondaryButton ? `<p style="margin:0 0 20px;"><a href="${escapeHtml(data.secondaryButton.url)}" class="cta-button" style="background:#ffffff;color:#e11d48 !important;border:1px solid #e11d48;box-shadow:none;margin:0;">${escapeHtml(data.secondaryButton.label)}</a></p>` : ''}
-${data.secondaryLink ? `<p><a href="${escapeHtml(data.secondaryLink.url)}">${escapeHtml(data.secondaryLink.label)}</a></p>` : ''}
-${data.note ? `<p class="message">${escapeHtml(data.note)}</p>` : ''}${getUniformEmailFooter()}</div></body></html>`,
+    text: `${heading}\n\nHi ${data.recipientName},\n\n${data.message}\n\n${primaryActions.map(action => `${action.label}: ${action.url}`).join('\n')}\n\nDetails\n${data.facts.map(fact => `${fact.label}: ${fact.value}`).join('\n')}${moreActions.length ? '\n\n' + moreActions.map(action => `${action.label}: ${action.url}`).join('\n') : ''}${data.note ? `\n\n${data.note}` : ''}\n\nQuestions? Contact ${getSupportEmail()}\nThe Local Cooks Team`,
+    html: `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(data.subject)}</title>
+<style>@media only screen and (max-width:560px){.email-body{padding:24px 16px !important}.email-title{font-size:26px !important}.action-cell{display:block !important;width:100% !important;box-sizing:border-box !important}}</style></head>
+<body style="margin:0;padding:0;background:#f5f5f4;font-family:Arial,Helvetica,sans-serif;color:#292524;line-height:1.6;">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${escapeHtml(data.message)}</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;">
+<tr><td align="center" style="padding:24px;background:#e11d48;text-align:center;border-radius:12px 12px 0 0;">
+<img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" width="160" style="display:block;margin:0 auto;width:160px;max-width:100%;height:auto;" /></td></tr>
+<tr><td class="email-body" style="padding:32px 32px;overflow-wrap:anywhere;">
+<h1 class="email-title" style="font-size:30px;line-height:1.2;letter-spacing:-0.5px;margin:0 0 20px;">${escapeHtml(heading)}</h1>
+<p style="margin:0 0 12px;font-size:15px;">Hi ${escapeHtml(data.recipientName)},</p>
+<p style="margin:0 0 20px;font-size:16px;">${escapeHtml(data.message)}</p>
+${actionRows(primaryActions, true)}
+<h2 style="font-size:18px;margin:0 0 12px;">Details</h2>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e7e5e4;">
+${data.facts.map(fact => `<tr><td style="padding:12px 0;border-bottom:1px solid #e7e5e4;"><p style="white-space:pre-line;margin:0;font-size:15px;"><strong>${escapeHtml(fact.label)}:</strong> ${escapeHtml(fact.value)}</p></td></tr>`).join('')}
+</table>
+${moreActions.length ? actionRows(moreActions) : ''}
+${data.note ? `<p style="font-size:13px;color:#57534e;margin:20px 0 0;">${escapeHtml(data.note)}</p>` : ''}
+</td></tr><tr><td style="padding:20px 24px;border-top:1px solid #e7e5e4;font-size:13px;color:#57534e;">
+Questions? <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#be123c;">Contact Local Cooks</a><br>The Local Cooks Team<br>&copy; ${new Date().getFullYear()} Local Cooks
+</td></tr></table></td></tr></table></body></html>`,
   };
 }
 

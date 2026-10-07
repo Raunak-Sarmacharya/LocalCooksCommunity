@@ -1,4 +1,6 @@
+import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearch } from "wouter";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,6 +46,10 @@ type TourRequest = {
   locationName: string | null;
   locationAddress: string | null;
   locationTimezone: string | null;
+  managerId?: number | null;
+  managerName?: string | null;
+  managerEmail?: string | null;
+  managerPhone?: string | null;
 };
 
 async function authHeaders() {
@@ -53,6 +59,7 @@ async function authHeaders() {
 
 export function AdminTourRequestsSection() {
   useTourClock();
+  const { t } = useTranslation("common");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<TourRequest | null>(null);
@@ -215,6 +222,15 @@ export function AdminTourRequestsSection() {
                 <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{request.locationName || "Kitchen"}{request.locationAddress ? ` · ${request.locationAddress}` : ""}</div>
                 {request.chefEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`mailto:${request.chefEmail}`}>{request.chefEmail}</a></div>}
                 {request.chefPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`tel:${request.chefPhone}`}>{request.chefPhone}</a></div>}
+                <section aria-label={t("tourManagerContactTitle", "Kitchen manager")} className="rounded-md border p-3 space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">{t("tourManagerContactTitle", "Kitchen manager")}</h3>
+                  {request.managerId != null ? <>
+                    <p className="font-medium">{request.managerName || t("tourManagerContactTitle", "Kitchen manager")}</p>
+                    {request.managerEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><a className="text-primary hover:underline break-all" href={`mailto:${request.managerEmail}`}>{request.managerEmail}</a></div>}
+                    {request.managerPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" /><a className="text-primary hover:underline" href={`tel:${request.managerPhone}`}>{request.managerPhone}</a></div>}
+                    {!request.managerEmail && !request.managerPhone && <p className="text-muted-foreground">{t("tourManagerContactUnavailable", "Manager contact details are unavailable")}</p>}
+                  </> : <p className="text-muted-foreground">{request.managerId === null ? t("tourManagerUnassigned", "No manager assigned") : t("tourManagerContactUnavailable", "Manager contact details are unavailable")}</p>}
+                </section>
                 {request.viewing.chefNotes && <p className="rounded-md bg-muted p-3"><span className="font-medium">Chef notes:</span> {request.viewing.chefNotes}</p>}
                 {request.viewing.adminReviewReason && <p className="rounded-md bg-muted p-3"><span className="font-medium">Review reason:</span> {request.viewing.adminReviewReason}</p>}
                 {request.viewing.sharedManagerNotes && <p><strong>Message shared with chef:</strong> {request.viewing.sharedManagerNotes}</p>}
@@ -226,11 +242,7 @@ export function AdminTourRequestsSection() {
                 </div>)}</details>}
                 {request.viewing.adminReviewedAt && <p><span className="font-medium">Reviewed:</span> {formatTourWhen(request.viewing.adminReviewedAt, null, request.locationTimezone || "America/St_Johns")}</p>}
                 {request.viewing.intakeData && Object.keys(request.viewing.intakeData).length > 0 && (
-                  <dl className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
-                    {Object.entries(request.viewing.intakeData).filter(([, value]) => value != null && value !== "").map(([key, value]) => (
-                      <div key={key}><dt className="text-xs text-muted-foreground">{key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())}</dt><dd className="break-words">{typeof value === "boolean" ? (value ? "Yes" : "No") : typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>
-                    ))}
-                  </dl>
+                  <div className="rounded-md border p-3"><TourIntakeDetails data={request.viewing.intakeData} /></div>
                 )}
                 {request.viewing.status === "pending_local_cooks" && <div className="flex justify-end gap-2 pt-1">
                   <Button variant="outline" onClick={() => openReview(request, "denied")}><X className="mr-2 h-4 w-4" />Deny</Button>

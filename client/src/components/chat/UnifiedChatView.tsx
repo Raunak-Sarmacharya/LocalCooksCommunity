@@ -354,7 +354,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
   const showEmptyInbox = conversations.length === 0 && !isListLoading;
 
   return (
-    <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
+    <Card className={cn("w-full h-full border shadow-sm overflow-hidden flex bg-background", hideConversationList ? "min-h-0" : "min-h-[500px]")}>
       {/* Sidebar List */}
       {!hideConversationList && (
         <div className={cn(
@@ -379,7 +379,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId, i
 
       {/* Main Chat Area */}
       <div className={cn(
-        "flex-1 flex flex-col bg-background",
+        "min-h-0 min-w-0 flex-1 flex flex-col bg-background",
         hideConversationList || showEmptyInbox || !isMobileListVisible ? "flex" : "hidden md:flex"
       )}>
         {applicationContextError && <div role="alert" className="p-3 text-sm">{applicationContextError} <Button variant="link" onClick={() => void refetch()}>Retry</Button></div>}

@@ -10,10 +10,10 @@ export async function withChefDisplayNames<T extends { chefId?: number | null; c
     return records.map(record => ({ ...record, chefName: record.chefName?.trim() && !record.chefName.includes('@') ? record.chefName.trim() : record.chefId ? names.get(record.chefId) || 'A chef' : 'A chef' }));
 }
 
-export async function getUserDisplayName(userId: number, role: 'chef' | 'manager' = 'chef'): Promise<string> {
+export async function getUserDisplayName(userId: number, role: 'chef' | 'manager' = 'chef', database: Pick<typeof db, 'select'> = db): Promise<string> {
     if (!userId) return role === 'chef' ? 'A chef' : 'Manager';
     try {
-        const [user] = await db
+        const [user] = await database
             .select({ 
                 username: users.username,
                 firebaseUid: users.firebaseUid,
@@ -45,7 +45,7 @@ export async function getUserDisplayName(userId: number, role: 'chef' | 'manager
         // For chefs, try their application name
         if (role === 'chef') {
             // Check general applications table
-            const [app] = await db
+            const [app] = await database
                 .select({ fullName: applications.fullName })
                 .from(applications)
                 .where(and(
@@ -57,7 +57,7 @@ export async function getUserDisplayName(userId: number, role: 'chef' | 'manager
             if (app && app.fullName) return app.fullName;
 
             // Check chef kitchen applications table as fallback
-            const [kitchenApp] = await db
+            const [kitchenApp] = await database
                 .select({ fullName: chefKitchenApplications.fullName })
                 .from(chefKitchenApplications)
                 .where(eq(chefKitchenApplications.chefId, userId))

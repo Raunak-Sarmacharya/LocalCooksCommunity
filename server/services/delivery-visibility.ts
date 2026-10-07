@@ -20,13 +20,14 @@ export function describeDelivery(log: Log, original: Log = log, event?: any, now
   if (original.category === 'chat_digest') {
     try {
       const saved = JSON.parse(original.textBody || '');
-      source = 'chat'; sourceId = saved.bookingId || null; resource = `application #${saved.applicationId} · conversation ${saved.conversationId}`;
+      source = 'chat'; sourceId = saved.bookingId || null;
+      resource = `${saved.applicationId ? `application #${saved.applicationId} · ` : ''}conversation ${saved.conversationId}${saved.phase === 'initial' ? ' · starting message' : saved.phase === 'reminder' ? ' · unread reminder' : ''}`;
       recipientDestination = saved.path; dueAt = iso(saved.dueAt);
       eligibility = Date.parse(saved.dueAt) > now.getTime() ? 'future' : 'due';
       nextAttemptAt = ['scheduled', 'failed'].includes(original.status) ? new Date(Math.max(Date.parse(saved.dueAt), original.retriedAt ? new Date(original.retriedAt).getTime() + 60000 : 0)).toISOString() : null;
       canRetry = ['scheduled', 'failed'].includes(original.status) && eligibility === 'due';
       destination = sourceId ? adminBookingTransactionsPath(sourceId) : '/admin?section=kitchen-applications-step1';
-      recovery = 'Local Cooks: retry the original due unread digest. Current Firestore read state, real participants and booking context are checked before sending; read or obsolete messages suppress. No deadlines or liabilities change.';
+      recovery = 'Local Cooks: retry the original due message email. Current Firestore read/reply state, notification episode, real participants and booking context are checked before sending; read, replied or obsolete messages suppress. No deadlines or liabilities change.';
     } catch { canRetry = false; recovery = 'Local Cooks must investigate an invalid chat intent; never replay stored JSON.'; }
   } else if (schedule) {
     try {

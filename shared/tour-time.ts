@@ -18,11 +18,12 @@ export function tourDateKey(date: Date): string {
   }).format(date);
 }
 
-/** Offset labels distinguish repeated DST times; an overnight end names its actual date. */
+/** One trailing timezone label unless DST changes; an overnight end names its actual date. */
 export function formatTourSlotRange(scheduledAt: string | Date, durationMinutes: number): string {
   const start = new Date(scheduledAt), end = new Date(start.getTime() + durationMinutes * 60_000);
-  const clock = (date: Date) => formatTourClock(date) + ' ' + new Intl.DateTimeFormat('en-CA', {
+  const zone = (date: Date) => new Intl.DateTimeFormat('en-CA', {
     timeZone: DEFAULT_TIMEZONE, hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
   }).formatToParts(date).find(part => part.type === 'timeZoneName')!.value;
-  return `${clock(start)} – ${tourDateKey(start) !== tourDateKey(end) ? formatTourDate(end) + ', ' : ''}${clock(end)}`;
+  const startZone = zone(start), endZone = zone(end);
+  return `${formatTourClock(start)}${startZone !== endZone ? ' ' + startZone : ''} – ${tourDateKey(start) !== tourDateKey(end) ? formatTourDate(end) + ', ' : ''}${formatTourClock(end)} ${endZone}`;
 }

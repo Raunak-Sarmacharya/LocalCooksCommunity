@@ -4,6 +4,7 @@ import { tourGrantsChat } from './shared-chat-access';
 import { db } from '../db';
 import { getAdminDb } from '../chat-service';
 import { FieldValue } from 'firebase-admin/firestore';
+import { logger } from '../logger';
 
 export class ChatAccessError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -121,7 +122,7 @@ export function validateParticipantMessage(body: any) {
 
 export async function sendParticipantMessage(actor: ChatActor, uid: string, id: string, body: any) {
   validateParticipantMessage(body);
-  return withParticipantChat(actor, uid, id, async ({ firestore, ref, role, live, applicationIds, data }) => {
+  const sent = await withParticipantChat(actor, uid, id, async ({ firestore, ref, role, live, applicationIds, data, managerId }) => {
     if (!live) throw new ChatAccessError(409, 'The other account is no longer available');
     if (body.bookingId) {
       const [booking] = await db.select({ chefId: kitchenBookings.chefId, locationId: kitchens.locationId }).from(kitchenBookings)
@@ -133,17 +134,46 @@ export async function sendParticipantMessage(actor: ChatActor, uid: string, id: 
       const { authorizeChatAttachment } = await import('./chat-file-access');
       await authorizeChatAttachment(actor, id, data, applicationIds, body.fileUrl);
     }
-    const message = ref.collection('messages').doc(), batch = firestore.batch();
-    batch.set(message, { senderId: actor.id, senderRole: role, senderFirebaseUid: uid,
+    return persistChatMessage(firestore, ref, { senderId: actor.id, senderRole: role, senderFirebaseUid: uid,
       content: body.content.trim(), type: body.type, fileUrl: body.fileUrl || null, fileName: body.fileName || null,
-      ...(body.bookingId ? { bookingId: body.bookingId } : {}), createdAt: FieldValue.serverTimestamp(), readAt: null });
-    batch.update(ref, { lastMessageAt: FieldValue.serverTimestamp(),
-      lastMessageText: body.type === 'file' ? body.fileName.trim() : body.content.trim().slice(0, 240),
-      [role === 'chef' ? 'unreadManagerCount' : 'unreadChefCount']: FieldValue.increment(1),
-      [role === 'chef' ? 'archivedManagerAt' : 'archivedChefAt']: FieldValue.delete() });
-    await batch.commit();
-    return { id: message.id };
+      ...(body.bookingId ? { bookingId: body.bookingId } : {}) }, role === 'chef' ? managerId! : data.chefId);
   });
+  if (process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
+    try {
+      const { queueLocalChatMessageEmail } = await import('./local-chat-emails');
+      await queueLocalChatMessageEmail(id, sent.id, actor.id);
+    } catch (error) {
+      // The message is already saved. Returning an error would invite a duplicate send.
+      logger.error('Local chat email could not be queued', { err: error, conversationId: id, messageId: sent.id });
+    }
+  }
+  return sent;
+}
+
+/** Caller has already authorized the sender. The message and unread episode
+ * commit together; Firestore retries competing sends/reads against this document. */
+export async function persistChatMessage(firestore: FirebaseFirestore.Firestore, ref: FirebaseFirestore.DocumentReference,
+  payload: { senderId: number; senderRole: 'chef' | 'manager' | 'admin'; senderFirebaseUid: string;
+    content: string; type: string; fileUrl: string | null; fileName: string | null; bookingId?: number }, recipientId: number) {
+  const message = ref.collection('messages').doc();
+  await firestore.runTransaction(async tx => {
+    const snapshot = await tx.get(ref), conversation = snapshot.data();
+    if (!conversation || conversation.unavailable) throw new ChatAccessError(409, 'Conversation is unavailable');
+    const recipientRole = payload.senderRole === 'chef' ? 'Manager' : 'Chef';
+    const field = `email${recipientRole}Episode`;
+    const prior = conversation[field];
+    const episodeId = prior?.recipientId === recipientId && typeof prior.id === 'string' && prior.id && !prior.id.includes('/') ? prior.id : message.id;
+    tx.set(message, { ...payload, emailEpisodeId: episodeId, emailRecipientId: recipientId,
+      createdAt: FieldValue.serverTimestamp(), readAt: null });
+    tx.update(ref, { lastMessageAt: FieldValue.serverTimestamp(),
+      lastMessageText: payload.type === 'file' ? payload.fileName || 'Attachment' : payload.content.slice(0, 240),
+      [`unread${recipientRole}Count`]: FieldValue.increment(1), [`archived${recipientRole}At`]: FieldValue.delete(),
+      [field]: { id: episodeId, recipientId },
+      // Replying ends the sender's pending notification episode, even if some
+      // older messages remain unread. Admin replies don't acknowledge a chef.
+      ...(payload.senderRole === 'admin' ? {} : { [`email${payload.senderRole === 'chef' ? 'Chef' : 'Manager'}Episode`]: FieldValue.delete() }) });
+  });
+  return { id: message.id };
 }
 
 export async function readParticipantMessages(actor: ChatActor, uid: string, id: string, ids: unknown) {
@@ -157,7 +187,9 @@ export async function readParticipantMessages(actor: ChatActor, uid: string, id:
         (role === 'chef' ? ['manager', 'admin'].includes(message.data()!.senderRole) : message.data()!.senderRole === 'chef'));
       unread.forEach(message => tx.update(message.ref, { readAt: FieldValue.serverTimestamp() }));
       const field = role === 'chef' ? 'unreadChefCount' : 'unreadManagerCount';
-      tx.update(ref, { [field]: Math.max(0, (conversation.data()?.[field] || 0) - unread.length) });
+      const remaining = Math.max(0, (conversation.data()?.[field] || 0) - unread.length);
+      tx.update(ref, { [field]: remaining,
+        ...(remaining === 0 ? { [`email${role === 'chef' ? 'Chef' : 'Manager'}Episode`]: FieldValue.delete() } : {}) });
     });
   });
 }

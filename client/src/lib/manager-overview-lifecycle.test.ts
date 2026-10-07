@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { bookingNextAction, tourNextAction, licenseNextAction, overstayNextAction, storageHasEnded } from "./manager-overview-lifecycle";
+
+it('does not ask the manager to confirm a pending tour while the chef is considering offered times', () => {
+  const tour = { status: 'pending', scheduledAt: '2026-10-08T12:00:00Z', rescheduleProposedSlots: ['2026-10-09T12:00:00Z'] };
+  const now = Date.parse('2026-10-07T12:00:00Z');
+  expect(tourNextAction(tour, now)).toBeNull();
+  expect(tourNextAction({ ...tour, rescheduleProposedSlots: [] }, now)).toBe('overviewPendingTours');
+});
 const now = Date.parse("2026-09-30T12:00:00Z");
 describe("manager lifecycle actions", () => {
   it("offers visit results for ended confirmed tours until an outcome is recorded", () => {

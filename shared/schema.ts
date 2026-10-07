@@ -2318,6 +2318,8 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   scheduledAt: timestamp("scheduled_at").notNull(), // The tour date/time
   requestedRescheduleAt: timestamp("requested_reschedule_at"),
   rescheduleRequestedAt: timestamp("reschedule_requested_at"),
+  rescheduleProposedSlots: jsonb("reschedule_proposed_slots").$type<string[]>().default([]).notNull(),
+  rescheduleProposedAt: timestamp("reschedule_proposed_at"),
   durationMinutes: integer("duration_minutes").default(30).notNull(),
   chefNotes: text("chef_notes"), // What the chef specifically wants to see/discuss
   managerNotes: text("manager_notes"), // Legacy internal notes: admin-only, never automatically shared.
@@ -2466,6 +2468,17 @@ export const viewingIntakeDataSchema = z.object({
   additionalInfo: z.string().max(500).optional(), // Free-form notes
 });
 
+// New requests require all four answers; stored historical intake can remain partial.
+export const requiredViewingIntakeDataSchema = viewingIntakeDataSchema.extend({
+  intendedUse: z.string().trim().min(1, "Tell us how you plan to use the kitchen"),
+  estimatedWeeklyHours: z.string().trim().min(1, "Tell us your estimated weekly hours"),
+  hasLicense: z.boolean({ required_error: "Choose whether you have a food handler license" }),
+  targetStartDate: z.string().trim().pipe(z.union([
+    z.string().date("Choose a valid target start date"),
+    z.literal('not_decided'),
+  ])),
+});
+
 export const insertKitchenViewingSchema = z.object({
   locationId: z.number(),
   targetedKitchenId: z.number(),
@@ -2474,6 +2487,10 @@ export const insertKitchenViewingSchema = z.object({
   durationMinutes: z.number().int().min(10).max(120).optional(),
   chefNotes: z.string().max(500).optional(),
   intakeData: viewingIntakeDataSchema.optional(),
+});
+
+export const requestKitchenViewingSchema = insertKitchenViewingSchema.extend({
+  intakeData: requiredViewingIntakeDataSchema,
 });
 
 export const updateKitchenViewingStatusSchema = z.object({

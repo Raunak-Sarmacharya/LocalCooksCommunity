@@ -3,7 +3,8 @@ import { db } from '../db';
 import { emailLogs } from '@shared/schema';
 import { getAdminDb } from '../chat-service';
 import { getAppBaseUrl } from '../config';
-import { sendEmail, generateChatDigestEmail } from '../email';
+import { sendEmail, generateChatDigestEmail, generateChatMessageEmail } from '../email';
+import { getUserDisplayName } from '../utils/user-display';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { deliveryReserve, workerRemaining, assertWorkerTime, isWorkerBudgetError, WorkerBudgetExhausted, workerAfter, workerRecord, workerPageEnd } from './worker-context';
 import chatNotice, { type ChatConversation, type PersistedChatMessage, type ChatSql, type ChatRelationship } from '../../functions/src/chat-notice';
@@ -50,7 +51,8 @@ export async function notifyPersistedChatMessage(conversationId: string, message
     conversation.data() as ChatConversation, message.data() as PersistedChatMessage, relationship?.data() as ChatRelationship | undefined));
 }
 
-export type ChatDigestIntent = { conversationId: string; messageId: string; applicationId?: number; bookingId?: number; senderId: number; senderRole: string; dueAt: string; path: string };
+export type ChatDigestIntent = { conversationId: string; messageId: string; applicationId?: number; bookingId?: number; senderId: number; senderRole: string; dueAt: string; path: string;
+  episodeId?: string; phase?: 'initial' | 'reminder' | 'continuation' };
 export function parseChatDigest(value: string | null): ChatDigestIntent {
   const saved = JSON.parse(value || '');
   if (!saved || typeof saved.conversationId !== 'string' || !saved.conversationId || saved.conversationId.includes('/') ||
@@ -58,8 +60,53 @@ export function parseChatDigest(value: string | null): ChatDigestIntent {
     !Number.isSafeInteger(saved.senderId) || saved.senderId <= 0 || !['chef', 'manager', 'admin'].includes(saved.senderRole) ||
     (saved.applicationId !== undefined && (!Number.isSafeInteger(saved.applicationId) || saved.applicationId <= 0)) ||
     (saved.bookingId !== undefined && (!Number.isSafeInteger(saved.bookingId) || saved.bookingId <= 0)) ||
-    typeof saved.dueAt !== 'string' || !Number.isFinite(Date.parse(saved.dueAt))) throw Error('Invalid chat intent');
+    typeof saved.dueAt !== 'string' || !Number.isFinite(Date.parse(saved.dueAt)) ||
+    (saved.phase !== undefined && (!['initial', 'reminder', 'continuation'].includes(saved.phase) ||
+      typeof saved.episodeId !== 'string' || !saved.episodeId || saved.episodeId.includes('/') ||
+      (saved.phase !== 'continuation' && saved.episodeId !== saved.messageId))) ||
+    (saved.episodeId !== undefined && saved.phase === undefined)) throw Error('Invalid chat intent');
   return saved;
+}
+
+/** Event retries queue through the same producer and then claim the original
+ * initial intent. Repeated wakeups never create another email obligation. */
+export async function deliverStartingChatMessage(conversationId: string, messageId: string, senderId: number) {
+  const result = await notifyPersistedChatMessage(conversationId, messageId, senderId);
+  if (!('initialTrackingId' in result) || !result.initialTrackingId) return { completed: 0, errors: 0 };
+  const [intent] = await db.select({ id: emailLogs.id }).from(emailLogs)
+    .where(and(eq(emailLogs.category, 'chat_digest'), eq(emailLogs.trackingId, result.initialTrackingId))).limit(1);
+  return intent ? dispatchChatDigests(1, 20000, intent.id) : { completed: 0, errors: 0 };
+}
+
+async function deliverChatEpisode(tx: Transaction, intent: typeof emailLogs.$inferSelect, source: ChatDigestIntent, now: Date, deadline: number) {
+  const snapshots = await readConversationMessages(source.conversationId, [source.messageId]);
+  const conversation = snapshots.conversation.data() as ChatConversation | undefined;
+  const message = snapshots.messages[0].data() as PersistedChatMessage | undefined;
+  const context = conversation && message && message.senderId === source.senderId && message.senderRole === source.senderRole &&
+    message.emailEpisodeId === source.episodeId && message.emailRecipientId === intent.recipientUserId
+    ? await resolveChatNoticeContext(chatSql(tx), source.conversationId, conversation, message, snapshots.relationship?.data() as ChatRelationship | undefined) : null;
+  const marker = intent.recipientRole === 'chef' ? conversation?.emailChefEpisode : conversation?.emailManagerEpisode;
+  const count = intent.recipientRole === 'chef' ? conversation?.unreadChefCount : conversation?.unreadManagerCount;
+  const [accepted] = await tx.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.trackingId, intent.trackingId!), eq(emailLogs.status, 'sent'))).limit(1);
+  if (accepted || !context || context.recipientId !== intent.recipientUserId || context.recipientRole !== intent.recipientRole || context.bookingId !== source.bookingId ||
+      marker?.id !== source.episodeId || marker?.recipientId !== context.recipientId || source.phase === 'continuation' ||
+      (source.phase === 'initial' ? !!message?.readAt : !Number.isSafeInteger(count) || count! <= 0)) {
+    await tx.update(emailLogs).set({ status: accepted ? 'sent' : 'suppressed', errorMessage: accepted ? null : 'Read, replied, obsolete or consecutive message' }).where(eq(emailLogs.id, intent.id));
+    return { id: intent.id, sent: false };
+  }
+  const senderName = source.senderRole === 'admin' ? 'Local Cooks' : await getUserDisplayName(source.senderId, source.senderRole as 'chef' | 'manager', tx);
+  const recipientName = await getUserDisplayName(context.recipientId, context.recipientRole, tx);
+  const url = `${getAppBaseUrl(context.recipientRole === 'chef' ? 'chef' : 'kitchen')}${context.path}`;
+  const content = source.phase === 'initial'
+    ? generateChatMessageEmail(context.recipientEmail, recipientName, senderName, context.locationName, url,
+      message!.type === 'file' ? `Sent an attachment${message!.fileName ? `: ${message!.fileName}` : ''}` : message!.content || '', context.bookingId)
+    : generateChatDigestEmail(context.recipientEmail, count!, senderName, context.locationName, url, context.bookingId ? [context.bookingId] : [], recipientName);
+  assertWorkerTime(deliveryReserve());
+  if (deadline - Date.now() < deliveryReserve()) throw new WorkerBudgetExhausted();
+  const sent = await sendEmail(content, { trackingId: intent.trackingId!, emailType: 'chat_digest_attempt', retryOfId: intent.id, durableDelivery: true });
+  await tx.update(emailLogs).set({ status: sent ? 'sent' : 'failed', recipientEmail: context.recipientEmail,
+    retryCount: intent.retryCount + 1, retriedAt: now, errorMessage: sent ? null : 'Not accepted; Local Cooks owns delivery recovery.' }).where(eq(emailLogs.id, intent.id));
+  return { id: intent.id, sent, failed: !sent };
 }
 
 /** Row locks and per-message keys reuse the existing durable mail contract.
@@ -101,6 +148,7 @@ export async function dispatchChatDigests(limit = 1, budgetMs = 20000, onlyLogId
       selectedId = intent.id;
       const locked = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(hashtext(${`chat-digest:${saved.conversationId}:${intent.recipientUserId}`})) AS owned`);
       if (!locked.rows[0]?.owned) return { id: intent.id, sent: false };
+      if (saved.phase) return deliverChatEpisode(tx, intent, saved, now, deadline);
       const groupCandidates = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, 'chat_digest'),
         eq(emailLogs.recipientUserId, intent.recipientUserId!), inArray(emailLogs.status, ['scheduled', 'failed']),
         sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} <= ${new Date(now.getTime() - 60000)})`,
@@ -115,7 +163,7 @@ export async function dispatchChatDigests(limit = 1, budgetMs = 20000, onlyLogId
         assertWorkerTime(2000);
         try {
           const s = parseChatDigest(row.textBody);
-          if (s.conversationId === saved.conversationId) {
+          if (!s.phase && s.conversationId === saved.conversationId) {
             group.push(row);
             sources.push(s);
           }

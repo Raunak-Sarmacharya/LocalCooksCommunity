@@ -3,6 +3,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ logs: [] as any[], messages: {} as Record<string, any>, conversation: {} as any,
   person: {} as any, mapping: undefined as any, bookingExists: true, accepted: new Set<string>(), send: vi.fn(), reads: vi.fn(), updates: [] as any[], notices: [] as any[] }));
 vi.mock('../email', async importOriginal => ({ ...await importOriginal<typeof import('../email')>(), sendEmail: state.send }));
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async (id: number) => id === 3 ? 'Ada Chef' : 'Morgan Manager' }));
 vi.mock('../chat-service', () => ({ getAdminDb: async () => ({
   collection: () => ({ doc: (id: string) => ({ id, get: async () => ({ exists: !!state.mapping, data: () => state.mapping }),
     collection: () => ({ doc: (id: string) => ({ id, message: true }) }) }) }),
@@ -17,7 +18,11 @@ vi.mock('../db', () => {
       const rows = () => {
         const { sql, params } = parsed(condition);
         expect(sql).not.toContain('::jsonb'); expect(sql).not.toContain('::timestamptz');
-        if (!sql.includes('"status" in')) return state.accepted.has(params.find((p: any) => typeof p === 'string' && p.startsWith('chat-message:'))) ? [{ id: 99 }] : [];
+        if (!sql.includes('"status" in')) {
+          const key = params.find((p: any) => typeof p === 'string' && p.startsWith('chat-message:'));
+          return sql.includes('"status" =') ? state.accepted.has(key) ? [{ id: 99 }] : []
+            : state.logs.filter(row => row.trackingId === key);
+        }
         const dueIndex = /::timestamptz <= \$(\d+)/.exec(sql);
         const retryIndex = /"retried_at" <= \$(\d+)/.exec(sql);
         const due = dueIndex ? params[Number(dueIndex[1]) - 1] as Date : undefined;
@@ -56,7 +61,7 @@ vi.mock('../db', () => {
   };
   return { db: { ...tx, transaction: async (run: any) => run(tx) } };
 });
-import { dispatchChatDigests, parseChatDigest, notifyPersistedChatMessage } from './chat-notices';
+import { dispatchChatDigests, parseChatDigest, notifyPersistedChatMessage, deliverStartingChatMessage } from './chat-notices';
 import { workerContext } from './worker-context';
 const now = new Date('2026-10-04T09:00:00Z');
 function log(id: number, dueAt = now.toISOString()) {
@@ -77,6 +82,84 @@ beforeEach(() => {
   state.bookingExists = true; state.send.mockResolvedValue(true);
 });
 describe('actual durable unread dispatcher with controlled Firestore/SMTP sinks', () => {
+  function episode(phase: 'initial' | 'reminder' = 'initial') {
+    const row = log(1, phase === 'initial' ? '2026-10-04T08:00:15.000Z' : now.toISOString());
+    row.trackingId += phase === 'reminder' ? ':reminder' : '';
+    row.textBody = JSON.stringify({ ...JSON.parse(row.textBody), episodeId: 'm1', phase });
+    state.logs = [row];
+    Object.assign(state.messages.m1, { emailEpisodeId: 'm1', emailRecipientId: 2, content: 'Where should we meet? <script>bad</script>' });
+    Object.assign(state.conversation, { emailManagerEpisode: { id: 'm1', recipientId: 2 }, unreadManagerCount: 3 });
+    return row;
+  }
+  it('connects the event wakeup to the original initial intent without delivering the reminder or duplicating a retry', async () => {
+    episode(); state.logs = [];
+    await deliverStartingChatMessage('thread', 'm1', 3);
+    expect(state.logs).toHaveLength(2); expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs[0].status).toBe('sent'); expect(state.logs[1].status).toBe('scheduled');
+    await deliverStartingChatMessage('thread', 'm1', 3);
+    expect(state.send).toHaveBeenCalledTimes(1);
+    Object.assign(state.messages.m2, { emailEpisodeId: 'm1', emailRecipientId: 2 });
+    await deliverStartingChatMessage('thread', 'm2', 3);
+    expect(state.send).toHaveBeenCalledTimes(1); expect(state.logs[2].status).toBe('suppressed');
+  });
+  it('waits 15 seconds for the first-message alert, uses names and escaped preview, and acknowledges it once', async () => {
+    episode();
+    await dispatchChatDigests(1, 20000, undefined, new Date('2026-10-04T08:00:14Z'));
+    expect(state.send).not.toHaveBeenCalled();
+    await dispatchChatDigests(1, 20000, undefined, new Date('2026-10-04T08:00:15Z'));
+    expect(state.send).toHaveBeenCalledTimes(1);
+    const email = state.send.mock.calls[0][0];
+    expect(email.subject).toBe('New message from Ada Chef — Awesome Kitchen');
+    expect(email.text).toContain('Hi Morgan Manager'); expect(email.text).toContain('Where should we meet?');
+    expect(email.html).toContain('&lt;script&gt;'); expect(email.html).not.toContain('<script>');
+    await dispatchChatDigests(1, 20000, undefined, now); expect(state.send).toHaveBeenCalledTimes(1);
+  });
+  it.each(['read', 'reply', 'next-episode', 'recipient', 'context'])('suppresses an initial alert after %s', async kind => {
+    episode();
+    if (kind === 'read') state.messages.m1.readAt = now;
+    if (kind === 'reply') delete state.conversation.emailManagerEpisode;
+    if (kind === 'next-episode') state.conversation.emailManagerEpisode.id = 'new-first';
+    if (kind === 'recipient') state.person.manager_id = 7;
+    if (kind === 'context') state.bookingExists = false;
+    await dispatchChatDigests(1, 20000, undefined, now);
+    expect(state.send).not.toHaveBeenCalled(); expect(state.logs[0].status).toBe('suppressed');
+  });
+  it('sends the one-hour reminder for newer unread messages even if the first was read, then stays quiet', async () => {
+    episode('reminder'); state.messages.m1.readAt = now;
+    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() - 1)); expect(state.send).not.toHaveBeenCalled();
+    await dispatchChatDigests(1, 20000, undefined, now);
+    expect(state.send).toHaveBeenCalledTimes(1); expect(state.send.mock.calls[0][0].text).toContain('3 unread messages');
+    state.conversation.unreadManagerCount = 5;
+    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 3600000)); expect(state.send).toHaveBeenCalledTimes(1);
+  });
+  it('suppresses the reminder after a full read or reply, and preserves one retry key for failed delivery', async () => {
+    episode('reminder'); state.conversation.unreadManagerCount = 0;
+    await dispatchChatDigests(1, 20000, undefined, now); expect(state.send).not.toHaveBeenCalled();
+    episode('reminder'); delete state.conversation.emailManagerEpisode;
+    await dispatchChatDigests(1, 20000, undefined, now); expect(state.send).not.toHaveBeenCalled();
+    episode(); state.send.mockResolvedValueOnce(false);
+    await dispatchChatDigests(1, 20000, undefined, now);
+    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 61000));
+    expect(state.send).toHaveBeenCalledTimes(2); expect(state.logs[0].status).toBe('sent');
+    expect(state.send.mock.calls[0][1].trackingId).toBe(state.send.mock.calls[1][1].trackingId);
+  });
+  it('routes a manager starting message and attachment notice to the current chef', async () => {
+    const row = episode();
+    Object.assign(row, { recipientUserId: 3, recipientRole: 'chef' });
+    row.textBody = JSON.stringify({ ...JSON.parse(row.textBody), senderId: 2, senderRole: 'manager' });
+    Object.assign(state.person, { sender_uid: 'actual-manager', sender_role: 'manager' });
+    Object.assign(state.messages.m1, { senderId: 2, senderRole: 'manager', senderFirebaseUid: 'actual-manager', emailRecipientId: 3, type: 'file', fileName: 'tour.pdf' });
+    Object.assign(state.conversation, { emailChefEpisode: { id: 'm1', recipientId: 3 }, unreadChefCount: 1 });
+    await dispatchChatDigests(1, 20000, undefined, now);
+    expect(state.send.mock.calls[0][0]).toMatchObject({ to: 'chef@example.test', subject: 'New message from Morgan Manager — Awesome Kitchen' });
+    expect(state.send.mock.calls[0][0].text).toContain('Sent an attachment: tour.pdf');
+    expect(state.send.mock.calls[0][0].text).toContain('/dashboard?view=messages&conversation=thread');
+  });
+  it('never mixes a new initial alert/reminder into a legacy digest', async () => {
+    episode(); const initial = state.logs[0]; state.logs = [log(2), initial];
+    await dispatchChatDigests(1, 20000, undefined, now);
+    expect(initial.status).toBe('scheduled'); expect(state.logs[0].status).toBe('sent');
+  });
   it('groups multiple unread messages, reloads current recipient/context and suppresses repeated dispatch', async () => {
     await dispatchChatDigests(1, 20000, undefined, now);
     expect(state.send).toHaveBeenCalledTimes(1);

@@ -326,5 +326,21 @@
   "chefPartnerLink": "For chefs",
   "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca",
   "phoneVerificationRequired": "Les numéros de téléphone doivent être vérifiés par code avant d’être associés à votre compte.",
-  "selectDate": "Sélectionner une date"
+  "selectDate": "Sélectionner une date",
+  "tourIntakeLabel_intendedUse": "Utilisation prévue",
+  "tourIntakeLabel_estimatedWeeklyHours": "Heures hebdomadaires estimées",
+  "tourIntakeLabel_hasLicense": "Certificat de manipulation des aliments",
+  "tourIntakeLabel_targetStartDate": "Date de début prévue",
+  "tourIntakeLabel_additionalInfo": "Informations supplémentaires",
+  "tourIntakeYes": "Oui",
+  "tourIntakeNo": "Non",
+  "tourIntakeHoursPerWeek": "{hours} heures par semaine",
+  "tourIntakeNotDecided": "Pas encore décidé",
+  "tourManagerContactTitle": "Gestionnaire de la cuisine",
+  "tourManagerUnassigned": "Aucun gestionnaire assigné",
+  "tourManagerContactUnavailable": "Les coordonnées du gestionnaire ne sont pas disponibles",
+  "tourIntakeUse_catering": "Traiteur",
+  "tourIntakeUse_meal_prep": "Préparation de repas",
+  "tourIntakeUse_food_truck": "Camion-restaurant",
+  "tourIntakeUse_other": "Autre"
 }
