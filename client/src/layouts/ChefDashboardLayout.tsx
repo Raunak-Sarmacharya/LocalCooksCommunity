@@ -90,6 +90,8 @@ export default function ChefDashboardLayout({
         return crumbs
     }, [breadcrumbs, activeView, onViewChange, t, tr])
 
+    const isTourDetail = activeView === "viewings" && displayBreadcrumbs.some(crumb => crumb.navId === "viewings" && !!crumb.onClick) && /^TOUR-\d+$/.test(displayBreadcrumbs.at(-1)?.label || "")
+
     return (
         <ChefShellUiProvider>
         <SidebarProvider>
@@ -106,12 +108,12 @@ export default function ChefDashboardLayout({
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
                         <Separator orientation="vertical" className="mr-2 h-4 shrink-0 hidden sm:block" />
-                        <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellOverview")}</span>
+                        {!isTourDetail && <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellOverview")}</span>}
                         <Breadcrumb className="min-w-0">
                             <BreadcrumbList className="flex-wrap">
                                 {displayBreadcrumbs.map((crumb, index) => (
                                     <React.Fragment key={index}>
-                                        <BreadcrumbItem className="hidden md:block min-w-0">
+                                        <BreadcrumbItem className={cn("min-w-0", !isTourDetail && "hidden md:block")}>
                                             {crumb.href || crumb.onClick ? (
                                                 <BreadcrumbLink
                                                     href="#"
@@ -132,7 +134,7 @@ export default function ChefDashboardLayout({
                                             )}
                                         </BreadcrumbItem>
                                         {index < displayBreadcrumbs.length - 1 && (
-                                            <BreadcrumbSeparator className="hidden md:block" />
+                                            <BreadcrumbSeparator className={isTourDetail ? undefined : "hidden md:block"} />
                                         )}
                                     </React.Fragment>
                                 ))}

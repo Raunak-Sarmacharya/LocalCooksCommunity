@@ -342,5 +342,18 @@
   "tourIntakeUse_catering": "Кейтеринг",
   "tourIntakeUse_meal_prep": "Приготування страв",
   "tourIntakeUse_food_truck": "Фудтрак",
-  "tourIntakeUse_other": "Інше"
+  "tourIntakeUse_other": "Інше",
+  "tourOverdueQueue": "Прострочені рішення",
+  "tourDecisionOwner": "Відповідальний",
+  "tourDecisionDue": "Рішення очікується до",
+  "tourOfferResponseBefore": "Відповідь на запрошення до",
+  "tourDecisionTimeUnknown": "Час не записано",
+  "tourDecisionOverdue": "Рішення прострочено",
+  "tourTakeoverConfirm": "Переглянути й підтвердити прострочений запит",
+  "tourTakeoverHelp": "Підтвердьте поточний час після перевірки доступності. Причину буде показано відвідувачу та менеджеру.",
+  "tourReviewLoading": "Перевірка доступності…",
+  "tourTakeoverOverlap": "Я перевірив бронювання, що перетинаються, і можу безпечно провести цей тур.",
+  "tourTakeoverReason": "Спільна причина підтвердження",
+  "tourConfirmTakeover": "Підтвердити тур",
+  "tourDecisionAge": "Очікування {hours} годин"
 }

@@ -10,7 +10,7 @@ export function tourHasChat(tour: { status: string; adminReviewDecision?: string
   return tour.status !== 'pending_local_cooks' && tour.adminReviewDecision !== 'denied' &&
     (tour.adminReviewDecision === 'approved' || (!tour.adminReviewDecision && hasTourConfirmation(tour)));
 }
-export function TourChatButton({ tour, role, openFromLink = false, buttonClassName }: { tour: { id: number; status: string; adminReviewDecision?: string | null; outcomeHistory?: unknown }; role: 'chef' | 'manager'; openFromLink?: boolean; buttonClassName?: string }) {
+export function TourChatButton({ tour, role, openFromLink = false, buttonClassName, buttonLabel }: { tour: { id: number; status: string; adminReviewDecision?: string | null; outcomeHistory?: unknown }; role: 'chef' | 'manager'; openFromLink?: boolean; buttonClassName?: string; buttonLabel?: string }) {
   const search = useSearch();
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [chat, setChat] = useState<{ conversationId: string; userId: number; name: string } | null>(null);
@@ -37,8 +37,8 @@ export function TourChatButton({ tour, role, openFromLink = false, buttonClassNa
   }, [search, openFromLink, allowed, tour.id, open]);
   if (!allowed) return null;
   return <div onClick={event => event.stopPropagation()}>
-    <Button ref={button} variant="outline" size="sm" className={buttonClassName} disabled={busy} onClick={() => void open()}>
-      {busy ? 'Opening messages…' : role === 'chef' ? 'Message manager' : 'Message chef'}
+    <Button ref={button} variant="outline" size="sm" className={buttonClassName} title={buttonLabel} disabled={busy} onClick={() => void open()}>
+      {busy ? 'Opening messages…' : buttonLabel || (role === 'chef' ? 'Message manager' : 'Message chef')}
     </Button>
     {error && <p role="alert" className="text-xs text-destructive">{error} Select the message button to retry.</p>}
     <Dialog open={!!chat} onOpenChange={value => { if (!value) setChat(null); }}>

@@ -21,7 +21,8 @@ describe("tour confirmation PDF", () => {
       timezone: "America/St_Johns",
       chefNotes: "Потрібна холодильна камера",
       intakeData: { intendedUse: "Meal prep", hasLicense: true },
-      managerNotes: "Use the front entrance",
+      managerNotes: "PRIVATE MUST NOT RENDER",
+      sharedManagerNotes: "Public manager message", arrivalNotes: "Use the front entrance Олена", departureNotes: "Return badge", confirmedAt: null,
     });
     expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);

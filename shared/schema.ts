@@ -2316,6 +2316,8 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager assigned to conduct the tour
   status: viewingStatusEnum("status").default("pending").notNull(),
   scheduledAt: timestamp("scheduled_at").notNull(), // The tour date/time
+  confirmedAt: timestamp("confirmed_at"), // First recorded confirmation; unknown historical facts remain null.
+  requestExpiredAt: timestamp("request_expired_at"), // Effective requested start; never a visit/no-show outcome.
   requestedRescheduleAt: timestamp("requested_reschedule_at"),
   rescheduleRequestedAt: timestamp("reschedule_requested_at"),
   rescheduleProposedSlots: jsonb("reschedule_proposed_slots").$type<string[]>().default([]).notNull(),

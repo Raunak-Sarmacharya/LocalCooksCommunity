@@ -174,3 +174,24 @@ describe('tour time and downloadable calendar', () => {
     expect(google.searchParams.get('details')).toContain('\n\nNotes: Door\r\nSTATUS:CANCELLED, <A>; bell');
   });
 });
+
+
+describe('separate public confirmation guidance', () => {
+  it.each([[undefined, undefined], ['Front door <&> Олена', undefined], [undefined, 'Return badge'], ['Front door <&> Олена', 'Return badge']])('preserves public notes in email and both calendars (%s / %s)', (arrivalNotes, departureNotes) => {
+    const email = generateTourConfirmedEmail({ ...base, arrivalNotes, departureNotes, sharedManagerNotes: 'Public message', confirmedAt: new Date('2026-10-01T12:00:00Z') });
+    expect(email.text).toContain('Message from the kitchen manager');
+    expect(email.text).toContain('Public message');
+    const ics = calendar(email).replace(/\r\n /g, '');
+    const google = email.text!.match(/https:\/\/calendar.google.com[^\s]+/)?.[0];
+    expect(google).toBeDefined();
+    const details = new URL(google!).searchParams.get('details');
+    for (const value of [arrivalNotes, departureNotes].filter(Boolean)) {
+      expect(email.text).toContain(value);
+      expect(ics).toContain(value);
+      expect(details).toContain(value);
+    }
+    if (arrivalNotes) expect(email.html).toContain('&lt;&amp;&gt;');
+    else expect(email.text).not.toContain('Arrival instructions:');
+    if (!departureNotes) expect(email.text).not.toContain('Departure instructions:');
+  });
+});

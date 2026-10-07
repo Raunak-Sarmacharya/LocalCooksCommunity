@@ -19,7 +19,9 @@ export const tourDisruptionReasons = {
 } as const;
 
 /** Do not treat a terminal label itself as proof of a historical confirmation. */
-export function hasTourConfirmation(tour: { status: string; outcomeHistory?: unknown }) {
-  return tour.status === 'confirmed' || (Array.isArray(tour.outcomeHistory)
+export function hasTourConfirmation(tour: { status: string; confirmedAt?: unknown; requestExpiredAt?: unknown; outcomeHistory?: unknown }) {
+  if (tour.requestExpiredAt) return false;
+  const confirmed = (typeof tour.confirmedAt === 'string' || tour.confirmedAt instanceof Date) && Number.isFinite(new Date(tour.confirmedAt).getTime());
+  return tour.status === 'confirmed' || confirmed || (Array.isArray(tour.outcomeHistory)
     && tour.outcomeHistory.some(entry => entry?.from === 'confirmed' || entry?.to === 'confirmed'));
 }

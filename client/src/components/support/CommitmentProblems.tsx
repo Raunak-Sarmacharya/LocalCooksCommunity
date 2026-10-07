@@ -6,8 +6,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { problemDestination, problemStatusLabel, type ProblemHistory } from '@shared/commitment-problems';
 
-type Problem = { id: number; bookingId: number | null; viewingId: number | null; kind: string; status: string; claimedBy: number | null;
-  revision: number; description: string; history: ProblemHistory[] };
+type Problem = {
+  id: number; bookingId: number | null; viewingId: number | null; kind: string; status: string; claimedBy: number | null;
+  revision: number; description: string; history: ProblemHistory[]
+};
 async function problemRequest(path: string, method = 'GET', body?: unknown) {
   const response = await fetch(path, { method, headers: await getAuthHeaders(), cache: 'no-store', ...(body ? { body: JSON.stringify(body) } : {}) });
   const result = await response.json();
@@ -18,8 +20,10 @@ async function problemRequest(path: string, method = 'GET', body?: unknown) {
 function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staff: boolean; role: string; actorId?: number }) {
   const [note, setNote] = useState('');
   const queryClient = useQueryClient();
-  const action = useMutation({ mutationFn: (value: string) => problemRequest(`/api/commitment-problems/${problem.id}`, 'PATCH',
-    { action: value, note, expectedRevision: problem.revision }), onSuccess: () => { setNote(''); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); } });
+  const action = useMutation({
+    mutationFn: (value: string) => problemRequest(`/api/commitment-problems/${problem.id}`, 'PATCH',
+      { action: value, note, expectedRevision: problem.revision }), onSuccess: () => { setNote(''); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
+  });
   const kind = problem.bookingId ? 'booking' : 'tour', id = problem.bookingId || problem.viewingId!;
   const ownsTask = problem.claimedBy === actorId;
   const history = staff ? problem.history : problem.history.filter(entry => !['claim', 'reassign'].includes(entry.action));
@@ -65,7 +69,8 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
   const queryClient = useQueryClient();
   const path = `/api/commitment-problems${kind && id ? `/${kind}/${id}` : ''}`;
-  const query = useQuery<{ problems: Problem[]; reportingAvailable: boolean; reportingOpensAt?: string | null; actorId?: number }>({ queryKey: ['commitment-problems', role, kind, id],
+  const query = useQuery<{ problems: Problem[]; reportingAvailable: boolean; reportingOpensAt?: string | null; actorId?: number }>({
+    queryKey: ['commitment-problems', role, kind, id],
     queryFn: async () => {
       const result = await problemRequest(path);
       if (Array.isArray(result)) return { problems: result, reportingAvailable: false };
@@ -73,9 +78,12 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
         throw Error('Could not load the current problem state. Try again.');
       }
       return result;
-    }, refetchInterval: 30000 });
-  const report = useMutation({ mutationFn: () => problemRequest(path, 'POST', { description, requestKey }),
-    onSuccess: () => { setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); } });
+    }, refetchInterval: 30000
+  });
+  const report = useMutation({
+    mutationFn: () => problemRequest(path, 'POST', { description, requestKey }),
+    onSuccess: () => { setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
+  });
   const reportingAvailable = canReport && query.data?.reportingAvailable && !!kind && !!id;
   const hasProblems = !!query.data?.problems.length;
   const heading = staff ? 'Support requests' : hasProblems ? `Support requests${kind ? ` for this ${kind}` : ''}` : kind ? `Need help with this ${kind}?` : 'Your support requests';
@@ -86,7 +94,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
       <p><span className="whitespace-nowrap">Mon–Fri, 9 AM–5 PM NL time</span> · <span className="whitespace-nowrap">After hours, we reply within 24 hrs</span></p>
     </div>}
     {!kind && !staff && <p className="text-sm">Need help with a visit? Open your <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=bookings' : '/dashboard?view=bookings'}>booking</a> or <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=viewings' : '/dashboard?view=viewings'}>tour details</a>.</p>}
-    {kind && !staff && canReport && !reportingAvailable && query.data?.reportingOpensAt && <p className="text-sm text-muted-foreground">Reporting opens at the scheduled start. Contact support if you need help before then.</p>}
+    {kind && !staff && canReport && !reportingAvailable && query.data?.reportingOpensAt && <p className="text-sm text-muted-foreground">Reporting opens at the scheduled start. Contact support if you need help.</p>}
     <Dialog open={reportOpen} onOpenChange={setReportOpen}>
       {reportingAvailable && <DialogTrigger asChild><Button variant="outline" disabled={report.isPending}>Report a problem</Button></DialogTrigger>}
       <DialogContent showCloseButton>

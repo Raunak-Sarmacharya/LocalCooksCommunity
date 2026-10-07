@@ -2,6 +2,8 @@ import { managerNavIcons } from "@/lib/manager-nav-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { bookingNextAction, tourNextAction, licenseNextAction, overstayNextAction, storageHasEnded } from "@/lib/manager-overview-lifecycle";
+import { tourRequestDecision } from '@shared/tour-request-decision';
+import { formatTourWhen } from '@/lib/chef-viewing-display';
 import { isPendingOrUpcomingTour } from "@/lib/chef-viewing-display";
 import { useTourClock } from "@/hooks/use-tour-clock";
 import { tourActivity } from "@shared/tour-activity";
@@ -239,7 +241,9 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   }
   for (const tour of locationViewings) {
     const label = tourNextAction(tour.viewing);
-    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}`, view: "viewings", param: "viewing" });
+    const decision = tourRequestDecision(tour.viewing);
+    const due = decision?.stage === 'manager' && decision.dueAt ? ` · ${mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: ${formatTourWhen(decision.dueAt, null, 'America/St_Johns')}` : '';
+    if (label) addTask(label, { id: String(tour.viewing.id), title: recordTitle({ ...tour, id: tour.viewing.id }), detail: `${displayDate(tour.viewing.scheduledAt)} · ${tourTime(tour)}${due}`, view: "viewings", param: "viewing" });
   }
   for (const application of pendingApplications) addTask("overviewPendingApplications", { id: String(application.id), title: application.fullName || `#${application.id}`, view: "applications", param: "application" });
   for (const storage of activity.storageBookings) if (!bookings.some(booking => booking.id === storage.kitchenBookingId && booking.paymentDecision?.state === 'pending') && ["pending", "cancellation_requested"].includes(storage.status ?? "")) addTask(storage.cancellationAcceptedAt ? 'overviewStorageOutcomes' : "overviewStorageRequests", { id: String(storage.id), title: recordTitle(storage), detail: storage.cancellationAcceptedAt ? mt("storageRemovalConfirmationRequired") : undefined, view: "storage-bookings", param: "storageBooking" });

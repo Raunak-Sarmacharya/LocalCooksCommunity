@@ -12,7 +12,7 @@ import { resolveNotificationHref } from '@shared/notification-deep-links';
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'fixture-token' } } }));
 vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: { uid: 'fixture-chef' } }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock('@/i18n/manager', () => ({ mt: (key: string) => key }));
+vi.mock('@/i18n/manager', () => ({ mt: (key: string, options?: { name?: string }) => key === 'tourMessageVisitor' ? `Message ${options?.name}` : key }));
 vi.mock('react-i18next', async original => ({ ...await original<typeof import('react-i18next')>(),
   useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue?.replace('{{hours}}', fallback.hours) || key }) }));
 vi.mock('./admin/HistoricalVisitReviews', () => ({ HistoricalVisitReviews: () => null }));
@@ -78,7 +78,7 @@ describe('Tour A exact task consumers', () => {
     const path = '/admin?section=tour-requests&viewing=42'; window.history.replaceState({}, '', path);
     mount(<AdminTourRequestsSection />, ['/api/viewings/admin'], [row]);
     expect(await screen.findByText('TOUR-42')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'History (1)' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: 'Overdue decisions (1)' })).toHaveAttribute('data-state', 'active');
     expect(screen.queryByRole('button', { name: 'Approve for manager' })).not.toBeInTheDocument();
     expect(authReturn(path)).toBe(path); expect(postTermsRedirect({ hostname: 'admin.localhost', redirectParam: path, role: 'admin' })).toBe(path);
   });
@@ -88,7 +88,7 @@ describe('Tour A exact task consumers', () => {
     const client = mount(<ViewingsDashboard />, ['/api/viewings/manager'], [{ ...row, viewing: { ...tour, id: 7 } }, row]);
     expect(await screen.findByRole('region', { name: 'sheetViewingDetails' })).toHaveTextContent('TOUR-42');
     expect(screen.getByRole('button', { name: 'acceptViewing' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Message chef' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Message Ada' })).toBeInTheDocument();
     expect(tourNextAction(tour)).toBe('overviewPendingTours');
     client.setQueryData(['/api/viewings/manager'], [{ ...row, viewing: { ...tour, status: 'confirmed' } }]);
     await waitFor(() => expect(screen.queryByRole('button', { name: 'acceptViewing' })).not.toBeInTheDocument());

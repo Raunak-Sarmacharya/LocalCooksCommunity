@@ -1,7 +1,8 @@
+import { tourRequestDecision, tourRequestEscalationDue, tourRequestEscalationKey } from '@shared/tour-request-decision';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull, lte, or, sql, asc } from 'drizzle-orm';
 import { db } from '../db';
-import { emailLogs, kitchenViewings, kitchens, locations, tourDeliveryEvents, users } from '@shared/schema';
+import { emailLogs, kitchenViewings, kitchenViewingSettings, kitchens, locations, tourDeliveryEvents, users } from '@shared/schema';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { formatTourClock, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { canChefRequestReschedule, canManagerProposeReschedule } from '@shared/tour-reschedule';
@@ -19,13 +20,15 @@ type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Tour = typeof kitchenViewings.$inferSelect;
 export type TourEventKind = 'requested' | 'request_updated' | 'review_approved' | 'review_denied' | 'reschedule_requested'
   | 'reschedule_accepted' | 'reschedule_declined' | 'reschedule_proposed' | 'reschedule_proposal_accepted' | 'reschedule_proposal_declined' | 'reschedule_proposal_withdrawn'
-  | 'status' | 'reminder' | 'expired' | 'visitor_checkin' | 'visitor_checkout' | 'attendance_assisted';
+  | 'status' | 'reminder' | 'request_escalation' | 'expired' | 'visitor_checkin' | 'visitor_checkout' | 'attendance_assisted';
 type EventInput = { kind: TourEventKind; before: Tour; after: Tour; actorId?: number; actorRole?: string | null };
 type Recipient = { id: number; email: string | null; name: string; available?: boolean };
 type Payload = EventInput & { chef: Recipient; manager: Recipient | null; admins: Recipient[];
-  locationName: string; kitchenName: string; address: string };
+  locationName: string; kitchenName: string; address: string; arrivalNotes?: string | null; departureNotes?: string | null };
 type Email = Parameters<typeof sendEmail>[0];
 type Message = { key: string; notification?: CreateNotificationParams; email?: Email; recovery?: string };
+
+export { tourRequestEscalationDue, tourRequestEscalationKey } from '@shared/tour-request-decision';
 
 /** Call inside the state-changing transaction. An unavailable outbox aborts the change. */
 export async function queueTourEvent(tx: Transaction, input: EventInput) {
@@ -34,6 +37,7 @@ export async function queueTourEvent(tx: Transaction, input: EventInput) {
     .from(locations).where(eq(locations.id, tour.locationId)).limit(1);
   const [kitchen] = tour.targetedKitchenId ? await tx.select({ name: kitchens.name }).from(kitchens)
     .where(eq(kitchens.id, tour.targetedKitchenId)).limit(1) : [];
+  const [visitSettings] = tour.targetedKitchenId ? await tx.select({ arrivalNotes: kitchenViewingSettings.arrivalNotes, departureNotes: kitchenViewingSettings.departureNotes }).from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, tour.targetedKitchenId)).limit(1) : [];
   const ids = [tour.chefId, location?.managerId].filter((id): id is number => id != null);
   const people = await tx.select({ id: users.id, email: users.username, role: users.role, profile: users.managerProfileData })
     .from(users).where(or(inArray(users.id, ids), eq(users.role, 'admin')));
@@ -47,12 +51,12 @@ export async function queueTourEvent(tx: Transaction, input: EventInput) {
   const payload: Payload = { ...input, chef: recipient(tour.chefId, 'Chef'),
     manager: location?.managerId ? recipient(location.managerId, 'Manager') : null,
     admins: people.filter(person => person.role === 'admin').map(person => recipient(person.id, 'Local Cooks')),
-    locationName: location?.name || 'the kitchen', kitchenName: kitchen?.name || location?.name || 'the kitchen', address: location?.address || '' };
+    locationName: location?.name || 'the kitchen', kitchenName: kitchen?.name || location?.name || 'the kitchen', address: location?.address || '', arrivalNotes: visitSettings?.arrivalNotes || null, departureNotes: visitSettings?.departureNotes || null };
   // Commit alerts with the decision: an older email retry must not delay a new incident alert.
   const alerts = tourEventMessages(payload).filter(message => message.notification);
   for (const message of alerts) await notificationService.create(message.notification!, tx);
   await tx.insert(tourDeliveryEvents).values({ viewingId: tour.id,
-    eventKey: `${tour.id}:${input.kind}:${tour.updatedAt.toISOString()}`, payload,
+    eventKey: input.kind === 'request_escalation' ? tourRequestEscalationKey(tour) : `${tour.id}:${input.kind}:${tour.updatedAt.toISOString()}`, payload,
     deliveredKeys: alerts.map(message => message.key) }).returning({ id: tourDeliveryEvents.id });
   if (['status', 'reschedule_accepted', 'reschedule_proposal_accepted', 'visitor_checkin', 'visitor_checkout', 'attendance_assisted'].includes(input.kind)) {
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
@@ -69,7 +73,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   const notify = (key: string, person: Recipient, target: 'chef' | 'manager', title: string, message: string,
     type: CreateNotificationParams['type'] = 'booking_confirmed', actionUrl?: string) => messages.push({ key,
       notification: { userId: person.id, target, locationId: after.locationId, type,
-        priority: after.status === 'no_show' || after.disruptionReason ? 'high' : 'normal', title, message,
+        priority: after.status === 'no_show' || after.disruptionReason || kind === 'request_escalation' && (target !== 'chef' || after.status === 'pending' && !!after.rescheduleProposedSlots?.length) ? 'high' : 'normal', title, message,
         metadata: { viewingId: id, locationId: after.locationId, kitchenId: after.targetedKitchenId },
         actionUrl: actionUrl || (target === 'chef' ? `/dashboard?view=viewings&viewing=${id}` : `/manager/dashboard?view=viewings&viewing=${id}`), actionLabel: 'View tour' } });
   const email = (key: string, person: Recipient, content: Email) => messages.push(person.email
@@ -131,7 +135,39 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   }), attachments: [generateTourCalendarAttachment({ tourId: id, durationMinutes: before.durationMinutes,
     tourDate: oldDate, kitchenName, locationAddress: address, calendarSequence, updatedAt: new Date(after.updatedAt), cancelled: true,
     organizerEmail: manager?.email || undefined, attendeeEmails: [chef.email, manager?.email].filter((value): value is string => !!value) })] });
-  if (kind === 'visitor_checkout' || kind === 'attendance_assisted') {
+  if (kind === 'request_escalation') {
+    const offered = after.status === 'pending' && !!after.rescheduleProposedSlots?.length;
+    const localReview = after.status === 'pending_local_cooks';
+    const decision = tourRequestDecision(after);
+    const urgency = decision?.overdue ? 'The 12-hour decision window has passed.' : 'The requested tour starts within six hours.';
+    const sendNotice = (key: string, person: Recipient, role: 'chef' | 'kitchen' | 'admin', title: string, text: string, actionLabel: string, action = '') => {
+      const path = role === 'admin' ? adminPath : `${role === 'kitchen' ? '/manager' : ''}/dashboard?view=viewings&viewing=${id}${action}`;
+      notify(key, person, role === 'chef' ? 'chef' : 'manager', title, text, 'booking_new', path);
+      messages.at(-1)!.notification!.actionLabel = actionLabel;
+      email(key === 'chef' || key === 'manager' ? `${key}-email` : key.replace('admin:', 'admin-email:'), person,
+        renderTransactionalEmail({ to: person.email!, recipientName: person.name, subject: `${title} · ${reference}`, message: text,
+          facts: [{ label: 'Kitchen', value: kitchenName }, { label: 'Requested time', value: when(date) }, { label: 'Reference', value: reference },
+            ...(offered ? after.rescheduleProposedSlots.map((slot, index) => ({ label: `Option ${index + 1}`, value: when(new Date(slot)) })) : [])],
+          actionLabel, actionUrl: `${getSubdomainUrl(role)}${path}`,
+          ...(role === 'kitchen' && !offered ? { secondaryButton: { label: 'Offer alternative times', url: `${getSubdomainUrl('kitchen')}${path.replace('&action=confirm', '')}&action=reschedule` },
+            actions: [{ label: 'Decline request', url: `${getSubdomainUrl('kitchen')}${path.replace('&action=confirm', '')}&action=cancel` }] } : {}) }));
+    };
+    sendNotice('chef', chef, 'chef', offered ? 'Choose your tour time soon' : 'Tour confirmation pending', offered
+      ? 'Choose one of the offered times to confirm your tour. Respond before the original requested start time; your tour is still unconfirmed.'
+      : 'Your tour request is still awaiting confirmation. We will notify you when it is confirmed or declined. Please wait for confirmation before visiting.',
+      offered ? 'Review invitation' : 'View tour', offered ? '&action=review-times' : '');
+    if (!localReview) {
+      if (manager) sendNotice('manager', manager, 'kitchen', offered ? 'Tour awaiting visitor choice' : 'Urgent: tour decision needed', offered
+        ? `${chef.name} has not selected an offered time. The tour remains unconfirmed and is waiting for the visitor to choose before the original requested start time.`
+        : `${urgency} ${chef.name}'s tour remains unconfirmed. Confirm the tour, offer alternative times, or decline the request before its requested start time.`,
+        offered ? 'View offered times' : 'Confirm tour', offered ? '' : '&action=confirm');
+      else messages.push({ key: 'manager-email', recovery: 'Current tour manager unavailable' });
+    }
+    for (const admin of admins) sendNotice(`admin:${admin.id}`, admin, 'admin', localReview ? 'Urgent: tour review needed' : offered ? 'Tour awaiting visitor choice' : 'Urgent: unconfirmed tour escalation', localReview
+      ? `${urgency} Complete Local Cooks review so the request can reach the kitchen manager before its requested start time.`
+      : offered ? `${chef.name}'s tour remains unconfirmed while waiting for the visitor to choose an offered time before the original requested start time.`
+      : `${urgency} ${chef.name}'s request is awaiting the kitchen manager's decision. Review the pending request.`, 'Review tour request');
+  } else if (kind === 'visitor_checkout' || kind === 'attendance_assisted') {
     const entry = attendanceEntries(after.attendanceHistory).at(-1);
     const action = entry?.action === 'check_in' ? 'arrival' : 'departure';
     const detail = kind === 'attendance_assisted'
@@ -194,40 +230,36 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   } else if (kind === 'reschedule_proposed') {
     const pendingRequest = after.status === 'pending';
     const proposed = Array.isArray(after.rescheduleProposedSlots) ? after.rescheduleProposedSlots : [];
-    notify('chef', chef, 'chef', pendingRequest ? 'Choose a time to confirm your tour' : 'Choose a new tour time', pendingRequest
-      ? 'Your kitchen manager offered alternative times. Choose one to confirm your tour, or keep your original request pending.'
-      : 'Your kitchen manager proposed alternative tour times. Choose a time or keep your original confirmed time.');
+    notify('chef', chef, 'chef', pendingRequest ? 'Invitation to your kitchen tour' : 'Invitation to reschedule your kitchen tour', pendingRequest
+      ? `${manager?.name || 'Your kitchen manager'} invited you to ${kitchenName}. Accept one time to confirm your tour, or decline to keep your original request pending.`
+      : `${manager?.name || 'Your kitchen manager'} invited you to reschedule your tour at ${kitchenName}. Accept one time or decline to keep your original confirmed visit.`);
     email('chef-email', chef, renderTransactionalEmail({ to: chef.email!, recipientName: chef.name,
-      subject: `${pendingRequest ? 'Choose a time to confirm your kitchen tour' : 'Choose a new kitchen tour time'} · ${reference}`,
+      subject: `${pendingRequest ? 'Invitation to your kitchen tour' : 'Invitation to reschedule your kitchen tour'} · ${reference}`,
       message: pendingRequest
-        ? 'Your kitchen manager offered these available times. Choose one to confirm your tour. If you keep your original request, it will remain pending confirmation.'
-        : 'Your kitchen manager proposed these available times. Choose one in your tour details, or keep your original time. Your original time remains confirmed until you accept a change.',
-      facts: [{ label: 'Kitchen', value: kitchenName }, { label: pendingRequest ? 'Requested time' : 'Original confirmed time', value: when(date) },
+        ? `${manager?.name || 'Your kitchen manager'} invites you to tour ${kitchenName} at one of the times below. Accept one to confirm your tour. Decline the invitation to keep your original request pending confirmation.`
+        : `${manager?.name || 'Your kitchen manager'} invites you to reschedule your tour at ${kitchenName} to one of the times below. Accept one to reschedule, or decline the invitation to keep your original confirmed visit. Your original time remains confirmed until you accept a change.`,
+      facts: [{ label: 'Kitchen', value: kitchenName }, ...(manager ? [{ label: 'Kitchen manager', value: manager.name }] : []), { label: pendingRequest ? 'Original requested time' : 'Original confirmed time', value: when(date) },
         ...proposed.map((time, index) => ({ label: `Option ${index + 1}`, value: when(new Date(time)) })),
         { label: 'Reference', value: reference }],
-      actionLabel: 'Review suggested times', actionUrl: `${getSubdomainUrl('chef')}/dashboard?view=viewings&viewing=${id}&action=review-times`,
-      secondaryButton: { label: 'Message manager', url: `${getSubdomainUrl('chef')}/dashboard?view=viewings&viewing=${id}&action=message` },
+      actionLabel: 'Review invitation', actionUrl: `${getSubdomainUrl('chef')}/dashboard?view=viewings&viewing=${id}&action=review-times`,
       note: `${pendingRequest ? 'Respond before the original requested start time shown above; the request expires then. ' : ''}Proposed times are checked again when you accept. No change has been made to your calendar.` }));
-    if (manager) notify('manager', manager, 'manager', 'Tour alternatives sent', pendingRequest
-      ? `Your offered times were sent to ${chef.name}. Their acceptance will confirm the tour. The original request remains pending while they decide.`
-      : `Your proposed times were sent to ${chef.name}. The original time remains confirmed while they decide.`);
+    if (manager) notify('manager', manager, 'manager', 'Tour invitation sent', pendingRequest
+      ? `Your invitation was sent to ${chef.name}. Accepting one time will confirm the tour. The original request remains pending while they decide.`
+      : `Your invitation to reschedule was sent to ${chef.name}. The original visit remains confirmed while they decide.`);
   } else if (kind === 'reschedule_proposal_declined' || kind === 'reschedule_proposal_withdrawn') {
     const withdrawn = kind === 'reschedule_proposal_withdrawn';
     const pendingRequest = after.status === 'pending';
-    const title = pendingRequest ? 'Tour request remains pending' : 'Original tour time kept';
+    const title = withdrawn ? 'Invitation withdrawn' : pendingRequest ? 'Tour request remains pending' : 'Original tour time kept';
     notify('chef', chef, 'chef', title, pendingRequest
-      ? withdrawn ? 'Your kitchen manager withdrew the offered times. Your original request remains pending confirmation.' : 'Your original request remains pending confirmation.'
+      ? withdrawn ? 'Your kitchen manager withdrew the invitation. Your original request remains pending confirmation. No action needed.' : 'Your original request remains pending confirmation.'
       : withdrawn
-      ? 'Your kitchen manager withdrew the proposed times. Your original confirmed tour time remains booked.'
+      ? 'Your kitchen manager withdrew the invitation. Your original confirmed visit is unchanged. No action needed.'
       : 'Your original confirmed tour time remains booked.');
-    if (withdrawn) receipt('chef-email', chef, title, pendingRequest
-      ? 'Your kitchen manager withdrew the offered times. Your original request remains pending confirmation.'
-      : 'Your kitchen manager withdrew the proposed times. Your original tour time remains confirmed.', 'chef');
     if (manager) {
       notify('manager', manager, 'manager', title, pendingRequest
-        ? withdrawn ? 'Your offered times were withdrawn. The original request remains pending confirmation.' : `${chef.name} declined the offered times. Review their original pending request.`
+        ? withdrawn ? 'Your invitation was withdrawn. The original request remains pending confirmation. Review and decide the original request.' : `${chef.name} declined the offered times. Review their original pending request.`
         : withdrawn
-        ? 'Your proposed times were withdrawn. The original tour time remains confirmed.' : `${chef.name} kept the original confirmed tour time.`);
+        ? 'Your invitation was withdrawn. The original confirmed visit is unchanged. No action needed.' : `${chef.name} kept the original confirmed tour time.`);
       if (!withdrawn) email('manager-email', manager, renderTransactionalEmail({ to: manager.email!, recipientName: manager.name,
         subject: `${pendingRequest ? 'Tour alternatives declined' : 'Original kitchen tour time kept'} · ${reference}`, message: pendingRequest
           ? `${chef.name} declined the offered times. Their original tour request remains pending confirmation.`
@@ -263,7 +295,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       const confirmed = generateTourConfirmedEmail({ tourId: id, durationMinutes: after.durationMinutes,
         tourDate: date, kitchenName: kitchenName === locationName ? locationName : `${kitchenName} at ${locationName}`,
         locationAddress: address, isManager: false, email: chef.email!, recipientName: chef.name,
-        otherPartyName: manager?.name || 'Manager', notes: after.sharedManagerNotes || undefined,
+        otherPartyName: manager?.name || 'Manager', sharedManagerNotes: after.sharedManagerNotes, arrivalNotes: payload.arrivalNotes, departureNotes: payload.departureNotes, confirmedAt: after.confirmedAt,
         contactEmail: manager?.email || undefined, organizerEmail: manager?.email || undefined,
         attendeeEmails: [chef.email, manager?.email].filter((value): value is string => !!value), calendarSequence, updatedAt: new Date(after.updatedAt), previousTourDate: initialConfirmation ? undefined : oldDate,
         canReschedule: canChefRequestReschedule(after) && !after.disruptionReason, canCancel: after.status === 'confirmed' && date.getTime() > Date.now() });
@@ -273,7 +305,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
         email('manager-email', manager, generateTourConfirmedEmail({ tourId: id, durationMinutes: after.durationMinutes,
           tourDate: date, kitchenName: kitchenName === locationName ? locationName : `${kitchenName} at ${locationName}`,
           locationAddress: address, isManager: true, email: manager.email!, recipientName: manager.name,
-          otherPartyName: chef.name, notes: after.chefNotes || undefined, contactEmail: chef.email || undefined,
+          otherPartyName: chef.name, notes: after.chefNotes || undefined, sharedManagerNotes: after.sharedManagerNotes, arrivalNotes: payload.arrivalNotes, departureNotes: payload.departureNotes, confirmedAt: after.confirmedAt, contactEmail: chef.email || undefined,
           organizerEmail: manager.email || undefined, attendeeEmails: [chef.email, manager.email].filter((value): value is string => !!value),
           calendarSequence, updatedAt: new Date(after.updatedAt), previousTourDate: initialConfirmation ? undefined : oldDate,
           canReschedule: canManagerProposeReschedule(after) && !after.disruptionReason, canCancel: after.status === 'confirmed' && date.getTime() > Date.now() }));
@@ -283,7 +315,10 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     const text = 'Your tour request has expired because the requested time passed before confirmation. Your tour was not confirmed. You can choose a new time from the kitchen page.';
     notify('chef', chef, 'chef', 'Kitchen tour request expired', text, 'booking_cancelled');
     receipt('chef-email', chef, 'Kitchen tour request expired', text, 'chef');
-    if (manager && after.status === 'pending') notify('manager', manager, 'manager', 'Kitchen tour request expired', `The requested time for ${chef.name} passed before confirmation. No visit result has been recorded.`, 'booking_cancelled');
+    if (manager && before.status === 'pending') {
+      notify('manager', manager, 'manager', 'Kitchen tour request expired', `The requested time for ${chef.name} passed before confirmation. No visit result has been recorded.`, 'booking_cancelled');
+      email('manager-email', manager, renderTransactionalEmail({ to: manager.email!, recipientName: manager.name, subject: `Kitchen tour request expired · ${reference}`, message: `The requested time for ${chef.name} passed before confirmation. No visit result has been recorded.`, facts: [{ label: 'Requested time', value: when(new Date(after.requestExpiredAt || after.scheduledAt)) }, { label: 'Reference', value: reference }], actionLabel: 'View tour record', actionUrl: `${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings&viewing=${id}` }));
+    }
   } else if (kind === 'reminder') {
     for (const person of [manager, ...admins].filter((person): person is Recipient => person != null)
       .filter((person, index, list) => list.findIndex(other => other.id === person.id) === index)) {
@@ -295,7 +330,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       receipt('chef-email', chef, 'Kitchen tour outcome corrected', 'The recorded outcome was corrected to confirmed. This correction does not create a new appointment or update a saved calendar.', 'chef');
       if (manager) notify('manager', manager, 'manager', 'Kitchen tour outcome corrected', 'Open the tour for the corrected record.');
     } else if (after.status === 'confirmed') {
-      notify('chef', chef, 'chef', 'Kitchen Tour Confirmed!', `Your tour at ${locationName} has been approved by the manager.`);
+      notify('chef', chef, 'chef', 'Kitchen Tour Confirmed!', `Your tour at ${locationName} is confirmed.`);
       if (manager) notify('manager', manager, 'manager', 'Kitchen tour confirmed', `The tour for ${chef.name} at ${locationName} is confirmed.`);
       for (const person of [chef, manager].filter((person): person is Recipient => person != null)) {
         email(`${person.id === chef.id ? 'chef' : 'manager'}-email`, person, generateTourConfirmedEmail({
@@ -303,7 +338,8 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
           otherPartyName: person.id === chef.id ? manager?.name || 'Manager' : chef.name,
           kitchenName: kitchenName === locationName ? locationName : `${kitchenName} at ${locationName}`,
           locationAddress: address, tourDate: date, tourId: id, durationMinutes: after.durationMinutes, timezone, calendarSequence, updatedAt: new Date(after.updatedAt),
-          notes: person.id === chef.id ? after.sharedManagerNotes || undefined : after.chefNotes || undefined,
+          notes: person.id === chef.id ? undefined : after.chefNotes || undefined,
+          sharedManagerNotes: after.sharedManagerNotes, arrivalNotes: payload.arrivalNotes, departureNotes: payload.departureNotes, confirmedAt: after.confirmedAt,
           contactEmail: person.id === chef.id ? manager?.email || undefined : chef.email || undefined,
           canReschedule: (person.id === chef.id ? canChefRequestReschedule : canManagerProposeReschedule)(after) && !after.disruptionReason,
           canCancel: after.status === 'confirmed' && date.getTime() > Date.now(),
@@ -312,10 +348,11 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
     } else if (after.status === 'cancelled') {
       const disruption = after.disruptionReason && tourDisruptionReasons[after.disruptionReason as keyof typeof tourDisruptionReasons];
       const byChef = payload.actorRole === 'chef';
-      const rejected = before.status === 'pending';
+      const withdrawn = byChef && ['pending_local_cooks', 'pending'].includes(before.status);
+      const rejected = !byChef && before.status === 'pending';
       const reason = disruption || publicTourCancellationReason(after.cancellationReason) || '';
-      notify('chef', chef, 'chef', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : rejected ? 'Tour request rejected' : 'Kitchen tour cancelled',
-        `Your tour at ${locationName} was ${disruption ? 'disrupted' : rejected ? 'rejected' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''} This is not a visitor no-show.`, 'booking_cancelled');
+      notify('chef', chef, 'chef', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : withdrawn ? 'Tour request withdrawn' : rejected ? 'Tour request rejected' : 'Kitchen tour cancelled',
+        `Your tour at ${locationName} was ${disruption ? 'disrupted' : withdrawn ? 'withdrawn' : rejected ? 'rejected' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''} This is not a visitor no-show.`, 'booking_cancelled');
       if (byChef && manager && before.status !== 'pending_local_cooks') {
         notify('manager', manager, 'manager', 'Kitchen tour cancelled', `The tour at ${locationName} was cancelled.`, 'booking_cancelled');
         email('manager-email', manager, ordinaryCancellation ? cancellationEmail(manager, 'kitchen') : generateTourManagerChangeEmail({ tourId: id, durationMinutes: after.durationMinutes, managerName: manager.name, locationName, address, managerEmail: manager.email!, chefName: chef.name, kitchenName, kind: 'cancelled', scheduledAt: date, timezone }));
@@ -326,7 +363,7 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
       if (corrected && !disruption) receipt('chef-email', chef, 'Kitchen tour outcome corrected', `The recorded outcome was corrected to cancelled.${reason ? ` Reason: ${reason}.` : ''} Open the tour for its history and current state. This correction does not update a saved calendar.`, 'chef');
       if (disruption) receipt('chef-email', chef, corrected ? 'Kitchen tour outcome corrected' : 'Kitchen tour disrupted', `This tour was disrupted. Reason: ${reason}.${after.sharedManagerNotes ? ` Message shared with chef: ${after.sharedManagerNotes}` : ''} This is not a visitor no-show. Contact Local Cooks through Support if this is incorrect.`, 'chef');
       if (byChef && ordinaryCancellation) email('chef-email', chef, cancellationEmail(chef, 'chef'));
-      if (byChef && !ordinaryCancellation) receipt('chef-email', chef, 'Kitchen tour cancelled', 'This tour was cancelled. It is not a visitor no-show.', 'chef');
+      if (byChef && !ordinaryCancellation) receipt('chef-email', chef, withdrawn ? 'Tour request withdrawn' : 'Kitchen tour cancelled', withdrawn ? 'You withdrew your unconfirmed tour request. You can request another available time from the kitchen page.' : 'This tour was cancelled. It is not a visitor no-show.', 'chef');
       if (!byChef && manager && before.status !== 'pending_local_cooks') notify('manager', manager, 'manager', corrected ? 'Kitchen tour outcome corrected' : disruption ? 'Kitchen tour disrupted' : rejected ? 'Tour request rejected' : 'Kitchen tour cancelled', `The tour for ${chef.name} was ${disruption ? 'disrupted' : rejected ? 'rejected' : 'cancelled'}.${reason ? ` Reason: ${reason}` : ''}`, 'booking_cancelled');
     } else if (after.status === 'completed' || after.status === 'no_show') {
       const absent = after.noShowReason === 'visitor_absent' ? 'visitor did not attend' : 'a past no-show report without a shared reason or recorded visit times';
@@ -341,22 +378,22 @@ export function tourEventMessages(payload: Payload, calendarSequence = 0): Messa
   if (manager && kind === 'reschedule_declined') {
     notify('manager', manager, 'manager', 'Reschedule request declined', `The tour for ${chef.name} remains scheduled for ${when(date)}.`);
   }
-  if (!['requested', 'request_updated', 'reminder', 'visitor_checkin', 'visitor_checkout', 'attendance_assisted'].includes(kind)) {
+  if (!['requested', 'request_updated', 'request_escalation', 'reminder', 'visitor_checkin', 'visitor_checkout', 'attendance_assisted'].includes(kind)) {
     const title = kind === 'review_approved' ? 'Tour request sent to kitchen manager'
       : kind === 'review_denied' ? 'Tour request rejected by Local Cooks'
       : kind === 'reschedule_requested' ? 'Tour reschedule requested'
       : kind === 'reschedule_accepted' ? 'Tour rescheduled'
       : kind === 'reschedule_declined' ? 'Reschedule request declined'
-      : kind === 'reschedule_proposed' ? 'Tour alternatives proposed'
+      : kind === 'reschedule_proposed' ? 'Tour invitation sent'
       : kind === 'reschedule_proposal_accepted' ? before.status === 'pending' ? 'Kitchen tour confirmed' : 'Tour rescheduled'
       : kind === 'reschedule_proposal_declined' ? after.status === 'pending' ? 'Tour alternatives declined' : 'Original tour time kept'
-      : kind === 'reschedule_proposal_withdrawn' ? 'Tour alternatives withdrawn'
+      : kind === 'reschedule_proposal_withdrawn' ? 'Tour invitation withdrawn'
       : kind === 'expired' ? 'Kitchen tour request expired'
       : corrected ? 'Kitchen tour outcome corrected'
       : after.disruptionReason ? 'Kitchen tour disrupted'
       : after.status === 'no_show' ? after.noShowReason === 'visitor_absent' ? 'Kitchen tour reported as visitor no-show' : 'Kitchen tour historical outcome recorded'
       : after.status === 'completed' ? 'Kitchen tour completed'
-      : after.status === 'confirmed' ? 'Kitchen tour confirmed' : 'Kitchen tour cancelled';
+      : after.status === 'confirmed' ? 'Kitchen tour confirmed' : payload.actorRole === 'chef' && ['pending_local_cooks', 'pending'].includes(before.status) ? 'Tour request withdrawn' : 'Kitchen tour cancelled';
     const outcome = after.disruptionReason ? `disrupted: ${tourDisruptionReasons[after.disruptionReason as keyof typeof tourDisruptionReasons] || after.disruptionReason}` : after.status;
     const text = `${chef.name} · ${reference} at ${locationName}. ${kind === 'expired' ? 'The requested time passed before confirmation. The tour was never confirmed.' : `Current outcome/status: ${outcome}. Recorded by ${payload.actorRole || 'the platform'}.`}${after.requestedRescheduleAt ? ` Requested new time: ${when(new Date(after.requestedRescheduleAt))}.` : ''}${after.adminReviewReason ? ` Review reason: ${after.adminReviewReason}` : ''}${after.cancellationReason ? ` Cancellation reason: ${after.cancellationReason}` : ''}${after.sharedManagerNotes ? ` Message shared with chef: ${after.sharedManagerNotes}` : ''} Open the tour to inspect its history or correct an outcome.`;
     for (const admin of admins) {
@@ -415,6 +452,21 @@ export function tourNoticeFactsMatch(payload: Payload, current: Tour) {
     && instant(current.rescheduleProposedAt) === instant(saved.rescheduleProposedAt);
 }
 
+/** Invitation validity ignores arrival notes and unrelated record edits. */
+function tourInvitationFactsMatch(payload: Payload, current: Tour) {
+  const saved = payload.after;
+  const instant = (value: Date | string | null | undefined) => value == null ? null : new Date(value).getTime();
+  return ['pending', 'confirmed'].includes(current.status) && current.status === saved.status
+    && instant(current.scheduledAt) === instant(saved.scheduledAt) && new Date(current.scheduledAt).getTime() > Date.now()
+    && current.durationMinutes === saved.durationMinutes && current.locationId === saved.locationId
+    && current.targetedKitchenId === saved.targetedKitchenId && current.chefId === saved.chefId
+    && current.managerId === saved.managerId && payload.manager?.id === current.managerId
+    && !current.checkedInAt && !current.disruptionReason && !current.requestedRescheduleAt
+    && !!current.rescheduleProposedSlots?.length
+    && JSON.stringify(current.rescheduleProposedSlots) === JSON.stringify(saved.rescheduleProposedSlots || [])
+    && instant(current.rescheduleProposedAt) === instant(saved.rescheduleProposedAt);
+}
+
 /** The same recovery notice renderer is used by delivery and the local preview harness. */
 export function renderHistoricalTourEmail({ email, key, payload, viewingId, createdAt, currentStatus }: {
   email: Email; key: string; payload: Payload; viewingId: number; createdAt: Date | string; currentStatus: string;
@@ -468,10 +520,10 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
       const requestEvent = ['requested', 'request_updated', 'review_approved', 'review_denied', 'reschedule_requested', 'reschedule_accepted', 'reschedule_declined',
         'reschedule_proposed', 'reschedule_proposal_accepted', 'reschedule_proposal_declined', 'reschedule_proposal_withdrawn'].includes(payload.kind)
         || payload.kind === 'status' && ['pending_local_cooks', 'pending', 'confirmed'].includes(payload.before.status);
-      const reviewCurrent = historical || requestEvent || ['status', 'expired', 'reminder'].includes(payload.kind);
+      const reviewCurrent = historical || requestEvent || ['status', 'expired', 'reminder', 'request_escalation'].includes(payload.kind);
       const [current] = reviewCurrent ? await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, event.viewingId)).limit(1) : [];
-      if (reviewCurrent && !current) throw new Error('Current tour unavailable');
-      if (reviewCurrent) {
+      if (reviewCurrent && !current && payload.kind !== 'request_escalation') throw new Error('Current tour unavailable');
+      if (reviewCurrent && current) {
         payload = await currentRequestRecipients(payload, current);
         historical ||= !tourNoticeFactsMatch(payload, current);
         historical ||= payload.kind === 'reschedule_proposed' && payload.manager?.id !== payload.after.managerId;
@@ -479,22 +531,35 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
         historical ||= payload.after.status === 'confirmed' && new Date(current.scheduledAt).getTime() + current.durationMinutes * 60000 <= Date.now();
         historical ||= ['pending_local_cooks', 'pending'].includes(payload.after.status) && new Date(current.scheduledAt).getTime() <= Date.now();
       }
-      const currentStatus = current && ['pending_local_cooks', 'pending'].includes(current.status) && new Date(current.scheduledAt).getTime() <= Date.now()
+      const currentStatus = current && (current.requestExpiredAt || ['pending_local_cooks', 'pending'].includes(current.status) && new Date(current.scheduledAt).getTime() <= Date.now())
         ? 'Request expired before confirmation' : current?.disruptionReason ? `Disrupted: ${tourDisruptionReasons[current.disruptionReason as keyof typeof tourDisruptionReasons] || 'Reason unknown'}` : ({ pending_local_cooks: 'Awaiting Local Cooks review', pending: 'Awaiting kitchen manager confirmation',
           confirmed: 'Confirmed', cancelled: current?.adminReviewDecision === 'denied' || current?.cancelledBy === 'manager_declined' ? 'Request declined' : 'Cancelled',
           completed: 'Recorded as completed', no_show: current?.noShowReason === 'visitor_absent' ? 'Recorded as visitor no-show' : 'Past no-show report; reason and visit times unavailable' } as Record<string, string>)[current?.status || ''] || 'Unavailable';
-      const messages = tourEventMessages(payload, event.id);
-      if (reviewCurrent && !payload.manager && !messages.some(message => message.key === 'manager-email')
+      const escalationCurrent = () => current && tourRequestEscalationDue(current) && tourRequestEscalationKey(current) === tourRequestEscalationKey(payload.after);
+      const messages = payload.kind === 'request_escalation' && !escalationCurrent() ? [] : tourEventMessages(payload, event.id);
+      if (reviewCurrent && (payload.kind !== 'request_escalation' || escalationCurrent()) && !payload.manager && !messages.some(message => message.key === 'manager-email')
         && tourEventMessages(event.payload as Payload, event.id).some(message => message.key === 'manager-email')) {
         messages.push({ key: 'manager-email', recovery: 'Current tour manager unavailable' });
       }
       for (const message of messages) {
+        // Invitations are actionable: obsolete offers must never become historical chef emails.
+        if (payload.kind === 'reschedule_proposed' && message.key === 'chef-email'
+          && (replay || !current || !tourInvitationFactsMatch(payload, current))) continue;
         if ((event.deliveredKeys as string[]).includes(message.key)) continue;
         const recipientStatus = !message.key.startsWith('admin') && ['Awaiting Local Cooks review', 'Awaiting kitchen manager confirmation'].includes(currentStatus)
           ? 'Pending confirmation' : currentStatus;
         // Reserve the bounded SMTP attempt plus DB acknowledgment within the 30-second function limit.
         if (deadline - Date.now() < (message.email ? deliveryReserve() : 1_000)) { paused = true; break; }
         try {
+          // Escalations are actionable reminders, never historical receipts. Recheck each channel.
+          if (payload.kind === 'request_escalation') {
+            const [fresh] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, event.viewingId)).limit(1);
+            if (!fresh || !tourRequestEscalationDue(fresh) || tourRequestEscalationKey(fresh) !== tourRequestEscalationKey(payload.after)) continue;
+          }
+          if (payload.kind === 'reschedule_proposed' && message.key === 'chef-email') {
+            const [fresh] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, event.viewingId)).limit(1);
+            if (!fresh || !tourInvitationFactsMatch(payload, fresh)) continue;
+          }
           if (message.recovery) throw new Error(message.recovery);
           if (message.notification?.userId === payload.chef.id && payload.chef.available === false) throw new Error('Current tour visitor unavailable');
           // Extend before each send; all current SMTP attempts are bounded below this lease.
@@ -505,7 +570,8 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
             const trackingId = `tour-event:${event.id}:${message.key}`;
             const [sent] = await db.select({ id: emailLogs.id }).from(emailLogs)
               .where(and(eq(emailLogs.trackingId, trackingId), eq(emailLogs.recipientEmail, message.email.to.toLowerCase()), eq(emailLogs.status, 'sent'))).limit(1);
-            const content = historical ? renderHistoricalTourEmail({ email: message.email, key: message.key, payload,
+            const content = historical && payload.kind !== 'request_escalation'
+              && !(payload.kind === 'reschedule_proposed' && message.key === 'chef-email') ? renderHistoricalTourEmail({ email: message.email, key: message.key, payload,
               viewingId: event.viewingId, createdAt: event.createdAt, currentStatus: recipientStatus }) : message.email;
             if (!sent && !await sendEmail(content, { trackingId, emailType: 'tour', durableDelivery: true })) throw new Error('Tour email not accepted');
           }
@@ -515,7 +581,7 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
             if (!ownedEvent) throw new Error('Tour delivery lease lost');
             const keys = ownedEvent.deliveredKeys as string[];
             if (keys.includes(message.key)) return;
-            if (message.notification) await notificationService.create(historical ? { ...message.notification,
+            if (message.notification) await notificationService.create(historical && payload.kind !== 'request_escalation' ? { ...message.notification,
               title: 'Recorded tour update', message: `Recorded update: ${message.notification.title}. Current tour status: ${recipientStatus}. Open the tour before acting.` } : message.notification, tx);
             await tx.update(tourDeliveryEvents).set({ deliveredKeys: [...keys, message.key] }).where(eq(tourDeliveryEvents.id, event.id));
           });

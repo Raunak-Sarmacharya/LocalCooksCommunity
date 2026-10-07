@@ -944,11 +944,16 @@ export default function ApplicantDashboard() {
       return [...baseBreadcrumbs, { label: t("shellKitchens"), navId: "discover-kitchens" as const }];
     }
 
-    if (activeTab === 'kitchen-requests' || activeTab === 'viewings') {
+    if (activeTab === 'viewings') {
+      const tourId = new URLSearchParams(dashboardSearch).get('viewing');
+      const tours = { label: t("shellKitchenTours"), navId: "viewings" as const, ...(tourId ? { onClick: () => navigate('/dashboard?view=viewings') } : {}) };
+      return [...baseBreadcrumbs, tours, ...(tourId ? [{ label: `TOUR-${tourId}` }] : [])];
+    }
+    if (activeTab === 'kitchen-requests') {
       return [
         ...baseBreadcrumbs,
         { label: t("shellKitchens"), onClick: () => setActiveTab("discover-kitchens") },
-        { label: t(activeTab === 'viewings' ? "shellKitchenTours" : activeTab === 'kitchen-requests' ? "shellMyKitchenApplications" : "shellDiscoverKitchens"), navId: activeTab },
+        { label: t("shellMyKitchenApplications"), navId: activeTab },
       ];
     }
 
@@ -973,7 +978,7 @@ export default function ApplicantDashboard() {
     }
 
     return undefined;
-  }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate]);
+  }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate, dashboardSearch, navigate]);
 
   const shellActiveView =
     activeTab === "transactions"

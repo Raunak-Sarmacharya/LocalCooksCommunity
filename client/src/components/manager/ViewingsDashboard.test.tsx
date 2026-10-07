@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: null } }));
 vi.mock('@/i18n/manager', async () => {
   const { default: locale } = await import('../../../../shared/i18n/locales/en-CA/manager.json');
-  return { mt: (key: string) => key === 'tourNextReview' ? locale.tourNextReview : key };
+  return { mt: (key: string, options?: { name?: string }) => key === 'tourNextReview' ? locale.tourNextReview : key === 'tourMessageVisitor' ? `Message ${options?.name}` : key };
 });
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: mocks.warning, error: mocks.error } }));
 vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <button onClick={() => onRowClick(data[0])}>Open tour</button> }));
@@ -30,6 +30,42 @@ function mount(overlaps: any[] = [], writeStatus = 200) {
   return { client, fetcher };
 }
 describe('manager acceptance review', () => {
+  it('requires a shared reason for a pending decline while leaving confirmed cancellation optional', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['/api/viewings/manager'], [record]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) })));
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    fireEvent.click(screen.getByRole('button', { name: 'declineRequest' }));
+    const save = screen.getByRole('button', { name: 'cancelViewing' });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('tourDeclineReason'), { target: { value: 'The kitchen is unavailable.' } });
+    expect(save).toBeEnabled();
+    expect(screen.getByText('tourDeclineReasonHelp')).toBeInTheDocument();
+    client.clear();
+  });
+  it('combines visitor contact and compact coordination actions while retaining the notes destination', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, chefName: 'Ada Lovelace', chefEmail: 'ada@example.test', viewing: { ...record.viewing, adminReviewDecision: 'approved' } }]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) })));
+    const configure = vi.fn();
+    render(<QueryClientProvider client={client}><ViewingsDashboard onConfigureNotes={configure} /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    const card = within(screen.getByRole('region', { name: 'tourVisitorContactTitle' }));
+    expect(card.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(card.getByRole('link', { name: 'ada@example.test' })).toBeInTheDocument();
+    expect(card.getByRole('button', { name: 'Message Ada' })).toHaveClass('h-9');
+    const notes = card.getByRole('button', { name: 'tourVisitNotesButton' });
+    expect(notes.parentElement).toHaveClass('grid-cols-2');
+    expect(notes).toHaveAttribute('title', 'tourEditVisitNotes');
+    expect(card.getByText('tourCoordinationHelp')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'tourHistoryTitle' }).closest('aside')).not.toBeNull();
+    expect(screen.getByTestId('manager-tour-help').closest('aside')).toBeNull();
+    fireEvent.click(notes);
+    expect(configure).toHaveBeenCalledWith(40, 33);
+    expect(screen.queryByRole('heading', { name: 'navMessages' })).not.toBeInTheDocument();
+    client.clear();
+  });
   it('groups all shared chef details and omits attendance instructions while confirmation is pending', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const full = { ...record, chefEmail: 'sam@example.test', chefPhone: '+17095550123', viewing: { ...record.viewing,
@@ -38,7 +74,7 @@ describe('manager acceptance review', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ problems: [], reportingAvailable: false }) })));
     render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
-    const chef = screen.getByRole('region', { name: 'tourChefDetailsTitle' });
+    const chef = screen.getByRole('region', { name: 'tourVisitorContactTitle' });
     expect(chef).toHaveTextContent('Fixture chef');
     expect(chef).toHaveTextContent('sam@example.test');
     expect(chef).toHaveTextContent('+17095550123');
@@ -77,8 +113,11 @@ describe('manager acceptance review', () => {
     expect(screen.getByRole('heading', { name: 'TOUR-10 · Fixture chef' })).toBeInTheDocument();
     expect(screen.queryByText('submitted')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'acceptViewing' }));
+    const top = within(screen.getByRole('region', { name: 'tourNextStep' }));
+    expect(top.getByRole('button', { name: 'confirmViewing' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'confirmViewing' })).toHaveLength(1);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Meet me at reception' } });
-    fireEvent.click(screen.getByRole('button', { name: 'tourEditVisitNotes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'tourVisitNotesButton' }));
     expect(configure).not.toHaveBeenCalled();
     await screen.findByRole('alertdialog');
     fireEvent.click(screen.getByRole('button', { name: 'discardChanges' }));

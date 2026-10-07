@@ -1,3 +1,6 @@
+import type { ColumnDef } from "@tanstack/react-table";
+import { DataTable } from "@/components/ui/data-table";
+import { Input } from "@/components/ui/input";
 import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
 import { KitchenTour } from "@/components/ui/manager-icons";
 import { TourChatButton } from '@/components/chat/TourChatButton';
@@ -9,7 +12,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoChip } from "@/components/chef/info-chip";
-import { Loader2, ChevronDown, MapPin, Download, CalendarDays, Clock3, X } from "lucide-react";
+import { Loader2, ArrowUpDown, Download, X } from "lucide-react";
 import { Icon } from "@iconify/react";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -18,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { tt } from "@/i18n/common-ns";
-import { ChefTourRow, chefTourRowHasDetails, chefTourVisitAction, formatTourWhen, normalizeChefTourRow, viewingStatusBadge } from "@/lib/chef-viewing-display";
+import { ChefTourRow, chefTourVisitAction, isPendingOrUpcomingTour, formatTourWhen, normalizeChefTourRow, viewingStatusBadge } from "@/lib/chef-viewing-display";
 import { tourAvailableDate } from "@/lib/tour-available-date";
 import { Link, useLocation, useSearch } from "wouter";
 import { useTourClock } from "@/hooks/use-tour-clock";
@@ -72,44 +75,24 @@ function TourDetailPanel({
   tour: ChefTourRow;
   t: (key: string, defaultValue?: string | Record<string, unknown>) => string;
 }) {
-  const pastEnd = new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 < Date.now();
-  const expired = ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() < Date.now();
+  const expired = !!tour.requestExpiredAt || ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() <= Date.now();
+  const awaitingConfirmation = ["pending_local_cooks", "pending"].includes(tour.status);
   return (
-    <div className="space-y-5 text-sm">
-      {(tour.checkedInAt || (tour.status === 'confirmed' && tour.attendance && Date.now() >= Date.parse(tour.attendance.checkInOpensAt))) && <TourAttendancePanel id={tour.id} role="chef" version={tour.updatedAt} />}
-      {(tour.arrivalNotes || tour.departureNotes) && <section className="space-y-3 rounded-lg border bg-background p-4">
-        <h4 className="font-semibold text-foreground">{t("tourVisitNotes", "Tour arrival and departure notes")}</h4>
-        {tour.arrivalNotes && <div><p className="text-sm font-medium">{t("tourArrivalNotes", "Arrival notes")}</p><p className="whitespace-pre-wrap text-muted-foreground">{tour.arrivalNotes}</p></div>}
-        {tour.departureNotes && <div><p className="text-sm font-medium">{t("tourDepartureNotes", "Departure notes")}</p><p className="whitespace-pre-wrap text-muted-foreground">{tour.departureNotes}</p></div>}
-      </section>}
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="space-y-3">
-          <h4 className="font-semibold text-foreground">{t("tourVisitDetails", "Visit details")}</h4>
-          <div className="space-y-2 text-muted-foreground">
-            <p><span className="text-foreground">{t("tourDetailTime", "Tour time")}: </span>{formatTourWhen(tour.scheduledAt, tour.durationMinutes, tour.timezone)}</p>
-            {tour.locationAddress && <p><span className="text-foreground">{t("tourAddress", "Address")}: </span>{tour.locationAddress}</p>}
-            {tour.managerName && <p><span className="text-foreground">{t("tourDetailManager", "Kitchen manager")}: </span>{tour.managerName}</p>}
-            {tour.status === "confirmed" && <div className="flex flex-wrap gap-x-4 gap-y-1">{tour.locationContactPhone && <a className="text-foreground underline underline-offset-2" href={`tel:${tour.locationContactPhone}`}>{tour.locationContactPhone}</a>}{tour.locationContactEmail && <a className="break-all text-foreground underline underline-offset-2" href={`mailto:${tour.locationContactEmail}`}>{tour.locationContactEmail}</a>}</div>}
-          </div>
-        </section>
-        <section className="space-y-3">
-          <h4 className="font-semibold text-foreground">{t("tourRequestDetails", "Request details")}</h4>
-          <div className="grid gap-2 text-muted-foreground sm:grid-cols-2">
-            <p><span className="block text-xs">{t("tourDetailReference", "Tour reference")}</span><span className="font-medium text-foreground">TOUR-{tour.id}</span></p>
-            <p><span className="block text-xs">{t("tourDetailSubmitted", "Request submitted")}</span><span className="font-medium text-foreground">{tour.submittedAt ? formatTourWhen(tour.submittedAt, null, tour.timezone) : t("tourDetailDateUnavailable", "Date unavailable")}</span></p>
-            {tour.chefName && <p><span className="block text-xs">{t("tourDetailChef", "Chef")}</span><span className="font-medium text-foreground">{tour.chefName}</span></p>}
-            {tour.chefEmail && <p><span className="block text-xs">{t("tourDetailEmail", "Account email")}</span><span className="break-all font-medium text-foreground">{tour.chefEmail}</span></p>}
-            {tour.cancelledAt && <p><span className="block text-xs">{t("tourDetailCancelled", "Cancelled")}</span><span className="font-medium text-foreground">{formatTourWhen(tour.cancelledAt, null, tour.timezone)}</span></p>}
-            {tour.completedAt && <p><span className="block text-xs">{t("tourDetailCompleted", "Completed")}</span><span className="font-medium text-foreground">{formatTourWhen(tour.completedAt, null, tour.timezone)}</span></p>}
-          </div>
-        </section>
-      </div>
-      {tour.requestedRescheduleAt && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{t("tourChangeRequested", "Reschedule requested for")} {formatTourWhen(tour.requestedRescheduleAt, tour.durationMinutes, tour.timezone)}. {t("tourOriginalTimeHeld", "Your original time remains confirmed until the manager accepts.")}</p>}
-
-      {(tour.chefNotes?.trim() || tour.intakeEntries.length > 0 || tour.sharedManagerNotes || tour.cancellationReason || tour.noShowReason || tour.disruptionReason) && <section className="rounded-xl border bg-background p-4 sm:p-5"><h4 className="font-semibold text-foreground">{t("tourMoreRequestInfo", "Notes and updates")}</h4><div className="mt-4 space-y-4 divide-y [&>div:not(:first-child)]:pt-4">
+    <div className="grid gap-4 text-sm sm:grid-cols-2">
+      {tour.confirmedAt && <section className="rounded-xl border bg-card p-5 sm:col-span-2 sm:p-6"><h2 className="text-sm font-semibold">{t('tourConfirmedAt', 'Confirmed on')}</h2><p className="mt-2">{formatTourWhen(tour.confirmedAt, null, 'America/St_Johns')}</p></section>}
+      {(tour.checkedInAt || (tour.status === 'confirmed' && tour.attendance && Date.now() >= Date.parse(tour.attendance.checkInOpensAt))) && <div id={`tour-attendance-${tour.id}`} tabIndex={-1} className="sm:col-span-2 focus:outline-none"><TourAttendancePanel id={tour.id} role="chef" version={tour.updatedAt} /></div>}
+      <section aria-label={t("tourArrivalNotes", "Arrival notes")} className="space-y-3 rounded-xl border bg-card p-5 sm:p-6">
+        <h2 className="text-sm font-semibold text-foreground">{t("tourArrivalNotes", "Arrival notes")}</h2>
+        <p className="whitespace-pre-wrap text-muted-foreground">{tour.arrivalNotes?.trim() || (awaitingConfirmation ? t("tourArrivalNotesAfterConfirmation", "Arrival instructions are available after your tour is confirmed.") : tour.status !== "confirmed" ? t("tourClosedInstructions", "Instructions are unavailable for this tour. Review the shared notes or contact Support if you need help.") : t("tourArrivalNotesEmpty", "The kitchen manager hasn’t shared arrival instructions yet. Message the manager if you need help finding the entrance or meeting point."))}</p>
+      </section>
+      <section aria-label={t("tourDepartureNotes", "Departure notes")} className="space-y-3 rounded-xl border bg-card p-5 sm:p-6">
+        <h2 className="text-sm font-semibold text-foreground">{t("tourDepartureNotes", "Departure notes")}</h2>
+        <p className="whitespace-pre-wrap text-muted-foreground">{tour.departureNotes?.trim() || (awaitingConfirmation ? t("tourDepartureNotesAfterConfirmation", "Departure instructions are available after your tour is confirmed.") : tour.status !== "confirmed" ? t("tourClosedInstructions", "Instructions are unavailable for this tour. Review the shared notes or contact Support if you need help.") : t("tourDepartureNotesEmpty", "The kitchen manager hasn’t shared departure instructions yet. Message the manager if you need help with leaving the kitchen."))}</p>
+      </section>
+      {(tour.chefNotes?.trim() || tour.intakeEntries.length > 0 || tour.sharedManagerNotes || tour.cancellationReason || tour.noShowReason || tour.disruptionReason) && <section className="rounded-xl border bg-card p-5 sm:col-span-2 sm:p-6"><h2 className="text-sm font-semibold text-foreground">{t("tourMoreRequestInfo", "Notes and updates")}</h2><div className="mt-4 space-y-4 divide-y [&>div:not(:first-child)]:pt-4">
       {tour.chefNotes?.trim() && (
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">
+          <p className="text-xs font-medium text-muted-foreground mb-0.5">
             {t("tourListYourNotes", "Your notes")}
           </p>
           <p className="text-foreground whitespace-pre-wrap">{tour.chefNotes.trim()}</p>
@@ -118,14 +101,14 @@ function TourDetailPanel({
 
       {tour.intakeEntries.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-medium text-muted-foreground">
             {t("tourListIntakeTitle", "What you shared")}
           </p>
           <TourIntakeDetails data={Object.fromEntries(tour.intakeEntries)} />
         </div>
       )}
 
-      {tour.cancellationReason && (
+      {tour.cancellationReason && !expired && (
         <div>
           <p className="font-medium text-destructive text-xs mb-0.5">
             {t("tourListCancelReason", "Cancellation reason")}
@@ -149,11 +132,32 @@ function TourDetailPanel({
       {tour.disruptionReason && <p>{t("tourDisruptionReason", "Reason the tour couldn’t take place")}: {tour.disruptionReason.replace(/_/g, " ")}</p>}
       {tour.noShowReason && <div><p className="font-medium text-xs">{t("tourDetailNoShowReason", "No-show reason")}</p><p className="text-muted-foreground">{tour.noShowReason.replace(/_/g, " ")}</p></div>}
       </div></section>}
-      {["pending_local_cooks", "pending"].includes(tour.status) && !expired && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("tourListPending", "Your tour request is pending. We’ll notify you when it’s confirmed or declined.")}</p>}
-      <CommitmentProblems kind="tour" id={tour.id} canReport />
-      {tour.status === "confirmed" && !pastEnd && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-950">{t("tourListConfirmedNext", "Tour confirmed. Arrive on time and bring questions about equipment, storage, and access.")}</p>}
+      <div className="sm:col-span-2 [&>section]:rounded-xl [&>section]:bg-card [&>section]:p-5 sm:[&>section]:p-6"><CommitmentProblems kind="tour" id={tour.id} canReport /></div>
     </div>
   );
+}
+
+function TourSummary({ tour, t }: { tour: ChefTourRow; t: (key: string, defaultValue?: string | Record<string, unknown>) => string }) {
+  return <aside aria-label={t("tourSummary", "Tour summary")} className="space-y-5 rounded-xl border bg-card p-5 sm:p-6">
+    <section className="space-y-3"><h2 className="text-sm font-semibold">{t("tourVisitDetails", "Visit details")}</h2>
+      <p className="font-medium">{tour.locationName}</p>{tour.kitchenName && <p className="text-sm text-muted-foreground">{tour.kitchenName}</p>}
+      <p className="text-sm">{formatTourWhen(tour.scheduledAt, tour.durationMinutes, tour.timezone)}</p>
+      <p className="text-sm text-muted-foreground">{t("tourListDurationMins", { count: tour.durationMinutes ?? 30, defaultValue: `${tour.durationMinutes ?? 30} min` })}</p>
+      {tour.locationAddress && <a className="block text-sm underline underline-offset-2" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tour.locationAddress)}`} target="_blank" rel="noopener noreferrer">{tour.locationAddress}</a>}
+      {tour.managerName && <p className="text-sm">{t("tourDetailManager", "Kitchen manager")}: {tour.managerName}</p>}
+      {tour.status === "confirmed" && <div className="space-y-2 text-sm">{tour.locationContactPhone && <a className="block underline" href={`tel:${tour.locationContactPhone}`}>{tour.locationContactPhone}</a>}{tour.locationContactEmail && <a className="block break-all underline" href={`mailto:${tour.locationContactEmail}`}>{tour.locationContactEmail}</a>}</div>}
+    </section>
+    <section className="space-y-3 border-t pt-4"><h2 className="text-sm font-semibold">{t("tourRequestDetails", "Request details")}</h2>
+      <dl className="space-y-3 text-sm">
+        <div><dt className="text-xs text-muted-foreground">{t("tourDetailReference", "Tour reference")}</dt><dd>TOUR-{tour.id}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">{t("tourDetailSubmitted", "Request submitted")}</dt><dd>{tour.submittedAt ? formatTourWhen(tour.submittedAt, null, tour.timezone) : t("tourDetailDateUnavailable", "Date unavailable")}</dd></div>
+        {tour.chefName && <div><dt className="text-xs text-muted-foreground">{t("tourDetailChef", "Chef")}</dt><dd>{tour.chefName}</dd></div>}
+        {tour.chefEmail && <div><dt className="text-xs text-muted-foreground">{t("tourDetailEmail", "Account email")}</dt><dd className="break-all">{tour.chefEmail}</dd></div>}
+        {tour.cancelledAt && <div><dt className="text-xs text-muted-foreground">{t("tourDetailCancelled", "Cancelled")}</dt><dd>{formatTourWhen(tour.cancelledAt, null, tour.timezone)}</dd></div>}
+        {tour.completedAt && <div><dt className="text-xs text-muted-foreground">{t("tourDetailCompleted", "Completed")}</dt><dd>{formatTourWhen(tour.completedAt, null, tour.timezone)}</dd></div>}
+      </dl>
+    </section>
+  </aside>;
 }
 
 function TourRescheduleDialog({ tour, t, onClose, onReschedule, onReviewProposal, rescheduling, rescheduleError, onRestoreFocus }: {
@@ -195,7 +199,7 @@ function TourRescheduleDialog({ tour, t, onClose, onReschedule, onReviewProposal
   return <Dialog open onOpenChange={open => { if (!open && !rescheduling) onClose(); }}>
     <DialogContent aria-busy={rescheduling} className="max-w-xl gap-0 overflow-hidden p-0" onEscapeKeyDown={event => { if (rescheduling) event.preventDefault(); }} onPointerDownOutside={event => { if (rescheduling) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); onRestoreFocus(); }}>
       <DialogHeader className="relative border-b bg-muted/20 px-5 py-5 pr-14 text-left sm:px-6 sm:pr-14">
-        <DialogTitle>{hasProposal ? t('tourReviewSuggestedTimes', 'Review suggested times') : pendingRequest ? t('tourEditRequest', 'Edit tour request') : t('tourRequestNewTime', 'Reschedule tour')}</DialogTitle>
+        <DialogTitle>{hasProposal ? pendingRequest ? t('tourInvitation', 'Tour invitation') : t('tourRescheduleInvitation', 'Reschedule invitation') : pendingRequest ? t('tourEditRequest', 'Edit tour request') : t('tourRequestNewTime', 'Reschedule tour')}</DialogTitle>
         <DialogDescription>{tour.locationName} · TOUR-{tour.id}</DialogDescription>
         <Button variant="ghost" size="icon" className="absolute right-3 top-3" aria-label={t('close', 'Close')} disabled={rescheduling} onClick={onClose}><X className="h-4 w-4" aria-hidden="true" /></Button>
       </DialogHeader>
@@ -203,7 +207,7 @@ function TourRescheduleDialog({ tour, t, onClose, onReschedule, onReviewProposal
         <div className="rounded-xl border bg-muted/20 p-4"><p className="mb-1 text-xs font-medium text-muted-foreground">{pendingRequest ? t('tourRequestedTime', 'Requested time') : t('tourDetailTime', 'Tour time')}</p><p className="text-sm font-medium">{formatTourWhen(tour.scheduledAt, tour.durationMinutes, tour.timezone)}</p></div>
         {rescheduleError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{rescheduleError}</p>}
       {hasProposal && canReviewProposal && <section className="space-y-4" aria-label={t('tourProposedTimes', 'Choose a new tour time')}>
-        <div className="space-y-1"><h4 className="font-semibold">{t('tourProposedTimes', 'Choose a new tour time')}</h4><p className="text-sm text-muted-foreground">{pendingRequest ? t('tourPendingProposalHelp', 'Your manager offered these available times. Choose one to confirm your tour, or keep your original request pending. Respond before your original requested start time; the request expires then.') : t('tourProposalOriginalHeld', 'Your manager suggested these alternatives. Your original tour stays confirmed until you accept a new time.')}</p></div>
+        <div className="space-y-1"><h2 className="text-sm font-semibold">{t('tourProposedTimes', 'Choose a new tour time')}</h2><p className="text-sm text-muted-foreground">{pendingRequest ? t('tourPendingProposalHelp', 'Your manager offered these available times. Choose one to confirm your tour, or keep your original request pending. Respond before your original requested start time; the request expires then.') : t('tourProposalOriginalHeld', 'Your manager suggested these alternatives. Your original tour stays confirmed until you accept a new time.')}</p></div>
         <fieldset className="space-y-2" disabled={rescheduling}><legend className="sr-only">{t('tourProposedTimes', 'Choose a new tour time')}</legend>{tour.rescheduleProposedSlots.map(time => <label key={time} className={`flex cursor-pointer items-center gap-3 rounded-lg border bg-background p-3 ${proposalSlot === time ? 'border-primary ring-1 ring-primary' : ''}`}><input type="radio" name={`tour-proposal-${tour.id}`} value={time} checked={proposalSlot === time} onChange={() => setProposalSlot(time)} disabled={Date.parse(time) <= Date.now()} /><span>{formatTourWhen(time, tour.durationMinutes, tour.timezone)}</span></label>)}</fieldset>
         <div className="grid gap-2 sm:grid-cols-2"><Button variant="outline" className="h-11 w-full" disabled={rescheduling} onClick={() => onReviewProposal(tour, 'decline')}>{pendingRequest ? t('tourKeepOriginalRequest', 'Keep original request') : t('tourKeepOriginalTime', 'Keep original time')}</Button><Button className="h-11 w-full" disabled={rescheduling || !proposalSlot || !tour.rescheduleProposedSlots.includes(proposalSlot) || Date.parse(proposalSlot) <= Date.now()} onClick={() => onReviewProposal(tour, 'accept', proposalSlot)}>{rescheduling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{pendingRequest ? t('tourAcceptAndConfirm', 'Accept and confirm tour') : t('tourAcceptNewTime', 'Accept new time')}</Button></div>
       </section>}
@@ -230,14 +234,15 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
   useTourClock();
   const { user } = useFirebaseAuth();
   const { t } = useTranslation("chef");
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [group, setGroup] = useState("all");
   const search = useSearch();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const linkParams = new URLSearchParams(search);
   const linkedTourId = Number(linkParams.get('viewing'));
   const linkedAction = linkParams.get('action');
   const handledActionLink = useRef<string | null>(null);
-  useEffect(() => { if (Number.isInteger(linkedTourId) && linkedTourId > 0) setExpandedId(linkedTourId); }, [linkedTourId]);
+  const openTour = (id: number) => navigate(`/dashboard?view=viewings&viewing=${id}`);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const actionTrigger = useRef<HTMLElement | null>(null);
   const listContainer = useRef<HTMLDivElement | null>(null);
@@ -332,11 +337,28 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
       actionTrigger.current = null;
       setRescheduleError(null);
       setRescheduleTargetId(tour.id);
-    } else if (linkedAction === 'cancel' && ['pending_local_cooks', 'pending', 'confirmed'].includes(tour.status) && Date.parse(tour.scheduledAt) > Date.now()) {
+    } else if (linkedAction === 'cancel' && ['pending_local_cooks', 'pending', 'confirmed'].includes(tour.status) && Date.parse(tour.scheduledAt) > Date.now() && !tour.checkedInAt) {
       actionTrigger.current = null;
       setCancelTarget(tour);
     }
   }, [user?.uid, isLoading, isFetching, error, location, search, linkedTourId, linkedAction, data]);
+
+  const statusChip = (tour: ChefTourRow) => {
+    const expired = !!tour.requestExpiredAt || ["pending_local_cooks", "pending"].includes(tour.status) && Date.parse(tour.scheduledAt) <= Date.now();
+    const ended = Date.parse(tour.scheduledAt) + (tour.durationMinutes ?? 30) * 60_000 < Date.now();
+    const badge = viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy, tour.disruptionReason);
+    return <InfoChip variant={expired ? "warning" : ended && tour.status === "confirmed" ? "info" : badge.variant}>{expired ? t("tourExpired", "Request expired") : ended && tour.status === "confirmed" ? t("tourScheduledTimeEnded", "Tour time ended") : t(badge.labelKey, badge.defaultLabel)}</InfoChip>;
+  };
+  const upcoming = isPendingOrUpcomingTour;
+  const upcomingIds = data.filter(tour => upcoming(tour)).map(tour => tour.id).join(",");
+  const filteredTours = useMemo(() => data.filter(tour => (group === "all" || (group === "upcoming" ? upcoming(tour) : !upcoming(tour))) && `TOUR-${tour.id} ${tour.locationName} ${tour.kitchenName ?? ""} ${tour.locationAddress ?? ""} ${t(viewingStatusBadge(tour.status).labelKey, viewingStatusBadge(tour.status).defaultLabel)}`.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase())), [data, group, searchQuery, t, upcomingIds]);
+  const columns: ColumnDef<ChefTourRow>[] = [
+    { accessorKey: "id", header: t("tourDetailReference", "Tour reference"), cell: ({ row }) => <Link className="font-medium hover:underline" href={`/dashboard?view=viewings&viewing=${row.original.id}`}>TOUR-{row.original.id}</Link> },
+    { accessorKey: "locationName", header: t("tourTableKitchen", "Kitchen / location"), cell: ({ row }) => <div><p className="font-medium">{row.original.locationName}</p><p className="text-xs text-muted-foreground">{row.original.kitchenName}</p></div> },
+    { accessorKey: "scheduledAt", header: ({ column }) => <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>{t("tourTableWhen", "Date and time")}<ArrowUpDown className="ml-2 size-4" /></Button>, cell: ({ row }) => <div className="whitespace-normal">{formatTourWhen(row.original.scheduledAt, row.original.durationMinutes, row.original.timezone)}</div> },
+    { accessorKey: "status", header: t("tourTableStatus", "Status"), cell: ({ row }) => <div className="space-y-1">{statusChip(row.original)}{!!row.original.rescheduleProposedSlots.length && upcoming(row.original) && <p className="text-xs text-muted-foreground">{row.original.status === "confirmed" ? t("tourRescheduleInvitation", "Reschedule invitation") : t("tourInvitation", "Tour invitation")}</p>}{row.original.requestedRescheduleAt && <p className="text-xs text-muted-foreground">{t("tourReschedulePending", "Reschedule requested")}</p>}</div> },
+    { id: "actions", header: t("tourTableResponse", "Response / action"), meta: { mobileSpan: "full" }, cell: ({ row }) => <Button variant="outline" size="sm" onClick={() => openTour(row.original.id)}>{t("tourShowDetails", "View details")}</Button> },
+  ];
 
   if (isLoading) {
     return (
@@ -381,49 +403,65 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
 
   return (
     <div ref={listContainer} tabIndex={-1} className="space-y-4 outline-none" data-testid="chef-viewings-list">
+      {!linkedTourId && <div className="space-y-5">
+        <Input aria-label={t("tourTableSearch", "Search kitchen tours")} placeholder={t("tourTableSearch", "Search kitchen tours")} value={searchQuery} onChange={event => setSearchQuery(event.target.value)} className="sm:max-w-md" />
+        <div className="grid grid-cols-3 gap-3">{["all", "upcoming", "past"].map(key => <button key={key} type="button" aria-pressed={group === key} onClick={() => setGroup(key)} className={`rounded-xl border p-4 text-left ${group === key ? "border-primary bg-primary/[0.04]" : "bg-card hover:bg-muted/30"}`}><p className="text-xs text-muted-foreground">{key === "all" ? t("tourTableAll", "All tours") : key === "upcoming" ? t("tourTableUpcoming", "Upcoming") : t("tourTablePast", "Past")}</p><p className="mt-2 text-2xl font-semibold">{data.filter(tour => key === "all" || (key === "upcoming" ? upcoming(tour) : !upcoming(tour))).length}</p></button>)}</div>
+        <DataTable columns={columns} data={filteredTours} defaultSorting={[{ id: "scheduledAt", desc: true }]} pageSize={15} onRowClick={tour => openTour(tour.id)} />
+      </div>}
       <div className="space-y-3">
-        {data.map((tour) => {
-          const open = expandedId === tour.id;
-          const hasDetails = chefTourRowHasDetails(tour);
+        {data.filter(tour => tour.id === linkedTourId).map((tour) => {
+
           const pastEnd = new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 < Date.now();
-          const expired = ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() < Date.now();
+          const expired = !!tour.requestExpiredAt || ["pending_local_cooks", "pending"].includes(tour.status) && new Date(tour.scheduledAt).getTime() <= Date.now();
           const badge = viewingStatusBadge(tour.status, tour.adminReviewDecision, tour.cancelledBy, tour.disruptionReason);
-          const visitAction = chefTourVisitAction(tour);
+
           const hasProposal = tour.rescheduleProposedSlots.length > 0 && ["pending", "confirmed"].includes(tour.status) && !tour.checkedInAt && !tour.disruptionReason && Date.parse(tour.scheduledAt) > Date.now();
           const canEdit = canChefRequestReschedule(tour) && !tour.disruptionReason;
+          const visitAction = chefTourVisitAction(tour);
+          const waitingForChange = tour.status === "confirmed" && !pastEnd && !!tour.requestedRescheduleAt && !tour.checkedInAt;
           return (
-            <article key={tour.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
-              <div className="p-4 sm:p-5">
+            <section key={tour.id} aria-label={t("tourPageDetails", "Tour details")} className="space-y-6">
+              <div className="space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-muted-foreground">TOUR-{tour.id}</p>
-                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">{tour.locationName}</h3>
+                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">TOUR-{tour.id} · {tour.locationName}</h1>
                     {tour.kitchenName && <p className="text-sm text-muted-foreground">{tour.kitchenName}</p>}
                   </div>
                   <InfoChip variant={expired ? "warning" : pastEnd && tour.status === "confirmed" ? "info" : badge.variant}>
                     {expired ? t("tourExpired", "Request expired") : pastEnd && tour.status === "confirmed" ? t("tourScheduledTimeEnded", "Tour time ended") : t(badge.labelKey, badge.defaultLabel)}
                   </InfoChip>
                 </div>
-                <div className="mt-4 grid gap-2 text-sm text-foreground sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
-                  <p className="flex items-start gap-2"><CalendarDays className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span>{formatTourWhen(tour.scheduledAt, null, tour.timezone)}</span></p>
-                  <p className="flex items-start gap-2"><Clock3 className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span>{tour.durationMinutes ? t("tourListDurationMins", { count: tour.durationMinutes, defaultValue: `${tour.durationMinutes} min` }) : t("tourListDurationDefault", "About 30 min")}</span></p>
-                  {tour.locationAddress && <p className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tour.locationAddress)}`} target="_blank" rel="noopener noreferrer" className="line-clamp-2 text-foreground underline underline-offset-2">{tour.locationAddress}</a></p>}
-                </div>
+              </div>
+              <section aria-label={t("tourNextStep", "What to do next")} className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5">
+                <h2 className="text-sm font-semibold">{t("tourNextStep", "What to do next")}</h2>
+                <p className="text-sm">{tour.disruptionReason ? t("tourNextClosed", "Review the tour outcome and shared notes. Contact Support if something is incorrect, or discover kitchens to request another tour.")
+                  : hasProposal ? t("tourNextInvitation", "Review the offered times and choose whether to accept the invitation or keep your original time.")
+                  : waitingForChange ? t("tourNextChangePending", "Your reschedule request is awaiting a response. Your original time remains confirmed until the manager accepts.")
+                  : expired ? t("tourExpiredHelp", "The requested time passed before confirmation. If you have not applied, you can request another tour from the kitchen page.")
+                  : ["pending_local_cooks", "pending"].includes(tour.status) ? t("tourListPending", "Your tour request is pending. We’ll notify you when it’s confirmed or declined.")
+                  : tour.status === "completed" ? t("tourNextCompleted", "Your tour is complete. Review the shared notes and apply to this kitchen when you’re ready.")
+                  : tour.status === "confirmed" && !pastEnd ? tour.checkedInAt ? t("tourNextCheckedIn", "You’re checked in. Follow the departure notes and check out when your visit ends.") : t("tourListConfirmedNext", "Tour confirmed. Arrive on time and bring questions about equipment, storage, and access.")
+                  : tour.status === "confirmed" ? t("tourNextEnded", "The scheduled tour time has ended. Review your attendance and shared notes, or contact Support if something is incorrect.")
+                  : t("tourNextClosed", "Review the tour outcome and shared notes. Contact Support if something is incorrect, or discover kitchens to request another tour.")}</p>
+                {!expired && ['pending_local_cooks', 'pending'].includes(tour.status) && <p className="text-xs text-muted-foreground">{t('tourPendingResponseExpectation', 'We aim to respond within 24 hours. Your tour is not confirmed until you receive confirmation; a request expires when its requested start time passes.')}</p>}
+                {waitingForChange && <p className="text-sm">{t("tourChangeRequested", "Reschedule requested for")} {formatTourWhen(tour.requestedRescheduleAt!, tour.durationMinutes, tour.timezone)}</p>}
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
-                  {visitAction && !open && <Button variant="outline" size="sm" className="h-9" onClick={() => setExpandedId(tour.id)}>{visitAction === 'arrival' ? t('tourRecordArrival', 'Record arrival') : t('tourRecordDeparture', 'Record departure')}</Button>}
-                  {(hasProposal || canEdit) && <Button variant="outline" size="sm" className="h-9" disabled={reschedulingId !== null || cancellingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setRescheduleError(null); setRescheduleTargetId(tour.id); }}>{hasProposal ? t('tourReviewSuggestedTimes', 'Review suggested times') : ['pending_local_cooks', 'pending'].includes(tour.status) ? t('tourEditRequest', 'Edit tour request') : t('tourRequestNewTime', 'Reschedule tour')}</Button>}
-                  {["pending_local_cooks", "pending", "confirmed"].includes(tour.status) && new Date(tour.scheduledAt).getTime() > Date.now() && <Button variant="outline" size="sm" className="h-9 text-destructive hover:text-destructive" disabled={cancellingId !== null || reschedulingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setCancelTarget(tour); }}>{t("tourCancel", "Cancel tour")}</Button>}
-                  <TourChatButton tour={tour} role="chef" openFromLink={location === "/dashboard" && linkParams.get("view") === "viewings"} buttonClassName="h-9" />
+
+                  {visitAction && <Button asChild size="sm"><a href={`#tour-attendance-${tour.id}`} onClick={event => { event.preventDefault(); const panel = document.getElementById(`tour-attendance-${tour.id}`); panel?.scrollIntoView({ behavior: 'smooth', block: 'center' }); panel?.focus({ preventScroll: true }); }}>{visitAction === 'arrival' ? t("tourRecordArrival", "Record arrival") : t("tourRecordDeparture", "Record departure")}</a></Button>}
+                  {(hasProposal || canEdit) && <Button variant="outline" size="sm" className="h-9" disabled={reschedulingId !== null || cancellingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setRescheduleError(null); setRescheduleTargetId(tour.id); }}>{hasProposal ? t('tourReviewInvitation', 'Review invitation') : ['pending_local_cooks', 'pending'].includes(tour.status) ? t('tourEditRequest', 'Edit tour request') : t('tourRequestNewTime', 'Reschedule tour')}</Button>}
+                  {["pending_local_cooks", "pending", "confirmed"].includes(tour.status) && new Date(tour.scheduledAt).getTime() > Date.now() && !tour.checkedInAt && <Button variant="outline" size="sm" className="h-9 text-destructive hover:text-destructive" disabled={cancellingId !== null || reschedulingId !== null} onClick={event => { actionTrigger.current = event.currentTarget; setCancelTarget(tour); }}>{t("tourCancel", "Cancel tour")}</Button>}
+                  <TourChatButton tour={tour} role="chef" openFromLink={location === "/dashboard" && linkParams.get("view") === "viewings"} buttonClassName="h-9" />{tour.status === "confirmed" && !pastEnd && <TourDownloadButton tour={tour} t={t as any} />}
+                  {(expired || ["cancelled", "no_show"].includes(tour.status) || !!tour.disruptionReason) && <Button asChild variant="outline" size="sm"><Link href="/dashboard?view=discover-kitchens">{t("tourListExploreCta", "Discover Kitchens")}</Link></Button>}
                   {tour.locationId && (tour.status === 'completed' || (tour.status === 'confirmed' && pastEnd)) &&
                     <Button asChild variant="outline" size="sm" className="h-9"><Link href={`/apply-kitchen/${tour.locationId}${tour.targetedKitchenId ? `?kitchenId=${tour.targetedKitchenId}` : ''}`}>{t('tourApplyNext', 'Apply to this kitchen')}</Link></Button>}
-                  <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
-                  {tour.status === "confirmed" && !pastEnd && <TourDownloadButton tour={tour} t={t as any} />}
-                  {hasDetails && <Button variant="ghost" size="sm" className="h-9 gap-1 text-muted-foreground" aria-expanded={open} aria-controls={`tour-details-${tour.id}`} onClick={() => setExpandedId(open ? null : tour.id)}>{open ? t("tourHideDetails", "Hide details") : t("tourShowDetails", "View details")}{open ? <ChevronDown className="size-4 rotate-180" /> : <ChevronDown className="size-4" />}</Button>}
-                  </div>
+
                 </div>
+              </section>
+              <div id={`tour-details-${tour.id}`} className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                <div className="min-w-0"><TourDetailPanel tour={tour} t={t as any} /></div>
+                <TourSummary tour={tour} t={t as any} />
               </div>
-              {open && <div id={`tour-details-${tour.id}`} className="border-t bg-muted/20 p-4 sm:p-5"><TourDetailPanel tour={tour} t={t as any} /></div>}
-            </article>
+            </section>
           );
         })}
       </div>

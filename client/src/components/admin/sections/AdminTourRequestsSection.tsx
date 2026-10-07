@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatTourWhen } from "@/lib/chef-viewing-display";
 import { HistoricalVisitReviews } from '../HistoricalVisitReviews';
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome';
+import { tourRequestDecision } from '@shared/tour-request-decision';
 
 type TourRequest = {
   viewing: {
@@ -33,6 +34,9 @@ type TourRequest = {
     adminReviewedAt: string | null;
     createdAt: string;
     updatedAt: string;
+    rescheduleProposedSlots?: string[];
+    rescheduleProposedAt?: string | null;
+    requestExpiredAt?: string | null;
     managerNotes?: string | null;
     sharedManagerNotes?: string | null;
     disruptionReason?: string | null;
@@ -65,7 +69,23 @@ export function AdminTourRequestsSection() {
   const [selected, setSelected] = useState<TourRequest | null>(null);
   const [decision, setDecision] = useState<"approved" | "denied">("approved");
   const [reason, setReason] = useState("");
-  const [tab, setTab] = useState<"pending" | "outcomes" | "history">("pending");
+  const [tab, setTab] = useState<"pending" | "overdue" | "outcomes" | "history">("pending");
+  const [takeover, setTakeover] = useState<TourRequest | null>(null);
+  const [takeoverReason, setTakeoverReason] = useState('');
+  const [acknowledgeOverlap, setAcknowledgeOverlap] = useState(false);
+  const takeoverContext = useQuery<any>({
+    queryKey: ['admin-tour-takeover-context', takeover?.viewing.id, takeover?.viewing.updatedAt], enabled: !!takeover,
+    queryFn: async () => { const response = await fetch(`/api/viewings/manager/${takeover!.viewing.id}/decision-context`, { headers: await authHeaders(), credentials: 'include' });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Unable to review current availability'); return body; },
+  });
+  const confirmTakeover = useMutation({ mutationFn: async () => {
+    if (!takeover || !takeoverContext.data || takeoverContext.data.updatedAt !== takeover.viewing.updatedAt) throw new Error('Refresh and review this request again');
+    const response = await fetch(`/api/viewings/${takeover.viewing.id}/status`, { method: 'PATCH', headers: await authHeaders(), credentials: 'include',
+      body: JSON.stringify({ status: 'confirmed', takeoverReason: takeoverReason.trim(), expectedUpdatedAt: takeover.viewing.updatedAt,
+        overlapReviewKey: takeoverContext.data.overlapReviewKey, acceptBookingOverlap: acknowledgeOverlap }) });
+    const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Unable to confirm tour'); return body;
+  }, onSuccess: () => { setTakeover(null); void queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin'] }); },
+    onError: (error: Error) => { void queryClient.invalidateQueries({ queryKey: ['/api/viewings/admin'] }); void takeoverContext.refetch(); toast({ title: 'Confirmation failed', description: error.message, variant: 'destructive' }); } });
   const linkedTourId = Number(new URLSearchParams(useSearch()).get('viewing'));
   const openedLink = useRef<number | null>(null);
   const [outcomeTour, setOutcomeTour] = useState<TourRequest | null>(null);
@@ -111,10 +131,9 @@ export function AdminTourRequestsSection() {
   });
   useEffect(() => {
     if (!linkedTourId) { openedLink.current = null; return; }
-    if (openedLink.current === linkedTourId) return;
     const tour = requests.find(request => request.viewing.id === linkedTourId);
     if (!tour) return;
-    setTab(tour.viewing.status === 'pending_local_cooks' && Date.parse(tour.viewing.scheduledAt) > Date.now() ? 'pending' : needsOutcome(tour) ? 'outcomes' : 'history');
+    setTab(tourRequestDecision(tour.viewing)?.overdue ? 'overdue' : tour.viewing.status === 'pending_local_cooks' && Date.parse(tour.viewing.scheduledAt) > Date.now() ? 'pending' : needsOutcome(tour) ? 'outcomes' : 'history');
     openedLink.current = linkedTourId;
     requestAnimationFrame(() => document.getElementById(`admin-tour-${linkedTourId}`)?.scrollIntoView?.({ block: 'center' }));
   }, [linkedTourId, requests]);
@@ -153,9 +172,13 @@ export function AdminTourRequestsSection() {
   });
 
   const visibleRequests = requests.filter((request) =>
-    tab === "pending" ? request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()
+    tab === 'overdue' ? !!tourRequestDecision(request.viewing)?.overdue : tab === "pending" ? request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()
       : tab === 'outcomes' ? needsOutcome(request) : request.viewing.status !== 'pending_local_cooks' || new Date(request.viewing.scheduledAt).getTime() <= Date.now()
   );
+  useEffect(() => {
+    if (selected) { const current = requests.find(item => item.viewing.id === selected.viewing.id); if (!current || current.viewing.status !== 'pending_local_cooks') setSelected(null); else if (current.viewing.updatedAt !== selected.viewing.updatedAt) { setSelected(current); setReason(''); } }
+    if (takeover) { const current = requests.find(item => item.viewing.id === takeover.viewing.id); if (!current || !tourRequestDecision(current.viewing)?.canTakeOver) setTakeover(null); else if (current.viewing.updatedAt !== takeover.viewing.updatedAt) { setTakeover(current); setTakeoverReason(''); setAcknowledgeOverlap(false); } }
+  }, [requests, selected, takeover]);
 
   const openReview = (request: TourRequest, nextDecision: "approved" | "denied") => {
     setSelected(request);
@@ -181,8 +204,9 @@ export function AdminTourRequestsSection() {
         </p>
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as "pending" | "outcomes" | "history")}>
+      <Tabs value={tab} onValueChange={(value) => setTab(value as "pending" | "overdue" | "outcomes" | "history")}>
         <TabsList>
+          <TabsTrigger value="overdue">{t('tourOverdueQueue', 'Overdue decisions')} ({requests.filter(request => tourRequestDecision(request.viewing)?.overdue).length})</TabsTrigger>
           <TabsTrigger value="pending">Pending ({requests.filter((request) => request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()).length})</TabsTrigger>
           <TabsTrigger value="outcomes">Past tours · visit results ({requests.filter(needsOutcome).length})</TabsTrigger>
           <TabsTrigger value="history">History ({requests.filter((request) => request.viewing.status !== 'pending_local_cooks' || new Date(request.viewing.scheduledAt).getTime() <= Date.now()).length})</TabsTrigger>
@@ -206,9 +230,9 @@ export function AdminTourRequestsSection() {
                     <CardDescription>{request.kitchenName || request.locationName || "Kitchen tour"}</CardDescription>
                   </div>
                   <Badge variant={request.viewing.status === "cancelled" || request.viewing.status === "no_show" ? "destructive" : request.viewing.status === "confirmed" || request.viewing.status === "completed" ? "success" : "warning"}>
-                    {['pending_local_cooks', 'pending'].includes(request.viewing.status) && new Date(request.viewing.scheduledAt).getTime() <= Date.now() ? 'Request expired' : request.viewing.status === "cancelled"
+                    {request.viewing.requestExpiredAt || ['pending_local_cooks', 'pending'].includes(request.viewing.status) && new Date(request.viewing.scheduledAt).getTime() <= Date.now() ? 'Request expired' : request.viewing.status === "cancelled"
                       ? request.viewing.disruptionReason ? "Disrupted" : request.viewing.adminReviewDecision === "denied" || request.viewing.cancelledBy === "manager_declined" ? "Rejected" : "Cancelled"
-                      : request.viewing.status === "confirmed" ? "Approved"
+                      : request.viewing.status === "confirmed" ? "Confirmed"
                       : request.viewing.status === "completed" ? "Completed"
                       : request.viewing.status === "no_show" ? "No show"
                       : request.viewing.adminReviewDecision === "approved" ? "Request sent" : "Local Cooks review"}
@@ -216,6 +240,12 @@ export function AdminTourRequestsSection() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
+                {(() => { const stage = tourRequestDecision(request.viewing); return stage && <div className="rounded-lg border p-3 text-xs">
+                  <p>{t('tourDecisionOwner', 'Responsible')}: {stage.stage === 'triage' ? 'Local Cooks' : stage.stage === 'chef_offer' ? request.chefName || 'Visitor' : request.managerName || 'Kitchen manager'}</p>
+                  <p>{stage.stage === 'chef_offer' ? t('tourOfferResponseBefore', 'Invitation response before') : t('tourDecisionDue', 'Decision due')}: {stage.dueAt ? formatTourWhen(stage.dueAt, null, 'America/St_Johns') : t('tourDecisionTimeUnknown', 'Time not recorded')}</p>
+                  {stage.startedAt && <p>{t('tourDecisionAge', { hours: Math.max(0, Math.floor((Date.now() - Date.parse(stage.startedAt)) / 3_600_000)), defaultValue: 'Waiting {hours} hours' })}</p>}
+                  {stage.overdue && <p className="font-medium text-destructive">{t('tourDecisionOverdue', 'Decision overdue')}</p>}
+                </div>; })()}
                 <div><span className="font-medium">Tour reference:</span> TOUR-{request.viewing.id}</div>
                 <div><span className="font-medium">Submitted:</span> {formatTourWhen(request.viewing.createdAt, null, request.locationTimezone || "America/St_Johns")}</div>
                 <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" />{formatTourWhen(request.viewing.scheduledAt, request.viewing.durationMinutes, request.locationTimezone || "America/St_Johns")} · {request.viewing.durationMinutes} min</div>
@@ -248,6 +278,7 @@ export function AdminTourRequestsSection() {
                   <Button variant="outline" onClick={() => openReview(request, "denied")}><X className="mr-2 h-4 w-4" />Deny</Button>
                   <Button disabled={new Date(request.viewing.scheduledAt).getTime() <= Date.now()} onClick={() => openReview(request, "approved")}><Check className="mr-2 h-4 w-4" />Approve for manager</Button>
                 </div>}
+                {tourRequestDecision(request.viewing)?.canTakeOver && <Button variant="outline" onClick={() => { setTakeover(request); setTakeoverReason(''); setAcknowledgeOverlap(false); }}>{t('tourTakeoverConfirm', 'Review and confirm overdue request')}</Button>}
                 {(needsOutcome(request) || (hasTourConfirmation(request.viewing) && (['completed', 'no_show'].includes(request.viewing.status) || request.viewing.disruptionReason))) &&
                   <Button variant="outline" onClick={() => {
                     setOutcomeTour(request); setOutcome(request.viewing.status === 'completed' ? 'no_show' : 'completed');
@@ -259,6 +290,17 @@ export function AdminTourRequestsSection() {
         </div>
       )}
 
+      <Dialog open={!!takeover} onOpenChange={open => !open && !confirmTakeover.isPending && setTakeover(null)}>
+        <DialogContent><DialogHeader><DialogTitle>{t('tourTakeoverConfirm', 'Review and confirm overdue request')}</DialogTitle><DialogDescription>{t('tourTakeoverHelp', 'Confirm the current tour time after reviewing availability. Your reason will be shared with the visitor and manager.')}</DialogDescription></DialogHeader>
+          {takeoverContext.isFetching && <p role="status">{t('tourReviewLoading', 'Checking current availability…')}</p>}
+          {takeoverContext.isError && <div><p role="alert">{String(takeoverContext.error.message)}</p><Button variant="outline" onClick={() => void takeoverContext.refetch()}>{t('retry', 'Retry')}</Button></div>}
+          {takeoverContext.data && <><p>{formatTourWhen(takeoverContext.data.scheduledAt, takeover?.viewing.durationMinutes, 'America/St_Johns')}</p>
+            {takeoverContext.data.overlaps?.map((overlap: any) => <p key={overlap.bookingId}>{overlap.reference} · {formatTourWhen(overlap.start, null, 'America/St_Johns')}</p>)}
+            {!!takeoverContext.data.overlaps?.length && <label className="flex gap-2 text-sm"><input type="checkbox" checked={acknowledgeOverlap} onChange={event => setAcknowledgeOverlap(event.target.checked)} />{t('tourTakeoverOverlap', 'I reviewed the overlapping bookings and can safely host this tour.')}</label>}</>}
+          <Textarea aria-label={t('tourTakeoverReason', 'Shared confirmation reason')} maxLength={500} value={takeoverReason} onChange={event => setTakeoverReason(event.target.value)} />
+          <DialogFooter><Button variant="outline" disabled={confirmTakeover.isPending} onClick={() => setTakeover(null)}>{t('cancel', 'Cancel')}</Button><Button disabled={confirmTakeover.isPending || takeoverContext.isFetching || takeoverContext.isError || !takeoverContext.data || takeoverContext.data.updatedAt !== takeover?.viewing.updatedAt || takeoverReason.trim().length < 10 || (!!takeoverContext.data.overlaps?.length && !acknowledgeOverlap)} onClick={() => confirmTakeover.mutate()}>{t('tourConfirmTakeover', 'Confirm tour')}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(outcomeTour)} onOpenChange={(open) => !open && setOutcomeTour(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Record tour outcome</DialogTitle>

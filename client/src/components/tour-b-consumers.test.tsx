@@ -14,7 +14,7 @@ vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: { uid: 'fix
 vi.mock('@/i18n/manager', () => ({ mt: (key: string) => key }));
 vi.mock('react-i18next', async original => ({ ...await original<typeof import('react-i18next')>(),
   useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : key, i18n: { language: 'en-CA' } }) }));
-vi.mock('@/components/ui/data-table', () => ({ DataTable: () => <p>Tour list</p> }));
+vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <div><p>Tour list</p>{data.map((row: any) => <button key={row.id ?? row.viewing.id} onClick={() => onRowClick?.(row)}>View details</button>)}</div> }));
 vi.mock('@/components/chat/TourChatButton', () => ({ TourChatButton: () => null }));
 const clients: QueryClient[] = [];
 afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; vi.useRealTimers();
@@ -139,7 +139,10 @@ describe('Tour B actual visitor and manager consumers', () => {
   });
   it('keeps a newly confirmed future tour free of arrival prompts in the list and actual overview', async () => {
     const fixture = setup('chef', { early: 5 });
-    fireEvent.click(await screen.findByRole('button', { name: 'Hide details' }));
+    await screen.findByRole('region', { name: 'Tour details' });
+    window.history.replaceState({}, '', '/dashboard?view=viewings');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Tour details' })).not.toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Record arrival' })).not.toBeInTheDocument();
     expect(fixture.fetcher.mock.calls.some(([url]) => url.endsWith('/attendance'))).toBe(false);
     render(<QueryClientProvider client={fixture.client}><OverviewTabContent user={null} applications={[]} kitchenApplications={[]} kitchenSummary={{ label: 'None', variant: 'outline' } as any}
@@ -152,8 +155,11 @@ describe('Tour B actual visitor and manager consumers', () => {
   });
   it('opens the actual arrival action from the list only during the allowed window', async () => {
     const fixture = setup('chef');
-    fireEvent.click(await screen.findByRole('button', { name: 'Hide details' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Record arrival' }));
+    await screen.findByRole('region', { name: 'Tour details' });
+    window.history.replaceState({}, '', '/dashboard?view=viewings');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Tour details' })).not.toBeInTheDocument());
+    fireEvent.click((await screen.findAllByRole('button', { name: 'View details' }))[0]);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Record arrival' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Record arrival' }));
     await waitFor(() => expect(fixture.tour().checkedInAt).toBeDefined());
@@ -169,7 +175,7 @@ describe('Tour B actual visitor and manager consumers', () => {
   });
   it('keeps pending chef requests free of visit actions', async () => {
     const fixture = setup('chef', { status: 'pending' });
-    await screen.findByRole('button', { name: 'Hide details' });
+    await screen.findByRole('region', { name: 'Tour details' });
     expect(screen.queryByRole('region', { name: 'Visit status' })).not.toBeInTheDocument();
     expect(fixture.fetcher.mock.calls.some(([url]) => url.endsWith('/attendance'))).toBe(false);
   });

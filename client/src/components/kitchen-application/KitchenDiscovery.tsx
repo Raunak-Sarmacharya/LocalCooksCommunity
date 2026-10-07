@@ -5,7 +5,7 @@ import { Building2, Check, Calendar, CalendarDays, ChevronDown, FileText, MapPin
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
 import { KitchenApplicationDetails } from "@/components/chef/applications/KitchenApplicationCard";
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
@@ -105,7 +105,9 @@ export default function KitchenDiscovery({
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedApplicationId, setExpandedApplicationId] = useState<number | null>(null);
+  const search = useSearch();
   const activeTab = defaultTab;
+  const tourDetailsOpen = activeTab === "tours" && Number(new URLSearchParams(search).get("viewing")) > 0;
 
   const handleBookClick = (locationId: number, locationSlug?: string | null) => {
     navigate(kitchenPreviewPath(locationId, locationSlug));
@@ -246,10 +248,10 @@ export default function KitchenDiscovery({
 
   return (
     <div className="space-y-6">
-      <ChefPageHeader
+      {!tourDetailsOpen && <ChefPageHeader
         title={activeTab === "tours" ? tChef("tourListTitle", "Your kitchen tours") : activeTab === "applications" ? tChef("shellMyKitchenApplications", "My Kitchen Applications") : t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
         description={activeTab === "tours" ? tChef("tourListIntroBody", "Review your tours, visit details and requests in one place.") : activeTab === "applications" ? t("applyFlowMyApplicationsDesc", "Track your kitchen applications.") : t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
-      />
+      />}
 
       <Tabs value={activeTab}>
         <TabsContent value="discover" className="space-y-6">

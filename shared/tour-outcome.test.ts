@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { publicTour, hasTourConfirmation, publicTourCancellationReason } from './tour-outcome';
+
+it('uses valid confirmation facts while expiry cannot become visit eligibility', () => {
+  expect(hasTourConfirmation({ status: 'completed', confirmedAt: '2026-10-01T10:00:00Z' })).toBe(true);
+  expect(hasTourConfirmation({ status: 'completed', confirmedAt: 'invalid' })).toBe(false);
+  expect(hasTourConfirmation({ status: 'cancelled', requestExpiredAt: '2026-10-01T10:00:00Z', outcomeHistory: [{ from: 'confirmed' }] })).toBe(false);
+});
 describe('tour evidence and note visibility', () => {
   it.each(['Cancelled by chef', 'Cancelled by manager', 'Cancelled by admin', 'Cancelled by Local Cooks'])('hides the legacy actor label %s without changing the source record', reason => {
     const original = { status: 'cancelled', cancellationReason: reason };

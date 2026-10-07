@@ -27,6 +27,8 @@ export type ChefTourRow = {
   cancelledBy: string | null;
   scheduledAt: string;
   updatedAt: string;
+  confirmedAt?: string | null;
+  requestExpiredAt?: string | null;
   checkedInAt?: string | null;
   checkedOutAt?: string | null;
   attendance?: TourAttendance;
@@ -72,7 +74,7 @@ export function viewingStatusBadge(status: string, adminReviewDecision?: string 
     case "pending":
       return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "Request sent" };
     case "confirmed":
-      return { variant: "success", labelKey: "tourStatusConfirmed", defaultLabel: "Approved" };
+      return { variant: "success", labelKey: "tourStatusConfirmed", defaultLabel: "Confirmed" };
     case "completed":
       return { variant: "info", labelKey: "tourStatusCompleted", defaultLabel: "Completed" };
     case "cancelled":
@@ -129,6 +131,8 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
     departureNotes: row.departureNotes || null,
     kitchenName: row.kitchenName || viewing.kitchen?.name || null,
     status: viewing.status || "pending",
+    confirmedAt: viewing.confirmedAt || null,
+    requestExpiredAt: viewing.requestExpiredAt || null,
     adminReviewDecision: viewing.adminReviewDecision ?? null,
     cancelledBy: viewing.cancelledBy ?? null,
     scheduledAt: viewing.scheduledAt,

@@ -7759,9 +7759,13 @@ export const generateTourRequestedManagerEmail = (data: TourRequestEmailDetails 
     actions: [{ label: 'Message chef', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=message' },
       { label: 'Decline request', url: getSubdomainUrl('kitchen') + '/manager/dashboard?view=viewings&viewing=' + data.tourId + '&action=cancel' }] });
 
+function tourCalendarDescription(data: { kitchenName: string; notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null }) {
+  return [`Kitchen Tour at ${data.kitchenName}.`, data.arrivalNotes?.trim() ? `Arrival instructions: ${data.arrivalNotes.trim()}` : '', data.departureNotes?.trim() ? `Departure instructions: ${data.departureNotes.trim()}` : '', data.sharedManagerNotes?.trim() ? `Message from the kitchen manager: ${data.sharedManagerNotes.trim()}` : '', data.notes?.trim() ? `Notes: ${data.notes.trim()}` : ''].filter(Boolean).join('\n\n');
+}
+
 export function generateTourCalendarAttachment(data: {
   tourId: number; durationMinutes: number; tourDate: string | Date; kitchenName: string; locationAddress: string;
-  notes?: string; organizerEmail?: string; attendeeEmails?: string[]; calendarSequence?: number; updatedAt?: Date; cancelled?: boolean;
+  notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null; confirmedAt?: Date | null; organizerEmail?: string; attendeeEmails?: string[]; calendarSequence?: number; updatedAt?: Date; cancelled?: boolean;
 }) {
   const start = new Date(data.tourDate), end = new Date(start.getTime() + data.durationMinutes * 60_000);
   if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(start.getTime())
@@ -7772,12 +7776,12 @@ export function generateTourCalendarAttachment(data: {
   }
   return { filename: 'kitchen-tour.ics', contentType: `text/calendar; charset=utf-8; method=${data.cancelled ? 'CANCEL' : 'PUBLISH'}`,
     content: generateIcsFile(`Kitchen Tour at ${data.kitchenName}`, start, end, data.locationAddress,
-      `Kitchen Tour at ${data.kitchenName}.${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
+      tourCalendarDescription(data),
       data.organizerEmail, data.attendeeEmails, `tour-${data.tourId}@localcooks.com`,
       { sequence: data.calendarSequence ?? 0, modifiedAt: data.updatedAt, cancelled: data.cancelled }) };
 }
 
-export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date; canReschedule?: boolean; canCancel?: boolean }): EmailContent => {
+export const generateTourConfirmedEmail = (data: { tourId: number; durationMinutes: number; isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; timezone?: string; notes?: string; arrivalNotes?: string | null; departureNotes?: string | null; sharedManagerNotes?: string | null; confirmedAt?: Date | null; organizerEmail?: string; attendeeEmails?: string[]; contactEmail?: string; calendarSequence?: number; updatedAt?: Date; previousTourDate?: Date; canReschedule?: boolean; canCancel?: boolean }): EmailContent => {
   const startDateTimeObj = new Date(data.tourDate);
   const endDateTimeObj = new Date(startDateTimeObj.getTime() + data.durationMinutes * 60_000);
   if (!Number.isSafeInteger(data.tourId) || data.tourId <= 0 || !Number.isFinite(startDateTimeObj.getTime())
@@ -7798,7 +7802,7 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
     startDateTimeObj,
     endDateTimeObj,
     data.locationAddress,
-    `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`
+    tourCalendarDescription(data)
   );
 
   return {
@@ -7808,7 +7812,11 @@ export const generateTourConfirmedEmail = (data: { tourId: number; durationMinut
         { label: 'Date', value: dateStr }, { label: 'Time', value: startTime },
         ...(data.previousTourDate ? [{ label: 'Previous time', value: `${formatTourDate(data.previousTourDate)}, ${formatTourSlotRange(data.previousTourDate, data.durationMinutes)}` }] : []),
         { label: 'Address', value: data.locationAddress },
-        ...(data.notes ? [{ label: 'Meeting instructions', value: data.notes }] : []),
+        ...(data.arrivalNotes?.trim() ? [{ label: 'Arrival instructions', value: data.arrivalNotes.trim() }] : []),
+        ...(data.departureNotes?.trim() ? [{ label: 'Departure instructions', value: data.departureNotes.trim() }] : []),
+        ...(data.sharedManagerNotes?.trim() ? [{ label: 'Message from the kitchen manager', value: data.sharedManagerNotes.trim() }] : []),
+        ...(data.notes ? [{ label: data.isManager ? 'Chef notes' : 'Shared notes', value: data.notes }] : []),
+        { label: 'Confirmed at', value: data.confirmedAt ? `${formatTourDate(data.confirmedAt)}, ${formatTourClock(data.confirmedAt)}` : 'Confirmation time not recorded' },
         { label: 'Arrival help', value: data.contactEmail || getSupportEmail() },
         { label: 'Reference', value: `TOUR-${data.tourId}` }],
       heading: data.previousTourDate ? 'Your tour has been rescheduled' : 'Your kitchen tour is confirmed',

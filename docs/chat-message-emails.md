@@ -53,6 +53,10 @@ The staging source now also permits `unknown` only when the event's `authId` equ
 
 Structured producer diagnostics record event/message identifiers, authentication type, whether a writer identity is present/trusted, named skip stages, SQL commit outcome and successful event publication. They exclude message content, recipient addresses, sender UIDs and secrets. Retry errors record only the failed stage and a safe error code.
 
+The fix deployed successfully as staging revision `onnewstagingchatmessage-00004-yiw`; the post-deployment staging audit passed, including unchanged production fingerprints. The user's subsequent manager-to-chef message `yRvkXypSDO9iKJEDvWL9` reported `authType: unknown`, `authIdPresent: true`, `trustedWriter: true`, then committed both intents and published successfully. Inngest run `01M4B32QATDG0254C6BH4K9YH6` completed in 18.177 seconds, including the 15-second grace period. Original intent 2412 and SMTP attempt 2414 were both `sent`, with an SMTP message ID on the attempt. The chef's actual Gmail inbox contained the matching message notification at 17:18 IST, with the correct sender, kitchen, message and staging conversation link.
+
+The reverse chef-to-manager message `oGnR7HhGO2LUfip70mYA` also passed the pinned writer check, committed and published. Original intent 2415 and SMTP attempt 2417 were `sent`; the attempt contained an SMTP message ID, and reminder 2416 remained scheduled. The user confirmed inbox delivery works in both directions. No historical messages were replayed, and no agent-created test messages or synthetic emails were sent. The one-hour reminder's real timing was not separately exercised during this investigation.
+
 ## Preview
 
 Run `npm run preview:tour-emails` and filter the harness to **Conversation**. Starting messages, attachments and unread reminders are shown for both chefs and managers using fictional recipients and the actual renderers.

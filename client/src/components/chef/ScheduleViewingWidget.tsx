@@ -853,6 +853,7 @@ export function ScheduleViewingWidget({
         </div>
         <p className="text-sm text-muted-foreground">
           {t("kitchenTourRequestedAwaitingApproval", "Your tour request is pending. We’ll notify you when it’s confirmed or declined.")}
+          <span className="mt-2 block text-xs">{t('tourPendingResponseExpectation', 'We aim to respond within 24 hours. Your tour is not confirmed until you receive confirmation; a request expires when its requested start time passes.')}</span>
         </p>
       </div>
 

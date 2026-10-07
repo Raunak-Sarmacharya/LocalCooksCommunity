@@ -19,7 +19,11 @@ export type TourConfirmationDetails = {
   timezone: string;
   chefNotes: string | null;
   intakeData: Record<string, unknown> | null;
-  managerNotes: string | null;
+  managerNotes?: string | null;
+  sharedManagerNotes?: string | null;
+  arrivalNotes?: string | null;
+  departureNotes?: string | null;
+  confirmedAt?: Date | null;
 };
 
 export function tourReference(id: number): string {
@@ -29,10 +33,14 @@ export function tourReference(id: number): string {
 export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const notes = [tour.chefNotes?.trim() ? ["Your note to the kitchen", tour.chefNotes.trim()] : null,
-      tour.managerNotes?.trim() ? ["From the kitchen manager", tour.managerNotes.trim()] : null].filter((item): item is string[] => item !== null);
+      tour.arrivalNotes?.trim() ? ["Arrival instructions", tour.arrivalNotes.trim()] : null,
+      tour.departureNotes?.trim() ? ["Departure instructions", tour.departureNotes.trim()] : null,
+      tour.sharedManagerNotes?.trim() ? ["Message from the kitchen manager", tour.sharedManagerNotes.trim()] : null,
+      ["Confirmed at", tour.confirmedAt ? new Intl.DateTimeFormat("en-CA", { timeZone: tour.timezone, dateStyle: "long", timeStyle: "short" }).format(tour.confirmedAt) : "Confirmation time not recorded"]].filter((item): item is string[] => item !== null);
     const contactHeight = 126;
-    const footerY = 587 + contactHeight + notes.length * 82;
-    const doc = new PDFDocument({ size: [612, 645 + contactHeight + notes.length * 82], margin: 0 });
+    const noteHeights = notes.map(([, value]) => Math.max(82, 48 + Math.ceil(value.length / 95) * 14));
+    const footerY = 587 + contactHeight + noteHeights.reduce((sum, height) => sum + height, 0);
+    const doc = new PDFDocument({ size: [612, 645 + contactHeight + noteHeights.reduce((sum, height) => sum + height, 0)], margin: 0 });
     const asset = (name: string) => path.join(process.cwd(), "server/assets", name);
     doc.registerFont("Body", asset("fonts/DejaVuSans.ttf"));
     doc.registerFont("Brand", asset("fonts/Lobster-Regular.ttf"));
@@ -90,11 +98,12 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     doc.font("Body").fontSize(8).fillColor(muted).text(`Include ${tourReference(tour.id)} when contacting us.`, 320, 653, { width: 240 });
 
     let nextY = 579 + contactHeight;
-    for (const [heading, value] of notes) {
+    for (let index = 0; index < notes.length; index++) {
+      const [heading, value] = notes[index];
       doc.moveTo(52, nextY).lineTo(560, nextY).strokeColor(line).stroke();
       label(heading, 52, nextY + 13);
-      doc.font("Body").fontSize(9).fillColor(ink).text(value, 52, nextY + 29, { width: 508, height: 49, ellipsis: true });
-      nextY += 82;
+      doc.font("Body").fontSize(9).fillColor(ink).text(value, 52, nextY + 29, { width: 508 });
+      nextY += Math.max(noteHeights[index], 48 + doc.heightOfString(value, { width: 508 }));
     }
 
     doc.moveTo(52, footerY).lineTo(560, footerY).strokeColor(line).stroke();

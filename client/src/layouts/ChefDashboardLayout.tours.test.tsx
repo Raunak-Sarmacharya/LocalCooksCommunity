@@ -1,0 +1,30 @@
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import ChefDashboardLayout from './ChefDashboardLayout';
+vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ logout: vi.fn() }) }));
+vi.mock('@/hooks/use-chef-sidebar-hidden-items', () => ({ useChefSidebarHiddenItems: () => [] }));
+vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('@/components/chef/ChefSidebar', () => ({ ChefSidebar: () => null }));
+vi.mock('@/components/chef/ChefNotificationCenter', () => ({ default: () => null }));
+vi.mock('@/components/command-menu', () => ({ CommandMenu: () => null }));
+vi.mock('@/layouts/chef-shell-context', () => ({ ChefShellUiProvider: ({ children }: any) => children }));
+vi.mock('@/components/ui/sidebar', () => ({ SidebarProvider: ({ children }: any) => children, SidebarInset: ({ children }: any) => <div>{children}</div>, SidebarTrigger: () => null }));
+vi.mock('@/components/ui/scroll-area', () => ({ ScrollArea: ({ children }: any) => children }));
+afterEach(cleanup);
+it('shows the navigable Kitchen tours parent and tour reference on mobile detail pages', () => {
+  const returnToTours = vi.fn();
+  render(<ChefDashboardLayout activeView="viewings" onViewChange={vi.fn()} breadcrumbs={[{ label: 'Kitchen tours', navId: 'viewings', onClick: returnToTours }, { label: 'TOUR-77' }]}><p>Tour content</p></ChefDashboardLayout>);
+  const breadcrumb = screen.getByRole('navigation', { name: 'breadcrumb' });
+  const parent = within(breadcrumb).getByRole('link', { name: 'Kitchen tours' });
+  expect(parent.closest('li')).not.toHaveClass('hidden');
+  expect(within(breadcrumb).getByText('TOUR-77').closest('li')).not.toHaveClass('hidden');
+  expect(screen.getAllByText('TOUR-77')).toHaveLength(1);
+  fireEvent.click(parent);
+  expect(returnToTours).toHaveBeenCalledOnce();
+});
+it('preserves the existing mobile title and desktop breadcrumbs outside tour details', () => {
+  render(<ChefDashboardLayout activeView="bookings" onViewChange={vi.fn()} breadcrumbs={[{ label: 'Bookings' }]}><p>Booking content</p></ChefDashboardLayout>);
+  const breadcrumb = screen.getByRole('navigation', { name: 'breadcrumb' });
+  expect(within(breadcrumb).getByText('Bookings').closest('li')).toHaveClass('hidden', 'md:block');
+  expect(screen.getAllByText('Bookings')).toHaveLength(2);
+});

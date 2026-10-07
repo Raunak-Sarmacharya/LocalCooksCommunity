@@ -342,5 +342,18 @@
   "tourIntakeUse_catering": "Catering",
   "tourIntakeUse_meal_prep": "Meal preparation",
   "tourIntakeUse_food_truck": "Food truck",
-  "tourIntakeUse_other": "Other"
+  "tourIntakeUse_other": "Other",
+  "tourOverdueQueue": "Overdue decisions",
+  "tourDecisionOwner": "Responsible",
+  "tourDecisionDue": "Decision due",
+  "tourOfferResponseBefore": "Invitation response before",
+  "tourDecisionTimeUnknown": "Time not recorded",
+  "tourDecisionOverdue": "Decision overdue",
+  "tourTakeoverConfirm": "Review and confirm overdue request",
+  "tourTakeoverHelp": "Confirm the current tour time after reviewing availability. Your reason will be shared with the visitor and manager.",
+  "tourReviewLoading": "Checking current availability…",
+  "tourTakeoverOverlap": "I reviewed the overlapping bookings and can safely host this tour.",
+  "tourTakeoverReason": "Shared confirmation reason",
+  "tourConfirmTakeover": "Confirm tour",
+  "tourDecisionAge": "Waiting {hours} hours"
 }

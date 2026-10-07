@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-const state = vi.hoisted(() => ({ tour: {} as any, managerId: 2, bookings: [] as any[], availability: [] as any[],
+const state = vi.hoisted(() => ({ tour: {} as any, managerId: 2, bookings: [] as any[], availability: [] as any[], history: [] as any[],
   settings: {} as any, kitchen: {} as any, updates: [] as any[], rejectWrite: false, notify: vi.fn(), email: vi.fn(), locks: vi.fn(), queue: vi.fn(), insert: vi.fn(), provision: vi.fn(), deliveryFailed: false, listMode: false }));
 vi.mock('../chat-service', () => ({ initializeSharedConversation: state.provision }));
 vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: state.queue,
@@ -21,6 +21,7 @@ vi.mock('../db', () => {
         case 'kitchen_viewing_settings': return [state.settings];
         case 'kitchen_viewing_availability': return state.availability;
         case 'kitchen_bookings': return state.bookings;
+        case 'tour_delivery_events': return state.history;
         case 'users': return [{ username: 'fixture@example.test', email: 'fixture@example.test' }];
         default: return [];
       }
@@ -53,6 +54,56 @@ async function request(path: string, method: string, body = {}, user = { id: 2, 
   return res;
 }
 const status = (body: any, user?: any) => request('/:id/status', 'patch', body, user);
+describe('manager tour history authorization and projection', () => {
+  beforeEach(() => {
+    state.managerId = 2; state.history = []; state.updates = [];
+    state.tour = { id: 10, managerId: 1, locationId: 33, status: 'pending', createdAt: new Date(version), updatedAt: new Date(version), scheduledAt: new Date(version), durationMinutes: 30 };
+  });
+  it('uses current location ownership instead of the historical assigned manager', async () => {
+    expect((await request('/manager/:id/history', 'get', {}, { id: 1, role: 'manager' })).status).toHaveBeenCalledWith(404);
+    expect((await request('/manager/:id/history', 'get')).json).toHaveBeenCalledWith(expect.objectContaining({ complete: false, events: [expect.objectContaining({ kind: 'requested' })] }));
+    expect(state.updates).toEqual([]);
+  });
+  it('hides admin-first requests and denies non-manager handlers defensively', async () => {
+    state.tour.status = 'pending_local_cooks';
+    expect((await request('/manager/:id/history', 'get')).status).toHaveBeenCalledWith(404);
+    state.tour.status = 'pending';
+    expect((await request('/manager/:id/history', 'get', {}, { id: 2, role: 'chef' })).status).toHaveBeenCalledWith(404);
+  });
+  it('returns projected lifecycle events while withholding private review and recipient data', async () => {
+    state.history = [{ id: 1, createdAt: new Date(version), payload: { kind: 'requested', actorRole: 'chef', actorId: 8, after: { status: 'pending_local_cooks', managerNotes: 'secret' }, chef: { email: 'private@test' } } },
+      { id: 2, createdAt: new Date(version), payload: { kind: 'review_approved', after: { adminReviewReason: 'secret' } } }];
+    const result = await request('/manager/:id/history', 'get');
+    expect(result.json).toHaveBeenCalledWith({ complete: true, events: [{ key: 'event-1', kind: 'requested', recordedAt: version, actor: 'chef', status: 'pending' }] });
+  });
+  it('registers both authentication and manager middleware', async () => {
+    const middleware = await import('../firebase-auth-middleware');
+    const route = (router as any).stack.find((entry: any) => entry.route?.path === '/manager/:id/history').route;
+    expect(route.stack[0].handle).toBe(middleware.requireFirebaseAuthWithUser);
+    expect(route.stack[1].handle).toBe(middleware.requireManager);
+  });
+  it.each(['chef', 'local_cooks', 'request_expired'])('keeps unforwarded closed requests visible to their chef only (%s)', async cancelledBy => {
+    state.listMode = true;
+    state.tour = { ...state.tour, chefId: 8, status: 'cancelled', cancelledBy, scheduledAt: new Date(version) };
+    try {
+      expect((await request('/chef', 'get', {}, { id: 8, role: 'chef' })).json).toHaveBeenCalledWith([expect.objectContaining({ viewing: expect.objectContaining({ id: 10, status: 'cancelled' }) })]);
+      expect((await request('/manager', 'get')).json).toHaveBeenCalledWith([]);
+      expect((await request('/manager/:id/history', 'get')).status).toHaveBeenCalledWith(404);
+    } finally { state.listMode = false; }
+  });
+  it('hides admin denial despite its recorded review time, and preserves confirmed then withdrawn visits', async () => {
+    state.listMode = true;
+    state.tour = { ...state.tour, status: 'cancelled', adminReviewedAt: new Date(version), adminReviewDecision: 'denied', cancelledBy: 'local_cooks' };
+    try {
+      expect((await request('/manager', 'get')).json).toHaveBeenCalledWith([]);
+      expect((await request('/manager/:id/history', 'get')).status).toHaveBeenCalledWith(404);
+      state.tour = { ...state.tour, adminReviewedAt: null, adminReviewDecision: null, cancelledBy: 'chef', confirmedAt: new Date(version) };
+      expect((await request('/manager', 'get')).json).toHaveBeenCalledWith([expect.objectContaining({ viewing: expect.objectContaining({ id: 10 }) })]);
+      expect((await request('/manager/:id/history', 'get')).status).not.toHaveBeenCalled();
+    } finally { state.listMode = false; }
+  });
+});
+
 describe('tour decisions use current ownership and fresh review', () => {
   it('keeps committed approval/outbox when Firebase provisioning fails, without approving twice', async () => {
     state.tour = { id: 10, chefId: 8, locationId: 33, targetedKitchenId: 40, status: 'pending_local_cooks',
@@ -83,7 +134,7 @@ describe('tour decisions use current ownership and fresh review', () => {
     expect(state.updates).toEqual([]);
   });
   it('allows the current manager to decline the inherited request', async () => {
-    expect((await status({ status: 'cancelled', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', cancelledBy: 'manager_declined' }));
+    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', cancelledBy: 'manager_declined' }));
   });
   it('rejects a stale decision without writing or notifying', async () => {
     expect((await status({ status: 'cancelled', expectedUpdatedAt: 'old' })).status).toHaveBeenCalledWith(409);
@@ -129,17 +180,17 @@ describe('tour decisions use current ownership and fresh review', () => {
   });
   it('rejects a conditional write that lost a race without sending success messages', async () => {
     state.rejectWrite = true;
-    expect((await status({ status: 'cancelled', expectedUpdatedAt: version })).status).toHaveBeenCalledWith(409);
+    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).status).toHaveBeenCalledWith(409);
     expect(state.queue).not.toHaveBeenCalled();
   });
   it('reports saved decisions truthfully when durable delivery remains pending', async () => {
     state.deliveryFailed = true;
-    expect((await status({ status: 'cancelled', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', notificationDeliveryFailed: true }));
+    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', notificationDeliveryFailed: true }));
     expect(state.queue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'status', after: expect.objectContaining({ status: 'cancelled' }) }));
   });
   it('handles an email false result as a delivery failure after saving', async () => {
     state.deliveryFailed = true;
-    expect((await status({ status: 'cancelled', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ notificationDeliveryFailed: true }));
+    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ notificationDeliveryFailed: true }));
   });
   it('retains the original confirmed slot when declining a date change', async () => {
     state.tour.status = 'confirmed'; state.tour.requestedRescheduleAt = new Date(state.tour.scheduledAt.getTime() + 86400000);
@@ -152,6 +203,53 @@ describe('tour decisions use current ownership and fresh review', () => {
     const requested = state.tour.requestedRescheduleAt;
     const res = await request('/manager/:id/reschedule', 'patch', { decision: 'accept', expectedUpdatedAt: version, overlapReviewKey: emptyKey });
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ scheduledAt: requested, status: 'confirmed', requestedRescheduleAt: null, managerId: 2 }));
+  });
+  it('requires a short shared reason for manager request decline', async () => {
+    expect((await status({ status: 'cancelled', expectedUpdatedAt: version })).status).toHaveBeenCalledWith(400);
+    expect(state.updates).toHaveLength(0);
+  });
+  it('strips internal review provenance only from chef responses', async () => {
+    state.tour.adminReviewedAt = new Date(version); state.tour.adminReviewReason = 'Internal review'; state.tour.adminReviewerId = 9;
+    const response = await status({ status: 'cancelled' }, { id: 8, role: 'chef' });
+    const saved = response.json.mock.calls[0][0];
+    expect(saved).not.toHaveProperty('adminReviewedAt'); expect(saved).not.toHaveProperty('adminReviewReason'); expect(saved).not.toHaveProperty('adminReviewerId');
+  });
+  it('guards admin takeover until the manager deadline and rejects active alternatives', async () => {
+    const admin = { id: 9, role: 'admin' };
+    const body = { status: 'confirmed', expectedUpdatedAt: version, overlapReviewKey: emptyKey, takeoverReason: 'Manager review deadline passed' };
+    state.tour.adminReviewedAt = new Date();
+    expect((await status(body, admin)).status).toHaveBeenCalledWith(409);
+    state.tour.adminReviewedAt = new Date(Date.now() - 12 * 3600000);
+    state.tour.rescheduleProposedSlots = [state.tour.scheduledAt.toISOString()];
+    expect((await status(body, admin)).status).toHaveBeenCalledWith(409);
+    state.tour.rescheduleProposedSlots = [];
+    state.tour.sharedManagerNotes = 'Please use the side entrance.';
+    expect((await status({ ...body, takeoverReason: '' }, admin)).status).toHaveBeenCalledWith(400);
+    expect((await status(body, admin)).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed', confirmedAt: expect.any(Date), sharedManagerNotes: `Please use the side entrance.\n\n${body.takeoverReason}`, outcomeHistory: [expect.objectContaining({ actorRole: 'admin', reason: body.takeoverReason })] }));
+    expect((await status(body, admin)).status).toHaveBeenCalledWith(409);
+  });
+  it('rejects reschedule acceptance with a valid overlap review and explicit booking override', async () => {
+    state.tour.status = 'confirmed'; state.tour.intakeData = { intendedUse: 'Baking' };
+    state.tour.requestedRescheduleAt = new Date(state.tour.scheduledAt.getTime() + 86400000);
+    const original = structuredClone(state.tour);
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/St_Johns', year: 'numeric', month: '2-digit', day: '2-digit' }).format(state.tour.requestedRescheduleAt);
+    state.bookings = [{ id: 7, kitchenId: 40, referenceCode: 'KB-7', status: 'confirmed', bookingDate: date, startTime: '09:00', endTime: '12:00' }];
+    const contextRes = await request('/manager/:id/decision-context', 'get', {}, undefined, { kind: 'reschedule' });
+    const context = contextRes.json.mock.calls[0][0]; expect(context.overlaps).toHaveLength(1);
+    const res = await request('/manager/:id/reschedule', 'patch', { decision: 'accept', expectedUpdatedAt: version,
+      overlapReviewKey: context.overlapReviewKey, acceptBookingOverlap: true });
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(state.tour).toEqual(original); expect(state.updates).toEqual([]); expect(state.queue).not.toHaveBeenCalled();
+  });
+  it.each(['pending_local_cooks', 'pending', 'confirmed'])('rejects direct replacement requests with overlapping kitchen bookings (%s)', async currentStatus => {
+    state.tour.status = currentStatus;
+    const original = structuredClone(state.tour), requested = new Date(state.tour.scheduledAt.getTime() + 86400000);
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/St_Johns', year: 'numeric', month: '2-digit', day: '2-digit' }).format(requested);
+    state.bookings = [{ id: 7, kitchenId: 40, referenceCode: 'KB-7', status: 'confirmed', bookingDate: date, startTime: '09:00', endTime: '12:00' }];
+    const res = await request('/chef/:id/reschedule', 'post', { scheduledAt: requested.toISOString(), expectedUpdatedAt: version,
+      overlapReviewKey: emptyKey, acceptBookingOverlap: true }, { id: 8, role: 'chef' });
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(state.tour).toEqual(original); expect(state.updates).toEqual([]); expect(state.queue).not.toHaveBeenCalled();
   });
   it('requires admins to review the current revision before approving an editable request', async () => {
     state.tour.status = 'pending_local_cooks';
@@ -244,7 +342,7 @@ describe('tour decisions use current ownership and fresh review', () => {
     state.tour.rescheduleProposedSlots = [new Date(state.tour.scheduledAt.getTime() + 86400000).toISOString()];
     expect((await status({ status: 'confirmed', expectedUpdatedAt: version, overlapReviewKey: emptyKey })).status).toHaveBeenCalledWith(409);
     expect(state.updates).toEqual([]);
-    expect((await status({ status: 'cancelled', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', rescheduleProposedSlots: [], rescheduleProposedAt: null }));
+    expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', rescheduleProposedSlots: [], rescheduleProposedAt: null }));
   });
   it('closes chef self-service changes at Newfoundland visit-day midnight', async () => {
     state.tour.status = 'confirmed'; state.tour.scheduledAt = new Date(Date.now() + 60_000);

@@ -29,14 +29,16 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window
 function client() { return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } }); }
 
 describe('chef tour reschedule proposals', () => {
-  it('opens the confirmed reschedule modal from the collapsed card and restores focus on close', async () => {
+  it('opens the confirmed reschedule modal from the detail page and restores focus on close', async () => {
     const fetcher = vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/viewings/chef' ? [base] : { settings: { maxAdvanceBookingDays: 30 }, availability: [], blackouts: [], fullyBookedDates: [] } }));
     vi.stubGlobal('fetch', fetcher);
     const queries = client();
+    window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
     const trigger = await screen.findByRole('button', { name: 'Reschedule tour' });
-    expect(screen.getByRole('button', { name: 'View details' })).toHaveAttribute('aria-expanded', 'false');
-    expect(fetcher.mock.calls).toHaveLength(1);
+    expect(screen.getByRole('region', { name: 'Tour details' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
+    expect(fetcher.mock.calls.filter(([url]) => url === '/api/viewings/chef')).toHaveLength(1);
     fireEvent.click(trigger);
     const dialog = await screen.findByRole('dialog', { name: 'Reschedule tour' });
     expect(dialog).toHaveTextContent('Fixture kitchen · TOUR-77');
@@ -46,7 +48,8 @@ describe('chef tour reschedule proposals', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(trigger).toHaveFocus();
-    expect(screen.getByRole('button', { name: 'View details' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('region', { name: 'Tour details' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
     expect(fetcher.mock.calls.some(([, options]) => options?.method)).toBe(false);
     queries.clear();
   });
@@ -57,8 +60,9 @@ describe('chef tour reschedule proposals', () => {
     const fetcher = vi.fn(async (_url: string, options?: any) => options?.method ? save : { ok: true, json: async () => [row] });
     vi.stubGlobal('fetch', fetcher);
     const queries = client();
+    window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Review suggested times' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
     fireEvent.click(screen.getByRole('radio'));
     fireEvent.click(screen.getByRole('button', { name: 'Accept new time' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled());
@@ -81,6 +85,7 @@ describe('chef tour reschedule proposals', () => {
     } }));
     vi.stubGlobal('fetch', fetcher);
     const queries = client();
+    window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Reschedule tour' }));
     await waitFor(() => expect(screen.getByLabelText('New date')).toBeEnabled());
@@ -108,11 +113,13 @@ describe('chef tour reschedule proposals', () => {
       return { slots: [{ scheduledAt: alternatives[0] }] };
     } }));
     vi.stubGlobal('fetch', fetcher);
-    window.history.replaceState({}, '', '/dashboard?view=viewings');
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
     const queries = client();
+    window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
     const trigger = await screen.findByRole('button', { name: 'Edit tour request' });
-    expect(screen.getByRole('button', { name: 'View details' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('region', { name: 'Tour details' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
     expect(fetcher.mock.calls.some(([url]) => url.includes('calendar-availability'))).toBe(false);
     fireEvent.click(trigger);
     expect(await screen.findByRole('dialog', { name: 'Edit tour request' })).toHaveAttribute('aria-modal', 'true');
@@ -127,18 +134,20 @@ describe('chef tour reschedule proposals', () => {
     expect(writes[0][0]).toBe('/api/viewings/chef/77/reschedule');
     expect(JSON.parse(writes[0][1].body)).toEqual({ scheduledAt: alternatives[0], expectedUpdatedAt: version });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'View details' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('region', { name: 'Tour details' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument();
     queries.clear();
   });
   it.each(['accept', 'decline'] as const)('reviews a manager proposal through the same tour with %s', async decision => {
     const row = { ...base, viewing: { ...base.viewing, rescheduleProposedSlots: alternatives.slice(0, 2) } };
     const fetcher = vi.fn(async (_url: string, options?: any) => ({ ok: true, json: async () => options?.method ? { ...row.viewing, rescheduleProposedSlots: [] } : [row] }));
     vi.stubGlobal('fetch', fetcher);
-    window.history.replaceState({}, '', '/dashboard?view=viewings');
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
     const queries = client();
+    window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Review suggested times' }));
-    await screen.findByRole('dialog', { name: 'Review suggested times' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
+    await screen.findByRole('dialog', { name: 'Reschedule invitation' });
     expect(screen.queryByText('Reschedule tour')).not.toBeInTheDocument();
     expect(screen.getByText(/Your original tour stays confirmed/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept new time' })).toBeDisabled();
@@ -156,15 +165,15 @@ describe('chef tour reschedule proposals', () => {
     const row = { ...base, viewing: { ...base.viewing, scheduledAt: dayOf } };
     const fetcher = vi.fn(async () => ({ ok: true, json: async () => [row] }));
     vi.stubGlobal('fetch', fetcher);
-    window.history.replaceState({}, '', '/dashboard?view=viewings');
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
     const queries = client();
     const page = render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
-    await screen.findByRole('button', { name: 'View details' });
+    await screen.findByRole('region', { name: 'Tour details' });
     expect(screen.queryByText('Reschedule tour')).not.toBeInTheDocument();
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('available-slots'))).toBe(false);
     queries.setQueryData(['/api/viewings', 'chef', 'fixture-chef'], [{ ...row, viewing: { ...row.viewing, rescheduleProposedSlots: alternatives.slice(0, 1) } }]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Review suggested times' }));
-    await screen.findByRole('dialog', { name: 'Review suggested times' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
+    await screen.findByRole('dialog', { name: 'Reschedule invitation' });
     expect(screen.getByRole('button', { name: 'Keep original time' })).toBeEnabled();
     page.unmount(); queries.clear();
   });
@@ -174,10 +183,11 @@ describe('chef tour reschedule proposals', () => {
     const fetcher = vi.fn(async (_url: string, options?: any) => ({ ok: !options?.method, status: options?.method ? 409 : 200,
       json: async () => options?.method ? { error: 'That time is no longer available. Choose another time.' } : [++reads === 1 ? proposed : base] }));
     vi.stubGlobal('fetch', fetcher);
-    window.history.replaceState({}, '', '/dashboard?view=viewings');
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=77');
     const queries = client();
+    window.history.replaceState({}, "", "/dashboard?view=viewings&viewing=77");
     render(<QueryClientProvider client={queries}><ChefViewingsList /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Review suggested times' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review invitation' }));
     fireEvent.click(await screen.findByRole('radio'));
     fireEvent.click(screen.getByRole('button', { name: 'Accept new time' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('That time is no longer available. Choose another time.');

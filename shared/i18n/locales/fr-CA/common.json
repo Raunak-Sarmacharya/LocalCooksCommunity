@@ -342,5 +342,18 @@
   "tourIntakeUse_catering": "Traiteur",
   "tourIntakeUse_meal_prep": "Préparation de repas",
   "tourIntakeUse_food_truck": "Camion-restaurant",
-  "tourIntakeUse_other": "Autre"
+  "tourIntakeUse_other": "Autre",
+  "tourOverdueQueue": "Décisions en retard",
+  "tourDecisionOwner": "Responsable",
+  "tourDecisionDue": "Décision attendue avant",
+  "tourOfferResponseBefore": "Réponse à l’invitation avant",
+  "tourDecisionTimeUnknown": "Heure non enregistrée",
+  "tourDecisionOverdue": "Décision en retard",
+  "tourTakeoverConfirm": "Examiner et confirmer la demande en retard",
+  "tourTakeoverHelp": "Confirmez l’horaire actuel après avoir vérifié les disponibilités. Votre motif sera communiqué au visiteur et au gestionnaire.",
+  "tourReviewLoading": "Vérification des disponibilités…",
+  "tourTakeoverOverlap": "J’ai examiné les réservations qui se chevauchent et peux accueillir cette visite en toute sécurité.",
+  "tourTakeoverReason": "Motif de confirmation partagé",
+  "tourConfirmTakeover": "Confirmer la visite",
+  "tourDecisionAge": "En attente depuis {hours} heures"
 }
