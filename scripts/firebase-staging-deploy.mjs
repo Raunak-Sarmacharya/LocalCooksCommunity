@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 const require = createRequire(import.meta.url);
 const project = 'formauth-9e620';
 const mode = process.argv[2];
-assert.ok(['secret', 'rules', 'function', 'local'].includes(mode), 'Explicit staging operation required');
+assert.ok(['secret', 'event-secret', 'rules', 'function', 'local'].includes(mode), 'Explicit staging operation required');
 const env = require('dotenv').parse(fs.readFileSync('.env'));
 const url = new URL(env.DATABASE_URL);
 assert.equal(env.FIREBASE_PROJECT_ID, project);
@@ -18,9 +18,20 @@ assert.equal(config.functions[0].codebase, 'staging');
 assert.equal(config.functions[0].source, 'functions');
 assert.equal(config.firestore.database, 'staging');
 assert.equal(JSON.parse(fs.readFileSync('functions/package.json')).main, 'lib/staging.js');
-const clean = text => String(text).split(env.DATABASE_URL).join('[REDACTED_DATABASE_URL]')
+const eventKey = mode === 'event-secret' ? (process.env.STAGING_INNGEST_EVENT_KEY || env.STAGING_INNGEST_EVENT_KEY)?.trim() : undefined;
+if (mode === 'event-secret') {
+  assert.ok(eventKey, 'STAGING_INNGEST_EVENT_KEY is required; production event keys are never reused');
+}
+const clean = text => {
+  let output = String(text);
+  for (const key of [eventKey, env.STAGING_INNGEST_EVENT_KEY, env.INNGEST_EVENT_KEY, process.env.STAGING_INNGEST_EVENT_KEY, process.env.INNGEST_EVENT_KEY].filter(Boolean))
+    output = output.split(key).join('[REDACTED_EVENT_KEY]').split(encodeURIComponent(key)).join('[REDACTED_EVENT_KEY]')
+      .split(Buffer.from(key).toString('base64')).join('[REDACTED_EVENT_KEY]');
+  return output.split(env.DATABASE_URL).join('[REDACTED_DATABASE_URL]')
   .split(Buffer.from(env.DATABASE_URL).toString('base64')).join('[REDACTED_SECRET]')
-  .replace(/postgres(?:ql)?:\/\/[^\s"\\]+/g, '[REDACTED_DATABASE_URL]');
+  .replace(/postgres(?:ql)?:\/\/[^\s"\\]+/g, '[REDACTED_DATABASE_URL]')
+  .replace(/(https:\/\/inn\.gs\/e\/)[^\s"\\]+/g, '$1[REDACTED_EVENT_KEY]');
+};
 const run = (args, input) => {
   const result = spawnSync(process.execPath, args, { encoding: 'utf8', windowsHide: true, input, maxBuffer: 12 * 1024 * 1024,
     env: { ...process.env, PATH: `${path.dirname(process.execPath)};${process.env.PATH}` } });
@@ -51,6 +62,9 @@ try {
       } finally { await client.end(); }
       run(['node_modules/firebase-tools/lib/bin/firebase.js', 'functions:secrets:set', 'STAGING_DATABASE_URL', '--data-file', '-',
         '--project', project, '--non-interactive'], env.DATABASE_URL);
+    } else if (mode === 'event-secret') {
+      run(['node_modules/firebase-tools/lib/bin/firebase.js', 'functions:secrets:set', 'STAGING_INNGEST_EVENT_KEY', '--data-file', '-',
+        '--project', project, '--non-interactive'], eventKey);
     } else {
       if (mode === 'function') {
         run(['functions/node_modules/typescript/bin/tsc', '--project', 'functions/tsconfig.json']);

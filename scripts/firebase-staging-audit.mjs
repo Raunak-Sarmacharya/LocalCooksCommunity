@@ -103,23 +103,27 @@ try {
     const account = `localcooks-staging-chat@${project}.iam.gserviceaccount.com`;
     if (!fn || fn.eventTrigger?.eventFilters?.database !== 'staging' || fn.runtime !== 'nodejs22'
       || fn.state !== 'ACTIVE' || fn.serviceAccount !== account) throw Error('Staging trigger deployment does not match its approved configuration');
-    if (JSON.stringify(fn.secretEnvironmentVariables?.map(secret => secret.key)) !== JSON.stringify(['STAGING_DATABASE_URL']))
-      throw Error('Staging trigger must bind only its staging SQL secret');
+    if (JSON.stringify(fn.secretEnvironmentVariables?.map(secret => secret.key).sort()) !== JSON.stringify(['STAGING_DATABASE_URL', 'STAGING_INNGEST_EVENT_KEY']))
+      throw Error('Staging trigger must bind exactly its staging SQL and Inngest secrets');
     const release = releases.find(candidate => candidate.name === `projects/${project}/releases/cloud.firestore/staging`);
     const source = await rulesApi.getRulesetContent(release.rulesetName);
     if (!source.some(file => file.content === fs.readFileSync('firestore.rules', 'utf8')))
       throw Error('Deployed staging rules differ from reviewed rules');
     const secrets = require('firebase-tools/lib/gcp/secretManager');
     const member = `serviceAccount:${account}`;
-    const stagePolicy = await secrets.getIamPolicy({ projectId: project, name: 'STAGING_DATABASE_URL' });
-    if (!stagePolicy.bindings?.some(binding => binding.role === 'roles/secretmanager.secretAccessor' && binding.members.includes(member)))
-      throw Error('Approved staging identity lacks its staging secret access');
-    try {
-      const prodPolicy = await secrets.getIamPolicy({ projectId: project, name: 'DATABASE_URL' });
-      if (prodPolicy.bindings?.some(binding => binding.members.includes(member))) throw Error('Staging identity must not access the production secret');
-    } catch (error) {
-      // The existing function uses a legacy environment variable rather than a secret.
-      if (error.status !== 404 && error.context?.response?.statusCode !== 404) throw error;
+    for (const name of ['STAGING_DATABASE_URL', 'STAGING_INNGEST_EVENT_KEY']) {
+      const stagePolicy = await secrets.getIamPolicy({ projectId: project, name });
+      if (!stagePolicy.bindings?.some(binding => binding.role === 'roles/secretmanager.secretAccessor' && binding.members.includes(member)))
+        throw Error(`Approved staging identity lacks ${name} access`);
+    }
+    for (const name of ['DATABASE_URL', 'INNGEST_EVENT_KEY']) {
+      try {
+        const prodPolicy = await secrets.getIamPolicy({ projectId: project, name });
+        if (prodPolicy.bindings?.some(binding => binding.members.includes(member))) throw Error(`Staging identity must not access ${name}`);
+      } catch (error) {
+        // Production may use legacy environment variables rather than secrets.
+        if (error.status !== 404 && error.context?.response?.statusCode !== 404) throw error;
+      }
     }
     const { Client } = require('firebase-tools/lib/apiv2');
     const resource = new Client({ urlPrefix: 'https://cloudresourcemanager.googleapis.com', apiVersion: 'v1' });
@@ -138,7 +142,7 @@ try {
         throw Error('Staging invocation must be private and allow the approved identity');
       console.log('Invocation restricted to the staging service; no broad project or Firebase Auth permissions granted.');
     }
-    console.log('Staging trigger identity, database, SQL secret permissions, and deployed rules verified.');
+    console.log('Staging trigger identity, database, SQL and Inngest secret permissions, and deployed rules verified.');
   }
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }
@@ -147,6 +151,8 @@ finally {
   // containing credentials in the workspace debug log or printed evidence.
   for (const path of ['firebase-debug.log', 'functions/firebase-debug.log']) if (fs.existsSync(path)) {
     fs.writeFileSync(path, fs.readFileSync(path, 'utf8').replace(/postgres(?:ql)?:\/\/[^\s"\\]+/g, '[REDACTED_DATABASE_URL]')
-      .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]'));
+      .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+      .replace(/(https:\/\/inn\.gs\/e\/)[^\s"\\]+/g, '$1[REDACTED_EVENT_KEY]')
+      .replace(/((?:STAGING_)?INNGEST_EVENT_KEY["']?\s*[:=]\s*["']?)[^\s"',}\\]+/g, '$1[REDACTED_EVENT_KEY]'));
   }
 }
