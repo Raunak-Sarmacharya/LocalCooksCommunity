@@ -1,4 +1,20 @@
 import { logger } from "@/lib/logger";
+
+/** Resolve proxy references before requesting an authenticated image URL. */
+export async function getAuthenticatedImageUrl(src: string): Promise<string> {
+  let url = src;
+  if (src.startsWith('/api/files/r2-proxy?')) {
+    const params = new URL(src, 'https://localcooks.ca').searchParams;
+    const filename = params.get('filename');
+    url = params.get('url') || (filename ? `https://files.localcooks.ca/images/${filename}` : src);
+  }
+  try {
+    const parsed = new URL(url);
+    // Already signed URLs must be loaded directly, including their signature.
+    if (parsed.searchParams.has('X-Amz-Signature')) return url;
+  } catch { /* Local, data and blob references are handled by the existing helper. */ }
+  return getAuthenticatedFileUrl(url);
+}
 /**
  * Check if a URL points to a public folder (kitchens, public images)
  * Public folders don't require authentication

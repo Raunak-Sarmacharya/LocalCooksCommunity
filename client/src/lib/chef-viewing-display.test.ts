@@ -45,8 +45,8 @@ describe("viewingStatusBadge", () => {
 });
 
 describe("formatTourWhen", () => {
-  it('distinguishes the two Newfoundland clocks across the autumn DST change', () => {
-    expect(formatTourWhen('2026-11-01T04:15:00Z', 30, 'Asia/Kolkata')).toContain('1:45 AM NDT – 1:15 AM NST');
+  it('uses Newfoundland clocks without suffixes across the autumn DST change', () => {
+    expect(formatTourWhen('2026-11-01T04:15:00Z', 30, 'Asia/Kolkata')).toContain('1:45 AM – 1:15 AM');
   });
   it('uses Newfoundland summer/winter clocks regardless of supplied/browser timezone', () => {
     expect(formatTourWhen('2026-10-08T02:15:00Z', null, 'Asia/Kolkata')).toContain('Oct 7, 2026');

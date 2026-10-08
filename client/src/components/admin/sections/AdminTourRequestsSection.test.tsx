@@ -13,6 +13,23 @@ afterEach(() => {
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
 describe('admin tour incident links', () => {
+  it.each([
+    ['pending_local_cooks', null, false], ['pending', null, false], ['confirmed', null, false],
+    ['confirmed', 'weather', false], ['cancelled', null, false], ['denied', null, false],
+    ['completed', null, true], ['no_show', null, true],
+    ['cancelled', 'weather', true], ['cancelled', 'outcome_unknown', true],
+  ])('shows evidence only for recorded outcomes: %s / %s', async (status, disruptionReason, visible) => {
+    const rows = [{ viewing: { id: 91, status, disruptionReason, confirmationVerified: true,
+      scheduledAt: '2099-10-05T12:00:00Z', durationMinutes: 30,
+      createdAt: '2026-10-01T12:00:00Z', updatedAt: '2026-10-01T12:00:00Z' }, chefName: 'Evidence fixture' }];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('delivery-status') ? [] : rows })));
+    window.history.replaceState({}, '', '/admin?section=tour-requests&viewing=91');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><AdminTourRequestsSection /></QueryClientProvider>);
+    await screen.findByText('Evidence fixture');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Kitchen tour evidence · admin only' }) !== null).toBe(visible));
+    client.clear();
+  });
   it('shows the manager message and private outcome notes as separate admin fields', async () => {
     const rows = [{ viewing: { id: 85, status: 'completed', confirmationVerified: true,
       scheduledAt: '2026-10-05T12:00:00Z', durationMinutes: 30, updatedAt: '2026-10-05T13:00:00Z',

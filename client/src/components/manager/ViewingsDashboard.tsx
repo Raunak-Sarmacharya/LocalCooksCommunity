@@ -331,15 +331,16 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     },
   })
   const proposalTimeOptions = proposalChoices.map(item => {
-    const start = new Date(item.scheduledAt)
     const duration = selectedViewing?.viewing.durationMinutes ?? 30
-    const compact = formatTourClock(start) + ' – ' + formatTourClock(new Date(start.getTime() + duration * 60_000))
-    const full = formatTourSlotRange(item.scheduledAt, duration)
-    return { ...item, compact, full, zone: full.startsWith(compact + ' ') ? full.slice(compact.length + 1) : null }
+    let full = formatTourSlotRange(item.scheduledAt, duration)
+    // Repeated wall-clock slots during the DST rollback still need distinct labels.
+    if (proposalChoices.some(other => other.scheduledAt !== item.scheduledAt && formatTourSlotRange(other.scheduledAt, duration) === full)) {
+      const offset = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/St_Johns', timeZoneName: 'shortOffset' })
+        .formatToParts(new Date(item.scheduledAt)).find(part => part.type === 'timeZoneName')?.value
+      full += ` (${offset})`
+    }
+    return { ...item, full }
   })
-  const compactProposalTimes = proposalTimeOptions.every(item => item.zone !== null)
-    && new Set(proposalTimeOptions.map(item => item.zone)).size === 1
-    && new Set(proposalTimeOptions.map(item => item.compact)).size === proposalTimeOptions.length
   const { data: decisionContext, isFetching: contextLoading, error: contextError, refetch: refetchContext } = useQuery<TourDecisionContext>({
     queryKey: ["tour-decision-context", selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt, decisionKind],
     enabled: !!selectedViewing && !!decisionKind,
@@ -825,7 +826,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                       {!proposalSlotsLoading && !proposalSlotsError && !proposalChoices.length && <p role="status" className="text-sm text-muted-foreground">{mt('tourNoAvailableTimes')}</p>}
                       {!proposalSlotsLoading && !proposalSlotsError && <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{proposalTimeOptions.map(item => {
                         const selected = proposedSlots.includes(item.scheduledAt)
-                        return <Button key={item.scheduledAt} variant={selected ? 'default' : 'outline'} className="h-auto min-h-11 whitespace-normal px-2 py-2 text-sm" aria-pressed={selected} disabled={proposeReschedule.isPending || !!proposalCalendarError || (!selected && proposedSlots.length >= 3)} onClick={() => setProposedSlots(current => current.includes(item.scheduledAt) ? current.filter(time => time !== item.scheduledAt) : [...current, item.scheduledAt].sort())}>{compactProposalTimes ? item.compact : item.full}</Button>
+                        return <Button key={item.scheduledAt} variant={selected ? 'default' : 'outline'} className="h-auto min-h-11 whitespace-normal px-2 py-2 text-sm" aria-pressed={selected} disabled={proposeReschedule.isPending || !!proposalCalendarError || (!selected && proposedSlots.length >= 3)} onClick={() => setProposedSlots(current => current.includes(item.scheduledAt) ? current.filter(time => time !== item.scheduledAt) : [...current, item.scheduledAt].sort())}>{item.full}</Button>
                       })}</div>}
                     </section>}
                     {proposedSlots.length > 0 && <section className="space-y-2" aria-label={mt('tourSelectedTimes')}><h3 className="text-sm font-semibold">{mt('tourSelectedTimes')}</h3><ul className="space-y-2">{proposedSlots.map(time => <li key={time} className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><span className="text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}</span><Button variant="ghost" size="icon" aria-label={`${mt('tourRemoveAlternative')}: ${formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}`} disabled={proposeReschedule.isPending} onClick={() => setProposedSlots(current => current.filter(item => item !== time))}><X className="h-4 w-4" /></Button></li>)}</ul></section>}

@@ -286,7 +286,8 @@ export function AdminTourRequestsSection() {
                 {request.viewing.managerNotes && <p className="rounded-md border p-3"><strong>Internal notes · admin only:</strong> {request.viewing.managerNotes}</p>}
                 {request.viewing.disruptionReason && <p>{request.viewing.disruptionReason === 'outcome_unknown' ? t('tourFeedbackUnverified') : <><strong>Disruption:</strong> {tourDisruptionReasons[request.viewing.disruptionReason as keyof typeof tourDisruptionReasons] || request.viewing.disruptionReason}</>}</p>}
                 {hasTourConfirmation(request.viewing) && Date.parse(request.viewing.scheduledAt) + request.viewing.durationMinutes * 60_000 <= Date.now() && <TourFeedbackPanel id={request.viewing.id} role="admin" version={request.viewing.updatedAt} />}
-                <AdminTourVisitEvidence id={request.viewing.id} version={request.viewing.updatedAt} needsReview={request.viewing.visitEvidenceState === 'review'} />
+                {(['completed', 'no_show'].includes(request.viewing.status) || request.viewing.status === 'cancelled' && !!request.viewing.disruptionReason) &&
+                  <AdminTourVisitEvidence id={request.viewing.id} version={request.viewing.updatedAt} needsReview={request.viewing.visitEvidenceState === 'review'} />}
                 {(request.viewing.status === 'completed' || request.viewing.disruptionReason === 'outcome_unknown') && <AdminTourRepeatPermissionPanel id={request.viewing.id} version={request.viewing.updatedAt} />}
                 {request.viewing.adminReviewedAt && <p><span className="font-medium">Reviewed:</span> {formatTourWhen(request.viewing.adminReviewedAt, null, request.locationTimezone || "America/St_Johns")}</p>}
                 {request.viewing.intakeData && Object.keys(request.viewing.intakeData).length > 0 && (

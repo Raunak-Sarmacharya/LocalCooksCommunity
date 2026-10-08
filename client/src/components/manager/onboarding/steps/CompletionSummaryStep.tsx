@@ -37,6 +37,7 @@ export default function CompletionSummaryStep() {
         kitchens,
         setIsOpen,
         isStripeOnboardingComplete,
+        isStripeConnected,
         isAvailabilityComplete,
         isRequirementsComplete,
         storageForm,
@@ -125,9 +126,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "payment",
             label: mt("onboardingPayments"),
-            status: isStripeOnboardingComplete ? 'complete' : 'incomplete',
+            status: isStripeConnected ? 'complete' : isStripeOnboardingComplete ? 'pending' : 'incomplete',
             isRequired: true,
-            description: isStripeOnboardingComplete ? mt("onboardingStripeConnected") : mt("onboardingConnectStripe"),
+            description: isStripeConnected ? mt("onboardingStripeConnected")
+                : isStripeOnboardingComplete ? mt("verificationPending") : mt("onboardingConnectStripe"),
             stepId: 'payment-setup'
         });
 
@@ -156,7 +158,7 @@ export default function CompletionSummaryStep() {
         });
 
         return items;
-    }, [selectedLocation, kitchens, isAvailabilityComplete, isRequirementsComplete, isStripeOnboardingComplete, storageForm, equipmentForm]);
+    }, [selectedLocation, kitchens, isAvailabilityComplete, isRequirementsComplete, isStripeOnboardingComplete, isStripeConnected, storageForm, equipmentForm]);
 
     // Calculate readiness - License pending counts as "done" for onboarding completion
     const requiredItems = setupItems.filter(item => item.isRequired);
@@ -172,6 +174,7 @@ export default function CompletionSummaryStep() {
     // License status helpers
     const licenseItem = setupItems.find(item => item.id === 'license');
     const isLicensePending = licenseItem?.status === 'pending';
+    const paymentItem = setupItems.find(item => item.id === 'payment')!;
 
     // Onboarding is complete when all steps done (license can be pending)
     const isOnboardingComplete = completedOrPendingRequired.length === requiredItems.length;
@@ -243,7 +246,7 @@ export default function CompletionSummaryStep() {
                 <p className="text-sm font-medium text-foreground">
                     {isFullyReady
                         ? mt("youreAllSet")
-                        : isOnboardingComplete && isLicensePending
+                        : isOnboardingComplete
                             ? mt("setupCompleteTitle")
                             : mt("almostThereShort")
                     }
@@ -253,6 +256,8 @@ export default function CompletionSummaryStep() {
                         ? mt("kitchenReadyForBookings")
                         : isOnboardingComplete && isLicensePending
                             ? mt("licenseUnderReviewBookWhenApproved")
+                            : isOnboardingComplete && paymentItem.status === 'pending'
+                                ? mt("verificationPending")
                             : mt("completeMoreSteps", { count: incompleteRequired.length })
                     }
                 </p>
@@ -270,14 +275,10 @@ export default function CompletionSummaryStep() {
                         <p className="text-sm font-medium text-foreground">{mt("whatHappensNext")}</p>
                     </div>
                     <ol className="divide-y divide-border">
-                        {/*
-                          * Three steps, not four: "you are live" is the outcome of
-                          * the review, not a stage the manager does anything in, so
-                          * listing it only made the wait look longer.
-                          */}
                         {[
                             { key: 'submitted', label: mt("stepBusinessSubmitted"), state: 'done' },
                             { key: 'kitchen', label: mt("stepKitchenReady"), state: 'done' },
+                            { key: 'payment', label: paymentItem.description, state: isStripeConnected ? 'done' : 'current' },
                             { key: 'review', label: mt("stepReviewingLicence"), state: 'current' },
                         ].map((step, index) => (
                             <li key={step.key} className="flex items-center gap-3 px-4 py-3">
@@ -307,7 +308,11 @@ export default function CompletionSummaryStep() {
                                         step.state === 'current' && "font-medium",
                                     )}
                                 >
-                                    {step.label}
+                                    {step.key === 'payment' && !isStripeConnected ? (
+                                        <button type="button" onClick={() => goToStep('payment-setup')} className="text-left hover:underline">
+                                            {step.label}
+                                        </button>
+                                    ) : step.label}
                                 </span>
                                 {step.state === 'current' && (
                                     <span className="ml-auto shrink-0 text-[11px] font-medium text-primary">

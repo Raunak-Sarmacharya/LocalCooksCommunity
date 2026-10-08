@@ -83,7 +83,7 @@ describe('tour time and downloadable calendar', () => {
       expect(email.html).toContain('Door &amp; &quot;bell&quot;'); expect(email.html).not.toContain('<script>');
       for (const content of [email.text!, email.html!]) {
         expect(content).toContain('TOUR-42'); expect(content).toContain('host@example.test');
-        expect(content).toContain('Add to Google Calendar'); expect(content).toContain('NDT');
+        expect(content).toContain('Add to Google Calendar'); expect(content).not.toContain('NDT');
       }
       expect(email.text).toContain('Door & "bell"'); expect(email.html).toContain('emailHeader-brand-red.png');
       expect(email.text).toContain('Your appointment'); expect(email.text).toContain('Getting there');
@@ -112,7 +112,7 @@ describe('tour time and downloadable calendar', () => {
     expect(ics).not.toContain('NaN');
     expect(email.html).toContain(date);
     expect(email.html).toContain(time);
-    expect(email.html).toMatch(/N[DS]T/);
+    expect(email.html).not.toMatch(/\bN[DS]T\b/);
     expect(email.html).not.toContain('Asia/Kolkata');
     const url = new URL(email.html!.replace(/&amp;/g, '&').match(/href="(https:\/\/calendar.google.com[^\"]+)"/)![1]);
     expect(url.searchParams.get('dates')).toBe(`${tourDate.replace(/[-:]/g, '')}/${end}`);
@@ -129,9 +129,9 @@ describe('tour time and downloadable calendar', () => {
   });
   it('names the overnight end date and distinguishes repeated daylight-saving clocks', () => {
     const overnight = generateTourConfirmedEmail({ ...base, tourDate: '2026-10-08T02:15:00Z' });
-    expect(overnight.html).toContain('Oct 8, 2026, 12:15 AM NDT');
+    expect(overnight.html).toContain('Oct 8, 2026, 12:15 AM');
     const fold = generateTourConfirmedEmail({ ...base, tourDate: '2026-11-01T04:15:00Z' });
-    expect(fold.html).toContain('1:45 AM NDT – 1:15 AM NST');
+    expect(fold.html).toContain('1:45 AM – 1:15 AM');
   });
 
   it.each([{ tourDate: 'invalid' }, { durationMinutes: 0 }, { durationMinutes: NaN },
@@ -177,7 +177,7 @@ describe('tour time and downloadable calendar', () => {
       const email = generate(details), url = `https://${environment === 'preview' ? 'dev-' : ''}${role}.localcooks.ca${path}`;
       expect(email.text).toContain(url); expect(email.html).toContain(url.replace(/&/g, '&amp;'));
       expect(email.text).toContain('Room <A>'); expect(email.html).toContain('Room &lt;A&gt;');
-      expect(email.html).toContain('Harbour &amp; Main'); expect(email.text).toContain('1:45 AM NDT – 1:15 AM NST');
+      expect(email.html).toContain('Harbour &amp; Main'); expect(email.text).toContain('1:45 AM – 1:15 AM');
       expect(email.text).toContain('12 Harbour Road'); expect(email.attachments).toBeUndefined();
     }
     const confirmed = generateTourConfirmedEmail({ ...base, calendarSequence: 101, updatedAt: new Date('2026-10-05T10:00:00Z'), notes: 'Door\r\nSTATUS:CANCELLED, <A>; bell' });

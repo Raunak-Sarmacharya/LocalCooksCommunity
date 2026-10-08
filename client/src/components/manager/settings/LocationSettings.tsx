@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 import { SettingsFileUpload } from "./SettingsFileUpload";
 import { ChefPageHeader } from "@/components/chef/ui";
 
@@ -91,7 +92,7 @@ export default function LocationSettings({ location, onSave, embedded = false }:
               <Label htmlFor="location-logo">Business logo</Label>
               <div className="flex items-center gap-3 rounded-lg border p-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
-                  {logoUrl && !logoFile ? <img src={getR2ProxyUrl(logoUrl)} alt={`${location.name} logo`} className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
+                  {logoUrl && !logoFile ? <SmartImage src={getR2ProxyUrl(logoUrl)} alt={`${location.name} logo`} className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <SettingsFileUpload id="location-logo" accept="image/jpeg,image/png,image/webp" file={logoFile} label="Choose logo" hint="JPG, PNG or WebP · max 4.5 MB" disabled={isUploading} onChange={setLogoFile} />

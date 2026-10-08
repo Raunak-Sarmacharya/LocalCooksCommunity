@@ -23,7 +23,8 @@ router.post('/chat/:conversationId/upload', requireFirebaseAuthWithUser, upload.
             const storageUrl = await uploadToBlob(req.file!, req.neonUser!.id, 'chat-private');
             const url = `/api/files/chat-attachments/${randomUUID()}`;
             await (await getAdminDb()).collection('chatAttachments').doc(attachmentKey(url)).set({
-                url, storageUrl, conversationId: req.params.conversationId, uploaderId: req.neonUser!.id });
+                url, storageUrl, conversationId: req.params.conversationId, uploaderId: req.neonUser!.id
+            });
             return { url };
         };
         const result = req.neonUser!.role === 'admin' ? await save() : await withParticipantChat(
@@ -40,7 +41,7 @@ router.get('/chat/:conversationId/file', requireFirebaseAuthWithUser, async (req
         if (typeof url !== 'string' || !storedFileUrl(url)) return res.status(400).json({ error: 'Invalid attachment' });
         const load = async (ref: FirebaseFirestore.DocumentReference) => {
             const matches = await ref.collection('messages').where('fileUrl', '==', url).limit(1).get();
-            if (matches.empty) throw new ChatAccessError(404, 'Attachment not shared in this conversation');
+            if (matches.empty) throw new ChatAccessError(404, 'Attachment Not shared in this conversation');
             const receipt = url.startsWith('/api/files/chat-attachments/')
                 ? await (await getAdminDb()).collection('chatAttachments').doc(attachmentKey(url)).get() : null;
             if (receipt && (!receipt.exists || receipt.data()?.conversationId !== ref.id)) throw new ChatAccessError(404, 'Attachment not found');
@@ -136,12 +137,12 @@ router.get('/kitchen-application/:applicationId/preview', requireFirebaseAuthWit
 
 // HIGH-6 Security: SSRF protection — only allow our R2 domain
 function isAllowedR2Url(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname === 'files.localcooks.ca';
-  } catch {
-    return false;
-  }
+    try {
+        const parsed = new URL(url);
+        return parsed.hostname === 'files.localcooks.ca';
+    } catch {
+        return false;
+    }
 }
 
 // ===============================
@@ -426,7 +427,7 @@ router.get("/r2-presigned", async (req: Request, res: Response) => {
 // Static serving only works in local development. Production uses R2 with presigned URLs.
 const isVercel = !!process.env.VERCEL;
 if (!isVercel) {
-  router.use('/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
+    router.use('/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
 }
 
 // FILE SERVING ROUTES (Authenticated)

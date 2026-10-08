@@ -2627,7 +2627,7 @@
   "tourConfirmationHelp": "Your kitchen tour is confirmed. Download your confirmation for the  location, and visit details.",
   "tourKitchenContactTitle": "Coordinate with the kitchen",
   "tourKitchenCoordinationHelp": "Message your kitchen manager about arrival, departure, or changes to your visit.",
-  "tourContactNotShared": "Not shared",
+  "tourContactNotShared": "Not shared yet",
   "tourContactEmail": "Email",
   "tourContactPhone": "Phone",
   "tourMessageKitchenManager": "Message {name}",

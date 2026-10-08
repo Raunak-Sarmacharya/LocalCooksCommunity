@@ -1,5 +1,6 @@
-import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type SyntheticEvent } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type SyntheticEvent } from "react";
 import { cn } from "@/lib/utils";
+import { getAuthenticatedImageUrl } from "@/utils/r2-url-helper";
 
 export interface SmartImageProps extends ImgHTMLAttributes<HTMLImageElement> {
   /** Hide the image (and its placeholder) if loading fails. */
@@ -55,7 +56,7 @@ export const SmartImage = forwardRef<HTMLImageElement, SmartImageProps>(
       decoding = "async",
       onLoad,
       onError,
-      src,
+      src: originalSrc,
       style,
       // React 18 does not recognise the camelCase spelling and passes it straight through to the
       // DOM, which logs "React does not recognize the `fetchPriority` prop". Destructure it and
@@ -65,6 +66,27 @@ export const SmartImage = forwardRef<HTMLImageElement, SmartImageProps>(
     },
     forwardedRef
   ) {
+    const needsAuth = Boolean(originalSrc && (
+      originalSrc.startsWith('/api/files/r2-proxy?') ||
+      originalSrc.startsWith('/api/files/documents/') ||
+      originalSrc.includes('files.localcooks.ca') ||
+      originalSrc.includes('r2.cloudflarestorage.com')
+    ));
+    const [resolved, setResolved] = useState<{ original: string; url: string } | null>(null);
+    const src = needsAuth
+      ? resolved && resolved.original === originalSrc ? resolved.url : undefined
+      : originalSrc;
+    useEffect(() => {
+      let cancelled = false;
+      if (needsAuth && originalSrc) {
+        void getAuthenticatedImageUrl(originalSrc).then((url) => {
+          if (!cancelled) setResolved({ original: originalSrc, url });
+        }).catch(() => {
+          if (!cancelled) setResolved({ original: originalSrc, url: originalSrc });
+        });
+      }
+      return () => { cancelled = true; };
+    }, [originalSrc, needsAuth]);
     const innerRef = useRef<HTMLImageElement | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [failed, setFailed] = useState(false);
@@ -114,7 +136,7 @@ export const SmartImage = forwardRef<HTMLImageElement, SmartImageProps>(
       return null;
     }
 
-    const showLoader = Boolean(src) && !loaded && !failed;
+    const showLoader = Boolean(originalSrc) && !loaded && !failed;
 
     const positioned = /\b(absolute|fixed|sticky)\b/.test(wrap);
     const inline = !fill && /\bw-auto\b/.test(className ?? "");
