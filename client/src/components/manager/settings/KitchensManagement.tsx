@@ -14,10 +14,8 @@ import { apiGet, apiPut, apiPutWithMessage } from "@/lib/api";
 import { kitchenWorkspaceSettingsKey } from "@/lib/manager-kitchens-navigation";
 import { TRACKING_PROMPT_DISMISS_MS, isTrackingPromptDismissed, saveTrackingPromptDismissal, trackingPromptKey, trackingSetupSignature } from "@/lib/kitchen-tracking-prompt";
 import { useToast } from "@/hooks/use-toast";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvailabilitySkeleton } from "@/components/manager/AvailabilitySkeleton";
-import { SettingsRow } from "./SettingsRow";
 import { Plus, Loader2, Image as Images, Clock, ClipboardCheck, KitchenTour, CalendarClock, Building, CheckCircle, Copy } from "@/components/ui/manager-icons";
 import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { Button } from "@/components/ui/button";
@@ -43,6 +41,7 @@ import type { KitchenWorkspaceSettings } from "./KitchenWorkspaceControls";
 import type { KitchenPoliciesHandle, PolicySaveScope } from "./KitchenWorkspaceControls";
 import ViewingSettingsPanel, { type ViewingSettingsPanelHandle, type ViewingSettingsResponse } from "@/components/manager/ViewingSettingsPanel";
 import { copyableTourHours, type WeeklyTourSource } from "@shared/tour-schedule";
+import { tourReadiness } from '@shared/tour-readiness';
 import { chefKitchenShareUrl, kitchenPreviewHref, shareKitchenLink } from "@/lib/kitchen-preview-url";
 
 interface Kitchen {
@@ -89,6 +88,7 @@ interface KitchensManagementProps {
    * remembers the kitchen a review was opened for and the manager can then walk to another location.
    */
   initialKitchenId?: number;
+  onReturnToTour?: (tourId: number) => void;
 }
 
 export interface KitchensHandle {
@@ -113,7 +113,7 @@ const TAB_ICON = "h-4 w-4 shrink-0 transition-colors group-data-[state=active]:t
  *  `bg-accent`, which is pure white in both themes — hence the `bg-muted` override. */
 const HEADER_LINK = "rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground";
 
-export default function KitchensManagement({ location, onNavigate, onConfigureRequirements, onDirtyChange, saveRef, initialKitchenId }: KitchensManagementProps) {
+export default function KitchensManagement({ location, onNavigate, onConfigureRequirements, onDirtyChange, saveRef, initialKitchenId, onReturnToTour }: KitchensManagementProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
@@ -121,7 +121,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId ?? null);
   const appliedInitialKitchenId = useRef<number>();
   const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
-  const notesFocused = activeSection === 'tours' && new URLSearchParams(window.location.search).get('focus') === 'tour-notes';
+  const returnTourId = Number(new URLSearchParams(window.location.search).get('returnTour'));
 
   const detailsRef = useRef<KitchenDetailsPricingHandle>(null);
   const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
@@ -133,6 +133,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [policyScope, setPolicyScope] = useState<PolicySaveScope>("kitchen");
   const toursRef = useRef<ViewingSettingsPanelHandle>(null);
   const [toursDirty, setToursDirty] = useState(false);
+  const [tourSetupSection, setTourSetupSection] = useState<{ kitchenId: number; section: 'weekly' | 'instructions' }>();
   const [tourInfoOpen, setTourInfoOpen] = useState(false);
   const [tourSource, setTourSource] = useState<"booking" | "separate">("booking");
   const [sessionTrackingDismissal, setSessionTrackingDismissal] = useState<{ key: string; signature: string; dismissedAt: number } | null>(null);
@@ -277,6 +278,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   });
   const toursEnabled = tourSettings?.settings?.isActive === true;
   const toursScheduled = tourSettings?.availability?.some((slot) => slot.isAvailable) === true;
+  const tourSetupReadiness = tourReadiness(tourSettings?.settings, tourSettings?.availability ?? []);
+  const toursReady = tourSetupReadiness.ready;
   const { data: bookingHours, isLoading: bookingHoursLoading, isError: bookingHoursError, refetch: refetchBookingHours } = useQuery<WeeklyTourSource[]>({
     queryKey: ["/api/manager/availability", activeKitchenId],
     queryFn: () => apiGet(`/manager/availability/${activeKitchenId}`),
@@ -298,7 +301,9 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       queryClient.setQueryData([`/api/viewings/settings/${kitchenId}`], result);
       void queryClient.invalidateQueries({ queryKey: [`/api/viewings/kitchen/${kitchenId}/is-active`] });
       void queryClient.invalidateQueries({ queryKey: ["kitchen-listing-readiness", kitchenId] });
+      void queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/viewings/manager') });
       setTourInfoOpen(false);
+      setTourSetupSection({ kitchenId, section: tourReadiness(result.settings, result.availability).schedule ? 'instructions' : 'weekly' });
       handleSectionChange("tours");
     },
     onError: (error: Error, { kitchenId }) => {
@@ -334,10 +339,12 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     onSuccess: (settings, { kitchenId }) => {
       // The request's kitchen owns the response, even if the manager switched kitchens meanwhile.
       queryClient.setQueryData<ViewingSettingsResponse>([`/api/viewings/settings/${kitchenId}`], (old) => ({
-        settings, availability: old?.availability ?? [], blackouts: old?.blackouts ?? [],
+        settings, availability: old?.availability ?? [], blackouts: old?.blackouts ?? [], timezone: old?.timezone,
       }));
       void queryClient.invalidateQueries({ queryKey: [`/api/viewings/kitchen/${kitchenId}/is-active`] });
       void queryClient.invalidateQueries({ queryKey: ["kitchen-listing-readiness", kitchenId] });
+      void queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/viewings/manager') });
+      toast({ title: mt('tourPausedToast') });
     },
     onError: (error: Error) => toast({ title: mt("error"), description: error.message, variant: "destructive" }),
   });
@@ -485,17 +492,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       window.history.replaceState({}, '', url);
     });
   };
-
-  useEffect(() => {
-    if (activeSection !== "tours" || tourSettings === undefined || toursEnabled || toursDirty || notesFocused) return;
-    // Disabled legacy links lead to the control that enables tours, rather than an empty tab.
-    setActiveSection("availability");
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", "kitchens");
-    url.searchParams.set("section", "availability");
-    url.searchParams.delete("tab");
-    window.history.replaceState({}, "", url);
-  }, [activeSection, tourSettings, toursEnabled, toursDirty, notesFocused]);
 
   useEffect(() => {
     const syncSectionFromUrl = () => setActiveSection(kitchenSectionFromParams(new URLSearchParams(window.location.search)));
@@ -652,9 +648,9 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               <TabsTrigger value="equipment" className={TAB_TRIGGER}>
                 <Wrench className={TAB_ICON} />{mt("navEquipment")}
               </TabsTrigger>
-              {(toursEnabled || notesFocused) && <TabsTrigger value="tours" className={TAB_TRIGGER}>
+              <TabsTrigger value="tours" className={TAB_TRIGGER}>
                 <KitchenTour className={TAB_ICON} />{mt("kitchenTours")}
-              </TabsTrigger>}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="details" className="mt-0 space-y-4">
@@ -696,10 +692,14 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             <TabsContent value="availability" className="mt-0 space-y-4">
               {isLoadingTours ? <Skeleton className="h-20" /> : toursError ?
                 <Button variant="outline" onClick={() => refetchTours()}>{mt("retry")}</Button> :
-                hasSavedBookingHours && (!toursEnabled || !toursScheduled) && <Card className="overflow-hidden border-l-[3px] border-l-primary/80 shadow-[0_8px_24px_-18px_hsl(var(--primary)/0.5)]"><CardContent className="relative flex flex-wrap items-center justify-between gap-4 p-4">
+                hasSavedBookingHours && !(toursEnabled && toursReady) && <Card className="overflow-hidden"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
                   <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.8)]"><KitchenTour className="size-5" /></span>
-                    <div><p className="font-semibold tracking-tight">{mt("tourSetupTitle")}</p><p className="text-sm text-muted-foreground">{mt("tourSetupDescription")}</p></div></div>
-                  <Button size="sm" onClick={() => { setTourSource("booking"); setTourInfoOpen(true); }}>{mt("learnHowToursWork")}</Button>
+                    <div><p className="font-semibold tracking-tight">{mt("tourSetupTitle")}</p><p className="text-sm text-muted-foreground">{mt(toursScheduled ? 'tourResumeSetupDescription' : 'tourSetupDescription')}</p></div></div>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    if (activeKitchenId == null) return;
+                    if (toursScheduled) { setTourSetupSection({ kitchenId: activeKitchenId, section: tourSetupReadiness.schedule ? 'instructions' : 'weekly' }); handleSectionChange('tours'); }
+                    else { setTourSource("booking"); setTourInfoOpen(true); }
+                  }}>{mt(toursScheduled ? 'tourResumeSetupAction' : 'learnHowToursWork')}</Button>
                 </CardContent></Card>}
               {activeKitchenId && <KitchenAvailabilityManagement
                 key={activeKitchenId}
@@ -712,13 +712,15 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               />}
             </TabsContent>
             <TabsContent value="tours" className="mt-0 space-y-4">
-              {activeKitchenId && <Card><CardContent className="p-0"><SettingsRow id="kitchen-tours-enabled" label={mt("kitchenTours")} hint={mt("tourEnabledHint")}>
-                <Switch id="kitchen-tours-enabled" checked={toursEnabled} disabled={toggleTours.isPending}
-                  onCheckedChange={(isActive) => toggleTours.mutate({ kitchenId: activeKitchenId, isActive })} />
-              </SettingsRow></CardContent></Card>}
               {isLoadingTours && <AvailabilitySkeleton />}
               {toursError && <Button variant="outline" onClick={() => refetchTours()}>{mt("retry")}</Button>}
-              {activeKitchenId && (toursEnabled || toursDirty || notesFocused) && <ViewingSettingsPanel key={activeKitchenId} ref={toursRef} kitchenId={activeKitchenId} facilityKitchenCount={kitchens.length}
+              {activeKitchenId && !isLoadingTours && !toursError && <ViewingSettingsPanel key={activeKitchenId} ref={toursRef} kitchenId={activeKitchenId} facilityKitchenCount={kitchens.length}
+                onReturnToTour={Number.isSafeInteger(returnTourId) && returnTourId > 0 && onReturnToTour ? () => guardNavigation(() => onReturnToTour(returnTourId)) : undefined}
+                onPrepareSchedule={!toursScheduled && hasSavedBookingHours ? () => { setTourSource('booking'); setTourInfoOpen(true); } : undefined}
+                onPauseTours={() => toggleTours.mutate({ kitchenId: activeKitchenId, isActive: false })}
+                initialSection={tourSetupSection?.kitchenId === activeKitchenId ? tourSetupSection.section : undefined}
+                disabled={toggleTours.isPending}
+                kitchenIsListed={activeKitchen?.listingStatus === 'active' && activeKitchen.isActive}
                 kitchenName={activeKitchen?.name} onDirtyChange={setToursDirty} hideSaveActions />}
             </TabsContent>
             <TabsContent value="policies" className="mt-0">
@@ -755,14 +757,14 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
                     <span aria-hidden className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${tourSource === "separate" || !canCopyBookingHours ? "border-primary bg-primary text-white" : "border-muted-foreground/35"}`}>{(tourSource === "separate" || !canCopyBookingHours) && <CheckCircle className="size-3.5" />}</span>
                   </label>
                 </div>}
-                {toursScheduled && <p className="rounded-xl border border-border px-4 py-3 text-sm text-muted-foreground">{mt("tourExistingHoursNote")}</p>}
+                <p className="text-xs leading-5 text-muted-foreground">{mt('tourSetupVisibilityNote')}</p>
               </div>
               <div className="flex items-center justify-end gap-2 border-t border-border/70 px-5 py-4 sm:px-6"><Button variant="ghost" onClick={() => setTourInfoOpen(false)}>{mt("cancel")}</Button>
                 <Button disabled={setupTours.isPending || bookingHoursLoading || activeKitchenId == null} onClick={() => {
                   if (activeKitchenId == null) return;
-                  if (toursEnabled && (toursScheduled || tourSource === "separate")) { setTourInfoOpen(false); handleSectionChange("tours"); return; }
+                  if (toursScheduled) { setTourInfoOpen(false); handleSectionChange("tours"); return; }
                   setupTours.mutate({ kitchenId: activeKitchenId, scheduleSource: canCopyBookingHours ? tourSource : "separate" });
-                }}>{setupTours.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}{toursEnabled && (toursScheduled || tourSource === "separate") ? mt("goToTourSettings") : mt("enableAndSetUpTours")}</Button></div>
+                }}>{setupTours.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}{mt("enableAndSetUpTours")}</Button></div>
             </DialogContent>
           </Dialog>
         </>

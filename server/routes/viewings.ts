@@ -20,6 +20,7 @@ import { requireChef } from "./middleware";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
 import { blackoutDateKeys, bookingClosuresForTours, copyableTourHours, tourBlackoutForDate, tourWindowsForDate } from "@shared/tour-schedule";
+import { hasTourInstructions, tourReadiness } from '@shared/tour-readiness';
 import { activeBookingIdsOnOperatingDate, hasOverlappingOperatingDays } from "@shared/operating-schedule";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { formatTourDate, formatTourClock, tourDateKey } from "@shared/tour-time";
@@ -41,6 +42,7 @@ import { affectedTours, queueScheduleProblems } from '../services/commitment-pro
 import { resolveTourApplicationNextStep } from '../services/tour-application-service';
 import { getTourFunnel } from '../services/tour-funnel-service';
 import { getTourFeedback, submitTourFeedback, readTourFeedbackStatus } from '../services/tour-feedback-service';
+import { readTourRequestAccess, requireTourRequestAccess, useRepeatTourPermission, grantRepeatTourPermission, revokeRepeatTourPermission } from '../services/tour-request-access-service';
 
 import {
   kitchenViewingSettings,
@@ -49,6 +51,7 @@ import {
   kitchenDateOverrides,
   kitchenViewingBlackouts,
   kitchenViewings,
+  tourRepeatAuthorizations,
   tourDeliveryEvents,
   kitchenBookings,
   chefKitchenApplications,
@@ -68,6 +71,68 @@ import { TZDate } from "@date-fns/tz";
 import { addMinutes, isBefore, isAfter, differenceInHours } from "date-fns";
 
 const router = Router();
+
+router.get('/chef/kitchen/:kitchenId/request-access', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const kitchenId = Number(req.params.kitchenId);
+    if (req.neonUser?.role !== 'chef') return res.status(403).json({ error: 'Chef access required' });
+    if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0) return res.status(400).json({ error: 'Choose a valid kitchen' });
+    const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq(kitchens.id, kitchenId)).limit(1);
+    if (!kitchen) return res.status(404).json({ error: 'Kitchen not found' });
+    return res.json(await readTourRequestAccess(db, req.neonUser.id, kitchenId, kitchen.locationId));
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.get('/admin/:id/repeat-authorizations', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    if (req.neonUser?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    const [tour] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
+    if (!tour) return res.status(404).json({ error: 'Tour not found' });
+    const access = tour.targetedKitchenId ? await readTourRequestAccess(db, tour.chefId, tour.targetedKitchenId, tour.locationId) : null;
+    const grants = await db.select().from(tourRepeatAuthorizations).where(eq(tourRepeatAuthorizations.sourceTourId, id)).orderBy(desc(tourRepeatAuthorizations.id));
+    return res.json({ grants, canGrant: tour.visitEvidenceState !== 'review' && access?.tour?.id === id
+      && !access.canRequest && ['completed', 'unverified'].includes(access.reason || ''), updatedAt: tour.updatedAt });
+  } catch (error) { return errorResponse(res, error); }
+});
+
+async function permissionTour(tx: TourTransaction, id: number) {
+  const [snapshot] = await tx.select({ chefId: kitchenViewings.chefId }).from(kitchenViewings).where(eq(kitchenViewings.id, id)).limit(1);
+  if (!snapshot) throw new DomainError('TOUR_NOT_FOUND', 'Tour not found', 404);
+  // Serialize with application creation without blocking notification foreign-key checks.
+  await tx.select({ id: users.id }).from(users).where(eq(users.id, snapshot.chefId)).for('no key update');
+  return lockedTour(tx, id);
+}
+
+router.post('/admin/:id/repeat-authorizations', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    if (req.neonUser?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
+    const grant = await db.transaction(async tx => {
+      const { tour } = await permissionTour(tx, id);
+      checkTourVersion(tour, req.body?.expectedUpdatedAt, true);
+      return grantRepeatTourPermission(tx, tour, req.neonUser!.id, req.body || {});
+    });
+    return res.json(grant);
+  } catch (error) { return errorResponse(res, error); }
+});
+
+router.post('/admin/:id/repeat-authorizations/:authorizationId/revoke', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    if (req.neonUser?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    const id = Number(req.params.id), grantId = Number(req.params.authorizationId);
+    if (![id, grantId].every(value => Number.isSafeInteger(value) && value > 0)) return res.status(400).json({ error: 'Choose a valid permission' });
+    const grant = await db.transaction(async tx => {
+      const { tour } = await permissionTour(tx, id);
+      return revokeRepeatTourPermission(tx, tour, grantId, req.neonUser!.id, req.body?.reason);
+    });
+    return res.json(grant);
+  } catch (error) { return errorResponse(res, error); }
+});
 
 router.get('/chef/application-reference/:locationId', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -254,7 +319,7 @@ async function checkTourKitchenSettings(tx: TourTransaction, tour: typeof kitche
     throw new DomainError('TOUR_KITCHEN_UNAVAILABLE', 'This kitchen is no longer available for tours', 409);
   }
   const [settings] = await tx.select().from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, tour.targetedKitchenId)).limit(1);
-  if (!settings?.isActive || settings.defaultDurationMinutes !== tour.durationMinutes) {
+  if (!settings?.isActive || !hasTourInstructions(settings) || settings.defaultDurationMinutes !== tour.durationMinutes) {
     throw new DomainError('TOUR_SETTINGS_CHANGED', 'Tour settings have changed. Review this request before accepting it', 409);
   }
   return tour.targetedKitchenId;
@@ -326,7 +391,7 @@ async function calculateAvailableSlots(
     settings = fetchedSettings;
   }
 
-  if (!settings || !settings.isActive) {
+  if (!settings || !settings.isActive || !hasTourInstructions(settings)) {
     return [];
   }
 
@@ -518,7 +583,7 @@ async function authorizedSelfExclusion(req: Request, kitchenId: number) {
   if (!tour || !(req.neonUser?.role === 'manager' ? owner?.managerId === req.neonUser.id : tour.chefId === req.neonUser?.id) || tour.targetedKitchenId !== kitchenId || !allowedStatuses.includes(tour.status) || tour.checkedInAt || tour.scheduledAt.getTime() <= Date.now())
     throw new DomainError('FORBIDDEN', 'Only your upcoming tour may be excluded', 403);
   const [settings] = await db.select().from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
-  if (!settings?.isActive || settings.defaultDurationMinutes !== tour.durationMinutes)
+  if (!settings?.isActive || !hasTourInstructions(settings) || settings.defaultDurationMinutes !== tour.durationMinutes)
     throw new DomainError('TOUR_SETTINGS_CHANGED', 'Tour settings changed; contact Local Cooks before requesting another time', 409);
   return id;
 }
@@ -569,7 +634,7 @@ router.get(
         .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
 
-      if (!settings || !settings.isActive) {
+      if (!settings || !settings.isActive || !hasTourInstructions(settings)) {
         return res.json({ settings: null, availability: [], blackouts: [] });
       }
 
@@ -640,6 +705,28 @@ router.get(
 // ===================================
 // MANAGER ROUTES: Viewing Settings
 // ===================================
+
+function validTourHours(slots: unknown): slots is Array<{ dayOfWeek: number; startTime: string; endTime: string; isAvailable?: boolean }> {
+  const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
+  return Array.isArray(slots) && slots.every(slot => slot && Number.isInteger(slot.dayOfWeek)
+    && slot.dayOfWeek >= 0 && slot.dayOfWeek <= 6 && typeof slot.startTime === 'string'
+    && typeof slot.endTime === 'string' && clock.test(slot.startTime) && clock.test(slot.endTime)
+    && (slot.isAvailable === undefined || typeof slot.isAvailable === 'boolean')
+    && (slot.isAvailable === false || slot.startTime !== slot.endTime));
+}
+
+async function replaceTourHours(tx: TourTransaction, kitchenId: number, managerId: number,
+  slots: Array<{ dayOfWeek: number; startTime: string; endTime: string; isAvailable?: boolean }>) {
+  const previous = await tx.select().from(kitchenViewingAvailability).where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
+  const canonical = (rows: typeof slots) => rows.map(row => ({ dayOfWeek: row.dayOfWeek, startTime: row.startTime,
+    endTime: row.endTime, isAvailable: row.isAvailable ?? true })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  if (JSON.stringify(canonical(previous)) === JSON.stringify(canonical(slots))) return;
+  await tx.delete(kitchenViewingAvailability).where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
+  if (slots.length) await tx.insert(kitchenViewingAvailability).values(canonical(slots).map(slot => ({ kitchenId, ...slot })));
+  await queueScheduleProblems(tx, { kitchenId, actorId: managerId, tourIds: await affectedTours(tx, kitchenId),
+    change: { slots: canonical(slots), occurrence: randomUUID() },
+    description: 'Tour availability changed. Your confirmed tour is still recorded at its original time. Please review this request for updated arrangements.' });
+}
 
 /**
  * GET /api/viewings/settings/:kitchenId
@@ -728,6 +815,11 @@ router.put(
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       }
+      // The setup form saves its schedule and activation together, under the same kitchen lock.
+      const slots = req.body.slots;
+      if (slots !== undefined && !validTourHours(slots)) {
+        return res.status(400).json({ error: "Choose valid weekdays and different start/end times. An earlier end is on the next day." });
+      }
 
       const result = await db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 7)`);
@@ -737,6 +829,16 @@ router.put(
         .from(kitchenViewingSettings)
         .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
+
+      const next = { ...existing, ...parsed.data };
+      if (next.isActive) {
+        const hours = slots?.map((slot: any) => ({ ...slot, isAvailable: slot.isAvailable ?? true })) ?? await tx.select().from(kitchenViewingAvailability)
+          .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
+        if (!tourReadiness(next, hours).ready) {
+          throw new DomainError('TOUR_SETUP_INCOMPLETE', 'Add arrival and departure instructions and weekly hours long enough for a tour and its buffers before activating Kitchen Tours.', 400);
+        }
+      }
+      if (slots !== undefined) await replaceTourHours(tx, kitchenId, managerId, slots);
 
       let result;
       if (existing) {
@@ -817,11 +919,14 @@ router.put("/setup/:kitchenId", requireFirebaseAuthWithUser, requireManager, asy
         if (copiedBlackouts.length) await tx.insert(kitchenViewingBlackouts).values(copiedBlackouts);
       }
       const [settings] = existing
-        ? await tx.update(kitchenViewingSettings).set({ isActive: true, updatedAt: new Date() })
+        ? await tx.update(kitchenViewingSettings).set({ isActive: false, updatedAt: new Date() })
           .where(eq(kitchenViewingSettings.kitchenId, kitchenId)).returning()
-        : await tx.insert(kitchenViewingSettings).values({ kitchenId, isActive: true }).returning();
+        : await tx.insert(kitchenViewingSettings).values({ kitchenId, isActive: false }).returning();
       const availability = await tx.select().from(kitchenViewingAvailability)
         .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
+      if (existing?.isActive) await queueScheduleProblems(tx, { kitchenId, actorId: req.neonUser!.id,
+        tourIds: await affectedTours(tx, kitchenId), change: { active: false, occurrence: randomUUID() },
+        description: 'New tour requests were paused during setup. Your confirmed tour is still recorded at its original time. Please review this request to confirm your visit arrangements.' });
       const blackouts = await tx.select().from(kitchenViewingBlackouts)
         .where(eq(kitchenViewingBlackouts.kitchenId, kitchenId));
       return { settings, availability, blackouts, timezone: DEFAULT_TIMEZONE };
@@ -861,38 +966,19 @@ router.put(
       if (!Array.isArray(slots)) {
         return res.status(400).json({ error: "slots must be an array" });
       }
-      const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
-      if (slots.some(slot => !slot || !Number.isInteger(slot.dayOfWeek) || slot.dayOfWeek < 0 || slot.dayOfWeek > 6
-        || !clock.test(slot.startTime) || !clock.test(slot.endTime)
-        || (slot.isAvailable !== undefined && typeof slot.isAvailable !== 'boolean')
-        || (slot.isAvailable !== false && slot.endTime === slot.startTime))) {
+      if (!validTourHours(slots)) {
         return res.status(400).json({ error: "Choose valid weekdays and different start/end times. An earlier end is on the next day." });
       }
 
       // Delete existing and insert new in a transaction
       await db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 7)`);
-        const previous = await tx.select().from(kitchenViewingAvailability).where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
-        await tx
-          .delete(kitchenViewingAvailability)
-          .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
-
-        if (slots.length > 0) {
-          await tx.insert(kitchenViewingAvailability).values(
-            slots.map((slot: any) => ({
-              kitchenId,
-              dayOfWeek: slot.dayOfWeek,
-              startTime: slot.startTime,
-              endTime: slot.endTime,
-              isAvailable: slot.isAvailable ?? true,
-            }))
-          );
+        const [settings] = await tx.select().from(kitchenViewingSettings)
+          .where(eq(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
+        if (settings?.isActive && !tourReadiness(settings, slots.map(slot => ({ ...slot, isAvailable: slot.isAvailable ?? true }))).ready) {
+          throw new DomainError('TOUR_SETUP_INCOMPLETE', 'Keep both instructions and at least one weekly window long enough for a tour and its buffers, or pause Kitchen Tours first.', 400);
         }
-        const canonical = (rows: any[]) => rows.map(row => ({ dayOfWeek: row.dayOfWeek, startTime: row.startTime, endTime: row.endTime, isAvailable: row.isAvailable ?? true }))
-          .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-        if (JSON.stringify(canonical(previous)) !== JSON.stringify(canonical(slots)))
-          await queueScheduleProblems(tx, { kitchenId, actorId: managerId, tourIds: await affectedTours(tx, kitchenId),
-            change: { slots: canonical(slots), occurrence: randomUUID() }, description: 'Tour availability changed. Your confirmed tour is still recorded at its original time. Please review this request for updated arrangements.' });
+        await replaceTourHours(tx, kitchenId, managerId, slots);
       });
 
       // Fetch the updated list
@@ -1257,9 +1343,7 @@ router.post(
         return res.status(409).json({ error: "Tours are unavailable until a kitchen manager is assigned" });
       }
 
-      const [application] = await db.select({ id: chefKitchenApplications.id }).from(chefKitchenApplications)
-        .where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId))).limit(1);
-      if (application) return res.status(409).json({ error: "You have already applied to this kitchen location. Continue through My Applications." });
+      requireTourRequestAccess(await readTourRequestAccess(db, chefId, targetedKitchenId, locationId));
 
       const timezone = DEFAULT_TIMEZONE;
 
@@ -1270,7 +1354,7 @@ router.post(
         .where(eq(kitchenViewingSettings.kitchenId, targetedKitchenId))
         .limit(1);
 
-      if (!settings || !settings.isActive) {
+      if (!settings || !settings.isActive || !hasTourInstructions(settings)) {
         return res.status(400).json({ error: "Tours are not currently available for this kitchen" });
       }
 
@@ -1280,27 +1364,6 @@ router.post(
       }
       const scheduledDate = new Date(scheduledAt as string);
       if (Number.isNaN(scheduledDate.getTime())) return res.status(400).json({ error: "Invalid tour date" });
-
-      const [existingActiveTour] = await db
-        .select({ id: kitchenViewings.id })
-        .from(kitchenViewings)
-        .where(
-          and(
-            eq(kitchenViewings.chefId, chefId),
-            eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
-            sql`${kitchenViewings.status} IN ('pending_local_cooks', 'pending', 'confirmed')`,
-            sql`${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} || ' minutes')::interval > NOW()`
-          )
-        )
-        .limit(1);
-
-      if (existingActiveTour) {
-        return res.status(409).json({
-          error:
-            "You already have an active tour request for this kitchen. Check My Tours for status.",
-          code: "ACTIVE_TOUR_EXISTS",
-        });
-      }
 
       // Server-side advance notice validation
       const now = new TZDate(new Date(), timezone);
@@ -1322,22 +1385,19 @@ router.post(
       let newViewing: any;
 
       await db.transaction(async (tx) => {
+        await tx.select({ id: users.id }).from(users).where(eq(users.id, chefId)).for('no key update');
         await lockTourKitchen(tx, targetedKitchenId);
+        const requestAccess = await readTourRequestAccess(tx, chefId, targetedKitchenId, locationId);
+        requireTourRequestAccess(requestAccess);
         const [currentKitchen] = await tx.select({ isActive: kitchens.isActive, listingStatus: kitchens.listingStatus, locationId: kitchens.locationId })
           .from(kitchens).where(eq(kitchens.id, targetedKitchenId)).limit(1).for('share');
         const [currentSettings] = await tx.select().from(kitchenViewingSettings).where(eq(kitchenViewingSettings.kitchenId, targetedKitchenId)).limit(1);
         if (!currentKitchen?.isActive || currentKitchen.listingStatus !== 'active' || currentKitchen.locationId !== locationId
-          || !currentSettings?.isActive || currentSettings.defaultDurationMinutes !== tourDuration) {
+          || !currentSettings?.isActive || !hasTourInstructions(currentSettings) || currentSettings.defaultDurationMinutes !== tourDuration) {
           throw new DomainError('TOUR_SETTINGS_CHANGED', 'Tour setup has changed. Choose an available tour time again', 409);
         }
         const currentSlots = await calculateAvailableSlots(targetedKitchenId, date, timezone, undefined, { connection: tx });
         if (!currentSlots.some(slot => new Date(slot.scheduledAt).getTime() === scheduledDate.getTime())) throw new DomainError('SLOT_TAKEN', 'That tour time is no longer available', 409);
-        const [active] = await tx.select({ id: kitchenViewings.id }).from(kitchenViewings).where(and(
-          eq(kitchenViewings.chefId, chefId), eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
-          sql`${kitchenViewings.status} IN ('pending_local_cooks', 'pending', 'confirmed')`,
-          sql`${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} || ' minutes')::interval > NOW()`
-        )).limit(1);
-        if (active) throw new Error("ACTIVE_TOUR_EXISTS");
         // Check for conflicting viewings within the transaction
         const tourStart = scheduledDate;
         const tourEnd = addMinutes(scheduledDate, tourDuration);
@@ -1374,8 +1434,10 @@ router.post(
             durationMinutes: tourDuration,
             chefNotes: chefNotes || null,
             intakeData,
+            repeatAuthorizationId: requestAccess.authorization?.id ?? null,
           })
           .returning();
+        await useRepeatTourPermission(tx, requestAccess, newViewing.id);
         await queueTourEvent(tx, { kind: 'requested', before: newViewing, after: newViewing, actorId: chefId, actorRole: 'chef' });
       });
 
@@ -1810,6 +1872,8 @@ router.get(
           locationAddress: locations.address,
           locationTimezone: locations.timezone,
           kitchenName: kitchens.name,
+          arrivalNotes: kitchenViewingSettings.arrivalNotes,
+          departureNotes: kitchenViewingSettings.departureNotes,
           chefUsername: users.username,
           chefEmail: users.username,
         })
@@ -1817,6 +1881,7 @@ router.get(
         .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
         .leftJoin(kitchens, eq(kitchenViewings.targetedKitchenId, kitchens.id))
         .leftJoin(users, eq(kitchenViewings.chefId, users.id))
+        .leftJoin(kitchenViewingSettings, eq(kitchenViewings.targetedKitchenId, kitchenViewingSettings.kitchenId))
         .where(
           and(
             eq(locations.managerId, managerId),
@@ -2010,7 +2075,7 @@ router.patch(
         return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       }
       if (req.body?.managerNotes !== undefined && req.neonUser!.role !== 'admin') {
-        return res.status(403).json({ error: 'Internal tour notes are admin-only. Use Message to chef for a shared message.' });
+        return res.status(403).json({ error: 'Internal tour notes are admin-only. Use Manager notes for notes shared with the chef.' });
       }
 
       const decision = await db.transaction(async tx => {
@@ -2057,11 +2122,15 @@ router.patch(
       }
 
       const recordingResult = ['completed', 'no_show'].includes(parsed.data.status) || !!parsed.data.disruptionReason;
+      if (parsed.data.outcomeNotes !== undefined && (!isAdmin || !recordingResult))
+        throw new DomainError('TOUR_DECISION_INVALID', 'Only Local Cooks can record internal outcome notes.', 403);
       if (recordingResult && !isAdmin)
         throw new DomainError('TOUR_DECISION_INVALID', 'Local Cooks reviews tour feedback and records the final outcome.', 403);
-      if (recordingResult && (!parsed.data.sharedManagerNotes || parsed.data.sharedManagerNotes.trim().length < 10
-        || parsed.data.sharedManagerNotes.trim().length > 2000))
-        throw new DomainError('TOUR_DECISION_INVALID', 'Explain the final tour outcome in the shared message (10–2000 characters).', 400);
+      // Older admin pages submit this as sharedManagerNotes. Treat it as an outcome
+      // note too, so a stale page cannot overwrite the manager's message.
+      const outcomeNotes = recordingResult ? parsed.data.outcomeNotes ?? parsed.data.sharedManagerNotes : undefined;
+      if (recordingResult && (!outcomeNotes || outcomeNotes.length < 10 || outcomeNotes.length > 2000))
+        throw new DomainError('TOUR_DECISION_INVALID', 'Explain the final tour outcome in internal notes (10–2000 characters).', 400);
       if (isManager && viewing.status === 'pending' && parsed.data.status === 'cancelled' && (!parsed.data.cancellationReason?.trim() || parsed.data.cancellationReason.trim().length > 500))
         throw new DomainError('TOUR_DECISION_INVALID', 'A shared reason is required when declining a tour request', 400);
 
@@ -2083,7 +2152,7 @@ router.patch(
           throw new DomainError('TOUR_DECISION_INVALID', 'This tour was not confirmed. Close the request instead of recording a visit result.', 409);
         }
         if (parsed.data.disruptionReason && parsed.data.status !== 'cancelled') {
-          throw new DomainError('TOUR_DECISION_INVALID', 'Record a disruption separately from attendance', 400);
+          throw new DomainError('TOUR_DECISION_INVALID', 'Record a disruption separately from the visit record', 400);
         }
         if (parsed.data.disruptionReason && viewing.scheduledAt.getTime() + viewing.durationMinutes * 60_000 > Date.now()) {
           throw new DomainError('TOUR_DECISION_INVALID', 'The tour has not ended yet. Use cancellation before the start, or record the disruption after the end.', 409);
@@ -2094,14 +2163,14 @@ router.patch(
         if (parsed.data.status === "cancelled" && viewing.status === 'confirmed' && viewing.scheduledAt.getTime() <= Date.now() && !parsed.data.disruptionReason) {
           throw new DomainError('TOUR_DECISION_INVALID', "The tour has already started. Record the outcome instead", 409);
         }
-        if ((['completed', 'no_show'].includes(viewing.status) || viewing.disruptionReason) && !parsed.data.sharedManagerNotes?.trim()) {
-          throw new DomainError('TOUR_DECISION_INVALID', 'Explain the outcome correction in Message to chef. This explanation is shared with the chef.', 400);
+        if ((['completed', 'no_show'].includes(viewing.status) || viewing.disruptionReason) && !outcomeNotes) {
+          throw new DomainError('TOUR_DECISION_INVALID', 'Explain the outcome correction in internal admin notes.', 400);
         }
         if (['completed', 'no_show'].includes(viewing.status) && parsed.data.status === 'cancelled' && !parsed.data.disruptionReason) {
-          throw new DomainError('TOUR_DECISION_INVALID', 'Choose a disruption reason to correct attendance to a disrupted tour', 400);
+          throw new DomainError('TOUR_DECISION_INVALID', 'Choose a disruption reason to record the tour as disrupted', 400);
         }
-        if (parsed.data.disruptionReason === 'other' && !parsed.data.sharedManagerNotes?.trim()) {
-          throw new DomainError('TOUR_DECISION_INVALID', 'Explain the other disruption in Message to chef', 400);
+        if (parsed.data.disruptionReason === 'other' && !outcomeNotes) {
+          throw new DomainError('TOUR_DECISION_INVALID', 'Explain the other disruption', 400);
         }
       }
 
@@ -2127,7 +2196,7 @@ router.patch(
       if (parsed.data.managerNotes) {
         updateData.managerNotes = parsed.data.managerNotes;
       }
-      if (parsed.data.sharedManagerNotes !== undefined) updateData.sharedManagerNotes = parsed.data.sharedManagerNotes || null;
+      if (!recordingResult && parsed.data.sharedManagerNotes !== undefined) updateData.sharedManagerNotes = parsed.data.sharedManagerNotes || null;
       if (isAdmin && parsed.data.status === 'confirmed') {
         updateData.sharedManagerNotes = [viewing.sharedManagerNotes?.trim(), req.body.takeoverReason.trim()].filter(Boolean).join('\n\n');
       }
@@ -2160,7 +2229,8 @@ router.patch(
         updateData.outcomeHistory = [...(Array.isArray(viewing.outcomeHistory) ? viewing.outcomeHistory : []), {
           from: viewing.status, to: parsed.data.status, actorId: userId, actorRole: req.neonUser!.role,
           recordedAt: new Date().toISOString(), reason: parsed.data.noShowReason || parsed.data.cancellationReason || null,
-          notes: parsed.data.managerNotes || null, sharedNotes: parsed.data.sharedManagerNotes || null,
+          notes: parsed.data.managerNotes || null, sharedNotes: recordingResult ? null : parsed.data.sharedManagerNotes || null,
+          ...(recordingResult ? { outcomeNotes } : {}),
           disruptionReason: parsed.data.disruptionReason || null,
         }];
       }
@@ -2210,26 +2280,28 @@ router.get(
       }
 
       const [settings] = await db
-        .select({ isActive: kitchenViewingSettings.isActive })
+        .select({ isActive: kitchenViewingSettings.isActive, arrivalNotes: kitchenViewingSettings.arrivalNotes,
+          departureNotes: kitchenViewingSettings.departureNotes, defaultDurationMinutes: kitchenViewingSettings.defaultDurationMinutes,
+          bufferBeforeMinutes: kitchenViewingSettings.bufferBeforeMinutes, bufferAfterMinutes: kitchenViewingSettings.bufferAfterMinutes })
         .from(kitchenViewingSettings)
         .innerJoin(kitchens, eq(kitchenViewingSettings.kitchenId, kitchens.id))
         .where(and(eq(kitchenViewingSettings.kitchenId, kitchenId), eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active")))
         .limit(1);
 
-      const [openTourDay] = await db
-        .select({ id: kitchenViewingAvailability.id })
+      const hours = await db
+        .select()
         .from(kitchenViewingAvailability)
         .where(
           and(
             eq(kitchenViewingAvailability.kitchenId, kitchenId),
             eq(kitchenViewingAvailability.isAvailable, true)
           )
-        )
-        .limit(1);
+        );
 
       const isActive = settings?.isActive ?? false;
-      const hasSchedule = Boolean(openTourDay);
-      const toursAvailable = isActive && hasSchedule;
+      const readiness = tourReadiness(settings, hours);
+      const hasSchedule = readiness.schedule;
+      const toursAvailable = isActive && readiness.ready;
 
       res.json({ isActive, hasSchedule, toursAvailable });
     } catch (error) {

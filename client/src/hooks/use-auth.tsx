@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { auth, db } from "@/lib/firebase";
 import { getAuthIntent } from "@/lib/auth-intent";
+import { getNotificationSoundPreferences } from "@/lib/notification-sound";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { queryClient } from "@/lib/queryClient";
 import { createUserWithEmailAndPassword, deleteUser, getAdditionalUserInfo, GoogleAuthProvider, isSignInWithEmailLink, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signInWithEmailLink, signInWithPopup, signOut, updateProfile } from "firebase/auth";
@@ -745,18 +746,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingSync(false);
       setPendingRegistration(false);
 
-      // Keep uid-scoped kitchen preview walkthrough so the same account is not toured again.
-      const walkthroughFlags: [string, string][] = [];
+      // Keep user-scoped browser preferences so signing out does not reset sound opt-in/mute.
+      const retainedBrowserPreferences: [string, string][] = [];
       const authMethodHint = localStorage.getItem('localcooks-auth-method-hint');
       // Also kept across sign-out: offering the last account back on the next
       // visit is the entire point of the welcome-back card, and the record is
       // browser-local. "Not you?" is the user-facing way to remove it.
       const lastAccountRecord = localStorage.getItem(LAST_ACCOUNT_KEY);
       try {
+        retainedBrowserPreferences.push(...getNotificationSoundPreferences(localStorage));
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
           if (key && key.startsWith("lc.kitchenPreview.walkthrough") && localStorage.getItem(key) === "1") {
-            walkthroughFlags.push([key, "1"]);
+            retainedBrowserPreferences.push([key, "1"]);
           }
         }
       } catch {
@@ -764,7 +766,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       localStorage.clear();
       try {
-        for (const [key, val] of walkthroughFlags) localStorage.setItem(key, val);
+        for (const [key, val] of retainedBrowserPreferences) localStorage.setItem(key, val);
         if (authMethodHint) localStorage.setItem('localcooks-auth-method-hint', authMethodHint);
         if (lastAccountRecord) localStorage.setItem(LAST_ACCOUNT_KEY, lastAccountRecord);
       } catch {

@@ -1,3 +1,4 @@
+import { tourReadiness } from '@shared/tour-readiness';
 /**
  * Gathers everything a kitchen's publish review needs, from real data.
  *
@@ -16,6 +17,7 @@ import {
   equipmentListings,
   kitchens,
   kitchenViewingSettings,
+  kitchenViewingAvailability,
   storageListings,
   users,
   checkinCheckoutChecklists,
@@ -68,7 +70,7 @@ export async function buildKitchenReadiness(
     ? await locationService.getLocationById(kitchen.locationId).catch(() => null)
     : null;
 
-  const [availability, requirements, viewingSettings, equipmentRows, storageRows, checklistRows, visitWindows] =
+  const [availability, requirements, viewingSettings, equipmentRows, storageRows, checklistRows, visitWindows, tourHours] =
     await Promise.all([
     kitchenService.getKitchenAvailability(kitchenId).catch(() => []),
     /*
@@ -86,7 +88,7 @@ export async function buildKitchenReadiness(
           .catch(() => null)
       : Promise.resolve(null),
       db
-        .select({ isActive: kitchenViewingSettings.isActive })
+        .select()
         .from(kitchenViewingSettings)
         .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1),
@@ -102,6 +104,7 @@ export async function buildKitchenReadiness(
       db.select().from(checkinCheckoutChecklists)
         .where(eq(checkinCheckoutChecklists.locationId, kitchen.locationId)).limit(1),
       getCheckinSettings(kitchen.locationId),
+      db.select().from(kitchenViewingAvailability).where(eq(kitchenViewingAvailability.kitchenId, kitchenId)),
     ]);
 
   const availabilityDayCount = (availability ?? []).filter(
@@ -165,7 +168,7 @@ export async function buildKitchenReadiness(
       && visitChecklist?.storageCheckoutEnabled === true && hasTrackingNotes(visitChecklist, true),
     hasGalleryImages: galleryImages.length > 0,
     hasTerms: isNonEmptyText(location?.kitchenTermsUrl),
-    toursEnabled: Boolean(viewingSettings[0]?.isActive),
+    toursEnabled: Boolean(viewingSettings[0]?.isActive && tourReadiness(viewingSettings[0], tourHours).ready),
     /**
      * Booking rules cannot be unset — `cancellation_policy_hours`, `default_daily_booking_limit` and
      * `minimum_booking_window_hours` are all NOT NULL with defaults, and so is the kitchen's minimum
@@ -219,7 +222,7 @@ export async function buildKitchenReadiness(
       termsUploadedAt: location?.kitchenTermsUploadedAt
         ? new Date(location.kitchenTermsUploadedAt).toISOString()
         : null,
-      toursEnabled: Boolean(viewingSettings[0]?.isActive),
+      toursEnabled: Boolean(viewingSettings[0]?.isActive && tourReadiness(viewingSettings[0], tourHours).ready),
       cancellationPolicyHours: kitchen.cancellationPolicyHours ?? location?.cancellationPolicyHours ?? 24,
       dailyBookingLimit: kitchen.defaultDailyBookingLimit ?? location?.defaultDailyBookingLimit ?? 2,
       minimumBookingWindowHours: kitchen.minimumBookingWindowHours ?? location?.minimumBookingWindowHours ?? 1,

@@ -34,6 +34,9 @@ import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/r
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
+import { NotificationSoundControls } from "@/components/notifications/NotificationSoundControls";
 import { toast } from "@/hooks/use-toast";
 import { formatDistanceToNow, format, isToday, isYesterday, isThisWeek } from "date-fns";
 
@@ -380,29 +383,42 @@ export default function NotificationCenter({
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const { user, loading: isAuthLoading } = useFirebaseAuth();
+  const isAuthReady = !isAuthLoading && !!user;
+  const supportsSound = api === '/api/manager/notifications' && linkRole === 'manager';
+  const sound = useNotificationSound('manager', isAuthReady ? user.uid : undefined, supportsSound);
 
   // Fetch unread count - poll more frequently when popover is open
   const { data: unreadData, isError: unreadError } = useQuery({
-    queryKey: [`${api}/unread-count`, locationId],
-    queryFn: async () => {
+    queryKey: [`${api}/unread-count`, locationId, user?.uid],
+    queryFn: async ({ signal }) => {
       const headers = await getAuthHeaders();
       const url = locationId 
         ? `${api}/unread-count?locationId=${locationId}`
         : `${api}/unread-count`;
-      const res = await fetch(url, { headers });
+      const res = await fetch(url, { headers, signal });
       if (!res.ok) {
         throw new Error(`Failed to fetch unread count: ${res.status}`);
       }
       return res.json();
     },
-    refetchInterval: isOpen ? 10000 : 30000, // Poll every 10s when open, 30s when closed
+    enabled: isAuthReady,
+    refetchInterval: isAuthReady ? (isOpen ? 10000 : supportsSound ? 15000 : 30000) : false,
+    refetchIntervalInBackground: supportsSound,
     retry: 2,
     staleTime: 5000, // Consider data fresh for 5 seconds
   });
 
+  useEffect(() => {
+    if (supportsSound && unreadData && isAuthReady && user.uid === auth.currentUser?.uid
+      && sound.observe(unreadData, String(locationId ?? 'all'))) {
+      void queryClient.invalidateQueries({ queryKey: [api] });
+    }
+  }, [supportsSound, unreadData, isAuthReady, user?.uid, locationId, sound.observe, queryClient, api]);
+
   // Fetch notifications
   const { data: notificationsData, isLoading, isError: notificationsError, refetch } = useQuery<NotificationResponse>({
-    queryKey: [`${api}`, filter, locationId],
+    queryKey: [`${api}`, filter, locationId, user?.uid],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ filter });
@@ -415,7 +431,7 @@ export default function NotificationCenter({
       const data = await res.json();
       return data;
     },
-    enabled: isOpen || variant === "page",
+    enabled: (isOpen || variant === "page") && isAuthReady,
     retry: false,
   });
 
@@ -434,16 +450,16 @@ export default function NotificationCenter({
     // Optimistic update: immediately mark as read in the UI
     onMutate: async (ids: number[]) => {
       // Cancel any outgoing refetches to avoid overwriting optimistic update
-      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId, user?.uid] });
 
       // Snapshot the previous values
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid]);
 
       // Optimistically update notifications
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n =>
             ids.includes(n.id) ? { ...n, is_read: true, read_at: new Date().toISOString() } : n
@@ -454,7 +470,7 @@ export default function NotificationCenter({
       // Optimistically update unread count
       if (previousUnreadCount) {
         const newCount = Math.max(0, previousUnreadCount.count - ids.length);
-        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], { count: newCount });
+        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid], { count: newCount });
       }
 
       return { previousNotifications, previousUnreadCount };
@@ -463,10 +479,10 @@ export default function NotificationCenter({
     onError: (err, ids, context) => {
       logger.error("[NotificationCenter] Failed to mark as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId, user?.uid], context.previousUnreadCount);
       }
       toast.error(tt("failedToMarkAsRead"));
     },
@@ -491,32 +507,32 @@ export default function NotificationCenter({
     },
     // Optimistic update: immediately mark all as read
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId, user?.uid] });
 
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid]);
 
       // Optimistically mark all as read
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
         });
       }
 
       // Set unread count to 0
-      queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], { count: 0 });
+      queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid], { count: 0 });
 
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _, context) => {
       logger.error("[NotificationCenter] Failed to mark all as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId, user?.uid], context.previousUnreadCount);
       }
       toast.error(tt("failedToMarkAllAsRead"));
     },
@@ -542,11 +558,11 @@ export default function NotificationCenter({
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId, user?.uid] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid]);
       
       // Count how many unread notifications are being archived
       const unreadBeingArchived = previousNotifications?.notifications.filter(
@@ -555,7 +571,7 @@ export default function NotificationCenter({
       
       // Optimistically remove archived notifications from the list
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
         });
@@ -563,7 +579,7 @@ export default function NotificationCenter({
       
       // Update unread count if any unread notifications were archived
       if (previousUnreadCount && unreadBeingArchived > 0) {
-        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], {
+        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid], {
           count: Math.max(0, previousUnreadCount.count - unreadBeingArchived)
         });
       }
@@ -573,10 +589,10 @@ export default function NotificationCenter({
     onError: (err, ids, context) => {
       logger.error("[NotificationCenter] Failed to archive:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId, user?.uid], context.previousUnreadCount);
       }
       toast.error(tt("failedToArchiveNotification"));
     },
@@ -602,13 +618,13 @@ export default function NotificationCenter({
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId, user?.uid] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid]);
       
       // Optimistically remove unarchived notifications from the archived list
       if (previousNotifications && filter === "archived") {
-        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
         });
@@ -619,7 +635,7 @@ export default function NotificationCenter({
     onError: (err, ids, context) => {
       logger.error("[NotificationCenter] Failed to unarchive:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId, user?.uid], context.previousNotifications);
       }
       toast.error(tt("failedToUnarchiveNotification"));
     },
@@ -644,18 +660,18 @@ export default function NotificationCenter({
       return res.json();
     },
     onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId] });
+      await queryClient.cancelQueries({ queryKey: [`${api}`, filter, locationId, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: [`${api}/unread-count`, locationId, user?.uid] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid]);
       
       // Find the notification to check if it was unread
       const deletedNotification = previousNotifications?.notifications.find(n => n.id === id);
       
       // Optimistically remove deleted notification from the list
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>([`${api}`, filter, locationId, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => n.id !== id),
         });
@@ -663,7 +679,7 @@ export default function NotificationCenter({
       
       // Update unread count if the deleted notification was unread
       if (previousUnreadCount && deletedNotification && !deletedNotification.is_read) {
-        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId], {
+        queryClient.setQueryData<{ count: number }>([`${api}/unread-count`, locationId, user?.uid], {
           count: Math.max(0, previousUnreadCount.count - 1)
         });
       }
@@ -673,10 +689,10 @@ export default function NotificationCenter({
     onError: (err, id, context) => {
       logger.error("[NotificationCenter] Failed to delete:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData([`${api}`, filter, locationId], context.previousNotifications);
+        queryClient.setQueryData([`${api}`, filter, locationId, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData([`${api}/unread-count`, locationId], context.previousUnreadCount);
+        queryClient.setQueryData([`${api}/unread-count`, locationId, user?.uid], context.previousUnreadCount);
       }
       toast.error(tt("failedToDeleteNotification"));
     },
@@ -771,6 +787,7 @@ export default function NotificationCenter({
             </div>
           </div>
         </div>
+        {supportsSound && <NotificationSoundControls sound={sound} />}
         <div className="border-b bg-muted/50 px-4 py-2" role="navigation" aria-label={mt("notificationFilters")}>
           <Tabs value={filter} onValueChange={(value) => setFilter(value as FilterType)}>
             <TabsList className="w-full gap-1 sm:w-auto">
@@ -875,6 +892,8 @@ export default function NotificationCenter({
             )}
           </div>
         </div>
+
+        {supportsSound && <NotificationSoundControls sound={sound} />}
 
         {/* Filter tabs */}
         <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label={mt("notificationFilters")}>

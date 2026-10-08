@@ -35,7 +35,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     const notes = [tour.chefNotes?.trim() ? ["Your note to the kitchen", tour.chefNotes.trim()] : null,
       tour.arrivalNotes?.trim() ? ["Arrival instructions", tour.arrivalNotes.trim()] : null,
       tour.departureNotes?.trim() ? ["Departure instructions", tour.departureNotes.trim()] : null,
-      tour.sharedManagerNotes?.trim() ? ["Message from the kitchen manager", tour.sharedManagerNotes.trim()] : null,
+      tour.sharedManagerNotes?.trim() ? ["Manager notes", tour.sharedManagerNotes.trim()] : null,
       ["Confirmed at", tour.confirmedAt ? new Intl.DateTimeFormat("en-CA", { timeZone: tour.timezone, dateStyle: "long", timeStyle: "short" }).format(tour.confirmedAt) : "Confirmation time not recorded"]].filter((item): item is string[] => item !== null);
     const contactHeight = 126;
     const noteHeights = notes.map(([, value]) => Math.max(82, 48 + Math.ceil(value.length / 95) * 14));

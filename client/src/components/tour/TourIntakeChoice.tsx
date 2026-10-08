@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** Keep custom and restored legacy answers in the existing string data contract. */
 export function TourIntakeChoice({ id, label, value = "", choices, onChange }: {
@@ -15,16 +16,19 @@ export function TourIntakeChoice({ id, label, value = "", choices, onChange }: {
   const custom = !known && (otherSelected || value !== "");
   return <div className="space-y-2">
     <Label htmlFor={id}>{label}</Label>
-    <select id={id} required value={known ? value : custom ? "other" : ""}
-      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      onChange={event => {
-        setOtherSelected(event.target.value === "other");
-        onChange(event.target.value === "other" ? "" : event.target.value);
+    <Select required value={known ? value : custom ? "other" : ""}
+      onValueChange={answer => {
+        setOtherSelected(answer === "other");
+        onChange(answer === "other" ? "" : answer);
       }}>
-      <option value="" disabled>{t("tourIntakeChoose", "Select an option")}</option>
-      {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
-      <option value="other">{t("tourIntakeUse_other", "Other")}</option>
-    </select>
+      <SelectTrigger id={id} className="rounded-lg">
+        <SelectValue placeholder={t("tourIntakeChoose", "Select an option")} />
+      </SelectTrigger>
+      <SelectContent>
+        {choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}
+        <SelectItem value="other">{t("tourIntakeUse_other", "Other")}</SelectItem>
+      </SelectContent>
+    </Select>
     {custom && <>
       <Label htmlFor={`${id}-other`} className="text-xs text-muted-foreground">{t("tourIntakeSpecify", "Please describe")}</Label>
       <Input id={`${id}-other`} required maxLength={500} value={value}

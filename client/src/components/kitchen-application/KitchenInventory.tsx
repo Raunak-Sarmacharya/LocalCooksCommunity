@@ -123,10 +123,10 @@ function NameCell({ name, hint }: { name: string; hint?: string }) {
     Boolean(hint?.trim()) && !name.toLowerCase().includes(hint!.trim().toLowerCase());
 
   return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className="truncate text-sm text-gray-900">{name}</span>
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 [overflow-wrap:anywhere]">
+      <span className="min-w-0 break-words text-sm text-gray-900">{name}</span>
       {showHint ? (
-        <span className="hidden truncate text-xs text-gray-400 sm:inline">{hint}</span>
+        <span className="hidden min-w-0 break-words text-xs text-gray-400 sm:inline">{hint}</span>
       ) : null}
     </span>
   );
@@ -581,14 +581,14 @@ export function InventoryModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        showCloseButton={false}
+        showCloseButton
         overlayClassName={stacked ? "z-[60]" : undefined}
         className={cn(
-          "flex max-h-[85vh] w-[min(100vw-1.5rem,32rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg",
+          "flex max-h-[85dvh] w-[min(100vw-1.5rem,32rem)] flex-col gap-0 overflow-hidden p-0 [overflow-wrap:anywhere] sm:max-w-lg",
           stacked && "z-[60]"
         )}
       >
-        <DialogHeader className="shrink-0 space-y-1 border-b border-gray-100 px-4 pb-3 pt-4 text-left sm:px-5 sm:pb-3.5 sm:pt-5">
+        <DialogHeader className="min-w-0 shrink-0 space-y-1 border-b border-gray-100 px-4 pb-3 pt-4 pr-14 text-left sm:px-5 sm:pb-3.5 sm:pt-5 sm:pr-14">
           <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
           <DialogDescription className="text-sm leading-relaxed">
             {description}
@@ -597,7 +597,7 @@ export function InventoryModal({
         <div className="relative min-h-0 flex-1 overflow-hidden">
           <div
             ref={scrollRef}
-            className="scrollbar-none max-h-[min(62vh,34rem)] overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
+            className="scrollbar-none h-full max-h-[min(62dvh,34rem)] min-h-0 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
           >
             {children}
           </div>

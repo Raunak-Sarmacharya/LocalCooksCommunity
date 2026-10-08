@@ -10,7 +10,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Calendar as CalendarIcon, Loader2, Plus, Trash2, Save } from "@/components/ui/manager-icons"
+import { Calendar as CalendarIcon, Loader2, Plus, Trash2, Save, CheckCircle, ArrowRight } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,9 @@ import { format, isBefore } from "date-fns"
 import { formatTourDate, tourDateKey } from "@shared/tour-time"
 import { tourToday } from "@/lib/tour-available-date"
 import { AvailabilitySkeleton } from "./AvailabilitySkeleton"
+import { journeyCalendarClassNames } from "@/components/kitchen-application/journey-calendar-style"
+import { tourReadiness } from '@shared/tour-readiness'
+import { copyableTourHours } from '@shared/tour-schedule'
 
 const TAB_TRIGGER = "group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
 
@@ -117,15 +120,23 @@ interface ViewingSettingsPanelProps {
   hideSaveActions?: boolean
   kitchenId: number
   kitchenName?: string
+  kitchenIsListed?: boolean
+  disabled?: boolean
+  onSavingChange?: (saving: boolean) => void
+  onReturnToTour?: () => void
+  onPrepareSchedule?: () => void
+  onPauseTours?: () => void
+  initialSection?: 'weekly' | 'instructions'
   facilityKitchenCount?: number
   onDirtyChange?: (dirty: boolean) => void
 }
 
 export interface ViewingSettingsPanelHandle {
   saveChanges: () => Promise<boolean>
+  activateTours: () => Promise<boolean>
 }
 
-export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, ViewingSettingsPanelProps>(function ViewingSettingsPanel({ kitchenId, kitchenName, facilityKitchenCount = 1, onDirtyChange, hideSaveActions = false }, ref) {
+export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, ViewingSettingsPanelProps>(function ViewingSettingsPanel({ kitchenId, kitchenName, kitchenIsListed = true, disabled = false, onSavingChange, onReturnToTour, onPrepareSchedule, onPauseTours, initialSection, facilityKitchenCount = 1, onDirtyChange, hideSaveActions = false }, ref) {
   
   const queryClient = useQueryClient()
 
@@ -137,9 +148,11 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   const [maxDays, setMaxDays] = useState(30)
   const [arrivalNotes, setArrivalNotes] = useState("")
   const [departureNotes, setDepartureNotes] = useState("")
+  const [showRequiredErrors, setShowRequiredErrors] = useState(false)
 
   // Layout tabs
-  const [activeTab, setActiveTab] = useState("weekly")
+  const [activeTab, setActiveTab] = useState<string>(() => new URLSearchParams(window.location.search).get('focus') === 'tour-notes' ? 'instructions' : initialSection ?? 'weekly')
+  useEffect(() => { if (initialSection) setActiveTab(initialSection) }, [initialSection])
 
   // Weekly availability editing - map to exactly 1 per day
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, AvailabilitySlot>>({})
@@ -251,16 +264,31 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   const isSettingsDirty = !!savedSettings && JSON.stringify(currentSettings) !== savedSettings
   const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule
   dirtyFields.current = { settings: isSettingsDirty, schedule: isScheduleDirty }
+  const readiness = tourReadiness(currentSettings, isScheduleDirty ? Object.values(weeklySchedule) : data?.availability ?? [])
+  const savedReadiness = tourReadiness(data?.settings, data?.availability ?? [])
+  const activated = data?.settings?.isActive === true && savedReadiness.ready
+  const live = activated && kitchenIsListed
+  const focusSetup = (part: 'arrival' | 'departure' | 'schedule') => {
+    setActiveTab(part === 'schedule' ? 'weekly' : 'instructions')
+    requestAnimationFrame(() => {
+      const target = document.getElementById(part === 'schedule' ? 'tour-weekly-hours' : `tour-${part}-notes-${kitchenId}`)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      target?.focus({ preventScroll: true })
+    })
+  }
 
   // Save settings mutation
   const saveSettingsMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (activate: boolean) => {
       const headers = await getAuthHeaders()
       const response = await fetch(`/api/viewings/settings/${kitchenId}`, {
         method: "PUT",
         headers,
         credentials: "include",
-        body: JSON.stringify(currentSettings),
+        body: JSON.stringify({ ...currentSettings,
+          ...(activate ? { isActive: true } : data?.settings?.isActive && !savedReadiness.ready ? { isActive: false } : {}),
+          ...(isScheduleDirty ? { slots: Object.values(weeklySchedule).filter(s => s.isAvailable) } : {}),
+        }),
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
@@ -268,58 +296,49 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
       }
       return response.json()
     },
-    onSuccess: () => {
+    onSuccess: (settings: ViewingSettings, activate) => {
       setSavedSettings(JSON.stringify(currentSettings))
+      setSavedWeeklySchedule(JSON.stringify(weeklySchedule))
+      queryClient.setQueryData<ViewingSettingsResponse>([`/api/viewings/settings/${kitchenId}`], old => ({
+        settings, availability: isScheduleDirty ? Object.values(weeklySchedule).filter(s => s.isAvailable) : old?.availability ?? [],
+        blackouts: old?.blackouts ?? [], timezone: old?.timezone,
+      }))
       queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
-      toast.success(mt("viewingSettingsSaved"))
+      queryClient.invalidateQueries({ queryKey: [`/api/viewings/kitchen/${kitchenId}/is-active`] })
+      queryClient.invalidateQueries({ queryKey: ['kitchen-listing-readiness', kitchenId] })
+      queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith('/api/viewings/manager') })
+      queryClient.invalidateQueries({ queryKey: ['tour-decision-context'] })
+      setShowRequiredErrors(false)
+      toast.success(mt(activate ? kitchenIsListed ? 'tourActivatedToast' : 'tourActivatedUnlistedToast' : activated ? 'tourChangesSavedToast' : 'tourDraftSavedToast'))
     },
     onError: (error: Error) => toast.error(error.message),
   })
 
-  // Save availability mutation
-  const saveAvailabilityMutation = useMutation({
-    mutationFn: async () => {
-      const slotsToSave = Object.values(weeklySchedule).filter((s) => s.isAvailable)
-      const headers = await getAuthHeaders()
-      const response = await fetch(`/api/viewings/availability/${kitchenId}`, {
-        method: "PUT",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({
-          slots: slotsToSave,
-        }),
-      })
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || mt("weeklyAvailabilitySaveFailed"))
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      setSavedWeeklySchedule(JSON.stringify(weeklySchedule))
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
-      toast.success(mt("weeklyAvailabilitySaved"))
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
+  const saveChanges = async (activate = false) => {
+    if (disabled || saveSettingsMutation.isPending || isLoading || isError || !data) return false
+    if ((activate || activated) && !readiness.ready) {
+      setShowRequiredErrors(true)
+      focusSetup(!readiness.arrival ? 'arrival' : !readiness.departure ? 'departure' : 'schedule')
+      return false
+    }
+    try {
+      if (activate || isSettingsDirty || isScheduleDirty) await saveSettingsMutation.mutateAsync(activate)
+      return true
+    } catch { return false }
+  }
 
   useEffect(() => {
     onDirtyChange?.(isSettingsDirty || isScheduleDirty)
   }, [isScheduleDirty, isSettingsDirty, onDirtyChange])
 
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
+  useEffect(() => { onSavingChange?.(saveSettingsMutation.isPending) }, [onSavingChange, saveSettingsMutation.isPending])
+  useEffect(() => () => onSavingChange?.(false), [onSavingChange])
 
   useImperativeHandle(ref, () => ({
-    saveChanges: async () => {
-      try {
-        if (isSettingsDirty) await saveSettingsMutation.mutateAsync()
-        if (isScheduleDirty) await saveAvailabilityMutation.mutateAsync()
-        return true
-      } catch {
-        return false
-      }
-    },
-  }), [isScheduleDirty, isSettingsDirty, saveAvailabilityMutation, saveSettingsMutation])
+    saveChanges: () => saveChanges(),
+    activateTours: () => saveChanges(true),
+  }))
 
   // Add blackout mutation
   const addBlackoutMutation = useMutation({
@@ -410,43 +429,125 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
+      <header className="space-y-3 border-b pb-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-2"><h2 className="text-xl font-semibold tracking-tight">{mt(activated ? 'tourManageTitle' : 'tourSetUpTitle')}</h2><p role="status" className="max-w-2xl text-sm leading-6 text-muted-foreground">{mt(live ? 'tourLiveHelp' : activated ? 'tourUnlistedHelp' : 'tourSetupHelp')}</p></div>
+          <div className="flex shrink-0 flex-wrap items-center gap-3"><Badge variant={live ? 'success' : 'outline'}>{mt(live ? 'tourStateLive' : activated ? 'tourStateUnlisted' : savedReadiness.ready ? 'tourStateReady' : data?.settings?.isActive ? 'tourStateIncomplete' : 'tourStateOff')}</Badge>
+            {data?.settings?.isActive && onPauseTours && <Button variant="outline" size="sm" disabled={disabled || saveSettingsMutation.isPending} onClick={onPauseTours}>{mt('tourPauseAction')}</Button>}
+          </div>
+        </div>
+        {!activated && <p className="text-xs text-muted-foreground">{mt('tourSetupStepsProgress', { count: Number(readiness.schedule) + Number(readiness.arrival && readiness.departure) })}{(isSettingsDirty || isScheduleDirty) && <span className="ml-2">· {mt('tourUnsavedSetup')}</span>}</p>}
+        {activated && (isSettingsDirty || isScheduleDirty) && <p className="text-xs text-muted-foreground">{mt('tourUnsavedSetup')}</p>}
+        {showRequiredErrors && !readiness.ready && <p role="alert" className="text-sm text-destructive">{mt(activated ? 'tourLiveRequiredSummary' : 'tourRequiredSummary')}</p>}
+      </header>
+      <fieldset disabled={disabled || saveSettingsMutation.isPending} className="min-w-0 space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList aria-label={mt('tourSetupSections')} className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
+          <TabsTrigger value="weekly" className={TAB_TRIGGER}><span aria-hidden className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">{readiness.schedule ? <CheckCircle className="size-3.5" /> : '1'}</span>{mt('tourScheduleTab')}</TabsTrigger>
+          <TabsTrigger value="instructions" className={TAB_TRIGGER}><span aria-hidden className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">{readiness.arrival && readiness.departure ? <CheckCircle className="size-3.5" /> : '2'}</span>{mt('tourInstructionsTab')}</TabsTrigger>
+          <TabsTrigger value="calendar" className={TAB_TRIGGER}>{mt('exceptionsCalendar')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="instructions" className="mt-6 space-y-5">
       <Card id="tour-visit-notes" tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-primary/30">
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-lg">{mt("tourVisitNotesTitle")}</CardTitle>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-lg">{mt("tourVisitNotesTitle")}</CardTitle>
+            {onReturnToTour && <Button variant="outline" onClick={onReturnToTour} className="shrink-0">{mt('tourReturnToDetails')}</Button>}
+          </div>
+          {onReturnToTour && <p className="text-sm text-muted-foreground">{mt('tourEditingFromDetailsHelp')}</p>}
           <CardDescription>{mt("tourVisitNotesDescription", { kitchen: kitchenName ?? mt("kitchenScopeFallback") })}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5 p-4 pt-0 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor={`tour-arrival-notes-${kitchenId}`}>{mt("arrivalInstructionsTitle")}</Label>
+            <span className="ml-2 text-xs text-muted-foreground">{mt('tourRequiredLabel')}</span>
             <p id={`tour-arrival-help-${kitchenId}`} className="text-xs text-muted-foreground">{mt("tourArrivalNotesHelp")}</p>
-            <Textarea id={`tour-arrival-notes-${kitchenId}`} aria-describedby={`tour-arrival-help-${kitchenId}`} rows={4} maxLength={2000}
+            <Textarea id={`tour-arrival-notes-${kitchenId}`} aria-required aria-invalid={showRequiredErrors && !readiness.arrival} aria-describedby={`tour-arrival-help-${kitchenId}${showRequiredErrors && !readiness.arrival ? ` tour-arrival-error-${kitchenId}` : ''}`} rows={4} maxLength={2000}
               value={arrivalNotes} onChange={event => setArrivalNotes(event.target.value)} placeholder={mt("tourArrivalNotesPlaceholder")} />
+            {showRequiredErrors && !readiness.arrival && <p id={`tour-arrival-error-${kitchenId}`} className="text-xs text-destructive">{mt('tourArrivalRequired')}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor={`tour-departure-notes-${kitchenId}`}>{mt("departureInstructionsTitle")}</Label>
+            <span className="ml-2 text-xs text-muted-foreground">{mt('tourRequiredLabel')}</span>
             <p id={`tour-departure-help-${kitchenId}`} className="text-xs text-muted-foreground">{mt("tourDepartureNotesHelp")}</p>
-            <Textarea id={`tour-departure-notes-${kitchenId}`} aria-describedby={`tour-departure-help-${kitchenId}`} rows={4} maxLength={2000}
+            <Textarea id={`tour-departure-notes-${kitchenId}`} aria-required aria-invalid={showRequiredErrors && !readiness.departure} aria-describedby={`tour-departure-help-${kitchenId}${showRequiredErrors && !readiness.departure ? ` tour-departure-error-${kitchenId}` : ''}`} rows={4} maxLength={2000}
               value={departureNotes} onChange={event => setDepartureNotes(event.target.value)} placeholder={mt("tourDepartureNotesPlaceholder")} />
+            {showRequiredErrors && !readiness.departure && <p id={`tour-departure-error-${kitchenId}`} className="text-xs text-destructive">{mt('tourDepartureRequired')}</p>}
           </div>
         </CardContent>
-        {!hideSaveActions && isSettingsDirty && <div className="flex justify-end border-t p-4">
-          <Button size="sm" disabled={saveSettingsMutation.isPending} onClick={() => saveSettingsMutation.mutate()}>{mt("saveChanges")}</Button>
+        {(!hideSaveActions || onReturnToTour) && isSettingsDirty && <div className="flex justify-end border-t p-4">
+          <Button size="sm" disabled={saveSettingsMutation.isPending} onClick={() => void saveChanges()}>{mt("saveChanges")}</Button>
         </div>}
       </Card>
-      <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
-          <TabsTrigger value="weekly" className={TAB_TRIGGER}>
-            {mt("weeklySchedule")}
-          </TabsTrigger>
-          <TabsTrigger value="calendar" className={TAB_TRIGGER}>
-            {mt("exceptionsCalendar")}
-          </TabsTrigger>
-          <TabsTrigger value="settings" className={TAB_TRIGGER}>{mt("viewingSettings")}</TabsTrigger>
-        </TabsList>
-
-      <TabsContent value="settings" className="mt-6">
-      <Card>
+      <details className="rounded-xl border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{mt('tourPreviewInstructions')}</summary>
+        <p className="mt-3 text-xs text-muted-foreground">{mt('tourPreviewHelp')}</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">{(['arrival', 'departure'] as const).map(part => <div key={part} className="rounded-lg bg-muted/30 p-3"><h3 className="text-sm font-medium">{mt(part === 'arrival' ? 'arrivalInstructionsTitle' : 'departureInstructionsTitle')}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{currentSettings[`${part}Notes`].trim() || mt('tourPreviewEmpty')}</p></div>)}</div>
+      </details>
+        {!activated && <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">{mt(readiness.ready ? kitchenIsListed ? 'tourActivateHelp' : 'tourActivateUnlistedHelp' : !readiness.schedule ? 'tourInstructionsNeedSchedule' : 'tourInstructionsNextHelp')}</p>
+          {readiness.ready ? <Button disabled={disabled || saveSettingsMutation.isPending} className="h-auto min-h-11 shrink-0 whitespace-normal py-2" onClick={() => void saveChanges(true)}>{saveSettingsMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}{mt('tourActivateAction')}</Button>
+            : !readiness.schedule && <Button variant="outline" onClick={() => focusSetup('schedule')}>{mt('tourSetScheduleAction')}<ArrowRight aria-hidden className="ml-2 size-4" /></Button>}
+        </div>}
+        </TabsContent>
+        <TabsContent value="weekly" className="space-y-6 mt-6">
+          <Card id="tour-weekly-hours" tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-primary/30">
+            <CardHeader className="flex flex-col items-stretch justify-between gap-3 space-y-0 p-4 sm:flex-row sm:items-center">
+              <div className="min-w-0 space-y-1">
+                <CardTitle className="text-lg">{mt("recurringWeeklyHours")}</CardTitle>
+                <CardDescription>{mt("defaultHoursAvailableForKitchenViewings")}</CardDescription>
+              </div>
+              {!hideSaveActions && (isScheduleDirty || saveSettingsMutation.isPending) && <Button
+                onClick={() => void saveChanges()}
+                disabled={saveSettingsMutation.isPending || !isScheduleDirty}
+                className="h-auto min-h-11 whitespace-normal py-2 sm:shrink-0"
+              >
+                {saveSettingsMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                {mt("saveSchedule")}
+              </Button>}
+            </CardHeader>
+            {!savedReadiness.schedule && onPrepareSchedule && <div className="mx-4 mb-4 flex flex-col gap-2 rounded-lg bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">{mt('tourCopySchedulePrompt')}</p><Button variant="outline" size="sm" disabled={isScheduleDirty} onClick={onPrepareSchedule}>{mt('tourChooseScheduleSource')}</Button></div>}
+            <p className="px-4 pb-3 text-sm text-muted-foreground">{mt("tourHoursOvernightHelp")}</p>
+            <p className="px-4 pb-3 text-xs text-muted-foreground">{mt('tourScheduleRequirement', { minutes: duration + bufferBefore + bufferAfter, timezone: data?.timezone ?? 'America/St_Johns' })}</p>
+            {showRequiredErrors && !readiness.schedule && <p className="px-4 pb-3 text-sm text-destructive">{mt('tourScheduleRequired')}</p>}
+            <CardContent className="divide-y p-0">
+              {DAY_NAMES.map((dayName, index) => {
+                const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00", dayOfWeek: index, kitchenId };
+                return (
+                  <div key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[7rem_minmax(0,1fr)_auto]">
+                    <Label className="text-sm font-medium text-foreground">{dayName}</Label>
+                    <div className="order-3 col-span-2 flex min-w-0 items-center gap-2 sm:order-2 sm:col-span-1 sm:justify-end">
+                      {schedule.isAvailable ? (
+                        <>
+                          <Input type="time" aria-label={dayName + " " + mt("open")} className="min-h-11 min-w-0 flex-1 text-base sm:w-28 sm:flex-none sm:text-sm" value={schedule.startTime || "09:00"}
+                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, startTime: e.target.value } }))} />
+                          <span className="select-none text-muted-foreground" aria-hidden>–</span>
+                          <Input type="time" aria-label={dayName + " " + mt("closed")} className="min-h-11 min-w-0 flex-1 text-base sm:w-28 sm:flex-none sm:text-sm" value={schedule.endTime || "17:00"}
+                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, endTime: e.target.value } }))} />
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                          <span className="size-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
+                          {mt("closed")}
+                        </span>
+                      )}
+                    </div>
+                    <Switch className="order-2 justify-self-end sm:order-3 sm:justify-self-auto" aria-label={dayName} checked={schedule.isAvailable}
+                      onCheckedChange={(checked) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, isAvailable: checked } }))} />
+                    {schedule.isAvailable && !copyableTourHours([schedule], duration, bufferBefore, bufferAfter).length && <p className="order-4 col-span-2 text-xs text-muted-foreground sm:col-span-3">{mt('tourWindowTooShort', { minutes: duration + bufferBefore + bufferAfter })}</p>}
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+      <details className="group rounded-xl border bg-card">
+        <summary className="cursor-pointer px-4 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{mt('tourTimingRules')}<span className="mt-1 block text-xs font-normal text-muted-foreground">{mt('tourTimingSummary', { duration, notice: advanceNotice, buffer: bufferBefore + bufferAfter })}</span></summary>
+      <div className="border-t">
         <CardHeader className="p-4 pb-3">
           <CardTitle className="text-lg">{mt("viewingSettings")}</CardTitle>
           <CardDescription>{mt("tourSettingsKitchenScope", { kitchen: kitchenName ?? mt("kitchenScopeFallback") })}</CardDescription>
@@ -470,7 +571,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
         </CardContent>
           {!hideSaveActions && (isSettingsDirty || saveSettingsMutation.isPending) && <div className="flex justify-end border-t p-4">
             <Button
-              onClick={() => saveSettingsMutation.mutate()}
+              onClick={() => void saveChanges()}
               disabled={saveSettingsMutation.isPending || !isSettingsDirty}
               size="sm"
               className="w-full sm:w-auto"
@@ -480,62 +581,18 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              Save Settings
+              {mt('saveChanges')}
             </Button>
           </div>}
 
-      </Card>
-      </TabsContent>
+      </div>
+      </details>
 
-        <TabsContent value="weekly" className="space-y-6 mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
-              <div className="space-y-1">
-                <CardTitle className="text-lg">{mt("recurringWeeklyHours")}</CardTitle>
-                <CardDescription>{mt("defaultHoursAvailableForKitchenViewings")}</CardDescription>
-              </div>
-              {!hideSaveActions && (isScheduleDirty || saveAvailabilityMutation.isPending) && <Button
-                onClick={() => saveAvailabilityMutation.mutate()}
-                disabled={saveAvailabilityMutation.isPending || !isScheduleDirty}
-              >
-                {saveAvailabilityMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                {mt("saveSchedule")}
-              </Button>}
-            </CardHeader>
-            <p className="px-4 pb-3 text-sm text-muted-foreground">{mt("tourHoursOvernightHelp")}</p>
-            <CardContent className="divide-y p-0">
-              {DAY_NAMES.map((dayName, index) => {
-                const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00", dayOfWeek: index, kitchenId };
-                return (
-                  <div key={index} className="grid grid-cols-1 items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[7rem_1fr_auto]">
-                    <Label className="text-sm font-medium text-foreground">{dayName}</Label>
-                    <div className="order-3 col-span-2 flex items-center gap-2 sm:order-2 sm:col-span-1 sm:justify-end">
-                      {schedule.isAvailable ? (
-                        <>
-                          <Input type="time" aria-label={dayName + " " + mt("open")} className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none" value={schedule.startTime || "09:00"}
-                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, startTime: e.target.value } }))} />
-                          <span className="select-none text-muted-foreground" aria-hidden>–</span>
-                          <Input type="time" aria-label={dayName + " " + mt("closed")} className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none" value={schedule.endTime || "17:00"}
-                            onChange={(e) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, endTime: e.target.value } }))} />
-                        </>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          <span className="size-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
-                          {mt("closed")}
-                        </span>
-                      )}
-                    </div>
-                    <Switch className="order-2 justify-self-end sm:order-3 sm:justify-self-auto" aria-label={dayName} checked={schedule.isAvailable}
-                      onCheckedChange={(checked) => setWeeklySchedule((prev) => ({ ...prev, [index]: { ...schedule, isAvailable: checked } }))} />
-                  </div>
-                )
-              })}
-            </CardContent>
-          </Card>
+
+          {!activated && <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">{mt(readiness.schedule ? 'tourScheduleNextHelp' : 'tourScheduleRequired')}</p>
+            <Button disabled={!readiness.schedule} onClick={() => focusSetup('arrival')} className="h-auto min-h-11 whitespace-normal py-2">{mt('tourContinueInstructions')}<ArrowRight aria-hidden className="ml-2 size-4" /></Button>
+          </div>}
         </TabsContent>
 
         <TabsContent value="calendar" className="mt-6">
@@ -548,7 +605,8 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
               <CardContent className="p-4 flex justify-center items-center">
                 <Calendar
                   mode="single"
-                  className="p-3 w-full"
+                  className="w-full min-w-0 p-0"
+                  classNames={journeyCalendarClassNames(false)}
                   modifiers={blackoutModifiers}
                   modifiersClassNames={{
                     blackout: "bg-destructive/10 text-destructive font-bold rounded-full after:content-['•'] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:text-destructive after:text-lg"
@@ -556,7 +614,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                 />
               </CardContent>
               <div className="p-4 border-t bg-muted/10">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="destructive" className="h-2 w-2 p-0 rounded-full" />
                     <span>{mt("exceptionDates")}</span>
@@ -580,32 +638,33 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                   </div>
                 ) : (
                   <div className="w-full overflow-x-auto">
-                    <Table>
-                    <TableHeader>
+                    <Table className="block sm:table">
+                    <TableHeader className="hidden sm:table-header-group">
                       <TableRow>
                         <TableHead>{mt("dates")}</TableHead>
                         <TableHead>{mt("reason")}</TableHead>
                         <TableHead className="text-right">{mt("actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
+                    <TableBody className="block sm:table-row-group">
                       {data.blackouts.map((blackout) => (
-                        <TableRow key={blackout.id}>
-                          <TableCell className="font-medium whitespace-nowrap">
+                        <TableRow key={blackout.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 p-4 sm:table-row sm:p-0">
+                          <TableCell className="block min-w-0 p-0 font-medium sm:table-cell sm:p-4">
                             <div className="flex flex-col">
                               <span>{formatTourDate(new Date(blackout.startDate))} - {formatTourDate(new Date(blackout.endDate))}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="col-span-2 row-start-2 block min-w-0 p-0 sm:table-cell sm:p-4">
                             <span className="text-xs text-muted-foreground">{blackout.reason || "—"}</span>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="col-start-2 row-start-1 block p-0 text-right sm:table-cell sm:p-4">
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  className="h-11 w-11 p-0 text-muted-foreground hover:text-destructive sm:h-8 sm:w-8"
+                                  aria-label={mt("removeException2")}
                                   onClick={() => setBlackoutScope("tour-kitchen")}
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -638,24 +697,25 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
           </div>
         </TabsContent>
       </Tabs>
+      </fieldset>
 
 
       {/* Exception Dialog */}
       <Dialog open={isBlackoutDialogOpen} onOpenChange={(open) => { setIsBlackoutDialogOpen(open); if (!open) setAffectedBookingIds([]) }}>
-        <DialogContent>
+        <DialogContent className="min-w-0 [overflow-wrap:anywhere]">
           <DialogHeader>
             <DialogTitle>{mt("addExceptionPeriod")}</DialogTitle>
             <DialogDescription>{mt("blockOffDatesWhenViewingsAreCompletelyUnavailable")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 flex flex-col">
                 <Label>{mt("startDate")}</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn("w-full justify-start text-left font-normal", !blackoutStart && "text-muted-foreground")}
+                      className={cn("h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left font-normal", !blackoutStart && "text-muted-foreground")}
                     >
                       <CalendarIcon className="h-4 w-4 mr-2" />
                       {blackoutStart ? format(blackoutStart, "MMM d, yyyy") : "Start"}
@@ -679,7 +739,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn("w-full justify-start text-left font-normal", !blackoutEnd && "text-muted-foreground")}
+                      className={cn("h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left font-normal", !blackoutEnd && "text-muted-foreground")}
                     >
                       <CalendarIcon className="h-4 w-4 mr-2" />
                       {blackoutEnd ? format(blackoutEnd, "MMM d, yyyy") : "End"}
@@ -712,7 +772,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
               {mt("exceptionExistingBookingsStay")}
             </p>}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:space-x-0 [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2">
             <Button variant="ghost" onClick={() => setIsBlackoutDialogOpen(false)}>{mt("cancel")}</Button>
             <Button onClick={() => addBlackoutMutation.mutate(affectedBookingIds.length ? affectedBookingIds : undefined)} disabled={addBlackoutMutation.isPending || !blackoutStart || !blackoutEnd}>
               {addBlackoutMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

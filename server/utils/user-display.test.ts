@@ -11,6 +11,12 @@ beforeEach(() => {
 });
 
 describe("chef names in manager responses", () => {
+  it("prefers the entered full name over a provider display name", async () => {
+    state.select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{
+      firebaseUid: "google-chef", managerProfileData: { fullName: "Alexandra Chen", displayName: "Google Chef" },
+    }] }) }) });
+    expect(await getUserDisplayName(5, 'chef')).toBe("Alexandra Chen");
+  });
   it('uses the supplied transaction for email name resolution', async () => {
     const select = vi.fn().mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ managerProfileData: { fullName: 'Alex Chen' } }] }) }) });
     expect(await getUserDisplayName(5, 'chef', { select } as any)).toBe('Alex Chen');

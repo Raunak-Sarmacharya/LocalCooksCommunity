@@ -18,6 +18,14 @@ const entries = readdirSync(root).flatMap((locale) =>
 );
 
 describe("locale bundles", () => {
+  it("keeps attendance terminology out of chef and manager interface copy", () => {
+    for (const namespace of ['chef', 'manager', 'common', 'kitchen']) {
+      const bundle = JSON.parse(readFileSync(join(root, 'en-CA', `${namespace}.json`), 'utf8'));
+      for (const [key, value] of Object.entries(bundle)) {
+        if (typeof value === 'string') expect(value, `${namespace}:${key}`).not.toMatch(/\battendance\b/i);
+      }
+    }
+  });
   it("has messages to check", () => {
     expect(entries.length).toBeGreaterThan(0);
   });

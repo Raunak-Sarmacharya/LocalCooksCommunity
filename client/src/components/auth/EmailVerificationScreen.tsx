@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 interface EmailVerificationScreenProps {
   email: string;
   onResend: () => Promise<void>;
-  onGoBack: () => void;
+  onGoBack: () => void | Promise<void>;
   onCheckVerified?: () => Promise<boolean | void>;
   resendLoading?: boolean;
   mode?: "verification" | "magic-link";
@@ -58,6 +58,20 @@ export default function EmailVerificationScreen({
   const [resendError, setResendError] = useState<string | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+
+  const handleGoBack = async () => {
+    if (isLeaving) return;
+    setIsLeaving(true);
+    setVerificationError(null);
+    try {
+      await onGoBack();
+    } catch {
+      setVerificationError("We couldn't switch accounts. Please try again.");
+    } finally {
+      setIsLeaving(false);
+    }
+  };
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -122,7 +136,7 @@ export default function EmailVerificationScreen({
                     setVerificationError("We haven't detected verification yet. Open the link in your email, then try again.");
                   }
                 } else {
-                  onGoBack();
+                  await handleGoBack();
                 }
               } catch {
                 setVerificationError("We couldn't check your verification status. Please try again.");
@@ -130,7 +144,7 @@ export default function EmailVerificationScreen({
                 setIsChecking(false);
               }
             }}
-            disabled={isChecking}
+            disabled={isChecking || isLeaving}
             className="w-full bg-[#E00A38] text-white hover:bg-[#C00930]"
           >
             {isChecking ? (
@@ -146,7 +160,7 @@ export default function EmailVerificationScreen({
           type="button"
           variant="outline"
           onClick={handleResend}
-          disabled={resendDisabled || resendLoading}
+          disabled={resendDisabled || resendLoading || isLeaving}
           className="w-full border-slate-200"
         >
           {resendLoading ? (
@@ -220,7 +234,8 @@ export default function EmailVerificationScreen({
         Wrong email?{" "}
         <button
           type="button"
-          onClick={onGoBack}
+          onClick={handleGoBack}
+          disabled={isLeaving || isChecking}
           // index.css forces min-height/min-width 44px on EVERY button, which
           // would blow this inline link out of its line.
           className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"

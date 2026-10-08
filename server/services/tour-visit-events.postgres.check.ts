@@ -114,3 +114,18 @@ it('database rejects mutation/deletion, invalid cross-tour successors and second
   const insert = (id: number) => clients[0].query("INSERT INTO tour_visit_events(viewing_id,kind,event_key,supersedes_id,actor_id,source,actual_at,scheduled_at) VALUES($1,'arrival',$2,$3,2,'correction',$4,$5)",[id,randomUUID(),original,arrival.actualAt,start]);
   await expect(insert(2)).rejects.toThrow('same tour'); await expect(insert(1)).rejects.toThrow('tour_visit_events_one_successor');
 });
+it('records admin outcome notes privately while preserving the shared manager message', async () => {
+  const explanation = 'PRIVATE outcome review and evidence used for the decision.';
+  await connections[0].transaction(async tx => {
+    const before = await getTour(0, 1);
+    const after = { ...before, status: 'completed' as const, sharedManagerNotes: 'Use the side entrance.',
+      updatedAt: new Date(now.getTime() + 2), outcomeHistory: [{ from: before.status, to: 'completed', actorRole: 'admin',
+        outcomeNotes: explanation, sharedNotes: null }] };
+    await tx.update(kitchenViewings).set(after).where(eq(kitchenViewings.id, 1));
+    await appendVisitResult(tx as any, before, after, 30, 'admin');
+  });
+  const saved = await getTour(0, 1);
+  const event = (await clients[0].query("SELECT internal_notes,shared_explanation FROM tour_visit_events WHERE viewing_id=1 AND kind='result' ORDER BY id DESC LIMIT 1")).rows[0];
+  expect(saved.sharedManagerNotes).toBe('Use the side entrance.');
+  expect(event).toEqual({ internal_notes: explanation, shared_explanation: null });
+});

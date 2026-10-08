@@ -125,7 +125,7 @@ const itemVariants = {
 export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
-  const { user: authUser, signup, authenticateWithGoogle, syncUserWithBackend, loading, error, updateUserVerification, refreshUserData } = useFirebaseAuth();
+  const { user: authUser, signup, authenticateWithGoogle, syncUserWithBackend, loading, error, updateUserVerification, refreshUserData, logout } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -678,9 +678,15 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         <EmailVerificationScreen
           email={emailForVerification}
           onResend={handleResendVerification}
-          onGoBack={() => {
+          onGoBack={async () => {
+            if (auth.currentUser) {
+              await logout();
+              if (auth.currentUser) throw new Error("Could not sign out of the current registration.");
+            }
             setShowEmailVerification(false);
             setAuthState('idle');
+            setEmailForVerification("");
+            form.reset();
             if (onSwitchToLogin) {
               onSwitchToLogin();
             }

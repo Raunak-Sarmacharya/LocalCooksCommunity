@@ -43,9 +43,9 @@ export async function assistKitchenVisit(bookingId: number, managerId: number, i
     if (new Date(input.expectedUpdatedAt).getTime() !== current.updatedAt.getTime()) throw Error('Visit changed; refresh before assisting');
     if (input.action === 'arrival' ? ![null, 'not_checked_in'].includes(current.checkinStatus)
       : ![null, 'not_checked_in', 'checked_in'].includes(current.checkinStatus))
-      throw Error('Use attendance correction or the pending inspection/claim action; this visit cannot be assisted in its current state');
+      throw Error('Correct the visit record or use the pending inspection/claim action; this visit cannot be assisted in its current state');
     if (input.action === 'departure' && current.checkedInAt && actual < current.checkedInAt)
-      throw Error('Departure cannot precede the recorded arrival; correct the attendance evidence first');
+      throw Error('Departure cannot precede the recorded arrival; correct the visit record first');
     const duties = await kitchenDuties(bookingId, tx, 'legacy_first_action');
     const now = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
     const history = [...(Array.isArray(current.assistanceHistory) ? current.assistanceHistory : []), {

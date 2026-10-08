@@ -92,18 +92,18 @@ for (const role of ['chef', 'manager', 'admin'] as const) {
     catch (error) {
       if (error instanceof AttendanceError) return res.status(error.status).json({ error: error.message });
       logger.error('Cannot read booking attendance', error);
-      res.status(503).json({ error: 'Attendance history is unavailable' });
+      res.status(503).json({ error: 'Visit history is unavailable' });
     }
   });
   if (role === 'chef') continue;
   router.post(path, requireFirebaseAuthWithUser, gate, async (req, res) => {
     const id = Number(req.params.id), parsed = input.safeParse(req.body);
-    if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) return res.status(400).json({ error: 'Invalid attendance request' });
+    if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) return res.status(400).json({ error: 'Invalid visit update request' });
     try { res.json(await recordBookingAttendance(id, { id: req.neonUser!.id, role }, parsed.data)); }
     catch (error) {
       if (error instanceof AttendanceError) return res.status(error.status).json({ error: error.message });
       logger.error('Cannot save booking attendance', error);
-      res.status(503).json({ error: 'Attendance could not be saved; refresh before retrying' });
+      res.status(503).json({ error: 'The visit update could not be saved; refresh before retrying' });
     }
   });
 }

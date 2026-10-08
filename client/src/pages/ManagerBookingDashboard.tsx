@@ -402,8 +402,8 @@ export default function ManagerBookingDashboard() {
   // Centralised tab-change handler. Pushes the new view into browser history
   // so the back button walks through the user's tab journey instead of always
   // returning to whatever tab was last viewed before opening a sub-page.
-  const handleViewChange = (view: ViewType, kitchenId?: number, section?: KitchenSection, focus?: 'tracking' | 'tour-notes') => {
-    if (activeView === 'viewings' && tourNavigationGuard.current?.(() => handleViewChange(view, kitchenId, section, focus)) === false) return;
+  const handleViewChange = (view: ViewType, kitchenId?: number, section?: KitchenSection, focus?: 'tracking' | 'tour-notes', returnTourId?: number) => {
+    if (activeView === 'viewings' && tourNavigationGuard.current?.(() => handleViewChange(view, kitchenId, section, focus, returnTourId)) === false) return;
     void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] });
     // Remember which kitchen a task view belongs to. Held in state rather than the URL so opening
     // the publish review never depends on the URL shape, which differs between environments.
@@ -471,6 +471,8 @@ export default function ManagerBookingDashboard() {
     if (focus === 'tracking' && nextView === 'kitchens' && targetSection === 'details') url.searchParams.set('focus', 'tracking');
     else if (focus === 'tour-notes' && nextView === 'kitchens' && targetSection === 'tours') url.searchParams.set('focus', 'tour-notes');
     else url.searchParams.delete('focus');
+    if (focus === 'tour-notes' && returnTourId) url.searchParams.set('returnTour', String(returnTourId));
+    else url.searchParams.delete('returnTour');
     if (kitchenId && (nextView === "kitchens" || nextView === "listing-review" || nextView === "settings-storage-checkin-checkout")) {
       url.searchParams.set("kit", String(kitchenId));
     } else if (nextView !== "kitchens" && nextView !== "listing-review" && nextView !== "settings-storage-checkin-checkout") {
@@ -1213,9 +1215,9 @@ export default function ManagerBookingDashboard() {
             ) : undefined}
           />}
           <Tabs value={activeView} onValueChange={(view) => handleViewChange(view as ViewType)}>
-            {!(activeView === 'viewings' && detailTourId) && <TabsList className="mb-6 grid w-full grid-cols-2 rounded-xl bg-muted p-1">
-              <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><managerNavIcons.bookings className="h-4 w-4" />{mt("navBookings")}</TabsTrigger>
-              <TabsTrigger value="viewings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><KitchenTour className="h-4 w-4" />{mt("kitchenTours")}</TabsTrigger>
+            {!(activeView === 'viewings' && detailTourId) && <TabsList className="mb-6 h-auto w-full min-w-0 max-w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
+              <TabsTrigger value="bookings" className="group shrink-0 gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"><managerNavIcons.bookings className="h-4 w-4 shrink-0 transition-colors group-data-[state=active]:text-primary" />{mt("navBookings")}</TabsTrigger>
+              <TabsTrigger value="viewings" className="group shrink-0 gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"><KitchenTour className="h-4 w-4 shrink-0 transition-colors group-data-[state=active]:text-primary" />{mt("kitchenTours")}</TabsTrigger>
             </TabsList>}
             <TabsContent value="bookings" className="mt-0">
               <ManagerBookingsPanel embedded={true} onGoToKitchens={() => handleViewChange('kitchens')} />
@@ -1226,10 +1228,10 @@ export default function ManagerBookingDashboard() {
                 navigationGuardRef={tourNavigationGuard}
                 onOpenTour={id => setLocation(`/manager/tours/${id}`)}
                 onBackToTours={() => { setLocation('/manager/dashboard?view=viewings'); setActiveView('viewings'); }}
-                onConfigureNotes={(kitchenId, locationId) => {
+                onConfigureNotes={(kitchenId, locationId, tourId) => {
                   const location = locations.find((item: Location) => item.id === locationId);
                   if (location) setSelectedLocation(location);
-                  handleViewChange('kitchens', kitchenId, 'tours', 'tour-notes');
+                  handleViewChange('kitchens', kitchenId, 'tours', 'tour-notes', tourId);
                 }}
                 locationId={selectedLocation?.id}
                 onSelectTourLocation={id => {
@@ -1237,7 +1239,7 @@ export default function ManagerBookingDashboard() {
                   if (location) setSelectedLocation(location);
                 }}
                 hasKitchen={managerKitchens.length > 0}
-                onConfigureTours={() => handleViewChange('kitchens', managerKitchens[0]?.id, managerKitchens.length ? 'availability' : undefined)}
+                onConfigureTours={() => handleViewChange('kitchens', managerKitchens[0]?.id, managerKitchens.length ? 'tours' : undefined)}
               />
             </TabsContent>
           </Tabs>
@@ -1359,6 +1361,7 @@ export default function ManagerBookingDashboard() {
            * one — which is what every row on the publish review used to do.
            */
           initialKitchenId={kitchenForReview ?? undefined}
+          onReturnToTour={id => setLocation(`/manager/tours/${id}`)}
         />
       )}
 

@@ -39,15 +39,15 @@ export function TourChatButton({ tour, role, openFromLink = false, buttonClassNa
     }
   }, [search, openFromLink, allowed, tour.id, open]);
   if (!allowed && role !== 'admin') return null;
-  return <div onClick={event => event.stopPropagation()}>
-    <Button ref={button} variant="outline" size="sm" className={buttonClassName} title={buttonLabel} disabled={busy || !allowed} onClick={() => void open()}>
+  return <div className="min-w-0 [overflow-wrap:anywhere]" onClick={event => event.stopPropagation()}>
+    <Button ref={button} variant="outline" size="sm" className={['h-auto min-h-11 max-w-full whitespace-normal py-2', buttonClassName].filter(Boolean).join(' ')} title={buttonLabel} disabled={busy || !allowed} onClick={() => void open()}>
       {busy ? t('tourChatOpening', 'Opening messages…') : buttonLabel || (role === 'chef' ? t('tourMessageManager', 'Message manager') : t('tourMessageChef', 'Message chef'))}
     </Button>
     {error && <p role="alert" className="text-xs text-destructive">{error} Select the message button to retry.</p>}
     <Dialog open={!!chat} onOpenChange={value => { if (!value) setChat(null); }}>
       <DialogContent showCloseButton onCloseAutoFocus={event => { event.preventDefault(); button.current?.focus(); }}
         className="flex h-[85dvh] w-[calc(100%_-_1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0">
-        <div className="border-b px-5 py-4 pr-12">
+        <div className="min-w-0 shrink-0 border-b px-5 py-4 pr-14 [overflow-wrap:anywhere]">
           <DialogTitle>{role === 'admin' ? t('tourChatConversation', 'Tour conversation') : t('tourChatWithName', { name: chat?.name, defaultValue: `Chat with ${chat?.name}` })}</DialogTitle>
           <DialogDescription>Kitchen tour · TOUR-{tour.id}{role === 'admin' && <> · {t('tourChatBothRecipients', 'Messages are shared with both the chef and kitchen manager.')}</>}</DialogDescription>
         </div>

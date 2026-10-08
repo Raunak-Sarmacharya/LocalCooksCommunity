@@ -972,6 +972,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newUser = await userService.createPublicFirebaseUser({
         username: registrationEmail,
         firebaseUid: uid,
+        displayName: registrationProfile.displayName,
         phoneNumber: registrationProfile.phoneNumber || undefined,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,

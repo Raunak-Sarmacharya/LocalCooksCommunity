@@ -80,7 +80,7 @@ describe('explicit booking attendance statements (mocked database only)', () => 
   });
   it('re-reads a visit under lock and rejects a concurrent check-in', async () => {
     state.rows.push([context()], [{ id: 5, updatedAt: new Date(timestamp) }], [{ id: 5, checkinStatus: 'checked_in', updatedAt: new Date('2026-10-02T11:00:00Z') }]);
-    await expect(recordBookingAttendance(10, actor, { ...input, visitId: 5 })).rejects.toThrow(/Attendance changed/);
+    await expect(recordBookingAttendance(10, actor, { ...input, visitId: 5 })).rejects.toThrow(/visit record changed/);
     expect(state.locks).toHaveLength(2); expect(state.events).toEqual([]);
   });
   it('records attended separately without manufacturing check-in/out or checklist evidence', async () => {

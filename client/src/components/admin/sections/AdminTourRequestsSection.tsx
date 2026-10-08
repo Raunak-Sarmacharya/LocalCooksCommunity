@@ -1,6 +1,8 @@
 import { AdminTourVisitEvidence } from '@/components/tour/AdminTourVisitEvidence';
 import { TourFunnel } from '@/components/tour/TourFunnel';
 import { TourFeedbackPanel } from '@/components/tour/TourFeedbackPanel';
+import { AdminTourRepeatPermissionPanel } from '@/components/tour/TourRepeatPermissionPanel';
+import { adminTourOutcomeNotes } from '@shared/tour-outcome';
 import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
 import { TourHistoryPanel } from '@/components/tour/TourHistoryPanel';
 import { TourChatButton } from '@/components/chat/TourChatButton';
@@ -48,7 +50,7 @@ type TourRequest = {
     managerNotes?: string | null;
     sharedManagerNotes?: string | null;
     disruptionReason?: string | null;
-    outcomeHistory?: Array<{ from: string; to: string; recordedAt: string; actorRole: string; notes?: string | null; sharedNotes?: string | null }>;
+    outcomeHistory?: Array<{ from: string; to: string; recordedAt: string; actorRole: string; notes?: string | null; sharedNotes?: string | null; outcomeNotes?: string | null; disruptionReason?: string | null }>;
   };
   chefName: string;
   chefUsername: string | null;
@@ -112,7 +114,7 @@ export function AdminTourRequestsSection() {
         method: 'PATCH', headers: await authHeaders(), credentials: 'include',
         body: JSON.stringify({ expectedUpdatedAt: outcomeTour.viewing.updatedAt, status: ['disrupted', 'unknown'].includes(outcome) ? 'cancelled' : outcome,
           noShowReason: outcome === 'no_show' ? 'visitor_absent' : undefined, disruptionReason: outcome === 'unknown' ? 'outcome_unknown' : outcome === 'disrupted' ? outcomeReason : undefined,
-          sharedManagerNotes: outcomeNotes.trim() || undefined }),
+          outcomeNotes: outcomeNotes.trim() || undefined }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Unable to save outcome');
@@ -198,16 +200,16 @@ export function AdminTourRequestsSection() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5 [overflow-wrap:anywhere]">
       {isError && <div role="alert"><p>We couldn’t load tour requests.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
       {!isLoading && !isError && linkedTourId > 0 && !requests.some(request => request.viewing.id === linkedTourId) &&
         <div role="alert"><p>This tour is unavailable. Check your access or try again.</p><Button variant="outline" onClick={() => void refetch()}>Try again</Button></div>}
       <HistoricalVisitReviews />
       {!linkedTourId && <TourFunnel role="admin" />}
       {pendingDeliveries.length > 0 && <Card><CardHeader><CardTitle>Tour communications pending ({pendingDeliveries.length})</CardTitle></CardHeader>
-        <CardContent className="space-y-2">{Array.from(new Set(pendingDeliveries.map(event => event.viewingId))).map(id => <div key={id} className="flex items-center justify-between gap-3">
+        <CardContent className="space-y-2">{Array.from(new Set(pendingDeliveries.map(event => event.viewingId))).map(id => <div key={id} className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span>TOUR-{id} · {pendingDeliveries.filter(event => event.viewingId === id).length} pending events</span>
-          <Button variant="outline" disabled={retryDelivery.isPending} onClick={() => retryDelivery.mutate(id)}>Retry delivery</Button>
+          <Button variant="outline" className="h-auto min-h-11 whitespace-normal py-2" disabled={retryDelivery.isPending} onClick={() => retryDelivery.mutate(id)}>Retry delivery</Button>
         </div>)}</CardContent></Card>}
       <div>
         <h2 className="text-xl font-semibold">Tour requests</h2>
@@ -217,7 +219,7 @@ export function AdminTourRequestsSection() {
       </div>
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as "pending" | "overdue" | "outcomes" | "history")}>
-        <TabsList>
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:inline-flex sm:w-auto [&>button]:min-h-11 [&>button]:whitespace-normal">
           <TabsTrigger value="overdue">{t('tourOverdueQueue', 'Overdue decisions')} ({requests.filter(request => tourRequestDecision(request.viewing)?.overdue).length})</TabsTrigger>
           <TabsTrigger value="pending">Pending ({requests.filter((request) => pendingConfirmedDecision(request) || request.viewing.status === "pending_local_cooks" && new Date(request.viewing.scheduledAt).getTime() > Date.now()).length})</TabsTrigger>
           <TabsTrigger value="outcomes">Past kitchen tours · results ({requests.filter(needsOutcome).length})</TabsTrigger>
@@ -234,9 +236,9 @@ export function AdminTourRequestsSection() {
       ) : (
         <div className={linkedTourId ? "grid gap-4" : "grid gap-4 lg:grid-cols-2"}>
           {visibleRequests.map((request) => (
-            <Card key={request.viewing.id} id={`admin-tour-${request.viewing.id}`} className={request.viewing.id === linkedTourId ? 'border-primary' : undefined}>
+            <Card key={request.viewing.id} id={`admin-tour-${request.viewing.id}`} className={`min-w-0 [overflow-wrap:anywhere] ${request.viewing.id === linkedTourId ? "border-primary" : ""}`}>
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <CardTitle className="text-base">{request.chefName || request.chefUsername || "Chef"}</CardTitle>
                     <CardDescription>{request.kitchenName || request.locationName || "Kitchen tour"}</CardDescription>
@@ -251,7 +253,7 @@ export function AdminTourRequestsSection() {
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className={linkedTourId ? "grid items-start gap-4 text-sm lg:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-4 text-sm"}>
+              <CardContent className={linkedTourId ? "grid min-w-0 items-start gap-4 text-sm xl:grid-cols-[minmax(0,1fr)_20rem]" : "min-w-0 space-y-4 text-sm"}>
                 <div className="min-w-0 space-y-3">
                 <TourChatButton tour={request.viewing} role="admin" buttonLabel={t('tourChatParticipants', 'Chat with chef and manager')} />
                 {request.viewing.status === 'pending_local_cooks' && <p className="text-xs text-muted-foreground">{t('tourChatAfterReview', 'Messaging becomes available after this request is forwarded to the kitchen manager.')}</p>}
@@ -264,10 +266,10 @@ export function AdminTourRequestsSection() {
                 </div>; })()}
                 <div><span className="font-medium">Tour reference:</span> TOUR-{request.viewing.id}</div>
                 <div><span className="font-medium">Submitted:</span> {formatTourWhen(request.viewing.createdAt, null, request.locationTimezone || "America/St_Johns")}</div>
-                <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" />{formatTourWhen(request.viewing.scheduledAt, request.viewing.durationMinutes, request.locationTimezone || "America/St_Johns")} · {request.viewing.durationMinutes} min</div>
-                <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{request.locationName || "Kitchen"}{request.locationAddress ? ` · ${request.locationAddress}` : ""}</div>
-                {request.chefEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`mailto:${request.chefEmail}`}>{request.chefEmail}</a></div>}
-                {request.chefPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`tel:${request.chefPhone}`}>{request.chefPhone}</a></div>}
+                <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />{formatTourWhen(request.viewing.scheduledAt, request.viewing.durationMinutes, request.locationTimezone || "America/St_Johns")} · {request.viewing.durationMinutes} min</div>
+                <div className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />{request.locationName || "Kitchen"}{request.locationAddress ? ` · ${request.locationAddress}` : ""}</div>
+                {request.chefEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><a className="text-primary hover:underline" href={`mailto:${request.chefEmail}`}>{request.chefEmail}</a></div>}
+                {request.chefPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" /><a className="text-primary hover:underline" href={`tel:${request.chefPhone}`}>{request.chefPhone}</a></div>}
                 <section aria-label={t("tourManagerContactTitle", "Kitchen manager")} className="rounded-md border p-3 space-y-2">
                   <h3 className="text-xs font-medium text-muted-foreground">{t("tourManagerContactTitle", "Kitchen manager")}</h3>
                   {request.managerId != null ? <>
@@ -279,16 +281,18 @@ export function AdminTourRequestsSection() {
                 </section>
                 {request.viewing.chefNotes && <p className="rounded-md bg-muted p-3"><span className="font-medium">Chef notes:</span> {request.viewing.chefNotes}</p>}
                 {request.viewing.adminReviewReason && <p className="rounded-md bg-muted p-3"><span className="font-medium">Review reason:</span> {request.viewing.adminReviewReason}</p>}
-                {request.viewing.sharedManagerNotes && <p><strong>Message shared with chef:</strong> {request.viewing.sharedManagerNotes}</p>}
+                {request.viewing.sharedManagerNotes && <p><strong>Manager notes:</strong> {request.viewing.sharedManagerNotes}</p>}
+                {adminTourOutcomeNotes(request.viewing) && <p className="whitespace-pre-wrap"><strong>Outcome notes · admin only:</strong> {adminTourOutcomeNotes(request.viewing)}</p>}
                 {request.viewing.managerNotes && <p className="rounded-md border p-3"><strong>Internal notes · admin only:</strong> {request.viewing.managerNotes}</p>}
                 {request.viewing.disruptionReason && <p>{request.viewing.disruptionReason === 'outcome_unknown' ? t('tourFeedbackUnverified') : <><strong>Disruption:</strong> {tourDisruptionReasons[request.viewing.disruptionReason as keyof typeof tourDisruptionReasons] || request.viewing.disruptionReason}</>}</p>}
                 {hasTourConfirmation(request.viewing) && Date.parse(request.viewing.scheduledAt) + request.viewing.durationMinutes * 60_000 <= Date.now() && <TourFeedbackPanel id={request.viewing.id} role="admin" version={request.viewing.updatedAt} />}
                 <AdminTourVisitEvidence id={request.viewing.id} version={request.viewing.updatedAt} needsReview={request.viewing.visitEvidenceState === 'review'} />
+                {(request.viewing.status === 'completed' || request.viewing.disruptionReason === 'outcome_unknown') && <AdminTourRepeatPermissionPanel id={request.viewing.id} version={request.viewing.updatedAt} />}
                 {request.viewing.adminReviewedAt && <p><span className="font-medium">Reviewed:</span> {formatTourWhen(request.viewing.adminReviewedAt, null, request.locationTimezone || "America/St_Johns")}</p>}
                 {request.viewing.intakeData && Object.keys(request.viewing.intakeData).length > 0 && (
                   <div className="rounded-md border p-3"><TourIntakeDetails data={request.viewing.intakeData} /></div>
                 )}
-                {request.viewing.status === "pending_local_cooks" && <div className="flex justify-end gap-2 pt-1">
+                {request.viewing.status === "pending_local_cooks" && <div className="grid gap-2 pt-1 sm:flex sm:justify-end [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2">
                   <Button variant="outline" onClick={() => openReview(request, "denied")}><X className="mr-2 h-4 w-4" />Deny</Button>
                   <Button disabled={new Date(request.viewing.scheduledAt).getTime() <= Date.now()} onClick={() => openReview(request, "approved")}><Check className="mr-2 h-4 w-4" />Approve for manager</Button>
                 </div>}
@@ -307,38 +311,38 @@ export function AdminTourRequestsSection() {
       )}
 
       <Dialog open={!!takeover} onOpenChange={open => !open && !confirmTakeover.isPending && setTakeover(null)}>
-        <DialogContent><DialogHeader><DialogTitle>{t('tourTakeoverConfirm', 'Review and confirm overdue request')}</DialogTitle><DialogDescription>{t('tourTakeoverHelp', 'Confirm the current tour time after reviewing availability. Your reason will be shared with the visitor and manager.')}</DialogDescription></DialogHeader>
+        <DialogContent className="min-w-0 [overflow-wrap:anywhere]"><DialogHeader><DialogTitle>{t('tourTakeoverConfirm', 'Review and confirm overdue request')}</DialogTitle><DialogDescription>{t('tourTakeoverHelp', 'Confirm the current tour time after reviewing availability. Your reason will be shared with the visitor and manager.')}</DialogDescription></DialogHeader>
           {takeoverContext.isFetching && <p role="status">{t('tourReviewLoading', 'Checking current availability…')}</p>}
           {takeoverContext.isError && <div><p role="alert">{String(takeoverContext.error.message)}</p><Button variant="outline" onClick={() => void takeoverContext.refetch()}>{t('retry', 'Retry')}</Button></div>}
           {takeoverContext.data && <><p>{formatTourWhen(takeoverContext.data.scheduledAt, takeover?.viewing.durationMinutes, 'America/St_Johns')}</p>
             {takeoverContext.data.overlaps?.map((overlap: any) => <p key={overlap.bookingId}>{overlap.reference} · {formatTourWhen(overlap.start, null, 'America/St_Johns')}</p>)}
             {!!takeoverContext.data.overlaps?.length && <label className="flex gap-2 text-sm"><input type="checkbox" checked={acknowledgeOverlap} onChange={event => setAcknowledgeOverlap(event.target.checked)} />{t('tourTakeoverOverlap', 'I reviewed the overlapping bookings and can safely host this tour.')}</label>}</>}
           <Textarea aria-label={t('tourTakeoverReason', 'Shared confirmation reason')} maxLength={500} value={takeoverReason} onChange={event => setTakeoverReason(event.target.value)} />
-          <DialogFooter><Button variant="outline" disabled={confirmTakeover.isPending} onClick={() => setTakeover(null)}>{t('cancel', 'Cancel')}</Button><Button disabled={confirmTakeover.isPending || takeoverContext.isFetching || takeoverContext.isError || !takeoverContext.data || takeoverContext.data.updatedAt !== takeover?.viewing.updatedAt || takeoverReason.trim().length < 10 || (!!takeoverContext.data.overlaps?.length && !acknowledgeOverlap)} onClick={() => confirmTakeover.mutate()}>{t('tourConfirmTakeover', 'Confirm tour')}</Button></DialogFooter>
+          <DialogFooter className="gap-2 sm:space-x-0 [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2"><Button variant="outline" disabled={confirmTakeover.isPending} onClick={() => setTakeover(null)}>{t('cancel', 'Cancel')}</Button><Button disabled={confirmTakeover.isPending || takeoverContext.isFetching || takeoverContext.isError || !takeoverContext.data || takeoverContext.data.updatedAt !== takeover?.viewing.updatedAt || takeoverReason.trim().length < 10 || (!!takeoverContext.data.overlaps?.length && !acknowledgeOverlap)} onClick={() => confirmTakeover.mutate()}>{t('tourConfirmTakeover', 'Confirm tour')}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(outcomeTour)} onOpenChange={(open) => !open && setOutcomeTour(null)}>
-        <DialogContent>
+        <DialogContent className="min-w-0 [overflow-wrap:anywhere]">
           <DialogHeader><DialogTitle>Record tour outcome</DialogTitle>
-            <DialogDescription>Review both private feedback responses before choosing the final outcome. Explain every decision to the chef and manager, including missing or conflicting responses. Absence is never inferred from silence.</DialogDescription></DialogHeader>
+            <DialogDescription>Review both private feedback responses before choosing the final outcome. Record your reasoning in admin-only notes. The chef and manager receive the outcome status without these notes. Absence is never inferred from silence.</DialogDescription></DialogHeader>
           <Select value={outcome} onValueChange={(value) => { setOutcome(value as 'completed' | 'no_show' | 'disrupted' | 'unknown'); setOutcomeReason(''); }}>
-            <SelectTrigger aria-label="Tour outcome"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-auto min-h-11 text-left [&>span]:min-w-0 [&>span]:line-clamp-none [&>span]:whitespace-normal" aria-label="Tour outcome"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="completed" disabled={outcomeTour?.viewing.status === 'completed'}>Completed</SelectItem><SelectItem value="no_show" disabled={outcomeTour?.viewing.status === 'no_show'}>Visitor did not attend</SelectItem><SelectItem value="disrupted" disabled={!!outcomeTour?.viewing.disruptionReason}>Disrupted</SelectItem><SelectItem value="unknown">Close without a verified outcome</SelectItem></SelectContent>
           </Select>
           {outcome === 'no_show' && <p className="text-sm text-muted-foreground">Only choose this if the chef did not come. If the manager was unavailable, access failed or weather prevented the kitchen tour, record why the tour couldn’t take place instead.</p>}
           {outcome === 'disrupted' && <Select value={outcomeReason} onValueChange={setOutcomeReason}>
-            <SelectTrigger aria-label="Disruption reason"><SelectValue placeholder="Select disruption" /></SelectTrigger>
+            <SelectTrigger className="h-auto min-h-11 text-left [&>span]:min-w-0 [&>span]:line-clamp-none [&>span]:whitespace-normal" aria-label="Disruption reason"><SelectValue placeholder="Select disruption" /></SelectTrigger>
             <SelectContent>{Object.entries(tourDisruptionReasons).map(([reason, label]) => <SelectItem key={reason} value={reason}>{label}</SelectItem>)}</SelectContent>
           </Select>}
-          <Textarea aria-label="Message to chef" required minLength={10} maxLength={2000} value={outcomeNotes} onChange={(event) => setOutcomeNotes(event.target.value)} placeholder="Explain the final decision · shared with the chef and manager" />
-          <DialogFooter><Button variant="outline" onClick={() => setOutcomeTour(null)}>Cancel</Button>
+          <Textarea aria-label="Internal outcome notes" required minLength={10} maxLength={2000} value={outcomeNotes} onChange={(event) => setOutcomeNotes(event.target.value)} placeholder="Explain the final decision · visible only to Local Cooks admins" />
+          <DialogFooter className="gap-2 sm:space-x-0 [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2"><Button variant="outline" onClick={() => setOutcomeTour(null)}>Cancel</Button>
             <Button disabled={recordOutcome.isPending || (outcome === 'disrupted' && !outcomeReason)
               || outcomeNotes.trim().length < 10}
               onClick={() => recordOutcome.mutate()}>{recordOutcome.isPending ? 'Saving…' : 'Save outcome'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent>
+        <DialogContent className="min-w-0 [overflow-wrap:anywhere]">
           <DialogHeader>
             <DialogTitle>{decision === "approved" ? "Send request to kitchen manager?" : "Deny tour request?"}</DialogTitle>
             <DialogDescription>
@@ -348,7 +352,7 @@ export function AdminTourRequestsSection() {
             </DialogDescription>
           </DialogHeader>
           {decision === "denied" && <Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason for the chef" rows={4} />}
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:space-x-0 [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2">
             <Button variant="outline" onClick={() => setSelected(null)}>Cancel</Button>
             <Button
               variant={decision === "denied" ? "destructive" : "default"}

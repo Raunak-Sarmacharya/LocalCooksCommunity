@@ -15,7 +15,7 @@ import { useLocation, useSearch } from "wouter"
 import type { ColumnDef } from "@tanstack/react-table"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, Search, X } from "@/components/ui/manager-icons"
+import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, Search, X, CalendarClock, ArrowRight, ChevronDown } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -38,6 +38,7 @@ import { useTourClock } from "@/hooks/use-tour-clock"
 import { hasTourConfirmation, tourDisruptionReasons } from '@shared/tour-outcome'
 import { TourChatButton } from '@/components/chat/TourChatButton'
 import { TourFeedbackPanel } from '@/components/tour/TourFeedbackPanel'
+import { tourFeedbackOpen } from '@shared/tour-feedback'
 import { formatTourWhen } from "@/lib/chef-viewing-display"
 import { DateField } from '@/components/ui/date-field'
 import { tourAvailableDate, type TourCalendarAvailability } from '@/lib/tour-available-date'
@@ -103,6 +104,8 @@ interface ViewingRecord {
   locationAddress: string | null
   locationTimezone: string | null
   kitchenName: string | null
+  arrivalNotes?: string | null
+  departureNotes?: string | null
   chefUsername: string | null
   chefEmail: string | null
   chefPhone: string | null
@@ -158,7 +161,7 @@ interface ViewingsDashboardProps {
   tourId?: string
   onOpenTour?: (id: number) => void
   onBackToTours?: () => void
-  onConfigureNotes?: (kitchenId: number, locationId: number) => void
+  onConfigureNotes?: (kitchenId: number, locationId: number, tourId: number) => void
   navigationGuardRef?: MutableRefObject<((navigate: () => void) => boolean) | null>
   locationId?: number
   onSelectTourLocation?: (locationId: number) => void
@@ -187,12 +190,13 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   const [cancellationReason, setCancellationReason] = useState("")
   const [acceptBookingOverlap, setAcceptBookingOverlap] = useState(false)
   const [proposalOpen, setProposalOpen] = useState(false)
+  const [feedbackTargetId, setFeedbackTargetId] = useState<number | null>(null)
+  const feedbackTrigger = useRef<HTMLButtonElement>(null)
   const [proposalDate, setProposalDate] = useState('')
   const [proposedSlots, setProposedSlots] = useState<string[]>([])
   const [confirmExit, setConfirmExit] = useState(false)
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
-  const [highlightNotes, setHighlightNotes] = useState(false)
   const openedDeepLink = useRef<string | null>(null)
   const selectedDeepLinkLocation = useRef<string | null>(null)
   const tourSearch = useSearch()
@@ -268,6 +272,8 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
 
   const correctingOutcome = !!selectedViewing && (["completed", "no_show"].includes(selectedViewing.viewing.status) || !!selectedViewing.viewing.disruptionReason)
   const feedbackAfterEnd = !!selectedViewing && hasTourConfirmation(selectedViewing.viewing) && Date.parse(selectedViewing.viewing.scheduledAt) + selectedViewing.viewing.durationMinutes * 60_000 <= Date.now()
+  const canShareFeedback = !!selectedViewing && tourFeedbackOpen(selectedViewing.viewing) && !selectedViewing.viewing.managerFeedbackSubmitted
+  const showFeedbackAction = canShareFeedback || feedbackAfterEnd && !!selectedViewing?.viewing.managerFeedbackSubmitted
   const nextStepKey = selectedViewing && ['view', 'confirm', 'cancel', 'complete', 'no_show', 'disrupt'].includes(statusAction)
     ? selectedViewing.viewing.visitEvidenceState === 'review' ? 'tourNextEvidenceReview' : selectedViewing.viewing.status === 'pending'
       ? new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? selectedViewing.viewing.rescheduleProposedSlots?.length ? 'tourPendingProposalAwaitingHelp' : 'tourNextReview' : 'tourNextExpired'
@@ -275,7 +281,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
       : selectedViewing.viewing.status === 'confirmed' && !selectedViewing.viewing.disruptionReason
         ? feedbackAfterEnd ? selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : 'tourNextFeedback'
           : new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() ? 'tourNextPrepare' : 'tourNextHost'
-        : null
+        : feedbackAfterEnd && selectedViewing.viewing.managerFeedbackSubmitted ? 'tourNextFeedbackSubmitted' : null
     : null
 
   const decisionKind = selectedViewing && canReviewReschedule(selectedViewing.viewing)
@@ -286,11 +292,9 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     setProposalOpen(false); setProposalDate(''); setProposedSlots([])
   }, [selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt])
 
-  useEffect(() => {
-    if (!highlightNotes) return;
-    const timer = setTimeout(() => setHighlightNotes(false), 3000);
-    return () => clearTimeout(timer);
-  }, [highlightNotes]);
+  const canEditTourNotes = !!selectedViewing && ['pending', 'confirmed'].includes(selectedViewing.viewing.status)
+    && Date.parse(selectedViewing.viewing.scheduledAt) + selectedViewing.viewing.durationMinutes * 60_000 > Date.now()
+    && !!selectedViewing.viewing.targetedKitchenId && !!onConfigureNotes
 
   useEffect(() => {
     const key = `${exactId}:${deepLinkAction}`
@@ -624,7 +628,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   </>
                 )}
                     {statusAction !== "view" && (
-                <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-5 sm:p-6 [&>button]:h-9 [&>button]:text-xs">
+                <div className="flex flex-col-reverse gap-2 rounded-xl border bg-card p-4 sm:flex-row sm:flex-wrap sm:p-6 [&>button]:min-h-11 [&>button]:h-auto [&>button]:whitespace-normal [&>button]:py-2 [&>button]:text-xs sm:[&>button]:min-h-9">
                   <Button
                     variant="ghost"
                     onClick={requestClose}
@@ -716,39 +720,43 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
         </>}
       </div>}
 
-      {selectedViewing && <section aria-label={mt('sheetViewingDetails')} className="space-y-6 [&_button]:text-xs">
+      {selectedViewing && <section aria-label={mt('sheetViewingDetails')} className="min-w-0 space-y-5 [overflow-wrap:anywhere]">
           {selectedViewing && (
             <>
               <header className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
-                  <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">TOUR-{selectedViewing.viewing.id} · {selectedViewing.chefName || mt('chef')}</h1>
+                <div className="space-y-1.5">
+                  <h1 ref={heading} tabIndex={-1} className="text-xl font-semibold tracking-tight focus:outline-none sm:text-2xl">TOUR-{selectedViewing.viewing.id} · {selectedViewing.chefName || mt('chef')}</h1>
+                  <p className="text-sm font-medium">{selectedViewing.kitchenName || selectedViewing.locationName}{selectedViewing.kitchenName && selectedViewing.locationName && <span className="font-normal text-muted-foreground"> · {selectedViewing.locationName}</span>}</p>
+                  {selectedViewing.locationAddress && <p className="text-sm text-muted-foreground">{selectedViewing.locationAddress}</p>}
                   <p className="text-sm text-muted-foreground">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p>
                 </div>
                 {selectedViewing.viewing.requestExpiredAt ? <Badge variant="secondary">{mt('tourRequestExpired')}</Badge> : getStatusBadge(selectedViewing.viewing.status, selectedViewing.viewing.cancelledBy, selectedViewing.viewing.adminReviewDecision, selectedViewing.viewing.disruptionReason)}
               </header>
-              {nextStepKey && <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm [&_button]:text-xs" aria-label={mt('tourNextStep')}>
+              <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,19rem)] lg:gap-5">
+              <div className="contents lg:block lg:min-w-0 lg:space-y-4">
+              {nextStepKey && <section className="order-1 overflow-hidden rounded-2xl border bg-card text-sm" aria-label={mt('tourNextStep')}>
+              <div className="space-y-2 bg-primary/5 p-4 sm:px-5">
                 <h2 className="text-sm font-semibold leading-5">{mt('tourNextStep')}</h2>
                 {selectedViewing.reconfirmation?.canReply && <p className="text-xs text-muted-foreground">{mt(selectedViewing.reconfirmation.reply === 'still_coming' ? 'tourVisitorStillComing' : selectedViewing.reconfirmation.reply === 'reschedule' || selectedViewing.reconfirmation.reply === 'cant_make_it' ? 'tourVisitorChangeSignal' : selectedViewing.reconfirmation.needsStaffAttention ? 'tourVisitorReplyOverdue' : 'tourVisitorReplyPending')}</p>}
                 {(() => { const decision = tourRequestDecision(selectedViewing.viewing); return decision?.stage === 'manager' && decision.dueAt && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() ? <p className={cn('text-xs', decision.overdue ? 'text-destructive font-medium' : 'text-muted-foreground')}>{mt(decision.overdue ? 'tourDecisionOverdue' : 'tourDecisionDue')}: {formatTourWhen(decision.dueAt, null, 'America/St_Johns')}</p> : null; })()}
-                <p className="text-sm">{(() => {
-                  const text = mt(nextStepKey)
-                  const phrase = 'Share meeting instructions'
-                  const idx = nextStepKey === 'tourNextPrepare' ? text.indexOf(phrase) : -1
-                  if (idx < 0) return text
-                  return <>{text.slice(0, idx)}<button type="button" className="underline underline-offset-2" onClick={() => { const el = document.getElementById('tour-visit-notes'); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.focus({ preventScroll: true }); setHighlightNotes(true) }}>{phrase}</button>{text.slice(idx + phrase.length)}</>
-                })()}</p>
-                {statusAction === 'view' && <div className="flex flex-wrap gap-2 border-t pt-4 [&>button]:h-9 [&>button]:px-3 [&>button]:text-xs">
+                <p className="max-w-3xl text-sm leading-relaxed">{mt(nextStepKey)}</p>
+              </div>
+              {(statusAction !== 'view' || selectedViewing.viewing.status === 'pending' || selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() || showFeedbackAction) && <section className="space-y-3 border-t p-4 sm:px-5" aria-label={mt('tourActions')}>
+                <h2 className="text-sm font-semibold leading-5">{mt('tourActions')}</h2>
+                {statusAction === 'view' && <div className="grid gap-2 sm:flex sm:flex-wrap [&_button]:h-auto [&_button]:min-h-11 [&_button]:whitespace-normal [&_button]:px-4 [&_button]:py-2">
+                  {showFeedbackAction && <Button ref={feedbackTrigger} variant={canShareFeedback ? 'default' : 'outline'} aria-haspopup="dialog" onClick={() => setFeedbackTargetId(selectedViewing.viewing.id)}>{mt(canShareFeedback ? 'tourFeedbackOpen' : 'tourFeedbackView', { ns: 'common' })}</Button>}
+                  {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) <= Date.now() && <Button variant="outline" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button>}
                   {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button onClick={() => setStatusAction('confirm')} disabled={updateStatusMutation.isPending || proposeReschedule.isPending || !!selectedViewing.viewing.rescheduleProposedSlots?.length}>{mt('acceptViewing')}</Button>}
-                  {canProposeChange && <Button ref={proposalTrigger} variant="outline" disabled={updateStatusMutation.isPending || proposeReschedule.isPending} onClick={() => setProposalOpen(true)}>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</Button>}
-                  {!!selectedViewing.viewing.rescheduleProposedSlots?.length && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !!selectedViewing.viewing.checkedInAt} onClick={() => proposeReschedule.mutate('withdraw')}>{mt('tourWithdrawProposal')}</Button>}
-                  {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('declineRequest')}</Button>}
+                  {canProposeChange && <Button ref={proposalTrigger} variant="outline" disabled={updateStatusMutation.isPending || proposeReschedule.isPending} onClick={() => setProposalOpen(true)}><CalendarClock className="h-4 w-4 shrink-0" />{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</Button>}
+                  {selectedViewing.viewing.status === 'pending' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button className="text-destructive hover:text-destructive" variant="outline" disabled={proposeReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('declineRequest')}</Button>}
                   {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <Button variant="outline" className="text-destructive hover:text-destructive" disabled={proposeReschedule.isPending || reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => setStatusAction('cancel')}>{mt('cancelViewing')}</Button>}
                 </div>}
-                {['confirm', 'cancel'].includes(statusAction) && <div className="space-y-4 border-t pt-4">{decisionKind === "confirm" && decisionReviewPanel}{decisionActionPanel}</div>}
+                {['confirm', 'cancel'].includes(statusAction) && <div className="space-y-4">{decisionKind === "confirm" && decisionReviewPanel}{decisionActionPanel}</div>}
                 {['complete', 'no_show', 'disrupt'].includes(statusAction) && <div className="space-y-4 border-t pt-4">{decisionActionPanel}</div>}
                 {!!selectedViewing.viewing.rescheduleProposedSlots?.length && ['pending', 'confirmed'].includes(selectedViewing.viewing.status) && new Date(selectedViewing.viewing.scheduledAt).getTime() > Date.now() && <section className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5" aria-label={mt('tourProposalPendingTitle')}>
                   <div className="space-y-1"><h2 className="text-sm font-semibold leading-5">{mt('tourProposalPendingTitle')}</h2><p className="text-sm text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalPendingHelp')}</p></div>
                   <ul className="space-y-2">{selectedViewing.viewing.rescheduleProposedSlots.map(time => <li key={time} className="rounded-lg border bg-background px-3 py-2 text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</li>)}</ul>
+                  {statusAction === 'view' && <Button variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !!selectedViewing.viewing.checkedInAt} onClick={() => proposeReschedule.mutate('withdraw')}>{mt('tourWithdrawProposal')}</Button>}
                 </section>}
                 {canReviewReschedule(selectedViewing.viewing) && (
                   <div ref={rescheduleReview} tabIndex={-1} className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4 focus:outline-none">
@@ -756,39 +764,41 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     <p className="text-sm">{mt('tourRequestedTime')}: {formatTourWhen(selectedViewing.viewing.requestedRescheduleAt!, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</p>
                     {decisionKind === "reschedule" && decisionReviewPanel}
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <Button className="h-11 w-full" disabled={reviewReschedule.isPending || updateStatusMutation.isPending || !acceptanceReady} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "accept" })}>{mt('tourApproveNewTime')}</Button>
-                      <Button variant="outline" className="h-11 w-full" disabled={reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "decline" })}>{mt('tourKeepOriginalTime')}</Button>
+                      <Button className="h-auto min-h-11 w-full whitespace-normal py-2" disabled={reviewReschedule.isPending || updateStatusMutation.isPending || !acceptanceReady} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "accept" })}>{mt('tourApproveNewTime')}</Button>
+                      <Button variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2" disabled={reviewReschedule.isPending || updateStatusMutation.isPending} onClick={() => reviewReschedule.mutate({ id: selectedViewing.viewing.id, decision: "decline" })}>{mt('tourKeepOriginalTime')}</Button>
                     </div>
                   </div>
                 )}
-              </section>}
-              <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-              <div className="min-w-0 space-y-4">
-
-              <div className="space-y-4">
-                <div className="space-y-3 rounded-xl border bg-card p-5 sm:p-6 text-sm">
-                  <div><p className="font-medium">{selectedViewing.kitchenName || selectedViewing.locationName}</p>{selectedViewing.kitchenName && <p className="text-muted-foreground">{selectedViewing.locationName}</p>}{selectedViewing.locationAddress && <p className="text-muted-foreground">{selectedViewing.locationAddress}</p>}</div>
-                </div>
-                <section className="space-y-4 rounded-xl border bg-card p-5 sm:p-6" aria-label={mt('tourChefRequestDetails')}>
+              </section>}</section>}
+                {canEditTourNotes && <section id="tour-visit-notes" aria-label={mt('tourMeetingInstructionsTitle')} className="order-2 space-y-3 rounded-2xl border bg-card p-4 sm:px-5">
+                  <div className="flex items-start gap-3"><FileText className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" /><div className="space-y-1"><h2 className="text-sm font-semibold">{mt('tourMeetingInstructionsTitle')}</h2><p className="text-sm leading-relaxed text-muted-foreground">{mt('tourMeetingInstructionsHelp')}</p></div></div>
+                  {(selectedViewing.arrivalNotes !== undefined || selectedViewing.departureNotes !== undefined) && <dl className="grid gap-3 sm:grid-cols-2">
+                    <div><dt className="text-xs font-medium text-muted-foreground">{mt('arrivalInstructionsTitle')}</dt><dd className="mt-1 whitespace-pre-wrap text-sm">{selectedViewing.arrivalNotes?.trim() || mt('tourInstructionsMissing')}</dd></div>
+                    <div><dt className="text-xs font-medium text-muted-foreground">{mt('departureInstructionsTitle')}</dt><dd className="mt-1 whitespace-pre-wrap text-sm">{selectedViewing.departureNotes?.trim() || mt('tourInstructionsMissing')}</dd></div>
+                  </dl>}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-muted-foreground">{mt('tourMeetingInstructionsScope')}</p><Button variant="outline" className="h-auto min-h-11 w-full shrink-0 whitespace-normal px-4 py-2 sm:w-auto" title={mt('tourEditVisitNotes')} onClick={() => requestNavigation(() => onConfigureNotes!(selectedViewing.viewing.targetedKitchenId!, selectedViewing.viewing.locationId, selectedViewing.viewing.id))}>{mt('tourVisitNotesButton')}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button></div>
+                </section>}
+              <div className="order-4 min-w-0 space-y-4">
+                <section className="space-y-4 rounded-2xl border bg-card p-4 sm:px-5" aria-label={mt('tourChefRequestDetails')}>
                   <h2 className="text-sm font-semibold leading-5">{mt('tourChefRequestDetails')}</h2>
                   <dl className="grid gap-4 sm:grid-cols-2">
                     <div><dt className="text-xs text-muted-foreground">{mt('tourRequestedTime')}</dt><dd className="mt-1 text-sm">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</dd></div>
                     {selectedViewing.viewing.createdAt && <div><dt className="text-xs text-muted-foreground">{mt('tourRequestSubmitted')}</dt><dd className="mt-1 text-sm">{formatTourWhen(selectedViewing.viewing.createdAt, null, selectedViewing.locationTimezone || 'America/St_Johns')}</dd></div>}
                   </dl>
                   <div className="space-y-1 border-t pt-3"><p className="text-sm font-medium">{mt('chefSNotes')}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{selectedViewing.viewing.chefNotes?.trim() || mt('tourNoChefNotes')}</p></div>
-                  {!!Object.keys(selectedViewing.viewing.intakeData || {}).length && <div className="space-y-3 border-t pt-3">
+                  {!!Object.keys(selectedViewing.viewing.intakeData || {}).length && <div className="space-y-3 border-t pt-3 [&>dl]:grid-cols-2 [&>dl>div:last-child:nth-child(odd)]:col-span-2">
                     <TourIntakeDetails data={selectedViewing.viewing.intakeData} />
                   </div>}
-                  {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <div className="space-y-3 border-t pt-4" aria-label={mt('tourPrepareBriefing')}>
-                    <h3 className="text-sm font-semibold">{mt('tourPrepareBriefing')}</h3>
-                    <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground">
+                  {selectedViewing.viewing.status === 'confirmed' && Date.parse(selectedViewing.viewing.scheduledAt) > Date.now() && <details className="group border-t pt-3">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><h3 className="text-sm font-semibold">{mt('tourPrepareBriefing')}</h3><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /></summary>
+                    <ul className="list-disc space-y-2 pb-1 pl-4 pt-2 text-sm leading-relaxed text-muted-foreground">
                       <li>{mt('tourPrepareSpace')}</li>
                       <li>{mt('tourPrepareAccess')}</li>
                       <li>{mt('tourPrepareQuestions')}</li>
                     </ul>
-                  </div>}
+                  </details>}
                 </section>
-                {feedbackAfterEnd && <TourFeedbackPanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} />}
+                {feedbackAfterEnd && <TourFeedbackPanel key={selectedViewing.viewing.id} id={selectedViewing.viewing.id} role="manager" version={selectedViewing.viewing.updatedAt} open={feedbackTargetId === selectedViewing.viewing.id} onOpenChange={open => setFeedbackTargetId(open ? selectedViewing.viewing.id : null)} triggerRef={feedbackTrigger} />}
                 {!nextStepKey && !['confirm', 'cancel'].includes(statusAction) && decisionActionPanel}
 
                 <Dialog open={proposalOpen && (canProposeChange || proposeReschedule.isPending)} onOpenChange={open => {
@@ -796,16 +806,17 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                   setProposalOpen(open)
                   if (!open) { setProposalDate(''); setProposedSlots([]) }
                 }}>
-                  <DialogContent className="max-w-xl p-5 sm:p-6 [&_button]:text-xs" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
-                    <DialogHeader className="pr-10">
+                  <DialogContent className="max-w-xl gap-5 p-4 sm:p-6" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
+                    <DialogHeader className="pr-10 text-left">
                       <DialogTitle>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</DialogTitle>
                       <DialogDescription>{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalHelp' : 'tourProposalHelp')}</DialogDescription>
                     </DialogHeader>
-                    <Button variant="ghost" size="icon" className="absolute right-3 top-3" aria-label={mt('close')} disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}><X className="h-4 w-4" /></Button>
-                    <p className="rounded-lg border bg-muted/30 p-3 text-sm">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p>
+                    <Button variant="ghost" size="icon" className="absolute right-2 top-2 h-11 w-11" aria-label={mt('close')} disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}><X className="h-4 w-4" /></Button>
+                    <p className="text-sm leading-relaxed text-muted-foreground">{mt('tourRescheduleScenarioHelp')}</p>
+                    <div className="space-y-1 rounded-xl bg-muted/40 p-4 text-sm"><p className="text-xs font-medium text-muted-foreground">{mt('tourCurrentTime')}</p><p>{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p></div>
                     <div className="space-y-4">
                     {(proposalCalendarError || proposalSlotsError) && <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{(proposalCalendarError || proposalSlotsError)?.message}</p><Button variant="outline" size="sm" onClick={() => { void queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-calendar'] }); void queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-slots'] }) }}>{mt('tourReviewAgain')}</Button></div>}
-                    <div className="space-y-1.5"><Label htmlFor="tour-proposal-date">{mt('tourNewDate')}</Label><DateField id="tour-proposal-date" value={proposalDate} onChange={setProposalDate} placeholder={mt('tourChooseDate')} disabled={proposeReschedule.isPending || proposalCalendarLoading || !!proposalCalendarError || !proposalCalendar} disabledDate={day => !tourAvailableDate(day, proposalCalendar)} /></div>
+                    <div className="space-y-1.5"><Label htmlFor="tour-proposal-date">{mt('tourNewDate')}</Label><DateField id="tour-proposal-date" className="min-h-11" value={proposalDate} onChange={setProposalDate} placeholder={mt('tourChooseDate')} disabled={proposeReschedule.isPending || proposalCalendarLoading || !!proposalCalendarError || !proposalCalendar} disabledDate={day => !tourAvailableDate(day, proposalCalendar)} /></div>
                     <p className="text-sm text-muted-foreground">{mt('tourChooseTimesHelp')}</p>
                     {proposalDate && <section className="space-y-3" aria-label={mt('tourAvailableTime')}>
                       <h3 className="text-sm font-semibold">{formatTourDate(new Date(proposalDate + 'T12:00:00Z'))}</h3>
@@ -814,19 +825,19 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                       {!proposalSlotsLoading && !proposalSlotsError && !proposalChoices.length && <p role="status" className="text-sm text-muted-foreground">{mt('tourNoAvailableTimes')}</p>}
                       {!proposalSlotsLoading && !proposalSlotsError && <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{proposalTimeOptions.map(item => {
                         const selected = proposedSlots.includes(item.scheduledAt)
-                        return <Button key={item.scheduledAt} variant={selected ? 'default' : 'outline'} className="h-11 px-2 text-sm" aria-pressed={selected} disabled={proposeReschedule.isPending || !!proposalCalendarError || (!selected && proposedSlots.length >= 3)} onClick={() => setProposedSlots(current => current.includes(item.scheduledAt) ? current.filter(time => time !== item.scheduledAt) : [...current, item.scheduledAt].sort())}>{compactProposalTimes ? item.compact : item.full}</Button>
+                        return <Button key={item.scheduledAt} variant={selected ? 'default' : 'outline'} className="h-auto min-h-11 whitespace-normal px-2 py-2 text-sm" aria-pressed={selected} disabled={proposeReschedule.isPending || !!proposalCalendarError || (!selected && proposedSlots.length >= 3)} onClick={() => setProposedSlots(current => current.includes(item.scheduledAt) ? current.filter(time => time !== item.scheduledAt) : [...current, item.scheduledAt].sort())}>{compactProposalTimes ? item.compact : item.full}</Button>
                       })}</div>}
                     </section>}
                     {proposedSlots.length > 0 && <section className="space-y-2" aria-label={mt('tourSelectedTimes')}><h3 className="text-sm font-semibold">{mt('tourSelectedTimes')}</h3><ul className="space-y-2">{proposedSlots.map(time => <li key={time} className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><span className="text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}</span><Button variant="ghost" size="icon" aria-label={`${mt('tourRemoveAlternative')}: ${formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}`} disabled={proposeReschedule.isPending} onClick={() => setProposedSlots(current => current.filter(item => item !== time))}><X className="h-4 w-4" /></Button></li>)}</ul></section>}
-                    <p className="text-xs text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalOriginalHeld')}</p>
-                    <div className="grid gap-2 sm:grid-cols-2"><Button variant="outline" className="h-11 w-full" disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}>{mt('cancel')}</Button><Button className="h-11 w-full" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !proposedSlots.length || proposedSlots.some(time => Date.parse(time) <= Date.now()) || proposalSlotsLoading || !!proposalCalendarError || !!proposalSlotsError} onClick={() => proposeReschedule.mutate('propose')}>{proposeReschedule.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mt('tourSendProposal')}</Button></div>
+                    <p className="rounded-xl border p-3 text-sm leading-relaxed text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalOriginalHeld')}</p>
+                    <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end"><Button variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}>{mt('tourKeepCurrentTime')}</Button><Button className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !proposedSlots.length || proposedSlots.some(time => Date.parse(time) <= Date.now()) || proposalSlotsLoading || !!proposalCalendarError || !!proposalSlotsError} onClick={() => proposeReschedule.mutate('propose')}>{proposeReschedule.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mt('tourSendProposal')}</Button></div>
                     </div>
                   </DialogContent>
                 </Dialog>
 
                 {/* Intake Data */}
                 {selectedViewing.viewing.sharedManagerNotes && statusAction === 'view' && <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">{mt('tourMessageToChefOptional')}</p>
+                  <p className="text-xs font-medium text-muted-foreground">{mt('tourManagerNotes')}</p>
                   <p className="rounded bg-muted/50 p-2 text-sm whitespace-pre-wrap">{selectedViewing.viewing.sharedManagerNotes}</p>
                 </div>}
                 {selectedViewing.viewing.disruptionReason && <p className="text-sm">{selectedViewing.viewing.disruptionReason === 'outcome_unknown' ? mt('tourHistory_status_unverified') : <>{mt('tourDisruptionReason')}: {mt(`tourDisruption_${selectedViewing.viewing.disruptionReason}`)}</>}</p>}
@@ -837,27 +848,22 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                     {entry.sharedNotes && <p className="whitespace-pre-wrap">{entry.sharedNotes}</p>}
                   </div>)}
                 </details>}
+              <div data-testid="manager-tour-help" className="[&>section]:rounded-2xl [&>section]:p-4 sm:[&>section]:px-5"><TourSupportCard role="manager" /></div>
               </div>
-
-              {statusAction === 'view' && selectedViewing.viewing.status === 'pending' && new Date(selectedViewing.viewing.scheduledAt).getTime() <= Date.now() && <div className="rounded-xl border bg-card p-5 sm:p-6"><Button variant="outline" size="sm" onClick={() => setStatusAction('cancel')}>{mt('tourCloseExpiredRequest')}</Button></div>}
-
-              <div data-testid="manager-tour-help" className="[&>section]:rounded-xl [&>section]:p-5 sm:[&>section]:p-6"><TourSupportCard role="manager" /></div>
               </div>
-              <aside className="space-y-4">
-                <section id="tour-visit-notes" tabIndex={-1} aria-label={mt('tourVisitorContactTitle')} className={cn("space-y-4 rounded-xl border bg-card p-5 sm:p-6 text-sm outline-none transition-colors", highlightNotes && "border-primary bg-primary/5")}>
+              <aside className="contents lg:block lg:min-w-0 lg:space-y-4">
+                <section aria-label={mt('tourVisitorContactTitle')} className="order-3 space-y-3 rounded-2xl border bg-card p-4 text-sm sm:px-5">
                   <h2 className="text-sm font-semibold leading-5">{mt('tourVisitorContactTitle')}</h2>
                   <dl className="space-y-3">
                     <div><dt className="text-xs text-muted-foreground">{mt('chef')}</dt><dd className="mt-1 font-medium">{selectedViewing.chefName || selectedViewing.chefUsername || mt('tourNotShared')}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">{mt('tourChefEmail')}</dt><dd className="mt-1 break-all">{selectedViewing.chefEmail ? <a className="text-primary underline underline-offset-2" href={`mailto:${selectedViewing.chefEmail}`}>{selectedViewing.chefEmail}</a> : mt('tourNotShared')}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">{mt('tourChefPhone')}</dt><dd className="mt-1">{selectedViewing.chefPhone ? <a className="text-primary underline underline-offset-2" href={`tel:${selectedViewing.chefPhone}`}>{selectedViewing.chefPhone}</a> : mt('tourNotShared')}</dd></div>
                   </dl>
-                  <p className="text-xs leading-relaxed text-muted-foreground">{mt('tourCoordinationHelp')}</p>
-                  <div className="grid min-w-0 grid-cols-2 gap-2 [&>div]:min-w-0 [&_button]:min-w-0 [&_button]:w-full [&_button]:overflow-hidden [&_button]:text-ellipsis [&_button]:whitespace-nowrap [&_button]:px-2 [&_button]:text-xs">
-                    {['pending', 'confirmed'].includes(selectedViewing.viewing.status) && Date.parse(selectedViewing.viewing.scheduledAt) + selectedViewing.viewing.durationMinutes * 60_000 > Date.now() && selectedViewing.viewing.targetedKitchenId && onConfigureNotes && <Button variant="outline" size="sm" className="h-9" title={mt('tourEditVisitNotes')} onClick={() => requestNavigation(() => onConfigureNotes(selectedViewing.viewing.targetedKitchenId!, selectedViewing.viewing.locationId))}>{mt('tourVisitNotesButton')}</Button>}
-                    <TourChatButton tour={selectedViewing.viewing} role="manager" openFromLink buttonClassName="h-9" buttonLabel={mt('tourMessageVisitor', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('tourHistoryActor_chef') })} />
+                  <div className="min-w-0 [&_button]:h-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:whitespace-normal [&_button]:py-2">
+                    <TourChatButton tour={selectedViewing.viewing} role="manager" openFromLink buttonLabel={mt('tourMessageVisitor', { name: selectedViewing.chefName?.trim().split(/\s+/)[0] || mt('tourHistoryActor_chef') })} />
                   </div>
                 </section>
-                <TourHistoryPanel id={selectedViewing.viewing.id} version={selectedViewing.viewing.updatedAt} />
+                <div className="order-5 min-w-0 [&>section]:rounded-2xl [&>section]:p-4 sm:[&>section]:px-5"><TourHistoryPanel id={selectedViewing.viewing.id} version={selectedViewing.viewing.updatedAt} /></div>
               </aside>
               </div>
             </>

@@ -199,12 +199,12 @@ export function isPendingOrUpcomingTour(
   row: Pick<ChefTourRow, "status" | "scheduledAt" | "durationMinutes">,
   nowMs: number = Date.now()
 ): boolean {
-  if (row.status === "pending_local_cooks" || row.status === "pending") return new Date(row.scheduledAt).getTime() >= nowMs;
+  if (row.status === "pending_local_cooks" || row.status === "pending") return new Date(row.scheduledAt).getTime() > nowMs;
   if (row.status !== "confirmed") return false;
   const start = new Date(row.scheduledAt).getTime();
   if (Number.isNaN(start)) return false;
   const durationMs = Math.max(row.durationMinutes ?? 30, 0) * 60_000;
-  return start + durationMs >= nowMs;
+  return start + durationMs > nowMs;
 }
 
 export function countPendingOrUpcomingTours(

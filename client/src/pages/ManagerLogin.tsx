@@ -38,7 +38,7 @@ export default function ManagerLogin() {
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
   const returnPath = managerAuthReturn(new URLSearchParams(window.location.search).get("redirect"));
-  const { user, loading, authPhase, refreshUserData, authenticateWithGoogle, updateUserVerification, discardPendingGoogleRegistration } = useFirebaseAuth();
+  const { user, loading, authPhase, refreshUserData, authenticateWithGoogle, updateUserVerification, discardPendingGoogleRegistration, logout } = useFirebaseAuth();
   const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const queryClient = useQueryClient();
   // Read once, synchronously, so the card can be the first thing painted. This
@@ -836,15 +836,14 @@ export default function ManagerLogin() {
                     // No phone escape hatch: email is the primary identifier and
                     // must be proven before the account can be used. Phone
                     // verification is offered later, during onboarding.
-                    onGoBack={() => {
+                    onGoBack={async () => {
+                      if (auth.currentUser) {
+                        await logout();
+                        if (auth.currentUser) throw new Error("Could not sign out of the current registration.");
+                      }
                       setShowEmailVerification(false);
-                      // Always the identifier gate. This used to send the
-                      // registration path to the sign-in step, which carries a
-                      // back control of its own — so "change email" landed on a
-                      // second screen the visitor could walk backwards out of,
-                      // through two half-states, to get nowhere. The gate is the
-                      // one state that depends on nothing.
-                      setAuthStep("identifier");
+                      setEmailForVerification("");
+                      recoverToIdentifierStep();
                       setVerificationResumed(false);
                     }}
                   />

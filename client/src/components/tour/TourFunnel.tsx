@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { DateField } from '@/components/ui/date-field';
+import { Label } from '@/components/ui/label';
 import { tourFunnelRange, type TourFunnel as Funnel, type FunnelMetric } from '@shared/tour-funnel';
 
 export function TourFunnel({ role, locationId }: { role: 'manager' | 'admin'; locationId?: number }) {
@@ -24,7 +26,10 @@ export function TourFunnel({ role, locationId }: { role: 'manager' | 'admin'; lo
     }, refetchInterval: 60_000,
   });
   const fraction = (metric: FunnelMetric) => metric.rate == null ? t('tourFunnelNoDenominator') : `${metric.count}/${metric.denominator} · ${Math.round(metric.rate * 100)}%`;
-  const coverage = report.data && [
+  const stages = role === 'manager'
+    ? ['requested', 'confirmed', 'completed', 'applied', 'booked'] as const
+    : ['requested', 'confirmed', 'feedback', 'completed', 'applied', 'booked'] as const;
+  const coverage = role === 'admin' && report.data && [
     ['tourFunnelAbsent', fraction(report.data.outcomes.absent)], ['tourFunnelRecovered', fraction(report.data.outcomes.recovered)],
     ['tourFunnelResults', fraction(report.data.outcomes.resultCoverage)], ['tourFunnelExisting', report.data.diagnostics.existingApplications],
     ['tourFunnelUnattributed', report.data.diagnostics.unattributedApplications], ['tourFunnelInvalidated', report.data.diagnostics.attributionInvalidated],
@@ -34,24 +39,27 @@ export function TourFunnel({ role, locationId }: { role: 'manager' | 'admin'; lo
     ['tourFunnelReview', report.data.diagnostics.evidenceReview], ['tourFunnelRepeats', report.data.diagnostics.repeatJourneys],
     ['tourFunnelLaterComplete', report.data.diagnostics.laterCompleted],
   ] as const;
-  return <section aria-label={t('tourFunnelTitle')} className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
-    <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-      <div><h2 className="font-semibold">{t('tourFunnelTitle')}</h2><p className="max-w-xl text-xs text-muted-foreground">{t('tourFunnelCohort')}</p></div>
-      <form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); try { setRange(tourFunnelRange(draft.from, draft.to)); setRangeError(false); } catch { setRangeError(true); } }}>
-        {(['from', 'to'] as const).map(field => <label key={field} className="space-y-1 text-xs">{t(field === 'from' ? 'tourFunnelFrom' : 'tourFunnelTo')}<input aria-label={t(field === 'from' ? 'tourFunnelFrom' : 'tourFunnelTo')} type="date" className="block rounded-md border bg-background px-2 py-1.5" value={draft[field]} onChange={event => setDraft({ ...draft, [field]: event.target.value })} required /></label>)}
-        <Button type="submit" size="sm" variant="outline">{t('tourFunnelUpdate')}</Button>
+  return <section aria-label={t('tourFunnelTitle')} className="min-w-0 space-y-4 rounded-xl border bg-card p-4 [overflow-wrap:anywhere] sm:p-5">
+    <div className="flex min-w-0 flex-col justify-between gap-3 xl:flex-row xl:items-start">
+      <div className="min-w-0"><h2 className="font-semibold">{t('tourFunnelTitle')}</h2><p className="max-w-xl text-xs text-muted-foreground">{t('tourFunnelCohort')}</p></div>
+      <form className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end xl:w-[30rem] xl:shrink-0" onSubmit={event => { event.preventDefault(); try { setRange(tourFunnelRange(draft.from, draft.to)); setRangeError(false); } catch { setRangeError(true); } }}>
+        {(['from', 'to'] as const).map(field => <div key={field} className="min-w-0 space-y-1">
+          <Label htmlFor={`tour-funnel-${role}-${field}`} className="text-xs">{t(field === 'from' ? 'tourFunnelFrom' : 'tourFunnelTo')}</Label>
+          <DateField id={`tour-funnel-${role}-${field}`} minToday={false} disabledDate={date => date > new Date(new Date().setHours(0, 0, 0, 0))} placeholder={t(field === 'from' ? 'tourFunnelFrom' : 'tourFunnelTo')} className="min-h-11" value={draft[field]} onChange={value => setDraft(previous => ({ ...previous, [field]: value }))} />
+        </div>)}
+        <Button type="submit" size="sm" variant="outline" className="min-h-11">{t('tourFunnelUpdate')}</Button>
       </form>
     </div>
     {rangeError && <p role="alert" className="text-sm text-destructive">{t('tourFunnelRangeError')}</p>}
     {report.isLoading ? <p role="status" className="text-sm text-muted-foreground">{t('tourFunnelLoading')}</p>
       : report.isError ? <div className="flex items-center gap-3"><p role="alert" className="text-sm">{t('tourFunnelError')}</p><Button variant="outline" size="sm" onClick={() => void report.refetch()}>{t('tourFunnelRetry')}</Button></div>
       : report.data && <>
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">{(['requested', 'confirmed', 'feedback', 'completed', 'applied', 'booked'] as const).map(key => { const metric = report.data!.stages[key]; return <div key={key} className="rounded-lg bg-muted/30 p-3"><dt className="text-xs text-muted-foreground">{t(`tourFunnelStage_${key}`)}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{metric.count}</dd>{key !== 'requested' && <dd className="mt-1 text-xs text-muted-foreground">{fraction(metric)}</dd>}</div>; })}</dl>
-        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('tourFunnelCoverage')}</summary>
-          <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">{coverage?.map(([key, value]) => <div key={key}><dt>{t(key)}</dt><dd>{value}</dd></div>)}</dl>
+        <dl className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${role === 'manager' ? 'xl:grid-cols-5' : 'xl:grid-cols-6'}`}>{stages.map(key => { const metric = report.data!.stages[key]; return <div key={key} className="rounded-lg bg-muted/30 p-3"><dt className="text-xs text-muted-foreground">{t(`tourFunnelStage_${key}`)}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{metric.count}</dd>{key !== 'requested' && <dd className="mt-1 text-xs text-muted-foreground">{fraction(metric)}</dd>}</div>; })}</dl>
+        {role === 'admin' && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">{t('tourFunnelCoverage')}</summary>
+          <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">{coverage && coverage.map(([key, value]) => <div key={key}><dt>{t(key)}</dt><dd>{value}</dd></div>)}</dl>
           {(['tourFunnelDefinition', 'tourFunnelRecoveryDefinition', 'tourFunnelBookingDefinition'] as const).map(key => <p key={key} className="mt-3">{t(key)}</p>)}
           <p className="mt-2">{t('tourFunnelAsOf')} {new Intl.DateTimeFormat(undefined, { timeZone: 'America/St_Johns', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(report.data.asOf))} · America/St_Johns</p>
-        </details>
+        </details>}
       </>}
   </section>;
 }

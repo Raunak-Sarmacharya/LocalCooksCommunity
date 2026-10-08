@@ -5,7 +5,7 @@ import { projectVisitEvidence } from '@shared/tour-visit-evidence';
 import type { TourAttendanceEntry } from '@shared/tour-attendance';
 import { validateTourVisitInput } from '@shared/tour-visit-input';
 import { tourAttendance } from '@shared/tour-attendance';
-import { hasTourConfirmation } from '@shared/tour-outcome';
+import { hasTourConfirmation, adminTourOutcomeNotes } from '@shared/tour-outcome';
 import { DomainError } from '../shared/errors/domain-error';
 import { createHash } from 'node:crypto';
 
@@ -47,7 +47,7 @@ export async function appendVisitResult(tx: Transaction, before: Tour, after: To
     eventKey: `result:${after.id}:${after.updatedAt.toISOString()}`, supersedesId: current[0]?.id || null,
     actorId: actorId || null, actorRole: actorRole || null, source: 'decision', recordedAt: after.updatedAt,
     scheduledAt: after.scheduledAt, appointmentRevision: after.appointmentRevision || 1, result,
-    sharedExplanation: after.sharedManagerNotes, internalNotes: after.managerNotes,
+    sharedExplanation: null, internalNotes: adminTourOutcomeNotes(after),
     data: { previousResult: before.visitResult, disruptionReason: after.disruptionReason, noShowReason: after.noShowReason } });
 }
 

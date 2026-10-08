@@ -8,7 +8,9 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, RefreshCw } from "lucide-react";
+import { CalendarDays, Clock, Loader2, CheckCircle, ArrowLeft, Send, Mail, RefreshCw } from "lucide-react";
+import { KitchenIcon } from "@/components/ui/kitchen-icon";
+import { KitchenTour } from "@/components/ui/manager-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
@@ -27,7 +29,9 @@ import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { TourIntakeChoice } from "@/components/tour/TourIntakeChoice";
 import { TourIntakeDetails } from "@/components/tour/TourIntakeDetails";
 import { requiredViewingIntakeDataSchema, type ViewingIntakeData } from "@shared/schema";
@@ -307,6 +311,10 @@ export function ScheduleViewingWidget({
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
+        if (err.code === 'TOUR_REQUEST_BLOCKED') {
+          throw Object.assign(new Error(err.error || t('tourRequestBlocked', 'Open your existing tour to review its status.')),
+            { code: err.code, tourId: err.tourId });
+        }
         if (err.code === "SLOT_TAKEN") {
           throw Object.assign(new Error(
             t("timeSlotJustTaken", "This time slot was just taken. Please pick another.")
@@ -330,11 +338,16 @@ export function ScheduleViewingWidget({
       sessionStorage.removeItem(storageKey);
       queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] });
       queryClient.invalidateQueries({ queryKey: ["/api/viewings", "chef"] });
+      queryClient.invalidateQueries({ queryKey: ['/api/viewings/request-access'] });
       if (data.notificationDeliveryFailed) toast.warning(t("tourSavedDeliveryFailed", "Your tour request is saved, but some notifications could not be delivered."));
       else toast.success(t("kitchenTourBookedSuccess", "Tour request sent"));
     },
-    onError: (error: Error & { code?: string }) => {
+    onError: (error: Error & { code?: string; tourId?: number }) => {
       toast.error(error.message);
+      void queryClient.invalidateQueries({ queryKey: ['/api/viewings/request-access'] });
+      if (error.code === 'TOUR_REQUEST_BLOCKED' && error.tourId) {
+        setLocation(`${chefDashboardHref('viewings')}&viewing=${error.tourId}`);
+      }
       if (error.code === "SLOT_TAKEN") {
         setSelectedSlot(null);
         setStep("time");
@@ -547,7 +560,7 @@ export function ScheduleViewingWidget({
             ? 3
             : 4;
 
-    return <KitchenJourneySteps steps={steps.map((s) => s.label.replace(/^\d+\.\s*/, ""))} current={railIdx} />;
+    return <KitchenJourneySteps steps={steps.map((s) => s.label.replace(/^\d+\.\s*/, ""))} current={railIdx} compact={presentation === "dialog"} />;
   };
 
   const renderDateStep = () => (
@@ -569,7 +582,7 @@ export function ScheduleViewingWidget({
 
   const renderTimeStep = () => (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
         </p>
@@ -638,23 +651,33 @@ export function ScheduleViewingWidget({
         onChange={estimatedWeeklyHours => setIntakeData({ ...intakeData, estimatedWeeklyHours })} />
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{t("tourHasLicense", "Do you have a food handler license?")}</legend>
-        <div className="flex gap-6">
-          {[true, false].map(answer => <label key={String(answer)} className="flex items-center gap-2 text-sm">
-            <input type="radio" name="tour-license" required checked={intakeData.hasLicense === answer} onChange={() => setIntakeData({ ...intakeData, hasLicense: answer })} />
+        <RadioGroup name="tour-license" required aria-label={t("tourHasLicense", "Do you have a food handler license?")}
+          value={intakeData.hasLicense === undefined ? "" : String(intakeData.hasLicense)}
+          onValueChange={answer => setIntakeData({ ...intakeData, hasLicense: answer === "true" })}
+          className="grid grid-cols-2 gap-3">
+          {[true, false].map(answer => <Label key={String(answer)} htmlFor={`tour-license-${answer}`}
+            className={cn("flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-4 py-3 font-normal transition-colors", intakeData.hasLicense === answer ? "border-primary bg-primary/5" : "border-border hover:border-primary/60 hover:bg-primary/[0.03]")}>
+            <RadioGroupItem id={`tour-license-${answer}`} value={String(answer)} />
             {answer ? t("tourIntakeYes", "Yes") : t("tourIntakeNo", "No")}
-          </label>)}
-        </div>
+          </Label>)}
+        </RadioGroup>
       </fieldset>
       <div className="space-y-2">
         <Label htmlFor="tour-start-date">{t("tourTargetStartDate", "When would you like to start renting?")}</Label>
-        <Input id="tour-start-date" type="date" required={intakeData.targetStartDate !== "not_decided"} disabled={intakeData.targetStartDate === "not_decided"} value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""} onChange={event => setIntakeData({ ...intakeData, targetStartDate: event.target.value })} />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={intakeData.targetStartDate === "not_decided"} onChange={event => setIntakeData({ ...intakeData, targetStartDate: event.target.checked ? "not_decided" : "" })} />
+        <DateField id="tour-start-date" minToday={false}
+          placeholder={t("tourTargetStartDate", "When would you like to start renting?")}
+          disabled={intakeData.targetStartDate === "not_decided"}
+          value={intakeData.targetStartDate === "not_decided" ? "" : intakeData.targetStartDate || ""}
+          onChange={targetStartDate => setIntakeData({ ...intakeData, targetStartDate })}
+          className="min-h-11 rounded-lg" />
+        <Label htmlFor="tour-start-undecided" className="flex min-h-11 cursor-pointer items-center gap-2.5 font-normal">
+          <Checkbox id="tour-start-undecided" checked={intakeData.targetStartDate === "not_decided"}
+            onCheckedChange={checked => setIntakeData({ ...intakeData, targetStartDate: checked === true ? "not_decided" : "" })} />
           {t("tourIntakeNotDecided", "Not decided yet")}
-        </label>
+        </Label>
       </div>
       <p className="text-xs text-muted-foreground">{t("tourIntakeRequired", "Answer all four questions to continue.")}</p>
-      <div className="flex gap-3">
+      <div className="flex gap-3 border-t border-border pt-4">
         <Button type="button" variant="outline" onClick={handleBack}>{t("modalBack", "Back")}</Button>
         <Button type="submit" className="flex-1" disabled={!intakeComplete}>{t("tourIntakeContinue", "Continue")}</Button>
       </div>
@@ -754,7 +777,7 @@ export function ScheduleViewingWidget({
 
   const renderConfirmStep = () => (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-base font-semibold">{t("confirmKitchenTour", "Confirm your kitchen tour request")}</h3>
         <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={handleBack}>Edit time</Button>
       </div>
@@ -762,17 +785,15 @@ export function ScheduleViewingWidget({
       <Card className="border-primary/20">
         <CardContent className="pt-4 space-y-3">
           <div className="flex items-start gap-3">
-            <Building2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+            <KitchenIcon className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-sm font-medium">
-                {locationName || t("applyFlowKitchenFallbackName", "Kitchen")}
+                {targetedKitchenName || locationName || t("applyFlowKitchenFallbackName", "Kitchen")}
               </p>
-              {targetedKitchenName && targetedKitchenName !== locationName && (
-                <p className="text-xs text-muted-foreground">
-                  {t("interestedIn", {
-                    defaultValue: "Interested in: {name}",
-                    name: targetedKitchenName,
-                  })}
+              {locationName && targetedKitchenName && targetedKitchenName !== locationName && (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Icon icon="mdi:map-marker" className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  {locationName}
                 </p>
               )}
             </div>
@@ -854,7 +875,7 @@ export function ScheduleViewingWidget({
         <CheckCircle className="h-7 w-7 text-emerald-600" />
       </div>
       <div className="space-y-1">
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <h3 className="text-lg font-semibold">
             {t("kitchenTourRequested", "Kitchen Tour Requested")}
           </h3>
@@ -913,7 +934,7 @@ export function ScheduleViewingWidget({
   // still swallows the wheel instead of chaining it to the page, which froze
   // scrolling over the whole right column. Only be a scroll container in dialog mode.
   const body = (
-    <div className={presentation === "page" ? undefined : "min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
+    <div className={cn("min-w-0 [overflow-wrap:anywhere] [&>div>button]:h-auto [&>div>button]:min-h-11 [&>div>button]:whitespace-normal [&>div>button]:py-2 [&>form>div>button]:h-auto [&>form>div>button]:min-h-11 [&>form>div>button]:whitespace-normal [&>form>div>button]:py-2", presentation === "dialog" && "min-h-0 flex-1 overflow-y-auto overscroll-contain")}>
       {step === "date" && renderDateStep()}
       {step === "time" && renderTimeStep()}
       {step === "intake" && renderIntakeStep()}
@@ -938,8 +959,8 @@ export function ScheduleViewingWidget({
           compactContent={step === "account" || step === "verify"}
           aside={<div className="flex flex-col gap-6">
             {step !== "success" && renderGuideRail()}
-            {selectedDate && selectedSlot && step !== "confirm" && step !== "success" && <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground sm:text-sm">
-              <p className="flex min-w-0 items-center gap-x-1 whitespace-nowrap sm:gap-x-1.5">
+            {selectedDate && selectedSlot && step !== "confirm" && step !== "success" && <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground sm:text-sm">
+              <p className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 sm:gap-x-1.5">
                 <span className="sm:hidden">{format(selectedDate, "MMM d")}</span>
                 <span className="hidden sm:inline">{format(selectedDate, "EEE, MMM d, yyyy")}</span>
                 <span aria-hidden className="text-muted-foreground/60">·</span>
@@ -965,7 +986,7 @@ export function ScheduleViewingWidget({
       >
         <DialogContent
           className={cn(
-            "p-0 !overflow-hidden bg-background max-h-[90vh] flex flex-col sm:flex-row sm:max-w-[820px]"
+            "p-0 !overflow-hidden bg-background flex flex-col min-w-0 [overflow-wrap:anywhere] lg:flex-row sm:max-w-[820px]"
           )}
           onPointerDownOutside={(e) => {
             if (isDataTaking) e.preventDefault();
@@ -980,10 +1001,10 @@ export function ScheduleViewingWidget({
             }
           }}
         >
-          <div className="hidden sm:flex sm:w-5/12 shrink-0 flex-col p-8 border-r border-gray-100 bg-[#F8F9FA] overflow-hidden">
+          <div className="hidden lg:flex lg:w-5/12 shrink-0 flex-col p-8 border-r border-gray-100 bg-[#F8F9FA] overflow-hidden">
             <DialogHeader className="text-left space-y-4">
               <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-[#F51042] shrink-0" />
+                <KitchenTour className="h-5 w-5 text-[#F51042] shrink-0" />
                 {guidedChrome.title}
               </DialogTitle>
               <DialogDescription asChild>
@@ -1006,10 +1027,10 @@ export function ScheduleViewingWidget({
             )}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="shrink-0 px-6 pt-6 pb-4 sm:hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="shrink-0 px-4 pt-4 pb-3 lg:hidden">
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold text-gray-900">
+                <DialogTitle className="text-xl font-bold text-gray-900">
                   {guidedChrome.title}
                 </DialogTitle>
                 <DialogDescription asChild>
@@ -1032,7 +1053,7 @@ export function ScheduleViewingWidget({
                 </Button>
               )}
             </div>
-            <div className="min-h-0 flex-1 flex flex-col px-6 pb-6 sm:px-8 sm:pb-8 sm:pt-8">
+            <div className="min-h-0 min-w-0 flex-1 flex flex-col px-4 pb-4 sm:px-8 sm:pb-8 sm:pt-8">
               {body}
             </div>
           </div>

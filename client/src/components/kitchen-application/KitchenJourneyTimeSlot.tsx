@@ -32,13 +32,14 @@ export default function KitchenJourneyTimeSlot({ label, selected, onClick }: { l
     <button
       type="button"
       aria-pressed={selected}
+      aria-label={label}
       onClick={onClick}
       className={cn(
-        "flex h-9 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-center text-[13px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
+        "flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-center text-[13px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
         selected ? "border-primary bg-primary/5 text-foreground" : "border-border bg-background text-foreground hover:border-primary/60 hover:bg-primary/[0.03]"
       )}
     >
-      <span className="truncate">{display}</span>
+      <span className="min-w-0 whitespace-normal break-words">{display}</span>
       {selected && <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />}
     </button>
   );

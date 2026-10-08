@@ -12,6 +12,7 @@ import { db } from "../db";
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
+import { getUnreadNotificationSummary } from "../services/notification-sound-summary";
 
 const router = Router();
 
@@ -183,22 +184,7 @@ async function getNotifications(
  * When locationId is provided, includes both location-specific AND global (null location) notifications
  */
 async function getUnreadCount(managerId: number, locationId?: number) {
-  // CRIT-2 Security: Parameterized query — no sql.raw()
-  const locationCondition = locationId 
-    ? sql`AND (location_id = ${locationId} OR location_id IS NULL)` 
-    : sql``;
-  
-  const result = await db.execute(sql`
-    SELECT COUNT(*) as count
-    FROM manager_notifications
-    WHERE manager_id = ${managerId}
-      AND is_read = false
-      AND is_archived = false
-      AND (expires_at IS NULL OR expires_at > NOW())
-      ${locationCondition}
-  `);
-
-  return parseInt((result.rows[0] as any)?.count || '0', 10);
+  return getUnreadNotificationSummary('manager', managerId, locationId);
 }
 
 /**
@@ -319,12 +305,12 @@ router.get("/unread-count", requireFirebaseAuthWithUser, requireNotificationOwne
     const managerId = req.neonUser!.id;
     const { locationId } = req.query;
 
-    const count = await getUnreadCount(
+    const summary = await getUnreadCount(
       managerId, 
       locationId ? parseInt(locationId as string) : undefined
     );
 
-    res.json({ count });
+    res.json(summary);
   } catch (error) {
     logger.error("Error fetching unread count:", error);
     return errorResponse(res, error);

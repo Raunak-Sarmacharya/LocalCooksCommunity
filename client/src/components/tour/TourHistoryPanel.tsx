@@ -57,9 +57,9 @@ export function TourHistoryPanel({ id, version, role = 'manager' }: { id: number
           {history.data.events.map((event, index) => <li key={event.key} className="relative min-w-0 space-y-1 pl-5">
           {index === history.data.events.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 top-2 w-3 bg-card" />}
           <span data-testid="tour-history-dot" aria-hidden="true" className="absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full bg-primary" />
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-            <p className="min-w-0 truncate font-medium leading-4" title={eventLabel(event)}>{eventLabel(event)}</p>
-            <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="whitespace-nowrap text-right text-[10px] leading-4 text-muted-foreground">{compactWhen(event.recordedAt)}</time>
+          <div className="grid min-w-0 items-start gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
+            <p className="min-w-0 break-words font-medium leading-4" title={eventLabel(event)}>{eventLabel(event)}</p>
+            <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{compactWhen(event.recordedAt)}</time>
           </div>
           <p className="text-xs text-muted-foreground">{mt(`tourHistoryActor_${event.actor}`)}</p>
           {(event.previousScheduledAt || event.proposedSlots?.length || (event.actualAt && event.actualAt !== event.recordedAt)) && <details className="pt-1 text-muted-foreground">

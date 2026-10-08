@@ -26,8 +26,8 @@ export async function getUserDisplayName(userId: number, role: 'chef' | 'manager
         if (!user) return role === 'chef' ? 'A chef' : 'Manager';
 
         const profileData = (user.managerProfileData as any) || {};
-        if (profileData.displayName) return profileData.displayName;
         if (profileData.fullName) return profileData.fullName;
+        if (profileData.displayName) return profileData.displayName;
         // Dashboard greetings use Firebase displayName. Keep tour names in sync
         // when a person set their name there before updating their SQL profile.
         if (user.firebaseUid) {

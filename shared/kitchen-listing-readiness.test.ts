@@ -50,6 +50,14 @@ describe("buildListingChecklist", () => {
     expect(checklist.missingRequirementIds).toEqual(["rate"]);
   });
 
+  it('allows publishing with Kitchen Tours off while retaining it as a recommendation', () => {
+    const checklist = buildListingChecklist({ ...READY, toursEnabled: false });
+    expect(checklist.canPublish).toBe(true);
+    expect(checklist.missingRequirementIds).toEqual([]);
+    expect(checklist.openRecommendationIds).toEqual(['tours']);
+    expect(checklist.requirements.some(row => String(row.id) === 'tours')).toBe(false);
+  });
+
   it("requires visit setup independently of optional listing recommendations", () => {
     const checklist = buildListingChecklist({ ...READY, hasVisitSetup: false });
     expect(checklist.canPublish).toBe(false);

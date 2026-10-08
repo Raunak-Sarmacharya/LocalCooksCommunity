@@ -19,5 +19,5 @@ export function TourApplicationButton({ id, version }: { id: number; version: st
   const label = data.action === 'apply' ? data.outcomeVerified === false ? t('tourRequestToApply') : t('tourApplyWhenReady', 'Apply when you’re ready')
     : data.action === 'continue' ? t('tourContinueApplication', 'Continue application') : data.applicationId
       ? t('tourViewApplication', 'View application') : t('tourViewKitchenAccess', 'View kitchen access');
-  return <Button asChild variant="outline" size="sm" className="h-9"><Link href={data.href}>{label}</Link></Button>;
+  return <Button asChild variant="outline" size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2"><Link href={data.href}>{label}</Link></Button>;
 }

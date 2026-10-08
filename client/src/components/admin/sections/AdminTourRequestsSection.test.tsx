@@ -13,6 +13,20 @@ afterEach(() => {
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
 describe('admin tour incident links', () => {
+  it('shows the manager message and private outcome notes as separate admin fields', async () => {
+    const rows = [{ viewing: { id: 85, status: 'completed', confirmationVerified: true,
+      scheduledAt: '2026-10-05T12:00:00Z', durationMinutes: 30, updatedAt: '2026-10-05T13:00:00Z',
+      sharedManagerNotes: 'Please use the side entrance.', outcomeHistory: [{ from: 'confirmed', to: 'completed', actorRole: 'admin',
+        recordedAt: '2026-10-05T13:00:00Z', outcomeNotes: 'PRIVATE decision after reviewing both responses.', sharedNotes: null }] }, chefName: 'Fixture chef' }];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('delivery-status') ? [] : rows })));
+    window.history.replaceState({}, '', '/admin?section=tour-requests&viewing=85');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><AdminTourRequestsSection /></QueryClientProvider>);
+    expect(await screen.findByText('Please use the side entrance.')).toBeInTheDocument();
+    expect(screen.getByText('PRIVATE decision after reviewing both responses.')).toBeInTheDocument();
+    expect(screen.getByText('Outcome notes · admin only:')).toBeInTheDocument();
+    client.clear();
+  });
   it('reviews both private responses and requires an explanation for an unverified closure', async () => {
     const version = '2026-10-05T13:00:00Z';
     const rows = [{ viewing: { id: 42, status: 'confirmed', confirmationVerified: true, scheduledAt: '2026-10-05T12:00:00Z', durationMinutes: 30, createdAt: version, updatedAt: version }, chefName: 'Fixture chef' }];
@@ -24,13 +38,16 @@ describe('admin tour incident links', () => {
     render(<QueryClientProvider client={client}><AdminTourRequestsSection /></QueryClientProvider>);
     await screen.findByText('Chef private account'); expect(screen.getByText('Manager private account')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Record outcome' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('The chef and manager receive the outcome status without these notes.');
     const save = screen.getByRole('button', { name: 'Save outcome' }); expect(save).toBeDisabled();
     fireEvent.click(screen.getByRole('combobox', { name: 'Tour outcome' }));
     fireEvent.click(screen.getByRole('option', { name: 'Close without a verified outcome' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message to chef' }), { target: { value: 'The available responses conflict; the actual result cannot be verified.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Internal outcome notes' }), { target: { value: 'The available responses conflict; the actual result cannot be verified.' } });
     expect(save).toBeEnabled(); fireEvent.click(save);
     await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true));
-    expect(JSON.parse(fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')![1].body)).toMatchObject({ status: 'cancelled', disruptionReason: 'outcome_unknown', sharedManagerNotes: 'The available responses conflict; the actual result cannot be verified.' });
+    const submitted = JSON.parse(fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')![1].body);
+    expect(submitted).toMatchObject({ status: 'cancelled', disruptionReason: 'outcome_unknown', outcomeNotes: 'The available responses conflict; the actual result cannot be verified.' });
+    expect(submitted).not.toHaveProperty('sharedManagerNotes');
     client.clear();
   });
   it('removes a soft change signal from Pending once the visitor arrives', async () => {

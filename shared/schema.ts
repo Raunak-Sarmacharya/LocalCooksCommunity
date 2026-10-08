@@ -2363,12 +2363,29 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   outcomeReminderSentAt: timestamp("outcome_reminder_sent_at"), // Reminder enqueue marker; actual delivery is tracked in tour_delivery_events.
   feedbackRequestedAt: timestamp('feedback_requested_at'), // Current appointment markers; event keys carry durable revision-specific identity.
   feedbackEscalatedAt: timestamp('feedback_escalated_at'),
+  repeatAuthorizationId: integer('repeat_authorization_id').references((): AnyPgColumn => tourRepeatAuthorizations.id, { onDelete: 'restrict' }),
   outcomeNotificationPending: boolean("outcome_notification_pending").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Outgoing email log — every sendEmail() attempt is recorded for admin tracking
+// Admin decisions preserve their provenance and are used atomically with the new request.
+export const tourRepeatAuthorizations = pgTable('tour_repeat_authorizations', {
+  id: serial('id').primaryKey(),
+  sourceTourId: integer('source_tour_id').references(() => kitchenViewings.id, { onDelete: 'restrict' }).notNull(),
+  sourceVersion: text('source_version').notNull(),
+  requestKey: text('request_key').notNull().unique(),
+  grantedBy: integer('granted_by').notNull(),
+  reason: text('reason').notNull(),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  usedByTourId: integer('used_by_tour_id').references(() => kitchenViewings.id, { onDelete: 'restrict' }).unique(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedBy: integer('revoked_by'),
+  revokeReason: text('revoke_reason'),
+});
+
 // Durable visit facts are independent of notification leases and delivery snapshots.
 export const tourVisitEvents = pgTable('tour_visit_events', {
   id: serial('id').primaryKey(),
@@ -2553,6 +2570,7 @@ export const updateKitchenViewingStatusSchema = z.object({
   status: z.enum(['pending', 'confirmed', 'cancelled', 'completed', 'no_show']),
   managerNotes: z.string().max(500).optional(),
   sharedManagerNotes: z.string().trim().max(2000).optional(),
+  outcomeNotes: z.string().trim().max(2000).optional(),
   noShowReason: z.literal('visitor_absent').optional(),
   disruptionReason: z.enum(['manager_absent', 'access_unavailable', 'weather', 'other', 'outcome_unknown']).optional(),
   cancellationReason: z.string().max(500).optional(),

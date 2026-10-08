@@ -33,7 +33,7 @@ export function AdminTourVisitEvidence({ id, version, needsReview }: { id: numbe
       await client.invalidateQueries({predicate:q=>['tour-visit-evidence','tour-history','/api/viewings/admin'].includes(String(q.queryKey[0]))});
     } catch {setError(t('tourVisitSaveError')); await query.refetch();} finally {setSaving(false);}
   };
-  return <section className="space-y-4 rounded-xl border p-5 text-sm">
+  return <section className="min-w-0 space-y-4 rounded-xl border p-5 text-sm [overflow-wrap:anywhere] [&_button]:h-auto [&_button]:min-h-11 [&_button]:max-w-full [&_button]:whitespace-normal [&_button]:py-2">
     <Button size="sm" variant="outline" aria-expanded={open} onClick={()=>setOpen(!open)}>{t('tourVisitAdminEvidence')}</Button>
     {open && <>{query.isPending && <p role="status">{t('tourVisitLoading')}</p>}{query.error && <div role="alert">{query.error.message} <Button size="sm" variant="outline" onClick={()=>void query.refetch()}>{t('tourVisitRetry')}</Button></div>}
       {data && <>        <div className="max-h-72 space-y-3 overflow-y-auto overscroll-contain" role="region" aria-label={t('tourVisitAdminEvidence')} tabIndex={0}>
@@ -48,7 +48,7 @@ export function AdminTourVisitEvidence({ id, version, needsReview }: { id: numbe
         {data.tour?.visitEvidenceState === 'review' && <form className="space-y-3 border-t pt-4" onSubmit={event=>{event.preventDefault();void repair();}}>
           <p className="text-xs text-muted-foreground">{t('tourFeedbackLegacyRepairHelp')}</p>
           {(['arrival','departure'] as const).map(field=><label key={field} className="block space-y-1">{t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')}
-            <select aria-label={t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')} className="block h-10 w-full rounded-md border bg-background px-2" value={field==='arrival'?arrival:departure} disabled={saving} onChange={event=>(field==='arrival'?setArrival:setDeparture)(event.target.value)}>
+            <select aria-label={t(field==='arrival'?'tourVisitArrival':'tourVisitDeparture')} className="block min-h-11 w-full min-w-0 rounded-md border bg-background px-2 text-base sm:text-sm" value={field==='arrival'?arrival:departure} disabled={saving} onChange={event=>(field==='arrival'?setArrival:setDeparture)(event.target.value)}>
               <option value="">{t('tourFeedbackLegacyChoose')}</option>
               {(field==='arrival'?data.tour.checkedInAt:data.tour.checkedOutAt) && <option value="keep">{t('tourFeedbackLegacyKeep')}</option>}
               <option value="unknown">{t('tourFeedbackLegacyUnknown')}</option>

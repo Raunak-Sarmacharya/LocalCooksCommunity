@@ -32,7 +32,7 @@ export function AppDialogContent({ className, children, ...props }: DialogConten
   return (
     <DialogContent
       className={cn(
-        "flex max-h-[90vh] flex-col gap-4 rounded-3xl border-0 p-6 shadow-2xl",
+        "flex flex-col gap-4 rounded-3xl border-0 p-4 shadow-2xl sm:p-6",
         className,
       )}
       {...props}

@@ -20,7 +20,8 @@ vi.mock("../utils/user-display", () => ({ getUserDisplayName: vi.fn() }));
 vi.mock("../phone-utils", () => ({ getChefPhone: vi.fn() }));
 
 import router from "./viewings";
-const settings = { isActive: true, defaultDurationMinutes: 30, bufferBeforeMinutes: 0,
+import { kitchenViewingSettings, kitchenViewingAvailability } from '@shared/schema';
+const settings = { isActive: true, arrivalNotes: 'Meet at reception', departureNotes: 'Return badge', defaultDurationMinutes: 30, bufferBeforeMinutes: 0,
   bufferAfterMinutes: 15, advanceNoticeHours: 0, maxAdvanceBookingDays: 7 };
 function handler(path: string, method: string) {
   return (router as any).stack.find((entry: any) => entry.route?.path === path && entry.route.methods[method]).route.stack.at(-1).handle;
@@ -29,8 +30,68 @@ function response() { return { status: vi.fn().mockReturnThis(), json: vi.fn(), 
 
 describe('kitchen tour guidance settings', () => {
   beforeEach(() => { vi.clearAllMocks(); mocks.rows.length = 0; });
-  it('persists validated notes through the existing owned-kitchen settings route and allows clearing them', async () => {
-    let saved: any = { ...settings, kitchenId: 40 };
+  it('requires both instructions and usable saved hours for activation, permits drafts, and blocks clearing live instructions', async () => {
+    let saved = { ...settings, isActive: false, kitchenId: 40, arrivalNotes: '', departureNotes: '' };
+    let hours: any[] = [];
+    const write = vi.fn();
+    const tx: any = { execute: vi.fn(), select: () => {
+      let table: unknown;
+      const rows = () => table === kitchenViewingSettings ? [saved] : table === kitchenViewingAvailability ? hours : [];
+      const chain: any = { from: (value: unknown) => { table = value; return chain; }, where: () => chain,
+        limit: async () => rows(), then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
+      return chain;
+    }, update: () => ({ set: (values: any) => ({ where: () => ({ returning: async () => {
+      write(values); saved = { ...saved, ...values }; return [saved];
+    } }) }) }), delete: () => ({ where: async () => { hours = []; } }),
+      insert: () => ({ values: async (values: any[]) => { hours = values; } }) };
+    mocks.transaction.mockImplementation(run => run(tx));
+    const put = async (body: unknown) => {
+      mocks.rows.push([{ id: 40 }]); const res = response();
+      await handler('/settings/:kitchenId', 'put')({ params: { kitchenId: '40' }, neonUser: { id: 2 }, body }, res);
+      return res;
+    };
+    expect((await put({ isActive: true })).status).toHaveBeenCalledWith(400);
+    expect(write).not.toHaveBeenCalled();
+    await put({ arrivalNotes: 'Meet Sam', departureNotes: 'Return badge' });
+    expect(saved.isActive).toBe(false);
+    expect((await put({ isActive: true })).status).toHaveBeenCalledWith(400);
+    hours = [{ dayOfWeek: 1, startTime: '09:00', endTime: '09:44', isAvailable: true }];
+    expect((await put({ isActive: true })).status).toHaveBeenCalledWith(400);
+    expect((await put({ isActive: true, slots: [{ ...hours[0], endTime: '09:45' }] })).json).toHaveBeenCalledWith(expect.objectContaining({ isActive: true }));
+    expect(saved.isActive).toBe(true);
+    expect(hours[0].endTime).toBe('09:45');
+    expect((await put({ departureNotes: '  ' })).status).toHaveBeenCalledWith(400);
+    expect(saved.departureNotes).toBe('Return badge');
+    expect((await put({ isActive: false, departureNotes: '' })).json).toHaveBeenCalledWith(expect.objectContaining({ isActive: false, departureNotes: '' }));
+  });
+  it('does not advertise legacy active setups that lack instructions or usable hours', async () => {
+    const hours = [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:00', isAvailable: true }];
+    for (const [config, schedule, available] of [
+      [{ ...settings, arrivalNotes: null }, hours, false],
+      [settings, [{ ...hours[0], endTime: '09:10' }], false],
+      [settings, hours, true],
+    ] as const) {
+      mocks.rows.push([config], schedule as any[]); const res = response();
+      await handler('/kitchen/:kitchenId/is-active', 'get')({ params: { kitchenId: '40' } }, res);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ toursAvailable: available }));
+    }
+  });
+  it('keeps preparation paused even when a complete legacy setup was enabled', async () => {
+    let saved = { ...settings, kitchenId: 40 };
+    const tx: any = { execute: vi.fn(), select: () => {
+      let table: unknown;
+      const rows = () => table === kitchenViewingSettings ? [saved] : [];
+      const chain: any = { from: (value: unknown) => { table = value; return chain; }, where: () => chain,
+        limit: async () => rows(), then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
+      return chain;
+    }, update: () => ({ set: (values: any) => ({ where: () => ({ returning: async () => { saved = { ...saved, ...values }; return [saved]; } }) }) }) };
+    mocks.rows.push([{ id: 40 }]); mocks.transaction.mockImplementation(run => run(tx));
+    const res = response();
+    await handler('/setup/:kitchenId', 'put')({ params: { kitchenId: '40' }, neonUser: { id: 2 }, body: { scheduleSource: 'separate' } }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({ isActive: false }) }));
+  });
+  it('persists validated draft notes through the owned-kitchen settings route and allows clearing while paused', async () => {
+    let saved: any = { ...settings, isActive: false, kitchenId: 40 };
     const tx = { execute: vi.fn(), select: () => ({ from: () => ({ where: () => ({ limit: async () => [saved] }) }) }),
       update: () => ({ set: (value: any) => ({ where: () => ({ returning: async () => { saved = { ...saved, ...value }; return [saved]; } }) }) }) };
     mocks.transaction.mockImplementation(async run => run(tx));
@@ -78,8 +139,72 @@ function chefRequest(date: Date, durationMinutes = 30) {
       intakeData: { intendedUse: 'Catering', estimatedWeeklyHours: '5-10', hasLicense: false, targetStartDate: 'not_decided' } } };
 }
 function primeKitchen() {
-  mocks.rows.push([{ name: "Kitchen", managerId: 1, timezone: "UTC" }], [], [settings]);
+  mocks.rows.push([{ name: "Kitchen", managerId: 1, timezone: "UTC" }], [], [], [settings]);
 }
+
+describe('kitchen tour request eligibility routes', () => {
+  beforeEach(() => { vi.clearAllMocks(); mocks.rows.length = 0; });
+  afterEach(() => { vi.useRealTimers(); });
+  it.each([
+    ['confirmed', undefined, 'ended'], ['completed', undefined, 'completed'], ['cancelled', 'outcome_unknown', 'unverified'],
+  ])('blocks another request after %s and returns the exact tour details target', async (status, disruptionReason, reason) => {
+    mocks.rows.push([{ managerId: 1 }], [{ id: 77, chefId: 8, targetedKitchenId: 40, status, disruptionReason,
+      scheduledAt: new Date('2020-01-01'), durationMinutes: 45 }], []);
+    if (reason !== 'ended') mocks.rows.push([]); // No repeat permission.
+    const res = response();
+    const request = chefRequest(new Date(Date.now() + 86400000));
+    // Neither a forged chef nor an arbitrary permission in the body can bypass history.
+    Object.assign(request.body, { chefId: 999, repeatAuthorizationId: 1234 });
+    await handler('/book', 'post')(request, res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TOUR_REQUEST_BLOCKED', tourId: 77, reason }));
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it('rechecks history inside the transaction after acquiring chef and kitchen locks', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    primeKitchen();
+    mocks.rows.push([settings], [{ dayOfWeek: 6, startTime: '10:00', endTime: '11:00', isAvailable: true }], [], []);
+    const txRows: any[][] = [[{ id: 8 }], [{ id: 77, chefId: 8, targetedKitchenId: 40, status: 'confirmed',
+      scheduledAt: new Date('2026-10-01T10:00:00Z'), durationMinutes: 30 }], []];
+    const locks: string[] = [];
+    const insert = vi.fn();
+    const tx: any = { execute: vi.fn(async () => { locks.push('kitchen'); }), insert,
+      select: () => {
+        const chain: any = { from: () => chain, where: () => chain, orderBy: () => chain,
+          for: (strength: string) => { locks.push(`chef:${strength}`); return chain; },
+          limit: async () => txRows.shift(),
+          then: (resolve: any) => Promise.resolve(txRows.shift()).then(resolve) };
+        return chain;
+      } };
+    mocks.transaction.mockImplementation(run => run(tx));
+    const res = response();
+    await handler('/book', 'post')(chefRequest(new Date('2026-10-03T12:30:00Z')), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TOUR_REQUEST_BLOCKED', tourId: 77 }));
+    expect(locks).toEqual(['chef:no key update', 'kitchen', 'kitchen', 'kitchen']);
+    expect(insert).not.toHaveBeenCalled();
+    expect(mocks.rows).toHaveLength(0); expect(txRows).toHaveLength(0);
+  });
+  it('limits eligibility to authenticated chefs and validates the kitchen identifier', async () => {
+    for (const req of [
+      { params: { kitchenId: '40' }, neonUser: { id: 8, role: 'manager' }, expected: 403 },
+      { params: { kitchenId: '-1' }, neonUser: { id: 8, role: 'chef' }, expected: 400 },
+    ]) {
+      const res = response(); await handler('/chef/kitchen/:kitchenId/request-access', 'get')(req, res);
+      expect(res.status).toHaveBeenCalledWith(req.expected);
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    }
+    expect(mocks.rows).toHaveLength(0);
+  });
+  it('restricts granting and revoking repeat permissions to Local Cooks admins', async () => {
+    for (const path of ['/admin/:id/repeat-authorizations', '/admin/:id/repeat-authorizations/:authorizationId/revoke']) {
+      const res = response();
+      await handler(path, 'post')({ neonUser: { id: 2, role: 'manager' }, params: { id: '77', authorizationId: '1' } }, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    }
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+});
 
 describe("tour availability enforcement", () => {
   it('rejects foreign self-exclusion before reading public choices', async () => {
@@ -233,12 +358,13 @@ describe("tour availability enforcement", () => {
   });
   it("rejects requests outside the kitchen's weekly tour hours", async () => {
     primeKitchen();
-    mocks.rows.push([], [settings], []);
+    mocks.rows.push([settings], []);
     const res = response();
     await handler("/book", "post")(chefRequest(new Date(Date.now() + 86400000)), res);
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({ error: "That tour time is no longer available" });
     expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.rows).toHaveLength(0);
   });
   it("does not copy booking hours over an existing open tour day", async () => {
     const deleted = vi.fn();

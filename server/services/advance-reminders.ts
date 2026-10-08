@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { tourCanReportLate } from '@shared/tour-late';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { emailLogs, kitchenBookings, kitchenBookingVisits, kitchenViewings, kitchenViewingSettings, kitchens, locations, users, checkinCheckoutChecklists, storageBookings, storageListings } from '@shared/schema';
@@ -270,35 +269,30 @@ export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPol
   return 'due';
 }
 
-export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`, now = Date.now()) {
-  const lateEmail = r.role === 'chef' && r.kind === 'arrival' && r.managerEmail
-    && tourCanReportLate({ status: 'confirmed', scheduledAt: r.start, durationMinutes: (Date.parse(r.end) - Date.parse(r.start)) / 60_000 }, now)
-    ? `mailto:${r.managerEmail.trim().split('@').map(part => encodeURIComponent(part)).join('@')}?subject=${encodeURIComponent(`Running late · TOUR-${r.reservationId}`)}&body=${encodeURIComponent(`Hi ${r.managerName || 'there'},\n\nI may be running late for my kitchen tour at ${r.kitchenName || r.title}.\n\nReference: TOUR-${r.reservationId}\nScheduled: ${formatTourDate(new Date(r.start))}, ${formatInTimezone(new Date(r.start), 'h:mm a', DEFAULT_TIMEZONE)} Newfoundland time.\n\nMy estimated arrival time is: [please add a time]\n\nThank you,\n${r.recipientName || 'Visitor'}`)}` : undefined;
-  const heading = r.kind === 'departure' ? 'Your kitchen tour is ending soon' : r.role === 'manager' ? 'Your visitor is arriving soon' : r.kind === 'preparation' ? 'Your kitchen tour is confirmed' : 'Your kitchen tour is coming up';
-  return renderTransactionalEmail({ to: r.email, recipientName: r.recipientName || (r.role === 'chef' ? 'Chef' : 'Manager'),
-    heading, subject: `${r.kind === 'departure' ? 'Before you leave' : r.kind === 'preparation' ? 'Prepare for' : 'Arrival details for'} ${r.title} · TOUR-${r.reservationId}`,
-    message: r.message, facts: [], sections: [{ title: 'Your appointment', facts: [
+export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`, _now = Date.now()) {
+  const isManager = r.role === 'manager';
+  const visitor = r.visitorName || 'The chef';
+  const heading = isManager
+    ? r.kind === 'departure' ? 'The kitchen tour is ending soon' : r.kind === 'preparation' ? `${visitor} is scheduled to tour your kitchen` : `${visitor} is due to arrive soon`
+    : r.kind === 'departure' ? 'Your kitchen tour is ending soon' : r.kind === 'preparation' ? 'Get ready for your kitchen tour' : 'Your kitchen tour is coming up';
+  return renderTransactionalEmail({ to: r.email, recipientName: r.recipientName || (isManager ? 'Manager' : 'Chef'),
+    tour: { tourId: r.reservationId, tourDate: r.start, durationMinutes: (Date.parse(r.end) - Date.parse(r.start)) / 60000 },
+    heading, subject: `${isManager ? r.kind === 'departure' ? 'Tour wrap-up reminder' : r.kind === 'preparation' ? 'Upcoming chef visit' : 'Your visiting chef is due soon' : r.kind === 'departure' ? 'Before you leave' : r.kind === 'preparation' ? 'Prepare for your visit' : 'Your kitchen tour is coming up'} · ${r.title} · TOUR-${r.reservationId}`,
+    message: r.message, facts: [], sections: [{ title: isManager ? 'Tour details' : 'Your visit', facts: [
       ...(r.kitchenName ? [{ label: 'Kitchen', value: r.kitchenName }] : []),
       ...(r.locationName ? [{ label: 'Location', value: r.locationName }] : []),
       { label: 'Date', value: formatTourDate(new Date(r.start)) },
       { label: 'Time', value: formatTourSlotRange(r.start, (Date.parse(r.end) - Date.parse(r.start)) / 60000) },
-      { label: r.role === 'chef' ? 'Kitchen manager' : 'Visitor', value: (r.role === 'chef' ? r.managerName : r.visitorName) || 'See tour details' },
+      { label: isManager ? 'Visiting chef' : 'Kitchen manager', value: (isManager ? r.visitorName : r.managerName) || 'See tour details' },
       { label: 'Reference', value: `TOUR-${r.reservationId}` }] },
-      { title: 'Getting there', facts: [
-      ...(r.address ? [{ label: 'Address', value: r.address }] : []),
-      ...(r.contactEmail ? [{ label: 'Contact email', value: r.contactEmail }] : []),
-      ...(r.meetingNotes ? [{ label: 'Meeting instructions', value: r.meetingNotes }] : []),
-      ...(r.arrivalNotes ? [{ label: 'Arrival notes', value: r.arrivalNotes }] : []),
-      ...(r.departureNotes ? [{ label: 'Departure notes', value: r.departureNotes }] : [])],
-        links: r.address ? [{ label: 'Get directions', url: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(r.address) }] : [] }],
-    actionLabel: 'View tour',
-    actionUrl: url, secondaryButton: { label: r.role === 'chef' ? 'Message manager' : 'Message chef', url: url + '&action=message' },
-    actions: [
-      ...(lateEmail ? [{ label: "I’m running late", url: lateEmail }] : []),
-      ...(lateEmail ? [{ label: 'Message manager', url: url + '&action=message' }] : []),
-    ],
-    note: lateEmail ? 'Opens a prefilled email to your kitchen manager. Tap Send to let them know.' : undefined,
-    secondaryLink: { label: 'Get support', url: `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.role === 'chef' ? '/dashboard?view=support' : '/manager/dashboard?view=support'}` } });
+      { title: isManager ? 'Coordinate the visit' : 'Arrival and departure', facts: [
+      ...(r.address ? [{ label: 'Address', value: r.address, url: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r.address) }] : []),
+      ...(r.contactEmail ? [{ label: isManager ? 'Chef contact' : 'Arrival contact', value: r.contactEmail }] : []),
+      ...(r.meetingNotes ? [{ label: 'Manager notes', value: r.meetingNotes }] : []),
+      ...(r.arrivalNotes ? [{ label: 'Arrival instructions', value: r.arrivalNotes }] : []),
+      ...(r.departureNotes ? [{ label: 'Departure instructions', value: r.departureNotes }] : [])] }],
+    actionLabel: 'View tour', actionUrl: url,
+    secondaryButton: { label: isManager ? 'Message chef' : 'Message manager', url: url + '&action=message' } });
 }
 
 /** Callable due dispatch for 2C. Held row lock is the atomic claim; connection/process

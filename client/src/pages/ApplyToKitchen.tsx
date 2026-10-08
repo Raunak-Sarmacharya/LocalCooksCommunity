@@ -188,7 +188,7 @@ export default function ApplyToKitchen() {
         <p className="text-sm text-muted-foreground">{t('tourApplicationReferenceHelp', { defaultValue: 'Intended use can fill a blank business description. Review and edit it before submitting. The other answers are reference only; application requirements still apply.' })}</p>
         <TourIntakeDetails data={Object.fromEntries(Object.entries(tourNextStep.prefill).filter(([key]) => !['chefNotes', 'sharedManagerNotes'].includes(key)))} />
         {tourNextStep.prefill.chefNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationChefNotes', { defaultValue: 'Your tour notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.chefNotes}</p></div>}
-        {tourNextStep.prefill.sharedManagerNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationSharedNotes', { defaultValue: 'Shared visit notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.sharedManagerNotes}</p></div>}
+        {tourNextStep.prefill.sharedManagerNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationSharedNotes', { defaultValue: 'Manager notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.sharedManagerNotes}</p></div>}
       </CardContent></Card>}
       {/* Application Form */}
       <KitchenApplicationForm

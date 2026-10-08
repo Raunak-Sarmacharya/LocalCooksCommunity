@@ -50,7 +50,11 @@ beforeAll(() => {
 });
 
 vi.mock("@/lib/firebase", () => ({
-  auth: { currentUser: { getIdToken: async () => "test-token" } },
+  auth: { currentUser: { uid: 'manager-1', getIdToken: async () => "test-token" } },
+}));
+
+vi.mock("@/hooks/use-auth", () => ({
+  useFirebaseAuth: () => ({ user: { uid: 'manager-1' }, loading: false }),
 }));
 
 vi.mock("@/hooks/use-toast", () => ({

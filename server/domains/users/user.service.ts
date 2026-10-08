@@ -98,6 +98,7 @@ export class UserService {
   async createPublicFirebaseUser(data: {
     username: string;
     firebaseUid: string;
+    displayName: string;
     phoneNumber?: string;
     role: 'chef' | 'manager';
     isVerified: boolean;
@@ -109,6 +110,9 @@ export class UserService {
         username: data.username,
         password: `firebase_auth_${randomBytes(24).toString('hex')}`,
         firebaseUid: data.firebaseUid,
+        // Keep the name confirmed during registration independent of Google
+        // restoring its provider display name during a later sign-in.
+        managerProfileData: { fullName: data.displayName.trim() },
         phoneNumber: data.phoneNumber,
         role: data.role,
         isVerified: data.isVerified,

@@ -27,8 +27,8 @@ export function TourIntakeDetails({ data }: { data: Record<string, unknown> | nu
     // Calendar dates are already YYYY-MM-DD: never interpret them as UTC instants.
     return String(value);
   };
-  return <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
-    {entries.map(([key, value]) => <div key={key}>
+  return <dl className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+    {entries.map(([key, value]) => <div key={key} className="min-w-0">
       <dt className="text-xs text-muted-foreground">{key === "estimatedWeeklyHours" && !isNumericWeeklyHours(value) ? t("tourIntakeWeeklyAvailability", "Weekly availability") : t(`tourIntakeLabel_${key}`, labels[key] || key.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " "))}</dt>
       <dd className="mt-1 whitespace-pre-wrap break-words text-sm">{answer(key, value)}</dd>
     </div>)}

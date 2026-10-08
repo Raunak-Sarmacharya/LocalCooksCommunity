@@ -107,10 +107,8 @@ export default function EnhancedAuthPage() {
   }, [loading, userMetaLoading, user, userMeta]);
 
   const [retryCount, setRetryCount] = useState(0);
-  const sellerJourneyDraft =
-    new URLSearchParams(window.location.search).get("journey") === "seller"
-      ? getSellerJourneyDraft()
-      : null;
+  const isSellerJourney = new URLSearchParams(window.location.search).get("journey") === "seller";
+  const sellerJourneyDraft = isSellerJourney ? getSellerJourneyDraft() : null;
   const completingPhoneSignup = authStep === "register" && isPhoneAuthInProgress();
 
   // Whether the session is mid-transition and the form must not paint yet.
@@ -649,7 +647,9 @@ export default function EnhancedAuthPage() {
   };
 
   const handleCheckVerified = async () => {
+    const verificationUid = auth.currentUser?.uid;
     const updatedUser = await updateUserVerification();
+    if (verificationUid !== auth.currentUser?.uid) return false;
     if (!hasVerifiedEmail(auth.currentUser, updatedUser)) return false;
     setShowEmailVerification(false);
     await handleSuccess();
@@ -830,14 +830,19 @@ export default function EnhancedAuthPage() {
                 // they had verified. Omitting it makes the screen fall back to going back,
                 // which is the honest next step: sign in with the link in their inbox.
                 onCheckVerified={verificationResumed ? undefined : handleCheckVerified}
-                onGoBack={() => {
+                onGoBack={async () => {
+                  // Registration leaves an unverified Firebase session signed in.
+                  // Close it before hiding this screen, otherwise the profile gate
+                  // immediately opens verification again for the same account.
+                  if (auth.currentUser) {
+                    await logout();
+                    if (auth.currentUser) throw new Error("Could not sign out of the current registration.");
+                  }
+                  endHandoff();
                   setShowEmailVerification(false);
                   setAwaitingEmailVerificationUi(false);
-                  // ALWAYS the identifier gate, never the sign-in step. The gate is the one
-                  // state that depends on nothing; the sign-in step carries a back control of
-                  // its own, so "use a different email" became a two-screen detour through
-                  // half-states that got the visitor nowhere. The manager card's behaviour,
-                  // mirrored — this was the pre-fix version on the chef side.
+                  setEmailForVerification("");
+                  setHasAttemptedLogin(false);
                   recoverToIdentifierStep();
                   setVerificationResumed(false);
                 }}
@@ -882,7 +887,7 @@ export default function EnhancedAuthPage() {
                   onSuccess: handleSuccess,
                   setHasAttemptedLogin: setHasAttemptedLogin,
                   hideApplyingToggle: true,
-                  showTermsInline: sellerJourneyDraft?.termsAccepted !== true,
+                  showTermsInline: isSellerJourney && sellerJourneyDraft?.termsAccepted !== true,
                   initialTermsAccepted: sellerJourneyDraft?.termsAccepted === true,
                   animateEntrance: false,
                   onRegistrationStart: handleRegistrationStart,

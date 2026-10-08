@@ -35,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
+import { NotificationSoundControls } from "@/components/notifications/NotificationSoundControls";
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
 import { tt } from "@/i18n/common-ns";
 import { ct } from "@/i18n/chef-ns";
@@ -361,27 +363,35 @@ export default function ChefNotificationCenter({
   
   // Only fetch when auth is ready and user is authenticated
   const isAuthReady = !isAuthLoading && !!user;
+  const sound = useNotificationSound('chef', isAuthReady ? user.uid : undefined);
 
   // Fetch unread count - poll more frequently when popover is open
   const { data: unreadData, isError: unreadError } = useQuery({
-    queryKey: ["/api/chef/notifications/unread-count"],
-    queryFn: async () => {
+    queryKey: ["/api/chef/notifications/unread-count", user?.uid],
+    queryFn: async ({ signal }) => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/chef/notifications/unread-count", { headers });
+      const res = await fetch("/api/chef/notifications/unread-count", { headers, signal });
       if (!res.ok) {
         throw new Error(`Failed to fetch unread count: ${res.status}`);
       }
       return res.json();
     },
     enabled: isAuthReady,
-    refetchInterval: isAuthReady ? (isOpen ? 10000 : 30000) : false,
+    refetchInterval: isAuthReady ? (isOpen ? 10000 : 15000) : false,
+    refetchIntervalInBackground: true,
     retry: 2,
     staleTime: 5000,
   });
 
+  useEffect(() => {
+    if (unreadData && isAuthReady && user.uid === auth.currentUser?.uid && sound.observe(unreadData)) {
+      void queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
+    }
+  }, [unreadData, isAuthReady, user?.uid, sound.observe, queryClient]);
+
   // Fetch notifications
   const { data: notificationsData, isLoading, isError: notificationsError, refetch } = useQuery<NotificationResponse>({
-    queryKey: ["/api/chef/notifications", filter],
+    queryKey: ["/api/chef/notifications", filter, user?.uid],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ filter });
@@ -409,14 +419,14 @@ export default function ChefNotificationCenter({
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
 
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid]);
 
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n =>
             ids.includes(n.id) ? { ...n, is_read: true, read_at: new Date().toISOString() } : n
@@ -426,7 +436,7 @@ export default function ChefNotificationCenter({
 
       if (previousUnreadCount) {
         const newCount = Math.max(0, previousUnreadCount.count - ids.length);
-        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], { count: newCount });
+        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid], { count: newCount });
       }
 
       return { previousNotifications, previousUnreadCount };
@@ -434,16 +444,16 @@ export default function ChefNotificationCenter({
     onError: (err, _ids, context) => {
       logger.error("[ChefNotificationCenter] Failed to mark as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count", user?.uid], context.previousUnreadCount);
       }
       toast.error(t("notifToastMarkReadError", "Failed to mark notification as read"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
     },
   });
 
@@ -459,30 +469,30 @@ export default function ChefNotificationCenter({
       return res.json();
     },
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
 
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid]);
 
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
         });
       }
 
-      queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], { count: 0 });
+      queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid], { count: 0 });
 
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _, context) => {
       logger.error("[ChefNotificationCenter] Failed to mark all as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count", user?.uid], context.previousUnreadCount);
       }
       toast.error(t("notifToastMarkAllReadError", "Failed to mark all as read"));
     },
@@ -491,7 +501,7 @@ export default function ChefNotificationCenter({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
     },
   });
 
@@ -508,25 +518,25 @@ export default function ChefNotificationCenter({
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid]);
       
       const unreadBeingArchived = previousNotifications?.notifications.filter(
         n => ids.includes(n.id) && !n.is_read
       ).length || 0;
       
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
         });
       }
       
       if (previousUnreadCount && unreadBeingArchived > 0) {
-        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], {
+        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid], {
           count: Math.max(0, previousUnreadCount.count - unreadBeingArchived)
         });
       }
@@ -536,10 +546,10 @@ export default function ChefNotificationCenter({
     onError: (err, _ids, context) => {
       logger.error("[ChefNotificationCenter] Failed to archive:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count", user?.uid], context.previousUnreadCount);
       }
       toast.error(t("notifToastArchiveError", "Failed to archive notification"));
     },
@@ -548,7 +558,7 @@ export default function ChefNotificationCenter({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
     },
   });
 
@@ -564,23 +574,23 @@ export default function ChefNotificationCenter({
       return res.json();
     },
     onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
-      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter, user?.uid] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid]);
       
       const deletedNotification = previousNotifications?.notifications.find(n => n.id === id);
       
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter, user?.uid], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => n.id !== id),
         });
       }
       
       if (previousUnreadCount && deletedNotification && !deletedNotification.is_read) {
-        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], {
+        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count", user?.uid], {
           count: Math.max(0, previousUnreadCount.count - 1)
         });
       }
@@ -590,10 +600,10 @@ export default function ChefNotificationCenter({
     onError: (err, _id, context) => {
       logger.error("[ChefNotificationCenter] Failed to delete:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter, user?.uid], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count", user?.uid], context.previousUnreadCount);
       }
       toast.error(t("notifToastDeleteError", "Failed to delete notification"));
     },
@@ -602,7 +612,7 @@ export default function ChefNotificationCenter({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count", user?.uid] });
     },
   });
 
@@ -673,6 +683,7 @@ export default function ChefNotificationCenter({
           </div>
         </div>
       )}
+      {variant === "page" && <NotificationSoundControls sound={sound} />}
       {variant === "page" && (
         <div className="min-h-[28rem]" role="feed" aria-label={t("notifListAriaLabel", "Notifications list")} aria-busy={isLoading}>
           {isLoading ? <NotificationListSkeleton /> : notificationsError || unreadError ? <ErrorNotificationState onRetry={() => refetch()} /> : notifications.length === 0 ? <EmptyNotificationState filter={filter} /> : (
@@ -757,6 +768,8 @@ export default function ChefNotificationCenter({
             )}
           </div>
         </div>
+
+        <NotificationSoundControls sound={sound} />
 
         {/* Filter tabs */}
         <div className="px-4 py-2 border-b bg-muted/50" role="navigation" aria-label={t("notifFiltersAriaLabel", "Notification filters")}>

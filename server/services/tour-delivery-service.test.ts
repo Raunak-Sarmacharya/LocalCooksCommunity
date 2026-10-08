@@ -65,6 +65,19 @@ beforeEach(() => {
   state.event = { id: 1, viewingId: 10, eventKey: '10:status:version', createdAt: new Date('2026-10-01T10:00:00Z'), payload: payload(), deliveredKeys: [], attempts: 0, completedAt: null };
 });
 describe('durable tour delivery', () => {
+  it('keeps new outcome notes and old overwritten outcome notes out of chef and manager delivery', () => {
+    for (const legacy of [false, true]) {
+      const event = payload('status', 'completed');
+      event.actorRole = 'admin';
+      event.after.outcomeHistory = [{ from: 'confirmed', to: 'completed', actorRole: 'admin',
+        ...(legacy ? { sharedNotes: 'PRIVATE outcome investigation' } : { outcomeNotes: 'PRIVATE outcome investigation', sharedNotes: null }) }];
+      if (legacy) event.after.sharedManagerNotes = 'PRIVATE outcome investigation';
+      const messages = tourEventMessages(event);
+      expect(messages.some(message => message.key === 'chef-email')).toBe(true);
+      expect(JSON.stringify(messages)).not.toContain('PRIVATE outcome investigation');
+      expect(event.after.outcomeHistory[0][legacy ? 'sharedNotes' : 'outcomeNotes']).toBe('PRIVATE outcome investigation');
+    }
+  });
   it('retires the legacy missing-result manager/admin cadence', () => {
     const event = payload('reminder','confirmed'); event.admins=[{ id:30,email:'admin@example.test',name:'Admin' }];
     const messages = tourEventMessages(event);

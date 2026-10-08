@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkinCheckoutChecklists, storageListings } from '@shared/schema';
+import { checkinCheckoutChecklists, storageListings, kitchenViewingSettings, kitchenViewingAvailability } from '@shared/schema';
 
 const mocks = vi.hoisted(() => ({
   kitchen: { id: 7, locationId: 12, name: 'Test Kitchen', checkinCheckoutEnabled: true },
   checklist: null as any,
   select: vi.fn(),
   storage: [] as any[],
+  tours: [] as any[],
+  tourHours: [] as any[],
 }));
 vi.mock('../db', () => ({ db: { select: mocks.select } }));
 vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: {
@@ -26,12 +28,26 @@ beforeEach(() => {
   mocks.kitchen.checkinCheckoutEnabled = true;
   mocks.checklist = null;
   mocks.storage = [];
+  mocks.tours = [];
+  mocks.tourHours = [];
   mocks.select.mockImplementation(() => ({ from: (table: unknown) => {
-    const rows = table === checkinCheckoutChecklists && mocks.checklist ? [mocks.checklist] : table === storageListings ? mocks.storage : [];
+    const rows = table === checkinCheckoutChecklists && mocks.checklist ? [mocks.checklist] : table === storageListings ? mocks.storage : table === kitchenViewingSettings ? mocks.tours : table === kitchenViewingAvailability ? mocks.tourHours : [];
     const query = { where: () => query, limit: async () => rows,
       then: (resolve: (value: any[]) => unknown) => Promise.resolve(rows).then(resolve) };
     return query;
   } }));
+});
+
+it('keeps missing, incomplete and paused tours out of the publishing requirements', async () => {
+  const baseline = await buildKitchenReadiness(7);
+  for (const settings of [null, { isActive: true }, { isActive: false, arrivalNotes: 'Arrive.', departureNotes: 'Leave.' }, { isActive: true, arrivalNotes: 'Arrive.', departureNotes: 'Leave.' }]) {
+    mocks.tours = settings ? [settings] : [];
+    mocks.tourHours = [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true }];
+    const review = await buildKitchenReadiness(7);
+    expect(review?.checklist.requirements).toEqual(baseline?.checklist.requirements);
+    expect(review?.checklist.canPublish).toBe(baseline?.checklist.canPublish);
+    expect(review?.details.toursEnabled).toBe(Boolean(settings?.isActive && settings?.arrivalNotes && settings?.departureNotes));
+  }
 });
 
 it('requires actual storage flags and notes only when this kitchen has storage listings', async () => {

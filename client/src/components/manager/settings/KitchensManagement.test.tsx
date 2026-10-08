@@ -43,7 +43,7 @@ vi.mock("@tanstack/react-query", () => ({
     if (queryKey[0] === "managerKitchenWorkspace") return { data: { kitchen: { checkinCheckoutEnabled: h.trackingEnabled } } };
     if (queryKey[0] === "/api/manager/availability") return { data: h.bookingHours, isLoading: false };
     const kitchenId = Number(String(queryKey[0]).split("/").at(-1));
-    return { data: { settings: { isActive: h.tourEnabled[kitchenId] ?? true }, availability: h.tourHours[kitchenId] ? [{ dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isAvailable: true }] : [], blackouts: [] }, isLoading: false };
+    return { data: { settings: { isActive: h.tourEnabled[kitchenId] ?? true, arrivalNotes: "Meet at reception.", departureNotes: "Return your badge." }, availability: h.tourHours[kitchenId] ? [{ dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isAvailable: true }] : [], blackouts: [] }, isLoading: false };
   },
   useMutation: () => ({ mutate: h.toggleTours, isPending: false }),
   useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
@@ -98,8 +98,8 @@ vi.mock("./KitchenWorkspaceControls", async () => {
 vi.mock("@/pages/KitchenAvailabilityManagement", () => ({ default: () => <div /> }));
 vi.mock("@/components/manager/ViewingSettingsPanel", async () => {
   const { forwardRef } = await import("react");
-  return { default: forwardRef(({ kitchenId, hideSaveActions }: { kitchenId: number; hideSaveActions?: boolean }, _ref) =>
-    <div data-testid="tour-settings" data-shared-save={hideSaveActions}>{kitchenId}</div>) };
+  return { default: forwardRef(({ kitchenId, hideSaveActions, onReturnToTour, onPrepareSchedule, onPauseTours }: { kitchenId: number; hideSaveActions?: boolean; onReturnToTour?: () => void; onPrepareSchedule?: () => void; onPauseTours?: () => void }, _ref) =>
+    <div data-testid="tour-settings" data-shared-save={hideSaveActions}>{kitchenId}{onPrepareSchedule && <button onClick={onPrepareSchedule}>tourChooseScheduleSource</button>}{h.tourEnabled[kitchenId] && <button onClick={onPauseTours}>tourPauseAction</button>}{onReturnToTour && <button onClick={onReturnToTour}>tourReturnToDetails</button>}</div>) };
 });
 vi.mock("@/pages/EquipmentListingManagement", () => ({ EquipmentListingContent: () => <div /> }));
 vi.mock("@/pages/StorageListingManagement", () => ({ StorageListingContent: () => <div /> }));
@@ -171,6 +171,16 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("My Kitchens — creating a kitchen", () => {
+  it('returns from the shared instructions editor to the originating tour', () => {
+    h.kitchens = [{ id: 40, name: 'First Kitchen' }];
+    h.tourEnabled[40] = false;
+    window.history.replaceState({}, '', '/?view=kitchens&section=tours&kit=40&focus=tour-notes&returnTour=10');
+    const back = vi.fn();
+    render(<KitchensManagement {...props} onReturnToTour={back} />);
+    expect(screen.getByTestId('tour-settings')).toHaveTextContent('40');
+    fireEvent.click(screen.getByRole('button', { name: 'tourReturnToDetails' }));
+    expect(back).toHaveBeenCalledWith(10);
+  });
   it('opens tour notes for the requested kitchen even when new tours are disabled', () => {
     h.kitchens = [{ id: 40, name: 'First Kitchen' }, { id: 47, name: 'Second Kitchen' }];
     h.tourEnabled[47] = false;
@@ -178,7 +188,7 @@ describe("My Kitchens — creating a kitchen", () => {
     render(<KitchensManagement {...props} initialKitchenId={47} />);
     expect(screen.getByRole('tab', { name: 'kitchenTours' })).toHaveAttribute('data-state', 'active');
     expect(screen.getByTestId('tour-settings')).toHaveTextContent('47');
-    expect(screen.getByRole('switch')).not.toBeChecked();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
   it("takes managers to the check-in card and highlights the target", () => {
     h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
@@ -296,19 +306,19 @@ describe("My Kitchens — creating a kitchen", () => {
     expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
   });
 
-  it("opens a disabled legacy tour link at Availability and hides the Tours tab", () => {
+  it("keeps setup accessible through a disabled legacy tour link", () => {
     window.history.replaceState({}, "", "/?view=tour-availability");
     h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
     h.tourEnabled[1] = false;
     h.bookingHours = [{ dayOfWeek: 1, startTime: "09:00", endTime: "09:30", isAvailable: true }];
     render(<KitchensManagement {...props} />);
-    expect(screen.queryByRole("tab", { name: "kitchenTours" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "navAvailability" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: "learnHowToursWork" })).toBeInTheDocument();
-    expect(new URLSearchParams(window.location.search).get("section")).toBe("availability");
+    expect(screen.getByRole("tab", { name: "kitchenTours" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("tour-settings")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("view")).toBe("tour-availability");
   });
 
-  it("enables tours from Availability and reveals the last tab after success", () => {
+  it("starts tour setup from Availability and keeps the tour tab visible while paused", () => {
     window.history.replaceState({}, "", "/?view=kitchens&section=availability");
     h.kitchens = [{ id: 40, name: "First Kitchen" }, { id: 47, name: "Second Kitchen" }];
     h.tourEnabled = { 40: false, 47: false };
@@ -317,7 +327,7 @@ describe("My Kitchens — creating a kitchen", () => {
     fireEvent.click(screen.getByRole("button", { name: "learnHowToursWork" }));
     fireEvent.click(screen.getByRole("button", { name: "enableAndSetUpTours" }));
     expect(h.toggleTours).toHaveBeenCalledWith({ kitchenId: 47, scheduleSource: "separate" });
-    expect(screen.queryByRole("tab", { name: "kitchenTours" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("tab", { hidden: true }).some(tab => tab.textContent === "kitchenTours")).toBe(true);
     h.tourEnabled[47] = true;
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     rerender(<KitchensManagement {...props} initialKitchenId={47} />);
@@ -325,7 +335,7 @@ describe("My Kitchens — creating a kitchen", () => {
     const tabs = screen.getAllByRole("tab");
     expect(tabs.at(-1)).toHaveTextContent("kitchenTours");
     rerender(<KitchensManagement {...props} initialKitchenId={40} />);
-    expect(screen.queryByRole("tab", { name: "kitchenTours" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "kitchenTours" })).toBeInTheDocument();
   });
   it("offers a one-time booking schedule copy only while all tour days are closed", () => {
     window.history.replaceState({}, "", "/?view=kitchens&section=availability");
@@ -340,8 +350,30 @@ describe("My Kitchens — creating a kitchen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     h.tourHours[40] = true;
     rerender(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "learnHowToursWork" }));
-    expect(screen.queryByText("tourUseBookingHours")).not.toBeInTheDocument();
+    h.toggleTours.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "tourResumeSetupAction" }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'kitchenTours' })).toHaveAttribute('data-state', 'active');
+    expect(h.toggleTours).not.toHaveBeenCalled();
+  });
+  it('offers the same starting schedule choices from the Kitchen Tours page', () => {
+    window.history.replaceState({}, '', '/?view=kitchens&section=tours');
+    h.kitchens = [{ id: 40, name: 'First Kitchen' }]; h.tourEnabled[40] = false;
+    h.bookingHours = [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true }];
+    render(<KitchensManagement {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'tourChooseScheduleSource' }));
+    expect(screen.getByText('tourUseBookingHours')).toBeInTheDocument();
+    expect(screen.getByText('tourSetSeparateHours')).toBeInTheDocument();
+    expect(screen.getByText('tourSetupVisibilityNote')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'enableAndSetUpTours' }));
+    expect(h.toggleTours).toHaveBeenCalledWith({ kitchenId: 40, scheduleSource: 'booking' });
+  });
+  it('pauses through the tour status action without modifying the saved setup', () => {
+    window.history.replaceState({}, '', '/?view=kitchens&section=tours');
+    h.kitchens = [{ id: 40, name: 'First Kitchen' }]; h.tourEnabled[40] = true; h.tourHours[40] = true;
+    render(<KitchensManagement {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'tourPauseAction' }));
+    expect(h.toggleTours).toHaveBeenCalledWith({ kitchenId: 40, isActive: false });
   });
   it("shows the tour setup banner only after booking hours are saved open", () => {
     window.history.replaceState({}, "", "/?view=kitchens&section=availability");

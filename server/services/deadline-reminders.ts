@@ -104,7 +104,7 @@ export async function currentDeadlineReminders(tx: Transaction, source: Reminder
     reminders.push({ source, reservationId: id, resource: task.resource, kind: 'deadline', recipientId: task.ownerId,
       role: task.role, email: person?.username || '', timezone: task.timezone, start: task.opened.toISOString(), end: task.deadline.toISOString(), due,
       revision: createHash('sha256').update(JSON.stringify([task.resource, task.opened, task.deadline, identityDue, task.ownerId, person?.username])).digest('hex'),
-      path: task.path, title: task.title, message: `${task.title}. Recorded deadline: ${formatInTimezone(task.deadline, 'yyyy-MM-dd HH:mm', task.timezone)} (${task.timezone}). Open the current task to respond or inspect. This warning does not extend the deadline or establish a charge, attendance or physical removal.`, shortVisit: false });
+      path: task.path, title: task.title, message: `${task.title}. Recorded deadline: ${formatInTimezone(task.deadline, 'yyyy-MM-dd HH:mm', task.timezone)} (${task.timezone}). Open the current task to respond or inspect. This warning does not extend the deadline, establish a charge, prove that a visit happened or confirm physical removal.`, shortVisit: false });
   }
   return reminders;
 }

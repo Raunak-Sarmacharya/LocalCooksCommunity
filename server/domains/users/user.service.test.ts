@@ -8,6 +8,7 @@ import { UserService } from './user.service'
 import { UserRepository } from './user.repository'
 import { DomainError, UserErrorCodes } from '../../shared/errors/domain-error'
 import { mockUser, resetAllMocks } from '../../__tests__/test-utils'
+import { db } from '../../db'
 
 // Mock the repository
 const mockRepository = {
@@ -22,6 +23,7 @@ const mockRepository = {
 // Mock Drizzle db for aggregations
 vi.mock('../../db', () => ({
     db: {
+        transaction: vi.fn(),
         select: vi.fn(() => ({
             from: vi.fn(() => ({
                 where: vi.fn(() => ({
@@ -52,6 +54,17 @@ describe('UserService', () => {
     beforeEach(() => {
         resetAllMocks()
         service = new UserService(mockRepository)
+    })
+
+    it('persists the entered registration name with the application account', async () => {
+        const values = vi.fn().mockReturnValue({ returning: async () => [{ ...mockUser, managerProfileData: { fullName: 'Alexandra Chen' } }] })
+        vi.mocked(db.transaction).mockImplementation(async (callback: any) => callback({ insert: () => ({ values }) }))
+        const created = await service.createPublicFirebaseUser({ username: 'chef@example.com', firebaseUid: 'google-chef',
+            displayName: ' Alexandra Chen ', role: 'chef', isVerified: true, termsAccepted: false, termsVersion: null })
+        expect(values).toHaveBeenCalledWith(expect.objectContaining({
+            managerProfileData: { fullName: 'Alexandra Chen' }, firebaseUid: 'google-chef', role: 'chef', termsAccepted: false,
+        }))
+        expect(created.managerProfileData).toEqual({ fullName: 'Alexandra Chen' })
     })
 
     describe('createUser', () => {

@@ -318,5 +318,5 @@ export async function recordHistoricalVisitOutcome(bookingId: number, visitId: n
       visitId: visit?.id, expectedUpdatedAt: visit?.updatedAt.toISOString() || current.updatedAt.toISOString(),
       expectedBookingUpdatedAt: current.updatedAt.toISOString(), internalNotes: reason.trim(), confirmsChefAbsent: outcome === 'no_show' });
     return { success: true };
-  } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Could not record attendance' }; }
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Could not record the visit' }; }
 }

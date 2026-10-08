@@ -30,6 +30,41 @@ function mount(overlaps: any[] = [], writeStatus = 200) {
   return { client, fetcher };
 }
 describe('manager acceptance review', () => {
+  it('provides one instructions action and opens the correct editor without writing tour data', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed' } }]);
+    const configure = vi.fn();
+    const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<QueryClientProvider client={client}><ViewingsDashboard onConfigureNotes={configure} /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(within(screen.getByRole('region', { name: 'tourNextStep' })).queryByRole('button', { name: 'tourEditMeetingInstructions' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'tourVisitNotesButton' })).toHaveLength(1);
+    fireEvent.click(within(screen.getByRole('region', { name: 'tourMeetingInstructionsTitle' })).getByRole('button', { name: 'tourVisitNotesButton' }));
+    expect(configure.mock.calls).toEqual([[40, 33, 10]]);
+    expect(fetcher.mock.calls.every(([, options]) => !(options as any)?.method)).toBe(true);
+    client.clear();
+  });
+  it('explains rescheduling scenarios inside the modal and closing it keeps the tour untouched', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed' } }]);
+    const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ settings: {}, availability: [], blackouts: [], fullyBookedDates: [] }) }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<QueryClientProvider client={client}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    expect(within(screen.getByRole('region', { name: 'tourActions' })).queryByText('tourRescheduleScenarioHelp')).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'tourProposeNewTimes' });
+    fireEvent.click(trigger);
+    const modal = within(await screen.findByRole('dialog', { name: 'tourProposeNewTimes' }));
+    expect(modal.getByText('tourRescheduleScenarioHelp')).toBeInTheDocument();
+    expect(modal.getByText('tourProposalOriginalHeld')).toBeInTheDocument();
+    fireEvent.click(modal.getByRole('button', { name: 'tourKeepCurrentTime' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+    expect(fetcher.mock.calls.every(([, options]) => !(options as any)?.method)).toBe(true);
+    expect(client.getQueryData<any[]>(['/api/viewings/manager'])![0].viewing.status).toBe('confirmed');
+    client.clear();
+  });
   it.each(['completed', 'no_show', 'cancelled'])('does not ask for new feedback after admin closes a %s tour', status => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status,
@@ -79,9 +114,9 @@ describe('manager acceptance review', () => {
     expect(screen.getByText('tourDeclineReasonHelp')).toBeInTheDocument();
     client.clear();
   });
-  it('combines visitor contact and compact coordination actions while retaining the notes destination', () => {
+  it('gives instructions their own preparation section while retaining visitor contact and the notes destination', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-    client.setQueryData(['/api/viewings/manager'], [{ ...record, chefName: 'Ada Lovelace', chefEmail: 'ada@example.test', viewing: { ...record.viewing, adminReviewDecision: 'approved' } }]);
+    client.setQueryData(['/api/viewings/manager'], [{ ...record, chefName: 'Ada Lovelace', chefEmail: 'ada@example.test', arrivalNotes: 'Meet at the north entrance.', departureNotes: 'Return your visitor badge to the host.', viewing: { ...record.viewing, adminReviewDecision: 'approved' } }]);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [], complete: false, problems: [], reportingAvailable: false }) })));
     const configure = vi.fn();
     render(<QueryClientProvider client={client}><ViewingsDashboard onConfigureNotes={configure} /></QueryClientProvider>);
@@ -89,15 +124,17 @@ describe('manager acceptance review', () => {
     const card = within(screen.getByRole('region', { name: 'tourVisitorContactTitle' }));
     expect(card.getByText('Ada Lovelace')).toBeInTheDocument();
     expect(card.getByRole('link', { name: 'ada@example.test' })).toBeInTheDocument();
-    expect(card.getByRole('button', { name: 'Message Ada' })).toHaveClass('h-9');
-    const notes = card.getByRole('button', { name: 'tourVisitNotesButton' });
-    expect(notes.parentElement).toHaveClass('grid-cols-2');
+    expect(card.getByRole('button', { name: 'Message Ada' })).toBeInTheDocument();
+    const instructions = within(screen.getByRole('region', { name: 'tourMeetingInstructionsTitle' }));
+    const notes = instructions.getByRole('button', { name: 'tourVisitNotesButton' });
     expect(notes).toHaveAttribute('title', 'tourEditVisitNotes');
-    expect(card.getByText('tourCoordinationHelp')).toBeInTheDocument();
+    expect(instructions.getByText('tourMeetingInstructionsScope')).toBeInTheDocument();
+    expect(instructions.getByText('Meet at the north entrance.')).toBeInTheDocument();
+    expect(instructions.getByText('Return your visitor badge to the host.')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'tourHistoryTitle' }).closest('aside')).not.toBeNull();
     expect(screen.getByTestId('manager-tour-help').closest('aside')).toBeNull();
     fireEvent.click(notes);
-    expect(configure).toHaveBeenCalledWith(40, 33);
+    expect(configure).toHaveBeenCalledWith(40, 33, 10);
     expect(screen.queryByRole('heading', { name: 'navMessages' })).not.toBeInTheDocument();
     client.clear();
   });
@@ -156,7 +193,7 @@ describe('manager acceptance review', () => {
     expect(configure).not.toHaveBeenCalled();
     await screen.findByRole('alertdialog');
     fireEvent.click(screen.getByRole('button', { name: 'discardChanges' }));
-    expect(configure).toHaveBeenCalledWith(40, 33);
+    expect(configure).toHaveBeenCalledWith(40, 33, 10);
     client.clear();
   });
   it('opens a review and requires overlap acknowledgement before saving', async () => {

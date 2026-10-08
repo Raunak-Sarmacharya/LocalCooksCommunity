@@ -1,9 +1,16 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import EmailVerificationScreen from "./EmailVerificationScreen";
 
 describe("EmailVerificationScreen", () => {
+  it("keeps recovery available if signing out fails", async () => {
+    const onGoBack = vi.fn().mockRejectedValue(new Error("Sign out failed"));
+    render(<EmailVerificationScreen email="person@example.com" onResend={vi.fn()} onGoBack={onGoBack} />);
+    fireEvent.click(screen.getByRole("button", { name: "Use a different email" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("couldn't switch accounts");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use a different email" })).toBeEnabled());
+  });
   it("keeps the user on an actionable screen when verification is not visible yet", async () => {
     const onCheckVerified = vi.fn().mockResolvedValue(false);
 

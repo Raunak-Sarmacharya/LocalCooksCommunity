@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EnhancedRegisterForm from "./EnhancedRegisterForm";
 import { markPendingGoogleRegistration, setGoogleRegistrationActive } from "@/lib/pending-google-registration";
+import { updateProfile } from "firebase/auth";
 
 const { currentUser, syncUserWithBackend } = vi.hoisted(() => ({
   currentUser: { uid: "google-user", email: "chef@example.com", displayName: "Google Chef", reload: vi.fn() },
@@ -24,6 +25,8 @@ describe("Google registration details", () => {
   beforeEach(() => {
     localStorage.clear();
     syncUserWithBackend.mockReset();
+    currentUser.displayName = "Google Chef";
+    vi.mocked(updateProfile).mockImplementation(async (_user, profile) => { currentUser.displayName = profile.displayName || ""; });
     markPendingGoogleRegistration({ uid: currentUser.uid, email: currentUser.email, createdIdentity: true });
   });
 
@@ -63,5 +66,17 @@ describe("Google registration details", () => {
     fireEvent.submit(screen.getByRole("button", { name: /create account/i }).closest("form")!);
 
     await waitFor(() => expect(syncUserWithBackend).toHaveBeenCalled());
+  });
+
+  it("sends the edited full name rather than the Google prefill", async () => {
+    syncUserWithBackend.mockResolvedValue(true);
+    render(<EnhancedRegisterForm animateEntrance={false} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /full name/i }), { target: { value: "Alexandra Chen" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /phone number/i }), { target: { value: "4165551234" } });
+    fireEvent.submit(screen.getByRole("button", { name: /create account/i }).closest("form")!);
+    await waitFor(() => expect(syncUserWithBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ displayName: "Alexandra Chen" }), "chef", true, false, "+14165551234",
+    ));
+    expect(updateProfile).toHaveBeenCalledWith(currentUser, { displayName: "Alexandra Chen" });
   });
 });

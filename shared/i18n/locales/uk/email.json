@@ -23,6 +23,8 @@
   "tourVisitCompletedTitle": "Тур кухнею завершено",
   "tourFeedbackRequestedTitle": "Як пройшов ваш тур кухнею?",
   "tourFeedbackRequestedBody": "Чи відбувся ваш тур кухнею в {kitchen}? Розкажіть, як він пройшов і що ми могли б покращити.",
+  "tourFeedbackManagerRequestedTitle": "Як пройшов тур із {visitor}?",
+  "tourFeedbackManagerRequestedBody": "Чи відбувся тур для {visitor} у {kitchen}? Розкажіть, як пройшов візит і що ми могли б покращити.",
   "tourFeedbackRespond": "Поділитися відгуком про тур",
   "tourFeedbackApply": "Запросити подання заявки",
   "tourFeedbackMissingTitle": "Відгук про тур відсутній через 24 години",
@@ -47,7 +49,7 @@
   "tourCompletionExistingBody": "У вас уже є заявка або доступ до кухні. Відкрийте наступний крок, щоб продовжити або переглянути поточний стан.",
   "tourVisitAbsentTitle": "Кухар не прийшов на тур кухнею",
   "tourVisitAbsentBody": "Local Cooks повідомили, що {visitor} не прийшов на тур кухнею в {kitchen}. Відкрийте тур, щоб прочитати пояснення. Зверніться до підтримки, якщо щось не так.",
-  "tourVisitDisruptedTitle": "Ваш тур кухнею не зміг відбутися",
+  "tourVisitDisruptedTitle": "Тур кухнею не зміг відбутися",
   "tourVisitDisruptedBody": "Тур кухнею для {visitor} у {kitchen} не зміг відбутися. Відкрийте тур, щоб переглянути причину та спільні нотатки, або зверніться до підтримки по допомогу.",
   "tourVisitResultCorrectedTitle": "Деталі туру кухнею виправлено",
   "tourVisitView": "Переглянути тур",
@@ -58,6 +60,7 @@
   "tourVisitDisruption_access_unavailable": "Доступ до кухні був недоступний",
   "tourVisitDisruption_weather": "Погода завадила туру",
   "tourVisitDisruption_other": "Інша проблема",
-  "tourFeedbackPrivacy": "Ваш відгук бачите лише ви та Local Cooks. Наша команда перегляне його, перш ніж оновити інформацію про тур.",
-  "tourFeedbackNextStep": "Хочете користуватися цією кухнею? Ви можете продовжити роботу із заявкою, поки ми переглядаємо відгуки про тур."
+  "tourFeedbackPrivacy": "Лише ви та Local Cooks можете бачити ваш відгук.",
+  "tourFeedbackNextStep": "Хочете користуватися цією кухнею? Ви можете продовжити роботу із заявкою.",
+  "tourManagerNotes": "Примітки менеджера"
 }

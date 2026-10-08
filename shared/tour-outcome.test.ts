@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { publicTour, hasTourConfirmation, publicTourCancellationReason } from './tour-outcome';
+import { publicTour, hasTourConfirmation, publicTourCancellationReason, adminTourOutcomeNotes } from './tour-outcome';
 
 it('uses valid confirmation facts while expiry cannot become visit eligibility', () => {
   expect(hasTourConfirmation({ status: 'completed', confirmedAt: '2026-10-01T10:00:00Z' })).toBe(true);
@@ -7,6 +7,28 @@ it('uses valid confirmation facts while expiry cannot become visit eligibility',
   expect(hasTourConfirmation({ status: 'cancelled', requestExpiredAt: '2026-10-01T10:00:00Z', outcomeHistory: [{ from: 'confirmed' }] })).toBe(false);
 });
 describe('tour evidence and note visibility', () => {
+  it('keeps internal outcome notes admin-only and preserves the shared manager message', () => {
+    const original = { status: 'completed', sharedManagerNotes: 'Use the side entrance.',
+      outcomeHistory: [{ from: 'confirmed', to: 'completed', actorRole: 'admin', outcomeNotes: 'PRIVATE final outcome evidence', sharedNotes: null }] };
+    expect(adminTourOutcomeNotes(original)).toBe('PRIVATE final outcome evidence');
+    expect(publicTour(original)).toMatchObject({ sharedManagerNotes: 'Use the side entrance.', outcomeHistory: [] });
+    expect(JSON.stringify(publicTour(original))).not.toContain('PRIVATE');
+  });
+  it('withholds old admin outcome notes saved in the manager field without changing the audit record', () => {
+    const original = { status: 'completed', sharedManagerNotes: 'PRIVATE old outcome explanation',
+      outcomeHistory: [{ from: 'confirmed', to: 'completed', actorRole: 'admin', sharedNotes: 'PRIVATE old outcome explanation' }] };
+    expect(adminTourOutcomeNotes(original)).toBe('PRIVATE old outcome explanation');
+    expect(publicTour(original).sharedManagerNotes).toBeNull();
+    expect(JSON.stringify(publicTour(original))).not.toContain('PRIVATE');
+    expect(original.sharedManagerNotes).toBe('PRIVATE old outcome explanation');
+  });
+  it('does not reclassify an ordinary manager message or disclose a root-level internal note', () => {
+    const tour = { status: 'cancelled', sharedManagerNotes: 'Kitchen unavailable today.', outcomeNotes: 'PRIVATE decision',
+      outcomeHistory: [{ from: 'pending', to: 'cancelled', actorRole: 'manager', sharedNotes: 'Kitchen unavailable today.' }] };
+    expect(publicTour(tour).sharedManagerNotes).toBe('Kitchen unavailable today.');
+    expect(JSON.stringify(publicTour(tour))).not.toContain('PRIVATE');
+    expect(adminTourOutcomeNotes(tour)).toBeNull();
+  });
   it.each(['Cancelled by chef', 'Cancelled by manager', 'Cancelled by admin', 'Cancelled by Local Cooks'])('hides the legacy actor label %s without changing the source record', reason => {
     const original = { status: 'cancelled', cancellationReason: reason };
     expect(publicTour(original).cancellationReason).toBeNull();

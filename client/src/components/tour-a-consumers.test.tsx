@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminTourRequestsSection } from './admin/sections/AdminTourRequestsSection';
@@ -13,8 +13,10 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () =
 vi.mock('@/hooks/use-auth', () => ({ useFirebaseAuth: () => ({ user: { uid: 'fixture-chef' } }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/i18n/manager', () => ({ mt: (key: string, options?: { name?: string }) => key === 'tourMessageVisitor' ? `Message ${options?.name}` : key }));
-vi.mock('react-i18next', async original => ({ ...await original<typeof import('react-i18next')>(),
-  useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue?.replace('{{hours}}', fallback.hours) || key }) }));
+vi.mock('react-i18next', async original => ({
+  ...await original<typeof import('react-i18next')>(),
+  useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue?.replace('{{hours}}', fallback.hours) || key })
+}));
 vi.mock('./admin/HistoricalVisitReviews', () => ({ HistoricalVisitReviews: () => null }));
 const chat = vi.hoisted(() => ({ resolve: vi.fn(async () => ({ conversationId: 'shared-tour-thread', chefId: 8, managerId: 12, chefName: 'Ada Chef', managerName: 'Morgan Lee' })) }));
 vi.mock('@/services/chat-service', () => ({ resolveTourConversation: chat.resolve }));
@@ -22,28 +24,59 @@ vi.mock('./chat/UnifiedChatView', () => ({ default: (props: any) => <div data-te
 vi.mock('@/components/ui/data-table', () => ({ DataTable: () => <p>Tour list</p> }));
 
 const clients: QueryClient[] = [];
-afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0;
-  vi.unstubAllGlobals(); window.history.replaceState({}, '', '/'); });
-const tour = { id: 42, chefId: 8, locationId: 33, status: 'pending', scheduledAt: '2099-10-07T11:30:00Z', durationMinutes: 30,
+afterEach(() => {
+  cleanup(); clients.forEach(client => client.clear()); clients.length = 0;
+  vi.unstubAllGlobals(); window.history.replaceState({}, '', '/');
+});
+const tour = {
+  id: 42, chefId: 8, locationId: 33, status: 'pending', scheduledAt: '2099-10-07T11:30:00Z', durationMinutes: 30,
   updatedAt: '2026-10-05T11:00:00Z', createdAt: '2026-10-05T10:00:00Z', intakeData: {}, requestedRescheduleAt: null,
-  adminReviewDecision: 'approved' };
+  adminReviewDecision: 'approved'
+};
 const row = { viewing: tour, locationName: 'Harbour kitchen', chefName: 'Ada Chef' };
 function mount(component: JSX.Element, queryKey: string[], rows: any[]) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity,
-    queryFn: async ({ queryKey }) => (await fetch(String(queryKey[0]))).json() } } }); clients.push(client);
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false, staleTime: Infinity,
+        queryFn: async ({ queryKey }) => (await fetch(String(queryKey[0]))).json()
+      }
+    }
+  }); clients.push(client);
   client.setQueryData(queryKey, rows);
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('delivery-status') ? []
-    : url.includes('commitment-problems') ? { problems: [], reportingAvailable: false } : rows })));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    ok: true, json: async () => url.includes('delivery-status') ? []
+      : url.includes('commitment-problems') ? { problems: [], reportingAvailable: false } : rows
+  })));
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
   render(<QueryClientProvider client={client}>{component}</QueryClientProvider>);
   return client;
 }
 
 describe('Tour A exact task consumers', () => {
+  it('puts named manager messaging and the running-late draft in kitchen coordination', async () => {
+    chat.resolve.mockClear();
+    window.history.replaceState({}, '', '/dashboard?view=viewings&viewing=42');
+    mount(<ChefViewingsList />, ['/api/viewings', 'chef', 'fixture-chef'], [{
+      ...row,
+      managerName: 'Morgan Lee', managerEmail: 'morgan@example.com', locationContactPhone: '+17095550124',
+      viewing: { ...tour, status: 'confirmed', scheduledAt: new Date(Date.now() + 30 * 60_000).toISOString() }
+    }]);
+    const coordination = await screen.findByRole('region', { name: 'Coordinate with the kitchen' });
+    expect(within(coordination).getByRole('button', { name: 'Message Morgan' })).toBeInTheDocument();
+    expect(within(coordination).getByRole('link', { name: 'morgan@example.com' })).toHaveAttribute('href', 'mailto:morgan@example.com');
+    const next = screen.getByRole('region', { name: 'What to do next' });
+    expect(within(next).queryByRole('button', { name: 'Running late' })).not.toBeInTheDocument();
+    fireEvent.click(within(coordination).getByRole('button', { name: 'Running late' }));
+    expect(await screen.findByTestId('specific-chat')).toHaveTextContent('I’m running late for my kitchen tour. My estimated arrival time is:');
+    expect(chat.resolve).toHaveBeenCalledWith(42);
+  });
   it('shows the current manager contact on an unreviewed admin request', async () => {
-    mount(<AdminTourRequestsSection />, ['/api/viewings/admin'], [{ ...row,
+    mount(<AdminTourRequestsSection />, ['/api/viewings/admin'], [{
+      ...row,
       viewing: { ...tour, status: 'pending_local_cooks', adminReviewDecision: null },
-      managerId: 19, managerName: 'Current Manager', managerEmail: 'current-manager@example.com', managerPhone: '+17095550123' }]);
+      managerId: 19, managerName: 'Current Manager', managerEmail: 'current-manager@example.com', managerPhone: '+17095550123'
+    }]);
     const contact = await screen.findByRole('region', { name: 'Kitchen manager' });
     expect(contact).toHaveTextContent('Current Manager');
     expect(screen.getByRole('link', { name: 'current-manager@example.com' })).toHaveAttribute('href', 'mailto:current-manager@example.com');
@@ -52,8 +85,10 @@ describe('Tour A exact task consumers', () => {
   });
   it.each([null, 19])('explains missing manager contact with assignment %s', async managerId => {
     window.history.replaceState({}, '', '/admin?section=tour-requests&viewing=42');
-    mount(<AdminTourRequestsSection />, ['/api/viewings/admin'], [{ ...row,
-      managerId, managerName: managerId ? 'Current Manager' : null, managerEmail: null, managerPhone: null }]);
+    mount(<AdminTourRequestsSection />, ['/api/viewings/admin'], [{
+      ...row,
+      managerId, managerName: managerId ? 'Current Manager' : null, managerEmail: null, managerPhone: null
+    }]);
     expect(await screen.findByRole('region', { name: 'Kitchen manager' })).toHaveTextContent(
       managerId ? 'Manager contact details are unavailable' : 'No manager assigned');
     expect(screen.queryByRole('link', { name: /manager@example/ })).not.toBeInTheDocument();
@@ -88,6 +123,13 @@ describe('Tour A exact task consumers', () => {
     const client = mount(<ViewingsDashboard />, ['/api/viewings/manager'], [{ ...row, viewing: { ...tour, id: 7 } }, row]);
     expect(await screen.findByRole('region', { name: 'sheetViewingDetails' })).toHaveTextContent('TOUR-42');
     expect(screen.getByRole('button', { name: 'acceptViewing' })).toBeInTheDocument();
+    const guidance = screen.getByRole('region', { name: 'tourNextStep' });
+    const actions = screen.getByRole('region', { name: 'tourActions' });
+    expect(within(guidance).getByRole('button', { name: 'acceptViewing' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'acceptViewing' })).toBeInTheDocument();
+    fireEvent.click(within(actions).getByRole('button', { name: 'acceptViewing' }));
+    expect(within(guidance).getByRole('textbox')).toBeInTheDocument();
+    expect(within(actions).getByRole('textbox')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Message Ada' })).toBeInTheDocument();
     expect(tourNextAction(tour)).toBe('overviewPendingTours');
     client.setQueryData(['/api/viewings/manager'], [{ ...row, viewing: { ...tour, status: 'confirmed' } }]);
@@ -109,7 +151,7 @@ describe('Tour A exact task consumers', () => {
     expect(tourNextAction({ ...tour, status: 'pending_local_cooks' })).toBeNull();
     client.setQueryData(['/api/viewings', 'chef', 'fixture-chef'], [{ ...row, viewing: { ...tour, status: 'cancelled', cancellationReason: 'Kitchen closed' } }]);
     expect(await screen.findByText('Kitchen closed')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Download confirmation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
   });
   it.each(['chef', 'manager', 'admin'])('reports an inaccessible %s link and provides retry without choosing another record', async role => {
     window.history.replaceState({}, '', role === 'admin' ? '/admin?section=tour-requests&viewing=99'

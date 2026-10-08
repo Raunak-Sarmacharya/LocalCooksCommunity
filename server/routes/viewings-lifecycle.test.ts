@@ -190,7 +190,7 @@ describe('tour decisions use current ownership and fresh review', () => {
     state.tour = { id: 10, chefId: 8, managerId: 1, locationId: 33, targetedKitchenId: 40, status: 'pending',
       scheduledAt: tomorrow, durationMinutes: 30, updatedAt: new Date(version), requestedRescheduleAt: null };
     state.kitchen = { locationId: 33, isActive: true, listingStatus: 'active' };
-    state.settings = { isActive: true, defaultDurationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0, advanceNoticeHours: 24, maxAdvanceBookingDays: 90 };
+    state.settings = { isActive: true, arrivalNotes: 'Meet at reception', departureNotes: 'Return badge', defaultDurationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0, advanceNoticeHours: 24, maxAdvanceBookingDays: 90 };
     state.availability = Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, startTime: '00:00', endTime: '23:30', isAvailable: true }));
   });
   it('rejects the previous manager even when the tour still stores their ID', async () => {
@@ -514,6 +514,48 @@ describe('feedback replaces attendance recording and admin owns final outcomes',
       scheduledAt:new Date(Date.now()-86400000),durationMinutes:30,updatedAt:new Date(version)};
     state.getFeedback.mockResolvedValue({available:true,response:null,scheduledAt:state.tour.scheduledAt.toISOString(),appointmentRevision:1});
     state.submitFeedback.mockResolvedValue({changed:true,feedback:{available:false,response:{happened:true}}});
+  });
+  it.each([
+    ['completed', {}], ['no_show', { noShowReason: 'visitor_absent' }],
+    ['cancelled', { disruptionReason: 'weather' }], ['cancelled', { disruptionReason: 'outcome_unknown' }],
+  ])('stores %s outcome notes internally without overwriting manager notes', async (nextStatus, extra) => {
+    state.tour.sharedManagerNotes = 'Please use the side entrance.';
+    state.tour.managerNotes = 'Existing private operational notes';
+    const result = await status({ status: nextStatus, ...extra, expectedUpdatedAt: version,
+      outcomeNotes: 'PRIVATE outcome verified by Local Cooks.' }, { id: 9, role: 'admin' });
+    expect(result.status).not.toHaveBeenCalled();
+    expect(state.updates[0]).not.toHaveProperty('sharedManagerNotes');
+    expect(state.tour.sharedManagerNotes).toBe('Please use the side entrance.');
+    expect(state.tour.managerNotes).toBe('Existing private operational notes');
+    expect(state.tour.outcomeHistory.at(-1)).toMatchObject({ actorRole: 'admin',
+      outcomeNotes: 'PRIVATE outcome verified by Local Cooks.', sharedNotes: null });
+    state.listMode = true;
+    try {
+      for (const role of ['chef', 'manager']) {
+        const response = await request(`/${role}`, 'get', {}, { id: role === 'chef' ? 8 : 2, role });
+        expect(JSON.stringify(response.json.mock.calls)).not.toContain('PRIVATE');
+        expect(JSON.stringify(response.json.mock.calls)).toContain('Please use the side entrance.');
+      }
+    } finally { state.listMode = false; }
+  });
+  it('handles an old admin form and a later correction without publishing either internal explanation', async () => {
+    state.tour.sharedManagerNotes = 'Please use the side entrance.';
+    const admin = { id: 9, role: 'admin' };
+    await status({ status: 'completed', expectedUpdatedAt: version, sharedManagerNotes: 'PRIVATE original decision from old page.' }, admin);
+    expect(state.tour.sharedManagerNotes).toBe('Please use the side entrance.');
+    await status({ status: 'no_show', noShowReason: 'visitor_absent', expectedUpdatedAt: state.tour.updatedAt.toISOString(),
+      outcomeNotes: 'PRIVATE correction based on the reviewed evidence.' }, admin);
+    expect(state.tour.sharedManagerNotes).toBe('Please use the side entrance.');
+    expect(state.tour.outcomeHistory).toHaveLength(2);
+    expect(state.tour.outcomeHistory.map((entry: any) => entry.outcomeNotes)).toEqual([
+      'PRIVATE original decision from old page.', 'PRIVATE correction based on the reviewed evidence.'
+    ]);
+  });
+  it('does not allow managers to write an internal outcome note during confirmation', async () => {
+    state.tour.status = 'pending';
+    const result = await status({ status: 'confirmed', expectedUpdatedAt: version, outcomeNotes: 'PRIVATE manager supplied note' });
+    expect(result.status).toHaveBeenCalledWith(403);
+    expect(state.updates).toEqual([]);
   });
   it.each(['chef','manager','admin'])('retires all old attendance writes for %s without changing evidence', async role => {
     const original=structuredClone(state.tour);

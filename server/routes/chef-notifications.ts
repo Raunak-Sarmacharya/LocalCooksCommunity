@@ -17,6 +17,7 @@ import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
+import { getUnreadNotificationSummary } from "../services/notification-sound-summary";
 import type { NotificationType, NotificationPriority } from "../services/notification.service";
 
 const router = Router();
@@ -104,17 +105,7 @@ async function getNotifications(
  * Get unread notification count for a chef
  */
 async function getUnreadCount(chefId: number) {
-  // CRIT-2 Security: Parameterized query — no sql.raw()
-  const result = await db.execute(sql`
-    SELECT COUNT(*) as count
-    FROM chef_notifications
-    WHERE chef_id = ${chefId}
-      AND is_read = false
-      AND is_archived = false
-      AND (expires_at IS NULL OR expires_at > NOW())
-  `);
-
-  return { count: parseInt((result.rows[0] as { count: string })?.count || '0', 10) };
+  return getUnreadNotificationSummary('chef', chefId);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { KITCHEN_TOUR_ICON_NAME } from "@/components/ui/manager-icons";
 import { logger } from "@/lib/logger";
 import i18n from "@/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -48,6 +49,7 @@ import { fitDescriptionPreview } from "@/lib/fit-description-preview";
 import { resolvePreviewApplicationRoute, resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
 import { canonicalKitchenHref, chefKitchenShareUrl, kitchenPathSlug, shareKitchenLink } from "@/lib/kitchen-preview-url";
 import { useToast } from "@/hooks/use-toast";
+import { useTourRequestAccess } from "@/hooks/use-tour-request-access";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -2761,47 +2763,12 @@ export default function KitchenPreviewPage() {
   });
   const toursAvailable = tourStatus?.toursAvailable ?? tourStatus?.isActive ?? false;
 
-  // Existing tour request for this kitchen (Local Cooks review / manager review / confirmed).
-  type ChefViewingRow = {
-    viewing?: { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string; durationMinutes?: number };
-    id?: number;
-    locationId?: number;
-    targetedKitchenId?: number | null;
-    status?: string;
-    scheduledAt?: string;
-    durationMinutes?: number;
-  };
-  const { data: chefViewings = [], isFetched: chefViewingsFetched, error: chefViewingsError } = useQuery<ChefViewingRow[]>({
-    queryKey: ["/api/viewings", "chef", user?.uid],
-    queryFn: async () => {
-      const headers = await getAuthHeaders();
-      const response = await fetch("/api/viewings/chef", {
-        headers,
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Could not check your kitchen tours");
-      return response.json();
-    },
-    enabled: !!isAuthenticated && !!user?.uid,
-  });
-  const kitchenTours = useMemo(() => {
-    if (!selectedKitchen?.id || !chefViewings.length) return [];
-    return chefViewings
-      .map((r) => r.viewing ?? r)
-      .filter((v): v is { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string; durationMinutes?: number } =>
-        !!v && typeof v.id === "number" && Number(v.targetedKitchenId) === Number(selectedKitchen.id))
-      .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
-  }, [chefViewings, selectedKitchen?.id]);
-  const activeKitchenTour = useMemo(() => {
-    const ACTIVE = new Set(["pending_local_cooks", "pending", "confirmed"]);
-    return kitchenTours.find((tour) => ACTIVE.has(String(tour.status || "").toLowerCase()) && new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 >= Date.now()) ?? null;
-  }, [kitchenTours]);
-  const activeTourStatus = String(activeKitchenTour?.status || "").toLowerCase();
-  const activeTourKind: "pending" | "confirmed" | null = !activeKitchenTour
-    ? null
-    : activeTourStatus === "confirmed"
-      ? "confirmed"
-      : "pending";
+  const { data: tourRequestAccess, isFetched: chefViewingsFetched, error: chefViewingsError } =
+    useTourRequestAccess(selectedKitchen?.id, isAuthenticated ? user?.uid : undefined);
+  const kitchenTour = tourRequestAccess?.tour ?? null;
+  const activeKitchenTour = kitchenTour && ['pending', 'confirmed'].includes(kitchenTour.kind) ? kitchenTour : null;
+  const completedKitchenTour = kitchenTour?.kind === 'completed' ? kitchenTour : null;
+  const activeTourKind = activeKitchenTour?.kind === 'pending' ? 'pending' : activeKitchenTour?.kind === 'confirmed' ? 'confirmed' : undefined;
 
 
   const {
@@ -3107,12 +3074,14 @@ export default function KitchenPreviewPage() {
       window.location.port,
       import.meta.env.VITE_VERCEL_ENV
     );
+    const detailTour = kitchenTour;
+    const detailQuery = detailTour ? `&viewing=${detailTour.id}` : "";
     if (sameOrigin) {
-      navigate(path, { replace: true });
+      navigate(`${path}${detailQuery}`, { replace: true });
     } else {
-      window.location.href = href;
+      window.location.href = `${href}${detailQuery}`;
     }
-  }, [navigate]);
+  }, [navigate, kitchenTour]);
 
   const openRequestToApplyModal = () => {
     if (locationData?.canAcceptApplications === false) return;
@@ -3178,11 +3147,11 @@ export default function KitchenPreviewPage() {
 
   const handleScheduleTour = () => {
     if (!locationId || !selectedKitchen?.id) return;
-    if (alreadyApplied) return;
-    if (activeKitchenTour) {
+    if (chefViewingsError || kitchenTour && kitchenTour.kind !== 'failed' || tourRequestAccess?.canRequest === false) {
       goToMyTours();
       return;
     }
+    if (alreadyApplied) return;
     navigate(`/request-tour/${locationId}?kitchenId=${selectedKitchen.id}`);
   };
 
@@ -3257,8 +3226,9 @@ export default function KitchenPreviewPage() {
       // Applying later never hides a scheduled or past tour; only new requests stop.
       if (chefViewingsError && isAuthenticated) return { kind: "history" as const };
       if (isAuthenticated && !chefViewingsFetched) return { kind: "loading" as const };
-      if (activeTourKind) return { kind: activeTourKind };
-      if (alreadyApplied && kitchenTours.length) return { kind: "history" as const };
+      if (activeTourKind) return { kind: activeTourKind } as const;
+      if (kitchenTour && kitchenTour.kind !== 'failed') return { kind: "history" as const };
+      if (alreadyApplied && kitchenTour) return { kind: "history" as const };
       if (alreadyApplied) return null;
       // Wait for availability + existing tours so we don't flash "Request a tour"
       // over a review-in-progress or confirmed visit. This state keeps the slot
@@ -3278,7 +3248,9 @@ export default function KitchenPreviewPage() {
         : tourCta?.kind === "pending"
           ? t("tourPendingCta", "Tour pending")
           : tourCta?.kind === "history"
-            ? "View My Tours"
+            ? completedKitchenTour ? t("tourCompletedCta", "You’ve toured this kitchen")
+              : kitchenTour?.kind === 'ended' ? t('tourEndedCta', 'Tour ended')
+              : kitchenTour?.kind === 'unverified' ? t('tourUnverifiedCta', 'Tour outcome not verified') : t('viewMyTours', 'View My Tours')
           : t("requestATour", "Request a tour");
     const tourHint =
       tourCta?.kind === "loading"
@@ -3288,19 +3260,12 @@ export default function KitchenPreviewPage() {
           : tourCta?.kind === "pending"
             ? t("tourPendingChipHint", "Request pending — open My Tours")
             : tourCta?.kind === "history"
-              ? "See scheduled and previous visits"
+              ? kitchenTour ? t("tourCompletedChipHint", "View your tour details") : t('viewMyTours', 'View My Tours')
             : t("requestATourHint", "Visit kitchen before applying");
     const tourBusy = tourCta?.kind === "loading";
     const tourOnClick =
       tourCta?.kind === "confirmed" || tourCta?.kind === "pending" || tourCta?.kind === "history" ? goToMyTours : handleScheduleTour;
-    const tourIcon =
-      tourCta?.kind === "confirmed"
-        ? "mdi:calendar-check"
-        : tourCta?.kind === "pending"
-          ? "mdi:calendar-clock"
-          : tourCta?.kind === "history"
-            ? "mdi:history"
-          : "mdi:calendar-account";
+    const tourIcon = KITCHEN_TOUR_ICON_NAME;
 
     const tourSurfaceClass =
       tourCta?.kind === "request"
