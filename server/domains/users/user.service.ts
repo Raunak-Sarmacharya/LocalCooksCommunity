@@ -3,7 +3,7 @@ import { UserRepository } from "./user.repository";
 import { CreateUserDTO, UpdateUserDTO, User } from "./user.types";
 import { locations, users } from "@shared/schema";
 import { db } from "../../db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { hashPassword } from "../../passwordUtils";
 import { DomainError, UserErrorCodes } from "../../shared/errors/domain-error";
 import { nationalPhoneDigits } from "@shared/phone-validation";
@@ -314,10 +314,8 @@ export class UserService {
    *   penalties or damage claims — deleting the account would make the debt
    *   uncollectable and the payer disappear.
    *
-   *   Admins pass `false`: a support agent removing an account has the context
-   *   to decide, and the money is tracked on `payment_transactions` /
-   *   `damage_claims` which survive the account. Blocking here gave them a
-   *   message they could not act on.
+   *   Admins pass `false` to authorize a complete purge, including their
+   *   bookings, claims, payment records and manager-owned resources.
    */
   async deleteUser(id: number, options: DeleteUserOptions = {}): Promise<void> {
     const { enforceObligations = true } = options;
@@ -335,26 +333,15 @@ export class UserService {
       }
     }
 
-    // One transaction for the whole cascade: `users.id` is referenced by ~50
-    // foreign keys and about half of them are `NO ACTION`, so a delete that
-    // fails partway leaves an account that can neither log in nor be removed
-    // without manual repair.
     await db.transaction(async (tx) => {
+      const [user] = await tx.select().from(users).where(eq(users.id, id)).for('update');
+      if (!user) return;
+      const managedLocations = await tx.select({ id: locations.id }).from(locations)
+        .where(eq(locations.managerId, id)).for('update');
+      await tx.execute(sql`INSERT INTO user_deletion_jobs (user_id, username, role, firebase_uid, location_ids)
+        VALUES (${id}, ${user.username}, ${user.role}, ${user.firebaseUid}, ${JSON.stringify(managedLocations.map(location => location.id))}::jsonb)
+        ON CONFLICT (user_id) DO NOTHING`);
       const counts = await deleteUserDependents(tx, id);
-
-      // The kitchen is the business and the manager is a person who may be
-      // replaced, so a location survives its manager with no owner until an
-      // admin reassigns one. This is what `KitchenRepository` assumes when it
-      // decides whether a kitchen is safe to hard-delete.
-      const managedLocations = await tx
-        .update(locations)
-        .set({ managerId: null })
-        .where(eq(locations.managerId, id))
-        .returning({ id: locations.id });
-      if (managedLocations.length > 0) {
-        logger.info(`Removed manager ${id} from ${managedLocations.length} locations`);
-      }
-
       await tx.delete(users).where(eq(users.id, id));
 
       const summary = Object.entries(counts)

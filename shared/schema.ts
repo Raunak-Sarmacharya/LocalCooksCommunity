@@ -140,6 +140,16 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Retained only until external account cleanup succeeds; no FK to the deleted user.
+export const userDeletionJobs = pgTable('user_deletion_jobs', {
+  userId: integer('user_id').primaryKey(),
+  username: text('username').notNull(),
+  role: text('role'),
+  firebaseUid: text('firebase_uid'),
+  locationIds: jsonb('location_ids').$type<number[]>().default([]).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Define the applications table (for chefs)
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
@@ -343,7 +353,7 @@ export const locations = pgTable("locations", {
   name: text("name").notNull(),
   slug: text("slug").unique(),
   address: text("address").notNull(),
-  managerId: integer("manager_id").references(() => users.id),
+  managerId: integer("manager_id").references(() => users.id, { onDelete: "cascade" }),
   isActive: boolean("is_active").default(true).notNull(),
   notificationEmail: text("notification_email"), // Email where notifications will be sent
   notificationPhone: text("notification_phone"), // Phone number where SMS notifications will be sent
@@ -454,7 +464,7 @@ export const locationRequirements = pgTable("location_requirements", {
 // Define kitchens table
 export const kitchens = pgTable("kitchens", {
   id: serial("id").primaryKey(),
-  locationId: integer("location_id").references(() => locations.id).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
   slug: text("slug"),
   description: text("description"),
@@ -532,7 +542,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. KB-A7K9MX
   chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
-  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM format - earliest slot start
   endTime: text("end_time").notNull(), // HH:MM format - latest slot end
@@ -597,7 +607,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
 // Append-only request/adjustment evidence; original paid booking fields remain historical.
 export const kitchenBookingChanges = pgTable('kitchen_booking_changes', {
   id: text('id').primaryKey(),
-  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(),
   requestKey: text('request_key').notNull(),
   kind: text('kind').notNull(),
   state: text('state').notNull(),
@@ -610,7 +620,7 @@ export const kitchenBookingChanges = pgTable('kitchen_booking_changes', {
   bookingVersion: timestamp('booking_version').notNull(),
   decisionBy: timestamp('decision_by').notNull(),
   paymentBy: timestamp('payment_by'),
-  managerId: integer('manager_id').references(() => users.id).notNull(),
+  managerId: integer('manager_id').references(() => users.id, { onDelete: "cascade" }).notNull(),
   holdId: text('hold_id'),
   sessionId: text('session_id').unique(),
   intentId: text('intent_id').unique(),
@@ -653,9 +663,9 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
 // Attendance evidence is separate from reservation validity and checkout approval.
 export const kitchenBookingAttendanceEvents = pgTable("kitchen_booking_attendance_events", {
   id: serial("id").primaryKey(),
-  bookingId: integer("booking_id").references(() => kitchenBookings.id).notNull(),
-  visitId: integer("visit_id").references(() => kitchenBookingVisits.id),
-  actorId: integer("actor_id").references(() => users.id).notNull(),
+  bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(),
+  visitId: integer("visit_id").references(() => kitchenBookingVisits.id, { onDelete: "cascade" }),
+  actorId: integer("actor_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   actorRole: text("actor_role").notNull(),
   action: text("action").notNull(),
   previousStatus: text("previous_status"),
@@ -1366,9 +1376,9 @@ export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListing
 
 export const bookingLifecycleEvents = pgTable('booking_lifecycle_events', {
   id: serial('id').primaryKey(),
-  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(),
   kind: text('kind').notNull(),
-  actorId: integer('actor_id').references(() => users.id),
+  actorId: integer('actor_id').references(() => users.id, { onDelete: "cascade" }),
   title: text('title').notNull(),
   message: text('message').notNull(),
   metadata: jsonb('metadata').default({}).notNull(),
@@ -1437,8 +1447,8 @@ export const storageBookings = pgTable("storage_bookings", {
 
 export const storageOverstayQuotes = pgTable('storage_overstay_quotes', {
   id: text('id').primaryKey(),
-  chefId: integer('chef_id').references(() => users.id).notNull(),
-  storageListingId: integer('storage_listing_id').references(() => storageListings.id).notNull(),
+  chefId: integer('chef_id').references(() => users.id, { onDelete: "cascade" }).notNull(),
+  storageListingId: integer('storage_listing_id').references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
   terms: jsonb('terms').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -1622,7 +1632,7 @@ export const platformSettings = pgTable("platform_settings", {
   key: text("key").notNull().unique(),
   value: text("value").notNull(),
   description: text("description"),
-  updatedBy: integer("updated_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -1648,7 +1658,7 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
   // Latest qualifying tour association, assigned once; reporting waits for the admin's final result.
-  sourceTourId: integer("source_tour_id").references((): AnyPgColumn => kitchenViewings.id, { onDelete: "restrict" }),
+  sourceTourId: integer("source_tour_id").references((): AnyPgColumn => kitchenViewings.id, { onDelete: "set null" }),
 
   // Personal Info (collected per application)
   fullName: text("full_name").notNull(),
@@ -2363,7 +2373,7 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   outcomeReminderSentAt: timestamp("outcome_reminder_sent_at"), // Reminder enqueue marker; actual delivery is tracked in tour_delivery_events.
   feedbackRequestedAt: timestamp('feedback_requested_at'), // Current appointment markers; event keys carry durable revision-specific identity.
   feedbackEscalatedAt: timestamp('feedback_escalated_at'),
-  repeatAuthorizationId: integer('repeat_authorization_id').references((): AnyPgColumn => tourRepeatAuthorizations.id, { onDelete: 'restrict' }),
+  repeatAuthorizationId: integer('repeat_authorization_id').references((): AnyPgColumn => tourRepeatAuthorizations.id, { onDelete: "set null" }),
   outcomeNotificationPending: boolean("outcome_notification_pending").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -2372,7 +2382,7 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
 // Admin decisions preserve their provenance and are used atomically with the new request.
 export const tourRepeatAuthorizations = pgTable('tour_repeat_authorizations', {
   id: serial('id').primaryKey(),
-  sourceTourId: integer('source_tour_id').references(() => kitchenViewings.id, { onDelete: 'restrict' }).notNull(),
+  sourceTourId: integer('source_tour_id').references(() => kitchenViewings.id, { onDelete: "cascade" }).notNull(),
   sourceVersion: text('source_version').notNull(),
   requestKey: text('request_key').notNull().unique(),
   grantedBy: integer('granted_by').notNull(),
@@ -2380,7 +2390,7 @@ export const tourRepeatAuthorizations = pgTable('tour_repeat_authorizations', {
   grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
-  usedByTourId: integer('used_by_tour_id').references(() => kitchenViewings.id, { onDelete: 'restrict' }).unique(),
+  usedByTourId: integer('used_by_tour_id').references(() => kitchenViewings.id, { onDelete: "cascade" }).unique(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   revokedBy: integer('revoked_by'),
   revokeReason: text('revoke_reason'),
@@ -2393,7 +2403,7 @@ export const tourVisitEvents = pgTable('tour_visit_events', {
   kind: text('kind').notNull(), // arrival | departure | result | legacy_evidence | repair
   eventKey: text('event_key').notNull().unique(),
   supersedesId: integer('supersedes_id'), // SQL migration enforces the self-reference and single successor.
-  actorId: integer('actor_id'), // Preserve recorded provenance even if the account is later removed.
+  actorId: integer('actor_id'), // Anonymized during account deletion; the surviving tour's other facts remain immutable.
   actorRole: text('actor_role'),
   source: text('source').notNull(),
   actualAt: timestamp('actual_at', { withTimezone: true }),
@@ -2409,7 +2419,7 @@ export const tourVisitEvents = pgTable('tour_visit_events', {
 // Private participant reports are immutable facts, independent of the admin's final tour result.
 export const tourFeedbackResponses = pgTable('tour_feedback_responses', {
   id: serial('id').primaryKey(),
-  viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: 'restrict' }).notNull(),
+  viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: "cascade" }).notNull(),
   respondentId: integer('respondent_id').notNull(), // Preserve submitted identity after account changes.
   respondentRole: text('respondent_role').$type<'chef' | 'manager'>().notNull(),
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
@@ -2428,12 +2438,12 @@ export const commitmentProblems = pgTable('commitment_problems', {
   id: serial('id').primaryKey(),
   sourceKey: text('source_key').notNull().unique(),
   kind: text('kind').notNull(), // live | schedule
-  bookingId: integer('booking_id').references(() => kitchenBookings.id),
-  viewingId: integer('viewing_id').references(() => kitchenViewings.id),
-  kitchenId: integer('kitchen_id').references(() => kitchens.id),
-  reportedBy: integer('reported_by').references(() => users.id).notNull(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: "cascade" }),
+  viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: "cascade" }),
+  kitchenId: integer('kitchen_id').references(() => kitchens.id, { onDelete: "cascade" }),
+  reportedBy: integer('reported_by').references(() => users.id, { onDelete: "cascade" }).notNull(),
   owner: text('owner').notNull().default('local_cooks'),
-  claimedBy: integer('claimed_by').references(() => users.id),
+  claimedBy: integer('claimed_by').references(() => users.id, { onDelete: "set null" }),
   status: text('status').notNull().default('reported'),
   description: text('description').notNull(),
   revision: integer('revision').notNull().default(1),

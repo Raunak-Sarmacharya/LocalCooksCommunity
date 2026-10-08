@@ -35,24 +35,47 @@ type DeleteImpactCategory = {
  * The rows the cascade will delete, in the order an admin cares about them:
  * money and relationships first, housekeeping last.
  *
- * `managed_locations` is NOT here — those rows are not deleted, their owner is
- * simply cleared. It gets its own warning line below.
+ * Keys match the cleanup service's table names and ownership predicates.
  */
 const DELETE_IMPACT_CATEGORIES: DeleteImpactCategory[] = [
-  { key: "bookings", label: "Kitchen bookings" },
+  { key: "locations", label: "Owned locations" },
+  { key: "kitchens", label: "Owned kitchens" },
+  { key: "storage_listings", label: "Storage listings" },
+  { key: "equipment_listings", label: "Equipment listings" },
+  { key: "kitchen_bookings", label: "Kitchen bookings" },
   { key: "storage_bookings", label: "Storage bookings" },
   { key: "equipment_bookings", label: "Equipment bookings" },
   { key: "damage_claims", label: "Damage claims" },
-  { key: "kitchen_applications", label: "Kitchen applications" },
+  { key: "payment_transactions", label: "Payment records" },
+  { key: "commitment_problems", label: "Commitment problems" },
+  { key: "kitchen_booking_changes", label: "Booking changes" },
+  { key: "kitchen_booking_attendance_events", label: "Booking attendance records" },
+  { key: "booking_lifecycle_events", label: "Booking lifecycle events" },
+  { key: "kitchen_booking_visits", label: "Booking visits" },
+  { key: "storage_overstay_quotes", label: "Storage overstay quotes" },
+  { key: "storage_overstay_records", label: "Storage overstay records" },
+  { key: "pending_storage_extensions", label: "Pending storage extensions" },
+  { key: "tour_repeat_authorizations", label: "Repeat tour permissions" },
+  { key: "tour_feedback_responses", label: "Tour feedback" },
+  { key: "chef_kitchen_applications", label: "Kitchen applications" },
+  { key: "portal_user_applications", label: "Location portal applications" },
   { key: "applications", label: "Portal applications" },
-  { key: "viewings", label: "Viewings" },
-  { key: "kitchen_access_grants", label: "Kitchen access grants" },
-  { key: "location_access_grants", label: "Location access grants" },
+  { key: "kitchen_viewings", label: "Tours" },
+  { key: "chef_kitchen_access", label: "Kitchen access grants" },
+  { key: "chef_location_access", label: "Location access grants" },
+  { key: "portal_user_location_access", label: "Portal access grants" },
+  { key: "chef_kitchen_profiles", label: "Kitchen profiles" },
+  { key: "chef_location_profiles", label: "Location profiles" },
+  { key: "kitchen_checkout_holds", label: "Checkout holds" },
   { key: "chef_notifications", label: "Chef notifications" },
   { key: "manager_notifications", label: "Manager notifications" },
   { key: "microlearning_completions", label: "Training completions" },
   { key: "video_progress", label: "Video progress records" },
   { key: "password_reset_tokens", label: "Password reset links" },
+  { key: "email_verification_tokens", label: "Email verification links" },
+  { key: "unsubscribe_requests", label: "Unsubscribe records" },
+  { key: "email_logs", label: "Email logs" },
+  { key: "session", label: "Legacy sessions" },
 ];
 
 export function AdminUserManagement() {
@@ -164,6 +187,7 @@ export function AdminUserManagement() {
         loadUsers();
       } else {
         const error = await response.json();
+        loadUsers();
         toast.error("Error", {
           description: error.error || "Failed to completely delete user",
         });
@@ -200,7 +224,7 @@ export function AdminUserManagement() {
               <TableRow key={user.id}>
                 <TableCell>{user.id}</TableCell>
                 <TableCell className="font-medium">{user.username}</TableCell>
-                <TableCell className="capitalize">{user.role}</TableCell>
+                <TableCell className="capitalize">{user.role}{user.cleanupPending && " — cleanup pending"}</TableCell>
                 <TableCell className="text-muted-foreground text-xs font-mono">
                   {user.firebaseUid || "N/A"}
                 </TableCell>
@@ -212,7 +236,7 @@ export function AdminUserManagement() {
                     disabled={user.role === "admin"}
                   >
                     <UserMinus className="h-4 w-4 mr-1" />
-                    Complete Delete
+                    {user.cleanupPending ? "Retry Cleanup" : "Complete Delete"}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -252,7 +276,10 @@ export function AdminUserManagement() {
             </div>
           )}
 
-          {impact && (
+          {impact?.cleanupPending && (
+            <p className="text-sm">The database records are already removed. Retry to finish Firebase and Firestore cleanup.</p>
+          )}
+          {impact && !impact.cleanupPending && (
             <div className="space-y-3 py-1">
               <div className="max-h-64 overflow-y-auto rounded-md border">
                 <Table>
@@ -280,13 +307,9 @@ export function AdminUserManagement() {
                 </Table>
               </div>
 
-              {/* Not a deletion, which is exactly why it needs calling out:
-                  the kitchen keeps its bookings and outlives the manager. */}
-              {(impact.counts?.managed_locations ?? 0) > 0 && (
+              {(impact.counts?.locations ?? 0) > 0 && (
                 <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-                  <strong>{impact.counts.managed_locations}</strong> location
-                  {impact.counts.managed_locations === 1 ? "" : "s"} will be left with no
-                  manager and must be reassigned.
+                  This deletes the manager's locations, kitchens, listings, bookings, and related records, including other users' bookings at those locations.
                 </p>
               )}
 
@@ -296,7 +319,7 @@ export function AdminUserManagement() {
                   {impact.obligations.overstayPenalties} overstay penalty(ies) and{" "}
                   {impact.obligations.damageClaims} damage claim(s), totaling{" "}
                   <strong>${(impact.obligations.totalOwedCents / 100).toFixed(2)}</strong>.
-                  The claims are kept, but the account that owes them is removed.
+                  These related records will also be deleted.
                 </p>
               )}
             </div>

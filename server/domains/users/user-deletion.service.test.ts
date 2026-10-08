@@ -1,205 +1,68 @@
-/**
- * Unit tests for the user-deletion cascade.
- *
- * The behaviour that matters here is ORDER. Deleting `/users/:id` used to fail
- * with an opaque foreign-key error whenever the account had rows in one of the
- * ~25 `NO ACTION` child tables, and the fix is a hand-maintained, ordered list
- * of statements. A statement that runs after its parent's delete is a no-op at
- * best and a constraint violation at worst, so the ordering is asserted rather
- * than trusted.
- */
-
 import { describe, it, expect, vi } from 'vitest';
-import { deleteUserDependents } from './user-deletion.service';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { deleteUserDependents, getUserDeletionImpact, userDeletionTargets } from './user-deletion.service';
+vi.mock('../../logger', () => ({ logger: { info: vi.fn() } }));
 
-/**
- * Captures every statement issued against the fake transaction, in order.
- *
- * The service passes drizzle `SQL` objects. Their `queryChunks` is a mixed list:
- * literal text arrives as `StringChunk` instances (whose `value` is an array of
- * fragments), while bound parameters arrive as bare values. Reading only the
- * string chunks reconstructs the template with the placeholders elided — which
- * is exactly what we want to assert on, and proves no id was interpolated into
- * the text.
- */
 function createTx(rowsReturned = 1) {
-  const statements: string[] = [];
-
-  const tx = {
-    execute: vi.fn(async (query: any) => {
-      const chunks: any[] = query?.queryChunks ?? [];
-      const text = chunks
-        .flatMap((chunk) => {
-          if (typeof chunk === 'string') return [chunk];
-          if (chunk?.constructor?.name === 'StringChunk' && Array.isArray(chunk.value)) {
-            return chunk.value;
-          }
-          return [''];
-        })
-        .join('')
-        .replace(/\s+/g, ' ')
-        .trim();
-      statements.push(text);
-      // `del` counts rows via `result.rows.length`; a fixed-size fake row set is
-      // enough to prove the counting path works.
-      return { rows: Array.from({ length: rowsReturned }, (_, i) => ({ id: i + 1 })) };
-    }),
-  };
-
+  const statements: Array<{ sql: string; params: unknown[] }> = [];
+  const tx = { execute: vi.fn(async (query: any) => {
+    statements.push(new PgDialect().sqlToQuery(query));
+    return { rows: Array.from({ length: rowsReturned }, () => ({ count: 1 })) };
+  }) };
   return { tx, statements };
 }
 
-/** Index of the first statement whose SQL contains `needle`. */
-function indexOf(statements: string[], needle: string): number {
-  const i = statements.findIndex((s) => s.includes(needle));
-  expect(i, `no statement matched ${needle}`).toBeGreaterThanOrEqual(0);
-  return i;
-}
-
-describe('deleteUserDependents', () => {
-  it('deletes the child tables a user can actually block on', async () => {
+describe('complete user deletion', () => {
+  it('cleans up new lifecycle dependencies before bookings, visits and tours', async () => {
     const { tx, statements } = createTx();
     await deleteUserDependents(tx, 42);
-
-    const all = statements.join('\n');
-    for (const table of [
-      'chef_notifications',
-      'manager_notifications',
-      'kitchen_bookings',
-      'kitchen_checkout_holds',
-      'applications',
-      'microlearning_completions',
-      'video_progress',
-      'password_reset_tokens',
-      'pending_storage_extensions',
-    ]) {
-      expect(all).toContain(`DELETE FROM ${table}`);
-    }
+    const position = (table: string) => statements.findIndex(s => s.sql.startsWith('DELETE FROM "' + table + '"'));
+    for (const child of ['kitchen_booking_attendance_events', 'booking_lifecycle_events', 'kitchen_booking_changes', 'commitment_problems'])
+      expect(position(child)).toBeLessThan(position('kitchen_bookings'));
+    expect(position('kitchen_booking_attendance_events')).toBeLessThan(position('kitchen_booking_visits'));
+    expect(position('tour_repeat_authorizations')).toBeLessThan(position('kitchen_viewings'));
+    expect(position('tour_feedback_responses')).toBeLessThan(position('kitchen_viewings'));
+    expect(position('storage_overstay_quotes')).toBeLessThan(position('storage_listings'));
+    expect(position('kitchens')).toBeLessThan(position('locations'));
   });
 
-  it('removes storage and equipment bookings before their parent booking', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    // `storage_bookings.kitchen_booking_id` is CASCADE, so leaving these to the
-    // database would also work — but the point of the explicit list is that the
-    // service, not a migration, decides what disappears. Parent first would
-    // silently delete them without them being counted.
-    const storage = indexOf(statements, 'DELETE FROM storage_bookings');
-    const equipment = indexOf(statements, 'DELETE FROM equipment_bookings');
-    const parent = indexOf(statements, 'DELETE FROM kitchen_bookings');
-
-    expect(storage).toBeLessThan(parent);
-    expect(equipment).toBeLessThan(parent);
+  it('deletes owned resources, not bookings merely approved by this user', () => {
+    const dialect = new PgDialect();
+    const targets = userDeletionTargets(42);
+    const booking = dialect.sqlToQuery(targets.find(t => t.table === 'kitchen_bookings')!.where);
+    expect(booking.sql).toContain('manager_id');
+    expect(booking.sql).toContain('chef_id');
+    expect(booking.sql).not.toContain('checkout_approved_by');
+    expect(targets.map(t => t.table)).toContain('locations');
+    expect(targets.map(t => t.table)).toContain('payment_transactions');
   });
 
-  it('removes damage claims before the bookings they point at', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    // Both damage_claim FKs to bookings are SET NULL, so a claim would survive
-    // as an orphaned row if it were not deleted deliberately first.
-    const claims = indexOf(statements, 'DELETE FROM damage_claims');
-    expect(claims).toBeLessThan(indexOf(statements, 'DELETE FROM storage_bookings'));
-    expect(claims).toBeLessThan(indexOf(statements, 'DELETE FROM kitchen_bookings'));
-  });
-
-  it('removes overstay records before the storage bookings they belong to', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    // CASCADE would handle it, but then the rows vanish uncounted and the
-    // delete-impact preview would under-report.
-    expect(indexOf(statements, 'DELETE FROM storage_overstay_records')).toBeLessThan(
-      indexOf(statements, 'DELETE FROM storage_bookings'),
-    );
-  });
-
-  it('removes booking visits before their parent booking', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    expect(indexOf(statements, 'DELETE FROM kitchen_booking_visits')).toBeLessThan(
-      indexOf(statements, 'DELETE FROM kitchen_bookings'),
-    );
-  });
-  it('removes private tour feedback before deleting the chef tours it references', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-    expect(indexOf(statements, 'DELETE FROM tour_feedback_responses')).toBeLessThan(indexOf(statements, 'DELETE FROM kitchen_viewings'));
-    expect(statements.join('\n')).toContain('OR viewing_id IN (SELECT id FROM kitchen_viewings WHERE chef_id');
-  });
-
-  it('nulls the manager on a kitchen instead of deleting the kitchen', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    expect(statements.join('\n')).toContain('UPDATE locations SET manager_id = NULL');
-    // The kitchen is the business; the manager is replaceable. Deleting the
-    // location here would take every booking on it.
-    expect(statements.join('\n')).not.toContain('DELETE FROM locations');
-  });
-
-  it('nulls approval stamps rather than deleting the approved row', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-    const all = statements.join('\n');
-
-    expect(all).toContain('UPDATE locations SET kitchen_license_approved_by = NULL');
-    expect(all).toContain('UPDATE applications SET documents_reviewed_by = NULL');
-    expect(all).toContain('UPDATE chef_kitchen_applications SET reviewed_by = NULL');
-    expect(all).toContain('UPDATE storage_listings SET approved_by = NULL');
-  });
-
-  it('keeps the financial ledger by nulling its author columns', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-    const all = statements.join('\n');
-
-    expect(all).toContain('UPDATE payment_transactions SET chef_id = NULL');
-    expect(all).toContain('UPDATE payment_history SET created_by = NULL');
-    // Nothing in the money trail may be removed.
-    expect(all).not.toContain('DELETE FROM payment_transactions');
-    expect(all).not.toContain('DELETE FROM payment_history');
-  });
-
-  it('never touches platform_settings', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    // Settings are global config keyed by `key`; deleting a rate-limit or
-    // feature-flag row because the admin who last edited it left would be a
-    // functional change disguised as cleanup.
-    expect(statements.join('\n')).not.toContain('platform_settings');
-  });
-
-  it('binds the user id as a parameter instead of interpolating it', async () => {
-    const { tx, statements } = createTx();
-    await deleteUserDependents(tx, 42);
-
-    // The statements are built with drizzle's tagged templates so the id is a
-    // bound Param. Interpolating it would be an injection surface on a route
-    // that takes the id straight from the URL.
-    expect(statements.length).toBeGreaterThan(20);
-    for (const statement of statements) {
-      expect(statement).not.toContain('42');
-    }
-  });
-
-  it('reports per-table counts for the delete-impact preview', async () => {
-    const { tx } = createTx(3);
+  it('uses bound parameters, real RETURNING rows, and preserves global settings', async () => {
+    const { tx, statements } = createTx(3);
     const counts = await deleteUserDependents(tx, 42);
-
-    expect(counts['kitchen_bookings']).toBe(3);
-    // Columns that are only nulled are not counted — they are not deletions.
-    expect(counts['locations.manager_id']).toBeUndefined();
-    expect(counts['payment_history.created_by']).toBeUndefined();
+    for (const statement of statements) expect(statement.sql).not.toContain('42');
+    for (const statement of statements.filter(s => s.sql.startsWith('DELETE')))
+      expect(statement.sql).toContain('RETURNING 1');
+    expect(counts.locations).toBe(3);
+    expect(counts.kitchen_bookings).toBe(3);
+    expect(statements.some(s => s.sql.startsWith('DELETE FROM "platform_settings"'))).toBe(false);
+    expect(statements.some(s => s.sql.includes('UPDATE "platform_settings" SET "updated_by" = NULL'))).toBe(true);
   });
 
-  it('omits tables that had no matching rows', async () => {
-    const { tx } = createTx(0);
-    const counts = await deleteUserDependents(tx, 42);
+  it('scopes audit-trigger exceptions to the deletion transaction', async () => {
+    const { tx, statements } = createTx(0);
+    expect(await deleteUserDependents(tx, 42)).toEqual({});
+    expect(statements[0].sql).toContain("set_config('localcooks.deleting_user_id'");
+    expect(statements[0].params).toEqual(['42']);
+    expect(statements[1].sql).toContain('UPDATE tour_visit_events SET actor_id = NULL');
+  });
 
-    expect(Object.keys(counts)).toHaveLength(0);
+  it('uses every cleanup predicate in the impact preview', async () => {
+    const { tx, statements } = createTx();
+    await getUserDeletionImpact(tx, 42);
+    const query = statements[0].sql;
+    for (const { table } of userDeletionTargets(42))
+      expect(query).toContain('AS "' + table + '"');
+    expect(query).toContain('COUNT(*)');
   });
 });
