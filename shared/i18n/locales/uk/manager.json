@@ -3431,6 +3431,8 @@
   "tourPendingProposalAwaitingHelp": "Початковий запит залишається на розгляді, доки шеф не прийме запропонований час, і спливає в початковий запитаний час. Відкличте пропозицію, щоб знову розглянути початковий запит.",
   "tourChooseTimesHelp": "Виберіть до трьох доступних годин. Натисніть вибрану годину ще раз, щоб прибрати її.",
   "tourSelectedTimes": "Вибраний час",
+  "tourProposalOption": "Варіант {number}",
+  "tourProposalTimeUnavailable": "Цей час більше недоступний. Виберіть інший час.",
   "tourTimesTimezone": "Час Ньюфаундленду",
   "tourMessageVisitor": "Написати {name}",
   "tourHistory_reconfirmation_requested": "Запитано повторне підтвердження",

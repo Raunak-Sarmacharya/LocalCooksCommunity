@@ -51,6 +51,17 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 export const reminderKey = (r: Reminder, channel: 'email' | 'notification') =>
   `advance:${r.source}:${r.reservationId}:${r.resource}:${r.kind}:${r.recipientId}:${channel}:${r.revision}`;
 
+function tourReminderAcknowledges(row: { textBody: string | null }, reminder: Reminder, channel: string) {
+  try {
+    const saved = JSON.parse(row.textBody || 'null');
+    return saved?.channel === channel && saved.reminder?.recipientId === reminder.recipientId
+      && (saved.reminder?.kind === reminder.kind || reminder.role === 'chef' && reminder.kind === 'preparation' && saved.reminder?.kind === 'arrival')
+      && saved.reminder?.resource === reminder.resource
+      && Date.parse(saved.reminder?.start) === Date.parse(reminder.start)
+      && Date.parse(saved.reminder?.end) === Date.parse(reminder.end);
+  } catch { return false; }
+}
+
 /** Uses the same operating-day interpretation as the visit lifecycle, never host timezone. */
 export function reminderVisitTimes(booking: typeof kitchenBookings.$inferSelect, timezone: string) {
   const slots = Array.isArray(booking.selectedSlots) ? booking.selectedSlots.map((slot: any) =>
@@ -159,7 +170,8 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
   const prepMinute = timing.tourPreparationMinuteOfDay;
   const prep = createBookingDateTime(tourDateKey(start), `${String(Math.floor(prepMinute / 60)).padStart(2, '0')}:${String(prepMinute % 60).padStart(2, '0')}`, timezone).getTime();
   const arrivalDue = start.getTime() - timing.tourArrivalReminderMinutes * 60000;
-  const combined = prep >= arrivalDue && !!timing.tourArrivalEnabled;
+  // Early tours still get preparation before they start, using the existing reminder lead.
+  const preparationDue = prep < start.getTime() ? prep : arrivalDue;
   const chef = people.find(person => person.id === row.tour.chefId && person.role === 'chef');
   const manager = people.find(person => person.id === hostId && person.role === 'manager');
   const [visitorName, managerName] = await Promise.all([
@@ -170,15 +182,15 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     .where(eq(kitchens.id, row.tour.targetedKitchenId)).limit(1) : [];
   const [tourSettings] = row.tour.targetedKitchenId ? await tx.select().from(kitchenViewingSettings)
     .where(eq(kitchenViewingSettings.kitchenId, row.tour.targetedKitchenId)).limit(1) : [];
-  // Keep visitor preparation and both parties' arrival guidance; feedback replaces departure actions.
+  // Preparation is the chef's final routine email; managers retain their arrival reminder.
   return [chef, manager].filter((person): person is typeof users.$inferSelect => !!person).flatMap(person => {
     const role = person.id === row.tour.chefId ? 'chef' as const : 'manager' as const;
     const kinds: Reminder['kind'][] = [
-      ...(role === 'chef' && timing.tourPreparationEnabled && !combined && prep < start.getTime() ? ['preparation' as const] : []),
-      ...(timing.tourArrivalEnabled ? ['arrival' as const] : []),
+      ...(role === 'chef' && timing.tourPreparationEnabled ? ['preparation' as const] : []),
+      ...(role === 'manager' && timing.tourArrivalEnabled ? ['arrival' as const] : []),
     ];
     return kinds.map(kind => {
-      const due = kind === 'preparation' ? prep : kind === 'arrival' ? arrivalDue : Math.max(start.getTime(), end.getTime() - timing.tourDepartureReminderMinutes * 60000);
+      const due = kind === 'preparation' ? preparationDue : arrivalDue;
       const contact = role === 'chef' ? manager?.username : chef?.username;
       const message = role === 'manager' ? `${visitorName} is visiting for a confirmed kitchen tour. Open the tour details to coordinate their arrival.`
         : 'Your kitchen tour is confirmed. Review the details below before your visit.';
@@ -188,12 +200,11 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
         kitchenName: kitchen?.name || row.location.name, locationName: row.location.name, address: row.location.address || 'See tour details',
         contactEmail: contact || undefined,
         meetingNotes: row.tour.sharedManagerNotes || undefined,
-        ...(role === 'chef' && kind === 'arrival' && manager?.username ? { managerEmail: manager.username } : {}),
-        ...(role === 'chef' && kind !== 'departure' && tourSettings?.arrivalNotes ? { arrivalNotes: tourSettings.arrivalNotes } : {}),
+        ...(role === 'chef' && tourSettings?.arrivalNotes ? { arrivalNotes: tourSettings.arrivalNotes } : {}),
         ...(role === 'chef' && tourSettings?.departureNotes ? { departureNotes: tourSettings.departureNotes } : {}),
         // Timing changes update unsent due times; they do not create a new accepted notice.
         revision: hash([start.toISOString(), end.toISOString(), row.location.id, row.tour.targetedKitchenId, person.id, row.tour.appointmentRevision]),
-        arrivalLeadHours: timing.tourArrivalEnabled ? timing.tourArrivalReminderMinutes / 60 : 0, combined: combined && !!timing.tourPreparationEnabled,
+        arrivalLeadHours: 0,
         path: role === 'chef' ? `/dashboard?view=viewings&viewing=${id}` : `/manager/dashboard?view=viewings&viewing=${id}`,
         title: `Kitchen tour at ${kitchen?.name || row.location.name}`, message, shortVisit: end.getTime() - start.getTime() <= 30 * 60000 };
     });
@@ -223,21 +234,17 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
   for (const reminder of reminders) for (const channel of ['notification', 'email'] as const) {
     if (reminder.kind === 'checkin_open' && channel === 'email') continue;
     const key = reminderKey(reminder, channel);
-    const prior = existing.find(row => row.trackingId === key) || (source === 'tour' ? existing.find(row => {
-      if (row.status !== 'sent') return false;
-      try {
-        const saved = JSON.parse(row.textBody || 'null');
-        // Accepted pre-C keys still acknowledge the same appointment/recipient/action.
-        // Contact, copy and timing repairs never manufacture a second accepted notice.
-        return saved?.channel === channel && saved.reminder?.recipientId === reminder.recipientId
-          && saved.reminder?.kind === reminder.kind && saved.reminder?.resource === reminder.resource
-          && Date.parse(saved.reminder?.start) === Date.parse(reminder.start)
-          && Date.parse(saved.reminder?.end) === Date.parse(reminder.end);
-      } catch { return false; }
-    }) : undefined);
+    // Accepted legacy chef arrival guidance also acknowledges preparation for that appointment.
+    const prior = (source === 'tour' ? existing.find(row => row.status === 'sent' && tourReminderAcknowledges(row, reminder, channel)) : undefined)
+      || existing.find(row => row.trackingId === key);
+    if (prior?.status === 'sent') {
+      const pending = existing.find(row => row.trackingId === key && ['scheduled', 'failed'].includes(row.status));
+      if (pending) await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Preparation information was already delivered.' }).where(eq(emailLogs.id, pending.id));
+      continue;
+    }
     const eligibility = reminderEligibility(reminder, now, policy);
     const terminal = eligibility === 'expired' || eligibility === 'consolidated' ||
-      (reminder.kind === 'preparation' && now.getTime() >= Date.parse(reminder.start) - (reminder.arrivalLeadHours ?? lifecycleSettings.arrivalReminderHours.defaultValue) * 3600000);
+      (reminder.source !== 'tour' && reminder.kind === 'preparation' && now.getTime() >= Date.parse(reminder.start) - (reminder.arrivalLeadHours ?? lifecycleSettings.arrivalReminderHours.defaultValue) * 3600000);
     if (terminal) {
       if (prior && ['scheduled', 'failed'].includes(prior.status)) await tx.update(emailLogs)
         .set({ status: 'suppressed', errorMessage: eligibility === 'expired' ? 'expired' : 'Consolidated into current arrival guidance.' })
@@ -260,7 +267,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
 }
 
 export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPolicy) {
-  if (r.source === 'tour' && ['departure', 'checkin_open'].includes(r.kind)) return 'obsolete';
+  if (r.source === 'tour' && (['departure', 'checkin_open'].includes(r.kind) || r.role === 'chef' && r.kind === 'arrival')) return 'obsolete';
   if (r.source === 'tour' ? !policy?.tourEnabled : !policy?.approval) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && !policy?.shortVisit) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && policy?.shortVisit === 'arrival_guidance') return 'consolidated';
@@ -338,14 +345,21 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
         await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: eligibility }).where(eq(emailLogs.id, intent.id));
         return { id: intent.id, state: 'suppressed' };
       }
-      // Arrival also includes preparation. Reconcile already-sent preparation or omit
-      // the overdue preparation so a missed execution cannot generate a burst.
-      if (fresh!.kind === 'preparation' && deliveryNow.getTime() >= Date.parse(fresh!.start) - (fresh!.arrivalLeadHours ?? lifecycleSettings.arrivalReminderHours.defaultValue) * 3600000) {
+      // Booking arrival also includes preparation; tour preparation stays useful until start.
+      if (fresh!.source !== 'tour' && fresh!.kind === 'preparation' && deliveryNow.getTime() >= Date.parse(fresh!.start) - (fresh!.arrivalLeadHours ?? lifecycleSettings.arrivalReminderHours.defaultValue) * 3600000) {
         await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Consolidated into current arrival guidance.' }).where(eq(emailLogs.id, intent.id));
         return { id: intent.id, state: 'suppressed' };
       }
       const r = fresh!, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`;
       if (deadline - Date.now() < deliveryReserve()) return { id: intent.id, state: 'pending' };
+      if (r.source === 'tour' && r.role === 'chef' && r.kind === 'preparation') {
+        const previous = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, category), eq(emailLogs.status, 'sent'),
+          sql`${emailLogs.trackingId} LIKE ${`advance:tour:${r.reservationId}:%`}`));
+        if (previous.some(row => tourReminderAcknowledges(row, r, channel))) {
+          await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Preparation information was already delivered.' }).where(eq(emailLogs.id, intent.id));
+          return { id: intent.id, state: 'suppressed' };
+        }
+      }
       const [accepted] = await tx.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.trackingId, intent.trackingId!),
         channel === 'email' ? eq(emailLogs.recipientEmail, r.email.toLowerCase()) : eq(emailLogs.recipientUserId, r.recipientId), eq(emailLogs.status, 'sent'))).limit(1);
       let sent = !!accepted;

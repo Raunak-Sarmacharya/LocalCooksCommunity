@@ -3,11 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ViewingSettingsPanel } from "./ViewingSettingsPanel";
 import { createRef } from "react";
+import { toast } from 'sonner';
 import type { ViewingSettingsPanelHandle, ViewingSettingsResponse } from "./ViewingSettingsPanel";
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: null } }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/'); });
 beforeAll(() => {
@@ -177,6 +178,21 @@ describe("tour settings refetches", () => {
     render(<QueryClientProvider client={client}><ViewingSettingsPanel kitchenId={40} hideSaveActions /></QueryClientProvider>);
     openInstructions();
     expect(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' })).toHaveValue('Use the side entrance\nAsk for Sam');
+    client.clear();
+  });
+  it('keeps the instruction save successful and shows delivery recovery feedback when an email fails', async () => {
+    vi.mocked(toast.warning).mockClear();
+    const saved = { ...data, settings: { ...data.settings, arrivalNotes: 'Meet Sam', departureNotes: 'Return badge' } };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(key, saved);
+    const ref = createRef<ViewingSettingsPanelHandle>();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...saved.settings, arrivalNotes: 'Side entrance', notificationDeliveryFailed: true }) })));
+    render(<QueryClientProvider client={client}><ViewingSettingsPanel kitchenId={40} ref={ref} hideSaveActions /></QueryClientProvider>);
+    openInstructions();
+    fireEvent.change(screen.getByRole('textbox', { name: 'arrivalInstructionsTitle' }), { target: { value: 'Side entrance' } });
+    await act(async () => { expect(await ref.current!.saveChanges()).toBe(true); });
+    expect(toast.warning).toHaveBeenCalledWith('tourSavedDeliveryFailed');
+    expect(client.getQueryData<ViewingSettingsResponse>(key)?.settings?.arrivalNotes).toBe('Side entrance');
     client.clear();
   });
   it("preserves unsaved weekly hours when the settings section refreshes", async () => {

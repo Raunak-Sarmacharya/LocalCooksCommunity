@@ -12,12 +12,12 @@ vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange
 vi.mock('@/components/ui/select', () => ({
   Select: ({ value, onValueChange, disabled, children }: any) => <select aria-label="Available time" value={value} onChange={event => onValueChange(event.target.value)} disabled={disabled}><option value="" />{children}</select>,
   SelectTrigger: () => null, SelectValue: () => null, SelectContent: ({ children }: any) => children,
-  SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
+  SelectItem: ({ value, children, disabled }: any) => <option value={value} disabled={disabled}>{children}</option>,
 }));
 vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <button onClick={() => onRowClick(data[0])}>Open tour</button> }));
 vi.mock('@/components/support/CommitmentProblems', () => ({ CommitmentProblems: () => null }));
 vi.mock('@/components/chat/TourChatButton', () => ({ TourChatButton: () => null }));
-vi.mock('@/i18n/manager', () => ({ mt: (key: string) => key }));
+vi.mock('@/i18n/manager', () => ({ mt: (key: string, options?: any) => key === 'tourProposalOption' ? `Option ${options.number}` : key }));
 vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue || key }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 
@@ -43,8 +43,8 @@ describe('chef tour reschedule proposals', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Reschedule tour' });
     expect(dialog).toHaveTextContent('Fixture kitchen · TOUR-77');
     expect(dialog).toHaveTextContent('Tour time');
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('h-11', 'w-full');
-    expect(screen.getByRole('button', { name: 'Reschedule tour' })).toHaveClass('h-11', 'w-full');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('min-h-11', 'w-full');
+    expect(screen.getByRole('button', { name: 'Reschedule tour' })).toHaveClass('min-h-11', 'w-full');
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(trigger).toHaveFocus();
@@ -210,17 +210,20 @@ describe('manager tour reschedule proposals', () => {
     render(<QueryClientProvider client={queries}><ViewingsDashboard /></QueryClientProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
     fireEvent.click(screen.getByRole('button', { name: status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes' }));
-    const date = screen.getByLabelText('tourNewDate');
-    await waitFor(() => expect(date).toBeEnabled());
-    for (const time of alternatives) {
+    expect(screen.getAllByRole('group', { name: /Option/ })).toHaveLength(3);
+    for (const [index, time] of alternatives.entries()) {
+      const option = within(screen.getByRole('group', { name: `Option ${index + 1}` }));
+      const date = option.getByLabelText('date');
+      await waitFor(() => expect(date).toBeEnabled());
       fireEvent.change(date, { target: { value: tourDateKey(new Date(time)) } });
-      const times = within(await screen.findByRole('region', { name: 'tourAvailableTime' }));
-      await waitFor(() => expect(times.getAllByRole('button', { pressed: false })[0]).toBeEnabled());
-      fireEvent.click(times.getAllByRole('button', { pressed: false })[0]);
+      await waitFor(() => expect(option.getByRole('combobox')).toBeEnabled());
+      fireEvent.change(option.getByRole('combobox'), { target: { value: time } });
     }
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')).toHaveLength(3);
     expect(screen.queryByRole('button', { name: 'tourAddAlternative' })).not.toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: 'tourAvailableTime' })).getByRole('button', { pressed: false })).toBeDisabled();
+    const summary = screen.getByRole('region', { name: 'tourSelectedTimes' });
+    expect(within(summary).getAllByRole('listitem')).toHaveLength(3);
+    for (const [index, time] of alternatives.entries()) expect(screen.getAllByLabelText('date')[index]).toHaveValue(tourDateKey(new Date(time)));
     expect(screen.getAllByRole('button', { name: /tourRemoveAlternative/ })).toHaveLength(3);
     expect(screen.getByText(status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalOriginalHeld')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'tourSendProposal' }));
@@ -246,8 +249,49 @@ describe('manager tour reschedule proposals', () => {
     fireEvent.click(screen.getByRole('button', { name: 'tourProposeNewTimes' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('tourProposalAvailabilityFailed');
     expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeDisabled();
-    expect(screen.getByLabelText('tourNewDate')).toBeDisabled();
+    for (const date of screen.getAllByLabelText('date')) expect(date).toBeDisabled();
     expect(fetcher.mock.calls.some(([, options]) => options?.method)).toBe(false);
+    queries.clear();
+  });
+  it('preserves other days while editing, blocks duplicates and partial options, and clears drafts on close', async () => {
+    const queries = client(); queries.setQueryData(['/api/viewings/manager'], [base]);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('calendar-availability')
+      ? { settings: { maxAdvanceBookingDays: 30 }, availability: [], blackouts: [], fullyBookedDates: [] }
+      : { slots: alternatives.filter(time => tourDateKey(new Date(time)) === new URL(url, 'http://fixture.test').searchParams.get('date')).map(scheduledAt => ({ scheduledAt })) } })));
+    render(<QueryClientProvider client={queries}><ViewingsDashboard /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open tour' }));
+    const trigger = screen.getByRole('button', { name: 'tourProposeNewTimes' });
+    fireEvent.click(trigger);
+    const option = (index: number) => within(screen.getByRole('group', { name: `Option ${index + 1}` }));
+    for (const [index, time] of alternatives.slice(0, 2).entries()) {
+      await waitFor(() => expect(option(index).getByLabelText('date')).toBeEnabled());
+      fireEvent.change(option(index).getByLabelText('date'), { target: { value: tourDateKey(new Date(time)) } });
+      await waitFor(() => expect(option(index).getByRole('combobox')).toBeEnabled());
+      fireEvent.change(option(index).getByRole('combobox'), { target: { value: time } });
+    }
+    expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeEnabled();
+    const availabilityKey = ['manager-tour-reschedule-slots', 77, version, '2099-10-06'];
+    queries.setQueryData(availabilityKey, []);
+    expect(await screen.findByRole('alert')).toHaveTextContent('tourProposalTimeUnavailable');
+    expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeDisabled();
+    queries.setQueryData(availabilityKey, [{ scheduledAt: alternatives[0] }]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeEnabled());
+    fireEvent.change(option(0).getByLabelText('date'), { target: { value: '2099-10-07' } });
+    expect(option(0).getByRole('combobox')).toHaveValue('');
+    expect(option(1).getByRole('combobox')).toHaveValue(alternatives[1]);
+    expect(option(0).getByRole('option', { name: /10:30/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeDisabled();
+    fireEvent.click(option(0).getByRole('button', { name: 'tourRemoveAlternative: Option 1' }));
+    expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeEnabled();
+    fireEvent.change(option(2).getByLabelText('date'), { target: { value: '2099-10-09' } });
+    expect(await screen.findByRole('status')).toHaveTextContent('tourNoAvailableTimes');
+    expect(screen.getByRole('button', { name: 'tourSendProposal' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    for (const date of screen.getAllByLabelText('date')) expect(date).toHaveValue('');
+    expect(screen.queryByRole('region', { name: 'tourSelectedTimes' })).not.toBeInTheDocument();
     queries.clear();
   });
   it('withdraws suggested times without cancelling the original tour or opening a support ticket', async () => {

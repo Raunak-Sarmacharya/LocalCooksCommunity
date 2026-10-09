@@ -50,11 +50,11 @@ export function LifecycleSettings() {
 }
 
 const timingFields = [
-  { key: 'tourPreparationMinuteOfDay', label: 'Tour preparation clock in Newfoundland', unit: '', min: 0, max: 1439, help: 'Default 7:00 AM on the tour calendar day in Newfoundland. Early tours combine preparation with arrival guidance.' },
-  { key: 'tourArrivalReminderMinutes', label: 'Tour arrival reminder before start', unit: 'minutes', min: 1, max: 1440, help: 'Default 60. This does not change the kitchen arrival action window.' },
+  { key: 'tourPreparationMinuteOfDay', label: 'Tour preparation clock in Newfoundland', unit: '', min: 0, max: 1439, help: 'Default 7:00 AM on the tour calendar day in Newfoundland. Earlier tours receive preparation before start using the configured reminder lead.' },
+  { key: 'tourArrivalReminderMinutes', label: 'Manager tour arrival reminder before start', unit: 'minutes', min: 1, max: 1440, help: 'Default 60. Also used for chef preparation when a tour starts before the morning preparation time.' },
   { key: 'tourDepartureReminderMinutes', label: 'Tour departure reminder before end', unit: 'minutes', min: 1, max: 120, help: 'Default 10. Short tours become due at start, and send only after valid arrival.' },
   { key: 'tourPreparationEnabled', label: 'Tour preparation reminders enabled', unit: '0 off / 1 on', min: 0, max: 1, help: 'Disabling suppresses pending preparation notices.' },
-  { key: 'tourArrivalEnabled', label: 'Tour arrival reminders enabled', unit: '0 off / 1 on', min: 0, max: 1, help: 'Disabling suppresses pending arrival notices.' },
+  { key: 'tourArrivalEnabled', label: 'Manager tour arrival reminders enabled', unit: '0 off / 1 on', min: 0, max: 1, help: 'Controls manager arrival reminders. Chefs receive one preparation reminder instead.' },
   { key: 'tourDepartureEnabled', label: 'Tour departure reminders enabled', unit: '0 off / 1 on', min: 0, max: 1, help: 'Disabling suppresses pending departure notices; the departure action remains available.' },
   { key: 'preparationReminderHours', label: 'Preparation reminder before arrival', unit: 'hours', min: 1, max: 168, help: 'Must be earlier than the arrival reminder.' },
   { key: 'arrivalReminderHours', label: 'Arrival reminder before start', unit: 'hours', min: 1, max: 24, help: 'Includes arrival guidance. Overdue preparation is consolidated into this reminder.' },

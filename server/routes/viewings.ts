@@ -29,8 +29,9 @@ import { tourBookingOverlaps } from "@shared/tour-booking-overlap";
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { DomainError } from '../shared/errors/domain-error';
 import { buildTourConfirmationPdf, tourReference } from "../services/tour-confirmation-pdf";
-import { queueTourEvent, attemptTourDelivery } from '../services/tour-delivery-service';
-import { publicTour, hasTourConfirmation } from '@shared/tour-outcome';
+import { queueTourEvent, attemptTourDelivery, deliverTourEvents } from '../services/tour-delivery-service';
+import { changedTourInstructions, tourInstructionChangesForVisit } from '@shared/tour-instructions';
+import { publicTour, hasTourConfirmation, chefTourCancellationReason } from '@shared/tour-outcome';
 import { tourAttendance, publicTourAttendanceState } from '@shared/tour-attendance';
 import { tourHistory } from '@shared/tour-history';
 import { tourRequestDecision } from '@shared/tour-request-decision';
@@ -867,10 +868,38 @@ router.put(
         await queueScheduleProblems(tx, { kitchenId, actorId: managerId, tourIds: await affectedTours(tx, kitchenId),
           change: { active: result.isActive, duration: result.defaultDurationMinutes, before: result.bufferBeforeMinutes, after: result.bufferAfterMinutes, occurrence: randomUUID() },
           description: 'Tour settings changed. Your confirmed tour is still recorded at its original time. Please review this request to confirm your visit arrangements.' });
-      return { result, existing };
+      const changes = changedTourInstructions(existing, result);
+      const notifiedTourIds: number[] = [];
+      if (changes.arrival || changes.departure) {
+        const revision = randomUUID();
+        const tours = await tx.select().from(kitchenViewings).where(and(
+          eq(kitchenViewings.targetedKitchenId, kitchenId), eq(kitchenViewings.status, 'confirmed'),
+          or(sql`${kitchenViewings.scheduledAt} > clock_timestamp()`,
+            sql`${kitchenViewings.checkedInAt} IS NOT NULL AND ${kitchenViewings.checkedOutAt} IS NULL`)
+        )).for('update');
+        for (const tour of tours) {
+          const relevant = tourInstructionChangesForVisit(tour, changes);
+          if (!relevant.arrival && !relevant.departure) continue;
+          await queueTourEvent(tx, { kind: 'instructions_updated', before: tour, after: tour,
+            actorId: managerId, actorRole: 'manager', instructionChange: { ...relevant, revision } });
+          notifiedTourIds.push(tour.id);
+        }
+      }
+      return { result, existing, notifiedTourIds };
       });
+      // One bounded attempt for the batch; remaining emails stay in the existing durable worker.
+      const deliveryDeadline = Date.now() + 20_000;
+      let notificationDeliveryFailed = false;
+      for (const tourId of result.notifiedTourIds) {
+        if (deliveryDeadline - Date.now() < 10_000) break;
+        try {
+          const delivery = await deliverTourEvents(tourId, 20, deliveryDeadline - Date.now());
+          notificationDeliveryFailed ||= delivery.errors > 0;
+        }
+        catch (error) { notificationDeliveryFailed = true; logger.error('Tour instruction email pending worker recovery', error); }
+      }
       logger.info(`[Viewings] Settings ${result.existing ? "updated" : "created"} for kitchen ${kitchenId} by manager ${managerId}`);
-      res.json(result.result);
+      res.json({ ...result.result, notificationDeliveryFailed });
     } catch (error) {
       logger.error("Error updating viewing settings:", error);
       return errorResponse(res, error);
@@ -2204,7 +2233,7 @@ router.patch(
 
       if (parsed.data.status === "cancelled") {
         updateData.cancelledBy = isChef ? "chef" : isAdmin ? "local_cooks" : viewing.status === "pending" ? "manager_declined" : "manager";
-        updateData.cancellationReason = parsed.data.cancellationReason;
+        updateData.cancellationReason = isChef ? chefTourCancellationReason(parsed.data.cancellationReason) : parsed.data.cancellationReason;
         updateData.cancelledAt = new Date();
         updateData.disruptionReason = parsed.data.disruptionReason || null;
         updateData.completedAt = null;

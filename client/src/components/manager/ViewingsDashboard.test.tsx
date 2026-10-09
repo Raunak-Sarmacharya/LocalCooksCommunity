@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ViewingsDashboard } from './ViewingsDashboard';
 const mocks = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: null } }));
@@ -11,7 +11,13 @@ vi.mock('@/i18n/manager', async () => {
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: mocks.warning, error: mocks.error } }));
 vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <button onClick={() => onRowClick(data[0])}>Open tour</button> }));
 vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled }: any) => <input id={id} type="date" value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); window.history.replaceState({}, '', '/'); });
+const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+beforeEach(() => Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() }));
+afterEach(() => {
+  cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); window.history.replaceState({}, '', '/');
+  if (originalScroll) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScroll);
+  else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+});
 const version = '2026-10-01T10:00:00.000Z';
 const record = { viewing: { id: 10, locationId: 33, targetedKitchenId: 40, chefId: 8, status: 'pending',
   scheduledAt: new Date(Date.now() + 86400000).toISOString(), durationMinutes: 30, updatedAt: version, intakeData: {}, requestedRescheduleAt: null }, locationName: 'Fixture kitchen', chefName: 'Fixture chef' };
@@ -45,7 +51,7 @@ describe('manager acceptance review', () => {
     expect(fetcher.mock.calls.every(([, options]) => !(options as any)?.method)).toBe(true);
     client.clear();
   });
-  it('explains rescheduling scenarios inside the modal and closing it keeps the tour untouched', async () => {
+  it('shows three independent date and time options and closing keeps the tour untouched', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     client.setQueryData(['/api/viewings/manager'], [{ ...record, viewing: { ...record.viewing, status: 'confirmed' } }]);
     const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ settings: {}, availability: [], blackouts: [], fullyBookedDates: [] }) }));
@@ -56,7 +62,9 @@ describe('manager acceptance review', () => {
     const trigger = screen.getByRole('button', { name: 'tourProposeNewTimes' });
     fireEvent.click(trigger);
     const modal = within(await screen.findByRole('dialog', { name: 'tourProposeNewTimes' }));
-    expect(modal.getByText('tourRescheduleScenarioHelp')).toBeInTheDocument();
+    expect(modal.getAllByRole('group')).toHaveLength(3);
+    expect(modal.getAllByLabelText('date')).toHaveLength(3);
+    expect(modal.getAllByRole('combobox')).toHaveLength(3);
     expect(modal.getByText('tourProposalOriginalHeld')).toBeInTheDocument();
     fireEvent.click(modal.getByRole('button', { name: 'tourKeepCurrentTime' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -295,31 +303,23 @@ describe('manager grouped tour actions and email reviews', () => {
     expect(trigger).toHaveFocus();
     client.clear();
   });
-  it('selects time buttons directly across days, limits to three and sends those exact instants', async () => {
+  it('selects independent date and time options across days and sends those exact instants', async () => {
     const { client, fetcher } = mountActions();
     fireEvent.click(screen.getByRole('button', { name: 'tourOfferAlternativeTimes' }));
     const dialog = within(await screen.findByRole('dialog', { name: 'tourOfferAlternativeTimes' }));
-    expect(dialog.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(dialog.getAllByRole('combobox')).toHaveLength(3);
     expect(dialog.queryByRole('button', { name: 'tourAddAlternative' })).not.toBeInTheDocument();
-    fireEvent.change(dialog.getByLabelText('tourNewDate'), { target: { value: '2099-11-01' } });
-    const available = within(await dialog.findByRole('region', { name: 'tourAvailableTime' }));
-    await waitFor(() => expect(available.getAllByRole('button')).toHaveLength(4));
-    let times = available.getAllByRole('button');
-    expect(times[0]).toHaveTextContent('10:30 AM – 11:00 AM');
-    expect(times[0]).not.toHaveTextContent('NST');
-    fireEvent.click(times[0]);
-    expect(times[0]).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(times[1]);
-    fireEvent.click(times[2]);
-    expect(times[3]).toBeDisabled();
-    expect(times[0]).toBeEnabled();
-    fireEvent.click(times[1]);
-    expect(times[1]).toHaveAttribute('aria-pressed', 'false');
-    expect(times[3]).toBeEnabled();
-    fireEvent.change(dialog.getByLabelText('tourNewDate'), { target: { value: '2099-11-02' } });
-    await waitFor(() => expect(available.getAllByRole('button')[0]).toHaveAttribute('aria-pressed', 'false'));
-    times = available.getAllByRole('button');
-    fireEvent.click(times[0]);
+    for (const [index, date] of ['2099-11-01', '2099-11-01', '2099-11-02'].entries()) {
+      fireEvent.change(dialog.getAllByLabelText('date')[index], { target: { value: date } });
+      const trigger = dialog.getAllByRole('combobox')[index];
+      await waitFor(() => expect(trigger).toBeEnabled());
+      fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+      const options = await screen.findAllByRole('option');
+      expect(options[0]).toHaveTextContent('10:30 AM – 11:00 AM');
+      expect(options[0]).not.toHaveTextContent('NST');
+      if (index === 1) expect(options[0]).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(options[index === 1 ? 2 : 0]);
+    }
     const summary = within(dialog.getByRole('region', { name: 'tourSelectedTimes' }));
     expect(summary.getAllByRole('listitem')).toHaveLength(3);
     expect(summary.getAllByRole('listitem')[0]).toHaveTextContent('Nov 1');
@@ -334,10 +334,11 @@ describe('manager grouped tour actions and email reviews', () => {
     const { client } = mountActions(record, undefined, true, ['2099-11-01T03:30:00.000Z', '2099-11-01T04:30:00.000Z']);
     fireEvent.click(screen.getByRole('button', { name: 'tourOfferAlternativeTimes' }));
     const dialog = within(await screen.findByRole('dialog', { name: 'tourOfferAlternativeTimes' }));
-    fireEvent.change(dialog.getByLabelText('tourNewDate'), { target: { value: '2099-11-01' } });
-    const available = within(await dialog.findByRole('region', { name: 'tourAvailableTime' }));
-    await waitFor(() => expect(available.getAllByRole('button')).toHaveLength(2));
-    const labels = available.getAllByRole('button').map(button => button.textContent);
+    fireEvent.change(dialog.getAllByLabelText('date')[0], { target: { value: '2099-11-01' } });
+    await waitFor(() => expect(dialog.getAllByRole('combobox')[0]).toBeEnabled());
+    fireEvent.keyDown(dialog.getAllByRole('combobox')[0], { key: 'ArrowDown' });
+    const labels = (await screen.findAllByRole('option')).map(option => option.textContent);
+    expect(labels).toHaveLength(2);
     expect(labels[0]).not.toEqual(labels[1]);
     expect(labels[0]).toContain('1:00 AM – 1:30 AM');
     expect(labels[1]).toContain('1:00 AM – 1:30 AM');

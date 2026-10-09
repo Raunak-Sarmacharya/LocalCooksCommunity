@@ -64,7 +64,7 @@ describe('chef tour notification links', () => {
     expect(screen.queryByRole('heading', { name: 'Thanks for confirming' })).not.toBeInTheDocument();
     client.clear();
   });
-  it('offers only attendance choices and opens rescheduling after selecting it inside Can’t make it', async () => {
+  it('opens and dismisses rescheduling without changing the saved attendance reply', async () => {
     const tour = { id: 77, status: 'confirmed', targetedKitchenId: 40, scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30 };
     const rows = [{ viewing: tour, locationName: 'Fixture kitchen', reconfirmation: { revision: '1:12', canReply: true, reply: 'still_coming' } }];
     const fetcher = vi.fn(async (path: string, options?: any) => ({
@@ -86,8 +86,11 @@ describe('chef tour notification links', () => {
     expect(fetcher.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Reschedule' }));
     expect(await screen.findByRole('dialog', { name: 'Reschedule tour' })).toBeInTheDocument();
-    expect(JSON.parse(fetcher.mock.calls.find(([path]) => path.endsWith('/reconfirmation'))![1].body)).toEqual({ reply: 'reschedule', appointmentRevision: '1:12', expectedUpdatedAt: tour.updatedAt });
-    expect(fetcher.mock.calls.some(([path]) => path.endsWith('/reschedule') || path.endsWith('/status'))).toBe(false);
+    expect(fetcher.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Reschedule tour' })).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(next).toHaveTextContent('You confirmed that you’re still coming.');
+    expect(fetcher.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
     client.clear();
   });
   it('shows saved feedback and pending admin review instead of asking the chef to submit twice', async () => {
@@ -105,7 +108,7 @@ describe('chef tour notification links', () => {
     expect(screen.queryByText('The tour time has ended. Share your feedback; Local Cooks will review both responses and record the final outcome.')).not.toBeInTheDocument();
     client.clear();
   });
-  it('uses actual listing names in preparation and opens explicit cancellation after a soft reply without cancelling', async () => {
+  it.each(['keep', 'cancel'])('uses listing names and leaves cancellation uncommitted until confirmation (%s)', async (decision) => {
     const tour = { id: 77, status: 'confirmed', targetedKitchenId: 40, scheduledAt: '2099-10-05T12:30:00Z', updatedAt: '2026-10-04T12:00:00Z', durationMinutes: 30, intakeData: { intendedUse: 'meal_prep' } };
     const rows = [{ viewing: tour, locationName: 'Fixture kitchen', managerEmail: 'current-manager@example.test', reconfirmation: { revision: '1:12', canReply: true, reply: null, needsStaffAttention: false } }];
     const fetcher = vi.fn(async (path: string, options?: any) => ({ ok: true, json: async () => path === '/api/viewings/chef' ? rows : path.includes('equipment-listings') ? { included: [{ equipmentType: 'convection_oven' }], rental: [] } : path.includes('storage-listings') ? [{ name: 'Cold shelf A' }] : path.includes('/reconfirmation') ? { ...tour, updatedAt: '2026-10-04T12:01:00Z' } : { problems: [], reportingAvailable: false } }));
@@ -123,9 +126,23 @@ describe('chef tour notification links', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     fireEvent.click(within(options).getByRole('button', { name: 'Cancel tour' }));
     expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
-    expect(fetcher.mock.calls.some(([path]) => path.endsWith('/status'))).toBe(false);
-    const reply = fetcher.mock.calls.find(([path]) => path.endsWith('/reconfirmation'))![1];
-    expect(JSON.parse(reply.body)).toEqual({ reply: 'cant_make_it', appointmentRevision: '1:12', expectedUpdatedAt: tour.updatedAt });
+    expect(fetcher.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    const confirmation = screen.getByRole('alertdialog');
+    fireEvent.click(within(confirmation).getByRole('button', { name: decision === 'keep' ? 'Keep tour' : 'Cancel tour' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    if (decision === 'keep') {
+      expect(fetcher.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Yes, I’m still coming' }));
+      await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => path.endsWith('/reconfirmation'))).toHaveLength(1));
+      expect(JSON.parse(fetcher.mock.calls.find(([path]) => path.endsWith('/reconfirmation'))![1].body)).toEqual({ reply: 'still_coming', appointmentRevision: '1:12', expectedUpdatedAt: tour.updatedAt });
+      expect(fetcher.mock.calls.some(([path]) => path.endsWith('/status'))).toBe(false);
+    } else {
+      const mutations = fetcher.mock.calls.filter(([, options]) => options?.method && options.method !== 'GET');
+      expect(mutations).toHaveLength(1);
+      expect(mutations[0][0]).toBe('/api/viewings/77/status');
+      expect(mutations[0][1].method).toBe('PATCH');
+      expect(JSON.parse(mutations[0][1].body)).toEqual({ status: 'cancelled', cancellationReason: 'Tour cancelled', expectedUpdatedAt: tour.updatedAt });
+    }
     client.clear();
   });
   it('shows persisted expiry distinctly and never invents a historical confirmation date', async () => {

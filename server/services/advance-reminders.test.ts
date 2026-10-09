@@ -110,8 +110,9 @@ it('uses current kitchen tour notes in visitor emails, without booking instructi
   state.tourSettings.arrivalNotes = 'Use <side> entrance\nAsk for Sam';
   await dispatch(new Date('2026-10-05T10:30:00Z'));
   const chef = state.send.mock.calls.map(([mail]) => mail).find(mail => mail.to === 'chef@example.test');
-  expect(chef.text).toContain('Arrival notes: Use <side> entrance\nAsk for Sam');
-  expect(chef.text).toContain('Departure notes: Return visitor badge');
+  expect(chef.text).toContain('Arrival instructions: Use <side> entrance\nAsk for Sam');
+  expect(chef.text).toContain('Departure instructions: Return visitor badge');
+  expect(chef.subject).toContain('Prepare for your visit');
   expect(chef.html).toContain('Use &lt;side&gt; entrance');
   expect(chef.html).toContain('white-space:pre-line');
   expect(chef.text).not.toContain('OLD entrance');
@@ -211,9 +212,9 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     expect((await dispatchAdvanceReminders({ now: new Date('2026-10-05T08:00:00Z'), policy: { ...policy, shortVisit: undefined } })).accepted).toBe(0);
     expect((await dispatch(new Date('2026-10-05T08:00:00Z'))).accepted).toBe(2);
   });
-  it('targets visitor and current host with combined early arrival and no departure before arrival', async () => {
+  it('targets an early-tour chef with preparation and the current host with arrival guidance', async () => {
     await schedule('tour', 20); expect(state.logs).toHaveLength(4);
-    expect(state.logs.every(r => JSON.parse(r.textBody).reminder.kind === 'arrival')).toBe(true);
+    expect(state.logs.map(r => JSON.parse(r.textBody).reminder.kind)).toEqual(['preparation', 'preparation', 'arrival', 'arrival']);
     await dispatch(new Date('2026-10-05T07:00:00Z'));
     expect(state.send.mock.calls.map(c => c[0].to)).toEqual(['chef@example.test', 'host@example.test']);
     expect(state.send.mock.calls[0][0].html).toContain('View tour');
@@ -399,13 +400,16 @@ describe('Tour C authoritative timed communication', () => {
   };
   const tourSchedule = (clock: string) => state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date(clock)));
   const tourDispatch = (clock: string) => dispatchAdvanceReminders({ now: new Date(clock), limit: 30 });
-  it('omits Running late from an arrival reminder configured earlier than the coordination window', async () => {
+  it('keeps chef preparation on its own clock when manager arrival is configured earlier', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z');
     state.settings.tour_arrival_reminder_minutes = '120';
     await tourSchedule('2026-10-05T09:00:00Z');
     await tourDispatch('2026-10-05T09:00:00Z');
+    expect(state.send.mock.calls.some(([mail]) => mail.to === 'chef@example.test')).toBe(false);
+    await tourDispatch('2026-10-05T09:30:00Z');
     const mail = state.send.mock.calls.find(([mail]) => mail.to === 'chef@example.test')?.[0];
     expect(mail).toBeDefined();
+    expect(mail.subject).toContain('Prepare for your visit');
     expect(mail.html).not.toContain('I’m running late');
   });
   it('uses tour-day Newfoundland default/custom clock and moves pending leads without repeating accepted channels', async () => {
@@ -414,7 +418,7 @@ describe('Tour C authoritative timed communication', () => {
     const prep = state.logs.filter(log => JSON.parse(log.textBody).reminder.kind === 'preparation');
     expect(prep.map(log => JSON.parse(log.textBody).reminder.due)).toEqual(['2026-10-05T09:30:00.000Z', '2026-10-05T09:30:00.000Z']);
     state.settings.tour_preparation_minute_of_day = '480'; state.settings.tour_arrival_reminder_minutes = '30';
-    await tourSchedule('2026-10-04T08:00:00Z'); expect(state.logs).toHaveLength(6);
+    await tourSchedule('2026-10-04T08:00:00Z'); expect(state.logs).toHaveLength(4);
     expect(JSON.parse(prep[0].textBody).reminder.due).toBe('2026-10-05T10:30:00.000Z');
     await tourDispatch('2026-10-05T10:30:00Z');
     state.settings.tour_preparation_minute_of_day = '540';
@@ -434,7 +438,7 @@ describe('Tour C authoritative timed communication', () => {
     expect(r.find(r => r.kind === 'preparation')!.due).toBe(prep);
     expect(Date.parse(r[0].end) - Date.parse(r[0].start)).toBe(120 * 60000);
   });
-  it('consolidates late preparation into a single arrival notice per existing role/channel and suppresses after start', async () => {
+  it('retains late chef preparation and manager arrival guidance, then suppresses after start', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T14:30:00Z');
     await tourSchedule('2026-10-05T14:00:00Z'); expect(state.logs).toHaveLength(4);
     await tourDispatch('2026-10-05T14:00:00Z'); expect(state.send).toHaveBeenCalledTimes(2);
@@ -480,42 +484,90 @@ describe('Tour C authoritative timed communication', () => {
     expect(state.send.mock.calls.at(-1)![0].to).toBe('current@example.test');
     state.people.find(p => p.id === 7).role = 'chef'; expect((await currentReminders(state.db, 'tour', 20)).every(r => r.role === 'chef')).toBe(true);
   });
-  it('offers a styled prefilled late email only to the visitor, addressed to the current manager', async () => {
+  it('includes the full visit and current manager contact in chef preparation using the existing template', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z');
     state.people.find(person => person.id === 3).managerProfileData = { displayName: 'Alex Chen' };
     state.location.managerId = 7; state.people.push({ id: 7, username: 'morgan+tour@example.test', role: 'manager', managerProfileData: { fullName: 'Morgan Lee' } });
+    state.tour.sharedManagerNotes = 'Ask for Morgan at reception';
+    state.tourSettings = { arrivalNotes: 'Use the side entrance', departureNotes: 'Return your badge' };
     await tourSchedule('2026-10-05T10:00:00Z'); await tourDispatch('2026-10-05T10:00:00Z');
     const chef = state.send.mock.calls.find(([mail]) => mail.to === 'chef@example.test')![0];
-    expect(chef.html).toContain('I’m running late');
-    expect(chef.html).toMatch(/href="mailto:[^"]+" style="[^"]*color:#292524/);
-    const link = chef.text.match(/mailto:\S+/)![0];
-    expect(link).toMatch(/^mailto:morgan%2Btour@example.test\?subject=/);
-    expect(decodeURIComponent(link)).toContain('mailto:morgan+tour@example.test?subject=Running late · TOUR-20');
-    expect(decodeURIComponent(link)).toContain('I may be running late');
-    expect(decodeURIComponent(link)).toContain('Hi Morgan Lee,');
-    expect(decodeURIComponent(link)).toContain('Thank you,\nAlex Chen');
+    expect(chef.subject).toContain('Prepare for your visit');
+    expect(chef.html).toContain('class="email-brand"');
+    expect(chef.text).toContain('Arrival contact: morgan+tour@example.test');
+    expect(chef.text).toContain('Manager notes: Ask for Morgan at reception');
+    expect(chef.text).toContain('Arrival instructions: Use the side entrance');
+    expect(chef.text).toContain('Departure instructions: Return your badge');
     expect(chef.text).toContain('Hi Alex Chen,'); expect(chef.text).toContain('Kitchen manager: Morgan Lee');
-    for (const label of ['Date:', 'Time:', 'Kitchen:', 'Location:', 'Address:', 'Contact email:']) expect(chef.text).toContain(label);
+    for (const label of ['Date:', 'Time:', 'Kitchen:', 'Location:', 'Address:', 'Reference: TOUR-20']) expect(chef.text).toContain(label);
     expect(chef.text).not.toMatch(/Check-in opens:|check in when|check out when/i);
     expect(chef.text).not.toMatch(/saved arrival|remain separate|Record arrival|Record departure/i);
-    expect(chef.text).toContain('Tap Send');
+    expect(chef.text).toContain('Message manager:');
     expect(state.send.mock.calls.find(([mail]) => mail.to === 'morgan+tour@example.test')![0].html).not.toContain('I’m running late');
-    if (process.env.TOUR_LATE_SAVE_SAMPLE === '1') {
+    if (process.env.TOUR_PREPARATION_SAVE_SAMPLE === '1') {
       const fs = await import('node:fs');
-      fs.writeFileSync('docs/phase-progress/evidence/tour-late-arrival-preview.html', chef.html);
-      fs.writeFileSync('docs/phase-progress/evidence/tour-late-arrival-preview.txt', chef.text);
+      fs.mkdirSync('.verify-tour-instruction-update', { recursive: true });
+      fs.writeFileSync('.verify-tour-instruction-update/preparation.html', chef.html);
+      fs.writeFileSync('.verify-tour-instruction-update/preparation.txt', chef.text);
     }
   });
   it('saves real reminder renderer fixtures with escaping and exact task/help destinations', async () => {
     state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z'); state.tour.sharedManagerNotes = 'Use <side> & ring'; state.tour.managerNotes = 'PRIVATE SECRET';
     await tourSchedule('2026-10-05T10:00:00Z'); await tourDispatch('2026-10-05T10:00:00Z');
     const mail = state.send.mock.calls[0][0]; expect(mail.html).toContain('&lt;side&gt; &amp; ring'); expect(mail.text).toContain('Use <side> & ring');
-    expect(mail.text).toContain('viewing=20'); expect(mail.text).toContain('dashboard?view=support'); expect(JSON.stringify(mail)).not.toContain('PRIVATE SECRET');
+    expect(mail.text).toContain('viewing=20'); expect(mail.text).toContain('Need a hand? Contact'); expect(JSON.stringify(mail)).not.toContain('PRIVATE SECRET');
     if (process.env.TOUR_C_SAVE_SAMPLES === '1') {
       const fs = await import('node:fs'); const dir = 'docs/phase-progress/evidence/tour-c-samples'; fs.mkdirSync(dir, { recursive: true });
       state.send.mock.calls.forEach(([mail], index) => { fs.writeFileSync(`${dir}/arrival-${index}.html`, mail.html); fs.writeFileSync(`${dir}/arrival-${index}.txt`, mail.text); });
     }
   });
+});
+
+it('never schedules chef arrival, even with arrival enabled, and respects the preparation switch', async () => {
+  state.tour.scheduledAt = new Date('2026-10-05T14:30:00Z');
+  let reminders = await currentReminders(state.db, 'tour', 20, policy, now);
+  expect(reminders.filter(r => r.role === 'chef').map(r => r.kind)).toEqual(['preparation']);
+  expect(reminders.filter(r => r.role === 'manager').map(r => r.kind)).toEqual(['arrival']);
+  state.settings.tour_preparation_enabled = '0';
+  reminders = await currentReminders(state.db, 'tour', 20, policy, now);
+  expect(reminders.some(r => r.role === 'chef')).toBe(false);
+});
+
+it('suppresses already queued chef arrival during dispatch and reconciliation', async () => {
+  state.tour.scheduledAt = new Date('2026-10-05T14:30:00Z');
+  await schedule('tour', 20);
+  const prep = state.logs.find(log => log.trackingId.includes(':preparation:') && log.trackingId.includes(':email:'));
+  const body = JSON.parse(prep.textBody); body.reminder.kind = 'arrival'; body.reminder.due = '2026-10-05T13:30:00Z';
+  const legacy = { ...prep, id: 100, trackingId: prep.trackingId.replace(':preparation:', ':arrival:'), textBody: JSON.stringify(body) };
+  state.logs.push(legacy);
+  expect(reminderEligibility(body.reminder, new Date('2026-10-05T13:30:00Z'), policy)).toBe('obsolete');
+  await dispatchAdvanceReminders({ now: new Date('2026-10-05T13:30:00Z'), onlyLogId: legacy.id, limit: 1 });
+  expect(legacy.status).toBe('suppressed'); expect(state.send).not.toHaveBeenCalled();
+  legacy.status = 'failed'; await schedule('tour', 20);
+  expect(legacy.status).toBe('suppressed');
+});
+
+it.each(['schedule', 'dispatch'])('does not send another preparation after accepted legacy chef arrival during %s', async mode => {
+  state.tour.scheduledAt = new Date('2026-10-05T14:30:00Z');
+  await schedule('tour', 20);
+  const prep = state.logs.find(log => log.trackingId.includes(':preparation:') && log.trackingId.includes(':email:'));
+  const body = JSON.parse(prep.textBody); body.reminder.kind = 'arrival';
+  state.logs.push({ ...prep, id: 100, status: 'sent', trackingId: prep.trackingId.replace(':preparation:', ':arrival:'), textBody: JSON.stringify(body) });
+  if (mode === 'schedule') await schedule('tour', 20);
+  else await dispatchAdvanceReminders({ now: new Date('2026-10-05T10:00:00Z'), onlyLogId: prep.id, limit: 1 });
+  expect(prep.status).toBe('suppressed'); expect(state.send).not.toHaveBeenCalled();
+});
+
+it('sends late preparation once before start and no chef routine reminder afterwards', async () => {
+  state.tour.scheduledAt = new Date('2026-10-05T14:30:00Z');
+  await state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date('2026-10-05T14:00:00Z')));
+  await dispatchAdvanceReminders({ now: new Date('2026-10-05T14:00:00Z'), limit: 30 });
+  expect(state.send.mock.calls.filter(([mail]) => mail.to === 'chef@example.test')).toHaveLength(1);
+  expect(state.send.mock.calls.find(([mail]) => mail.to === 'chef@example.test')![0].subject).toContain('Prepare for your visit');
+  await state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'tour', 20, selectedReminderPolicy, new Date('2026-10-05T14:20:00Z')));
+  await dispatchAdvanceReminders({ now: new Date('2026-10-05T14:20:00Z'), limit: 30 });
+  expect(state.send.mock.calls.filter(([mail]) => mail.to === 'chef@example.test')).toHaveLength(1);
+  expect(await currentReminders(state.db, 'tour', 20, policy, new Date('2026-10-05T14:30:00Z'))).toEqual([]);
 });
 
 it('retains useful late preparation when arrival notices are disabled', async () => {
@@ -552,7 +604,7 @@ it.each(['departure', 'checkin_open'])('suppresses queued legacy tour %s intents
   const saved = state.logs.find(log => JSON.parse(log.textBody).channel === 'email');
   const body = JSON.parse(saved.textBody); body.reminder.kind = kind; body.reminder.due = '2026-10-05T10:00:00Z';
   body.reminder.message = 'Check in now and check out when you leave.'; body.reminder.checkinOpensAt = '2026-10-05T10:00:00Z';
-  saved.textBody = JSON.stringify(body); saved.trackingId = saved.trackingId.replace(':arrival:', `:${kind}:`);
+  saved.textBody = JSON.stringify(body); saved.trackingId = saved.trackingId.replace(':preparation:', `:${kind}:`);
   await dispatchAdvanceReminders({ now: new Date('2026-10-05T10:00:00Z'), onlyLogId: saved.id, limit: 1 });
   expect(saved.status).toBe('suppressed'); expect(state.send).not.toHaveBeenCalled();
 });

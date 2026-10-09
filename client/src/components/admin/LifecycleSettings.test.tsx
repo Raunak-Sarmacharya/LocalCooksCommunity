@@ -30,7 +30,7 @@ it('saves the native Newfoundland clock, independent tour leads and disabled con
   render(<LifecycleSettings />);
   expect(screen.getByLabelText('Tour preparation clock in Newfoundland').getAttribute('type')).toBe('time');
   fireEvent.change(screen.getByLabelText('Tour preparation clock in Newfoundland'), { target: { value: '08:15' } });
-  fireEvent.change(screen.getByLabelText('Tour arrival reminder before start'), { target: { value: '90' } });
+  fireEvent.change(screen.getByLabelText('Manager tour arrival reminder before start'), { target: { value: '90' } });
   fireEvent.click(screen.getByLabelText('Tour departure reminders enabled'));
   fireEvent.click(screen.getByRole('button', { name: 'Save lifecycle timing' }));
   await waitFor(() => expect(mocks.fetch).toHaveBeenCalled());

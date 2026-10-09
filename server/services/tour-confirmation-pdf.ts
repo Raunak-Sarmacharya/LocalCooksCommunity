@@ -108,7 +108,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
 
     doc.moveTo(52, footerY).lineTo(560, footerY).strokeColor(line).stroke();
     doc.font("Body").fontSize(8).fillColor(muted).text("Need to change your tour? Manage it in My Tours in your Local Cooks account.", 52, footerY + 13, { width: 508 });
-    doc.font("Helvetica").fontSize(8).fillColor(muted).text("localcooks.ca", 52, footerY + 31);
+    doc.font("Helvetica").fontSize(8).fillColor(muted).text("chef.localcooks.ca", 52, footerY + 31);
     doc.font("Helvetica").fontSize(8).fillColor(muted).text(tourReference(tour.id), 455, footerY + 31, { width: 105, align: "right" });
     doc.end();
   });

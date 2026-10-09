@@ -197,6 +197,16 @@ describe('tour decisions use current ownership and fresh review', () => {
     expect((await status({ status: 'cancelled' }, { id: 1, role: 'manager' })).status).toHaveBeenCalledWith(403);
     expect(state.updates).toEqual([]);
   });
+  it.each(['Tour cancelled', undefined, 'I cannot travel that day'])('saves the existing chef cancellation with a clear reason (%s)', async cancellationReason => {
+    state.tour.status = 'confirmed';
+    const body = { status: 'cancelled', cancellationReason, expectedUpdatedAt: version };
+    const reason = cancellationReason === 'I cannot travel that day' ? cancellationReason : 'The visitor says they can’t make it.';
+    expect((await status(body, { id: 8, role: 'chef' })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', cancelledBy: 'chef', cancellationReason: reason }));
+    expect(state.queue).toHaveBeenCalledTimes(1);
+    expect(state.queue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'status', after: expect.objectContaining({ cancellationReason: reason }) }));
+    expect((await status(body, { id: 8, role: 'chef' })).status).toHaveBeenCalledWith(409);
+    expect(state.queue).toHaveBeenCalledTimes(1);
+  });
   it('allows the current manager to decline the inherited request', async () => {
     expect((await status({ status: 'cancelled', cancellationReason: 'Kitchen unavailable', expectedUpdatedAt: version })).json).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', cancelledBy: 'manager_declined' }));
   });

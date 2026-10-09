@@ -296,7 +296,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
       }
       return response.json()
     },
-    onSuccess: (settings: ViewingSettings, activate) => {
+    onSuccess: (settings: ViewingSettings & { notificationDeliveryFailed?: boolean }, activate) => {
       setSavedSettings(JSON.stringify(currentSettings))
       setSavedWeeklySchedule(JSON.stringify(weeklySchedule))
       queryClient.setQueryData<ViewingSettingsResponse>([`/api/viewings/settings/${kitchenId}`], old => ({
@@ -310,6 +310,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
       queryClient.invalidateQueries({ queryKey: ['tour-decision-context'] })
       setShowRequiredErrors(false)
       toast.success(mt(activate ? kitchenIsListed ? 'tourActivatedToast' : 'tourActivatedUnlistedToast' : activated ? 'tourChangesSavedToast' : 'tourDraftSavedToast'))
+      if (settings.notificationDeliveryFailed) toast.warning(mt('tourSavedDeliveryFailed'))
     },
     onError: (error: Error) => toast.error(error.message),
   })

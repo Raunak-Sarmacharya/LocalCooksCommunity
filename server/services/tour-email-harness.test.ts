@@ -5,6 +5,16 @@ vi.mock('../email', async original => ({ ...await original<typeof import('../ema
 import { buildTourEmailSamples } from '../../scripts/tour-email-samples';
 
 describe('tour email preview harness', () => {
+  it('previews chef preparation with complete visit information and arrival reminders only for managers', async () => {
+    const { samples } = await buildTourEmailSamples();
+    const preparation = samples.find(sample => sample.scenario === 'Before the tour · preparation' && sample.role === 'Chef')!;
+    expect(preparation).toBeDefined();
+    for (const label of ['Kitchen:', 'Location:', 'Date:', 'Time:', 'Address:', 'Kitchen manager:', 'Arrival contact:', 'Manager notes:', 'Arrival instructions:', 'Departure instructions:', 'Reference: TOUR-42', 'Message manager:'])
+      expect(preparation.text).toContain(label);
+    expect(samples.some(sample => sample.role === 'Chef' && sample.scenario.endsWith(' · arrival'))).toBe(false);
+    expect(samples.some(sample => sample.role === 'Manager' && sample.scenario === 'Before the tour · arrival')).toBe(true);
+    expect(state.select).not.toHaveBeenCalled(); expect(state.send).not.toHaveBeenCalled();
+  });
   it('renders all email families through real renderers without database or outbound calls', async () => {
     const { samples, notificationOnly } = await buildTourEmailSamples();
     expect(samples.length).toBeGreaterThan(50);
@@ -37,10 +47,10 @@ describe('tour email preview harness', () => {
       expect(email.html).toContain('.email-outer{padding:0 !important}');
       expect(email.html.indexOf('&amp;action=reschedule')).toBeLessThan(email.html.indexOf('&amp;action=message'));
     }
-    const arrival = samples.find(sample => sample.scenario === 'Before the tour · arrival' && sample.role === 'Chef')!;
-    expect(arrival.text).toContain('mailto:morgan%2Btour@example.com?');
-    expect(arrival.text).toContain('Kitchen manager: Morgan Lee');
-    expect(samples.find(sample => sample.scenario === 'Manager email unavailable · arrival' && sample.role === 'Chef')!.text).not.toContain('mailto:');
+    const preparation = samples.find(sample => sample.scenario === 'Before the tour · preparation' && sample.role === 'Chef')!;
+    expect(preparation.text).toContain('Arrival contact: morgan+tour@example.com');
+    expect(preparation.text).toContain('Kitchen manager: Morgan Lee');
+    expect(samples.some(sample => sample.scenario.endsWith(' · arrival') && sample.role === 'Chef')).toBe(false);
     for (const role of ['Chef', 'Manager']) {
       const message = samples.find(sample => sample.scenario === 'Starting tour message' && sample.role === role)!;
       expect(message.text).toContain('Read message and reply'); expect(message.text).toContain('Message: Hi');

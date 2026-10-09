@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ rows: [] as unknown[][], transaction: vi.fn() }));
-vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), attemptTourDelivery: vi.fn(async () => ({ failed: false })), deliverTourEvents: vi.fn() }));
+vi.mock('../services/tour-delivery-service', () => ({ queueTourEvent: vi.fn(), attemptTourDelivery: vi.fn(async () => ({ failed: false })), deliverTourEvents: vi.fn(async () => ({ delivered: 1, errors: 0 })) }));
 vi.mock('../services/kitchen-checkout-service', () => ({ getCheckinSettings: vi.fn(async () => ({ checkinWindowMinutesBefore: 20 })) }));
 vi.mock("../db", () => ({
   db: { select: () => {
@@ -21,6 +21,7 @@ vi.mock("../phone-utils", () => ({ getChefPhone: vi.fn() }));
 
 import router from "./viewings";
 import { kitchenViewingSettings, kitchenViewingAvailability } from '@shared/schema';
+import { queueTourEvent, deliverTourEvents } from '../services/tour-delivery-service';
 const settings = { isActive: true, arrivalNotes: 'Meet at reception', departureNotes: 'Return badge', defaultDurationMinutes: 30, bufferBeforeMinutes: 0,
   bufferAfterMinutes: 15, advanceNoticeHours: 0, maxAdvanceBookingDays: 7 };
 function handler(path: string, method: string) {
@@ -29,7 +30,11 @@ function handler(path: string, method: string) {
 function response() { return { status: vi.fn().mockReturnThis(), json: vi.fn(), setHeader: vi.fn() }; }
 
 describe('kitchen tour guidance settings', () => {
-  beforeEach(() => { vi.clearAllMocks(); mocks.rows.length = 0; });
+  beforeEach(() => {
+    vi.clearAllMocks(); mocks.rows.length = 0;
+    vi.mocked(queueTourEvent).mockReset();
+    vi.mocked(deliverTourEvents).mockReset().mockResolvedValue({ delivered: 1, errors: 0 });
+  });
   it('requires both instructions and usable saved hours for activation, permits drafts, and blocks clearing live instructions', async () => {
     let saved = { ...settings, isActive: false, kitchenId: 40, arrivalNotes: '', departureNotes: '' };
     let hours: any[] = [];
@@ -38,7 +43,7 @@ describe('kitchen tour guidance settings', () => {
       let table: unknown;
       const rows = () => table === kitchenViewingSettings ? [saved] : table === kitchenViewingAvailability ? hours : [];
       const chain: any = { from: (value: unknown) => { table = value; return chain; }, where: () => chain,
-        limit: async () => rows(), then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
+        limit: async () => rows(), for: () => chain, then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
       return chain;
     }, update: () => ({ set: (values: any) => ({ where: () => ({ returning: async () => {
       write(values); saved = { ...saved, ...values }; return [saved];
@@ -92,7 +97,7 @@ describe('kitchen tour guidance settings', () => {
   });
   it('persists validated draft notes through the owned-kitchen settings route and allows clearing while paused', async () => {
     let saved: any = { ...settings, isActive: false, kitchenId: 40 };
-    const tx = { execute: vi.fn(), select: () => ({ from: () => ({ where: () => ({ limit: async () => [saved] }) }) }),
+    const tx = { execute: vi.fn(), select: () => ({ from: () => ({ where: () => ({ limit: async () => [saved], for: async () => [] }) }) }),
       update: () => ({ set: (value: any) => ({ where: () => ({ returning: async () => { saved = { ...saved, ...value }; return [saved]; } }) }) }) };
     mocks.transaction.mockImplementation(async run => run(tx));
     const put = (body: unknown) => {
@@ -116,6 +121,47 @@ describe('kitchen tour guidance settings', () => {
     await handler('/settings/:kitchenId', 'put')({ params: { kitchenId: '40' }, neonUser: { id: 99 }, body: { arrivalNotes: 'Unauthorized' } }, denied);
     expect(denied.status).toHaveBeenCalledWith(404);
     expect(mocks.transaction).toHaveBeenCalledTimes(writeCount);
+  });
+  it('commits one instruction event per affected tour and attempts delivery only after saving', async () => {
+    let saved: any = { ...settings, isActive: false, kitchenId: 40 };
+    const future = new Date(Date.now() + 3_600_000), past = new Date(Date.now() - 3_600_000);
+    const upcoming = { id: 10, status: 'confirmed', scheduledAt: future, targetedKitchenId: 40 };
+    const active = { ...upcoming, id: 11, scheduledAt: past, checkedInAt: past };
+    const tours = [upcoming, active, { ...active, id: 12, checkedOutAt: new Date() }, { ...upcoming, id: 13, status: 'cancelled' }];
+    const tx: any = { execute: vi.fn(), select: () => {
+      const chain: any = { from: () => chain, where: () => chain,
+        limit: async () => [saved], for: async () => tours };
+      return chain;
+    }, update: () => ({ set: (values: any) => ({ where: () => ({ returning: async () => { saved = { ...saved, ...values }; return [saved]; } }) }) }) };
+    let committed = false;
+    mocks.transaction.mockImplementation(async run => { const result = await run(tx); committed = true; return result; });
+    vi.mocked(queueTourEvent).mockImplementation(async (_tx, event) => {
+      expect(committed).toBe(false);
+      expect(saved.arrivalNotes).not.toBe('Meet at reception');
+      expect(event.kind).toBe('instructions_updated');
+    });
+    vi.mocked(deliverTourEvents).mockImplementation(async () => { expect(committed).toBe(true); return { delivered: 1, errors: 0 }; });
+    const put = async (body: unknown) => {
+      committed = false; mocks.rows.push([{ id: 40 }]); const res = response();
+      await handler('/settings/:kitchenId', 'put')({ params: { kitchenId: '40' }, neonUser: { id: 2 }, body }, res);
+      return res;
+    };
+    const result = await put({ arrivalNotes: 'Side entrance', departureNotes: 'Return the key' });
+    expect(result.json).toHaveBeenCalledWith(expect.objectContaining({ arrivalNotes: 'Side entrance', notificationDeliveryFailed: false }));
+    expect(queueTourEvent).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(queueTourEvent).mock.calls[0][1]).toMatchObject({ after: upcoming, instructionChange: { arrival: true, departure: true } });
+    expect(vi.mocked(queueTourEvent).mock.calls[1][1]).toMatchObject({ after: active, instructionChange: { arrival: false, departure: true } });
+    expect(deliverTourEvents).toHaveBeenCalledTimes(2);
+    await put({ arrivalNotes: '  Side entrance  ', departureNotes: 'Return the key' });
+    expect(queueTourEvent).toHaveBeenCalledTimes(2);
+    expect(deliverTourEvents).toHaveBeenCalledTimes(2);
+    await put({ arrivalNotes: 'Reception' });
+    expect(queueTourEvent).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(queueTourEvent).mock.calls[2][1]).toMatchObject({ after: upcoming, instructionChange: { arrival: true, departure: false } });
+    vi.mocked(deliverTourEvents).mockResolvedValueOnce({ delivered: 0, errors: 1 });
+    const failedDelivery = await put({ departureNotes: 'Give the key to Alex' });
+    expect(failedDelivery.json).toHaveBeenCalledWith(expect.objectContaining({ departureNotes: 'Give the key to Alex', notificationDeliveryFailed: true }));
+    expect(deliverTourEvents).toHaveBeenCalledTimes(5);
   });
   it('only exposes arrival notes for confirmed tours, retaining departure guidance after an arrived tour ends', async () => {
     const notes = { arrivalNotes: 'Side entrance', departureNotes: 'Return badge' };

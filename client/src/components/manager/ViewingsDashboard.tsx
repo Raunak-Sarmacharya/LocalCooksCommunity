@@ -14,7 +14,7 @@ import { TourSupportCard } from '@/components/tour/TourSupportCard';
 import { useLocation, useSearch } from "wouter"
 import type { ColumnDef } from "@tanstack/react-table"
 import { mt } from "@/i18n/manager"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query"
 import { KitchenTour, Clock, User, Loader2, CheckCircle, XCircle, AlertTriangle, FileText, Search, X, CalendarClock, ArrowRight, ChevronDown } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
@@ -155,6 +155,8 @@ function canReviewReschedule(viewing: ViewingRecord["viewing"]): boolean {
   return viewing.status === "confirmed" && !!viewing.requestedRescheduleAt && new Date(viewing.scheduledAt).getTime() > Date.now()
 }
 
+const emptyProposalOptions = () => Array.from({ length: 3 }, () => ({ date: '', scheduledAt: '' }))
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface ViewingsDashboardProps {
@@ -192,8 +194,10 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   const [proposalOpen, setProposalOpen] = useState(false)
   const [feedbackTargetId, setFeedbackTargetId] = useState<number | null>(null)
   const feedbackTrigger = useRef<HTMLButtonElement>(null)
-  const [proposalDate, setProposalDate] = useState('')
-  const [proposedSlots, setProposedSlots] = useState<string[]>([])
+  const [proposalOptions, setProposalOptions] = useState(emptyProposalOptions)
+  const proposedSlots = proposalOptions.flatMap(option => option.scheduledAt ? [option.scheduledAt] : []).sort()
+  const changeProposalOption = (index: number, value: { date: string; scheduledAt: string }) =>
+    setProposalOptions(current => current.map((option, i) => i === index ? value : option))
   const [confirmExit, setConfirmExit] = useState(false)
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -289,7 +293,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
   const canProposeChange = !!selectedViewing && !selectedViewing.viewing.disruptionReason && canManagerProposeReschedule(selectedViewing.viewing)
   useEffect(() => {
     if (proposalMutationPending.current) return
-    setProposalOpen(false); setProposalDate(''); setProposedSlots([])
+    setProposalOpen(false); setProposalOptions(emptyProposalOptions())
   }, [selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt])
 
   const canEditTourNotes = !!selectedViewing && ['pending', 'confirmed'].includes(selectedViewing.viewing.status)
@@ -320,27 +324,33 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
       return response.json()
     },
   })
-  const { data: proposalChoices = [], isFetching: proposalSlotsLoading, error: proposalSlotsError } = useQuery<{ scheduledAt: string }[]>({
-    queryKey: ['manager-tour-reschedule-slots', selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt, proposalDate],
-    enabled: proposalOpen && canProposeChange && !!proposalDate && !!selectedViewing?.viewing.targetedKitchenId,
+  const proposalDates = Array.from(new Set(proposalOptions.map(option => option.date)))
+  const proposalDateQueries = useQueries({ queries: proposalDates.map(date => ({
+    queryKey: ['manager-tour-reschedule-slots', selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt, date],
+    enabled: proposalOpen && canProposeChange && !!date && !!selectedViewing?.viewing.targetedKitchenId,
     queryFn: async () => {
-      const response = await fetch(`/api/viewings/available-slots/${selectedViewing!.viewing.targetedKitchenId}?date=${proposalDate}&viewingId=${selectedViewing!.viewing.id}&proposal=true`, { headers: await getAuthHeaders(), cache: 'no-store' })
+      const response = await fetch(`/api/viewings/available-slots/${selectedViewing!.viewing.targetedKitchenId}?date=${date}&viewingId=${selectedViewing!.viewing.id}&proposal=true`, { headers: await getAuthHeaders(), cache: 'no-store' })
       if (!response.ok) throw new Error(mt('tourProposalAvailabilityFailed'))
       const body = await response.json()
-      return (Array.isArray(body) ? body : body.slots || []).filter((item: { scheduledAt: string }) => Date.parse(item.scheduledAt) > Date.now() && Date.parse(item.scheduledAt) !== Date.parse(selectedViewing!.viewing.scheduledAt))
+      return ((Array.isArray(body) ? body : body.slots || []) as { scheduledAt: string }[]).filter(item => Date.parse(item.scheduledAt) > Date.now() && Date.parse(item.scheduledAt) !== Date.parse(selectedViewing!.viewing.scheduledAt))
     },
-  })
-  const proposalTimeOptions = proposalChoices.map(item => {
+  })) })
+  const proposalSlotQueries = proposalOptions.map(option => proposalDateQueries[proposalDates.indexOf(option.date)])
+  const proposalSlotsLoading = proposalSlotQueries.some(query => query.isFetching)
+  const proposalSlotsError = proposalSlotQueries.find(query => query.error)?.error
+  const proposalTimeOptions = proposalSlotQueries.map(query => (query.data || []).map(item => {
     const duration = selectedViewing?.viewing.durationMinutes ?? 30
     let full = formatTourSlotRange(item.scheduledAt, duration)
     // Repeated wall-clock slots during the DST rollback still need distinct labels.
-    if (proposalChoices.some(other => other.scheduledAt !== item.scheduledAt && formatTourSlotRange(other.scheduledAt, duration) === full)) {
+    if (query.data?.some(other => other.scheduledAt !== item.scheduledAt && formatTourSlotRange(other.scheduledAt, duration) === full)) {
       const offset = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/St_Johns', timeZoneName: 'shortOffset' })
         .formatToParts(new Date(item.scheduledAt)).find(part => part.type === 'timeZoneName')?.value
       full += ` (${offset})`
     }
     return { ...item, full }
-  })
+  }))
+  const proposalIncomplete = proposalOptions.some((option, index) => option.date && (!option.scheduledAt
+    || !proposalSlotQueries[index].data?.some(item => item.scheduledAt === option.scheduledAt)))
   const { data: decisionContext, isFetching: contextLoading, error: contextError, refetch: refetchContext } = useQuery<TourDecisionContext>({
     queryKey: ["tour-decision-context", selectedViewing?.viewing.id, selectedViewing?.viewing.updatedAt, decisionKind],
     enabled: !!selectedViewing && !!decisionKind,
@@ -401,7 +411,7 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
       refreshOverview(updated)
       queryClient.setQueryData<ViewingRecord[]>([queryUrl], current => current?.map(record => record.viewing.id === updated.id ? { ...record, viewing: { ...record.viewing, ...updated } } : record))
       setSelectedViewing(current => current && current.viewing.id === updated.id ? { ...current, viewing: { ...current.viewing, ...updated } } : current)
-      setProposalOpen(false); setProposalDate(''); setProposedSlots([])
+      setProposalOpen(false); setProposalOptions(emptyProposalOptions())
       queryClient.invalidateQueries({ queryKey: [queryUrl] })
       queryClient.invalidateQueries({ queryKey: ['/api/viewings/manager', 'exact-tour'] })
       if (updated.notificationDeliveryFailed) toast.warning(mt('tourSavedDeliveryFailed'))
@@ -471,11 +481,11 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
     setDisruptionReason("")
     setCancellationReason("")
     setAcceptBookingOverlap(false)
-    setProposalOpen(false); setProposalDate(''); setProposedSlots([])
+    setProposalOpen(false); setProposalOptions(emptyProposalOptions())
     if (exactId) onBackToTours?.()
   }
 
-  const hasUnsavedInput = !!selectedViewing && (managerNotes !== (selectedViewing.viewing.sharedManagerNotes || "") || !!noShowReason || !!disruptionReason || !!cancellationReason.trim() || !!proposalDate || proposedSlots.length > 0)
+  const hasUnsavedInput = !!selectedViewing && (managerNotes !== (selectedViewing.viewing.sharedManagerNotes || "") || !!noShowReason || !!disruptionReason || !!cancellationReason.trim() || proposalOptions.some(option => !!option.date))
   const guardNavigation = (navigate: () => void) => {
     if (proposeReschedule.isPending || updateStatusMutation.isPending || reviewReschedule.isPending) return false
     if (!hasUnsavedInput) return true
@@ -805,34 +815,46 @@ export function ViewingsDashboard({ locationId, onSelectTourLocation, onConfigur
                 <Dialog open={proposalOpen && (canProposeChange || proposeReschedule.isPending)} onOpenChange={open => {
                   if (proposeReschedule.isPending) return
                   setProposalOpen(open)
-                  if (!open) { setProposalDate(''); setProposedSlots([]) }
+                  if (!open) { setProposalOptions(emptyProposalOptions()) }
                 }}>
-                  <DialogContent className="max-w-xl gap-5 p-4 sm:p-6" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
+                  <DialogContent className="max-w-2xl gap-4 p-4 sm:p-6" onCloseAutoFocus={event => { event.preventDefault(); (proposalTrigger.current || heading.current)?.focus() }}>
                     <DialogHeader className="pr-10 text-left">
                       <DialogTitle>{mt(selectedViewing.viewing.status === 'pending' ? 'tourOfferAlternativeTimes' : 'tourProposeNewTimes')}</DialogTitle>
                       <DialogDescription>{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalHelp' : 'tourProposalHelp')}</DialogDescription>
                     </DialogHeader>
-                    <Button variant="ghost" size="icon" className="absolute right-2 top-2 h-11 w-11" aria-label={mt('close')} disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}><X className="h-4 w-4" /></Button>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{mt('tourRescheduleScenarioHelp')}</p>
-                    <div className="space-y-1 rounded-xl bg-muted/40 p-4 text-sm"><p className="text-xs font-medium text-muted-foreground">{mt('tourCurrentTime')}</p><p>{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p></div>
+                    <Button variant="ghost" size="icon" className="absolute right-2 top-2 h-11 w-11" aria-label={mt('close')} disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalOptions(emptyProposalOptions()) }}><X className="h-4 w-4" /></Button>
+                    <div className="space-y-1 rounded-xl bg-muted/40 p-3 text-sm"><p className="text-xs font-medium text-muted-foreground">{selectedViewing.kitchenName || selectedViewing.locationName} · TOUR-{selectedViewing.viewing.id} · {mt('tourCurrentTime')}</p><p>{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || 'America/St_Johns')}</p></div>
                     <div className="space-y-4">
                     {(proposalCalendarError || proposalSlotsError) && <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{(proposalCalendarError || proposalSlotsError)?.message}</p><Button variant="outline" size="sm" onClick={() => { void queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-calendar'] }); void queryClient.invalidateQueries({ queryKey: ['manager-tour-reschedule-slots'] }) }}>{mt('tourReviewAgain')}</Button></div>}
-                    <div className="space-y-1.5"><Label htmlFor="tour-proposal-date">{mt('tourNewDate')}</Label><DateField id="tour-proposal-date" className="min-h-11" value={proposalDate} onChange={setProposalDate} placeholder={mt('tourChooseDate')} disabled={proposeReschedule.isPending || proposalCalendarLoading || !!proposalCalendarError || !proposalCalendar} disabledDate={day => !tourAvailableDate(day, proposalCalendar)} /></div>
-                    <p className="text-sm text-muted-foreground">{mt('tourChooseTimesHelp')}</p>
-                    {proposalDate && <section className="space-y-3" aria-label={mt('tourAvailableTime')}>
-                      <h3 className="text-sm font-semibold">{formatTourDate(new Date(proposalDate + 'T12:00:00Z'))}</h3>
-                      <p className="text-xs text-muted-foreground">{mt('tourTimesTimezone')}</p>
-                      {proposalSlotsLoading && <p role="status" className="text-sm text-muted-foreground">{mt('tourLoadingTimes')}</p>}
-                      {!proposalSlotsLoading && !proposalSlotsError && !proposalChoices.length && <p role="status" className="text-sm text-muted-foreground">{mt('tourNoAvailableTimes')}</p>}
-                      {!proposalSlotsLoading && !proposalSlotsError && <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{proposalTimeOptions.map(item => {
-                        const selected = proposedSlots.includes(item.scheduledAt)
-                        return <Button key={item.scheduledAt} variant={selected ? 'default' : 'outline'} className="h-auto min-h-11 whitespace-normal px-2 py-2 text-sm" aria-pressed={selected} disabled={proposeReschedule.isPending || !!proposalCalendarError || (!selected && proposedSlots.length >= 3)} onClick={() => setProposedSlots(current => current.includes(item.scheduledAt) ? current.filter(time => time !== item.scheduledAt) : [...current, item.scheduledAt].sort())}>{item.full}</Button>
-                      })}</div>}
-                    </section>}
-                    {proposedSlots.length > 0 && <section className="space-y-2" aria-label={mt('tourSelectedTimes')}><h3 className="text-sm font-semibold">{mt('tourSelectedTimes')}</h3><ul className="space-y-2">{proposedSlots.map(time => <li key={time} className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><span className="text-sm">{formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}</span><Button variant="ghost" size="icon" aria-label={`${mt('tourRemoveAlternative')}: ${formatTourWhen(time, selectedViewing.viewing.durationMinutes, 'America/St_Johns')}`} disabled={proposeReschedule.isPending} onClick={() => setProposedSlots(current => current.filter(item => item !== time))}><X className="h-4 w-4" /></Button></li>)}</ul></section>}
-                    <p className="rounded-xl border p-3 text-sm leading-relaxed text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalOriginalHeld')}</p>
-                    <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end"><Button variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalDate(''); setProposedSlots([]) }}>{mt('tourKeepCurrentTime')}</Button><Button className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !proposedSlots.length || proposedSlots.some(time => Date.parse(time) <= Date.now()) || proposalSlotsLoading || !!proposalCalendarError || !!proposalSlotsError} onClick={() => proposeReschedule.mutate('propose')}>{proposeReschedule.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mt('tourSendProposal')}</Button></div>
+                    <div className="space-y-3">
+                      {proposalOptions.map((option, index) => {
+                        const query = proposalSlotQueries[index]
+                        const times = proposalTimeOptions[index]
+                        const unavailable = !!option.scheduledAt && !query.isFetching && !query.error && !times.some(item => item.scheduledAt === option.scheduledAt)
+                        return <fieldset key={index} aria-label={mt('tourProposalOption', { number: index + 1 })} className={cn('relative min-w-0 rounded-xl border px-3 pb-3 sm:px-4', option.scheduledAt && !unavailable && 'border-primary/30 bg-primary/[0.03]')}>
+                          <legend className="flex items-center gap-2 px-1 text-sm font-semibold">
+                            <span aria-hidden="true" className={cn('flex h-6 w-6 items-center justify-center rounded-full text-xs', option.scheduledAt && !unavailable ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>{option.scheduledAt && !unavailable ? <CheckCircle className="h-4 w-4" /> : index + 1}</span>
+                            {mt('tourProposalOption', { number: index + 1 })}
+                            {index > 0 && <span className="text-xs font-normal text-muted-foreground">{mt('optional')}</span>}
+                          </legend>
+                          <div className="mt-2 grid min-w-0 gap-3 sm:grid-cols-2">
+                            <div className="min-w-0 space-y-1.5"><Label htmlFor={`tour-proposal-date-${index}`}>{mt('date')}</Label><DateField id={`tour-proposal-date-${index}`} className="min-h-11" value={option.date} onChange={date => changeProposalOption(index, { date, scheduledAt: '' })} placeholder={mt('tourChooseDate')} disabled={proposeReschedule.isPending || proposalCalendarLoading || !!proposalCalendarError || !proposalCalendar} disabledDate={day => !tourAvailableDate(day, proposalCalendar)} /></div>
+                            <div className="min-w-0 space-y-1.5"><Label htmlFor={`tour-proposal-time-${index}`}>{mt('tourAvailableTime')}</Label><Select value={option.scheduledAt} onValueChange={scheduledAt => changeProposalOption(index, { ...option, scheduledAt })} disabled={proposeReschedule.isPending || !option.date || query.isFetching || !!query.error || !!proposalCalendarError || !times.length}>
+                              <SelectTrigger id={`tour-proposal-time-${index}`} className="min-h-11"><SelectValue placeholder={mt(query.isFetching ? 'tourLoadingTimes' : 'tourChooseTime')}>{option.scheduledAt ? times.find(item => item.scheduledAt === option.scheduledAt)?.full || formatTourSlotRange(option.scheduledAt, selectedViewing.viewing.durationMinutes) : undefined}</SelectValue></SelectTrigger>
+                              <SelectContent>{times.map(item => <SelectItem key={item.scheduledAt} value={item.scheduledAt} disabled={proposalOptions.some((other, i) => i !== index && other.scheduledAt === item.scheduledAt)}>{item.full}</SelectItem>)}</SelectContent>
+                            </Select></div>
+                          </div>
+                          {(option.date || option.scheduledAt) && <Button variant="ghost" size="icon" className="absolute -top-3 right-1 h-11 w-11" aria-label={`${mt('tourRemoveAlternative')}: ${mt('tourProposalOption', { number: index + 1 })}`} disabled={proposeReschedule.isPending} onClick={() => changeProposalOption(index, { date: '', scheduledAt: '' })}><X className="h-4 w-4" /></Button>}
+                          {option.date && !query.isFetching && !query.error && !times.length && <p role="status" className="mt-2 text-sm text-muted-foreground">{mt('tourNoAvailableTimes')}</p>}
+                          {unavailable && <p role="alert" className="mt-2 text-sm text-destructive">{mt('tourProposalTimeUnavailable')}</p>}
+                        </fieldset>
+                      })}
                     </div>
+                    <p className="text-xs text-muted-foreground">{mt('tourTimesTimezone')}</p>
+                    {proposedSlots.length > 0 && <section className="space-y-2 rounded-xl bg-muted/40 p-3" aria-label={mt('tourSelectedTimes')}><h3 className="text-sm font-semibold">{mt('tourSelectedTimes')} <span className="font-normal text-muted-foreground">({proposedSlots.length}/3)</span></h3><ul className="space-y-2">{proposalOptions.map((option, index) => option.scheduledAt && <li key={index} className="flex gap-3 text-sm"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-background text-xs font-medium">{index + 1}</span><span>{formatTourDate(new Date(option.scheduledAt))}, {proposalTimeOptions[index].find(item => item.scheduledAt === option.scheduledAt)?.full || formatTourSlotRange(option.scheduledAt, selectedViewing.viewing.durationMinutes)}</span></li>)}</ul></section>}
+                    <p className="text-sm leading-relaxed text-muted-foreground">{mt(selectedViewing.viewing.status === 'pending' ? 'tourPendingProposalAwaitingHelp' : 'tourProposalOriginalHeld')}</p>
+                    </div>
+                    <div className="sticky -bottom-4 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t bg-background px-4 py-3 sm:-bottom-6 sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6"><Button variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending} onClick={() => { setProposalOpen(false); setProposalOptions(emptyProposalOptions()) }}>{mt('tourKeepCurrentTime')}</Button><Button className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={proposeReschedule.isPending || updateStatusMutation.isPending || !proposedSlots.length || proposalIncomplete || proposedSlots.some(time => Date.parse(time) <= Date.now()) || proposalCalendarLoading || !proposalCalendar || proposalSlotsLoading || !!proposalCalendarError || !!proposalSlotsError} onClick={() => proposeReschedule.mutate('propose')}>{proposeReschedule.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{mt('tourSendProposal')}</Button></div>
                   </DialogContent>
                 </Dialog>
 

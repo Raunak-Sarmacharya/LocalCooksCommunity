@@ -21,6 +21,12 @@ export function publicTourManagerNotes(tour: { sharedManagerNotes?: unknown; out
 export function publicTourCancellationReason(value?: string | null): string | null {
   return value && !/^cancelled by (chef|manager|admin|local cooks)\.?$/i.test(value.trim()) ? value : null;
 }
+
+/** The existing chef confirmation modal saves a generic label, not a reason field. */
+export function chefTourCancellationReason(value?: string | null): string {
+  const reason = value?.trim();
+  return !reason || /^tour cancelled\.?$/i.test(reason) ? 'The visitor says they can’t make it.' : reason;
+}
 /** Public tour responses must never leak legacy/internal note text. */
 export function publicTour<T extends { managerNotes?: unknown; outcomeNotes?: unknown; outcomeHistory?: unknown; sharedManagerNotes?: unknown }>(tour: T) {
   const { managerNotes: _internal, outcomeNotes: _outcome, outcomeHistory: _history, ...fields } = tour;

@@ -320,14 +320,13 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
   const [reschedulingId, setReschedulingId] = useState<number | null>(null);
   const [rescheduleError, setRescheduleError] = useState<{ id: number; message: string } | null>(null);
   const [replyingId, setReplyingId] = useState<number | null>(null);
-  const [replyingChoice, setReplyingChoice] = useState<'still_coming' | 'reschedule' | 'cant_make_it' | null>(null);
   const [replyError, setReplyError] = useState<{ id: number; message: string } | null>(null);
   const [attendanceChangeId, setAttendanceChangeId] = useState<number | null>(null);
   const [feedbackTargetId, setFeedbackTargetId] = useState<number | null>(null);
   const feedbackTrigger = useRef<HTMLButtonElement>(null);
-  const replyToTour = async (tour: ChefTourRow, reply: 'still_coming' | 'reschedule' | 'cant_make_it') => {
+  const replyToTour = async (tour: ChefTourRow, reply: 'still_coming') => {
     if (!tour.reconfirmation?.canReply) return;
-    setReplyingId(tour.id); setReplyingChoice(reply); setReplyError(null);
+    setReplyingId(tour.id); setReplyError(null);
     try {
       const token = await auth.currentUser?.getIdToken();
       const response = await fetch(`/api/viewings/chef/${tour.id}/reconfirmation`, {
@@ -338,10 +337,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
       await queryClient.invalidateQueries({ queryKey: ['/api/viewings', 'chef'] });
       if (!response.ok) throw new Error(body.error || t('tourReplyFailed', 'Could not save your reply. Review the current tour and retry.'));
       setAttendanceChangeId(null);
-      if (reply === 'reschedule') setRescheduleTargetId(tour.id);
-      if (reply === 'cant_make_it') setCancelTarget({ ...tour, updatedAt: body.updatedAt || tour.updatedAt });
     } catch (error) { setReplyError({ id: tour.id, message: error instanceof Error ? error.message : 'Could not save reply' }); }
-    finally { setReplyingId(null); setReplyingChoice(null); }
+    finally { setReplyingId(null); }
   };
   const queryClient = useQueryClient();
   const requestReschedule = async (tour: ChefTourRow, scheduledAt: string) => {
@@ -551,7 +548,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                     {tour.reconfirmation?.reply === 'still_coming' ? <p className="flex items-start gap-2 rounded-xl border border-success/30 bg-success/10 p-3 text-sm font-medium"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />{t('tourStillComingSaved', 'You confirmed that you’re still coming.')}</p> : replyingId === tour.id && <p className="sr-only">{t('tourReplySaving', 'Saving your reply…')}</p>}
                   </div>
                   <div className="grid gap-3 sm:flex sm:flex-wrap [&>button]:h-auto [&>button]:min-h-12 [&>button]:whitespace-normal [&>button]:rounded-full [&>button]:px-5 [&>button]:py-3">
-                    {tour.reconfirmation?.reply !== 'still_coming' && <Button className="bg-foreground text-background shadow-none hover:bg-foreground/90 hover:text-background hover:shadow-none disabled:hover:bg-foreground" disabled={replyingId !== null} aria-busy={replyingId === tour.id && replyingChoice === 'still_coming'} onClick={() => void replyToTour(tour, 'still_coming')}>{replyingId === tour.id && replyingChoice === 'still_coming' ? <><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t('tourReplySaving', 'Saving your reply…')}</> : <><Check className="h-4 w-4" aria-hidden="true" />{t('tourStillComing', 'Yes, I’m still coming')}</>}</Button>}
+                    {tour.reconfirmation?.reply !== 'still_coming' && <Button className="bg-foreground text-background shadow-none hover:bg-foreground/90 hover:text-background hover:shadow-none disabled:hover:bg-foreground" disabled={replyingId !== null} aria-busy={replyingId === tour.id} onClick={() => void replyToTour(tour, 'still_coming')}>{replyingId === tour.id ? <><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t('tourReplySaving', 'Saving your reply…')}</> : <><Check className="h-4 w-4" aria-hidden="true" />{t('tourStillComing', 'Yes, I’m still coming')}</>}</Button>}
                     <Button variant="outline" disabled={replyingId !== null} aria-haspopup="dialog" onClick={event => { actionTrigger.current = event.currentTarget; setAttendanceChangeId(tour.id); }}>{t('tourCantMakeIt', 'Change my plans')}<ArrowRight className="h-4 w-4" aria-hidden="true" /></Button>
                   </div>
                   <Dialog open={attendanceChangeId === tour.id} onOpenChange={open => { if (!open && replyingId === null) setAttendanceChangeId(null); }}>
@@ -562,8 +559,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                       <AppDialogHeader className="pr-14 sm:pr-14" title={t('tourAttendanceChangeTitle', 'Change your plans')} description={t('tourCantMakeItOptionsHelp', 'Choose whether to reschedule your tour or cancel it. Your current time stays confirmed until you complete the change.')} />
                       <AppDialogBody className="space-y-3">
                         <div className="grid gap-3">
-                          <Button variant="outline" className="h-auto min-h-11 whitespace-normal rounded-xl py-3" disabled={replyingId !== null || !canEdit} aria-busy={replyingId === tour.id && replyingChoice === 'reschedule'} onClick={() => { setRescheduleError(null); void replyToTour(tour, 'reschedule'); }}>{replyingId === tour.id && replyingChoice === 'reschedule' && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}{t('tourReplyReschedule', 'Reschedule')}</Button>
-                          <Button variant="outline" className="h-auto min-h-11 whitespace-normal rounded-xl py-3 text-destructive hover:text-destructive" disabled={replyingId !== null || !canCancel} aria-busy={replyingId === tour.id && replyingChoice === 'cant_make_it'} onClick={() => void replyToTour(tour, 'cant_make_it')}>{replyingId === tour.id && replyingChoice === 'cant_make_it' && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}{t('tourCancel', 'Cancel tour')}</Button>
+                          <Button variant="outline" className="h-auto min-h-11 whitespace-normal rounded-xl py-3" disabled={replyingId !== null || !canEdit} onClick={() => { setAttendanceChangeId(null); setRescheduleError(null); setRescheduleTargetId(tour.id); }}>{t('tourReplyReschedule', 'Reschedule')}</Button>
+                          <Button variant="outline" className="h-auto min-h-11 whitespace-normal rounded-xl py-3 text-destructive hover:text-destructive" disabled={replyingId !== null || !canCancel} onClick={() => { setAttendanceChangeId(null); setCancelTarget(tour); }}>{t('tourCancel', 'Cancel tour')}</Button>
                         </div>
                         {!canEdit && <p className="text-xs text-muted-foreground">{t('tourRescheduleUnavailable', 'Self-service rescheduling closes at the start of your tour day. Message the kitchen manager if you need help.')}</p>}
                         {replyError?.id === tour.id && <p role="alert" className="text-xs text-destructive">{replyError.message}</p>}

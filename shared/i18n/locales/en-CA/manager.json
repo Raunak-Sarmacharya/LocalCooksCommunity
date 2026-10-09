@@ -3431,6 +3431,8 @@
   "tourPendingProposalAwaitingHelp": "The original request remains pending until the chef accepts an offered time, and expires at its original requested start time. Withdraw the offer to review the original request again.",
   "tourChooseTimesHelp": "Select up to three available times. Select a time again to remove it.",
   "tourSelectedTimes": "Selected times",
+  "tourProposalOption": "Option {number}",
+  "tourProposalTimeUnavailable": "This time is no longer available. Choose another time.",
   "tourTimesTimezone": "Newfoundland time",
   "tourMessageVisitor": "Message {name}",
   "tourHistory_reconfirmation_requested": "Reconfirmation requested",

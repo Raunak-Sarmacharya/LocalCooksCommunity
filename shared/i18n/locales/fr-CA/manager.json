@@ -3431,6 +3431,8 @@
   "tourPendingProposalAwaitingHelp": "La demande initiale reste en attente jusqu’à ce que le chef accepte un horaire proposé et expire à l’heure initialement demandée. Retirez la proposition pour réexaminer la demande initiale.",
   "tourChooseTimesHelp": "Sélectionnez jusqu’à trois horaires disponibles. Sélectionnez de nouveau un horaire pour le retirer.",
   "tourSelectedTimes": "Horaires sélectionnés",
+  "tourProposalOption": "Option {number}",
+  "tourProposalTimeUnavailable": "Cet horaire n’est plus disponible. Choisissez un autre horaire.",
   "tourTimesTimezone": "Heure de Terre-Neuve",
   "tourMessageVisitor": "Écrire à {name}",
   "tourHistory_reconfirmation_requested": "Reconfirmation demandée",
