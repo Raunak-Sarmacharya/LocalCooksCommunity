@@ -42,10 +42,11 @@ beforeAll(async () => {
   await first.query('CREATE DOMAIN chef_notification_type AS public.chef_notification_type');
   await first.query('CREATE DOMAIN chef_notification_priority AS public.chef_notification_priority');
   await first.query(`INSERT INTO users (id,username,password,role) VALUES (1,'staff@example.test','fixture','admin'),(2,'host@example.test','fixture','manager'),(3,'chef@example.test','fixture','chef'),(4,'foreign@example.test','fixture','chef')`);
+  await first.query('UPDATE users SET admin_email_notifications=true WHERE id=1');
   await first.query(`INSERT INTO locations (id,name,address,manager_id) VALUES (5,'Isolated location','Fixture address',2)`);
   await first.query(`INSERT INTO kitchens (id,name,location_id) VALUES (4,'Isolated kitchen',5)`);
   await first.query(`INSERT INTO kitchen_bookings (id,chef_id,kitchen_id,booking_date,start_time,end_time,status,payment_status,total_price) VALUES (10,3,4,'2026-10-04T12:00:00','08:00','10:00','confirmed','paid',2000)`);
-  await first.query(`INSERT INTO kitchen_viewings (id,location_id,targeted_kitchen_id,chef_id,manager_id,scheduled_at,duration_minutes,status) VALUES (20,5,4,3,2,'2026-10-04T11:45:00',30,'confirmed')`);
+  await first.query(`INSERT INTO kitchen_viewings (id,location_id,targeted_kitchen_id,chef_id,manager_id,scheduled_at,duration_minutes,status,confirmation_verified) VALUES (20,5,4,3,2,'2026-10-04T11:45:00',30,'confirmed',true)`);
   vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-04T12:00:00Z'));
 });
 afterAll(async () => {
@@ -96,8 +97,8 @@ describe('isolated 4B additive upgrade and real recovery records', () => {
     expect((await first.query('SELECT id FROM chef_notifications')).rowCount).toBe(2);
     expect((await first.query('SELECT id FROM manager_notifications')).rowCount).toBe(4);
     const recipients = (await first.query('SELECT recipient_email FROM email_logs')).rows.map(row => row.recipient_email);
-    expect(recipients.filter(email => email === 'support@localcook.shop')).toHaveLength(2);
-    expect(recipients).not.toContain('staff@example.test');
+    expect(recipients).not.toContain('support@localcook.shop');
+    expect(recipients.filter(email => email === 'staff@example.test')).toHaveLength(2);
   });
   it('serializes duplicate reports, rejects foreign roles and requires claim/acknowledgment before resolution', async () => {
     const { reportProblem, updateProblem, listProblems } = await import('./commitment-problems');
@@ -155,7 +156,7 @@ describe('isolated 4B additive upgrade and real recovery records', () => {
 
   it('never-confirmed requests cannot report; existing reports remain visible after cancellation', async () => {
     const { reportProblem, listProblems } = await import('./commitment-problems');
-    await first.query("UPDATE kitchen_viewings SET status='cancelled', outcome_history='[]' WHERE id=20");
+    await first.query("UPDATE kitchen_viewings SET status='cancelled', outcome_history='[]', confirmation_verified=false WHERE id=20");
     await expect(scoped(first,()=>reportProblem('tour',20,chef,'Never confirmed tour report attempt','unconfirmed-tour-123456'))).rejects.toThrow('confirmation');
     expect((await scoped(first,()=>listProblems(chef,'tour',20))).length).toBeGreaterThan(0);
     await first.query("UPDATE kitchen_bookings SET status='pending' WHERE id=10");
@@ -185,5 +186,21 @@ describe('isolated 4B additive upgrade and real recovery records', () => {
     await expect(scoped(first,()=>updateProblem(row.id,chef,{action:'reply',expectedRevision:1,note:'Stale reply'}))).rejects.toThrow('changed');
     await expect(scoped(first,()=>updateProblem(row.id,chef,{action:'resolve',expectedRevision:row.revision,note:'Participant resolves'}))).rejects.toThrow('Local Cooks');
     await expect(scoped(first,()=>updateProblem(row.id,chef,{action:'reply',expectedRevision:row.revision,note:''}))).rejects.toThrow('Write a reply');
+  });
+
+  it('reroutes concurrent duplicate legacy support copies into one admin intent without SMTP', async () => {
+    const { deliverOutcomeEmails } = await import('./outcome-delivery');
+    const trackingId = 'problem-outcome:1:999:support';
+    const copies = (await first.query(`INSERT INTO email_logs
+      (recipient_email,recipient_role,subject,category,status,tracking_id,text_body)
+      VALUES ('support@localcook.shop','admin','Legacy schedule impact','lifecycle_outcome','queued',$1,'Fixture'),
+             ('support@localcook.shop','admin','Legacy schedule impact','lifecycle_outcome','queued',$1,'Fixture') RETURNING id`, [trackingId])).rows;
+    state.send.mockClear();
+    await Promise.all(clients.map((client, index) => scoped(client, () => deliverOutcomeEmails(1, 20000, copies[index].id))));
+    expect((await first.query('SELECT status FROM email_logs WHERE id=ANY($1::int[])', [copies.map(row => row.id)])).rows)
+      .toEqual([{ status: 'skipped_policy' }, { status: 'skipped_policy' }]);
+    const replacements = (await first.query('SELECT recipient_email,recipient_user_id,status FROM email_logs WHERE tracking_id=$1', ['problem-outcome:1:999:1'])).rows;
+    expect(replacements).toEqual([{ recipient_email: 'staff@example.test', recipient_user_id: 1, status: 'queued' }]);
+    expect(state.send).not.toHaveBeenCalled();
   });
 });

@@ -10,9 +10,10 @@ import { escapeHtml } from '../security';
 import { getAppBaseUrl } from '../config';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { deliveryReserve, deliveryLeaseMs } from './worker-context';
+import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type Email = { key: string; to: string; url: string; content?: Parameters<typeof sendEmail>[0] };
+type Email = { key: string; to: string; url: string; adminRecipient?: boolean; content?: Parameters<typeof sendEmail>[0] };
 
 /** Notifications and durable email/history evidence commit with the decision. */
 export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: number, kind: string, title: string,
@@ -21,7 +22,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!context) throw new Error('Booking delivery context not found');
-  const recipients = await tx.select({ id: users.id, email: users.username, role: users.role }).from(users)
+  const recipients = await tx.select({ id: users.id, email: users.username, role: users.role, adminEmailNotifications: users.adminEmailNotifications }).from(users)
     .where(or(eq(users.role, 'admin'), context.chefId ? eq(users.id, context.chefId) : undefined,
       context.managerId ? eq(users.id, context.managerId) : undefined));
   const emails: Email[] = [];
@@ -75,9 +76,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
       title, message, actionUrl: path, actionLabel: 'View booking', metadata: { bookingId, ...metadata } }, tx);
-    if (person.email && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
+    if (person.email && operationalEmailAllowed(person) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
-      emails.push({ key: String(person.id), to: person.email, url,
+      emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks,
         ...(confirmation ? { content: generateBookingConfirmationEmail({ ...confirmation,
           chefEmail: person.email, chefName: chef ? 'Chef' : localCooks ? 'Local Cooks' : 'Manager',
           actionUrl: url, isStaff: !chef }) } : {}) });
@@ -138,6 +139,14 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
       if (deadline - Date.now() < deliveryReserve()) { failed = true; break; }
       const trackingId = `booking-event:${event.id}:${email.key}`;
       try {
+        const adminRecipient = email.adminRecipient ?? new URL(email.url).pathname.startsWith('/admin');
+        if (!await (adminRecipient ? adminEmailAllowedForUser : operationalEmailAllowedForUser)(Number(email.key))) {
+          await recordAdminEmailSuppression(email.content || { to: email.to, subject: event.title, text: event.message }, { trackingId, emailType: 'booking' });
+          delivered.push(email.key);
+          await db.update(bookingLifecycleEvents).set({ deliveredEmailKeys: [...delivered] })
+            .where(and(eq(bookingLifecycleEvents.id, event.id), eq(bookingLifecycleEvents.leaseToken, token)));
+          continue;
+        }
         const [sent] = await db.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.trackingId, trackingId), eq(emailLogs.recipientEmail, email.to.toLowerCase()), eq(emailLogs.status, 'sent'))).limit(1);
         let content = email.content || { to: email.to, subject: event.title,
           text: `${event.message}\n\nView booking: ${email.url}`,

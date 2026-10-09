@@ -1,3 +1,4 @@
+import { sendAdminNotificationEmail } from '../../services/admin-email-preferences';
 import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
@@ -724,7 +725,7 @@ router.post('/firebase/chef/kitchen-applications',
                             applicationId: application.id,
                             submittedAt: new Date(),
                         });
-                        await sendEmail(adminEmail, {
+                        await sendAdminNotificationEmail(adminEmail, {
                             trackingId: `kitchen_app_admin_${admin.id}_${application.id}_${Date.now()}`,
                         });
                     }
@@ -750,7 +751,7 @@ router.post('/firebase/chef/kitchen-applications',
                             actionUrl: '/admin?section=kitchen-applications-step1',
                             actionLabel: 'Review documents',
                         });
-                        if (admin.email) await sendEmail({
+                        if (admin.email) await sendAdminNotificationEmail({
                             to: admin.email,
                             subject: 'Kitchen documents ready for review - Local Cooks',
                             text: `${formData.fullName || 'A chef'} submitted kitchen documents for ${location.name || 'a kitchen'}. Review them in the admin kitchen applications queue: ${getDashboardUrl('admin')}?section=kitchen-applications-step1`,

@@ -2,8 +2,9 @@ import { db } from "../db";
 import { applications, emailLogs, users } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../logger";
+import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
 
-export type EmailLogStatus = "sent" | "failed" | "skipped_duplicate";
+export type EmailLogStatus = "sent" | "failed" | "skipped_duplicate" | "skipped_preference" | "skipped_policy";
 
 export interface RecipientFlags {
   id?: number | null;
@@ -228,6 +229,24 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
   if (!log) {
     return { success: false, error: "Email log not found" };
   }
+  if (log.status === 'sent') {
+    return { success: true };
+  }
+
+  if (!['lifecycle_outcome', 'lifecycle_outcome_attempt'].includes(log.category) && isPlatformEmailRecipientBlocked(log.recipientEmail)) {
+    await db.update(emailLogs).set({ status: 'skipped_policy',
+      errorMessage: 'The support contact inbox cannot receive platform-generated email.' }).where(eq(emailLogs.id, logId));
+    return { success: true, message: 'Support contact inbox excluded; no email sent.' };
+  }
+
+  if (log.category === 'admin_notification') {
+    const { adminEmailAllowedForAddress } = await import('./admin-email-preferences');
+    if (!await adminEmailAllowedForAddress(log.recipientEmail)) {
+      await db.update(emailLogs).set({ status: 'skipped_preference',
+        errorMessage: 'Admin operational email is disabled for this recipient.' }).where(eq(emailLogs.id, logId));
+      return { success: true, message: 'Admin email disabled; no email sent.' };
+    }
+  }
 
   if (log.category === 'chat_digest' || log.category === 'chat_digest_attempt') {
     const originalId = log.category === 'chat_digest' ? log.id : log.retryOfId;
@@ -257,6 +276,8 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
     const { deliverOutcomeEmails } = await import('./outcome-delivery');
     await deliverOutcomeEmails(1, 20_000, originalId);
     const [original] = await db.select().from(emailLogs).where(eq(emailLogs.id, originalId)).limit(1);
+    if (original?.status === 'skipped_policy') return { success: true, message: 'Support contact inbox excluded; eligible alerts routed to opted-in admins.' };
+    if (original?.status === 'skipped_preference') return { success: true, message: 'Admin emails disabled; no email sent.' };
     return original?.status === 'sent' ? { success: true } : { success: false, error: 'Original outcome remains pending; check delivery recovery and retry.' };
   }
 

@@ -1,3 +1,4 @@
+import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import fs from "fs";
@@ -258,7 +259,7 @@ router.post("/",
                             hasDocuments,
                             submittedAt: new Date(),
                         });
-                        await sendEmail(adminEmail, {
+                        await sendAdminNotificationEmail(adminEmail, {
                             trackingId: `seller_app_admin_notify_${admin.username}_${application.id}_${Date.now()}`
                         });
                     }
@@ -553,7 +554,7 @@ router.patch("/:id/cancel", async (req: Request, res: Response) => {
             for (const admin of admins) {
                 try {
                     await notificationService.createForManager({ managerId: admin.id, type: 'application_rejected', priority: 'normal', title: 'Seller application cancelled', message: `${updatedApplication.fullName || 'A chef'} cancelled their seller application.`, metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'View application' });
-                    await sendEmail({ to: admin.email, subject: 'Seller application cancelled - Local Cooks', text: `${updatedApplication.fullName || 'A chef'} cancelled their seller application. View the application: ${getDashboardUrl('admin')}?section=applications` });
+                    await sendAdminNotificationEmail({ to: admin.email, subject: 'Seller application cancelled - Local Cooks', text: `${updatedApplication.fullName || 'A chef'} cancelled their seller application. View the application: ${getDashboardUrl('admin')}?section=applications` });
                 } catch (adminError) { logger.error('Error notifying admin about seller cancellation:', adminError); }
             }
         } catch (adminError) { logger.error('Error loading admins for seller cancellation:', adminError); }

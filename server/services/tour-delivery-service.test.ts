@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { PgDialect } from 'drizzle-orm/pg-core';
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 import { scheduleAdvanceReminders } from './advance-reminders';
 const state = vi.hoisted(() => ({ event: null as any, sentLogs: [] as any[], notifications: [] as any[],
-  email: vi.fn(), notify: vi.fn(), insert: vi.fn(), readFails: false, failEmailAck: false, currentTour: null as any,
+  email: vi.fn(), preferenceLog: vi.fn(), notify: vi.fn(), insert: vi.fn(), readFails: false, failEmailAck: false, currentTour: null as any,
   managerId: 2 as number | null, people: [] as any[], applicationNextStep: vi.fn(), feedbackStatus: vi.fn(),
   tourSettings: { arrivalNotes: 'Side entrance', departureNotes: 'Return badge' } as any }));
 vi.mock('./tour-application-service', () => ({ resolveTourApplicationNextStep: state.applicationNextStep }));
@@ -20,6 +21,7 @@ vi.mock('../db', () => {
     },
     select: (fields?: any) => {
       let table = '';
+      let preferenceUserId: number | undefined;
       const rows = () => {
         if (state.readFails) throw Error('Database unavailable');
         if (table === 'email_logs') return state.sentLogs;
@@ -28,10 +30,13 @@ vi.mock('../db', () => {
         if (table === 'kitchens') return [{ name: 'Fixture room' }];
         if (table === 'kitchen_viewing_settings') return state.tourSettings ? [state.tourSettings] : [];
         if (table === 'users' && fields && Object.keys(fields).length === 1) return [{ id: 30 }];
-        if (table === 'users') return state.people;
+        if (table === 'users') return preferenceUserId === undefined ? state.people : state.people.filter(person => person.id === preferenceUserId);
         return state.event && !state.event.completedAt ? [state.event] : [];
       };
-      const chain: any = { from: (value: any) => { table = value[Symbol.for('drizzle:Name')]; return chain; }, where: () => chain,
+      const chain: any = { from: (value: any) => { table = value[Symbol.for('drizzle:Name')]; return chain; }, where: (condition: any) => {
+        if (table === 'users' && fields?.adminEmailNotifications && !fields.id) preferenceUserId = new PgDialect().sqlToQuery(condition).params[0] as number;
+        return chain;
+      },
         limit: () => chain, for: () => chain, orderBy: () => chain, then: (resolve: any, reject: any) => { try { return Promise.resolve(resolve(rows())); } catch (error) { return reject(error); } } };
       return chain;
     },
@@ -45,6 +50,7 @@ vi.mock('../db', () => {
   return { db };
 });
 vi.mock('./notification.service', () => ({ notificationService: { create: state.notify } }));
+vi.mock('./email-log-service', async original => ({ ...await original<typeof import('./email-log-service')>(), logOutgoingEmail: state.preferenceLog }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
 vi.mock('../email', async importOriginal => ({ ...await importOriginal<typeof import('../email')>(), sendEmail: state.email }));
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -66,7 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks(); state.sentLogs = []; state.notifications = []; state.readFails = false; state.failEmailAck = false;
   state.currentTour = { ...tour }; state.managerId = 2;
   state.tourSettings = { arrivalNotes: 'Side entrance', departureNotes: 'Return badge' };
-  state.people = [{ id: 8, email: 'chef@example.test', role: 'chef', profile: {} }, { id: 2, email: 'manager@example.test', role: 'manager', profile: {} }, { id: 30, email: 'admin@example.test', role: 'admin', profile: {} }];
+  state.people = [{ id: 8, email: 'chef@example.test', role: 'chef', profile: {} }, { id: 2, email: 'manager@example.test', role: 'manager', profile: {} }, { id: 30, email: 'admin@example.test', role: 'admin', adminEmailNotifications: true, profile: {} }];
   state.email.mockResolvedValue(true); state.notify.mockImplementation(async message => { state.notifications.push(message); });
   state.applicationNextStep.mockResolvedValue({ action: 'apply', href: '/apply-kitchen/33?tourId=10&kitchenId=40' });
   state.feedbackStatus.mockResolvedValue({ chef: false, manager: false, conflict: false, closed: false, bothReady: false, missing: true });
@@ -74,6 +80,17 @@ beforeEach(() => {
   state.event = { id: 1, viewingId: 10, eventKey: '10:status:version', createdAt: new Date('2026-10-01T10:00:00Z'), payload: payload(), deliveredKeys: [], attempts: 0, completedAt: null };
 });
 describe('tour SMTP recovery safeguards', () => {
+  it('keeps the queued admin bell alert while suppressing email after opting out', async () => {
+    state.event.payload = payload('requested', 'pending_local_cooks');
+    state.event.payload.admins = [{ id: 30, email: 'admin@example.test', name: 'Local Cooks' }];
+    state.currentTour = { ...state.event.payload.after };
+    state.people[2].adminEmailNotifications = false;
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.some(call => call[0].to === 'admin@example.test')).toBe(false);
+    expect(state.notify.mock.calls.some(call => call[0].userId === 30)).toBe(true);
+    expect(state.preferenceLog).toHaveBeenCalledWith(expect.objectContaining({ to: 'admin@example.test', status: 'skipped_preference' }));
+    expect(state.event.deliveredKeys).toContain('admin-email:30');
+  });
   it('persists the attempt before sending and pauses an ambiguous acceptance without another copy, including ordinary admin retry', async () => {
     state.email.mockImplementation(async () => {
       expect(state.event.payload.deliveryAttempts['chef-email']).toMatchObject({ status: 'sending', attempts: 1, recipient: 'chef@example.test' });

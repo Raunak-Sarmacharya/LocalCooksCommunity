@@ -81,7 +81,7 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged }: { booki
       {entry.state !== 'applied' && <p className="text-sm">The requested schedule is not confirmed. The original reservation remains recorded.</p>}
       {pending.includes(entry.state) && <p className="text-sm">{entry.paymentBy ? 'Payment deadline' : 'Decision deadline'}: {time(entry.paymentBy || entry.decisionBy)}.</p>}
       <details><summary className="cursor-pointer text-sm">Recorded price and refund details</summary><div className="pt-2"><ChangePrice quote={entry.quote} /></div></details>
-      {entry.state === 'recovery_required' && <p className="text-sm">Local Cooks owns payment and schedule recovery. {entry.refundRecorded ? 'The approved refund is recorded.' : entry.paymentRecorded ? 'The additional payment or card hold is recorded.' : 'The financial outcome is unverified.'} Do not pay again or request a second refund. Contact <a className="underline" href="mailto:support@localcook.shop">support@localcook.shop</a>.</p>}
+      {entry.state === 'recovery_required' && <p className="text-sm">Local Cooks owns payment and schedule recovery. {entry.refundRecorded ? 'The approved refund is recorded.' : entry.paymentRecorded ? 'The additional payment or card hold is recorded.' : 'The financial outcome is unverified.'} Do not pay again or request a second refund. Contact <a className="underline" href="mailto:support@localcooks.ca">support@localcooks.ca</a>.</p>}
       {manager && entry.canDecide && ['requested', 'authorized'].includes(entry.state) && <div className="space-y-2">
         <Button variant="outline" disabled={busy} onClick={() => void decision(entry, 'decline')}>Decline</Button>
       </div>}

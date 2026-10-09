@@ -1092,7 +1092,7 @@ export default function TermsContent() {
       <p className="mb-4">
         Jawrophi Delivery Inc. operating as &ldquo;Local Cooks&rdquo;<br />
         4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada<br />
-        Email: support@localcook.shop<br />
+        Email: support@localcooks.ca<br />
         Phone: +1 (709)-631-8480<br />
         Website: www.localcooks.ca
       </p>

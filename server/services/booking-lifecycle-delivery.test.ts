@@ -6,12 +6,15 @@ vi.mock('./visit-duties', () => ({ kitchenDuties: vi.fn(async () => {
 }), storageDuties: vi.fn() }));
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 import { scheduleAdvanceReminders } from './advance-reminders';
-const state = vi.hoisted(() => ({ notify: vi.fn(), insert: vi.fn(), send: vi.fn(), event: null as any, database: null as any, rows: [] as any[][] }));
+const state = vi.hoisted(() => ({ notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, event: null as any, database: null as any, rows: [] as any[][] }));
 vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.select(...args), update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
+vi.mock('./email-log-service', () => ({ logOutgoingEmail: state.log }));
 vi.mock('./notification.service', () => ({ notificationService: { create: state.notify } }));
 vi.mock('../email', async importOriginal => ({ ...await importOriginal<typeof import('../email')>(), sendEmail: state.send }));
 import { deliverBookingLifecycleEvents, queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
-const tx: any = { select: () => { const chain: any = { from: () => chain, innerJoin: () => chain, leftJoin: () => chain, where: () => chain,
+const tx: any = { select: (fields?: any) => {
+  if (fields?.adminEmailNotifications && !fields.id) return { from: () => ({ where: () => ({ limit: async () => [{ role: 'admin', adminEmailNotifications: state.adminEmailEnabled }] }) }) };
+ const chain: any = { from: () => chain, innerJoin: () => chain, leftJoin: () => chain, where: () => chain,
   limit: () => chain, orderBy: () => chain, for: () => chain, then: (resolve: any) => resolve(state.rows.shift()) }; return chain; },
   insert: () => ({ values: state.insert }),
   update: () => ({ set: (values: any) => ({ where: () => {
@@ -21,9 +24,9 @@ const tx: any = { select: () => { const chain: any = { from: () => chain, innerJ
   } }) }),
 };
 describe('booking lifecycle recipients and durable email evidence', () => {
-  beforeEach(() => { vi.clearAllMocks(); vi.stubEnv('NODE_ENV', 'development'); state.rows = [
+  beforeEach(() => { vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
     [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' },
-      { id: 2, email: 'manager@example.test', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin' }] ]; });
+      { id: 2, email: 'manager@example.test', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin', adminEmailNotifications: true }] ]; });
   it('commits an in-app alert and email outbox recipient for each surface', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Chef attendance reported', 'Shared attendance evidence', 2, { visitId: 5 });
     expect(state.notify).toHaveBeenCalledTimes(3);
@@ -37,6 +40,15 @@ describe('booking lifecycle recipients and durable email evidence', () => {
   it('rolls back the caller when the outbox cannot be saved', async () => {
     state.insert.mockRejectedValueOnce(new Error('outbox unavailable'));
     await expect(queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Confirmed', 'Payment captured')).rejects.toThrow('outbox unavailable');
+  });
+  it('keeps every admin in-app alert but queues email only for opted-in admins', async () => {
+    state.rows[1][2].adminEmailNotifications = false;
+    state.rows[1].push({ id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true });
+    await queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Attendance reported', 'Shared evidence');
+    expect(state.notify).toHaveBeenCalledTimes(4);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual([
+      'chef@example.test', 'manager@example.test', 'test_admin@localcooks.ca',
+    ]);
   });
   it('commits participant receipts, manager-only email and reminder reconciliation for a visit action', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Inspection needed', 'Inspect current visit', 3,
@@ -61,7 +73,7 @@ const confirmed = () => ({ booking: { id: 10, chefId: 3, kitchenId: 4, status: '
   checklist: { checkinEnabled: true, checkoutEnabled: true, checkinInstructions: 'Meet at side entrance' } });
 
 describe('real rich renderer at the persisted confirmation boundary', () => {
-  beforeEach(() => { vi.clearAllMocks(); vi.stubEnv('NODE_ENV', 'development'); state.rows = [
+  beforeEach(() => { vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
     [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' }],
     [confirmed()], [{ amount: '1220', tax: '150', fee: '70' }],
     [{ name: 'Approved cold storage', item: { totalPrice: '500', startDate: new Date('2026-10-07'), endDate: new Date('2026-10-10') } }],
@@ -108,5 +120,16 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     state.rows[2][0].booking.paymentStatus = 'authorized';
     await expect(queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured')).rejects.toThrow('verified paid');
     expect(state.insert).not.toHaveBeenCalled();
+  });
+  it('suppresses queued emails after an admin opts out without claiming SMTP acceptance', async () => {
+    state.event = { id: 99, bookingId: 10, kind: 'report_attended', title: 'Review attendance', message: 'Review record',
+      emails: [{ key: '1', to: 'admin@example.test', url: 'https://admin.example.test' }], metadata: {}, deliveredEmailKeys: [] };
+    state.database = tx;
+    state.adminEmailEnabled = false;
+    state.rows = [[state.event]];
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.send).not.toHaveBeenCalled();
+    expect(state.log).toHaveBeenCalledWith(expect.objectContaining({ status: 'skipped_preference' }));
+    expect(state.event.deliveredEmailKeys).toEqual(['1']);
   });
 });

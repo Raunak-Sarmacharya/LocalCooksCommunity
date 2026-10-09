@@ -10,6 +10,7 @@ import { readVisitDuties } from '@shared/visit-duties';
 import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { getAppBaseUrl } from '../config';
 import { sendEmail, renderTransactionalEmail } from '../email';
+import { operationalEmailAllowedForUser } from './admin-email-preferences';
 import { getUserDisplayName } from '../utils/user-display';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { notificationService } from './notification.service';
@@ -323,6 +324,10 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
         .orderBy(sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
       if (!intent) return null;
       const { reminder: saved, channel } = JSON.parse(intent.textBody!) as { reminder: Reminder; channel: 'email' | 'notification' };
+      if (channel === 'email' && !await operationalEmailAllowedForUser(saved.recipientId, tx)) {
+        await tx.update(emailLogs).set({ status: 'skipped_preference', errorMessage: 'Admin operational email is disabled for this recipient.' }).where(eq(emailLogs.id, intent.id));
+        return { id: intent.id, state: 'suppressed' };
+      }
       const deliveryNow = options.now || new Date();
       let fresh: Reminder | undefined;
       try { fresh = (await currentReminders(tx, saved.source, saved.reservationId, policy, deliveryNow)).find(r => reminderKey(r, channel) === intent.trackingId); }

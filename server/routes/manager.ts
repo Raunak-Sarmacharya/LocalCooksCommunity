@@ -1,3 +1,4 @@
+import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { Router, Request, Response } from "express";
 import { randomUUID } from 'node:crypto';
 import { reconcileCapturedBookingPayment, recordCapturedBookingReview, CapturedBookingReviewRequired } from '../services/captured-booking-reconciliation';
@@ -5955,7 +5956,7 @@ router.post(
                 locationId: (location as any).id,
                 submittedAt: new Date(),
               });
-              await sendEmail(adminEmail, {
+              await sendAdminNotificationEmail(adminEmail, {
                 trackingId: `kitchen_license_submitted_${(location as any).id}_${Date.now()}`,
               });
             }
@@ -6247,7 +6248,7 @@ router.put(
                 isUpdate: isUpdateSubmission, // true = pending_update (approved license being updated)
                 isReplacement: isReplacedPending, // true = manager replaced their pending-not-yet-approved license
               });
-              await sendEmail(adminEmail, {
+              await sendAdminNotificationEmail(adminEmail, {
                 trackingId: `kitchen_license_${isUpdateSubmission ? 'update' : isReplacedPending ? 'replaced' : 'submitted'}_${locationId}_${Date.now()}`,
               });
             }

@@ -9,6 +9,8 @@ import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { hasTourConfirmation } from '@shared/tour-outcome';
 import { reminderVisitTimes } from './advance-reminders';
 import { DomainError } from '../shared/errors/domain-error';
+import { operationalEmailAllowed } from './admin-email-preferences';
+import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Problem = typeof commitmentProblems.$inferSelect;
@@ -71,17 +73,13 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
     await notificationService.create({ userId: person.id, target: role === 'chef' ? 'chef' : 'manager', type: 'system_announcement',
       priority: 'high', title, message,
       actionUrl: path, actionLabel: role === 'admin' ? 'Claim or review problem' : 'View problem', metadata: { problemId: problem.id, revision: problem.revision } }, tx);
-    // Admin bell/queue is shared; SMTP goes only to the published support mailbox and actual participants.
-    if (role === 'admin') continue;
+    // Keep admin bell alerts for everyone; only opted-in admins receive email.
+    if (assignmentOnly || !operationalEmailAllowed(person) || isPlatformEmailRecipientBlocked(person.username)) continue;
     await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id, recipientRole: role,
       subject: title, category: 'lifecycle_outcome', status: 'queued', previewText: message,
       trackingId: `problem-outcome:${problem.id}:${problem.revision}:${person.id}`,
-      textBody: `${message}\n\n${getAppBaseUrl(role === 'chef' ? 'chef' : 'kitchen')}${path}` });
+      textBody: `${message}\n\n${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
   }
-  if (!assignmentOnly) await tx.insert(emailLogs).values({ recipientEmail: 'support@localcook.shop', recipientRole: 'admin',
-    subject: title, category: 'lifecycle_outcome', status: 'queued', previewText: message,
-    trackingId: `problem-outcome:${problem.id}:${problem.revision}:support`,
-    textBody: `${message}\n\n${getAppBaseUrl('admin')}/admin?section=live-problems` });
 }
 
 export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour'; id: number; actor: Actor; description: string; sourceKey: string }) {

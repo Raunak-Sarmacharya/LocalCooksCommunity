@@ -659,7 +659,7 @@ export async function generateInvoicePDF(
         .fillColor(statusColor).text(statusLabel);
 
       doc.fontSize(10).font('Helvetica').fillColor('#9CA3AF');
-      doc.text('For questions, contact support@localcook.shop', 50, doc.page.height - 60, {
+      doc.text('For questions, contact support@localcooks.ca', 50, doc.page.height - 60, {
         align: 'center',
         width: tableWidth,
       });
@@ -921,7 +921,7 @@ export async function generateStorageInvoicePDF(
       const footerY = pageHeight - 80;
 
       doc.moveTo(50, footerY).lineTo(550, footerY).stroke('#e5e7eb');
-      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcook.shop', 50, footerY + 15, { align: 'center', width: 500 });
+      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcooks.ca', 50, footerY + 15, { align: 'center', width: 500 });
       doc.fillColor('#000000');
 
       doc.end();
@@ -1154,7 +1154,7 @@ export async function generateDamageClaimInvoicePDF(
       const dcFooterY = dcPageHeight - 80;
 
       doc.moveTo(50, dcFooterY).lineTo(550, dcFooterY).stroke('#e5e7eb');
-      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcook.shop', 50, dcFooterY + 15, { align: 'center', width: 500 });
+      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcooks.ca', 50, dcFooterY + 15, { align: 'center', width: 500 });
       doc.fillColor('#000000');
 
       doc.end();

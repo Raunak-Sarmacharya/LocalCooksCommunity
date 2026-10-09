@@ -23,6 +23,7 @@ import { retryFailedEmail } from './email-log-service';
 import { updatePaymentTransaction } from './payment-transactions-service';
 import { addPaymentHistory } from './payment-transactions-service';
 import { processManagerDecision } from './overstay-penalty-service';
+import { createProblem } from './commitment-problems';
 vi.mock('./overstay-defaults-service', () => ({ getOverstayDisputeWindowHours: async () => 48 }));
 
 const name = (table: any) => table[Symbol.for('drizzle:Name')];
@@ -57,7 +58,7 @@ beforeEach(() => {
     damage_evidence: [{ evidenceType: 'photo_before' }, { evidenceType: 'photo_after' }, { evidenceType: 'receipt' }],
     users: [{ id: 3, username: 'chef@example.test', email: 'chef@example.test', role: 'chef' },
       { id: 2, username: 'manager@example.test', email: 'manager@example.test', role: 'manager' },
-      { id: 1, username: 'admin@example.test', email: 'admin@example.test', role: 'admin' }],
+      { id: 1, username: 'admin@example.test', email: 'admin@example.test', role: 'admin', adminEmailNotifications: true }],
     damage_claim_history: [], email_logs: [], booking_lifecycle_events: [], payment_history: [],
   };
   state.db = {
@@ -90,7 +91,8 @@ beforeEach(() => {
     },
     insert: (table: any) => ({ values: (value: any) => {
       const save = () => { if (['email_logs', 'booking_lifecycle_events'].includes(name(table)) && state.failIntent) throw Error('intent unavailable');
-        const row = { id: (state.tables[name(table)] || []).length + 1, createdAt: new Date(), retryCount: 0, retriedAt: null,
+      const row = { id: (state.tables[name(table)] || []).length + 1, createdAt: new Date(), retryCount: 0, retriedAt: null,
+          ...(name(table) === 'commitment_problems' ? { status: 'reported', revision: 1 } : {}),
           deliveredEmailKeys: [], metadata: {}, ...value };
         (state.tables[name(table)] ||= []).push(row); return [row]; };
       return { returning: async () => save(), then: (resolve: any, reject: any) => { try { resolve(save()); } catch (error) { reject(error); } } };
@@ -105,6 +107,50 @@ beforeEach(() => {
 });
 
 describe('actual producer → persisted intent → worker → admin replay', () => {
+  it('queues schedule impacts for opted-in admins and participants, while keeping all admin bell alerts', async () => {
+    state.tables.kitchen_bookings = [{ id: 10, booking: state.tables.kitchen_bookings[0], managerId: 2, timezone: 'America/St_Johns' }];
+    state.tables.users.push({ id: 4, username: 'off-admin@example.test', role: 'admin', adminEmailNotifications: false });
+    state.tables.commitment_problems = [];
+    await state.db.transaction((tx: any) => createProblem(tx, { kind: 'schedule', commitment: 'booking', id: 10,
+      actor: { id: 2, role: 'manager' }, sourceKey: 'schedule-fixture', description: 'Operating hours changed' }));
+    expect(state.alerts.map(alert => alert.userId)).toEqual([3, 2, 1, 4]);
+    expect(state.tables.email_logs.map(log => log.recipientEmail)).toEqual(['chef@example.test', 'manager@example.test', 'admin@example.test']);
+    expect(state.tables.email_logs.find(log => log.recipientUserId === 1)).toMatchObject({ recipientRole: 'admin', trackingId: 'problem-outcome:1:1:1' });
+    state.send.mockResolvedValue(true);
+    await deliverOutcomeEmails(3);
+    expect(state.send).toHaveBeenCalledTimes(3);
+    expect(state.send.mock.calls.some(([content]) => content.to === 'support@localcook.shop')).toBe(false);
+  });
+  it('reroutes a pending legacy support copy once and lets admin replay send only its replacement', async () => {
+    state.tables.kitchen_bookings = [{ id: 10, booking: state.tables.kitchen_bookings[0], managerId: 2, timezone: 'America/St_Johns' }];
+    state.tables.commitment_problems = [{ id: 7, bookingId: 10, status: 'reported', description: 'Closure changed', history: [] }];
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'support@localcook.shop', recipientRole: 'admin', recipientUserId: null,
+      category: 'lifecycle_outcome', status: 'failed', subject: 'Review affected visit', trackingId: 'problem-outcome:7:1:support',
+      textBody: 'Recorded schedule impact', createdAt: new Date(), retryCount: 1 }];
+    expect(await retryFailedEmail(1)).toMatchObject({ success: true });
+    expect(state.tables.email_logs[0].status).toBe('skipped_policy');
+    expect(state.tables.email_logs).toHaveLength(2);
+    expect(state.tables.email_logs[1]).toMatchObject({ recipientUserId: 1, recipientEmail: 'admin@example.test', trackingId: 'problem-outcome:7:1:1' });
+    expect(state.send).not.toHaveBeenCalled();
+    expect(await retryFailedEmail(1)).toMatchObject({ success: true });
+    expect(state.tables.email_logs).toHaveLength(2);
+    state.send.mockResolvedValue(true);
+    expect(await deliverOutcomeEmails(1)).toEqual({ completed: 1 });
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.send.mock.calls[0][0]).toMatchObject({ to: 'admin@example.test' });
+    expect(state.send.mock.calls[0][0].text).toContain('Closure changed');
+  });
+  it.each(['opted_out', 'already_accepted'])('suppresses a legacy support copy without another admin send when %s', async mode => {
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'support@localcook.shop', recipientUserId: null,
+      category: 'lifecycle_outcome', status: 'queued', subject: 'Schedule impact', trackingId: 'problem-outcome:7:1:support' }];
+    if (mode === 'opted_out') state.tables.users[2].adminEmailNotifications = false;
+    else state.tables.email_logs.push({ id: 2, recipientUserId: 1, recipientEmail: 'admin@example.test',
+      category: 'lifecycle_outcome', status: 'sent', trackingId: 'problem-outcome:7:1:1' });
+    await deliverOutcomeEmails(1);
+    expect(state.tables.email_logs[0].status).toBe('skipped_policy');
+    expect(state.tables.email_logs).toHaveLength(mode === 'opted_out' ? 1 : 2);
+    expect(state.send).not.toHaveBeenCalled();
+  });
   it('persists independent storage assistance receipts and manager email with owned recovery', async () => {
     state.tables.storage_bookings = [{ id: 30, storage: { id: 30, chefId: 3, updatedAt: new Date('2026-10-02') }, managerId: 2 }];
     await state.db.transaction(async (tx: any) => queueStorageVisitAction(tx, 30, 'departure', 2,
@@ -167,6 +213,15 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(state.tables.damage_claim_history).toHaveLength(2);
     expect(state.tables.email_logs).toHaveLength(3); // chef, manager, Local Cooks reviewer
     expect(state.tables.email_logs.every(row => row.subject.endsWith('under review'))).toBe(true);
+  });
+  it('suppresses previously queued admin outcomes when the current preference is disabled', async () => {
+    state.tables.users[2].adminEmailNotifications = false;
+    state.tables.email_logs.push({ id: 1, recipientEmail: 'admin@example.test', recipientUserId: 1, recipientRole: 'admin',
+      category: 'lifecycle_outcome', status: 'queued', subject: 'Review damage claim', trackingId: 'claim-outcome:7:1:1', retryCount: 0 });
+    expect(await deliverOutcomeEmails(1)).toEqual({ completed: 0 });
+    expect(state.send).not.toHaveBeenCalled();
+    expect(state.tables.email_logs[0].status).toBe('skipped_preference');
+    expect(state.tables.damage_claims[0].status).toBe('draft');
   });
   it('commits clearance with its chef notice and rolls back when the outbox fails', async () => {
     expect((await processKitchenCheckoutClear(10, 2)).success).toBe(true);

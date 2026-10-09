@@ -271,7 +271,7 @@ export default function TermsContent_fr_3() {
       <p className="mb-4">
         Jawrophi Delivery Inc. opérant sous le nom de « Local Cooks »<br />
         4 Priscilla Place, Paradise, Terre-Neuve-et-Labrador, A1L 1E6, Canada<br />
-        Courriel : support@localcook.shop<br />
+        Courriel : support@localcooks.ca<br />
         Téléphone : +1 (709)-631-8480<br />
         Site Web : www.localcooks.ca
       </p>
@@ -314,7 +314,7 @@ export default function TermsContent_fr_3() {
       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 mt-8">
         <h3 className="text-lg font-bold mb-2">Des questions ? Contactez Local Cooks :</h3>
         <p className="text-sm mb-1"><strong>Jawrophi Delivery Inc.</strong> opérant sous le nom de « Local Cooks »</p>
-        <p className="text-sm mb-1"><strong>Courriel :</strong> support@localcook.shop</p>
+        <p className="text-sm mb-1"><strong>Courriel :</strong> support@localcooks.ca</p>
         <p className="text-sm mb-1"><strong>Téléphone :</strong> +1 (709)-631-8480</p>
         <p className="text-sm mb-1"><strong>Site Web :</strong> www.localcooks.ca</p>
         <p className="text-sm"><strong>Adresse postale :</strong> 4 Priscilla Place, Paradise, Terre-Neuve-et-Labrador, A1L 1E6, Canada</p>

@@ -83,6 +83,7 @@ export class MemStorage implements IStorage {
       // Seeded admins sign in with this password, so it is a known secret.
       passwordSetByUser: true,
       role: "admin",
+      adminEmailNotifications: true,
       googleId: null,
       facebookId: null,
       firebaseUid: null,
@@ -182,6 +183,7 @@ export class MemStorage implements IStorage {
       // Mirrors the column default: registration never collects a password.
       passwordSetByUser: (insertUser as any).passwordSetByUser ?? false,
       role: insertUser.role || "chef",
+      adminEmailNotifications: false,
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
       firebaseUid: insertUser.firebaseUid || null,

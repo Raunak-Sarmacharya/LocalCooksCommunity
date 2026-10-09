@@ -1,6 +1,7 @@
 import { tourReconfirmation, tourReconfirmationEventKey } from '@shared/tour-reconfirmation';
 import { tourRequestDecision, tourRequestEscalationDue, tourRequestEscalationKey } from '@shared/tour-request-decision';
 import { randomUUID } from 'node:crypto';
+import { adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
 import { and, eq, inArray, isNull, lte, or, sql, asc } from 'drizzle-orm';
 import { db } from '../db';
 import { emailLogs, kitchenViewings, kitchenViewingSettings, kitchens, locations, tourDeliveryEvents, users } from '@shared/schema';
@@ -829,6 +830,11 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
           const [owned] = await db.update(tourDeliveryEvents).set({ leaseUntil: new Date(Date.now() + deliveryLeaseMs()) })
             .where(and(eq(tourDeliveryEvents.id, event.id), eq(tourDeliveryEvents.leaseToken, token))).returning({ id: tourDeliveryEvents.id });
           if (!owned) throw new Error('Tour delivery lease lost');
+          const adminEmailId = /^(?:feedback-)?admin-email:(\d+)$/.exec(message.key)?.[1];
+          if (message.email && adminEmailId && !await adminEmailAllowedForUser(Number(adminEmailId))) {
+            await recordAdminEmailSuppression(message.email, { trackingId: `tour-event:${event.id}:${message.key}`, emailType: 'tour' });
+            message.email = undefined;
+          }
           if (message.email) {
             const trackingId = `tour-event:${event.id}:${message.key}`;
             const [sent] = await db.select({ id: emailLogs.id }).from(emailLogs)

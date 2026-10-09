@@ -340,7 +340,7 @@ router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin
                     },
                     footer: footer || {
                         mainText: 'Thank you for being part of the Local Cooks community!',
-                        contactText: 'Questions? Contact us at support@localcooks.com',
+                        contactText: 'Questions? Contact us at support@localcooks.ca',
                         copyrightText: '© 2024 Local Cooks. All rights reserved.',
                         showContact: true,
                         showCopyright: true,
@@ -506,7 +506,7 @@ router.post('/admin/test-promo-email', requireFirebaseAuthWithUser, requireAdmin
             },
             footer: footer || {
                 mainText: 'Thank you for being part of the Local Cooks community!',
-                contactText: 'Questions? Contact us at support@localcooks.com',
+                contactText: 'Questions? Contact us at support@localcooks.ca',
                 copyrightText: '© 2024 Local Cooks. All rights reserved.',
                 showContact: true,
                 showCopyright: true,
@@ -670,7 +670,7 @@ router.post('/admin/preview-promo-email', requireFirebaseAuthWithUser, requireAd
                 },
                 footer: footer || {
                     mainText: 'Thank you for being part of the Local Cooks community!',
-                    contactText: 'Questions? Contact us at support@localcooks.com',
+                    contactText: 'Questions? Contact us at support@localcooks.ca',
                     copyrightText: '© 2024 Local Cooks. All rights reserved.',
                     showContact: true,
                     showCopyright: true,

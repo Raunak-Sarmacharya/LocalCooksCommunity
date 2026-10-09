@@ -125,6 +125,8 @@ function categoryLabel(category: string): string {
 }
 
 function statusBadge(status: string) {
+  if (status === "skipped_policy") return <Badge variant="secondary">Support inbox excluded</Badge>;
+  if (status === "skipped_preference") return <Badge variant="secondary">Admin emails disabled</Badge>;
   if (status === "scheduled") return <Badge variant="secondary">Scheduled action</Badge>;
   if (status === "suppressed") return <Badge variant="secondary">Obsolete action suppressed</Badge>;
   if (status === "queued") return <Badge variant="secondary">Pending delivery</Badge>;
@@ -475,6 +477,8 @@ export function EmailLogSection({ getFirebaseToken }: EmailLogSectionProps) {
             <SelectItem value="queued">Pending delivery</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
             <SelectItem value="skipped_duplicate">Skipped</SelectItem>
+            <SelectItem value="skipped_preference">Admin emails disabled</SelectItem>
+            <SelectItem value="skipped_policy">Support inbox excluded</SelectItem>
           </SelectContent>
         </Select>
         <Select

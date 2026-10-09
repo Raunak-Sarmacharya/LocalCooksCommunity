@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Trash2, Loader2, UserMinus } from "lucide-react";
 import { auth } from "@/lib/firebase";
+import { Switch } from "@/components/ui/switch";
 
 /** One line of "what will be removed" in the delete confirmation. */
 type DeleteImpactCategory = {
@@ -81,6 +82,7 @@ const DELETE_IMPACT_CATEGORIES: DeleteImpactCategory[] = [
 export function AdminUserManagement() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [savingEmailUserId, setSavingEmailUserId] = useState<number | null>(null);
   const [deletingUser, setDeletingUser] = useState<any | null>(null);
   const [impact, setImpact] = useState<any | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
@@ -124,6 +126,21 @@ export function AdminUserManagement() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const setAdminEmailNotifications = async (userId: number, enabled: boolean) => {
+    setSavingEmailUserId(userId);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/admin-email-notifications`, {
+        method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) throw new Error('Could not update email notifications');
+      const updated = await response.json();
+      setUsers(current => current.map(user => user.id === userId ? { ...user, adminEmailNotifications: updated.adminEmailNotifications } : user));
+      toast.success(enabled ? 'Admin emails enabled' : 'Admin emails disabled');
+    } catch (error: any) {
+      toast.error('Error', { description: error.message });
+    } finally { setSavingEmailUserId(null); }
   };
 
   useEffect(() => {
@@ -207,6 +224,7 @@ export function AdminUserManagement() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">User Management</h2>
       </div>
+      <p className="text-sm text-muted-foreground">Admin email notifications control operational alerts. Account security emails and in-app notifications continue.</p>
 
       <div className="rounded-md border">
         <Table>
@@ -215,6 +233,7 @@ export function AdminUserManagement() {
               <TableHead>ID</TableHead>
               <TableHead>Username/Email</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Admin emails</TableHead>
               <TableHead>Firebase UID</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -225,6 +244,14 @@ export function AdminUserManagement() {
                 <TableCell>{user.id}</TableCell>
                 <TableCell className="font-medium">{user.username}</TableCell>
                 <TableCell className="capitalize">{user.role}{user.cleanupPending && " — cleanup pending"}</TableCell>
+                <TableCell>
+                  {user.role === 'admin' ? <Switch
+                    aria-label={`Admin email notifications for ${user.username}`}
+                    checked={user.adminEmailNotifications === true}
+                    disabled={savingEmailUserId !== null || user.cleanupPending}
+                    onCheckedChange={enabled => setAdminEmailNotifications(user.id, enabled)}
+                  /> : '—'}
+                </TableCell>
                 <TableCell className="text-muted-foreground text-xs font-mono">
                   {user.firebaseUid || "N/A"}
                 </TableCell>
@@ -243,13 +270,13 @@ export function AdminUserManagement() {
             ))}
             {users.length === 0 && !loading && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                   No users found.
                 </TableCell>
               </TableRow>
             )}
             {loading && users.length === 0 && (
-              Array.from({ length: 4 }, (_, index) => <TableRow key={index}><TableCell colSpan={5}><Skeleton className="h-10 w-full rounded-lg" /></TableCell></TableRow>)
+              Array.from({ length: 4 }, (_, index) => <TableRow key={index}><TableCell colSpan={6}><Skeleton className="h-10 w-full rounded-lg" /></TableCell></TableRow>)
             )}
           </TableBody>
         </Table>

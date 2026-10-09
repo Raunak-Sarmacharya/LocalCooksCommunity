@@ -358,7 +358,7 @@ const PromoCodeSender: React.FC = () => {
       },
       footer: {
         mainText: 'Thank you for being part of the Local Cooks community!',
-        contactText: 'Questions? Contact us at support@localcooks.com',
+        contactText: 'Questions? Contact us at support@localcooks.ca',
         copyrightText: '© 2024 Local Cooks. All rights reserved.',
         showContact: true,
         showCopyright: true,

@@ -13,7 +13,7 @@ describe('kitchen booking calendar invite', () => {
       expect(content).not.toContain('reschedule or cancel');
       expect(content).not.toContain('chat in your dashboard');
       expect(content).toContain('date/time change');
-      expect(content).toContain(isStaff ? 'support@localcook.shop' : 'manager@example.test');
+      expect(content).toContain(isStaff ? 'support@localcooks.ca' : 'manager@example.test');
       expect(content).toContain(isStaff ? 'review its current status' : 'request cancellation');
     }
     if (isStaff) expect(email.text).not.toContain('Arrival tracking is off');

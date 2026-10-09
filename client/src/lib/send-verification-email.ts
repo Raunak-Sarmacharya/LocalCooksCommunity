@@ -3,6 +3,7 @@ import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
 import { getAuthIntent, resolveVerificationReturnPath } from "@/lib/auth-intent";
 import { getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
+import { isSupportContactMailbox } from "@shared/email-recipient-policy";
 
 export type VerificationSendChannel = "server" | "firebase";
 
@@ -15,6 +16,9 @@ export async function sendVerificationEmailWithFallback(options: {
   const email = options?.email?.trim();
   if (!email) {
     throw new Error("Email is required to send a verification link.");
+  }
+  if (isSupportContactMailbox(email)) {
+    throw new Error("This support address cannot receive platform verification emails.");
   }
   const role = options.role || "chef";
   const returnUrl = options.returnUrl;

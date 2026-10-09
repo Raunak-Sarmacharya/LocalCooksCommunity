@@ -90,7 +90,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   return <section className="space-y-3 rounded-lg border bg-background p-4" aria-label={heading}>
     <h3 className="font-semibold">{heading}</h3>
     {kind && !staff && <div className="space-y-0.5 text-xs text-muted-foreground">
-      <p><span className="whitespace-nowrap">Call <a className="underline" href="tel:+17096318480">709-631-8480</a></span> <span className="whitespace-nowrap">or email <a className="underline" href="mailto:support@localcook.shop">support@localcook.shop</a></span></p>
+      <p><span className="whitespace-nowrap">Call <a className="underline" href="tel:+17096318480">709-631-8480</a></span> <span className="whitespace-nowrap">or email <a className="underline" href="mailto:support@localcooks.ca">support@localcooks.ca</a></span></p>
       <p><span className="whitespace-nowrap">Mon–Fri, 9 AM–5 PM NL time</span> · <span className="whitespace-nowrap">After hours, we reply within 24 hrs</span></p>
     </div>}
     {!kind && !staff && <p className="text-sm">Need help with a visit? Open your <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=bookings' : '/dashboard?view=bookings'}>booking</a> or <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=viewings' : '/dashboard?view=viewings'}>tour details</a>.</p>}

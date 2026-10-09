@@ -58,7 +58,7 @@ it.each(['reported','acknowledged','escalated','resolved'])('shows existing %s r
   const client=mount({kind:'tour',id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[{...problem,status}],reportingAvailable:false})})));
   expect(await screen.findByText(/Request #4/)).toBeInTheDocument();
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'support@localcook.shop'})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'support@localcooks.ca'})).toHaveAttribute('href','mailto:support@localcooks.ca');
   expect(!!screen.queryByText(/Your request is still open|Your report has been received/)).toBe(status!=='resolved'); client.clear();
 });
 
@@ -102,9 +102,9 @@ it('lets current server eligibility enable reporting without reopening the paren
 
 it.each(['booking','tour'] as const)('explains when %s reporting opens while retaining support and existing replies', async kind => {
   const client=mount({kind,id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[problem],reportingAvailable:false,reportingOpensAt:'2026-10-05T12:00:00Z'})})));
-  expect(await screen.findByText(/Reporting opens at the scheduled start\./)).toHaveTextContent('Contact support if you need help before then.');
+  expect(await screen.findByText(/Reporting opens at the scheduled start\./)).toHaveTextContent('Contact support if you need help.');
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'support@localcook.shop'})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'support@localcooks.ca'})).toHaveAttribute('href','mailto:support@localcooks.ca');
   expect(screen.getByRole('textbox',{name:'Add a reply'})).toBeInTheDocument(); client.clear();
 });
 

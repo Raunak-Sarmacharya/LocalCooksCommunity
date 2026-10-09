@@ -25,7 +25,7 @@ export default function PrivacyContent_uk() {
       <h2 className="text-2xl font-bold mt-8 mb-4">2. Хто ми та як з нами зв’язатися</h2>
       <p className="mb-4">
         <strong>Jawrophi Delivery Inc. діє як «Local Cooks»</strong><br />
-        Електронна пошта: support@localcook.shop<br />
+        Електронна пошта: support@localcooks.ca<br />
         Телефон: +1 (709)-631-8480<br />
         Вебсайт: www.localcooks.ca
       </p>
@@ -215,7 +215,7 @@ export default function PrivacyContent_uk() {
         <li><strong>Закриття облікового запису:</strong> Зробити запит на деактивацію або видалення вашого облікового запису користувача з урахуванням наших зобов'язань щодо зберігання даних.</li>
       </ul>
       <p className="mb-4">
-        Ви також можете <strong>відмовитися від маркетингових електронних листів</strong> у будь-який час, натиснувши посилання «скасувати підписку» в цих листах або зв’язавшись з нами за адресою support@localcook.shop.
+        Ви також можете <strong>відмовитися від маркетингових електронних листів</strong> у будь-який час, натиснувши посилання «скасувати підписку» в цих листах або зв’язавшись з нами за адресою support@localcooks.ca.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">12. Безпека облікового запису та даних</h2>
@@ -271,7 +271,7 @@ export default function PrivacyContent_uk() {
         <strong>Співробітник із питань конфіденційності</strong><br />
         Jawrophi Delivery Inc.<br />
         4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada<br />
-        Електронна пошта: support@localcook.shop
+        Електронна пошта: support@localcooks.ca
       </p>
       <p className="mb-4">
         Ви також маєте право подати скаргу до <strong>Управління комісара з питань конфіденційності Канади</strong> або відповідного провінційного регулятора з питань конфіденційності.

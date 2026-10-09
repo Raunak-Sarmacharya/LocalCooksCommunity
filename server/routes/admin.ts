@@ -147,6 +147,25 @@ router.get("/users/:id/delete-impact", requireFirebaseAuthWithUser, requireAdmin
     }
 });
 
+// Admin-only preference; public profile updates cannot set it.
+router.patch('/users/:id/admin-email-notifications', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const enabled = req.body?.enabled;
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'A valid user ID and boolean enabled value are required' });
+    }
+    try {
+        const [updated] = await db.update(users).set({ adminEmailNotifications: enabled, updatedAt: new Date() })
+            .where(and(eq(users.id, id), eq(users.role, 'admin')))
+            .returning({ id: users.id, adminEmailNotifications: users.adminEmailNotifications });
+        if (!updated) return res.status(404).json({ error: 'Admin account not found' });
+        return res.json(updated);
+    } catch (error) {
+        logger.error('Error updating admin email preference:', error);
+        return res.status(500).json({ error: 'Could not update admin email preference' });
+    }
+});
+
 // Get all users (with optional search)
 router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -157,6 +176,7 @@ router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Requ
             username: users.username,
             role: users.role,
             firebaseUid: users.firebaseUid,
+            adminEmailNotifications: users.adminEmailNotifications,
         }).from(users);
 
         if (search && search.trim()) {
@@ -166,7 +186,7 @@ router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Requ
             ) as typeof query;
         }
 
-        const dbUsers = [...await query.limit(50), ...await pendingUserDeletions()];
+        const dbUsers = [...await query.orderBy(sql`CASE WHEN ${users.role} = 'admin' THEN 0 ELSE 1 END`, users.id).limit(50), ...await pendingUserDeletions()];
 
         // Get Firestore display names for users with Firebase UIDs
         const firebaseUids = dbUsers
@@ -182,6 +202,7 @@ router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Requ
                 email: u.username,
                 fullName: displayName || u.username,
                 role: u.role || 'user',
+                adminEmailNotifications: 'adminEmailNotifications' in u && u.adminEmailNotifications === true,
                 displayText: displayName ? `${displayName} (${u.username})` : u.username,
                 // Selected above but previously dropped here, so the admin table's
                 // "Firebase UID" column always fell back to "N/A". Pass it through.
@@ -2005,7 +2026,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
             },
             footer: footer || {
                 mainText: 'Thank you for being part of the Local Cooks community!',
-                contactText: 'Questions? Contact us at support@localcooks.com',
+                contactText: 'Questions? Contact us at support@localcooks.ca',
                 copyrightText: '© 2024 Local Cooks. All rights reserved.',
                 showContact: true,
                 showCopyright: true,
@@ -4185,7 +4206,7 @@ router.post("/generate-password-reset-link", requireFirebaseAuthWithUser, requir
 });
 
 const CHEF_MANAGER_ROLES = ["chef", "manager", "chef_and_manager"] as const;
-const EMAIL_LOG_STATUSES = ["sent", "failed", "queued", "scheduled", "suppressed", "skipped_duplicate"] as const;
+const EMAIL_LOG_STATUSES = ["sent", "failed", "queued", "scheduled", "suppressed", "skipped_duplicate", "skipped_preference", "skipped_policy"] as const;
 const EMAIL_LOG_ROLES = [
     "chefs_and_managers",
     "chef",
@@ -4207,7 +4228,7 @@ router.get("/email-logs/stats", requireFirebaseAuthWithUser, requireAdmin, async
                 total: sql<number>`count(*)::int`,
                 sent: sql<number>`count(*) filter (where status = 'sent' AND category NOT IN ('advance_reminder', 'lifecycle_outcome'))::int`,
                 failed: sql<number>`count(*) filter (where status = 'failed')::int`,
-                skipped: sql<number>`count(*) filter (where status = 'skipped_duplicate')::int`,
+                skipped: sql<number>`count(*) filter (where status IN ('skipped_duplicate', 'skipped_preference', 'skipped_policy'))::int`,
                 last24h: sql<number>`count(*) filter (where created_at >= now() - interval '24 hours')::int`,
                 failedLast24h: sql<number>`count(*) filter (where status = 'failed' and created_at >= now() - interval '24 hours')::int`,
                 chefs: sql<number>`count(*) filter (where recipient_role in ('chef', 'chef_and_manager'))::int`,

@@ -8,6 +8,8 @@ import { notificationService } from './notification.service';
 import { chefIssuesHref, managerDashboardView } from '@shared/notification-deep-links';
 import { deliveryReserve, inRecurringWorker } from './worker-context';
 import { problemDestination, problemStatusLabel } from '@shared/commitment-problems';
+import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser } from './admin-email-preferences';
+import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -37,6 +39,7 @@ export async function queueClaimOutcome(tx: Transaction, history: typeof damageC
       type: 'system_announcement', priority: ['under_review', 'escalated', 'charge_failed'].includes(history.newStatus) ? 'high' : 'normal',
       title, message, actionUrl: path, actionLabel: 'View current claim',
       metadata: { damageClaimId: claim.id, historyId: history.id } }, tx);
+    if (!operationalEmailAllowed(person)) continue;
     const [intent] = await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id,
       recipientRole: chef ? 'chef' : person.role === 'admin' ? 'admin' : 'manager', subject: title,
       category: 'lifecycle_outcome', status: 'queued', trackingId: `claim-outcome:${claim.id}:${history.id}:${person.id}`,
@@ -62,6 +65,31 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
         onlyLogId ? undefined : sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} < CURRENT_TIMESTAMP - interval '1 minute')`))
         .orderBy(sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
       if (!intent) return null;
+      if (isPlatformEmailRecipientBlocked(intent.recipientEmail)) {
+        // Expand pending legacy support copies once. A stable per-admin key prevents
+        // duplicate delivery if a replacement was already queued or accepted.
+        if (!intent.recipientUserId && /^problem-outcome:\d+:\d+:support$/.test(intent.trackingId || '')) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${intent.trackingId}, 0))`);
+          const admins = await tx.select().from(users).where(and(eq(users.role, 'admin'), eq(users.adminEmailNotifications, true)));
+          for (const admin of admins) {
+            if (!operationalEmailAllowed(admin) || isPlatformEmailRecipientBlocked(admin.username)) continue;
+            const trackingId = intent.trackingId!.replace(/:support$/, `:${admin.id}`);
+            const [existing] = await tx.select({ id: emailLogs.id }).from(emailLogs)
+              .where(and(eq(emailLogs.trackingId, trackingId), eq(emailLogs.recipientEmail, admin.username))).limit(1);
+            if (!existing) await tx.insert(emailLogs).values({ recipientEmail: admin.username, recipientUserId: admin.id,
+              recipientRole: 'admin', subject: intent.subject, category: 'lifecycle_outcome', status: 'queued', trackingId,
+              previewText: intent.previewText, textBody: intent.textBody, htmlBody: intent.htmlBody });
+          }
+        }
+        await tx.update(emailLogs).set({ status: 'skipped_policy',
+          errorMessage: 'Support contact inbox excluded; eligible legacy alerts routed to opted-in admins.' }).where(eq(emailLogs.id, intent.id));
+        return { id: intent.id, sent: false };
+      }
+      if (intent.recipientUserId && !await (intent.recipientRole === 'admin' ? adminEmailAllowedForUser : operationalEmailAllowedForUser)(intent.recipientUserId, tx)) {
+        await tx.update(emailLogs).set({ status: 'skipped_preference',
+          errorMessage: 'Admin operational email is disabled for this recipient.' }).where(eq(emailLogs.id, intent.id));
+        return { id: intent.id, sent: false };
+      }
       const [accepted] = await tx.select({ id: emailLogs.id }).from(emailLogs).where(and(
         eq(emailLogs.trackingId, intent.trackingId!), eq(emailLogs.recipientEmail, intent.recipientEmail), eq(emailLogs.status, 'sent'))).limit(1);
       let sent = !!accepted;
@@ -79,11 +107,13 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             if (!context) throw Error('Problem commitment missing');
             if (intent.recipientUserId) {
               const [recipient] = await tx.select().from(users).where(eq(users.id, intent.recipientUserId)).limit(1);
-              if (!recipient || recipient.username !== intent.recipientEmail || ![context.chefId, context.managerId].includes(recipient.id))
+              if (!recipient || recipient.username !== intent.recipientEmail || !(intent.recipientRole === 'admin'
+                ? recipient.role === 'admin' && recipient.adminEmailNotifications
+                : [context.chefId, context.managerId].includes(recipient.id)))
                 throw Error('Problem recipient changed; Local Cooks must verify contact before recovery');
-            } else if (intent.recipientEmail !== 'support@localcook.shop') throw Error('Unrecognized problem support destination');
+            } else throw Error('Problem notices require an identified participant or opted-in admin');
             currentState = problemStatusLabel(current.status);
-            const role = intent.recipientUserId ? intent.recipientRole || 'chef' : 'admin';
+            const role = intent.recipientRole || 'chef';
             const lastResponse = (current.history as Array<{ action: string; note: string }>).filter(entry => !['report', 'claim', 'reassign'].includes(entry.action)).at(-1)?.note;
             const path = problemDestination(current.bookingId ? 'booking' : 'tour', current.bookingId || current.viewingId!, role);
             problemText = `Support request #${current.id}: ${currentState}.\n\n${current.description}${lastResponse ? `\n\nLatest update: ${lastResponse}` : ''}\n\n${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'manager' ? 'kitchen' : 'chef')}${path}`;
@@ -189,6 +219,7 @@ export async function queuePaymentOutcome(tx: Transaction, historyId: number, re
     const path = chef ? '/dashboard?view=transactions' : person.role === 'admin' ? '/admin?section=transactions' : '/manager/dashboard?view=revenue';
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement',
       title, message, actionUrl: path, actionLabel: 'View financial records', metadata: { transactionId: record.id, paymentHistoryId: historyId } }, tx);
+    if (!operationalEmailAllowed(person)) continue;
     await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id,
       recipientRole: chef ? 'chef' : person.role === 'admin' ? 'admin' : 'manager', category: 'lifecycle_outcome',
       status: 'queued', subject: title, previewText: message, trackingId: `payment-outcome:${record.id}:${historyId}:${person.id}`,
@@ -240,6 +271,7 @@ export async function queueOverstayOutcome(tx: Transaction, history: typeof stor
     const path = chef ? chefIssuesHref('overstay-penalties') : person.role === 'admin' ? '/admin?section=escalated-penalties' : managerDashboardView('overstays');
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement',
       title, message, actionUrl: path, actionLabel: 'View current storage issue', metadata: { overstayRecordId: record.id, historyId: history.id } }, tx);
+    if (!operationalEmailAllowed(person)) continue;
     await tx.insert(emailLogs).values({ recipientEmail: destination || '', recipientUserId: person.id,
       recipientRole: chef ? 'chef' : person.role === 'admin' ? 'admin' : 'manager', category: 'lifecycle_outcome', status: 'queued',
       subject: title, previewText: message, trackingId: `overstay-outcome:${record.id}:${history.id}:${person.id}`,

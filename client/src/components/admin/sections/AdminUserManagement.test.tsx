@@ -5,13 +5,25 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: null } }));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }));
 vi.mock('@/hooks/use-toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 let cleanupPending = false;
+let showAdmin = false;
 const request = vi.fn(async (url: string, options?: RequestInit) => ({
   ok: true,
-  json: async () => options?.method === 'DELETE' ? {success:true} : url.endsWith('delete-impact')
+  json: async () => options?.method === 'PATCH' ? { id: 9, adminEmailNotifications: false } : options?.method === 'DELETE' ? {success:true} : url.endsWith('delete-impact')
     ? cleanupPending ? {cleanupPending:true,counts:{}} : {counts:{locations:1,kitchens:2,kitchen_bookings:3,booking_lifecycle_events:4}}
-    : {users:[{id:7,username:'manager@fixture.invalid',role:'manager',firebaseUid:'uid',cleanupPending}]},
+    : {users:[{id:7,username:'manager@fixture.invalid',role:'manager',firebaseUid:'uid',cleanupPending}, ...(showAdmin ? [{id:9,username:'test_admin@localcooks.ca',role:'admin',adminEmailNotifications:true}] : [])]},
 }));
-beforeEach(() => { cleanupPending=false; request.mockClear(); vi.stubGlobal('fetch',request); });
+beforeEach(() => { cleanupPending=false; showAdmin=false; request.mockClear(); vi.stubGlobal('fetch',request); });
+
+it('lets admins save email eligibility without exposing the control for managers', async () => {
+  showAdmin = true;
+  render(<AdminUserManagement />);
+  const toggle = await screen.findByRole('switch', { name: 'Admin email notifications for test_admin@localcooks.ca' });
+  expect(screen.getAllByRole('switch')).toHaveLength(1);
+  expect(toggle).toBeChecked();
+  fireEvent.click(toggle);
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/api/admin/users/9/admin-email-notifications', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ enabled: false }) })));
+  await waitFor(() => expect(toggle).not.toBeChecked());
+});
 
 it('shows owned locations, kitchens and new dependencies as deletions', async () => {
   render(<AdminUserManagement />);

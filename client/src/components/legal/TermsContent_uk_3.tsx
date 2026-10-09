@@ -271,7 +271,7 @@ export default function TermsContent_uk_3() {
       <p className="mb-4">
         Jawrophi Delivery Inc., що діє під назвою «Local Cooks»<br />
         4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada<br />
-        Електронна пошта: support@localcook.shop<br />
+        Електронна пошта: support@localcooks.ca<br />
         Телефон: +1 (709)-631-8480<br />
         Вебсайт: www.localcooks.ca
       </p>
@@ -314,7 +314,7 @@ export default function TermsContent_uk_3() {
       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 mt-8">
         <h3 className="text-lg font-bold mb-2">Запитання? Зв'яжіться з Local Cooks:</h3>
         <p className="text-sm mb-1"><strong>Jawrophi Delivery Inc.</strong> діє під назвою «Local Cooks»</p>
-        <p className="text-sm mb-1"><strong>Електронна пошта:</strong> support@localcook.shop</p>
+        <p className="text-sm mb-1"><strong>Електронна пошта:</strong> support@localcooks.ca</p>
         <p className="text-sm mb-1"><strong>Телефон:</strong> +1 (709)-631-8480</p>
         <p className="text-sm mb-1"><strong>Вебсайт:</strong> www.localcooks.ca</p>
         <p className="text-sm"><strong>Поштова адреса:</strong> 4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada</p>

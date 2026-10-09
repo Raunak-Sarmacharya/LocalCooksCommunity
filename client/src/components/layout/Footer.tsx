@@ -231,11 +231,11 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
             <ul className="space-y-2.5">
               <li>
                 <a
-                  href="mailto:support@localcook.shop"
+                  href="mailto:support@localcooks.ca"
                   className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-200 py-0.5"
                 >
                   <Mail className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
-                  <span className="text-[13px] break-all">support@localcook.shop</span>
+                  <span className="text-[13px] break-all">support@localcooks.ca</span>
                 </a>
               </li>
               <li>

@@ -1,3 +1,4 @@
+import { sendAdminNotificationEmail } from './services/admin-email-preferences';
 import { logger } from "./logger";
 import { User } from '@shared/schema';
 import { userService } from './domains/users/user.service';
@@ -207,10 +208,10 @@ export async function syncFirebaseUserToNeon(params: {
             userRole: finalRole,
             registrationDate: new Date(),
           });
-          await sendEmail(adminEmail, {
+          const adminSent = await sendAdminNotificationEmail(adminEmail, {
             trackingId: `new_user_admin_notify_${admin.username}_${Date.now()}`
           });
-          logger.info(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
+          if (adminSent) logger.info(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
         }
       }
     } catch (adminNotifyError) {

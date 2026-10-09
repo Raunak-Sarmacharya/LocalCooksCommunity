@@ -29,7 +29,7 @@ export default function PrivacyContent() {
       <h2 className="text-2xl font-bold mt-8 mb-4">2. Who we are and how to contact us</h2>
       <p className="mb-4">
         <strong>Jawrophi Delivery Inc. operating as “Local Cooks”</strong><br />
-        Email: support@localcook.shop<br />
+        Email: support@localcooks.ca<br />
         Phone: +1 (709)-631-8480<br />
         Website: www.localcooks.ca
       </p>
@@ -255,7 +255,7 @@ export default function PrivacyContent() {
         <li><strong>Close your account:</strong> Request deactivation or deletion of your user account, subject to our retention obligations.</li>
       </ul>
       <p className="mb-4">
-        You may also <strong>opt out of marketing emails</strong> at any time by clicking the “unsubscribe” link in those emails or by contacting us at support@localcook.shop.
+        You may also <strong>opt out of marketing emails</strong> at any time by clicking the “unsubscribe” link in those emails or by contacting us at support@localcooks.ca.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">12. Account &amp; Data Security</h2>
@@ -314,7 +314,7 @@ export default function PrivacyContent() {
         <strong>Privacy Officer</strong><br />
         Jawrophi Delivery Inc.<br />
         4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada<br />
-        Email: support@localcook.shop
+        Email: support@localcooks.ca
       </p>
       <p className="mb-4">
         You also have the right to lodge a complaint with the <strong>Office of the Privacy Commissioner of Canada</strong> or the applicable provincial privacy regulator if you believe your privacy rights have been violated.

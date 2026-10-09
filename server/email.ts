@@ -4,6 +4,7 @@ import { escapeHtml } from './security';
 import { isE2eOutboundSuppressed } from "./e2e-outbound-guard.js";
 import { stripCountryCode } from "./phone-utils";
 import nodemailer from 'nodemailer';
+import { isPlatformEmailRecipientBlocked } from './email-recipient-policy';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -167,7 +168,7 @@ async function persistEmailLog(params: {
   subject: string;
   text?: string;
   html?: string;
-  status: "sent" | "failed" | "skipped_duplicate";
+  status: "sent" | "failed" | "skipped_duplicate" | "skipped_policy";
   errorMessage?: string;
   trackingId?: string;
   smtpMessageId?: string;
@@ -190,6 +191,11 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
   let smtpStarted = false, failureLogged = false, messageId: string | undefined;
 
   try {
+    if (isPlatformEmailRecipientBlocked(content.to)) {
+      await persistEmailLog({ ...content, ...options, status: 'skipped_policy',
+        errorMessage: 'The support contact inbox cannot receive platform-generated email.' });
+      return false;
+    }
     if (isE2eOutboundSuppressed()) {
       logger.info("[e2e-outbound-guard] skipped email send (harness active)", {
         to: content.to.replace(/(.{2}).*(@.*)/, "$1***$2"),
@@ -1159,7 +1165,7 @@ export const generateStatusChangeEmail = (
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getWebsiteUrl()}/apply" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Submit New Application</a>
       </div>` : ''}
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1189,7 +1195,7 @@ ${applicationData.status === 'approved' ? `Your next step: Complete your food sa
 
 Start training: ${getDashboardUrl()}?view=training` : ''}${applicationData.status === 'rejected' ? `View your application: ${getDashboardUrl()}?view=applications` : ''}${applicationData.status === 'cancelled' ? `You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ''}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -1274,7 +1280,7 @@ export const generateFullVerificationEmail = (
         <a href="https://stagingwebapp.localcook.shop/app/shop/index.php" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0 8px 8px 0;">Access Chef Dashboard</a>
         <a href="${getVendorDashboardUrl()}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">Set Up Stripe Payments</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Warmly,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1305,7 +1311,7 @@ Next steps:
 • Stripe Payments — set up payment processing to start receiving payments
   Access: ${getVendorDashboardUrl()}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Warmly,
 The Local Cooks Team
@@ -1358,7 +1364,7 @@ export const generateApplicationWithDocumentsEmail = (
         <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>
       </div>
       <div style="margin: 16px 0 0; text-align: center;"><a href="${getDashboardUrl()}?view=applications" class="cta-button">Track Application</a></div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1383,7 +1389,7 @@ Status: Under Review
 
 Track your application: ${getDashboardUrl()}?view=applications
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -1433,7 +1439,7 @@ export const generateApplicationWithoutDocumentsEmail = (
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getDashboardUrl()}?view=applications&amp;action=documents" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload Documents</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1456,7 +1462,7 @@ Next step: Please visit your dashboard to upload the required documents to compl
 
 Upload documents: ${getDashboardUrl()}?view=applications&action=documents
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -1557,7 +1563,7 @@ export const generateDocumentStatusChangeEmail = (
       <div style="margin: 24px 0 0 0; text-align: center;">
         <a href="${userData.status === 'rejected' ? `${getDashboardUrl()}?view=applications&amp;action=documents` : getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">${userData.status === 'approved' ? 'Access Your Dashboard' : 'Update Document'}</a>
       </div>` : ''}
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1582,7 +1588,7 @@ Status: ${statusLabel}
 
 ${userData.adminFeedback ? `Feedback: ${userData.adminFeedback}\n\n` : ''}${userData.status === 'approved' ? `Access your dashboard: ${getDashboardUrl()}` : userData.status === 'rejected' ? `Update your document: ${getDashboardUrl()}?view=applications&action=documents` : ''}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -1650,7 +1656,7 @@ export async function sendApplicationReceivedEmail(applicationData: any) {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Track Application Status</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1674,7 +1680,7 @@ Our team typically reviews applications within 2–3 business days. You'll recei
 
 Track your application status: ${getDashboardUrl()}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -1725,7 +1731,7 @@ export async function sendApplicationRejectedEmail(applicationData: any, reason?
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getWebsiteUrl()}/apply" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Learn About Requirements</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1750,7 +1756,7 @@ ${reason ? `Feedback: ${reason}\n\n` : ''}We encourage you to gain more experien
 
 Learn more: ${getWebsiteUrl()}/apply
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -1801,7 +1807,7 @@ export const generatePasswordResetEmail = (
       <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0 0 0;">
         <p style="font-size: 14px; line-height: 1.6; color: #92400e; margin: 0;"><strong>Didn&#8217;t request this?</strong> If you didn&#8217;t ask to reset your password, you can safely ignore this email. Your account remains secure.</p>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you need help, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you need help, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -1826,7 +1832,7 @@ This link will expire in 1 hour for security.
 
 If you didn't request this, you can safely ignore this email. Your account remains secure.
 
-If you need help, contact us at support@localcook.shop
+If you need help, contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -2093,7 +2099,7 @@ export const generateWelcomeEmail = (
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Access Your Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">${signOff}</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -2140,7 +2146,7 @@ ${closingText}
 
 Access your dashboard at: ${dashboardUrl}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 ${signOff}
 The Local Cooks Team
@@ -2352,7 +2358,7 @@ export const generateDocumentUpdateEmail = (
       <div style="margin: 16px 0 4px 0; text-align: center;">
         <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3315,7 +3321,7 @@ export const generateChefAllDocumentsApprovedEmail = (
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Access Your Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Warmly,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3339,7 +3345,7 @@ ${userData.approvedDocuments.map(doc => `• ${doc}`).join('\n')}
 
 ${userData.adminFeedback ? `Feedback: ${userData.adminFeedback}\n\n` : ''}Access your dashboard: ${getDashboardUrl()}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Warmly,
 The Local Cooks Team
@@ -3401,7 +3407,7 @@ export const generateManagerMagicLinkEmail = (userData: { email: string; name: s
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${resetUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Set Up Password</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3427,7 +3433,7 @@ Once set up, you'll be able to:
 • View and approve booking requests from chefs
 • Set up your location's pricing and policies
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -3473,7 +3479,7 @@ export const generateManagerCredentialsEmail = (userData: { email: string; name:
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${loginUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Login Now</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3500,7 +3506,7 @@ Important: Please change your password after your first login for security.
 
 Login at: ${loginUrl}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -3574,7 +3580,7 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
       </div>
       <p class="message" style="margin-top: 20px;">You can approve or decline this booking directly from your dashboard. If you need to discuss any details with the chef, you can use the built-in chat feature.</p>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 20px 0 0 0;">A calendar invite has been attached to this email. ${calendar.linksHtml}</p>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this request, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this request, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3610,7 +3616,7 @@ You can approve or decline this booking directly from your dashboard. If you nee
 
 ${calendar.linksText}
 
-If you have any questions about this request, simply reply to this email or contact us at support@localcook.shop
+If you have any questions about this request, simply reply to this email or contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -3680,7 +3686,7 @@ export const generateBookingPaymentReceivedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${bookingDetailsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Booking Details</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3707,7 +3713,7 @@ The booking is now confirmed and ready.
 
 View booking: ${bookingDetailsUrl}
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -3758,7 +3764,7 @@ export const generateBookingCancellationNotificationEmail = (bookingData: { mana
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getSubdomainUrl('kitchen')}/manager/bookings" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -3863,7 +3869,7 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions or need assistance, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions or need assistance, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <p class="message" style="margin-top: 20px; color: #64748b;">Thank you for being part of Local Cooks.</p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
@@ -3899,7 +3905,7 @@ If something comes up, please use the dashboard tools and notify the chef as soo
 
 Dashboard: ${dashboardUrl}
 
-If you have any questions or need assistance, simply reply to this email or contact us at support@localcook.shop
+If you have any questions or need assistance, simply reply to this email or contact us at support@localcooks.ca
 
 Thank you for being part of Local Cooks.
 
@@ -3978,7 +3984,7 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
         ${calendar.linksHtml}
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4012,7 +4018,7 @@ You can also check your request status anytime from your dashboard: ${dashboardU
 
 ${calendar.linksText}
 
-If you have any questions, simply reply to this email or contact us at support@localcook.shop
+If you have any questions, simply reply to this email or contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -4065,8 +4071,8 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   const icsContent = calendar.ics;
 
   const changeGuidance = bookingData.isStaff
-    ? 'Open the booking to review its current status and any cancellation request. Coordinate date/time change requests with the chef and Local Cooks at support@localcook.shop.'
-    : `Open the booking for current actions or to request cancellation. To request a date/time change, contact ${bookingData.contactEmail || 'support@localcook.shop'}. Your confirmed dates remain in place until a change is agreed.`;
+    ? 'Open the booking to review its current status and any cancellation request. Coordinate date/time change requests with the chef and Local Cooks at support@localcooks.ca.'
+    : `Open the booking for current actions or to request cancellation. To request a date/time change, contact ${bookingData.contactEmail || 'support@localcooks.ca'}. Your confirmed dates remain in place until a change is agreed.`;
   const guidance = bookingData.isStaff ? [
     `Reference: Booking #${bookingData.bookingId}`,
     bookingData.paymentSummary,
@@ -4085,7 +4091,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
     bookingData.checkoutEnabled === true ? 'Request checkout for each visit. Manager inspection remains pending until reviewed.' : 'Departure tracking is off. Follow the departure instructions.',
     bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : 'Open the booking for current arrival guidance. Contact the manager if instructions are missing.',
     bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : '',
-    bookingData.contactEmail ? `Kitchen contact: ${bookingData.contactEmail}` : 'For help contact support@localcook.shop.',
+    bookingData.contactEmail ? `Kitchen contact: ${bookingData.contactEmail}` : 'For help contact support@localcooks.ca.',
     'Saved calendar events do not update automatically. Open the booking for the current schedule and actions.',
   ].filter(Boolean).join('\n');
   const html = `
@@ -4128,7 +4134,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View booking and current actions</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">Contact us anytime at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a> or reply to this email.</p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">Contact us anytime at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a> or reply to this email.</p>
       <p class="message" style="margin-top: 20px; font-style: italic; color: #64748b;">Open the current booking whenever you need the latest status and available actions.</p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
@@ -4162,7 +4168,7 @@ Need to Make Changes?
 ${changeGuidance}
 Current booking: ${dashboardUrl}
 
-Contact us anytime at support@localcook.shop or reply to this email.
+Contact us anytime at support@localcooks.ca or reply to this email.
 
 Open the current booking whenever you need the latest status and available actions.
 
@@ -4220,7 +4226,7 @@ export const generateBookingCancellationEmail = (bookingData: { chefEmail: strin
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getSubdomainUrl('chef')}/book-kitchen" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Browse Available Kitchens</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4245,7 +4251,7 @@ Time: ${bookingData.startTime} – ${bookingData.endTime}
 ${bookingData.cancellationReason ? `Reason: ${bookingData.cancellationReason}\n` : ''}
 You can make a new booking anytime from your dashboard: ${getSubdomainUrl('chef')}/book-kitchen
 
-If you have any questions, contact us at support@localcook.shop
+If you have any questions, contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -4286,7 +4292,7 @@ export const generateKitchenAvailabilityChangeEmail = (data: { chefEmail: string
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${getSubdomainUrl('chef')}/book-kitchen" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Kitchen Availability</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4351,7 +4357,7 @@ export const generateKitchenSettingsChangeEmail = (data: { email: string; name: 
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${ctaUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">${ctaLabel}</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4416,7 +4422,7 @@ export const generateChefProfileRequestEmail = (data: { managerEmail: string; ch
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${reviewUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Chef Request</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4480,7 +4486,7 @@ export const generateChefLocationAccessApprovedEmail = (data: { chefEmail: strin
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${bookingsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Available Kitchens</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4531,7 +4537,7 @@ export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail: string
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${bookingsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Available Kitchens</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4579,7 +4585,7 @@ export const generateLocationEmailChangedEmail = (data: { email: string; locatio
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you didn&#8217;t make this change, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you didn&#8217;t make this change, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4593,7 +4599,7 @@ export const generateLocationEmailChangedEmail = (data: { email: string; locatio
 </body>
 </html>`;
 
-  const text = `Notification Email Updated\n\nThis email address has been set as the notification email for ${data.locationName}. You'll now receive notifications for bookings, cancellations, and other important updates.\n\nLocation: ${data.locationName}\nEmail: ${data.email}\n\nView dashboard: ${dashboardUrl}\n\nIf you didn't make this change, contact us at support@localcook.shop\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`;
+  const text = `Notification Email Updated\n\nThis email address has been set as the notification email for ${data.locationName}. You'll now receive notifications for bookings, cancellations, and other important updates.\n\nLocation: ${data.locationName}\nEmail: ${data.email}\n\nView dashboard: ${dashboardUrl}\n\nIf you didn't make this change, contact us at support@localcooks.ca\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`;
 
   return { to: data.email, subject, text, html: prepareEmailHtml(html) };
 };
@@ -4647,7 +4653,7 @@ export const generateStorageExtensionPendingApprovalEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Extension Request</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4714,7 +4720,7 @@ export const generateStorageExtensionPaymentReceivedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4777,7 +4783,7 @@ export const generateStorageExtensionApprovedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4842,7 +4848,7 @@ export const generateStorageExtensionRejectedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -4942,7 +4948,7 @@ export const generateStorageExpiringWarningEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Manage My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5028,7 +5034,7 @@ export const generateOverstayDetectedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Manage My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5095,7 +5101,7 @@ export const generatePenaltyChargedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5329,7 +5335,7 @@ export const generateOverstayManagerNotificationEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Overstays</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5400,7 +5406,7 @@ export const generateNewKitchenApplicationManagerEmail = (data: {
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Dashboard</a>
       </div>
       <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 16px 0 0 0; text-align: center;">We recommend responding within 3&#8211;5 business days.</p>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this application, you can reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this application, you can reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5429,7 +5435,7 @@ View dashboard at: ${dashboardUrl}
 
 We recommend responding within 3–5 business days.
 
-If you have any questions about this application, you can reply to this email or contact us at support@localcook.shop
+If you have any questions about this application, you can reply to this email or contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -5555,7 +5561,7 @@ export const generateKitchenApplicationReceivedChefEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Applications</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5585,7 +5591,7 @@ What happens next:
 
 View your application at: ${dashboardUrl}
 
-If you have any questions, simply reply to this email or contact us at support@localcook.shop
+If you have any questions, simply reply to this email or contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -5655,7 +5661,7 @@ export const generateKitchenApplicationStep2ReceivedChefEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Applications</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5685,7 +5691,7 @@ What happens next:
 
 View your application at: ${dashboardUrl}
 
-If you have any questions, simply reply to this email or contact us at support@localcook.shop
+If you have any questions, simply reply to this email or contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -5763,7 +5769,7 @@ export const generateKitchenApplicationSubmittedChefEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions about the process, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions about the process, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5799,7 +5805,7 @@ Once your Chef Application Requirements are submitted and approved, you'll be ab
 
 Go to your dashboard at: ${dashboardUrl}
 
-If you have any questions about the process, simply reply to this email or contact us at support@localcook.shop
+If you have any questions about the process, simply reply to this email or contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -5868,7 +5874,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions about bookings or how to use the platform, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions about bookings or how to use the platform, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -5899,7 +5905,7 @@ Please make sure you continue to follow the kitchen's specific guidelines and an
 
 Go to your dashboard at: ${dashboardUrl}
 
-If you have any questions about bookings or how to use the platform, simply reply to this email or contact us at support@localcook.shop
+If you have any questions about bookings or how to use the platform, simply reply to this email or contact us at support@localcooks.ca
 
 Best,
 The Local Cooks Team
@@ -5954,7 +5960,7 @@ export const generateKitchenApplicationRejectedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Applications</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6030,7 +6036,7 @@ export const generateKitchenLicenseApprovedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">We&#8217;re here to help you get the most out of the platform. If you&#8217;d like guidance on setting up your first listing or optimizing your availability and pricing, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">We&#8217;re here to help you get the most out of the platform. If you&#8217;d like guidance on setting up your first listing or optimizing your availability and pricing, simply reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6059,7 +6065,7 @@ This is a great moment to add clear details and good photos to your listings so 
 
 Go to your dashboard at: ${dashboardUrl}
 
-We're here to help you get the most out of the platform. If you'd like guidance on setting up your first listing or optimizing your availability and pricing, simply reply to this email or contact us at support@localcook.shop
+We're here to help you get the most out of the platform. If you'd like guidance on setting up your first listing or optimizing your availability and pricing, simply reply to this email or contact us at support@localcooks.ca
 
 Best regards,
 The Local Cooks Team
@@ -6114,7 +6120,7 @@ export const generateKitchenLicenseRejectedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload New License</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6300,7 +6306,7 @@ export const generateKitchenLicenseExpiringEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload Renewed License</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">A valid commercial kitchen license is required for your kitchen to accept bookings. If you have questions about what counts, just reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">A valid commercial kitchen license is required for your kitchen to accept bookings. If you have questions about what counts, just reply to this email or contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6384,7 +6390,7 @@ export const generateDamageClaimFiledEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review &amp; Respond</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6458,7 +6464,7 @@ export const generateDamageClaimResponseEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Claim</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6625,7 +6631,7 @@ export const generateDamageClaimDecisionEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Details</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
@@ -6689,7 +6695,7 @@ export const generateDamageClaimChargedEmail = (data: {
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Details</a>
       </div>
-      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
         <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>

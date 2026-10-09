@@ -8,7 +8,8 @@
  */
 
 /** Public support address used by the footer, legal pages and apply flow. */
-export const SUPPORT_EMAIL = "support@localcook.shop";
+import { SUPPORT_EMAIL } from "@shared/email-recipient-policy";
+export { SUPPORT_EMAIL };
 
 export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`;
 

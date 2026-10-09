@@ -12,6 +12,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe('ordinary SMTP acknowledgment', () => {
+  it.each(['support@localcooks.ca', 'Support <SUPPORT@LOCALCOOKS.CA>', 'chef@example.test, support@localcooks.ca',
+    'Support team: support@localcooks.ca;', '"support"@localcooks.ca',
+    'support@localcook.shop', 'Support <SUPPORT@LOCALCOOK.SHOP>', 'chef@example.test, support@localcook.shop',
+    'Support team: support@localcook.shop;', '"support"@localcook.shop'])('never starts SMTP for the support contact inbox: %s', async to => {
+    expect(await sendEmail({ to, subject: 'Automated fixture', text: 'Fixture' }, { durableDelivery: true })).toBe(false);
+    expect(smtp.send).not.toHaveBeenCalled();
+    expect(smtp.log).toHaveBeenCalledWith(expect.objectContaining({ status: 'skipped_policy' }));
+  });
   it('keeps a stable SMTP message identity across durable attempts and reports uncertain timeouts to the tour dispatcher', async () => {
     smtp.send.mockRejectedValueOnce(Object.assign(Error('socket timeout'), { code: 'ESOCKET' }));
     const content = { to: 'chef@example.test', subject: 'Fixture', text: 'Fixture' };

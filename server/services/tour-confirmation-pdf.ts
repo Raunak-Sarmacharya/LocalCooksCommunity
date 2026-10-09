@@ -93,7 +93,7 @@ export function buildTourConfirmationPdf(tour: TourConfirmationDetails): Promise
     if (tour.managerEmail) doc.font("Body").fontSize(9).fillColor(ink).text(tour.managerEmail, 52, tour.managerPhone ? 648 : 632, { width: 245 });
     if (!tour.managerPhone && !tour.managerEmail) doc.font("Body").fontSize(9).fillColor(muted).text("Contact the kitchen through Local Cooks", 52, 632, { width: 245 });
     label("Local Cooks support", 320, 594);
-    doc.font("Body").fontSize(9).fillColor(ink).text("support@localcook.shop", 320, 613, { width: 240 });
+    doc.font("Body").fontSize(9).fillColor(ink).text("support@localcooks.ca", 320, 613, { width: 240 });
     doc.font("Body").fontSize(9).fillColor(ink).text("709-631-8480", 320, 632, { width: 240 });
     doc.font("Body").fontSize(8).fillColor(muted).text(`Include ${tourReference(tour.id)} when contacting us.`, 320, 653, { width: 240 });
 

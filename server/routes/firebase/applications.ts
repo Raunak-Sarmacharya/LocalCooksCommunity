@@ -1,3 +1,4 @@
+import { sendAdminNotificationEmail } from '../../services/admin-email-preferences';
 import { logger } from "../../logger";
 /**
  * Firebase Applications Router
@@ -51,7 +52,7 @@ async function notifyAdminsAboutSellerDocuments(application: { id: number; fullN
                 actionUrl: '/admin?section=applications',
                 actionLabel: 'Review documents',
             });
-            await sendEmail({
+            await sendAdminNotificationEmail({
                 to: admin.email,
                 subject: 'Seller documents ready for review - Local Cooks',
                 text: `${application.fullName || 'A chef'} uploaded seller application documents. Review the application: ${getSubdomainUrl('admin')}/admin?section=applications`,
@@ -229,7 +230,7 @@ router.post('/firebase/applications',
                         hasDocuments,
                         submittedAt: new Date(),
                     });
-                    await sendEmail(adminEmail, {
+                    await sendAdminNotificationEmail(adminEmail, {
                         trackingId: `seller_app_admin_notify_fb_${admin.username}_${application.id}_${Date.now()}`
                     });
                 }
@@ -409,7 +410,7 @@ router.patch('/firebase/applications/:id/cancel',
                 for (const admin of admins) {
                     try {
                         await notificationService.createForManager({ managerId: admin.id, type: 'application_rejected', priority: 'normal', title: 'Seller application cancelled', message: `${updatedApplication.fullName || 'A chef'} cancelled their seller application.`, metadata: { applicationId, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'View application' });
-                        await sendEmail({ to: admin.email, subject: 'Seller application cancelled - Local Cooks', text: `${updatedApplication.fullName || 'A chef'} cancelled their seller application. View the application: ${getSubdomainUrl('admin')}/admin?section=applications` });
+                        await sendAdminNotificationEmail({ to: admin.email, subject: 'Seller application cancelled - Local Cooks', text: `${updatedApplication.fullName || 'A chef'} cancelled their seller application. View the application: ${getSubdomainUrl('admin')}/admin?section=applications` });
                     } catch (adminError) { logger.error('Error notifying admin about seller cancellation:', adminError); }
                 }
             } catch (adminError) { logger.error('Error loading admins for seller cancellation:', adminError); }

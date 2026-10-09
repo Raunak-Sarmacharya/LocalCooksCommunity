@@ -1,3 +1,4 @@
+import { sendAdminNotificationEmail } from './services/admin-email-preferences';
 import { logger } from "./logger";
 import { isE2eOutboundSuppressed } from "./e2e-outbound-guard";
 import {
@@ -1028,7 +1029,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               userRole: finalRole,
               registrationDate: new Date(),
             });
-            const adminSent = await sendEmail(adminEmail, {
+            const adminSent = await sendAdminNotificationEmail(adminEmail, {
               trackingId: `new_user_admin_${admin.username}_${Date.now()}`
             });
             if (adminSent) {

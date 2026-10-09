@@ -115,11 +115,11 @@ export function SupportPageShell({
         <Card className="flex h-full flex-col shadow-none">
           <CardHeader>
             <CardTitle className="text-base">{emailTitle}</CardTitle>
-            <CardDescription>support@localcook.shop</CardDescription>
+            <CardDescription>support@localcooks.ca</CardDescription>
           </CardHeader>
           <CardFooter className="mt-auto">
             <Button variant="outline" className="w-full" asChild>
-              <a href="mailto:support@localcook.shop">
+              <a href="mailto:support@localcooks.ca">
                 {sendEmailLabel}
                 <ExternalLink />
               </a>

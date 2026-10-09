@@ -1959,7 +1959,7 @@ export default function BookingDetailsPage() {
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h3>
               <p className="text-xs leading-relaxed text-muted-foreground">{t('bdContactSupportHint', { defaultValue: 'Need help with your booking or payment?' })}</p>
               <div className="mt-4 space-y-3 text-sm">
-                <a className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcook.shop"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcook.shop</span></a>
+                <a className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
                 <a className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
               </div>
             </CardContent>

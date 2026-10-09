@@ -43,6 +43,19 @@ describe("sendVerificationEmailWithFallback", () => {
     expect(sendEmailVerification).not.toHaveBeenCalled();
   });
 
+  it.each(["support@localcooks.ca", "support@localcook.shop"])("excludes %s from both SMTP and Firebase fallback", async email => {
+    auth.currentUser = { email };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendVerificationEmailWithFallback({ email: ` ${email.toUpperCase()} ` })
+    ).rejects.toThrow("support address cannot receive platform verification emails");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendEmailVerification).not.toHaveBeenCalled();
+  });
+
   it("uses Firebase only after an immediate SMTP failure", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,

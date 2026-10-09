@@ -77,6 +77,7 @@ export const users = pgTable("users", {
   // Flipped to true only by POST /api/user/sync-password.
   passwordSetByUser: boolean("password_set_by_user").default(false).notNull(),
   role: userRoleEnum("role"), // Allow null initially - user will choose role
+  adminEmailNotifications: boolean("admin_email_notifications").default(false).notNull(),
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
   firebaseUid: text("firebase_uid").unique(),

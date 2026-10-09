@@ -25,7 +25,7 @@ export default function PrivacyContent_fr() {
       <h2 className="text-2xl font-bold mt-8 mb-4">2. Qui sommes-nous et comment nous contacter</h2>
       <p className="mb-4">
         <strong>Jawrophi Delivery Inc. opérant sous le nom de « Local Cooks »</strong><br />
-        Courriel : support@localcook.shop<br />
+        Courriel : support@localcooks.ca<br />
         Téléphone : +1 (709)-631-8480<br />
         Site Web : www.localcooks.ca
       </p>
@@ -215,7 +215,7 @@ export default function PrivacyContent_fr() {
         <li><strong>Fermeture de votre compte :</strong> Demander la désactivation ou la suppression de votre compte utilisateur, sous réserve de nos obligations de conservation.</li>
       </ul>
       <p className="mb-4">
-        Vous pouvez également <strong>refuser de recevoir des courriels marketing</strong> à tout moment en cliquant sur le lien « se désabonner » dans ces courriels ou en nous contactant à support@localcook.shop.
+        Vous pouvez également <strong>refuser de recevoir des courriels marketing</strong> à tout moment en cliquant sur le lien « se désabonner » dans ces courriels ou en nous contactant à support@localcooks.ca.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">12. Sécurité des comptes et des données</h2>
@@ -271,7 +271,7 @@ export default function PrivacyContent_fr() {
         <strong>Agent de protection de la vie privée</strong><br />
         Jawrophi Delivery Inc.<br />
         4 Priscilla Place, Paradise, Terre-Neuve-et-Labrador, A1L 1E6, Canada<br />
-        Courriel : support@localcook.shop
+        Courriel : support@localcooks.ca
       </p>
       <p className="mb-4">
         Vous avez également le droit de déposer une plainte auprès du <strong>Commissariat à la protection de la vie privée du Canada</strong> ou de l'organisme provincial de réglementation de la protection de la vie privée applicable.

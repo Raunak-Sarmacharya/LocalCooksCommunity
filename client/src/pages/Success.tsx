@@ -254,8 +254,8 @@ export default function Success() {
 
           <p className="text-center text-sm text-muted-foreground">
             Questions?{" "}
-            <a href="mailto:support@localcook.shop" className="font-medium text-primary hover:underline">
-              support@localcook.shop
+            <a href="mailto:support@localcooks.ca" className="font-medium text-primary hover:underline">
+              support@localcooks.ca
             </a>
           </p>
         </div>
