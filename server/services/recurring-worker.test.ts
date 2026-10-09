@@ -95,6 +95,20 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     }
     expect(new Set(started)).toEqual(new Set(['a', 'b', 'c', 'd'])); expect(saved[0]).toBe(1);
   });
+  it('allows a realistic SMTP duration and rotates delivery when the next task cannot fit, retaining background time', async () => {
+    const checkpoint = { nextTask: 0, cursors: {} }, started: string[] = [];
+    const tasks = ['tour', 'booking'].map(name => ({ name, budgetMs: 15000, minBudgetMs: 12000, run: async () => {
+      started.push(name); expect(workerContext.getStore()!.taskDeadline - state.clock).toBe(15000);
+      state.clock += 6500; assertWorkerTime(4000);
+    } }));
+    for (let tick = 0; tick < 2; tick++) {
+      state.clock = 0;
+      await workerContext.run({ database: {} as any, deadline: 26000, taskDeadline: 26000, cursors: {}, checkpoint: async () => {} },
+        () => runFairTasks(tasks, checkpoint, async () => {}, 16000));
+      expect(state.clock).toBeLessThan(16000);
+    }
+    expect(started).toEqual(['tour', 'booking']);
+  });
   it('uses finite per-source keyset cursors and wraps empty pages; a poisoned record remains retryable on the next sweep', async () => {
     const cursors: Record<string, number> = {}, saved: [string, number][] = [];
     await workerContext.run({ database: {} as any, deadline: 26_000, taskDeadline: 26_000, cursors,

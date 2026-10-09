@@ -4,6 +4,7 @@ import { escapeHtml } from './security';
 import { isE2eOutboundSuppressed } from "./e2e-outbound-guard.js";
 import { stripCountryCode } from "./phone-utils";
 import nodemailer from 'nodemailer';
+import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import { tEmail } from "./i18n/outbound";
@@ -106,8 +107,8 @@ interface EmailContent {
 const recentEmails = new Map<string, number>();
 const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
 
-import { assertWorkerTime, inRecurringWorker, workerRemaining } from './services/worker-context';
-import { boundedSmtpSend } from './services/bounded-smtp';
+import { assertWorkerTime, inRecurringWorker, isWorkerBudgetError, deliveryReserve, smtpAttemptMs } from './services/worker-context';
+import { boundedSmtpSend, SmtpDeliveryError, smtpFailureKind } from './services/bounded-smtp';
 
 // Create a transporter with enhanced configuration for Vercel serverless
 const createTransporter = (config: EmailConfig, durableDelivery = false) => {
@@ -183,9 +184,10 @@ async function persistEmailLog(params: {
 }
 
 // Enhanced send email function with Vercel serverless optimizations
-export const sendEmail = async (content: EmailContent, options?: { trackingId?: string; emailType?: string; retryOfId?: number; durableDelivery?: boolean }): Promise<boolean> => {
+export const sendEmail = async (content: EmailContent, options?: { trackingId?: string; emailType?: string; retryOfId?: number; durableDelivery?: boolean; reportDeliveryFailure?: boolean }): Promise<boolean> => {
   const startTime = Date.now();
   let transporter: any = null;
+  let smtpStarted = false, failureLogged = false, messageId: string | undefined;
 
   try {
     if (isE2eOutboundSuppressed()) {
@@ -318,6 +320,9 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const domain = getDomainFromEmail(config.auth.user);
     const unsubscribeEmail = getUnsubscribeEmail();
     const organizationName = getOrganizationName();
+    messageId = options?.durableDelivery && options.trackingId
+      ? `<${createHash('sha256').update(`${options.trackingId}:${content.to.trim().toLowerCase()}`).digest('hex')}@${domain}>`
+      : `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`;
 
     // Enhanced email options with better headers for MailChannels compatibility
     const mailOptions: any = {
@@ -346,7 +351,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         to: content.to
       },
       // DKIM-compatible message ID with proper domain
-      messageId: `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
+      messageId,
       date: new Date(),
       // DKIM signing is handled by Hostinger SMTP server
     };
@@ -362,9 +367,9 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
 
       try {
         if (options?.durableDelivery || inRecurringWorker()) {
-          assertWorkerTime(2_000);
-          info = await boundedSmtpSend(transporter, mailOptions, config,
-            Math.min(inRecurringWorker() ? 1_500 : 8_000, workerRemaining() - 750));
+          assertWorkerTime(deliveryReserve());
+          smtpStarted = true;
+          info = await boundedSmtpSend(transporter, mailOptions, config, smtpAttemptMs);
           break;
         }
         const emailPromise = transporter.sendMail(mailOptions);
@@ -427,10 +432,12 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       retryOfId: options?.retryOfId,
     });
 
-    if (smtpRejected) await persistEmailLog({ to: intended.filter(value => !acceptedRecipients.includes(value)).join(','),
+    const rejectedRecipients = rejected.map(String).map(value => value.toLowerCase());
+    const acceptanceUnknown = smtpRejected && intended.some(value => !acceptedRecipients.includes(value) && !rejectedRecipients.includes(value));
+    if (smtpRejected) { await persistEmailLog({ to: intended.filter(value => !acceptedRecipients.includes(value)).join(','),
       subject: content.subject, text: content.text, html: content.html, status: 'failed',
-      errorMessage: 'SMTP did not confirm acceptance for this recipient', trackingId: options?.trackingId,
-      emailType: options?.emailType, fromAddress: fromEmail, retryOfId: options?.retryOfId });
+      errorMessage: acceptanceUnknown ? 'SMTP acceptance is uncertain; reconcile before resending' : 'SMTP rejected this recipient', trackingId: options?.trackingId,
+      smtpMessageId: messageId, emailType: options?.emailType, fromAddress: fromEmail, retryOfId: options?.retryOfId }); failureLogged = true; }
     if (!smtpRejected && options?.trackingId && !options.durableDelivery) recentEmails.set(`${options.trackingId}:${content.to.trim().toLowerCase()}`, Date.now());
 
     if (!smtpRejected && (info as any)?.response) {
@@ -439,8 +446,12 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       );
     }
 
+    if (smtpRejected && options?.reportDeliveryFailure) throw new SmtpDeliveryError(
+      acceptanceUnknown ? 'acceptance_unknown' : 'smtp_rejected');
+
     return !smtpRejected;
   } catch (error) {
+    if (isWorkerBudgetError(error)) throw error;
     const executionTime = Date.now() - startTime;
     logger.error('Error sending email:', {
       error: error instanceof Error ? error.message : error,
@@ -470,7 +481,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       }
     }
 
-    await persistEmailLog({
+    if (!failureLogged) await persistEmailLog({
       to: content.to,
       subject: content.subject,
       text: content.text,
@@ -478,11 +489,13 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       status: "failed",
       errorMessage: error instanceof Error ? error.message : String(error),
       trackingId: options?.trackingId,
+      smtpMessageId: messageId,
       emailType: options?.emailType,
       fromAddress: process.env.EMAIL_FROM || process.env.EMAIL_USER,
       retryOfId: options?.retryOfId,
     });
 
+    if (options?.reportDeliveryFailure && smtpStarted) throw new SmtpDeliveryError(smtpFailureKind(error));
     return false;
   }
 };

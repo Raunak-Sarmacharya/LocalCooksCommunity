@@ -4254,6 +4254,19 @@ router.post('/email-logs/events/:source/:id/retry', requireFirebaseAuthWithUser,
         res.status(result.success ? 200 : 409).json(result);
     } catch { res.status(500).json({ error: 'Event recovery failed; original intent remains pending' }); }
 });
+router.post('/email-logs/events/tour/:id/reconcile', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    const id = Number(req.params.id), { key, decision, evidence, lastAttemptAt } = req.body || {};
+    if (!Number.isSafeInteger(id) || id < 1 || typeof key !== 'string' || key.length > 200
+        || !['accepted', 'resend'].includes(decision) || typeof evidence !== 'string' || evidence.trim().length < 10 || evidence.length > 1000
+        || typeof lastAttemptAt !== 'string' || !Number.isFinite(Date.parse(lastAttemptAt)))
+        return res.status(400).json({ error: 'Choose a delivery attempt and describe the provider or inbox evidence you checked (10–1000 characters).' });
+    try {
+        const { reconcileTourDelivery } = await import('../services/delivery-visibility');
+        const result = await reconcileTourDelivery(id, key, decision, evidence.trim(), req.neonUser!.id, lastAttemptAt);
+        logger.info('[Admin Email Logs] Tour delivery reconciled', { adminId: req.neonUser?.id, eventId: id, key, decision, success: result.success });
+        res.status(result.success ? 200 : 409).json(result);
+    } catch { res.status(500).json({ error: 'Delivery reconciliation failed; original intent remains pending' }); }
+});
 router.get("/email-logs", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const {

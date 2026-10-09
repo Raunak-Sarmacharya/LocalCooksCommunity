@@ -259,7 +259,7 @@ router.post('/admin/:id/retry-delivery', requireFirebaseAuthWithUser, requireAdm
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid tour' });
     await db.update(tourDeliveryEvents).set({ nextAttemptAt: new Date() })
       .where(and(eq(tourDeliveryEvents.viewingId, id), sql`${tourDeliveryEvents.completedAt} IS NULL`));
-    const delivery = await attemptTourDelivery(id);
+    const delivery = await attemptTourDelivery(id, true);
     return res.json({ notificationDeliveryFailed: delivery.failed });
   } catch (error) { return errorResponse(res, error); }
 });

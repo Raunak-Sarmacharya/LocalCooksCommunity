@@ -3,6 +3,7 @@ import { db } from '../db';
 import { emailLogs, bookingLifecycleEvents, tourDeliveryEvents, damageClaims, storageBookings, storageOverstayRecords } from '@shared/schema';
 import { adminBookingTransactionsPath } from '@shared/admin-booking-link';
 import { reminderEligibility, selectedReminderPolicy, type Reminder } from './advance-reminders';
+import { tourEmailNeedsReview, tourAttemptDiagnostic, type TourDeliveryRecovery } from './tour-delivery-retry';
 
 type Log = typeof emailLogs.$inferSelect;
 const iso = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null;
@@ -14,6 +15,10 @@ export function describeDelivery(log: Log, original: Log = log, event?: any, now
   let source = 'email', sourceId: number | null = null, eventId: number | null = null;
   let resource = '', channel = 'email', dueAt = iso(original.createdAt), destination = '/admin?section=transactions';
   let eligibility = '', nextAttemptAt: string | null = null, recipientDestination: string | null = null;
+  const key = (original.trackingId || '').split(':').slice(2).join(':');
+  const tourRecovery = /^tour-event:/.test(original.trackingId || '') ? event?.payload as TourDeliveryRecovery | undefined : undefined;
+  const attempt = tourRecovery?.deliveryAttempts?.[key];
+  const needsReview = tourEmailNeedsReview(attempt);
   let canRetry = log.status === 'failed' && !!(log.htmlBody || log.textBody) && !legacyActions.includes(log.category);
   let recovery = 'Local Cooks: verify the current recipient and action before retrying. Review any missed response opportunity; retry does not extend a deadline.';
   const schedule = original.category === 'advance_reminder';
@@ -68,15 +73,24 @@ export function describeDelivery(log: Log, original: Log = log, event?: any, now
   const acknowledged = original.status === 'sent' || !!(event &&
     (event.deliveredEmailKeys || event.deliveredKeys || []).includes((original.trackingId || '').split(':').slice(2).join(':')));
   const suppressed = original.status === 'suppressed';
-  const state = suppressed ? 'Suppressed obsolete action' : acknowledged || log.status === 'sent' ? channel === 'notification' ? 'In-app acknowledgment recorded' : 'SMTP acceptance recorded; inbox unverified'
+  if (acknowledged || log.status === 'sent' || needsReview || tourRecovery?.deliveryPaused) nextAttemptAt = null;
+  const state = suppressed ? 'Suppressed obsolete action' : attempt?.status === 'verified' ? 'Delivery verified by Local Cooks'
+    : acknowledged || log.status === 'sent' ? channel === 'notification' ? 'In-app acknowledgment recorded' : 'SMTP acceptance recorded; inbox unverified'
+    : needsReview ? attempt?.status === 'failed' ? 'Automatic retry limit reached; review required' : 'Acceptance uncertain; automatic resend paused'
+    : tourRecovery?.deliveryPaused ? 'Automatic delivery paused; review required'
     : eligibility === 'policy_pending' ? 'Policy pending' : eligibility === 'future' ? 'Scheduled'
     : original.status === 'failed' ? 'Not accepted; recovery required' : dueAt && Date.parse(dueAt) <= now.getTime() ? 'Due; awaiting acknowledgment' : 'Pending';
   return { source, sourceId, eventId, resource, channel, originalLogId: original.id,
-    dueAt, nextAttemptAt, attempts: event ? event.attempts ?? null : original.retryCount,
-    lastAttemptAt: iso(original.retriedAt), state, destination, recipientDestination, recovery,
+    dueAt, nextAttemptAt, attempts: attempt?.attempts ?? (event ? event.attempts ?? null : original.retryCount),
+    eventAttempts: event?.attempts ?? null, attemptStatus: log.status,
+    lastAttemptAt: iso(attempt?.lastAttemptAt || log.retriedAt || (['sent', 'failed'].includes(log.status) ? log.createdAt : null)), state, destination, recipientDestination,
+    recovery: needsReview ? tourAttemptDiagnostic(attempt) || 'Automatic retry limit reached. Local Cooks must verify delivery and authorize recovery.' : recovery,
     suppression: suppressed ? suppressionSummary(original.errorMessage) : null,
-    canRetry: canRetry && !acknowledged && !suppressed,
-    errorMessage: original.status === 'failed' ? 'Acceptance not recorded. Verify recipient, provider configuration and current action; diagnostics remain in server logs.' : null };
+    canRetry: canRetry && !acknowledged && !suppressed && !needsReview,
+    errorMessage: log.status === 'failed'
+      ? `${acknowledged ? 'Historical attempt failed; this channel is now acknowledged. ' : ''}${/acceptance may be ambiguous|acceptance is uncertain|deadline reached|timeout|timed out/i.test(log.errorMessage || '')
+        ? 'The SMTP attempt ended without a definitive acceptance result; delivery may have occurred.'
+        : 'This attempt did not record acceptance; inspect server diagnostics.'}` : null };
 }
 
 function suppressionSummary(reason: string | null) {
@@ -105,6 +119,7 @@ export async function visibleEmailLogs(logs: Log[]) {
       recipientRole: log.recipientRole, subject: log.subject, category: log.category, status: log.status,
       previewText: ['advance_reminder', 'advance_reminder_attempt'].includes(log.category) ? 'Current reservation guidance; open the source for instructions.' : log.previewText,
       trackingId: log.trackingId, retryCount: log.retryCount, retriedAt: log.retriedAt, retryOfId: log.retryOfId,
+      smtpMessageId: log.smtpMessageId, fromAddress: log.fromAddress,
       createdAt: log.createdAt, errorMessage: delivery.errorMessage, canRetry: delivery.canRetry, delivery };
   });
   const sourceIds = (sources: string[]) => records.filter(row => sources.includes(row.delivery.source) && row.delivery.sourceId)
@@ -145,10 +160,17 @@ export async function pendingDecisionDeliveries(offset = 0) {
     recipients: (row.emails as { key: string; to: string }[]).map(email => ({ recipient: email.to, channel: 'email', acknowledged: (row.deliveredEmailKeys as string[]).includes(email.key) })),
     acknowledgmentCount: (row.deliveredEmailKeys as string[]).length })),
   ...tours.map(row => ({ source: 'tour', id: row.id, reservationId: row.viewingId, attempts: row.attempts,
-    dueAt: row.createdAt, nextAttemptAt: row.nextAttemptAt, leaseUntil: row.leaseUntil, destination: '/admin?section=tour-requests',
+    dueAt: row.createdAt, nextAttemptAt: (row.payload as TourDeliveryRecovery).deliveryPaused ? null : row.nextAttemptAt,
+    paused: !!(row.payload as TourDeliveryRecovery).deliveryPaused,
+    leaseUntil: row.leaseUntil, destination: '/admin?section=tour-requests',
     recoveryOwnerIds: (row.payload as any)?.deliveryRecoveryOwnerIds || [],
-    recipients: tourEventMessages(row.payload as any).filter(message => message.email).map(message => ({
-      recipient: String(message.email!.to), channel: 'email', acknowledged: (row.deliveredKeys as string[]).includes(message.key) })),
+    recipients: tourEventMessages(row.payload as any).filter(message => message.email).map(message => {
+      const attempt = (row.payload as TourDeliveryRecovery).deliveryAttempts?.[message.key];
+      const acknowledged = (row.deliveredKeys as string[]).includes(message.key);
+      return { key: message.key, recipient: attempt?.recipient || String(message.email!.to), channel: 'email', acknowledged,
+        needsReview: !acknowledged && tourEmailNeedsReview(attempt), attempts: attempt?.attempts || 0,
+        lastAttemptAt: attempt?.lastAttemptAt || null, diagnostic: tourAttemptDiagnostic(attempt) };
+    }),
     acknowledgmentCount: (row.deliveredKeys as string[]).length }))];
 }
 
@@ -165,9 +187,30 @@ export async function retryDecisionDelivery(source: 'booking' | 'tour', id: numb
     await deliverBookingLifecycleEvents(1, 20_000, undefined, id, true);
   } else {
     const { deliverTourEvents } = await import('./tour-delivery-service');
-    await deliverTourEvents(undefined, 1, 20_000, id, true);
+    await deliverTourEvents(undefined, 1, 20_000, id, true, true);
   }
   const [current] = await db.select().from(table).where(eq(table.id, id)).limit(1);
   return current?.completedAt ? { success: true, message: 'Original event reconciled; inbox unverified.' }
     : { success: false, error: 'Original event remains pending. Inspect earlier decision, ownership and recipient acceptance; recovery does not discard history.' };
+}
+
+/** An uncertain SMTP attempt requires explicit evidence, never a blind retry. */
+export async function reconcileTourDelivery(id: number, key: string, decision: 'accepted' | 'resend', evidence: string, actorId: number, expectedLastAttemptAt: string) {
+  const result = await db.transaction(async tx => {
+    const [event] = await tx.select().from(tourDeliveryEvents).where(eq(tourDeliveryEvents.id, id)).limit(1).for('update');
+    if (!event || event.completedAt) return { success: false, error: 'Pending tour event not found' };
+    if (event.leaseUntil && event.leaseUntil > new Date()) return { success: false, error: 'A worker owns this event; wait for its lease.' };
+    const payload = event.payload as TourDeliveryRecovery;
+    const attempt = payload.deliveryAttempts?.[key];
+    if (!tourEmailNeedsReview(attempt) || attempt!.lastAttemptAt !== expectedLastAttemptAt)
+      return { success: false, error: 'This attempt changed or no longer requires review. Refresh before reconciling.' };
+    attempt!.review = { actorId, at: new Date().toISOString(), decision, evidence };
+    attempt!.status = decision === 'accepted' ? 'verified' : 'retry_authorized';
+    const keys = event.deliveredKeys as string[];
+    payload.deliveryPaused = false; payload.deliveryFailures = 0;
+    await tx.update(tourDeliveryEvents).set({ payload, nextAttemptAt: new Date(),
+      ...(decision === 'accepted' ? { deliveredKeys: Array.from(new Set([...keys, key])) } : {}) }).where(eq(tourDeliveryEvents.id, id));
+    return { success: true, message: decision === 'accepted' ? 'Verified delivery recorded; remaining channels will resume.' : 'One resend authorized; remaining channels will resume.' };
+  });
+  return result;
 }

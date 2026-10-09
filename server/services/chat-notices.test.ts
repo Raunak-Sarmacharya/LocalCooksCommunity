@@ -267,8 +267,8 @@ describe('actual durable unread dispatcher with controlled Firestore/SMTP sinks'
     state.logs = Array.from({ length: 61 }, (_, index) => log(index + 1, index < 60 ? '2026-10-04T10:00:00Z' : now.toISOString()));
     state.messages.m61 = state.messages.m1;
     const cursors: Record<string, number> = {};
-    const tick = () => workerContext.run({ database: {} as any, deadline: performance.now() + 10000, taskDeadline: performance.now() + 10000,
-      cursors, checkpoint: async (key, id) => { cursors[key] = id; } }, () => dispatchChatDigests(1, 5000, undefined, now));
+    const tick = () => workerContext.run({ database: {} as any, deadline: performance.now() + 18000, taskDeadline: performance.now() + 18000,
+      cursors, checkpoint: async (key, id) => { cursors[key] = id; } }, () => dispatchChatDigests(1, 18000, undefined, now));
     await tick(); expect(state.send).not.toHaveBeenCalled(); expect(cursors.chatDigests).toBe(60);
     await tick(); expect(state.send).toHaveBeenCalledTimes(1); expect(state.logs[60].status).toBe('sent');
     await tick(); expect(cursors.chatDigests).toBe(0);

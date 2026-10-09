@@ -30,7 +30,9 @@ export function workerRemaining() {
 export function assertWorkerTime(reserve = 750) {
   if (workerRemaining() < reserve) throw new WorkerBudgetExhausted();
 }
-export const deliveryReserve = () => inRecurringWorker() ? 2_000 : 10_000;
+export const smtpAttemptMs = 8_000;
+export const smtpAcknowledgmentReserveMs = 4_000;
+export const deliveryReserve = () => smtpAttemptMs + smtpAcknowledgmentReserveMs;
 export const deliveryLeaseMs = () => inRecurringWorker() ? 60_000 : 600_000;
 export const workerBatch = () => inRecurringWorker() ? 3 : 2_147_483_647;
 /** Keyset pages wrap on the next invocation. Failure advances the cursor but

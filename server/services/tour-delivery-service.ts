@@ -15,7 +15,9 @@ import { sendEmail, generateTourRequestedChefEmail, generateTourRequestedLocalCo
   generateTourRequestedManagerEmail,
   generateTourConfirmedEmail, generateTourRejectedChefEmail, generateTourManagerChangeEmail, generateTourCalendarAttachment, getSubdomainUrl, renderTransactionalEmail } from '../email';
 import { logger } from '../logger';
-import { deliveryReserve, deliveryLeaseMs } from './worker-context';
+import { deliveryReserve, deliveryLeaseMs, workerRemaining, isWorkerBudgetError } from './worker-context';
+import { SmtpDeliveryError } from './bounded-smtp';
+import { tourEmailNeedsReview, tourEmailAttemptLimit, type TourDeliveryRecovery, type TourDeliveryAttempt } from './tour-delivery-retry';
 import { getUserDisplayName } from '../utils/user-display';
 import { tEmail } from '../i18n/outbound';
 import { resolveTourApplicationNextStep } from './tour-application-service';
@@ -682,7 +684,7 @@ export function renderHistoricalTourEmail({ email, key, payload, viewingId, crea
       : `${getSubdomainUrl('admin')}/admin?section=tour-requests&viewing=${viewingId}` });
 }
 
-export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs = 20_000, onlyEventId?: number, replay = false) {
+export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs = 20_000, onlyEventId?: number, replay = false, manualRecovery = false) {
   const result = { delivered: 0, errors: 0 };
   const deadline = Date.now() + budgetMs;
   const attempted = new Set<number>();
@@ -691,13 +693,14 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
     const token = randomUUID();
     const event = await db.transaction(async tx => {
       const [row] = await tx.select().from(tourDeliveryEvents).where(and(onlyEventId ? eq(tourDeliveryEvents.id, onlyEventId) : undefined, isNull(tourDeliveryEvents.completedAt),
+        manualRecovery ? undefined : sql`COALESCE(${tourDeliveryEvents.payload}->>'deliveryPaused', 'false') <> 'true'`,
         lte(tourDeliveryEvents.nextAttemptAt, new Date()), viewingId ? eq(tourDeliveryEvents.viewingId, viewingId) : undefined,
         or(isNull(tourDeliveryEvents.leaseUntil), lte(tourDeliveryEvents.leaseUntil, new Date())),
         sql`NOT EXISTS (SELECT 1 FROM tour_delivery_events earlier WHERE earlier.viewing_id = ${tourDeliveryEvents.viewingId} AND earlier.id < ${tourDeliveryEvents.id} AND earlier.completed_at IS NULL
           AND (earlier.payload->'deliveryRecoveryOwnerIds' IS NULL
             OR (earlier.lease_until IS NOT NULL AND earlier.lease_until > clock_timestamp())))`))
         .orderBy(asc(tourDeliveryEvents.nextAttemptAt), asc(tourDeliveryEvents.id)).limit(1).for('update', { skipLocked: true });
-      if (!row || attempted.has(row.id)) return null;
+      if (!row || attempted.has(row.id) || !manualRecovery && (row.payload as TourDeliveryRecovery).deliveryPaused) return null;
       const [claimed] = await tx.update(tourDeliveryEvents).set({ leaseToken: token, leaseUntil: new Date(Date.now() + deliveryLeaseMs()), attempts: row.attempts + 1 })
         .where(eq(tourDeliveryEvents.id, row.id)).returning();
       return claimed;
@@ -705,6 +708,9 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
     if (!event) break;
     attempted.add(event.id);
     let failed = false, paused = false;
+    let retryableFailure = false;
+    const recovery = event.payload as Payload & TourDeliveryRecovery & { deliveryRecoveryOwnerIds?: number[] };
+    recovery.deliveryAttempts = { ...recovery.deliveryAttempts };
     let historical = replay;
     try {
       let payload = event.payload as Payload;
@@ -754,7 +760,8 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
         const recipientStatus = !message.key.startsWith('admin') && ['Awaiting Local Cooks review', 'Awaiting kitchen manager confirmation'].includes(currentStatus)
           ? 'Pending confirmation' : currentStatus;
         // Reserve the bounded SMTP attempt plus DB acknowledgment within the 30-second function limit.
-        if (deadline - Date.now() < (message.email ? deliveryReserve() : 1_000)) { paused = true; break; }
+        if (Math.min(deadline - Date.now(), workerRemaining()) < (message.email ? deliveryReserve() : 1_000)) { paused = true; break; }
+        let attempt: TourDeliveryAttempt | undefined, smtpAccepted = false;
         try {
           if (payload.kind === 'instructions_updated') {
             const [fresh] = await db.select().from(kitchenViewings).where(eq(kitchenViewings.id, event.viewingId)).limit(1);
@@ -829,7 +836,21 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
             const content = payload.kind !== 'instructions_updated' && payload.kind !== 'reminder' && historical && !payload.kind.startsWith('feedback_') && !payload.kind.startsWith('reconfirmation_') && payload.kind !== 'request_escalation'
               && !(payload.kind === 'reschedule_proposed' && message.key === 'chef-email') ? renderHistoricalTourEmail({ email: message.email, key: message.key, payload,
               viewingId: event.viewingId, createdAt: event.createdAt, currentStatus: recipientStatus }) : message.email;
-            if (!sent && !await sendEmail(content, { trackingId, emailType: 'tour', durableDelivery: true })) throw new Error('Tour email not accepted');
+            if (!sent) {
+              const previous = recovery.deliveryAttempts[message.key];
+              if (tourEmailNeedsReview(previous)) { failed = true; result.errors++; continue; }
+              // Claim the channel before SMTP. A crash after DATA must not cause an automatic resend.
+              if (Math.min(deadline - Date.now(), workerRemaining()) < deliveryReserve()) { paused = true; break; }
+              attempt = recovery.deliveryAttempts[message.key] = { ...previous, status: 'sending',
+                recipient: content.to.trim().toLowerCase(), attempts: (previous?.attempts || 0) + 1,
+                lastAttemptAt: new Date().toISOString(), diagnostic: undefined };
+              const [started] = await db.update(tourDeliveryEvents).set({ payload: recovery })
+                .where(and(eq(tourDeliveryEvents.id, event.id), eq(tourDeliveryEvents.leaseToken, token))).returning({ id: tourDeliveryEvents.id });
+              if (!started) throw new Error('Tour delivery lease lost before SMTP');
+              if (!await sendEmail(content, { trackingId, emailType: 'tour', durableDelivery: true, reportDeliveryFailure: true }))
+                throw new Error('Tour email not accepted');
+            }
+            smtpAccepted = true;
           }
           await db.transaction(async tx => {
             const [ownedEvent] = await tx.select().from(tourDeliveryEvents)
@@ -839,13 +860,35 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
             if (keys.includes(message.key)) return;
             if (message.notification) await notificationService.create(historical && !payload.kind.startsWith('feedback_') && payload.kind !== 'request_escalation' ? { ...message.notification,
               title: 'Recorded tour update', message: `Recorded update: ${message.notification.title}. Current tour status: ${recipientStatus}. Open the tour before acting.` } : message.notification, tx);
-            await tx.update(tourDeliveryEvents).set({ deliveredKeys: [...keys, message.key] }).where(eq(tourDeliveryEvents.id, event.id));
+            const saved = recovery.deliveryAttempts![message.key];
+            if (saved && saved.status !== 'verified') saved.status = 'accepted';
+            await tx.update(tourDeliveryEvents).set({ deliveredKeys: [...keys, message.key], payload: recovery }).where(eq(tourDeliveryEvents.id, event.id));
           });
-        } catch { failed = true; result.errors++; logger.error('[Tours] Delivery channel pending retry', { eventId: event.id, channel: message.key }); }
+        } catch (error) {
+          if (isWorkerBudgetError(error)) {
+            // No SMTP attempt started if admission failed; preserve any already-started uncertainty.
+            if (attempt && !smtpAccepted) { attempt.status = 'failed'; attempt.attempts--; attempt.diagnostic = 'send_failed'; }
+            if (attempt && smtpAccepted) { attempt.status = 'uncertain'; attempt.diagnostic = 'acceptance_unknown'; failed = true; result.errors++; }
+            paused = true; break;
+          }
+          failed = true; result.errors++;
+          if (attempt) {
+            const uncertain = smtpAccepted || error instanceof SmtpDeliveryError && error.kind === 'acceptance_unknown';
+            attempt.status = uncertain ? 'uncertain' : 'failed';
+            attempt.diagnostic = uncertain ? 'acceptance_unknown' : error instanceof SmtpDeliveryError ? error.kind : 'send_failed';
+            retryableFailure ||= !tourEmailNeedsReview(attempt);
+          } else retryableFailure = true;
+          logger.error('[Tours] Delivery channel requires recovery', { eventId: event.id, channel: message.key, diagnostic: attempt?.diagnostic || 'send_failed' });
+        }
       }
-    } catch { failed = true; result.errors++; logger.error('[Tours] Delivery preparation pending retry', { eventId: event.id }); }
+    } catch (error) {
+      if (isWorkerBudgetError(error)) paused = true;
+      else { failed = true; retryableFailure = true; result.errors++; logger.error('[Tours] Delivery preparation pending retry', { eventId: event.id }); }
+    }
     await db.transaction(async tx => {
-      const payload = event.payload as Payload & { deliveryRecoveryOwnerIds?: number[] };
+      const payload = recovery;
+      if (failed) payload.deliveryFailures = (payload.deliveryFailures || 0) + 1;
+      payload.deliveryPaused = failed && ((!paused && !retryableFailure) || (payload.deliveryFailures || 0) >= tourEmailAttemptLimit);
       if (failed && !payload.deliveryRecoveryOwnerIds?.length) {
         const owners = await tx.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
         for (const owner of owners) await notificationService.create({ userId: owner.id, target: 'manager', type: 'system_announcement',
@@ -855,7 +898,7 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
         if (owners.length) payload.deliveryRecoveryOwnerIds = owners.map(owner => owner.id);
       }
     await tx.update(tourDeliveryEvents).set({ payload, leaseToken: null, leaseUntil: null,
-      ...(failed ? { lastError: 'Delivery pending; inspect tour email logs and retry', nextAttemptAt: new Date(Date.now() + Math.min(900_000, 60_000 * 2 ** Math.min(event.attempts, 4))) }
+      ...(failed ? { lastError: payload.deliveryPaused ? 'Automatic delivery paused; Local Cooks must reconcile pending channels' : 'Delivery pending; inspect tour email logs and retry', nextAttemptAt: new Date(Date.now() + Math.min(900_000, 60_000 * 2 ** Math.min(payload.deliveryFailures || 0, 4))) }
         : paused ? { nextAttemptAt: new Date(), lastError: null } : { completedAt: new Date(), lastError: null }) }).where(and(eq(tourDeliveryEvents.id, event.id), eq(tourDeliveryEvents.leaseToken, token)));
     });
     if (!failed && !paused) result.delivered++;
@@ -865,9 +908,9 @@ export async function deliverTourEvents(viewingId?: number, limit = 20, budgetMs
 }
 
 /** A committed decision remains successful even if the delivery worker is unavailable. */
-export async function attemptTourDelivery(viewingId: number) {
+export async function attemptTourDelivery(viewingId: number, manualRecovery = false) {
   try {
-    await deliverTourEvents(viewingId);
+    await deliverTourEvents(viewingId, 20, 20_000, undefined, false, manualRecovery);
     const [pending] = await db.select({ id: tourDeliveryEvents.id }).from(tourDeliveryEvents)
       .where(and(eq(tourDeliveryEvents.viewingId, viewingId), isNull(tourDeliveryEvents.completedAt))).limit(1);
     return { failed: !!pending };

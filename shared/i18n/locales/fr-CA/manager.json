@@ -3401,7 +3401,7 @@
   "tourNextExpired": "L’horaire demandé est passé. Fermez la demande pour que le chef puisse choisir un autre horaire.",
   "tourNextReschedule": "Le chef souhaite changer l’horaire. Consultez la demande ci-dessous, puis acceptez le changement ou conservez l’horaire initial.",
   "tourNextPrepare": "Votre visite est confirmée. Vérifiez les consignes de rencontre avant d’accueillir le chef.",
-  "tourNextHost": "Accueillez le chef et faites-lui visiter la cuisine. Son arrivée et son départ apparaîtront ici une fois enregistrés.",
+  "tourNextHost": "Accueillez le chef et faites-lui visiter la cuisine. Après l’heure de fin prévue, indiquez si la visite a eu lieu et comment elle s’est déroulée.",
   "tourNextOutcome": "L’horaire de visite est terminé. Indiquez comment la visite s’est déroulée avec les actions ci-dessous.",
   "tourProposalAvailabilityFailed": "Impossible de charger les heures disponibles. Actualisez et réessayez.",
   "tourProposalSent": "Les nouvelles heures ont été envoyées au chef.",

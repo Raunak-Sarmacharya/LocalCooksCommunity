@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 import { scheduleAdvanceReminders } from './advance-reminders';
 const state = vi.hoisted(() => ({ event: null as any, sentLogs: [] as any[], notifications: [] as any[],
-  email: vi.fn(), notify: vi.fn(), insert: vi.fn(), readFails: false, currentTour: null as any,
+  email: vi.fn(), notify: vi.fn(), insert: vi.fn(), readFails: false, failEmailAck: false, currentTour: null as any,
   managerId: 2 as number | null, people: [] as any[], applicationNextStep: vi.fn(), feedbackStatus: vi.fn(),
   tourSettings: { arrivalNotes: 'Side entrance', departureNotes: 'Return badge' } as any }));
 vi.mock('./tour-application-service', () => ({ resolveTourApplicationNextStep: state.applicationNextStep }));
@@ -36,6 +36,7 @@ vi.mock('../db', () => {
       return chain;
     },
     update: () => ({ set: (value: any) => ({ where: () => {
+      if (state.failEmailAck && value.deliveredKeys?.includes('chef-email')) { state.failEmailAck = false; throw Error('Acknowledgment write failed'); }
       state.event = { ...state.event, ...value };
       const chain: any = { returning: async () => [state.event], then: (resolve: any) => resolve([]) }; return chain;
     } }) }),
@@ -50,6 +51,8 @@ afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 import { db } from '../db';
 import { queueTourEvent, tourEventMessages, deliverTourEvents, attemptTourDelivery, renderHistoricalTourEmail, tourRequestEscalationDue, tourRequestEscalationKey, tourReconfirmationNoticeCurrent } from './tour-delivery-service';
 import { getUserDisplayName } from '../utils/user-display';
+import { SmtpAcceptanceUnknown, SmtpDeliveryError } from './bounded-smtp';
+import { workerContext } from './worker-context';
 const tour = { id: 10, chefId: 8, managerId: 2, locationId: 33, targetedKitchenId: 40, scheduledAt: new Date('2026-10-08T02:15:00Z'),
   durationMinutes: 30, status: 'confirmed', updatedAt: new Date('2026-10-01T10:00:00Z'), managerNotes: 'ADMIN PRIVATE', sharedManagerNotes: 'Shared entrance instructions' } as any;
 function payload(kind = 'status', status = 'cancelled') { return { kind, before: { ...tour }, after: { ...tour, status, cancellationReason: 'Closed' },
@@ -60,7 +63,7 @@ function instructionPayload(arrival = true, departure = true) {
 }
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
-  vi.clearAllMocks(); state.sentLogs = []; state.notifications = []; state.readFails = false;
+  vi.clearAllMocks(); state.sentLogs = []; state.notifications = []; state.readFails = false; state.failEmailAck = false;
   state.currentTour = { ...tour }; state.managerId = 2;
   state.tourSettings = { arrivalNotes: 'Side entrance', departureNotes: 'Return badge' };
   state.people = [{ id: 8, email: 'chef@example.test', role: 'chef', profile: {} }, { id: 2, email: 'manager@example.test', role: 'manager', profile: {} }, { id: 30, email: 'admin@example.test', role: 'admin', profile: {} }];
@@ -70,6 +73,66 @@ beforeEach(() => {
   state.insert.mockResolvedValue(undefined);
   state.event = { id: 1, viewingId: 10, eventKey: '10:status:version', createdAt: new Date('2026-10-01T10:00:00Z'), payload: payload(), deliveredKeys: [], attempts: 0, completedAt: null };
 });
+describe('tour SMTP recovery safeguards', () => {
+  it('persists the attempt before sending and pauses an ambiguous acceptance without another copy, including ordinary admin retry', async () => {
+    state.email.mockImplementation(async () => {
+      expect(state.event.payload.deliveryAttempts['chef-email']).toMatchObject({ status: 'sending', attempts: 1, recipient: 'chef@example.test' });
+      throw new SmtpAcceptanceUnknown();
+    });
+    await deliverTourEvents(10, 1);
+    expect(state.event.payload).toMatchObject({ deliveryPaused: true, deliveryAttempts: { 'chef-email': { status: 'uncertain', diagnostic: 'acceptance_unknown', attempts: 1 } } });
+    await deliverTourEvents(10, 1);
+    await deliverTourEvents(10, 1, 20000, undefined, false, true);
+    expect(state.email).toHaveBeenCalledTimes(1);
+    expect(state.event.completedAt).toBeNull();
+  });
+  it('stops after three definite failures rather than retrying forever', async () => {
+    state.email.mockRejectedValue(new SmtpDeliveryError('connection_failed'));
+    for (let tick = 0; tick < 5; tick++) await deliverTourEvents(10, 1);
+    expect(state.email).toHaveBeenCalledTimes(3);
+    expect(state.event.payload.deliveryPaused).toBe(true);
+    expect(state.event.payload.deliveryAttempts['chef-email']).toMatchObject({ attempts: 3, status: 'failed', diagnostic: 'connection_failed' });
+  });
+  it('does not resend when SMTP succeeds but the event acknowledgement write fails, and reconciles a durable sent log safely', async () => {
+    state.failEmailAck = true;
+    state.email.mockImplementation(async () => { state.sentLogs = [{ id: 99 }]; return true; });
+    await deliverTourEvents(10, 1);
+    expect(state.event.payload.deliveryAttempts['chef-email'].status).toBe('uncertain');
+    expect(state.event.deliveredKeys).not.toContain('chef-email');
+    await deliverTourEvents(10, 1);
+    await deliverTourEvents(10, 1, 20000, undefined, false, true);
+    expect(state.email).toHaveBeenCalledTimes(1);
+    expect(state.event.deliveredKeys).toContain('chef-email');
+    expect(state.event.completedAt).toBeInstanceOf(Date);
+  });
+  it('treats a persisted sending marker from an interrupted worker as uncertain, while delivering independent recipients', async () => {
+    state.event.payload = payload('status', 'confirmed');
+    state.event.payload.deliveryAttempts = { 'chef-email': { status: 'sending', recipient: 'chef@example.test', attempts: 1, lastAttemptAt: new Date().toISOString() } };
+    await deliverTourEvents(10, 1);
+    expect(state.email.mock.calls.every(([mail]) => mail.to !== 'chef@example.test')).toBe(true);
+    expect(state.email.mock.calls.some(([mail]) => mail.to === 'manager@example.test')).toBe(true);
+    expect(state.event.payload.deliveryPaused).toBe(true);
+  });
+  it('does not start SMTP or count a failure when its full send and acknowledgement budget is unavailable', async () => {
+    const deadline = performance.now() + 10_000;
+    await workerContext.run({ database: {} as any, deadline, taskDeadline: deadline, cursors: {}, checkpoint: async () => {} }, () => deliverTourEvents(10, 1));
+    expect(state.email).not.toHaveBeenCalled();
+    expect(state.event.payload.deliveryAttempts).toEqual({});
+    expect(state.event.payload.deliveryFailures).toBeUndefined();
+    expect(state.event.payload.deliveryPaused).toBe(false);
+  });
+  it('allows exactly one explicitly authorized resend after the automatic retry limit', async () => {
+    state.event.payload.deliveryPaused = true;
+    state.event.payload.deliveryAttempts = { 'chef-email': { status: 'retry_authorized', recipient: 'chef@example.test', attempts: 3, lastAttemptAt: new Date().toISOString() } };
+    state.email.mockRejectedValue(new SmtpDeliveryError('connection_failed'));
+    await deliverTourEvents(10, 1, 20000, undefined, false, true);
+    await deliverTourEvents(10, 1);
+    expect(state.email).toHaveBeenCalledTimes(1);
+    expect(state.event.payload.deliveryAttempts['chef-email'].attempts).toBe(4);
+    expect(state.event.payload.deliveryPaused).toBe(true);
+  });
+});
+
 describe('staff decision notifications', () => {
   it.each(['review_approved', 'pending_local_cooks', 'pending', 'confirmed'])('keeps %s staff actions silent for chefs when queued and retried', async stage => {
     const event = payload(stage === 'review_approved' ? stage : 'request_escalation', stage === 'review_approved' ? 'pending' : stage);

@@ -5,12 +5,34 @@ vi.mock('./logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.f
 vi.mock('./services/email-log-service', async original => ({ ...await original<typeof import('./services/email-log-service')>(), logOutgoingEmail: smtp.log }));
 vi.mock('./db', () => ({ db: {} }));
 import { sendEmail } from './email';
+import { workerContext, WorkerBudgetExhausted } from './services/worker-context';
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '0');
   vi.stubEnv('EMAIL_USER', 'fixture@example.test'); vi.stubEnv('EMAIL_PASS', 'isolated-test-value');
 });
 afterEach(() => vi.unstubAllEnvs());
 describe('ordinary SMTP acknowledgment', () => {
+  it('keeps a stable SMTP message identity across durable attempts and reports uncertain timeouts to the tour dispatcher', async () => {
+    smtp.send.mockRejectedValueOnce(Object.assign(Error('socket timeout'), { code: 'ESOCKET' }));
+    const content = { to: 'chef@example.test', subject: 'Fixture', text: 'Fixture' };
+    const options = { durableDelivery: true, trackingId: 'tour-event:90:chef-email', reportDeliveryFailure: true };
+    await expect(sendEmail(content, options)).rejects.toMatchObject({ kind: 'acceptance_unknown' });
+    smtp.send.mockResolvedValueOnce({ accepted: ['chef@example.test'], rejected: [], messageId: 'fixture' });
+    expect(await sendEmail(content, options)).toBe(true);
+    expect(smtp.send.mock.calls[0][0].messageId).toBe(smtp.send.mock.calls[1][0].messageId);
+    expect(smtp.log.mock.calls.map(([log]) => log.status)).toEqual(['failed', 'sent']);
+  });
+  it('reports a definite provider rejection and does not record it as ambiguous or log the same failure twice', async () => {
+    smtp.send.mockResolvedValue({ accepted: [], rejected: ['chef@example.test'] });
+    await expect(sendEmail({ to: 'chef@example.test', subject: 'Fixture' }, { durableDelivery: true, reportDeliveryFailure: true })).rejects.toMatchObject({ kind: 'smtp_rejected' });
+    expect(smtp.log.mock.calls.filter(([log]) => log.status === 'failed')).toHaveLength(1);
+  });
+  it('defers before SMTP if the worker cannot reserve a full attempt and acknowledgement', async () => {
+    const deadline = performance.now() + 10_000;
+    await expect(workerContext.run({ database: {} as any, deadline, taskDeadline: deadline, cursors: {}, checkpoint: async () => {} },
+      () => sendEmail({ to: 'chef@example.test', subject: 'Fixture' }, { durableDelivery: true }))).rejects.toBeInstanceOf(WorkerBudgetExhausted);
+    expect(smtp.send).not.toHaveBeenCalled(); expect(smtp.log).not.toHaveBeenCalled();
+  });
   it('keeps an ordinary failed tracking key retryable and deduplicates only accepted sends per recipient', async () => {
     smtp.send.mockRejectedValueOnce(Error('temporary SMTP failure')).mockRejectedValueOnce(Error('temporary SMTP failure')).mockResolvedValue({ accepted: ['chef@example.test'], rejected: [], messageId: 'fixture' });
     const content = { to: 'chef@example.test', subject: 'Fixture', text: 'Fixture' }, options = { trackingId: 'ordinary-fixture' };

@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '@shared/schema';
 import runtime from '../../vercel.json';
-import { workerContext, WorkerBudgetExhausted, workerRemaining, isWorkerBudgetError } from './worker-context';
+import { workerContext, WorkerBudgetExhausted, workerRemaining, isWorkerBudgetError, deliveryReserve } from './worker-context';
 import { reminderSources, reconcileRecurringSource } from './reminder-reconciliation';
 import { dispatchAdvanceReminders } from './advance-reminders';
 import { deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
@@ -16,6 +16,7 @@ export const configuredInvocationMs = runtime.functions['api/index.js'].maxDurat
 export const workerSafetyReserveMs = 4_000;
 const stateKey = 'lifecycle_worker_v2';
 const lockKey = 'localcooks:lifecycle-worker:v2';
+const deliveryTaskMs = 18_000;
 export const workerDatabaseUrl = (env: NodeJS.ProcessEnv = process.env) => env.LIFECYCLE_WORKER_DATABASE_URL || env.DATABASE_URL;
 const connectionString = workerDatabaseUrl();
 /** A pg.Pool client does not pin the backend behind a transaction pooler.
@@ -41,7 +42,7 @@ export const workerPool = new Pool({ connectionString, max: 1,
   application_name: 'localcooks-lifecycle-worker' });
 export type WorkerState = { nextTask: number; cursors: Record<string, number>; startedAt?: string;
   deliveryNext?: number; finishedAt?: string; lastHealthyAt?: string; failures?: string[]; deferred?: boolean };
-type Task = { name: string; run: () => Promise<unknown> };
+type Task = { name: string; run: () => Promise<unknown>; budgetMs?: number; minBudgetMs?: number };
 
 /** All operations are awaited. Budget exhaustion is a checkpoint, never a race
  * against continuing database/financial work. The driver enforces statement and
@@ -51,11 +52,12 @@ export async function runFairTasks(tasks: Task[], state: WorkerState, save: () =
   const start = state.nextTask % tasks.length;
   for (let offset = 0; offset < tasks.length && Math.min(workerRemaining(), phaseDeadline - performance.now()) >= 2_500; offset++) {
     const index = (start + offset) % tasks.length, task = tasks[index];
+    if (Math.min(workerRemaining(), phaseDeadline - performance.now()) < (task.minBudgetMs ?? 2_500)) break;
     state.nextTask = (index + 1) % tasks.length;
     await save(); // A killed task cannot monopolize the next invocation.
     const scope = workerContext.getStore()!;
     const databaseFailures = scope.databaseFailures || 0;
-    scope.taskDeadline = Math.min(scope.deadline, phaseDeadline, performance.now() + 5_000);
+    scope.taskDeadline = Math.min(scope.deadline, phaseDeadline, performance.now() + (task.budgetMs ?? 5_000));
     try {
       const result = await task.run();
       results[task.name] = result;
@@ -128,12 +130,12 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
       // business tasks rotate through durable checkpoints in the remaining time.
       const deliveryState = { nextTask: state.deliveryNext || 0, cursors: {} };
       const delivery = await runFairTasks([
-        { name: 'advance', run: () => dispatchAdvanceReminders({ limit: 3, budgetMs: 5_000 }) },
-        { name: 'booking', run: () => deliverBookingLifecycleEvents(1, 5_000) },
-        { name: 'tour', run: () => deliverTourEvents(undefined, 1, 5_000) },
-        { name: 'outcome', run: () => deliverOutcomeEmails(1, 5_000) },
-        { name: 'chat', run: () => dispatchChatDigests(1, 5_000) },
-      ], deliveryState, async () => { state.deliveryNext = deliveryState.nextTask; await save(); }, deadline - 10_000);
+        { name: 'advance', budgetMs: deliveryTaskMs, run: () => dispatchAdvanceReminders({ limit: 3, budgetMs: deliveryTaskMs }) },
+        { name: 'booking', budgetMs: deliveryTaskMs, run: () => deliverBookingLifecycleEvents(1, deliveryTaskMs) },
+        { name: 'tour', budgetMs: deliveryTaskMs, run: () => deliverTourEvents(undefined, 1, deliveryTaskMs) },
+        { name: 'outcome', budgetMs: deliveryTaskMs, run: () => deliverOutcomeEmails(1, deliveryTaskMs) },
+        { name: 'chat', budgetMs: deliveryTaskMs, run: () => dispatchChatDigests(1, deliveryTaskMs) },
+      ].map(task => ({ ...task, minBudgetMs: deliveryReserve() })), deliveryState, async () => { state.deliveryNext = deliveryState.nextTask; await save(); }, deadline - 8_000);
       const background = await runFairTasks(tasks, state, save);
       state.failures = [...delivery.failures, ...background.failures];
       state.finishedAt = new Date().toISOString();

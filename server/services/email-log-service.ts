@@ -163,7 +163,10 @@ export async function logOutgoingEmail(input: OutgoingEmailLogInput): Promise<vo
 
   for (const email of recipients) {
     try {
-      const recipient = await lookupRecipient(email);
+      // Role enrichment must not discard the actual attempt if its lookup fails.
+      let recipient: RecipientFlags | null = null;
+      try { recipient = await lookupRecipient(email); }
+      catch (error) { logger.error('[EmailLog] Recipient lookup failed; recording attempt without role:', error); }
       const persistBody = input.status === "failed";
       await db.insert(emailLogs).values({
         recipientEmail: email,
@@ -275,7 +278,7 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
       await deliverBookingLifecycleEvents(1, 20_000, undefined, eventId, true);
     } else {
       const { deliverTourEvents } = await import('./tour-delivery-service');
-      await deliverTourEvents(undefined, 1, 20_000, eventId, true);
+      await deliverTourEvents(undefined, 1, 20_000, eventId, true, true);
     }
     const [reconciled] = await db.select().from(table).where(eq(table.id, eventId)).limit(1);
     const acknowledged = reconciled && ('deliveredEmailKeys' in reconciled ? reconciled.deliveredEmailKeys : reconciled.deliveredKeys) as string[] | undefined;

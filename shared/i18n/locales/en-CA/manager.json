@@ -3401,7 +3401,7 @@
   "tourNextExpired": "This requested time has passed. Close the request so the chef can choose another time.",
   "tourNextReschedule": "The chef requested a different time. Review the change below and approve it or keep the original time.",
   "tourNextPrepare": "Your tour is confirmed. Check the meeting instructions before welcoming the chef.",
-  "tourNextHost": "Welcome the chef and show them the kitchen. Their arrival and departure will appear here when recorded.",
+  "tourNextHost": "Welcome the chef and show them the kitchen. After the scheduled end, share your feedback about whether the tour took place and how it went.",
   "tourNextOutcome": "The scheduled tour time has ended. Record how the tour went using the actions below.",
   "tourProposalAvailabilityFailed": "Could not load available times. Refresh and try again.",
   "tourProposalSent": "New tour times sent to the chef.",
