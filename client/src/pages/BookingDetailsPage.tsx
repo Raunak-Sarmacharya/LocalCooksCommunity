@@ -2,6 +2,9 @@ import { CancellationRefundReview } from '@/components/booking/CancellationRefun
 import BookingPreparation from "@/components/booking/BookingPreparation";
 import { KitchenBookingChanges } from '@/components/booking/KitchenBookingChanges';
 import { BookingCancellationChooser } from '@/components/booking/BookingCancellationChooser';
+import { BookingRefundPolicyNotice } from '@/components/booking/BookingRefundPolicyNotice';
+import { BookingHistoryPanel } from '@/components/booking/BookingHistoryPanel';
+import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
@@ -31,7 +34,6 @@ import { BookingActionDialog, type BookingForAction } from "@/components/manager
 import { BookingManagementDialog, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementDialog";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 import { BookingAttendancePanel } from "@/components/booking/BookingAttendancePanel";
-import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { createBookingDateTime } from '@shared/timezone-utils';
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { ServiceFeeInfoPopover } from "@/components/booking/ServiceFeeInfoPopover";
@@ -1242,17 +1244,9 @@ export default function BookingDetailsPage() {
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight">
               {booking.kitchen?.name || t("bdKitchenBookingFallback")}
             </h1>
-            {!isManagerView && <BookingCancellationChooser bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
-              decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
-              paidCancellationAvailable={(() => { try { return Date.now() < kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return false; } })()}
-              items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
-                name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${item.startDate.slice(0, 10)} – ${item.endDate.slice(0, 10)}` })),
-                ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
-                  name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
-              onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}</div>
             {booking.location && (
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5" />
@@ -1264,6 +1258,21 @@ export default function BookingDetailsPage() {
               <BookingPreparation arrivalInstructions={booking.location?.arrivalInstructions} departureInstructions={booking.location?.departureInstructions} />
             )}
           </div>
+
+          {!isManagerView && <div className="flex shrink-0 justify-end md:ml-auto">
+            <BookingCancellationChooser bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
+              summary={{ kitchenName: booking.kitchen?.name || t('bdKitchenBookingFallback'), reference: booking.referenceCode || undefined,
+                schedule: `${formatDate(booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · Newfoundland time`,
+                amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
+              cancellationDeadline={(() => { try { return formatEventTimestamp(new Date(kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24)).toISOString()); } catch { return undefined; } })()}
+              decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
+              paidCancellationAvailable={(() => { try { return Date.now() < kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return false; } })()}
+              items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
+                name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
+                ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
+                  name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
+              onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+          </div>}
 
           {isManagerView && (booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'cancellation_requested' || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')) || booking.checkinStatus === 'checkout_requested') && (
             <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
@@ -1320,6 +1329,7 @@ export default function BookingDetailsPage() {
       </div>
 
       <Separator className="mb-8" />
+      {!isManagerView && booking.status === 'pending' && <div className="mb-6"><BookingRefundPolicyNotice /></div>}
       {booking.paymentDecision?.state === 'pending' && <p role="status" className="mb-6 rounded-lg border p-4 text-sm">{t('bdPaymentRecovery')}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1327,7 +1337,6 @@ export default function BookingDetailsPage() {
           <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
           {(['cancelled', 'cancellation_requested'].includes(booking.status) || [...(booking.storageBookings || []), ...(booking.equipmentBookings || [])].some(item => ['cancelled', 'cancellation_requested', 'removal_required'].includes(item.status))) && <Button variant="outline" onClick={() => { setCancellationRefundScope(undefined); setCancellationRefundOpen(true); }}>View cancellation and refund outcomes</Button>}
           <KitchenBookingChanges key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
-          <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport />
           <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} />
           {/* ── Schedule ── */}
           <section className="rounded-2xl border bg-card p-5 sm:p-6">
@@ -1907,7 +1916,7 @@ export default function BookingDetailsPage() {
                   <div className="flex justify-between text-sm items-center gap-2">
                     <span className="text-warning inline-flex items-center gap-1">
                       {t("bdRefundedLine")}
-                      <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" />
+                      <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
                     </span>
                     <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
                   </div>
@@ -1954,6 +1963,8 @@ export default function BookingDetailsPage() {
             </CardContent>
           </Card>
 
+          <BookingHistoryPanel id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} version={booking.updatedAt || booking.createdAt} />
+
           <Card className="border-border shadow-none">
             <CardContent className="p-5">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h3>
@@ -1962,17 +1973,10 @@ export default function BookingDetailsPage() {
                 <a className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
                 <a className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
               </div>
+              <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded />
             </CardContent>
           </Card>
 
-          {booking.updatedAt && Date.parse(booking.updatedAt) > Date.parse(booking.createdAt) && (
-            <div className="px-1 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>{t("bdUpdated")}</span>
-                <span>{formatEventTimestamp(booking.updatedAt)}</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

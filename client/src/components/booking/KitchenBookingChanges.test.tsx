@@ -23,7 +23,10 @@ describe('reservation-context kitchen change consumer', () => {
   });
   it('does not expose a new rescheduling form for confirmed bookings', async () => {
     render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByText(/Confirmed kitchen bookings cannot be rescheduled/)).toBeInTheDocument();
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByRole('region', { name: 'Kitchen booking changes' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Booking changes')).not.toBeInTheDocument();
+    expect(screen.queryByText(/use the action at the top right/)).not.toBeInTheDocument();
     expect(screen.queryByText('Review a change')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.every(call => call[1]?.method === 'GET')).toBe(true);

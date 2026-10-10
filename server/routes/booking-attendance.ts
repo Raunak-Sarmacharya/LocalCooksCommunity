@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../firebase-auth-middleware';
 import { requireChef } from './middleware';
-import { AttendanceError, readBookingAttendance, recordBookingAttendance, type AttendanceActor } from '../services/booking-attendance-service';
+import { AttendanceError, readBookingAttendance, readBookingHistory, recordBookingAttendance, type AttendanceActor } from '../services/booking-attendance-service';
 import { logger } from '../logger';
 import { db } from '../db';
 import { bookingLifecycleEvents, kitchenBookings, kitchens, locations } from '@shared/schema';
@@ -83,6 +83,16 @@ const input = z.object({
 
 for (const role of ['chef', 'manager', 'admin'] as const) {
   const gate = role === 'chef' ? requireChef : role === 'manager' ? requireManager : requireAdmin;
+  router.get(`/${role}/bookings/:id/history`, requireFirebaseAuthWithUser, gate, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid booking ID' });
+    try { res.json(await readBookingHistory(id, { id: req.neonUser!.id, role })); }
+    catch (error) {
+      if (error instanceof AttendanceError) return res.status(error.status).json({ error: error.message });
+      logger.error('Cannot read booking history', error);
+      res.status(503).json({ error: 'Booking history is unavailable. Please try again.' });
+    }
+  });
   const path = `/${role}/bookings/:id/attendance`;
   router.get(path, requireFirebaseAuthWithUser, gate, async (req, res) => {
     const id = Number(req.params.id);

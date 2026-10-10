@@ -92,7 +92,7 @@ describe("DocumentUploadField", () => {
     expect(chip.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("renders the stored note, expiry, view link and trailing slot inside the row", () => {
+  it("renders the stored note, expiry, view link and trailing slot inside the row", async () => {
     renderField({
       existingName: "kitchen-terms.pdf",
       existingNote: "Review pending",
@@ -104,7 +104,7 @@ describe("DocumentUploadField", () => {
     const row = storedRow()!;
     expect(within(row).getByText("Review pending")).toBeInTheDocument();
     expect(within(row).getByText(/^Expires /)).toBeInTheDocument();
-    expect(within(row).getByRole("link", { name: /view license/i })).toHaveAttribute("href", "/terms.pdf");
+    expect(await within(row).findByRole("link", { name: /view document/i })).toHaveAttribute("href", "/terms.pdf");
     expect(within(row).getByText("Verified")).toBeInTheDocument();
   });
 

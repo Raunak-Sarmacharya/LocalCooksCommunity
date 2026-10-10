@@ -8,7 +8,7 @@ import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard"
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { formatCurrency, formatHourSlotRange } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
-import { formatCancellationWindowText } from "@/lib/cancellation-policy";
+import { buildCancellationPolicyText } from "./CancellationPolicyDialog";
 import { BookingStorageSelector } from "./BookingStorageSelector";
 import { BookingPriceSummary, FeesInfoPopover } from "./BookingPriceSummary";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
@@ -159,18 +159,7 @@ function cancellationPolicyCopy(
   const custom =
     location?.cancellationPolicyMessage ??
     location?.cancellation_policy_message;
-  const windowText = formatCancellationWindowText(
-    hours,
-    custom,
-    t("cancellationPolicyDefaultMessage", {
-      hours,
-      defaultValue: `Bookings cannot be cancelled within ${hours} hours of the scheduled time.`,
-    })
-  );
-  return `${windowText} ${t("cancellationPolicyRefundRules", {
-    defaultValue:
-      "Cancel before the kitchen manager approves your booking for a full release (nothing is charged). After approval, refunds return your payment except Stripe’s card processing fee, which Stripe does not return. The kitchen sets the cancellation window; refund amounts follow Local Cooks platform rules.",
-  })}`;
+  return buildCancellationPolicyText(hours, custom, t);
 }
 
 /** Persistent place context carried from preview through every booking step. */
@@ -276,7 +265,7 @@ function BookingPlaceContext({
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </p>
             <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-              {t("sheetViewCancellationPolicy", "View cancellation and refund terms")}
+              {t("preConfirmationRefundTitle", "100% refund before confirmation")}
             </p>
           </div>
           <Icon icon="mdi:chevron-right" className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />

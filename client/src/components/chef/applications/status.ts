@@ -197,8 +197,8 @@ function resolveApplicationDisplay(
     return {
       label: tr("kdInReview", "In review"),
       tone: "progress",
-      step: 1,
-      stepCaption: tr("kdStep1Of3", "Request to apply"),
+      step: step2Submitted ? 2 : 1,
+      stepCaption: step2Submitted ? tr("kdStep2Of3Submitted", "Kitchen documents submitted") : tr("kdStep1Of3", "Request to apply"),
       actionLabel: tr("kdApplicationInProgress", "Application in progress"),
       actionKind: "wait",
     };

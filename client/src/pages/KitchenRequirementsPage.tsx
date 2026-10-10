@@ -1,530 +1,243 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Utensils, Building2, ArrowRight, Calendar, Clock } from "lucide-react";
 import { useLocation } from "wouter";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useFirebaseAuth } from "@/hooks/use-auth";
-import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
-import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
-import { useChefShellChrome } from "@/layouts/chef-shell-context";
-import Header from "@/components/layout/Header";
-import { Badge } from "@/components/ui/badge";
-import { ChefPageHeader } from "@/components/chef/ui";
-import { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
-import { hasStep2BeenSubmitted } from "@/components/chef/applications/status";
-import { SmartImage } from "@/components/ui/smart-image";
+import { ArrowRight, Building2, CalendarDays, Check, Circle, Clock, MapPin, MessageCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { tt } from "@/i18n/common-ns";
-import { kt } from "@/i18n/kitchen-ns";
+import { SmartImage } from "@/components/ui/smart-image";
+import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
+import { useTourRequestAccess } from "@/hooks/use-tour-request-access";
+import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
+import { getAuthHeaders } from "@/lib/api";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
+import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import Header from "@/components/layout/Header";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Fragment } from "react";
+import { kitchenPreviewHref } from "@/lib/kitchen-preview-url";
+import { getConversationForApplication } from "@/services/chat-service";
 
 export default function KitchenRequirementsPage() {
-    const { t } = useTranslation("kitchen");
-    const [locationPath, setLocation] = useLocation();
-    const locationIdMatch = locationPath.match(/\/kitchen-requirements\/(\d+)/);
-    const locationId = locationIdMatch ? locationIdMatch[1] : undefined;
-    const { user, loading: authLoading } = useFirebaseAuth();
-    const [activeView, setActiveView] = useState("discover-kitchens");
-    const [hasBookingIntent, setHasBookingIntent] = useState(false);
-    const [intentDateRange, setIntentDateRange] = useState<{from: string, to?: string} | null>(null);
+  const { t } = useTranslation("kitchen");
+  const { t: tChef } = useTranslation("chef");
+  const [path, navigate] = useLocation();
+  const locationId = Number(path.match(/\/kitchen-requirements\/(\d+)/)?.[1]) || null;
+  const requestedKitchenId = new URLSearchParams(window.location.search).get("kitchenId");
+  const { user, loading: authLoading } = useFirebaseAuth();
+  const [activeView, setActiveView] = useState("discover-kitchens");
+  const [savedDates, setSavedDates] = useState<string | null>(null);
+  const [openingChat, setOpeningChat] = useState(false);
+  const [chatError, setChatError] = useState(false);
 
-    // Scroll to top on mount and check intent
-    useEffect(() => {
-        window.scrollTo(0, 0);
-        
-        let bestIntent = null;
-        let specificIntent = null;
-        try {
-            for (let i = 0; i < sessionStorage.length; i++) {
-                const key = sessionStorage.key(i);
-                if (key && key.startsWith('kitchen_dates_')) {
-                    const val = sessionStorage.getItem(key);
-                    if (val) {
-                        const parsed = JSON.parse(val);
-                        if (parsed.from) {
-                            if (key !== 'kitchen_dates_generic') {
-                                specificIntent = parsed;
-                            } else {
-                                bestIntent = parsed;
-                            }
-                        }
-                    }
-                }
-            }
-        } catch(e) {}
-        
-        const parsedIntent = specificIntent || bestIntent;
-        if (parsedIntent) {
-            setHasBookingIntent(true);
-            setIntentDateRange(parsedIntent);
-        }
-    }, []);
+  const locationQuery = useQuery({
+    queryKey: [`/api/public/locations/${locationId}/details`],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/locations/${locationId}/details`);
+      if (!response.ok) throw new Error("Could not load this kitchen");
+      return response.json();
+    },
+    enabled: !!locationId,
+  });
+  const requirementsQuery = useQuery({
+    queryKey: [`/api/public/locations/${locationId}/requirements`],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/locations/${locationId}/requirements`);
+      if (!response.ok) throw new Error("Could not load kitchen requirements");
+      return response.json();
+    },
+    enabled: !!locationId,
+  });
+  const kitchensQuery = useQuery<Array<{ id: number; locationId: number; name: string; slug?: string | null; locationSlug?: string; imageUrl?: string | null }>>({
+    queryKey: ["/api/public/kitchens"],
+    queryFn: async () => {
+      const response = await fetch("/api/public/kitchens");
+      if (!response.ok) throw new Error("Could not load kitchens");
+      return response.json();
+    },
+  });
+  const location = locationQuery.data;
+  const requirements = requirementsQuery.data;
+  const kitchen = kitchensQuery.data?.find(item => item.locationId === locationId && (!requestedKitchenId || item.id === Number(requestedKitchenId)));
+  const applicationQuery = useChefKitchenApplicationForLocation(user ? locationId : null);
+  const application = applicationQuery.application;
+  const display = application ? getKitchenDisplayStatus(application, tChef) : null;
+  const tourQuery = useTourRequestAccess(kitchen?.id, user?.uid);
+  const tour = tourQuery.data?.tour;
+  const tourStatusQuery = useQuery<{ toursAvailable?: boolean; isActive?: boolean }>({
+    queryKey: [`/api/viewings/kitchen/${kitchen?.id}/is-active`],
+    queryFn: async () => {
+      const response = await fetch(`/api/viewings/kitchen/${kitchen!.id}/is-active`, { headers: await getAuthHeaders(), credentials: "include" });
+      if (!response.ok) throw new Error("Could not check tour availability");
+      return response.json();
+    },
+    enabled: !!kitchen,
+  });
 
-    const formatDateRange = () => {
-        if (!intentDateRange?.from) return '';
-        const fromDate = new Date(intentDateRange.from);
-        if (isNaN(fromDate.getTime())) return '';
-        
-        // Revert forcing UTC to fix local time offsets
-        const formatter = new Intl.DateTimeFormat('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric' 
-        });
-        
-        const fromStr = formatter.format(fromDate);
-        
-        if (intentDateRange.to && intentDateRange.to !== intentDateRange.from) {
-            const toDate = new Date(intentDateRange.to);
-            if (!isNaN(toDate.getTime())) {
-                return `${fromStr} - ${formatter.format(toDate)}`;
-            }
-        }
-        return fromStr;
-    };
+  useEffect(() => { window.scrollTo(0, 0); }, [locationId]);
+  useEffect(() => {
+    setSavedDates(null);
+    if (!kitchen) return;
+    try {
+      const value = localStorage.getItem(`kitchen_dates_${kitchen.id}`) || sessionStorage.getItem(`kitchen_dates_${kitchen.id}`);
+      const dates = value ? JSON.parse(value) : null;
+      if (!dates?.from) return;
+      const from = new Date(dates.from);
+      if (Number.isNaN(from.getTime())) return;
+      const format = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+      const to = dates.to ? new Date(dates.to) : null;
+      setSavedDates(to && !Number.isNaN(to.getTime()) && dates.to !== dates.from ? `${format(from)} – ${format(to)}` : format(from));
+    } catch { /* An optional booking preference must not block the request. */ }
+  }, [kitchen?.id]);
 
-    // Fetch location details (for name)
-    const { data: locationData, isLoading: isLoadingLocation } = useQuery({
-        queryKey: [`/api/public/locations/${locationId}/details`],
-        queryFn: async () => {
-            const response = await fetch(`/api/public/locations/${locationId}/details`);
-            if (!response.ok) throw new Error(kt("failedToFetchLocation"));
-            return response.json();
-        },
-        enabled: !!locationId,
-    });
+  const name = kitchen?.name || location?.name || t("kitchenWord", "Kitchen");
+  const applyHref = `/apply-kitchen/${locationId}${kitchen ? `?kitchenId=${kitchen.id}` : ""}`;
+  const previewHref = kitchen ? kitchenPreviewHref(kitchen.locationSlug || location?.slug || locationId!, kitchen) : `/kitchen-preview/${locationId}`;
+  const requestSubmitted = !!application && display?.actionKind !== "discover";
+  const documentsSubmitted = !!application && hasStep2BeenSubmitted(application);
+  const approved = application?.status === "approved" && (application.current_tier ?? 1) >= 3;
+  const canBook = display?.actionKind === "book" && location?.canAcceptApplications !== false && !!kitchen;
+  const needsDocuments = display?.actionKind === "complete-step";
+  const canCoordinate = requestSubmitted && (needsDocuments || documentsSubmitted || approved);
+  const openKitchenChat = async () => {
+    if (!application?.id || openingChat) return;
+    setOpeningChat(true);
+    setChatError(false);
+    try {
+      const conversationId = application.chat_conversation_id || (await getConversationForApplication(application.id))?.id;
+      if (!conversationId) throw new Error("Kitchen messaging unavailable");
+      navigate(`/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`);
+    } catch { setChatError(true); }
+    finally { setOpeningChat(false); }
+  };
+  const closed = !requestSubmitted && (location?.canAcceptApplications === false || !kitchen);
+  const step = approved ? 3 : needsDocuments || documentsSubmitted ? 2 : 1;
+  const waiting = display?.actionKind === "wait";
+  const title = closed ? t("requirementsClosedTitle", "Requests are currently paused")
+    : approved ? canBook ? t("requirementsApprovedTitle", "You’re ready to book") : t("requirementsApprovedPausedTitle", "Your kitchen access is approved")
+    : needsDocuments ? t("requirementsDocumentsTitle", "Your request is approved")
+    : waiting ? documentsSubmitted ? t("requirementsDocumentsReviewTitle", "Your documents are in review") : t("requirementsRequestReviewTitle", "Your request is in review")
+    : display?.actionKind === "discover" ? t("requirementsApplyAgainTitle", "Ready to apply again?")
+    : t("requirementsStartTitle", "Make this your next kitchen");
+  const description = closed ? t("requirementsClosedHelp", "This kitchen isn’t accepting new requests right now. Explore another space or check back later.")
+    : approved ? canBook ? t("requirementsApprovedHelp", "Choose available dates and hours to book your kitchen time.") : t("requirementsApprovedPausedHelp", "Your approval stays on file. Booking will be available when this kitchen opens for reservations again.")
+    : needsDocuments ? t("requirementsDocumentsHelp", "Upload the required kitchen documents to continue your application.")
+    : waiting ? t("requirementsReviewHelp", "Your application is in review. We’ll email you when there’s an update. Nothing else is needed from you right now.")
+    : t("requirementsStartHelp", "Tell us about yourself and your food business. After your request is approved, you’ll share the documents this kitchen requires.");
+  const actionLabel = closed ? t("backToDiscoverKitchens", "Explore kitchens")
+    : canBook ? t("requirementsBookAction", "Choose booking times")
+    : approved || waiting ? t("viewApplicationBtn", "View application")
+    : needsDocuments ? t("submitKitchenDocuments", "Submit kitchen documents")
+    : display?.actionKind === "discover" ? t("requirementsApplyAgainAction", "Apply again")
+    : t("requestToApply", "Request to apply");
+  const actionHref = closed ? chefDashboardHref("discover-kitchens") : canBook ? `/book/${locationId}?kitchenId=${kitchen!.id}`
+    : approved || waiting ? `/dashboard?view=kitchen-requests${application?.id ? `&application=${application.id}` : ""}` : applyHref;
 
-    // Fetch requirements
-    const { data: requirements, isLoading: isLoadingReqs } = useQuery({
-        queryKey: [`/api/public/locations/${locationId}/requirements`],
-        queryFn: async () => {
-            const response = await fetch(`/api/public/locations/${locationId}/requirements`);
-            if (!response.ok) throw new Error(tt("failedToFetchRequirements"));
-            return response.json();
-        },
-        enabled: !!locationId,
-    });
+  const step1Items = requirements ? [
+    t("requirementsContactItem", "Your name and contact details"),
+    (requirements.requireBusinessName || requirements.requireBusinessType || requirements.requireBusinessDescription) && t("requirementsBusinessItem", "Your food business"),
+    requirements.requireFoodHandlerCert && t("requirementsCertificateAnswerItem", "Your food safety certification status"),
+    (requirements.requireUsageFrequency || requirements.requireSessionDuration) && t("requirementsUsageItem", "How often you’ll use the kitchen"),
+    requirements.tier1_years_experience_required && t("professionalExperience", "Professional experience"),
+    ...(Array.isArray(requirements.tier1_custom_fields) ? requirements.tier1_custom_fields.filter((field: { required?: boolean }) => field.required).map((field: { label: string }) => field.label) : []),
+    t("requirementsAgreementsItem", "Kitchen terms and application agreements"),
+  ].filter(Boolean) as string[] : [];
+  const step2Items = requirements ? [
+    requirements.requireFoodSafetyUpload && (t("foodSafetyLicense", "Food Safety Certificate") + (requirements.requireFoodHandlerExpiry ? ` · ${t("requirementsExpiry", "expiry date")}` : "")),
+    requirements.tier2_food_establishment_cert_required && (t("foodEstablishmentCertificate", "Food Establishment Certificate") + (requirements.tier2_food_establishment_expiry_required ? ` · ${t("requirementsExpiry", "expiry date")}` : "")),
+    (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) && (t("insuranceDocument", "Insurance document") + (requirements.tier2_insurance_minimum_amount > 0 ? t("requirementsInsuranceMinimum", { defaultValue: " · minimum ${amount}", amount: requirements.tier2_insurance_minimum_amount }) : "")),
+    requirements.tier2_kitchen_experience_required && t("kitchenExperienceDescription", "Kitchen experience description"),
+    ...(Array.isArray(requirements.tier2_custom_fields) ? requirements.tier2_custom_fields.filter((field: { required?: boolean }) => field.required !== false).map((field: { label: string }) => field.label) : []),
+  ].filter(Boolean) as string[] : [];
 
-    const isLoading = isLoadingLocation || isLoadingReqs || authLoading;
+  const breadcrumbs = useMemo(() => [
+    { label: t("shellDiscoverKitchens", "Discover Kitchens"), href: chefDashboardHref("discover-kitchens"), onClick: () => navigate(chefDashboardHref("discover-kitchens")), navId: "discover-kitchens" as const },
+    ...(location?.name && location.name !== name ? [{ label: location.name, href: `/kitchen-preview/${locationId}`, onClick: () => navigate(`/kitchen-preview/${locationId}`) }] : []),
+    { label: name, href: previewHref, onClick: () => navigate(previewHref) },
+    { label: t("requirementsBreadcrumb", "Kitchen access") },
+  ], [t, navigate, location?.name, locationId, name, previewHref]);
+  const onViewChange = (view: string) => { setActiveView(view); navigate(chefDashboardHref(view), { replace: true }); };
+  const inShell = useChefShellChrome({ activeView, onViewChange, breadcrumbs });
+  const isLoading = authLoading || locationQuery.isLoading || requirementsQuery.isLoading || kitchensQuery.isLoading || (!!user && applicationQuery.isLoading);
+  const error = locationQuery.error || requirementsQuery.error || kitchensQuery.error || applicationQuery.error;
+  const retry = () => { void locationQuery.refetch(); void requirementsQuery.refetch(); void kitchensQuery.refetch(); if (user) void applicationQuery.refetch(); };
+  const toursAvailable = tourStatusQuery.data?.toursAvailable ?? tourStatusQuery.data?.isActive ?? false;
+  const showTour = !!kitchen && (!!tour || (!requestSubmitted && toursAvailable));
 
-    // Fetch kitchen details for richer display
-    const { data: kitchenData } = useQuery({
-        queryKey: [`/api/public/kitchens`],
-        queryFn: async () => {
-            const response = await fetch(`/api/public/kitchens`);
-            if (!response.ok) throw new Error(tt("failedToFetchKitchens"));
-            return response.json();
-        },
-    });
-
-    // Find the kitchen for this location
-    const kitchen = kitchenData?.find((k: { locationId: number }) => k.locationId === Number(locationId));
-
-    // For authenticated chefs, check if they already have an application (Step 1 done)
-    const { application: existingApplication, hasApplication, isLoading: applicationLoading } = useChefKitchenApplicationForLocation(
-        user && locationId ? Number(locationId) : null
-    );
-
-
-    /**
-     * The manager has taken this location's kitchen off the listing.
-     *
-     * Read from the APPLICATION, which the server annotates with `locationListed` — not derived here
-     * from the published kitchen list. That list is a second fetch that can fail, and re-deriving the
-     * same fact on each surface is what let the chef dashboard go on offering Book for a delisted
-     * kitchen. One source, carried on the thing every surface already has.
-     *
-     * `=== false` and never falsiness: `undefined` means the server did not say (an older payload, or
-     * a read that failed), and that must behave exactly as it did before this field existed.
-     *
-     * The chef can still finish Step 2, and that is deliberate: the application is per LOCATION and
-     * does not read the listing, so blocking it would strand every in-flight chef the moment a manager
-     * paused for two weeks, and on relist they would all have to be re-prompted. The approval is a
-     * durable relationship with the kitchen; the delisting is the manager's temporary state.
-     *
-     * What must not happen is finishing and THEN discovering the wall. Nothing on this page mentioned
-     * the listing at all, so the state is stated up front instead.
-     */
-    const kitchenNotListed = (existingApplication as { locationListed?: boolean } | null | undefined)
-        ?.locationListed === false;
-
-    // Step 1 is "done" when the chef has a non-rejected/non-cancelled application
-    const isStep1Done = hasApplication &&
-        existingApplication &&
-        existingApplication.status !== 'rejected' &&
-        existingApplication.status !== 'cancelled';
-
-    // Determine the current tier for label purposes
-    const chefCurrentTier = (existingApplication as any)?.current_tier ?? 1;
-    // Step 2 is actionable when Step 1 is approved and Step 2 docs aren't submitted yet
-    const isReadyForStep2 =
-        isStep1Done &&
-        existingApplication?.status === "approved" &&
-        chefCurrentTier < 3 &&
-        !hasStep2BeenSubmitted(existingApplication);
-
-    // Loading state with proper layout
-    const loadingContent = (
-        <div className="space-y-6">
-            <Skeleton className="h-10 w-3/4" />
-            <div className="grid gap-6 md:grid-cols-2">
-                <Skeleton className="h-64 w-full rounded-xl" />
-                <Skeleton className="h-64 w-full rounded-xl" />
-            </div>
+  const content = isLoading ? (
+    <div className="mx-auto max-w-6xl space-y-6" role="status" aria-label={t("checkingApplication", "Checking your application…")}>
+      <Skeleton className="h-56 rounded-2xl" /><div className="grid gap-6 lg:grid-cols-[1fr_340px]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-80 rounded-2xl" /></div>
+    </div>
+  ) : error ? (
+    <Alert variant="destructive"><AlertTitle>{t("requirementsLoadFailed", "Couldn’t load your kitchen access details")}</AlertTitle><AlertDescription className="mt-3"><Button variant="outline" onClick={retry}>{t("requirementsRetry", "Try again")}</Button></AlertDescription></Alert>
+  ) : !locationId || !location || !requirements || (requestedKitchenId && !kitchen) ? (
+    <div className="rounded-2xl border bg-white p-10 text-center"><Building2 className="mx-auto mb-4 h-8 w-8 text-muted-foreground" /><h1 className="text-xl font-semibold">{t("requirementsNotFound", "Kitchen unavailable")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("couldNotFindRequirements", "We couldn’t find the requirements for this kitchen.")}</p><Button className="mt-6" onClick={() => navigate(chefDashboardHref("discover-kitchens"))}>{t("backToDiscoverKitchens", "Explore kitchens")}</Button></div>
+  ) : (
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      {!user && <Breadcrumb><BreadcrumbList>{breadcrumbs.map((crumb, index) => <Fragment key={`${crumb.label}-${index}`}><BreadcrumbItem>{crumb.onClick ? <BreadcrumbLink href={crumb.href} onClick={event => { event.preventDefault(); crumb.onClick(); }}>{crumb.label}</BreadcrumbLink> : <BreadcrumbPage>{crumb.label}</BreadcrumbPage>}</BreadcrumbItem>{index < breadcrumbs.length - 1 && <BreadcrumbSeparator />}</Fragment>)}</BreadcrumbList></Breadcrumb>}
+      <header className={`grid overflow-hidden rounded-2xl border border-border/70 bg-white ${kitchen?.imageUrl ? "sm:grid-cols-[1fr_260px]" : ""}`}>
+        <div className="flex flex-col justify-center p-6 sm:p-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t("requirementsEyebrow", "Kitchen access")}</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">{name}</h1>
+          {location.address && <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-muted-foreground"><MapPin className="mt-1 h-4 w-4 shrink-0" />{location.address}</p>}
+          <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">{t("requirementsHeroHelp", "A clear path from your first request to your first day in the kitchen.")}</p>
         </div>
-    );
+        {kitchen?.imageUrl && <SmartImage src={kitchen.imageUrl} alt={name} className="h-32 w-full object-cover sm:h-full sm:min-h-56" />}
+      </header>
 
-    // Not found state
-    const notFoundContent = (
-        <div className="text-center py-16">
-            <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                <Building2 className="h-8 w-8 text-muted-foreground" />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="row-start-2 overflow-hidden rounded-2xl border border-border/70 bg-white lg:row-start-auto" aria-labelledby="access-steps-heading">
+          <div className="border-b px-6 py-5 sm:px-7"><h2 id="access-steps-heading" className="text-lg font-semibold tracking-tight">{t("requirementsPathTitle", "Your path to kitchen access")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("requirementsPathHelp", "Complete each step when it’s ready. We’ll keep you updated along the way.")}</p></div>
+          {[
+            { number: 1, title: t("requestToApply", "Request to apply"), help: t("requirementsStep1Help", "Introduce yourself and your food business to Local Cooks."), items: step1Items,
+              complete: needsDocuments || documentsSubmitted || approved, status: needsDocuments || documentsSubmitted || approved ? t("requirementsStageApproved", "Approved") : requestSubmitted ? t("requirementsStageReview", "In review") : t("requirementsStageStart", "Start here") },
+            { number: 2, title: t("requirementsStep2Title", "Kitchen documents"), help: t("requirementsStep2Help", "Upload the documents this kitchen requires for access."), items: step2Items,
+              complete: approved, status: approved ? t("requirementsStageApproved", "Approved") : documentsSubmitted ? t("requirementsStageReview", "In review") : needsDocuments ? t("requirementsStageReady", "Ready to submit") : t("requirementsStageLater", "After request approval") },
+            { number: 3, title: t("requirementsStep3Title", "Book your kitchen time"), help: t("requirementsStep3Help", "Once approved, choose available dates and hours and confirm your booking."), items: [], complete: approved,
+              status: approved ? canBook ? t("requirementsStageBookingReady", "Ready to book") : t("requirementsStageBookingPaused", "Bookings paused") : t("requirementsStageAfterDocuments", "After document approval") },
+          ].map(stage => <div key={stage.number} className="flex gap-4 border-b p-6 last:border-b-0 sm:gap-5 sm:p-7" aria-current={stage.number === step ? "step" : undefined}>
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${stage.complete ? "border-emerald-200 bg-emerald-50 text-emerald-700" : stage.number === step ? "border-primary/20 bg-primary/5 text-primary" : "border-border bg-muted/30 text-muted-foreground"}`}>
+              {stage.complete ? <Check className="h-4 w-4" aria-label={t("requirementsStageApproved", "Approved")} /> : stage.number}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold tracking-tight">{stage.title}</h3><span className={`rounded-md px-2 py-1 text-[11px] font-medium ${stage.complete ? "bg-emerald-50 text-emerald-700" : stage.number === step ? "bg-primary/5 text-primary" : "bg-muted/50 text-muted-foreground"}`}>{stage.status}</span></div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{stage.help}</p>
+              {stage.items.length > 0 && <ul className="mt-4 space-y-2.5">{stage.items.map((item, index) => <li key={`${item}-${index}`} className="flex items-start gap-2.5 text-sm leading-5 text-foreground/80"><Circle className="mt-1.5 h-1.5 w-1.5 shrink-0 fill-muted-foreground text-muted-foreground" aria-hidden />{item}</li>)}</ul>}
+              {stage.number === 2 && !stage.items.length && <p className="mt-3 text-sm text-muted-foreground">{t("noDocsRequiredStep2", "No specific kitchen documents are required.")}</p>}
             </div>
-            <h2 className="text-2xl font-bold mb-2">{t("requirementsNotFound", "Requirements Not Found")}</h2>
-            <p className="text-muted-foreground mb-6">{t("couldNotFindRequirements", "We couldn't find the requirements for this kitchen.")}</p>
-            <Button onClick={() => setLocation("/dashboard?view=discover-kitchens")}>{t("backToDiscoverKitchens", "Back to Discover Kitchens")}</Button>
-        </div>
-    );
+          </div>)}
+        </section>
 
-    // Helper to compile lists
-    const getStep1Items = () => {
-        if (!requirements) return [];
-        const items = [
-            t("personalInformation", "Personal Information"),
-            (requirements.requireBusinessName || requirements.requireBusinessType) && t("businessInformation", "Business Information"),
-            // The certificate QUESTION belongs to the request phase and is set
-            // platform-wide by Local Cooks; only the upload it asks about is
-            // collected later with the kitchen.
-            requirements.requireFoodHandlerCert && t("foodSafetyCertifications", "Food Safety & Certifications"),
-            requirements.tier1_years_experience_required && t("professionalExperience", "Professional Experience"),
-            ...(Array.isArray(requirements.tier1_custom_fields)
-                ? requirements.tier1_custom_fields
-                    .filter((f: { required?: boolean }) => f.required)
-                    .map((f: { label: string }) => f.label)
-                : [])
-        ].filter(Boolean);
-        return items;
-    };
-
-    const getStep2Items = () => {
-        if (!requirements) return [];
-        const items = [
-            // Each document is ONE ask: the expiry is collected with the document
-            // it describes, never as a separate requirement.
-            requirements.requireFoodSafetyUpload && t("foodSafetyLicense", "Food Safety Certificate") + " + " + t("foodSafetyLicenseExpiry", "Expiry Date"),
-            requirements.tier2_food_establishment_cert_required && t("foodEstablishmentCertificate", "Food Establishment Certificate") + " + " + t("foodEstablishmentExpiry", "Food Establishment License Expiry"),
-            (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
-            t("insuranceDocument", "Insurance Document") + (requirements.tier2_insurance_minimum_amount > 0 ? t("minAmount", { defaultValue: " (min ${amount})", amount: requirements.tier2_insurance_minimum_amount }) : ''),
-            requirements.tier2_kitchen_experience_required && t("kitchenExperienceDescription", "Kitchen Experience Description"),
-            ...(Array.isArray(requirements.tier2_custom_fields)
-                ? requirements.tier2_custom_fields
-                    .filter((f: { required?: boolean }) => f.required !== false)
-                    .map((f: { label: string }) => f.label)
-                : [])
-        ].filter(Boolean);
-        return items;
-    };
-
-    // Main content - the requirements display
-    const mainContent = (
-        <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-8"
-        >
-            {/*
-              * Same shape as the booking-intent block below, and deliberately NEUTRAL: the tone lives
-              * in the icon, never in a tinted panel, so this reads as part of the product rather than
-              * as a framework alert (see components/ui/custom-alerts.tsx).
-              *
-              * Gated on `isStep1Done` because the copy addresses someone who HAS an application
-              * ("finish YOUR application"). `kitchenNotListed` is equally true for a visitor with no
-              * application at all, and telling them to finish one they never started is worse than
-              * saying nothing.
-              */}
-            {kitchenNotListed && isStep1Done && (
-                <div className="flex items-start sm:items-center gap-4 p-4 bg-muted/40 border border-border/50 rounded-lg">
-                    <div className="p-2 bg-background rounded-md shadow-sm border border-border/40 shrink-0">
-                        <Clock className="h-4 w-4 text-warning" />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                        <p className="text-sm font-medium leading-none text-foreground">
-                            {t("kitchenNotTakingBookings", "This kitchen is not taking bookings right now")}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                            {t(
-                              "kitchenNotTakingBookingsFinish",
-                              "You can still finish your application. Booking opens again once the kitchen is listed."
-                            )}
-                        </p>
-                    </div>
-                </div>
-            )}
-
-            {hasBookingIntent && (
-                <div className="flex items-start sm:items-center gap-4 p-4 bg-muted/40 border border-border/50 rounded-lg">
-                    <div className="p-2 bg-background rounded-md shadow-sm border border-border/40 shrink-0">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                        <p className="text-sm font-medium leading-none text-foreground">
-                            {t("bookingDatesSaved", { range: formatDateRange(), defaultValue: `Booking dates saved: ${formatDateRange()}` })}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                            {t(
-                              "completeApplicationSecureTime",
-                              "Complete your application below to secure your kitchen time."
-                            )}
-                        </p>
-                    </div>
-                </div>
-            )}
-
-            {/* Header with Kitchen Info */}
-            <div className="flex flex-col md:flex-row md:items-start gap-6">
-                {kitchen?.imageUrl && (
-                    <div className="w-full md:w-48 h-32 md:h-32 rounded-lg overflow-hidden flex-shrink-0 border">
-                        <SmartImage 
-                            src={kitchen.imageUrl} 
-                            alt={kitchen.name || 'Kitchen'}
-                            className="w-full h-full object-cover"
-                        />
-                    </div>
-                )}
-                
-                <div className="flex-1 space-y-3">
-                    <Badge variant="outline" className="text-xs w-fit">
-                        <Building2 className="h-3 w-3 mr-1" />
-                        {t("kitchenApplication", "Kitchen Application")}
-                    </Badge>
-                    {/*
-                     * `kitchen` first, then the LOCATION, and the location read is `locationData.name`.
-                     *
-                     * `/public/locations/:id/details` answers with a FLAT object —
-                     * `res.json({ id, name, slug, address, … })` — so the nested
-                     * `locationData.location.name` this used to read was ALWAYS undefined, and the first
-                     * operand never resolved. Harmless while the kitchen is listed, because
-                     * `kitchen.name` covered it; the moment the manager takes the listing down, `kitchen`
-                     * is undefined too and this page lost its own subject — falling all the way through
-                     * to the generic "Kitchen Requirements" with no address and no photo, which reads as
-                     * the wrong page rather than as a kitchen that is simply not advertised right now.
-                     *
-                     * Kitchen-first on purpose: that is what this page has always rendered when the
-                     * listing is up, so the reorder changes nothing that works today and only fills the
-                     * hole a delisted kitchen leaves.
-                     */}
-                    <ChefPageHeader
-                        title={kitchen?.name || locationData?.name || t('kitchenRequirements', 'Kitchen Requirements')}
-                        description={
-                            (kitchen?.address || locationData?.address)
-                                ? `${kitchen?.address || locationData?.address}`
-                                : undefined
-                        }
-                    />
-                </div>
+        <aside className="row-start-1 space-y-4 lg:sticky lg:top-6 lg:row-start-auto">
+          <section className="overflow-hidden rounded-2xl border border-border/70 bg-white">
+            <div className="border-b bg-[#faf7f5] p-6"><p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{t("requirementsNextStep", "Your next step")}</p><h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">{title}</h2>{requestSubmitted && <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">{waiting ? <Clock className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{display?.label}</p>}</div>
+            <div className="space-y-5 p-6">
+              <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+              <Button className="h-11 w-full justify-between rounded-xl shadow-none" data-testid={needsDocuments ? "kitchen-requirements-submit-documents" : "kitchen-requirements-start-apply"} onClick={() => navigate(actionHref)}>{actionLabel}<ArrowRight className="h-4 w-4" /></Button>
+              {!requestSubmitted && !closed && <p className="text-xs leading-5 text-muted-foreground">{t("requirementsNoPayment", "No payment is due with your request. Booking becomes available after approval.")}</p>}
+              {savedDates && <div className="border-t pt-4"><p className="flex items-center gap-2 text-xs font-medium"><CalendarDays className="h-4 w-4 text-muted-foreground" />{t("requirementsSavedPreferences", "Saved booking preferences")}</p><p className="mt-2 text-sm">{savedDates}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("requirementsDatesNotReserved", "These dates are preferences. Your kitchen time is reserved only when you complete a booking.")}</p></div>}
+              {user && location.kitchenTermsUrl && <div className="border-t pt-4"><SecureDocumentLink url={location.kitchenTermsUrl} label={t("viewKitchenTerms", "View kitchen terms and policies")} showExternalIcon={false} /></div>}
             </div>
+          </section>
+          {canCoordinate && <section className="rounded-2xl border border-border/70 bg-white p-6" aria-labelledby="kitchen-coordination-heading">
+            <MessageCircle className="mb-3 h-5 w-5 text-primary" aria-hidden />
+            <h2 id="kitchen-coordination-heading" className="text-base font-semibold">{t("requirementsCoordinateTitle", "Coordinate with kitchen")}</h2>
+            {application?.location?.managerName && <p className="mt-2 text-sm font-medium">{application.location.managerName}</p>}
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("requirementsCoordinateHelp", "Message your kitchen manager to arrange access, discuss your Food Establishment Licence, or ask about the kitchen’s document requirements.")}</p>
+            <Button variant="outline" className="mt-4 w-full rounded-xl" disabled={openingChat} onClick={() => void openKitchenChat()}>{openingChat ? t("requirementsOpeningChat", "Opening messages…") : t("requirementsMessageManager", "Message kitchen manager")}</Button>
+            {chatError && <p role="alert" className="mt-3 text-xs leading-5 text-destructive">{t("requirementsChatError", "Couldn’t open kitchen messages. Please try again.")}</p>}
+          </section>}
+          {showTour && <section className="rounded-2xl border border-border/70 bg-white p-5"><div className="flex items-start gap-3"><CalendarDays className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" /><div className="min-w-0"><h3 className="text-sm font-semibold">{tour ? tour.kind === "completed" ? t("requirementsTourCompleted", "Your kitchen tour is complete") : t("requirementsTourExisting", "Your kitchen tour") : t("requirementsTourTitle", "Want to see the space first?")}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{tour ? t("requirementsTourExistingHelp", "Your tour details and next steps are saved in My tours.") : t("requirementsTourHelp", "A tour is optional. Get to know the kitchen before you request access.")}</p><Button variant="ghost" size="sm" className="-ml-3 mt-2 h-auto whitespace-normal text-primary" disabled={!tour && !!user && (tourQuery.isLoading || !!tourQuery.error || !tourQuery.data?.canRequest)} onClick={() => navigate(tour ? `/dashboard?view=viewings&viewing=${tour.id}` : `/request-tour/${locationId}?kitchenId=${kitchen!.id}`)}>{tour ? t("requirementsViewTour", "View your tour") : tourQuery.error ? t("requirementsTourCheckFailed", "Couldn’t check tour access") : t("applyFlowScheduleTourButton", "Request tour")}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></div></div></section>}
+          <p className="px-2 text-xs leading-5 text-muted-foreground">{t("requirementsNeedHelp", "Need a hand?")} <a href="mailto:support@localcooks.ca" className="underline underline-offset-4 hover:text-foreground">support@localcooks.ca</a></p>
+        </aside>
+      </div>
+    </div>
+  );
 
-            {/* Requirements Cards */}
-            <div className="grid gap-6 md:grid-cols-2">
-                {/* Step 1 Card — shows completed state if chef already submitted Step 1 */}
-                <Card className={`shadow-none relative overflow-hidden ${
-                    isStep1Done ? 'border-success/30' : 'border-border/50'
-                }`}>
-                    <CardHeader className="pb-4">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="h-10 w-10 rounded-lg border flex items-center justify-center font-semibold text-sm text-muted-foreground">
-                                {isStep1Done ? <CheckCircle2 className="h-5 w-5" /> : '1'}
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                    <CardTitle className="text-lg">{t("requestToApply", "Request to apply")}</CardTitle>
-                                    {isStep1Done && (
-                                        <Badge variant="success" className="text-xs font-medium">
-                                            {t("completed", "Completed")}
-                                        </Badge>
-                                    )}
-                                </div>
-                                <CardDescription className="text-xs">
-                                    {isStep1Done ? t("step1ApplicationSubmitted", "Your request to apply was submitted") : t("initialApplicationDocuments", "Initial application documents")}
-                                </CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <ul className="space-y-3">
-                            {getStep1Items().length > 0 ? (
-                                getStep1Items().map((item, i) => (
-                                    <li key={i} className="flex items-start gap-3 text-sm">
-                                        <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                                        <span className={`leading-snug ${
-                                            isStep1Done ? 'text-foreground/50 line-through' : 'text-foreground/80'
-                                        }`}>{item}</span>
-                                    </li>
-                                ))
-                            ) : (
-                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep1", "No specific documents required for your request to apply.")}</li>
-                            )}
-                        </ul>
-                    </CardContent>
-                </Card>
-
-                {/* Step 2 Card */}
-                <Card className="shadow-none border-border/50 relative overflow-hidden">
-                    <CardHeader className="pb-4">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="h-10 w-10 rounded-lg border flex items-center justify-center font-semibold text-sm text-muted-foreground">
-                                2
-                            </div>
-                            <div>
-                                <CardTitle className="text-lg">{t("kitchenCoordination", "Chef Application Requirements")}</CardTitle>
-                                <CardDescription className="text-xs">
-                                    {t("requiredBeforeBookingShifts", "Required before booking shifts")}
-                                </CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <ul className="space-y-3">
-                            {getStep2Items().length > 0 ? (
-                                getStep2Items().map((item, i) => (
-                                    <li key={i} className="flex items-start gap-3 text-sm">
-                                        <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                                        <span className="leading-snug text-foreground/80">{item}</span>
-                                    </li>
-                                ))
-                            ) : (
-                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep2", "No specific kitchen documents are required.")}</li>
-                            )}
-                        </ul>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* CTA Section */}
-            <Card className="shadow-none border-border/50">
-                <CardContent className="p-8 text-center">
-                    {isReadyForStep2 ? (
-                        <>
-                            <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Request to apply approved — next up: kitchen documents")}</h3>
-                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {t("initialApplicationApprovedSubmitStep2", "Your initial request was approved. Submit your Chef Application Requirements to unlock full kitchen access.")}
-                            </p>
-                            <div className="flex gap-4 justify-center">
-                                <Button 
-                                    size="lg" 
-                                    data-testid="kitchen-requirements-submit-documents"
-                                    onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
-                                >
-                                    <ArrowRight className="mr-2 h-4 w-4" />
-                                    {t("submitKitchenDocuments", "Submit kitchen documents")}
-                                </Button>
-                            </div>
-                        </>
-                    ) : isStep1Done ? (
-                        <>
-                            <h3 className="text-xl font-semibold mb-2">{t("applicationUnderReview", "Application Under Review")}</h3>
-                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {t("step1ApplicationUnderReview", "Your request to apply is being reviewed by Our Team. You’ll be notified once a decision is made.")}
-                            </p>
-                            <Button 
-                                size="lg" 
-                                onClick={() => setLocation(chefDashboardHref("applications"))}
-                            >
-                                {t("viewApplicationBtn", "View application")}
-                            </Button>
-                        </>
-                    ) : (
-                        <>
-                            <h3 className="text-xl font-semibold mb-2">{t("readyToApplyForLocation", { defaultValue: "Ready to apply for {location}?", location: kitchen?.name || locationData?.name || t('kitchenWord', 'this kitchen') })}</h3>
-                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {t("ensureDocumentsReady", "Ensure you have these documents ready to speed up your verification process. The initial application takes about 5 minutes.")}
-                            </p>
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-stretch">
-                                {!applicationLoading && !hasApplication && (
-                                    <Button 
-                                        size="lg" 
-                                        className="h-11 min-h-[44px] w-full sm:w-auto"
-                                        onClick={() => setLocation(`/request-tour/${locationId}?kitchenId=${kitchen.id}`)}
-                                    >
-                                        <Calendar />
-                                        {t("applyFlowScheduleTourButton", "Request tour")}
-                                    </Button>
-                                )}
-                                <Button 
-                                    size="lg" 
-                                    data-testid="kitchen-requirements-start-apply"
-                                    onClick={() => setLocation(`/apply-kitchen/${locationId}${kitchen?.id ? `?kitchenId=${kitchen.id}` : ""}`)}
-                                    className="h-11 min-h-[44px] w-full sm:w-auto"
-                                >
-                                    {t("startApplication", "Start Application")}
-                                </Button>
-                            </div>
-                        </>
-                    )}
-                </CardContent>
-            </Card>
-        </motion.div>
-    );
-
-    // Determine what content to show
-    const getContent = () => {
-        if (isLoading) return loadingContent;
-        if (!requirements) return notFoundContent;
-        return mainContent;
-    };
-
-    const reqOnViewChange = (view: string) => {
-        setActiveView(view);
-        setLocation(chefDashboardHref(view), { replace: true });
-    };
-
-    const reqBreadcrumbs = useMemo(
-        () => [
-            {
-                label: t("shellDiscoverKitchens", "Discover Kitchens"),
-                onClick: () => setLocation("/dashboard?view=discover-kitchens"),
-                navId: "discover-kitchens" as const,
-            },
-            // No `kitchen` fallback here on purpose: a breadcrumb names WHERE you are, and its parent
-            // is already "Discover Kitchens". This read the same nested path the heading did, so it was
-            // always undefined — every chef, listed or not, saw the generic "Kitchen".
-            { label: locationData?.name || t("kitchenWord", "Kitchen") },
-        ],
-        [t, setLocation, locationData?.name]
-    );
-
-    const inShell = useChefShellChrome({
-        activeView,
-        onViewChange: reqOnViewChange,
-        breadcrumbs: reqBreadcrumbs,
-    });
-
-    // If user is authenticated, use persistent chef shell (or layout fallback)
-    if (user) {
-        if (inShell) return getContent();
-        return (
-            <ChefDashboardLayout
-                activeView={activeView}
-                onViewChange={reqOnViewChange}
-                breadcrumbs={reqBreadcrumbs}
-            >
-                {getContent()}
-            </ChefDashboardLayout>
-        );
-    }
-
-    // For unauthenticated    // For unauthenticated users, use public layout
-    return (
-        <div className="min-h-screen flex flex-col bg-gray-50">
-            <Header />
-            <main className="flex-1 pt-[calc(var(--header-total)_+_1rem)] sm:pt-[calc(var(--header-total)_+_2rem)] lg:pt-[calc(var(--header-total)_+_3rem)] pb-12">
-                <div className="container mx-auto px-4 max-w-4xl">
-                    {getContent()}
-                </div>
-            </main>
-        </div>
-    );
+  if (user) return inShell ? content : <ChefDashboardLayout activeView={activeView} onViewChange={onViewChange} breadcrumbs={breadcrumbs}>{content}</ChefDashboardLayout>;
+  return <div className="min-h-screen bg-gray-50"><Header /><main className="mx-auto max-w-6xl px-4 pb-12 pt-[calc(var(--header-total)_+_2rem)] sm:px-6">{content}</main></div>;
 }

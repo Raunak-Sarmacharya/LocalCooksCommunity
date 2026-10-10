@@ -10,6 +10,7 @@ interface SecureDocumentLinkProps {
     fileName?: string;
     className?: string;
     showIcon?: boolean;
+    showExternalIcon?: boolean;
 }
 
 export function SecureDocumentLink({
@@ -17,7 +18,8 @@ export function SecureDocumentLink({
     label = "View Document",
     fileName,
     className,
-    showIcon = true
+    showIcon = true,
+    showExternalIcon = true
 }: SecureDocumentLinkProps) {
     const { url: signedUrl, isLoading, error } = usePresignedDocumentUrl(url);
     const [imgError, setImgError] = useState(false);
@@ -72,7 +74,7 @@ export function SecureDocumentLink({
                         title={error ? "Failed to load document" : label}
                     >
                         {error ? "Error loading document" : label}
-                        {!error && <ExternalLink className="h-3 w-3" />}
+                        {!error && showExternalIcon && <ExternalLink className="h-3 w-3" />}
                     </a>
                 )}
             </div>

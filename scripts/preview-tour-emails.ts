@@ -13,11 +13,17 @@ process.env.BASE_DOMAIN = 'localcooks.ca';
 process.env.APP_BASE_DOMAIN = 'localcooks.ca';
 process.env.VERCEL_ENV = 'production';
 
-const { buildTourEmailSamples } = await import('./tour-email-samples');
-const { samples, notificationOnly } = await buildTourEmailSamples();
-const data = JSON.stringify({ samples, notificationOnly }).replace(/</g, '\\u003c');
+const applicationEmails = process.argv.includes('--applications');
+const bookingEmails = process.argv.includes('--bookings');
+const scopeName = bookingEmails ? 'booking' : applicationEmails ? 'application' : 'tour';
+const { samples, notificationOnly } = bookingEmails
+  ? (await import('./kitchen-booking-email-samples')).buildKitchenBookingEmailSamples()
+  : applicationEmails
+  ? (await import('./kitchen-application-email-samples')).buildKitchenApplicationEmailSamples()
+  : await (await import('./tour-email-samples')).buildTourEmailSamples();
+const data = JSON.stringify({ samples: samples.map((sample, index) => ({ ...sample, id: String(index) })), notificationOnly }).replace(/</g, '\\u003c');
 const previewLogo = 'data:image/png;base64,' + (await readFile(path.resolve('attached_assets/emailHeader-brand-red.png'))).toString('base64');
-const html = String.raw`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+let html = String.raw`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Kitchen tour emails · Local Cooks</title><style>
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#f8fafc;color:#172033}button,select,input{font:inherit}button,select{cursor:pointer}button,a{touch-action:manipulation}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #fda4af;outline-offset:2px}
 header{padding:20px 28px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:20px}header h1{font-size:22px;margin:0;letter-spacing:-.5px}header p{margin:3px 0 0;color:#64748b;font-size:13px}.pill{font-size:12px;border:1px solid #fecdd3;background:#fff1f2;color:#be123c;border-radius:20px;padding:6px 12px;white-space:nowrap}.layout{display:grid;grid-template-columns:330px 1fr;height:calc(100vh - 97px)}aside{border-right:1px solid #e2e8f0;background:#fff;display:flex;min-height:0;flex-direction:column}.filters{padding:16px;display:grid;gap:10px;border-bottom:1px solid #e2e8f0}.filters input,.filters select{width:100%;border:1px solid #cbd5e1;border-radius:6px;padding:9px;background:white;color:#172033}.filter-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.count{font-size:12px;color:#64748b}.list{overflow:auto;padding:8px;flex:1}.item{display:block;width:100%;text-align:left;background:white;border:1px solid transparent;border-radius:8px;padding:12px;color:#172033;margin-bottom:4px}.item:hover{background:#f8fafc}.item.active{background:#fff1f2;border-color:#fda4af}.item strong{font-size:13px;display:block}.item small{color:#64748b;display:block;margin-top:5px}.badge{display:inline-block;font-size:11px;padding:2px 6px;background:#f1f5f9;border-radius:4px;color:#475569;margin-right:6px}main{display:flex;flex-direction:column;min-width:0;min-height:0}.meta{background:white;padding:18px 24px;border-bottom:1px solid #e2e8f0}.meta h2{margin:0 0 8px;font-size:19px}.meta p{margin:3px 0;font-size:13px;color:#64748b;overflow-wrap:anywhere}.meta b{color:#334155}.tools{padding:12px 24px;display:flex;gap:8px;flex-wrap:wrap;background:white;border-bottom:1px solid #e2e8f0}.tools button{background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:7px 12px;color:#334155}.tools button.active{background:#172033;border-color:#172033;color:#fff}.tools .spacer{flex:1}.stage{padding:20px;flex:1;overflow:auto;display:flex;justify-content:center}iframe{width:100%;max-width:760px;height:100%;min-height:460px;border:1px solid #e2e8f0;border-radius:8px;background:white}iframe.mobile{width:375px;max-width:100%;flex-shrink:0}pre{margin:0;background:white;border:1px solid #e2e8f0;border-radius:8px;width:100%;max-width:950px;padding:24px;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.7 ui-monospace,Consolas,monospace;color:#334155}.notice{border:1px solid #cbd5e1;border-radius:8px;background:white;padding:24px;max-width:760px;width:100%;align-self:flex-start}.notice h3{margin:0 0 12px}.notice li{margin:12px 0}.bottom{padding:10px 24px;color:#64748b;background:#fff;font-size:12px;border-top:1px solid #e2e8f0}details{padding:12px 16px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b}details button{border:0;background:none;text-align:left;padding:5px 0;color:#475569;display:block}
@@ -41,12 +47,14 @@ for(const n of notificationOnly){const b=document.createElement('button');b.text
 document.addEventListener('keydown',e=>{if(!['ArrowDown','ArrowUp'].includes(e.key)||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;const visible=filtered(),i=visible.findIndex(s=>s.id===String(selected)),next=visible[i+(e.key==='ArrowDown'?1:-1)];if(next){e.preventDefault();selected=Number(next.id);list();show();document.querySelector('.item.active').scrollIntoView({block:'nearest'})}});const showEmail=show;show=function(){el('download').disabled=false;showEmail()};list();show();
 </script></body></html>`;
 
+if (scopeName !== 'tour') html = html.replace(/Kitchen tour/g, 'Kitchen ' + scopeName).replace(/kitchen tour/g, 'kitchen ' + scopeName).replace(/Tour email/g, scopeName === 'booking' ? 'Booking email' : 'Application email').replace('people and tour details', 'people and ' + scopeName + ' details');
+const outputName = 'kitchen-' + scopeName;
 const outputIndex = process.argv.indexOf('--output');
 if (outputIndex >= 0) {
   const directory = path.resolve(process.argv[outputIndex + 1]);
   await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, 'kitchen-tour-emails.html'), html);
-  await writeFile(path.join(directory, 'kitchen-tour-email-samples.json'), JSON.stringify({ samples, notificationOnly }, null, 2));
+  await writeFile(path.join(directory, outputName + '-emails.html'), html);
+  await writeFile(path.join(directory, outputName + '-email-samples.json'), JSON.stringify({ samples, notificationOnly }, null, 2));
   console.log(`Saved standalone preview to ${directory}`);
 }
 if (!process.argv.includes('--export-only')) {
@@ -54,5 +62,5 @@ if (!process.argv.includes('--export-only')) {
   app.get('/', (_request, response) => response.type('html').send(html));
   app.get('/samples.json', (_request, response) => response.json({ samples, notificationOnly }));
   const port = Number(process.env.TOUR_EMAIL_PREVIEW_PORT || 3848);
-  app.listen(port, '127.0.0.1', () => console.log(`${samples.length} tour emails · http://127.0.0.1:${port}`));
-} else console.log(`Exported ${samples.length} tour emails and ${notificationOnly.length} notification-only scenarios.`);
+  app.listen(port, '127.0.0.1', () => console.log(`${samples.length} ${scopeName} emails · http://127.0.0.1:${port}`));
+} else console.log(`Exported ${samples.length} ${scopeName} emails and ${notificationOnly.length} notification-only scenarios.`);

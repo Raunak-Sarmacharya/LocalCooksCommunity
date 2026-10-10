@@ -22,7 +22,7 @@
  * instead of shipping.
  */
 import { beforeEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
 
 /*
@@ -134,7 +134,7 @@ vi.mock("@/hooks/use-chef-kitchen-applications", () => ({
 }));
 
 vi.mock("@/hooks/use-presigned-document-url", () => ({
-  usePresignedDocumentUrl: () => ({ url: null }),
+  usePresignedDocumentUrl: (url: string | null | undefined) => ({ url: url || null, isLoading: false, error: null }),
 }));
 
 /*
@@ -198,6 +198,28 @@ beforeEach(() => {
 });
 
 describe("KitchenApplicationForm render harness", () => {
+  it.each([1, 2])('reopens saved custom files from the correct data for tier %s', tier => {
+    const stored = '/api/files/documents/portfolio.pdf';
+    state.requirements = { ...FULL_REQUIREMENTS,
+      [`tier${tier}_custom_fields`]: [{ id: 'portfolio', label: 'Portfolio', type: 'file', required: true }],
+    };
+    state.application = { current_tier: tier, status: tier === 1 ? 'rejected' : 'approved',
+      customFieldsData: { portfolio: tier === 1 ? stored : 'Step 1 answer' },
+      tier_data: { tier2_custom_fields_data: { portfolio: stored } },
+    };
+    state.hasApplication = true;
+    render(<KitchenApplicationForm location={location} />);
+    expect(screen.getByRole('link', { name: 'View document' })).toHaveAttribute('href', stored);
+    const inputId = tier === 1 ? 'custom-portfolio' : 'custom2-portfolio';
+    expect(document.getElementById(inputId)).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Replace' }).at(-1)!);
+    const input = document.getElementById(inputId)!;
+    fireEvent.change(input, { target: { files: [new File(['pdf'], 'replacement.pdf', { type: 'application/pdf' })] } });
+    expect(screen.getByText('replacement.pdf')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove file' }));
+    fireEvent.click(within(input.parentElement!).getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('link', { name: 'View document' })).toHaveAttribute('href', stored);
+  });
   const tourReference = { intendedUse: 'Meals for catering', estimatedWeeklyHours: '5-10', hasLicense: false,
     targetStartDate: 'not_decided', chefNotes: 'My note', sharedManagerNotes: 'Shared note', additionalInfo: '' };
   it('prefills intended use and preserves an edit when asynchronous tour defaults refresh', () => {

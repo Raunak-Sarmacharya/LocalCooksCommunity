@@ -497,6 +497,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     timezone,
                     locationName,
                     bookingId: booking.id,
+                    referenceCode: booking.referenceCode,
                     operatingWindowStartTime: availabilityCheck.windowStartTime,
                 });
                 await sendEmail(managerEmail);
@@ -506,6 +507,8 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             // Send confirmation to portal user
             if (bookingEmail) {
                 const portalUserEmail = generateBookingRequestEmail({
+                    bookingId: booking.id,
+                    referenceCode: booking.referenceCode,
                     chefEmail: bookingEmail,
                     chefName: bookingName,
                     kitchenName: kitchen.name,

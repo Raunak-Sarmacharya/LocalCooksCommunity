@@ -3591,6 +3591,8 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 // NOTE: This is sent immediately so chef knows their booking request was received
                 // Manager notification is sent ONLY after payment completes (via webhook)
                 const chefEmail = generateBookingRequestEmail({
+                    bookingId: booking.id,
+                    referenceCode: booking.referenceCode,
                     chefEmail: chef.username,
                     chefName: chef.username,
                     kitchenName: kitchen.name,
@@ -3892,6 +3894,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 timezone: 'America/St_Johns',
                                 locationName: location.name,
                                 bookingId: newBooking.id,
+                                referenceCode: newBooking.referenceCode,
                                 operatingWindowStartTime: newBooking.operatingWindowStartTime,
                                 selectedSlots: newBooking.selectedSlots,
                             });

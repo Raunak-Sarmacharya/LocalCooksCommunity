@@ -24,7 +24,6 @@ import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import { apiRequest } from '@/lib/queryClient';
 import type { TourApplicationNextStep } from '@shared/tour-application';
-import { TourIntakeDetails } from '@/components/tour/TourIntakeDetails';
 
 interface PublicLocation {
   id: number;
@@ -177,19 +176,12 @@ export default function ApplyToKitchen() {
           kitchenName={selectedKitchen?.name || location?.name || "Kitchen application"}
           title={documentsSubmitted ? "Documents in review" : "Request in review"}
           description={documentsSubmitted ? "Your kitchen documents were submitted." : "Your request to apply was submitted."}
-          nextStep={documentsSubmitted ? "We’ll notify you when the kitchen makes a decision. You can track your application at any time." : "We’ll notify you when it’s time to upload the kitchen documents."}
+          nextStep="We’ll email you when there’s an update. You can track your application at any time."
           actionLabel="View my applications"
-          onAction={() => navigate("/dashboard?view=kitchen-requests")}
+          onAction={() => navigate(`/dashboard?view=kitchen-requests${locationApplication?.id ? `&application=${locationApplication.id}` : ""}`)}
         />
       ) : (
         <>
-      {tourNextStep?.prefill && <Card className="shadow-none"><CardContent className="space-y-3 p-5">
-        <h2 className="font-semibold">{t('tourApplicationReferenceTitle', { defaultValue: 'Your kitchen tour' })}</h2>
-        <p className="text-sm text-muted-foreground">{t('tourApplicationReferenceHelp', { defaultValue: 'Intended use can fill a blank business description. Review and edit it before submitting. The other answers are reference only; application requirements still apply.' })}</p>
-        <TourIntakeDetails data={Object.fromEntries(Object.entries(tourNextStep.prefill).filter(([key]) => !['chefNotes', 'sharedManagerNotes'].includes(key)))} />
-        {tourNextStep.prefill.chefNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationChefNotes', { defaultValue: 'Your tour notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.chefNotes}</p></div>}
-        {tourNextStep.prefill.sharedManagerNotes && <div><h3 className="text-xs text-muted-foreground">{t('tourApplicationSharedNotes', { defaultValue: 'Manager notes' })}</h3><p className="whitespace-pre-wrap text-sm">{tourNextStep.prefill.sharedManagerNotes}</p></div>}
-      </CardContent></Card>}
       {/* Application Form */}
       <KitchenApplicationForm
         location={location!}

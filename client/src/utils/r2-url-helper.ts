@@ -2,18 +2,19 @@ import { logger } from "@/lib/logger";
 
 /** Resolve proxy references before requesting an authenticated image URL. */
 export async function getAuthenticatedImageUrl(src: string): Promise<string> {
+  return getAuthenticatedFileUrl(src);
+}
+
+function resolveFileUrl(src: string): string {
   let url = src;
-  if (src.startsWith('/api/files/r2-proxy?')) {
-    const params = new URL(src, 'https://localcooks.ca').searchParams;
+  const parsed = new URL(src, 'https://localcooks.ca');
+  if (parsed.pathname === '/api/files/r2-proxy') {
+    const params = parsed.searchParams;
     const filename = params.get('filename');
-    url = params.get('url') || (filename ? `https://files.localcooks.ca/images/${filename}` : src);
+    const folder = filename && /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(filename) ? 'images' : 'documents';
+    url = params.get('url') || (filename ? `https://files.localcooks.ca/${folder}/${filename}` : src);
   }
-  try {
-    const parsed = new URL(url);
-    // Already signed URLs must be loaded directly, including their signature.
-    if (parsed.searchParams.has('X-Amz-Signature')) return url;
-  } catch { /* Local, data and blob references are handled by the existing helper. */ }
-  return getAuthenticatedFileUrl(url);
+  return url.startsWith('files.localcooks.ca/') ? `https://${url}` : url;
 }
 /**
  * Check if a URL points to a public folder (kitchens, public images)
@@ -77,6 +78,9 @@ export async function getAuthenticatedR2ProxyUrl(fileUrl: string | null | undefi
     return '#';
   }
 
+  fileUrl = resolveFileUrl(fileUrl);
+  if (new URL(fileUrl, 'https://localcooks.ca').searchParams.has('X-Amz-Signature')) return fileUrl;
+
   // If it's a public URL, no auth needed
   if (isPublicUrl(fileUrl)) {
     return getR2ProxyUrl(fileUrl);
@@ -100,27 +104,21 @@ export async function getAuthenticatedR2ProxyUrl(fileUrl: string | null | undefi
     try {
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
-      if (currentUser) {
-        const token = await currentUser.getIdToken();
-        // Use the presigned URL endpoint which handles auth properly
-        const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-          credentials: 'include',
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          return data.url;
-        }
-      }
+      const headers: Record<string, string> = {};
+      if (currentUser) headers.Authorization = `Bearer ${await currentUser.getIdToken()}`;
+      const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to load document');
+      const data = await response.json();
+      if (typeof data.url !== 'string' || !data.url) throw new Error('Failed to load document');
+      return data.url;
     } catch (error) {
       logger.error('Error getting authenticated R2 proxy URL:', error);
+      throw error;
     }
-    // Fallback to regular proxy URL (may fail for protected files)
-    return getR2ProxyUrl(fileUrl);
   }
 
   return fileUrl;
@@ -135,6 +133,9 @@ export async function getAuthenticatedFileUrl(fileUrl: string | null | undefined
   if (!fileUrl) {
     return '#';
   }
+
+  fileUrl = resolveFileUrl(fileUrl);
+  if (new URL(fileUrl, 'https://localcooks.ca').searchParams.has('X-Amz-Signature')) return fileUrl;
 
   // If it's already a data URL or blob URL, return as-is
   if (fileUrl.startsWith('data:') || fileUrl.startsWith('blob:')) {

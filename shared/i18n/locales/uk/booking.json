@@ -253,5 +253,30 @@
   "kbfDiscardChanges": "Відхилити зміни",
   "bssStorageOptionsSelected": "{count, plural, one {Обрано # варіант сховища} few {Обрано # варіанти сховища} many {Обрано # варіантів сховища} other {Обрано # варіанта сховища}}",
   "bssBackToStorage": "Назад до сховища",
-  "bssMinDaysShortLabel": "Мін. {count, plural, one {# день} few {# дні} many {# днів} other {# дня}}"
+  "bssMinDaysShortLabel": "Мін. {count, plural, one {# день} few {# дні} many {# днів} other {# дня}}",
+  "preConfirmationRefundTitle": "Повернення 100 % до підтвердження",
+  "preConfirmationRefundPolicy": "Скасуйте бронювання до його підтвердження, щоб отримати повернення 100 % сплаченої суми, включно з податками та зборами. Якщо кошти лише заблоковані на картці, блокування буде знято.",
+  "confirmedBookingRefundPolicy": "Після підтвердження діє збережений кінцевий термін скасування. Скасування та повернення коштів розглядаються окремо; комісії за обробку платежу та сервісні збори платформи можуть утримуватися. Перегляньте результат скасування й повернення коштів, щоб дізнатися точну суму.",
+  "historyTitle": "Історія бронювання",
+  "historyActivity": "Записана активність бронювання",
+  "historyTimezone": "Час указано за часовим поясом Ньюфаундленду",
+  "historyLoading": "Завантаження історії бронювання…",
+  "historyError": "Не вдалося завантажити історію. Спробуйте ще раз.",
+  "historyRetry": "Повторити",
+  "historyPartial": "Попередня активність цього бронювання може бути недоступна.",
+  "historyEmpty": "Для цього бронювання немає записаної активності.",
+  "historyVisit": "Візит № {{id}}",
+  "historyItem_storage": "Зберігання № {{id}}",
+  "historyItem_equipment": "Обладнання № {{id}}",
+  "historyEvents": {
+    "requested": "Бронювання запитано", "confirmed": "Бронювання підтверджено", "cancelled": "Бронювання скасовано",
+    "cancellation_requested": "Скасування запитано", "cancellation_declined": "Скасування відхилено",
+    "cancellation_reviewed": "Скасування прийнято", "refund_issued": "Повернення коштів оформлено", "payment_recovery_needed": "Потрібна перевірка платежу",
+    "item_withdrawn": "Додаткову послугу відкликано", "item_cancellation_requested": "Запитано скасування додаткової послуги",
+    "checkin_recorded": "Прибуття записано", "checkout_requested": "Виїзд запитано", "checkout_cleared": "Виїзд підтверджено",
+    "checkout_claim_filed": "Проблему під час виїзду записано", "report_no_show": "Повідомлено про невідвіданий візит",
+    "report_attended": "Повідомлено про здійснений візит", "withdraw_attendance": "Повідомлення про візит відкликано",
+    "kitchen_change_requested": "Зміну розкладу запитано", "kitchen_change_applied": "Зміну розкладу підтверджено",
+    "kitchen_change_declined": "Зміну розкладу відхилено", "kitchen_change_withdrawn": "Зміну розкладу відкликано", "kitchen_change_expired": "Термін зміни розкладу минув"
+  }
 }

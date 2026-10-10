@@ -1,3 +1,4 @@
+import { BookingRefundPolicyNotice } from "./BookingRefundPolicyNotice";
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react"
@@ -424,6 +425,7 @@ const getChefBookingColumns = ({
             </InfoChip>
           )}
           <BookingOperationsStatus booking={booking} />
+          {status === "pending" && <BookingRefundPolicyNotice compact />}
           {isVoided && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
               <XCircle className="h-2.5 w-2.5" />

@@ -1,3 +1,4 @@
+import { BookingRefundPolicyNotice } from "@/components/booking/BookingRefundPolicyNotice";
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, DollarSign, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
@@ -538,6 +539,7 @@ export default function BookingConfirmationPage() {
             </div>
 
             <div className="space-y-4">
+              <BookingRefundPolicyNotice />
               {/* Kitchen */}
               <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                 <p className="text-xs text-gray-600 mb-1">Kitchen</p>

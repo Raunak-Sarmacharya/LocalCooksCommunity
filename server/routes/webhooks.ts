@@ -1165,6 +1165,8 @@ async function handleCheckoutSessionCompleted(
 
             const { sendEmail, generateBookingRequestEmail } = await import("../email");
             const chefEmail = generateBookingRequestEmail({
+              bookingId: booking.id,
+              referenceCode: booking.referenceCode,
               chefEmail: chef.username,
               chefName: chef.username,
               kitchenName: kitchen.name,

@@ -32,6 +32,22 @@ beforeEach(() => {
 });
 
 describe('tour attribution at the normal kitchen application submission boundary', () => {
+  it('stores a custom upload URL instead of its client filename', async () => {
+    state.upload.mockResolvedValue('https://files.localcooks.ca/documents/portfolio.pdf');
+    const response = await submit({ customFieldsData: JSON.stringify({ portfolio: 'portfolio.pdf' }) }, [{ fieldname: 'customFile_portfolio' }]);
+    expect(response.status).toHaveBeenCalledWith(201);
+    expect(state.create).toHaveBeenCalledWith(expect.objectContaining({
+      customFieldsData: { portfolio: 'https://files.localcooks.ca/documents/portfolio.pdf' },
+    }), expect.anything());
+  });
+
+  it('does not save an application when a custom document upload fails', async () => {
+    state.upload.mockRejectedValue(new Error('Upload unavailable'));
+    const response = await submit({ customFieldsData: JSON.stringify({ portfolio: 'portfolio.pdf' }) }, [{ fieldname: 'customFile_portfolio' }]);
+    expect(response.status).toHaveBeenCalledWith(500);
+    expect(state.create).not.toHaveBeenCalled();
+    expect(state.notify).not.toHaveBeenCalled(); expect(state.email).not.toHaveBeenCalled();
+  });
   it.each(['', '-1', '0', '20extra', '20.5', '2147483648', '9007199254740992', [], {}, true])('rejects malformed source %j before uploads or application side effects', async sourceTourId => {
     const response = await submit({ sourceTourId }, [{ fieldname: 'foodSafetyLicenseFile' }]);
     expect(response.status).toHaveBeenCalledWith(400); expect(state.upload).not.toHaveBeenCalled();

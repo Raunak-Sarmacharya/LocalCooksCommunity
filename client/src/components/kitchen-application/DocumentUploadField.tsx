@@ -3,6 +3,7 @@ import { Check, FileText, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 
 /**
  * The one document-upload control for the kitchen-application flow.
@@ -98,6 +99,7 @@ export function DocumentUploadField({
   const hasFile = Boolean(file);
   const [isReplacing, setIsReplacing] = useState(false);
   const { t } = useTranslation("kitchen");
+  const document = usePresignedDocumentUrl(existingUrl);
 
   // Owned here rather than passed in: every call site wants the same two words, and
   // six copies of the same prop pair is six chances for them to drift apart.
@@ -135,12 +137,16 @@ export function DocumentUploadField({
             {expiryText ? <p className="text-xs text-muted-foreground">{expiryText}</p> : null}
             {existingUrl ? (
               <a
-                href={existingUrl}
+                href={document.url ?? undefined}
+                aria-disabled={!document.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-1 inline-block text-xs text-primary hover:underline"
               >
-                {t("viewLicense", { defaultValue: "View license" })}
+                {document.error
+                  ? t("documentLoadFailed", { defaultValue: "Could not load document. Please try again." })
+                  : document.isLoading ? t("loading", { defaultValue: "Loading…" })
+                  : t("viewDocument", { defaultValue: "View document" })}
               </a>
             ) : null}
 

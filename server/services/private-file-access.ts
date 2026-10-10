@@ -22,6 +22,15 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   if (!actor) return false;
   if (actor.role === 'admin') return true;
   if (filename.startsWith(`${actor.id}_`)) return true;
+  // Chefs must read the listed kitchen's terms before they have an application.
+  // This grants only the exact terms URL, never the other facility documents.
+  if (actor.role === 'chef') {
+    const terms = await db.select({ termsUrl: locations.kitchenTermsUrl }).from(locations)
+      .innerJoin(kitchens, eq(kitchens.locationId, locations.id))
+      .where(and(eq(locations.kitchenTermsUrl, url), eq(locations.isActive, true),
+        eq(kitchens.isActive, true), eq(kitchens.listingStatus, 'active'))).limit(1);
+    if (terms.some(row => row.termsUrl === url)) return true;
+  }
   const apps = await db.select({ application: chefKitchenApplications, managerId: locations.managerId }).from(chefKitchenApplications)
     .innerJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
     .where(or(eq(chefKitchenApplications.chefId, actor.id), eq(locations.managerId, actor.id)));
@@ -29,7 +38,9 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
     const participant = actor.role === 'manager' && managerId === actor.id || actor.role === 'chef' && application.chefId === actor.id;
     if (!participant) continue;
     const urls = [application.foodSafetyLicenseUrl, application.foodEstablishmentCertUrl,
-      ...Object.values((application.tier_data as any)?.tierFiles || {})];
+      ...Object.values((application.tier_data as any)?.tierFiles || {}),
+      ...Object.values((application.customFieldsData as Record<string, unknown>) || {}),
+      ...Object.values((application.tier_data as any)?.tier2_custom_fields_data || {})];
     if (urls.includes(url)) return true;
   }
   const owned = actor.role === 'manager'

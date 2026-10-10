@@ -950,10 +950,12 @@ export default function ApplicantDashboard() {
       return [...baseBreadcrumbs, tours, ...(tourId ? [{ label: `TOUR-${tourId}` }] : [])];
     }
     if (activeTab === 'kitchen-requests') {
+      const applicationId = new URLSearchParams(dashboardSearch).get('application');
       return [
         ...baseBreadcrumbs,
-        { label: t("shellKitchens"), onClick: () => setActiveTab("discover-kitchens") },
-        { label: t("shellMyKitchenApplications"), navId: activeTab },
+        { label: t("shellKitchens"), onClick: () => navigate('/dashboard?view=discover-kitchens') },
+        { label: t("shellMyKitchenApplications"), navId: activeTab, ...(applicationId ? { onClick: () => navigate('/dashboard?view=kitchen-requests') } : {}) },
+        ...(applicationId ? [{ label: /^\d+$/.test(applicationId) ? `APPLICATION-${applicationId}` : t("applicationPageTitle", "Kitchen application") }] : []),
       ];
     }
 

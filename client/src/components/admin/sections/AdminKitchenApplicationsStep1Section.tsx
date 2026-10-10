@@ -372,6 +372,23 @@ export function AdminKitchenApplicationsStep1Section({
     setShowDocumentsDialog(true);
   };
 
+  useEffect(() => {
+    if (embedded) return;
+    const openLinkedApplication = () => {
+      const params = new URLSearchParams(window.location.search);
+      const id = Number(params.get('application'));
+      const application = applications.find(item => item.id === id);
+      if (!application) return;
+      openReviewDialog(application);
+      // Consume the link so closing the dialog or refreshing data does not reopen it.
+      params.delete('application');
+      window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+    };
+    openLinkedApplication();
+    window.addEventListener('popstate', openLinkedApplication);
+    return () => window.removeEventListener('popstate', openLinkedApplication);
+  }, [applications, embedded]);
+
   function getDocStatusBadge(status: string) {
     switch (status) {
       case "pending":

@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, kitchens, locations } from '@shared/schema';
+import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, bookingLifecycleEvents, kitchens, locations } from '@shared/schema';
+import { buildBookingHistory } from '@shared/booking-history';
 import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 
@@ -9,7 +10,7 @@ export class AttendanceError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export async function readBookingAttendance(bookingId: number, actor: AttendanceActor) {
+async function readBookingContext(bookingId: number, actor: AttendanceActor) {
   const [context] = await db.select({ booking: kitchenBookings, managerId: locations.managerId })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId))
@@ -17,6 +18,22 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
   if (!context || (actor.role === 'chef' ? context.booking.chefId !== actor.id
     : actor.role === 'manager' ? context.managerId !== actor.id : false))
     throw new AttendanceError('Booking not found', 404);
+  return context;
+}
+
+export async function readBookingHistory(bookingId: number, actor: AttendanceActor) {
+  const context = await readBookingContext(bookingId, actor);
+  const records = await db.select({ id: bookingLifecycleEvents.id, kind: bookingLifecycleEvents.kind,
+    createdAt: bookingLifecycleEvents.createdAt, metadata: bookingLifecycleEvents.metadata })
+    .from(bookingLifecycleEvents).where(eq(bookingLifecycleEvents.bookingId, bookingId)).orderBy(asc(bookingLifecycleEvents.id));
+  const visits = await db.select({ id: kitchenBookingVisits.id, checkedInAt: kitchenBookingVisits.checkedInAt,
+    checkoutRequestedAt: kitchenBookingVisits.checkoutRequestedAt, checkoutApprovedAt: kitchenBookingVisits.checkoutApprovedAt })
+    .from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
+  return buildBookingHistory(context.booking, records, visits);
+}
+
+export async function readBookingAttendance(bookingId: number, actor: AttendanceActor) {
+  const context = await readBookingContext(bookingId, actor);
   // Select a public history explicitly; snapshots and internal notes are never shared.
   const publicFields = {
     id: kitchenBookingAttendanceEvents.id, visitId: kitchenBookingAttendanceEvents.visitId,

@@ -54,6 +54,14 @@ it.each(['booking','tour'] as const)('keeps %s help discoverable without an empt
   expect(screen.queryByText(/No tracked problems|owns the first response|Booking and tour problems/)).not.toBeInTheDocument(); client.clear();
 });
 
+it('embeds booking reports without repeating the contact card or help heading', async () => {
+  const client=mount({kind:'booking',id:20,canReport:true,embedded:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[],reportingAvailable:true})})));
+  expect(await screen.findByRole('button',{name:'Report a problem'})).toBeInTheDocument();
+  expect(screen.queryByRole('heading',{name:'Need help with this booking?'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('link',{name:'support@localcooks.ca'})).not.toBeInTheDocument();
+  client.clear();
+});
+
 it.each(['reported','acknowledged','escalated','resolved'])('shows existing %s reports even when new reporting is unavailable', async status => {
   const client=mount({kind:'tour',id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[{...problem,status}],reportingAvailable:false})})));
   expect(await screen.findByText(/Request #4/)).toBeInTheDocument();

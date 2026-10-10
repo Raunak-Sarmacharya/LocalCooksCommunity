@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { Link, useLocation, useSearch } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
-import { KitchenApplicationDetails } from "@/components/chef/applications/KitchenApplicationCard";
+import ChefKitchenApplications from "@/components/chef/ChefKitchenApplications";
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
 import { getKitchenDisplayStatus, kitchenLocationId } from "@/components/chef/applications/status";
 import { KitchenStatusChip, acceptingRequestsIcon as AcceptingRequestsIcon, bookNowIcon as BookNowIcon } from "@/components/chef/applications/status-icons";
@@ -131,6 +131,7 @@ export default function KitchenDiscovery({
       return response.json();
     },
     staleTime: 60000,
+    enabled: activeTab !== "applications",
   });
 
   const isLoading = applicationsLoading || kitchensLoading;
@@ -162,6 +163,8 @@ export default function KitchenDiscovery({
     getKitchenDisplayStatus({ status }, tChef).tone;
 
   const kitchenStatusLabel = (status: string) => getKitchenDisplayStatus({ status }, tChef).label;
+
+  if (activeTab === "applications") return <div className="min-w-0 space-y-6">{!new URLSearchParams(search).has("application") && <ChefPageHeader title={tChef("shellMyKitchenApplications", "My Kitchen Applications")} description={t("applyFlowMyApplicationsDesc", "Track your kitchen applications.")} />}<ChefKitchenApplications onOpenChat={onOpenChat} /></div>;
 
   if (isLoading) {
     return (
@@ -368,55 +371,6 @@ export default function KitchenDiscovery({
           )}
         </TabsContent>
 
-        <TabsContent value="applications" className="space-y-4">
-          {applications.length === 0 ? (
-            <div className="rounded-2xl border border-dashed bg-card px-6 py-12 text-center">
-              <FileText className="mx-auto size-7 text-muted-foreground" />
-              <h2 className="mt-4 text-lg font-semibold">No kitchen applications yet</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Explore kitchens and request access when you find the right space.</p>
-              <Button className={chefPrimaryCtaClass("mt-5")} onClick={() => navigate(chefDashboardHref("discover-kitchens"))}>Discover kitchens</Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {[...applications]
-                .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime() || b.id - a.id)
-                .map((app) => {
-                  const display = getKitchenDisplayStatus(app, tChef);
-                  const open = expandedApplicationId === app.id;
-                  const slug = publicKitchens?.find((k) => k.locationId === app.locationId)?.locationSlug;
-                  return (
-                    <article key={app.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
-                      <div className="p-4 sm:p-5">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground">APPLICATION-{app.id}</p>
-                            <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">{app.location?.name || t("applyFlowUnknownLocation", "Kitchen")}</h3>
-                          </div>
-                          <KitchenStatusChip display={display} />
-                        </div>
-                        <div className="mt-4 grid gap-2 text-sm text-foreground sm:grid-cols-2 lg:grid-cols-3">
-                          <p className="flex items-start gap-2"><CalendarDays className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span>Submitted {new Date(app.createdAt).toLocaleDateString(i18n.language)}</span></p>
-                          <p className="flex items-start gap-2"><FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span>{display.stepCaption}</span></p>
-                          {app.location?.address && <p className="flex items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span className="line-clamp-2">{app.location.address}</span></p>}
-                        </div>
-                        <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
-                          {display.actionKind === "book" && <Button size="sm" className={chefPrimaryCtaClass()} onClick={() => handleBookClick(app.locationId, slug)}><BookNowIcon className="mr-1.5 size-4" />{t("applyFlowBookButton", "Book kitchen")}</Button>}
-                          {display.actionKind === "complete-step" && <Button size="sm" asChild><Link href={`/kitchen-requirements/${app.locationId}`}>{display.actionLabel}</Link></Button>}
-                          {app.chat_conversation_id && onOpenChat && <Button size="sm" variant="outline" onClick={() => onOpenChat(app)}><MessageCircle className="mr-1.5 size-4" />{tChef("openChat", "Open chat")}</Button>}
-                          {display.actionKind === "discover" && <Button size="sm" variant="outline" asChild><Link href={`/apply-kitchen/${app.locationId}`}>{t("applyFlowReapplyButton", "Apply again")}</Link></Button>}
-                          <Button variant="ghost" size="sm" className="ml-auto h-9 gap-1 text-muted-foreground" aria-expanded={open} aria-controls={`kitchen-application-details-${app.id}`} onClick={() => setExpandedApplicationId(open ? null : app.id)}>
-                            {open ? tChef("tourHideDetails", "Hide details") : tChef("apptabViewDetails", "View details")}
-                            <ChevronDown className={cn("size-4", open && "rotate-180")} />
-                          </Button>
-                        </div>
-                      </div>
-                      {open && <div id={`kitchen-application-details-${app.id}`} className="border-t bg-muted/20 p-4 sm:p-5"><KitchenApplicationDetails app={app} display={display} onBookKitchen={(id) => handleBookClick(id, slug)} compact /></div>}
-                    </article>
-                  );
-                })}
-            </div>
-          )}
-        </TabsContent>
         <TabsContent value="approved" className="space-y-4">
           {approvedCount === 0 ? (
             <div className="text-center py-12 bg-muted/50 rounded-lg">

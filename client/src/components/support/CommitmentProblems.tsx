@@ -55,7 +55,7 @@ function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staf
 }
 
 type ProblemsProps = {
-  kind?: 'booking' | 'tour'; id?: number; canReport?: boolean; staff?: boolean; role?: 'chef' | 'manager' | 'admin';
+  kind?: 'booking' | 'tour'; id?: number; canReport?: boolean; staff?: boolean; role?: 'chef' | 'manager' | 'admin'; embedded?: boolean;
 };
 
 export function CommitmentProblems(props: ProblemsProps) {
@@ -63,7 +63,7 @@ export function CommitmentProblems(props: ProblemsProps) {
   return <ProblemsPanel key={`${props.role || 'chef'}:${props.kind || 'queue'}:${props.id || ''}`} {...props} />;
 }
 
-function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'chef' }: ProblemsProps) {
+function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'chef', embedded = false }: ProblemsProps) {
   const [description, setDescription] = useState('');
   const [reportOpen, setReportOpen] = useState(false);
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
@@ -87,9 +87,10 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   const reportingAvailable = canReport && query.data?.reportingAvailable && !!kind && !!id;
   const hasProblems = !!query.data?.problems.length;
   const heading = staff ? 'Support requests' : hasProblems ? `Support requests${kind ? ` for this ${kind}` : ''}` : kind ? `Need help with this ${kind}?` : 'Your support requests';
-  return <section className="space-y-3 rounded-lg border bg-background p-4" aria-label={heading}>
-    <h3 className="font-semibold">{heading}</h3>
-    {kind && !staff && <div className="space-y-0.5 text-xs text-muted-foreground">
+  if (embedded && !hasProblems && !reportingAvailable && !query.error) return null;
+  return <section className={embedded ? 'mt-4 space-y-3 border-t pt-4' : 'space-y-3 rounded-lg border bg-background p-4'} aria-label={embedded ? 'Booking support requests' : heading}>
+    {(!embedded || hasProblems) && <h3 className="font-semibold">{embedded ? 'Support requests' : heading}</h3>}
+    {kind && !staff && !embedded && <div className="space-y-0.5 text-xs text-muted-foreground">
       <p><span className="whitespace-nowrap">Call <a className="underline" href="tel:+17096318480">709-631-8480</a></span> <span className="whitespace-nowrap">or email <a className="underline" href="mailto:support@localcooks.ca">support@localcooks.ca</a></span></p>
       <p><span className="whitespace-nowrap">Mon–Fri, 9 AM–5 PM NL time</span> · <span className="whitespace-nowrap">After hours, we reply within 24 hrs</span></p>
     </div>}

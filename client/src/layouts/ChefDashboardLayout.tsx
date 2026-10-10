@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
+import { Link } from "wouter"
 import { findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
 import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
 import { SCROLL_AREA_FLUID_CONTENT } from "@/lib/scroll-area-classes"
@@ -90,7 +91,7 @@ export default function ChefDashboardLayout({
         return crumbs
     }, [breadcrumbs, activeView, onViewChange, t, tr])
 
-    const isTourDetail = activeView === "viewings" && displayBreadcrumbs.some(crumb => crumb.navId === "viewings" && !!crumb.onClick) && /^TOUR-\d+$/.test(displayBreadcrumbs.at(-1)?.label || "")
+    const isDetail = displayBreadcrumbs.length > 1 && !displayBreadcrumbs.at(-1)?.navId
 
     return (
         <ChefShellUiProvider>
@@ -108,33 +109,20 @@ export default function ChefDashboardLayout({
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
                         <Separator orientation="vertical" className="mr-2 h-4 shrink-0 hidden sm:block" />
-                        {!isTourDetail && <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellOverview")}</span>}
+                        {!isDetail && <span className="min-w-0 truncate text-sm font-semibold md:hidden">{displayBreadcrumbs.at(-1)?.label || t("shellOverview")}</span>}
                         <Breadcrumb className="min-w-0">
                             <BreadcrumbList className="flex-wrap">
                                 {displayBreadcrumbs.map((crumb, index) => (
                                     <React.Fragment key={index}>
-                                        <BreadcrumbItem className={cn("min-w-0", !isTourDetail && "hidden md:block")}>
+                                        <BreadcrumbItem className={cn("min-w-0", (!isDetail || index < displayBreadcrumbs.length - 2) && "hidden md:block")}>
                                             {crumb.href || crumb.onClick ? (
-                                                <BreadcrumbLink
-                                                    href="#"
-                                                    className="truncate"
-                                                    onClick={(e) => {
-                                                        e.preventDefault()
-                                                        if (crumb.onClick) {
-                                                            crumb.onClick()
-                                                        } else {
-                                                            onViewChange("overview")
-                                                        }
-                                                    }}
-                                                >
-                                                    {crumb.label}
-                                                </BreadcrumbLink>
+                                                <BreadcrumbLink asChild><Link className="truncate" href={crumb.href || "#"} onClick={event => { if (crumb.onClick) { event.preventDefault(); crumb.onClick(); } }}>{crumb.label}</Link></BreadcrumbLink>
                                             ) : (
                                                 <BreadcrumbPage className="truncate">{crumb.label}</BreadcrumbPage>
                                             )}
                                         </BreadcrumbItem>
                                         {index < displayBreadcrumbs.length - 1 && (
-                                            <BreadcrumbSeparator className={isTourDetail ? undefined : "hidden md:block"} />
+                                            <BreadcrumbSeparator className={isDetail && index >= displayBreadcrumbs.length - 2 ? undefined : "hidden md:block"} />
                                         )}
                                     </React.Fragment>
                                 ))}

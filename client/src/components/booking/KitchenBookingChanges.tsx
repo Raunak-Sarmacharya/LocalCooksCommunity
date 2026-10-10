@@ -68,13 +68,10 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged }: { booki
   };
   const decision = (entry: Entry, action: string) => perform(() => api(`/${entry.id}/decision`, {
     revision: entry.revision, action, ...(action === 'approve' ? { overlapKey: overlaps[entry.id]?.overlapKey, acceptTourOverlap: !!acknowledged[entry.id] } : {}) }));
-  const activeRequest = data?.changes.find(entry => pending.includes(entry.state));
+  if (!error && (!data || data.changes.length === 0)) return null;
   return <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label="Kitchen booking changes">
-    <h2 className="font-semibold">Booking changes</h2>
+    <h2 className="font-semibold">Recorded change requests</h2>
     {error && <p role="alert" className="text-sm text-destructive">{error} Your original reservation and payment records remain available. <button className="underline" onClick={() => void perform(reload)}>Refresh</button></p>}
-    {!data && !error && <p role="status">Loading change requests…</p>}
-    {data?.policyMessage && <p className="text-sm">{data.policyMessage}</p>}
-    {!manager && data && !activeRequest && <p className="text-sm text-muted-foreground">Confirmed kitchen bookings cannot be rescheduled. Use the cancellation action beside the kitchen name; any refund is reviewed separately.</p>}
     {data?.changes.map(entry => <article key={entry.id} className="rounded-xl border p-4 space-y-2">
       <h3 className="font-medium">{entry.kind === 'extend' ? 'Visit extension' : 'Whole-booking move'} · {entry.label}</h3>
       <p className="text-sm">Original: {range(entry.original)}<br />Requested: {range(entry.destination)}</p>

@@ -253,5 +253,30 @@
   "kbfDiscardChanges": "Abandonner les modifications",
   "bssStorageOptionsSelected": "{count, plural, one {# option d'entreposage sélectionnée} other {# options d'entreposage sélectionnées}}",
   "bssBackToStorage": "Retour à l'entreposage",
-  "bssMinDaysShortLabel": "Min. {count, plural, one {# jour} other {# jours}}"
+  "bssMinDaysShortLabel": "Min. {count, plural, one {# jour} other {# jours}}",
+  "preConfirmationRefundTitle": "Remboursement de 100 % avant la confirmation",
+  "preConfirmationRefundPolicy": "Annulez avant la confirmation de votre réservation pour obtenir un remboursement de 100 % de toute somme payée, y compris les taxes et les frais. Si votre paiement fait seulement l’objet d’une retenue, celle-ci sera levée.",
+  "confirmedBookingRefundPolicy": "Après la confirmation, la date limite d’annulation enregistrée s’applique. L’annulation et tout remboursement sont examinés séparément; les frais de traitement et les frais de service de la plateforme peuvent être retenus. Consultez le résultat de votre annulation et de votre remboursement pour connaître le montant exact.",
+  "historyTitle": "Historique de la réservation",
+  "historyActivity": "Activité enregistrée de la réservation",
+  "historyTimezone": "Heures affichées à l’heure de Terre-Neuve",
+  "historyLoading": "Chargement de l’historique…",
+  "historyError": "L’historique n’a pas pu être chargé. Veuillez réessayer.",
+  "historyRetry": "Réessayer",
+  "historyPartial": "Les activités antérieures peuvent ne pas être disponibles pour cette réservation.",
+  "historyEmpty": "Aucune activité enregistrée n’est disponible pour cette réservation.",
+  "historyVisit": "Visite nº {{id}}",
+  "historyItem_storage": "Entreposage nº {{id}}",
+  "historyItem_equipment": "Équipement nº {{id}}",
+  "historyEvents": {
+    "requested": "Réservation demandée", "confirmed": "Réservation confirmée", "cancelled": "Réservation annulée",
+    "cancellation_requested": "Annulation demandée", "cancellation_declined": "Annulation refusée",
+    "cancellation_reviewed": "Annulation acceptée", "refund_issued": "Remboursement émis", "payment_recovery_needed": "Vérification du paiement requise",
+    "item_withdrawn": "Option retirée", "item_cancellation_requested": "Annulation d’une option demandée",
+    "checkin_recorded": "Arrivée enregistrée", "checkout_requested": "Départ demandé", "checkout_cleared": "Départ validé",
+    "checkout_claim_filed": "Problème au départ enregistré", "report_no_show": "Visite signalée comme non effectuée",
+    "report_attended": "Visite signalée comme effectuée", "withdraw_attendance": "Signalement de visite retiré",
+    "kitchen_change_requested": "Modification d’horaire demandée", "kitchen_change_applied": "Modification d’horaire confirmée",
+    "kitchen_change_declined": "Modification d’horaire refusée", "kitchen_change_withdrawn": "Modification d’horaire retirée", "kitchen_change_expired": "Modification d’horaire expirée"
+  }
 }

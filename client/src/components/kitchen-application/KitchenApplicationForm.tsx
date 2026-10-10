@@ -48,9 +48,13 @@ import ChatPanel from "@/components/chat/ChatPanel";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
-  const { url: presignedUrl } = usePresignedDocumentUrl(url);
+  const { url: presignedUrl, isLoading, error } = usePresignedDocumentUrl(url);
+  const { t } = useTranslation("kitchen");
   
   if (!url) return null;
+  if (isLoading || error) return <span className={className} role={error ? "alert" : "status"}>
+    {error ? t("documentLoadFailed", { defaultValue: "Could not load document. Please try again." }) : t("loading", { defaultValue: "Loading…" })}
+  </span>;
   
   return (
     <a 
@@ -740,8 +744,11 @@ export default function KitchenApplicationForm({
       }
 
       // Load custom fields data
-      if (application.customFieldsData) {
-        Object.entries(application.customFieldsData).forEach(([fieldId, value]) => {
+      const savedCustomFields = currentTier >= 2
+        ? tierData.tier2_custom_fields_data
+        : application.customFieldsData;
+      if (savedCustomFields) {
+        Object.entries(savedCustomFields).forEach(([fieldId, value]) => {
           defaults[`custom_${fieldId}`] = value;
         });
       }
@@ -1110,13 +1117,13 @@ export default function KitchenApplicationForm({
     if (hasApplication && application?.status !== 'rejected' && application?.status !== 'cancelled') {
       return [
         "Request submitted. Nothing needed from you.",
-        t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
+        t("progressReviewWindow", { defaultValue: "We’ll email you when there’s an update." }),
       ];
     }
     if (requiredRemaining.length === 0) {
       return [
         t("progressAllSetCaption", { defaultValue: "Everything required is filled in." }),
-        t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
+        t("progressReviewWindow", { defaultValue: "We’ll email you when there’s an update." }),
       ];
     }
     /*
@@ -1138,7 +1145,7 @@ export default function KitchenApplicationForm({
         defaultValue: "Still needed: {count, plural, one {# item} other {# items}}",
         count: requiredRemaining.length,
       }),
-      t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
+      t("progressReviewWindow", { defaultValue: "We’ll email you when there’s an update." }),
     ];
   })();
 
@@ -2410,6 +2417,7 @@ export default function KitchenApplicationForm({
                                       label={field.placeholder || t("clickToUploadFile", { defaultValue: "Click to upload file" })}
                                       hint={t("fileFormatMax10MB_doc", { defaultValue: "PDF, JPG, PNG, DOC (max 10MB)" })}
                                       existingHint={t("previouslyUploaded", { defaultValue: "Previously uploaded" })}
+                                      existingUrl={!existingFile && typeof formField.value === "string" ? formField.value : null}
                                       existingName={!existingFile && formField.value ? (typeof formField.value === "string" ? formField.value : t("documentAlreadyOnFile", { defaultValue: "Document already on file" })) : null}
                                       chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
                                       changeLabel={t("changeFile", { defaultValue: "Change file" })}
@@ -2427,7 +2435,7 @@ export default function KitchenApplicationForm({
                                         setCustomFieldFiles(prev => ({ ...prev, [field.id]: file }));
                                         formField.onChange(file.name);
                                       }}
-                                      onRemove={existingFile ? () => { setCustomFieldFiles(prev => { const next = { ...prev }; delete next[field.id]; return next; }); formField.onChange(""); } : undefined}
+                                      onRemove={existingFile ? () => { setCustomFieldFiles(prev => { const next = { ...prev }; delete next[field.id]; return next; }); formField.onChange((application?.customFieldsData as Record<string, unknown> | undefined)?.[field.id] ?? ""); } : undefined}
                                       removeLabel={t("removeFile", { defaultValue: "Remove file" })}
                                     />
                                   );
@@ -2878,6 +2886,7 @@ export default function KitchenApplicationForm({
                                           label={field.placeholder || t("clickToUploadFile", { defaultValue: "Choose a file" })}
                                           hint={t("fileFormatMax10MB_doc", { defaultValue: "PDF, JPG, PNG, DOC (max 10MB)" })}
                                           existingHint={t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}
+                                          existingUrl={!existingFile && typeof formField.value === "string" ? formField.value : null}
                                           existingName={!existingFile && formField.value ? (typeof formField.value === "string" ? formField.value : t("documentAlreadyOnFile", { defaultValue: "Document already on file" })) : null}
                                           chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
                                           changeLabel={t("changeFile", { defaultValue: "Change file" })}
@@ -2895,7 +2904,7 @@ export default function KitchenApplicationForm({
                                             setCustomFieldFiles(prev => ({ ...prev, [field.id]: file }));
                                             formField.onChange(file.name);
                                           }}
-                                          onRemove={existingFile ? () => { setCustomFieldFiles(prev => { const next = { ...prev }; delete next[field.id]; return next; }); formField.onChange(""); } : undefined}
+                                          onRemove={existingFile ? () => { setCustomFieldFiles(prev => { const next = { ...prev }; delete next[field.id]; return next; }); formField.onChange(tierData.tier2_custom_fields_data?.[field.id] ?? ""); } : undefined}
                                           removeLabel={t("removeFile", { defaultValue: "Remove file" })}
                                         />
                                       );
@@ -2969,8 +2978,7 @@ export default function KitchenApplicationForm({
                           url={location.kitchenTermsUrl}
                           className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
                         >
-                          <FileText className="h-4 w-4" />
-                          {t("viewKitchenTerms", { defaultValue: "View Kitchen Terms & Policies →" })}
+                          {t("viewKitchenTerms", { defaultValue: "View kitchen terms and policies" })}
                         </AuthenticatedDocumentLink>
                       </div>
                     </div>

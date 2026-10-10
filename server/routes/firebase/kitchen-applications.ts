@@ -30,15 +30,15 @@ import { getChefPhone } from '../../phone-utils';
 import { getUserDisplayName } from '../../utils/user-display';
 import { 
     sendEmail, 
-    generateNewKitchenApplicationManagerEmail,
+    generateKitchenApplicationAdminEmail,
+    generateKitchenAccessConfirmedManagerEmail,
     generateKitchenApplicationClearedManagerEmail,
     generateKitchenCoordinationSubmittedManagerEmail,
     generateKitchenApplicationReceivedChefEmail,
     generateKitchenApplicationStep2ReceivedChefEmail,
     generateKitchenApplicationSubmittedChefEmail,
     generateKitchenApplicationApprovedEmail,
-    generateKitchenApplicationRejectedEmail,
-    getDashboardUrl
+    generateKitchenApplicationRejectedEmail
 } from '../../email';
 
 const router = Router();
@@ -175,6 +175,7 @@ router.post('/firebase/chef/kitchen-applications',
                             customFieldsData[fieldId] = url;
                         } catch (uploadError) {
                             logger.error(`❌ Failed to upload custom field file ${fieldId}:`, uploadError);
+                            throw uploadError;
                         }
                     }
                 }
@@ -679,8 +680,8 @@ router.post('/firebase/chef/kitchen-applications',
                     priority: 'normal',
                     title: isInitialRequest ? 'Kitchen request received' : 'Kitchen documents received',
                     message: isInitialRequest
-                        ? `Your request to apply to ${location.name || 'the kitchen'} was received. Local Cooks will review it.`
-                        : `Your kitchen documents for ${location.name || 'the kitchen'} were received. The kitchen manager will review them.`,
+                        ? `Your request to apply to ${location.name || 'the kitchen'} was received. We'll notify you when there's an update.`
+                        : `Your kitchen documents for ${location.name || 'the kitchen'} were received. We'll notify you when there's an update.`,
                     metadata: { applicationId: application.id, locationId: location.id, workflow: 'kitchen', step: currentTierValue },
                     actionUrl: '/dashboard?view=kitchen-requests',
                     actionLabel: 'View kitchen application',
@@ -717,8 +718,8 @@ router.post('/firebase/chef/kitchen-applications',
                             actionLabel: 'Review application',
                         });
 
-                        const adminEmail = generateNewKitchenApplicationManagerEmail({
-                            managerEmail: admin.username,
+                        const adminEmail = generateKitchenApplicationAdminEmail({
+                            recipientEmail: admin.username,
                             chefName: formData.fullName || 'Chef',
                             chefEmail: formData.email || '',
                             locationName: location.name || 'Kitchen Location',
@@ -751,11 +752,15 @@ router.post('/firebase/chef/kitchen-applications',
                             actionUrl: '/admin?section=kitchen-applications-step1',
                             actionLabel: 'Review documents',
                         });
-                        if (admin.email) await sendAdminNotificationEmail({
-                            to: admin.email,
-                            subject: 'Kitchen documents ready for review - Local Cooks',
-                            text: `${formData.fullName || 'A chef'} submitted kitchen documents for ${location.name || 'a kitchen'}. Review them in the admin kitchen applications queue: ${getDashboardUrl('admin')}?section=kitchen-applications-step1`,
-                        });
+                        if (admin.email) await sendAdminNotificationEmail(generateKitchenApplicationAdminEmail({
+                            recipientEmail: admin.email,
+                            chefName: formData.fullName || 'Chef',
+                            chefEmail: formData.email || '',
+                            locationName: location.name || 'Kitchen Location',
+                            locationAddress: location.address || undefined,
+                            applicationId: application.id,
+                            documentsSubmitted: true,
+                        }));
                     }
                 } catch (adminNotificationError) {
                     logger.error('Error notifying admins about Kitchen Coordination documents:', adminNotificationError);
@@ -798,6 +803,8 @@ router.post('/firebase/chef/kitchen-applications',
                             chefEmail: formData.email || '',
                             locationName: location.name || 'Kitchen Location',
                             applicationId: application.id,
+                            conversationId: application.chat_conversation_id,
+                            locationAddress: location.address || undefined,
                             submittedAt: new Date(),
                         };
                         const managerEmailContent = generateKitchenCoordinationSubmittedManagerEmail(emailData);
@@ -819,6 +826,8 @@ router.post('/firebase/chef/kitchen-applications',
                 try {
                     if (formData.email) {
                         const chefConfirmationEmail = generateKitchenApplicationReceivedChefEmail({
+                            applicationId: application.id,
+                            conversationId: application.chat_conversation_id,
                             chefEmail: formData.email,
                             chefName: formData.fullName || 'Chef',
                             locationName: location.name || 'Kitchen Location',
@@ -837,6 +846,8 @@ router.post('/firebase/chef/kitchen-applications',
                 try {
                     if (formData.email) {
                         const step2ReceivedEmail = generateKitchenApplicationStep2ReceivedChefEmail({
+                            applicationId: application.id,
+                            conversationId: application.chat_conversation_id,
                             chefEmail: formData.email,
                             chefName: formData.fullName || 'Chef',
                             locationName: location.name || 'Kitchen Location',
@@ -855,7 +866,7 @@ router.post('/firebase/chef/kitchen-applications',
             res.status(201).json({
                 success: true,
                 application,
-                message: 'Kitchen application submitted successfully. The kitchen manager will review your application.',
+                message: "Kitchen application submitted successfully. We'll notify you when there's an update.",
                 isResubmission: application.createdAt < application.updatedAt,
             });
         } catch (error) {
@@ -1151,7 +1162,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
             res.json({
                 success: true,
                 application: updatedApplication,
-                message: 'Documents updated successfully. They will be reviewed by the manager.',
+                message: "Documents updated successfully. We'll notify you when there's an update.",
             });
         } catch (error) {
             logger.error('Error updating kitchen application documents:', error);
@@ -1298,7 +1309,10 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
         }
 
         // ─── Approval: chat, notifications, emails ─────────────────────
-        if (status === 'approved' && updatedApplication) {
+        if (status === 'approved' && updatedApplication && (
+            ((updatedApplication.current_tier ?? 1) >= 3 && (previousTier < 3 || applicationBeforeUpdate.status !== 'approved')) ||
+            (previousTier <= 1 && applicationBeforeUpdate.status !== 'approved')
+        )) {
             const currentTier = updatedApplication.current_tier ?? 1;
             const initialApproval = previousTier <= 1 && applicationBeforeUpdate.status !== 'approved';
             const conversationId = initialApproval
@@ -1352,6 +1366,9 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                     if (approvalTier <= 1) {
                         // Step 1 approval: chef still has kitchen coordination — send "request approved, next steps" email
                         const step1Email = generateKitchenApplicationSubmittedChefEmail({
+                            locationId: applicationBeforeUpdate.locationId,
+                            applicationId: applicationBeforeUpdate.id,
+                            conversationId: conversationId,
                             chefEmail: applicationBeforeUpdate.email,
                             chefName: applicationBeforeUpdate.fullName || 'Chef',
                             locationName: location?.name || 'Kitchen Location',
@@ -1364,6 +1381,8 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                     } else {
                         // Tier 2+ approval: full access — send "APPROVED, book now" email
                         const approvalEmail = generateKitchenApplicationApprovedEmail({
+                            applicationId: applicationBeforeUpdate.id,
+                            conversationId: conversationId,
                             chefEmail: applicationBeforeUpdate.email,
                             chefName: applicationBeforeUpdate.fullName || 'Chef',
                             locationName: location?.name || 'Kitchen Location'
@@ -1387,10 +1406,10 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         locationId: applicationBeforeUpdate.locationId,
                         type: 'application_new',
                         priority: 'normal',
-                        title: conversationId && initialApproval ? 'Chat with your chef is ready' : 'Application cleared by Local Cooks',
-                        message: conversationId && initialApproval
+                        title: initialApproval ? 'Kitchen coordination is ready' : 'Kitchen access approved',
+                        message: initialApproval
                             ? `${applicationBeforeUpdate.fullName || 'A chef'} is approved to continue with ${location.name || 'your kitchen'}. Message them to coordinate their Food Establishment Licence before they submit kitchen documents.`
-                            : `${applicationBeforeUpdate.fullName || 'A chef'} can now submit their Chef Application Requirements for ${location.name || 'your kitchen'}.`,
+                            : `${applicationBeforeUpdate.fullName || 'A chef'} has approved access to ${location.name || 'your kitchen'} and can book available time when bookings are open.`,
                         metadata: {
                             applicationId: applicationBeforeUpdate.id,
                             chefId: applicationBeforeUpdate.chefId,
@@ -1407,9 +1426,13 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         .limit(1);
                     const managerEmail = location.notificationEmail || manager?.username;
                     if (managerEmail) {
-                        await sendEmail(generateKitchenApplicationClearedManagerEmail({
+                        await sendEmail((initialApproval ? generateKitchenApplicationClearedManagerEmail : generateKitchenAccessConfirmedManagerEmail)({
                             managerEmail,
                             managerName: manager?.username?.split('@')[0] || 'Kitchen Manager',
+                            applicationId,
+                            chefEmail: applicationBeforeUpdate.email || '',
+                            conversationId,
+                            locationAddress: location.address || undefined,
                             chefName: applicationBeforeUpdate.fullName || 'Chef',
                             locationName: location.name || 'Kitchen Location',
                         }), {
@@ -1430,7 +1453,9 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                 if (applicationBeforeUpdate.email) {
                     const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
                     const rejectionEmail = generateKitchenApplicationRejectedEmail({
-                        chefEmail: applicationBeforeUpdate.email,
+                            applicationId: applicationBeforeUpdate.id,
+                            conversationId: updatedApplication.chat_conversation_id,
+                            chefEmail: applicationBeforeUpdate.email,
                         chefName: applicationBeforeUpdate.fullName || 'Chef',
                         locationName: location?.name || 'Kitchen Location',
                         feedback: feedback || undefined
@@ -1906,8 +1931,10 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
 
         logger.info(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
 
-        // Notify the chef about approval; the manager already sees the result of their own action.
-        if (status === 'approved' && updatedApplication) {
+        // Confirm access only after final approval, once for this status transition.
+        // A document review that leaves the application at tier 2 does not grant booking access.
+        if (status === 'approved' && updatedApplication && (updatedApplication.current_tier ?? 1) >= 3 &&
+            ((application.current_tier ?? 1) < 3 || application.status !== 'approved')) {
             // Send email to chef about approval — tier-aware
             try {
                 if (application.email) {
@@ -1917,6 +1944,9 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     if (approvalTier <= 1) {
                         // Step 1 approval: chef still has more steps — send "under review" email
                         const step1Email = generateKitchenApplicationSubmittedChefEmail({
+                            locationId: application.locationId,
+                            applicationId: application.id,
+                            conversationId: updatedApplication.chat_conversation_id,
                             chefEmail: application.email,
                             chefName: application.fullName || 'Chef',
                             locationName: location?.name || 'Kitchen Location',
@@ -1929,6 +1959,8 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     } else {
                         // Tier 2+ approval: full access — send "APPROVED, book now" email
                         const approvalEmail = generateKitchenApplicationApprovedEmail({
+                            applicationId: application.id,
+                            conversationId: updatedApplication.chat_conversation_id,
                             chefEmail: application.email,
                             chefName: application.fullName || 'Chef',
                             locationName: location?.name || 'Kitchen Location'
@@ -1967,7 +1999,9 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 if (application.email) {
                     const location = await locationService.getLocationById(application.locationId);
                     const rejectionEmail = generateKitchenApplicationRejectedEmail({
-                        chefEmail: application.email,
+                            applicationId: application.id,
+                            conversationId: updatedApplication.chat_conversation_id,
+                            chefEmail: application.email,
                         chefName: application.fullName || 'Chef',
                         locationName: location?.name || 'Kitchen Location',
                         feedback: feedback || undefined
@@ -2007,15 +2041,8 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 await notifyTierTransition(applicationId, previousTier, currentTier);
             }
 
-            // Verify Tier 2 Requirements before granting access
-            // This ensures "Enterprise Grade" validation of all dynamic requirements (documents, custom fields)
-            if (currentTier >= 2) {
-                // Import Service dynamically or at top (using dynamic here for diff simplicity if top import is hard, but top is better. 
-                // I'll add import at top in a separate tool call or just use it if I can Add it.
-                // Wait, I can't easily add import at top and modify here in one go with replace_file_content unless I do multi.
-                // I will use full name and rely on auto-import? No, I must import it.
-                // Let's modify this block to check requirements.
-
+            // Grant booking access only after final approval.
+            if (currentTier >= 3) {
                 const { tierValidationService } = await import('../../domains/applications/tier-validation');
 
                 // Fetch requirements for the location

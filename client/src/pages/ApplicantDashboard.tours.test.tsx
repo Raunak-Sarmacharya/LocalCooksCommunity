@@ -48,3 +48,13 @@ it('places a directly linked chef tour beneath Kitchen tours and clears detail a
   expect(screen.queryByText('TOUR-77')).not.toBeInTheDocument();
   expect(screen.getByText('Kitchen tours')).toBeInTheDocument();
 });
+
+it('links a full-page application under My Kitchen Applications and returns to the table from its breadcrumb', async () => {
+  window.history.replaceState({}, '', '/dashboard?view=kitchen-requests&application=57');
+  render(<ApplicantDashboard />);
+  const parent = await screen.findByRole('button', { name: 'shellMyKitchenApplications' });
+  expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('APPLICATION-57');
+  fireEvent.click(parent);
+  await waitFor(() => expect(window.location.search).toBe('?view=kitchen-requests'));
+  expect(screen.queryByText('APPLICATION-57')).not.toBeInTheDocument();
+});

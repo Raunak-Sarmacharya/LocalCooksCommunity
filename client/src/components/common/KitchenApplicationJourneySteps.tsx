@@ -121,10 +121,10 @@ export function KitchenApplicationJourneySteps({
     {
       key: "admin_review" as const,
       icon: <Clock className="h-4 w-4" />,
-      title: t("journeyAdminReviewTitle", "Our Team review"),
+      title: t("journeyAdminReviewTitle", "Application in review"),
       desc: t(
         "journeyAdminReviewDesc",
-        "Our Team reviews your request to apply."
+        "We’ll notify you when your application status changes."
       ),
     },
     {
@@ -133,7 +133,7 @@ export function KitchenApplicationJourneySteps({
       title: t("journeyStep2Title", "Kitchen documents and review"),
       desc: t(
         "journeyStep2Desc",
-        "After your request to apply is approved, submit kitchen documents for the manager to review."
+        "Submit the required kitchen documents to continue your application."
       ),
     },
     {
@@ -142,7 +142,7 @@ export function KitchenApplicationJourneySteps({
       title: t("journeyBookTitle", "Book and pay"),
       desc: t(
         "journeyBookDesc",
-        "Once the kitchen approves you, finalize your schedule and pay."
+        "Once your access is approved, choose your schedule and pay."
       ),
     },
   ];

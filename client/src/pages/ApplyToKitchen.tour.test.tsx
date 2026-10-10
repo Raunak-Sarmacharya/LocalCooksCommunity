@@ -33,13 +33,13 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); });
 describe('completion link resolves current authorized application state', () => {
-  it('passes intended use to editable defaults and labels all other answers as reference', () => {
+  it('keeps tour defaults without repeating tour intake answers or notes on the request page', () => {
     render(<ApplyToKitchen />);
     expect(screen.getByText('Editable application form')).toBeInTheDocument();
     expect(state.form.mock.calls.at(-1)?.[0]).toMatchObject({ sourceTourId: 83, tourReference: prefill });
-    expect(screen.getByText('5-10 hours per week')).toBeInTheDocument();
-    expect(screen.getByText('No')).toBeInTheDocument(); expect(screen.getByText('Not decided yet')).toBeInTheDocument();
-    expect(screen.getByText('Shared visit notes')).toBeInTheDocument();
+    expect(screen.queryByText('Your kitchen tour')).not.toBeInTheDocument();
+    expect(screen.queryByText(prefill.chefNotes)).not.toBeInTheDocument();
+    expect(screen.queryByText(prefill.sharedManagerNotes)).not.toBeInTheDocument();
   });
   it.each(['view', 'continue'])('routes an existing application to %s without attaching new source credit', action => {
     state.next = { ...state.next, action, applicationId: 12 };

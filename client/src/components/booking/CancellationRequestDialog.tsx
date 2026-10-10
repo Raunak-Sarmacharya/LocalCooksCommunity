@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Separator } from "@/components/ui/separator"
 import { AlertTriangle, Clock, Send, X, Calendar, MapPin, Info } from "lucide-react"
+import { BookingRefundPolicyNotice } from './BookingRefundPolicyNotice';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ export function CancellationRequestDialog({
                 </InfoChip>
               </div>
             </div>
-          ) : (
+          ) : target.type === 'kitchen' ? <BookingRefundPolicyNotice /> : (
             <div className="rounded-lg border border-destructive/30 p-4">
               <div className="flex items-start gap-2.5">
                 <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />

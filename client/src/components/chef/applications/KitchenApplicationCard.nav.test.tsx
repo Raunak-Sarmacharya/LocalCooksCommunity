@@ -108,7 +108,7 @@ describe("KitchenApplicationCard — View details", () => {
     fireEvent.click(screen.getByRole("button", { name: /view details/i }));
 
     // The URL carries the target tab…
-    expect(navigateSpy).toHaveBeenCalledWith("/dashboard?view=kitchen-requests");
+    expect(navigateSpy).toHaveBeenCalledWith(`/dashboard?view=kitchen-requests&application=${app.id}`);
     /*
      * …but a query-only change on the same pathname does not switch the dashboard's
      * tab on its own (its effect depends on the pathname, and its tab sync listens

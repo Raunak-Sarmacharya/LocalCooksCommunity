@@ -722,9 +722,10 @@ export default function TermsContent() {
       </ul>
       <p className="mb-2 font-semibold">Refunds:</p>
       <ul className="list-disc pl-6 mb-4">
-        <li>If Kitchen Owner cancels a Booking, the Chef is entitled to a refund of the booking charges, excluding the original payment processing fee (processed within 5&ndash;7 business days)</li>
-        <li>If Chef cancels per Kitchen Owner&apos;s stated cancellation policy, the refund amount depends on the policy (non-refundable, 50%, 100%, etc.)</li>
-        <li>Payment processing fees charged on the original transaction are not returned as part of a refund.</li>
+        <li>Before a Booking is confirmed, the Chef is eligible for a 100% refund of any amount paid, including taxes and fees. If payment is only authorized, the card hold is released instead.</li>
+        <li>After confirmation, if Kitchen Owner cancels a Booking, the Chef is entitled to a refund of the booking charges, excluding the original payment processing fee (processed within 5&ndash;7 business days)</li>
+        <li>After confirmation, if Chef cancels per Kitchen Owner&apos;s stated cancellation policy, the refund amount depends on the policy (non-refundable, 50%, 100%, etc.)</li>
+        <li>After confirmation, payment processing fees charged on the original transaction are not returned as part of a refund.</li>
       </ul>
       <p className="mb-2 font-semibold">No Chargebacks:</p>
       <p className="mb-4">Chef agrees not to dispute or chargeback the payment with their credit card company unless Local Cooks fails to process the payment correctly. Fraudulent chargebacks may result in Chef account termination.</p>

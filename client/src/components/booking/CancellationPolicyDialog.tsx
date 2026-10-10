@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCancellationWindowText } from "@/lib/cancellation-policy";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { PRE_CONFIRMATION_REFUND_POLICY, CONFIRMED_BOOKING_REFUND_POLICY } from '@shared/kitchen-booking-policies';
 
 /** Full cancellation + refund copy (same text as /book/ policy modal). */
 export function buildCancellationPolicyText(
@@ -19,26 +20,16 @@ export function buildCancellationPolicyText(
       defaultValue: `Bookings cannot be cancelled within ${hours} hours of the scheduled time.`,
     })
   );
-  return `${windowText} ${t("cancellationPolicyRefundRules", {
-    defaultValue:
-      "Cancel before the kitchen manager approves your booking for a full release (nothing is charged). After approval, refunds return your payment except Stripe’s card processing fee, which Stripe does not return. The kitchen sets the cancellation window; refund amounts follow Local Cooks platform rules.",
-  })}`;
+  return `${t('preConfirmationRefundPolicy', { defaultValue: PRE_CONFIRMATION_REFUND_POLICY })}\n\n${t('confirmedBookingRefundPolicy', { defaultValue: CONFIRMED_BOOKING_REFUND_POLICY })}\n${windowText}`;
 }
 
-/** First line only — kitchen window sentence before refund rules. */
+/** Short policy summary for the checkout section. */
 export function cancellationPolicyFirstLine(
   hours: number,
   customMessage: string | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  return formatCancellationWindowText(
-    hours,
-    customMessage,
-    t("cancellationPolicyDefaultMessage", {
-      hours,
-      defaultValue: `Bookings cannot be cancelled within ${hours} hours of the scheduled time.`,
-    })
-  );
+  return t('preConfirmationRefundTitle', { defaultValue: '100% refund before confirmation' });
 }
 
 export function CancellationPolicyDialog({

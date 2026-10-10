@@ -59,7 +59,7 @@ export function KitchenManagerContactCard({
   const body = submitted
     ? t("kmcBodySubmitted", {
         defaultValue:
-          "Your Chef Application Requirements are with {name} for review. Message them if anything needs correcting.",
+          "Your documents have been submitted. Message {name} if you need help with your application.",
         name,
       })
     : requiresEstablishmentLicence && !licenceOnFile

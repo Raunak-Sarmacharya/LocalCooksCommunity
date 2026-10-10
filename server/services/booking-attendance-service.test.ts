@@ -14,7 +14,7 @@ vi.mock('../db', () => {
 });
 vi.mock('./notification.service', () => ({ notificationService: { create: (...args: any[]) => state.notify(...args) } }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: (...args: any[]) => state.notify(...args) }));
-import { readBookingAttendance, recordBookingAttendance } from './booking-attendance-service';
+import { readBookingAttendance, readBookingHistory, recordBookingAttendance } from './booking-attendance-service';
 const timestamp = '2026-10-02T10:00:00.000Z';
 const actor = { id: 2, role: 'manager' as const };
 const booking = { id: 10, chefId: 3, kitchenId: 4, status: 'confirmed', bookingDate: new Date('2026-10-02'), startTime: '09:00', endTime: '17:00', checkinStatus: 'not_checked_in', updatedAt: new Date(timestamp) };
@@ -27,6 +27,22 @@ function response() { state.rows.push([context()], [], []); }
 describe('explicit booking attendance statements (mocked database only)', () => {
   beforeEach(() => { state.rows = []; state.updates = []; state.events = []; state.locks = []; state.notify.mockReset(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02T20:00:00Z')); });
   afterEach(() => vi.useRealTimers());
+  it.each([{ id: 99, role: 'chef' as const }, { id: 99, role: 'manager' as const }])('protects booking history from a foreign $role before reading events', async foreign => {
+    state.rows.push([context()], [{ id: 1, kind: 'requested', createdAt: new Date(timestamp) }]);
+    await expect(readBookingHistory(10, foreign)).rejects.toMatchObject({ status: 404 });
+    expect(state.rows).toHaveLength(1);
+  });
+  it('returns public booking history to its chef without delivery or audit details', async () => {
+    state.rows.push([context({ createdAt: new Date(timestamp) })], [
+      { id: 1, kind: 'requested', createdAt: new Date(timestamp), title: 'Internal title', message: 'Private workflow',
+        metadata: { intentId: 'private', visitId: 4 }, emails: ['private@example.test'] },
+    ], []);
+    const result = await readBookingHistory(10, { id: 3, role: 'chef' });
+    expect(result.events).toEqual([{ key: 'event-1', kind: 'requested', recordedAt: timestamp, visitId: 4 }]);
+    expect(JSON.stringify(result)).not.toMatch(/Private|private|emails|title|message/);
+    expect(state.updates).toEqual([]);
+    expect(state.notify).not.toHaveBeenCalled();
+  });
   it('reports after end without completing, cancelling, clearing inspection or changing money', async () => {
     prepare(); response(); await recordBookingAttendance(10, actor, input);
     expect(state.updates).toHaveLength(1);

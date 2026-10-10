@@ -5,6 +5,7 @@ import KitchenDiscovery from './KitchenDiscovery';
 
 vi.mock('@/hooks/use-chef-kitchen-applications', () => ({ useChefKitchenApplicationsStatus: () => ({ applications: [], hasAnyApproved: false, approvedCount: 0, pendingCount: 0, isLoading: false }) }));
 vi.mock('@/components/chef/ChefViewingsList', () => ({ default: () => <h1>TOUR-77 · Harbour kitchen</h1> }));
+vi.mock('@/components/chef/ChefKitchenApplications', () => ({ default: () => <div>Kitchen applications table</div> }));
 vi.mock('react-i18next', async original => ({ ...await original<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string, fallback?: string) => fallback || key, i18n: { language: 'en-CA' } }) }));
 afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); });
 

@@ -11,17 +11,20 @@ export {
 } from "@/lib/stripe-brand";
 
 /**
- * Chef-facing info control: Stripe processing fees are not refunded.
+ * Chef-facing refund policy, with different terms before and after confirmation.
  * Uses a popover so the Stripe docs link is clickable (tooltips close on leave).
  */
 export function StripeProcessingFeeRefundInfo({
   className,
   iconClassName,
+  beforeConfirmation = false,
 }: {
   className?: string;
   iconClassName?: string;
+  beforeConfirmation?: boolean;
 }) {
   const { t } = useTranslation("chef");
+  const { t: bookingT } = useTranslation("booking");
 
   return (
     <Popover>
@@ -32,16 +35,16 @@ export function StripeProcessingFeeRefundInfo({
             "inline-flex items-center justify-center rounded-sm text-stripe hover:text-stripe/80 transition-colors",
             className,
           )}
-          aria-label={t("stripeFeeNonRefundableAria")}
+          aria-label={beforeConfirmation ? bookingT('preConfirmationRefundTitle') : t("stripeFeeNonRefundableAria")}
         >
           <Info className={cn("h-3.5 w-3.5", iconClassName)} />
         </button>
       </PopoverTrigger>
       <PopoverContent className="max-w-xs space-y-2 p-3 text-sm" align="start" side="top">
         <p className="text-muted-foreground leading-snug">
-          {t("stripeFeeNonRefundableTooltip")}
+          {beforeConfirmation ? bookingT('preConfirmationRefundPolicy') : t("stripeFeeNonRefundableTooltip")}
         </p>
-        <a
+        {!beforeConfirmation && <a
           href={STRIPE_PROCESSING_FEE_REFUND_DOCS}
           target="_blank"
           rel="noopener noreferrer"
@@ -49,7 +52,7 @@ export function StripeProcessingFeeRefundInfo({
         >
           {t("stripeFeeNonRefundableDocsLink")}
           <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
-        </a>
+        </a>}
       </PopoverContent>
     </Popover>
   );
