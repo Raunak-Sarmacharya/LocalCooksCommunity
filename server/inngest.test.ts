@@ -26,11 +26,13 @@ describe('thin Inngest entry point and existing protected worker routes', () => 
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'production', LIFECYCLE_ENVIRONMENT: 'production' })).toBe(true);
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'preview', LIFECYCLE_ENVIRONMENT: 'staging', LIFECYCLE_STAGING_REHEARSAL: 'true' })).toBe(true);
   });
-  it('defaults the backstop tick to every 5 minutes and only accepts a bounded minute step override', () => {
-    expect(recurringCronSchedule({})).toBe('*/5 * * * *');
-    expect(recurringCronSchedule({ LIFECYCLE_CRON: '*/15 * * * *' })).toBe('*/15 * * * *');
+  it('keeps the backstop tick sparse (15 min production, 30 min staging) and only accepts bounded overrides', () => {
+    expect(recurringCronSchedule({ LIFECYCLE_ENVIRONMENT: 'production' })).toBe('*/15 * * * *');
+    expect(recurringCronSchedule({ LIFECYCLE_ENVIRONMENT: 'staging' })).toBe('*/30 * * * *');
+    expect(recurringCronSchedule({ LIFECYCLE_CRON: '*/10 * * * *' })).toBe('*/10 * * * *');
+    expect(recurringCronSchedule({ LIFECYCLE_CRON: '0 * * * *' })).toBe('0 * * * *');
     for (const value of ['*/0 * * * *', '*/45 * * * *', '* * * * *', '0 9 * * *', 'garbage'])
-      expect(recurringCronSchedule({ LIFECYCLE_CRON: value })).toBe('*/5 * * * *');
+      expect(recurringCronSchedule({ LIFECYCLE_CRON: value, LIFECYCLE_ENVIRONMENT: 'staging' })).toBe('*/30 * * * *');
   });
   it('delivers broadcast wakeups independently by validated recipient role', async () => {
     const step = { sleep: vi.fn(async () => {}), run: vi.fn(async (_id: string, action: () => Promise<unknown>) => action()) };

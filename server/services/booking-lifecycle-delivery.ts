@@ -9,6 +9,7 @@ import { adminBookingTransactionsPath } from '@shared/admin-booking-link';
 import { escapeHtml } from '../security';
 import { getAppBaseUrl } from '../config';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
+import { logger } from '../logger';
 import { deliveryReserve, deliveryLeaseMs } from './worker-context';
 import { isPermanentRecipientRejection } from './bounded-smtp';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
@@ -93,6 +94,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     }
   }
   await tx.insert(bookingLifecycleEvents).values({ bookingId, kind, actorId, title, message, metadata, emails });
+  wakeBookingNoticeDelivery(bookingId);
   if (kind === 'confirmed') {
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'booking', bookingId);
@@ -111,6 +113,15 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'storage_cancellation_review', metadata.itemId);
   }
+}
+
+/** Best-effort wakeup for event-driven delivery. Never blocks or fails the
+ * producing transaction; the outbox row and the backstop tick stay authoritative. */
+function wakeBookingNoticeDelivery(bookingId: number) {
+  if (!process.env.INNGEST_EVENT_KEY || isE2eOutboundSuppressed()) return;
+  void import('../lifecycle-inngest')
+    .then(({ inngest, bookingNoticeEvent }) => inngest.send({ name: bookingNoticeEvent, data: { bookingId } }))
+    .catch(error => logger.warn('[BookingNotices] Delivery wakeup not sent; backstop tick will deliver', { bookingId, error: error instanceof Error ? error.message : String(error) }));
 }
 
 export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_000, onlyBookingId?: number, onlyEventId?: number, replay = false) {

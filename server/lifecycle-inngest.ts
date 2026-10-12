@@ -15,13 +15,17 @@ export function recurringCronEnabled(env: NodeJS.ProcessEnv = process.env) {
     ((env.LIFECYCLE_ENVIRONMENT === 'production' && env.VERCEL_ENV === 'production') ||
       (env.LIFECYCLE_ENVIRONMENT === 'staging' && env.LIFECYCLE_STAGING_REHEARSAL === 'true'));
 }
-/** Worker cadence. Every 2 min overran Vercel Fluid CPU; user actions already
- * deliver their own notices inline, so the tick is a backstop. Override with
- * LIFECYCLE_CRON (5-field cron, minutes step 1-30 only) without a code change. */
+/** Worker cadence. A 2-minute tick on dev alone used ~7.8 of the 4 Active CPU
+ * hours a Vercel Hobby team gets per month, and that budget is shared with
+ * production. Booking notices are delivered by event (bookingNoticeDelivery),
+ * so the tick is only a backstop for time-based work: every 15 min in
+ * production, every 30 min in staging. LIFECYCLE_CRON overrides it with
+ * `*\/N * * * *` (N 1-30) or `0 * * * *` (hourly). */
 export function recurringCronSchedule(env: NodeJS.ProcessEnv = process.env) {
   const value = env.LIFECYCLE_CRON?.trim();
   const step = value?.match(/^\*\/(\d{1,2}) \* \* \* \*$/);
-  return step && Number(step[1]) >= 1 && Number(step[1]) <= 30 ? value! : '*/5 * * * *';
+  if (step && Number(step[1]) >= 1 && Number(step[1]) <= 30 || value === '0 * * * *') return value!;
+  return env.LIFECYCLE_ENVIRONMENT === 'production' ? '*/15 * * * *' : '*/30 * * * *';
 }
 export const inngest = new Inngest({ id: process.env.LIFECYCLE_ENVIRONMENT === 'staging' ? 'localcooks-lifecycle-staging' : 'localcooks-lifecycle', isDev: false });
 export const lifecycleTick = inngest.createFunction({ id: 'lifecycle-recurring-worker',
@@ -33,6 +37,23 @@ export const lifecycleTick = inngest.createFunction({ id: 'lifecycle-recurring-w
   if ('taskFailures' in result && result.taskFailures.length) throw Error(`Lifecycle tasks require recovery: ${result.taskFailures.join(', ')}`);
   return result;
 }));
+
+export const bookingNoticeEvent = 'localcooks/booking.notice.queued';
+/** Delivers a booking's queued notices shortly after they are recorded, instead of
+ * waiting for the backstop tick. The debounce coalesces bursts per booking and
+ * lands well after the producing transaction commits; a rolled-back producer
+ * leaves nothing to deliver. */
+export const bookingNoticeDelivery = inngest.createFunction({ id: 'booking-notice-delivery', retries: 2,
+  debounce: { key: 'event.data.bookingId', period: '10s' },
+  triggers: [{ event: bookingNoticeEvent }],
+}, async ({ event, step }) => {
+  const bookingId = Number(event.data?.bookingId);
+  if (!Number.isSafeInteger(bookingId) || bookingId <= 0) throw Error('Invalid booking notice identity');
+  return step.run('deliver-booking-notices', async () => {
+    const { deliverBookingLifecycleEvents } = await import('./services/booking-lifecycle-delivery');
+    return deliverBookingLifecycleEvents(10, 20_000, bookingId);
+  });
+});
 
 export async function runStartingChatEmail({ event, step }: {
   event: { data: { conversationId: string; messageId: string; senderId: number; recipientRole?: 'chef' | 'manager' } };
@@ -57,7 +78,7 @@ export const startingChatEmail = inngest.createFunction({ id: 'starting-chat-mes
 }, runStartingChatEmail);
 
 export function registerInngest(app: Express) {
-  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail],
+  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery],
     servePath: '/api/inngest', serveOrigin: process.env.INNGEST_SERVE_ORIGIN });
   app.use('/api/inngest', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
