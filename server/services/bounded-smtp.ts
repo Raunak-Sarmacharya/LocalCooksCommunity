@@ -8,13 +8,15 @@ export class SmtpDeliveryError extends Error {
     super(kind === 'acceptance_unknown' ? 'SMTP acceptance is uncertain; reconcile before resending' : `SMTP delivery failed: ${kind}`);
   }
 }
-/** The relay refused this recipient for good (5xx on the envelope), e.g. a domain
- * that cannot receive mail. Retrying cannot succeed. Auth (EAUTH) or sender
- * (MAIL FROM) refusals are our own fault and stay retryable. */
+/** The relay refused this single-recipient message for good: a 5xx at RCPT TO
+ * (EENVELOPE) or at end of DATA (EMESSAGE; Hostinger rejects reserved/invalid
+ * domains there with "554 5.7.1"). Resending the same message cannot succeed.
+ * Auth (EAUTH) or sender (MAIL FROM) refusals are our own fault and stay retryable. */
 export function isPermanentRecipientRejection(error: unknown) {
   if (!(error instanceof SmtpDeliveryError) || error.kind !== 'smtp_rejected') return false;
   const { responseCode, code, command } = error.smtp || {};
-  return !!responseCode && responseCode >= 500 && responseCode < 600 && code === 'EENVELOPE' && command !== 'MAIL FROM';
+  return !!responseCode && responseCode >= 500 && responseCode < 600
+    && (code === 'EENVELOPE' || code === 'EMESSAGE') && command !== 'MAIL FROM';
 }
 export class SmtpAcceptanceUnknown extends SmtpDeliveryError {
   constructor() { super('acceptance_unknown'); }

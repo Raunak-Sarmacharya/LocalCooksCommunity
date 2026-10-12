@@ -150,6 +150,16 @@ describe('booking email retry policy', () => {
     expect(state.notify).toHaveBeenCalledTimes(1);
     expect(state.send.mock.calls[0][1]).toMatchObject({ reportDeliveryFailure: true, durableDelivery: true });
   });
+  it('classifies relay refusals: 5xx at RCPT or end of DATA is permanent; sender, auth and 4xx stay retryable', async () => {
+    const { SmtpDeliveryError, isPermanentRecipientRejection } = await import('./bounded-smtp');
+    const refusal = (smtp: { responseCode?: number; code?: string; command?: string }) => new SmtpDeliveryError('smtp_rejected', smtp);
+    expect(isPermanentRecipientRejection(refusal({ responseCode: 554, code: 'EMESSAGE', command: 'DATA' }))).toBe(true);
+    expect(isPermanentRecipientRejection(refusal({ responseCode: 550, code: 'EENVELOPE', command: 'RCPT TO' }))).toBe(true);
+    expect(isPermanentRecipientRejection(refusal({ responseCode: 553, code: 'EENVELOPE', command: 'MAIL FROM' }))).toBe(false);
+    expect(isPermanentRecipientRejection(refusal({ responseCode: 535, code: 'EAUTH' }))).toBe(false);
+    expect(isPermanentRecipientRejection(refusal({ responseCode: 451, code: 'EMESSAGE', command: 'DATA' }))).toBe(false);
+    expect(isPermanentRecipientRejection(new SmtpDeliveryError('acceptance_unknown'))).toBe(false);
+  });
   it('keeps our own relay or sender failures retryable with backoff, then parks the event', async () => {
     const { SmtpDeliveryError } = await import('./bounded-smtp');
     state.event = event({ deliveryRecoveryOwnerIds: [1], deliveryFailures: 2 });
