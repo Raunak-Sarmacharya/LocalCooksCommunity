@@ -2,9 +2,19 @@ import net from 'node:net';
 import tls from 'node:tls';
 
 export class SmtpDeliveryError extends Error {
-  constructor(public kind: 'acceptance_unknown' | 'smtp_rejected' | 'connection_failed') {
+  constructor(public kind: 'acceptance_unknown' | 'smtp_rejected' | 'connection_failed',
+    /** Present when the relay answered: lets callers tell a bad address from our own outage. */
+    public smtp?: { responseCode?: number; code?: string; command?: string }) {
     super(kind === 'acceptance_unknown' ? 'SMTP acceptance is uncertain; reconcile before resending' : `SMTP delivery failed: ${kind}`);
   }
+}
+/** The relay refused this recipient for good (5xx on the envelope), e.g. a domain
+ * that cannot receive mail. Retrying cannot succeed. Auth (EAUTH) or sender
+ * (MAIL FROM) refusals are our own fault and stay retryable. */
+export function isPermanentRecipientRejection(error: unknown) {
+  if (!(error instanceof SmtpDeliveryError) || error.kind !== 'smtp_rejected') return false;
+  const { responseCode, code, command } = error.smtp || {};
+  return !!responseCode && responseCode >= 500 && responseCode < 600 && code === 'EENVELOPE' && command !== 'MAIL FROM';
 }
 export class SmtpAcceptanceUnknown extends SmtpDeliveryError {
   constructor() { super('acceptance_unknown'); }

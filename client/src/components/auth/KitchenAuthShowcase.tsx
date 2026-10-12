@@ -54,7 +54,7 @@ const [lastX, lastY] = sparkPoints[sparkPoints.length - 1];
 /** The platform capabilities the panel states. Every line is verifiable in the repo. */
 const CAPABILITIES = [
   { icon: EMAIL_NEW_ICON, label: "Email + SMS alerts", value: "On every request" },
-  { icon: "mdi:shield-check-outline", label: "Damage deposits", value: "Held per booking" },
+  { icon: "mdi:shield-check-outline", label: "Cancellation terms", value: "Set by you" },
   { icon: RECEIPT_TAX_ICON, label: "HST on bookings", value: "Itemised on payouts" },
   { icon: "mdi:account-check-outline", label: "Every chef vetted", value: "Approved by you" },
 ];

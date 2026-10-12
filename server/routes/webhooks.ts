@@ -859,7 +859,7 @@ async function handleCheckoutSessionCompleted(
                     status: 'pending', // Requires manager approval
                     totalPrice: sessionRateCents.toString(),
                     pricingModel: 'daily',
-                    damageDeposit: (equipmentListing.damageDeposit || '0').toString(),
+                    damageDeposit: '0', // Damage deposits are not collected
                     paymentStatus: bookingPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
                     paymentIntentId: paymentIntentId || null, // Link to the kitchen booking payment
                     serviceFee: '0',

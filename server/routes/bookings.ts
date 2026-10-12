@@ -2236,7 +2236,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
             const result = await decideAuthorizedBooking(id, 'cancelled', [], [], req.neonUser!.id);
             const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
-            await deliverBookingLifecycleEvents().catch(error => logger.warn('Booking email delivery pending retry', error));
+            await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
             return res.json({ ...result, action: 'cancelled', message: 'Booking cancelled. Stripe confirmed the payment authorization was cancelled.' });
         }
 
@@ -2784,11 +2784,11 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                     }
 
                     if (equipmentListing) {
-                        // Parse sessionRate and damageDeposit as numeric (stored in cents in database)
+                        // Session rate is stored in cents. Damage deposits are not collected
+                        // (removed 2026-10), so a stored listing deposit never reaches the total.
                         const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
-                        const damageDepositCents = equipmentListing.damageDeposit ? Math.round(parseFloat(String(equipmentListing.damageDeposit))) : 0;
 
-                        totalPriceCents += sessionRateCents + damageDepositCents;
+                        totalPriceCents += sessionRateCents;
                     }
                 } catch (error) {
                     logger.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);

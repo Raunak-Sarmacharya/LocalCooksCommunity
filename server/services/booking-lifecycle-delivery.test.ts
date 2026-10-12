@@ -133,3 +133,42 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     expect(state.event.deliveredEmailKeys).toEqual(['1']);
   });
 });
+
+describe('booking email retry policy', () => {
+  const event = (metadata: Record<string, unknown> = {}) => ({ id: 77, bookingId: 10, kind: 'requested', title: 'Request received', message: 'Review request',
+    emails: [{ key: '3', to: 'chef@invalid.test', url: 'https://chef.example.test/booking/10' }], metadata, deliveredEmailKeys: [], completedAt: null });
+  beforeEach(() => { vi.clearAllMocks(); state.database = tx; state.adminEmailEnabled = true; });
+  it('stops retrying an address the relay permanently refuses and raises recovery once', async () => {
+    const { SmtpDeliveryError } = await import('./bounded-smtp');
+    state.event = event();
+    state.rows = [[state.event], [], [{ id: 1 }]];
+    state.send.mockRejectedValueOnce(new SmtpDeliveryError('smtp_rejected', { responseCode: 554, code: 'EENVELOPE', command: 'RCPT TO' }));
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.event.completedAt).toBeInstanceOf(Date);
+    expect(state.event.metadata).toMatchObject({ undeliverableEmailKeys: ['3'], deliveryRecoveryOwnerIds: [1] });
+    expect(state.event.metadata.deliveryFailures).toBeUndefined();
+    expect(state.notify).toHaveBeenCalledTimes(1);
+    expect(state.send.mock.calls[0][1]).toMatchObject({ reportDeliveryFailure: true, durableDelivery: true });
+  });
+  it('keeps our own relay or sender failures retryable with backoff, then parks the event', async () => {
+    const { SmtpDeliveryError } = await import('./bounded-smtp');
+    state.event = event({ deliveryRecoveryOwnerIds: [1], deliveryFailures: 2 });
+    state.rows = [[state.event], [], []];
+    state.send.mockRejectedValueOnce(new SmtpDeliveryError('smtp_rejected', { responseCode: 535, code: 'EAUTH' }));
+    const before = Date.now();
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 0 });
+    expect(state.event.completedAt).toBeNull();
+    expect(state.event.metadata).toMatchObject({ deliveryFailures: 3 });
+    expect(state.event.metadata.deliveryPaused).toBeUndefined();
+    expect(state.event.nextAttemptAt.getTime() - before).toBeGreaterThanOrEqual(240_000);
+    state.event = event({ deliveryRecoveryOwnerIds: [1], deliveryFailures: 7 });
+    state.rows = [[state.event], [], []];
+    state.send.mockResolvedValueOnce(false);
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 0 });
+    expect(state.event.metadata).toMatchObject({ deliveryFailures: 8, deliveryPaused: true });
+  });
+  it('doubles the retry delay from one minute and caps it at six hours', async () => {
+    const { bookingEmailRetryDelayMs } = await import('./booking-lifecycle-delivery');
+    expect([1, 2, 3, 10, 40].map(bookingEmailRetryDelayMs)).toEqual([60_000, 120_000, 240_000, 21_600_000, 21_600_000]);
+  });
+});

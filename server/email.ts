@@ -454,7 +454,8 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     }
 
     if (smtpRejected && options?.reportDeliveryFailure) throw new SmtpDeliveryError(
-      acceptanceUnknown ? 'acceptance_unknown' : 'smtp_rejected');
+      acceptanceUnknown ? 'acceptance_unknown' : 'smtp_rejected',
+      acceptanceUnknown ? undefined : { responseCode: (info as any)?.rejectedErrors?.[0]?.responseCode, code: 'EENVELOPE', command: 'RCPT TO' });
 
     return !smtpRejected;
   } catch (error) {
@@ -502,7 +503,8 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       retryOfId: options?.retryOfId,
     });
 
-    if (options?.reportDeliveryFailure && smtpStarted) throw new SmtpDeliveryError(smtpFailureKind(error));
+    if (options?.reportDeliveryFailure && smtpStarted) throw new SmtpDeliveryError(smtpFailureKind(error),
+      { responseCode: (error as any)?.responseCode, code: (error as any)?.code, command: (error as any)?.command });
     return false;
   }
 };

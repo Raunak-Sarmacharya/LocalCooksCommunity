@@ -1255,11 +1255,6 @@ export default function KitchenBookingCalendar() {
                                           <p className="text-sm text-gray-600">{equipment.brand} {equipment.model || ''}</p>
                                         )}
                                         <p className="text-xs text-gray-500 mt-1 capitalize">{equipment.category} • {equipment.condition}</p>
-                                        {equipment.damageDeposit > 0 && (
-                                          <p className="text-xs text-gray-500 mt-1">
-                                            Deposit: {formatCurrency(equipment.damageDeposit)}
-                                          </p>
-                                        )}
                                       </div>
                                       <div className="text-right flex-shrink-0">
                                         <p className="font-semibold text-amber-700">

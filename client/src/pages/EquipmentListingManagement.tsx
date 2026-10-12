@@ -56,9 +56,8 @@ import { cn } from "@/lib/utils";
  * - A suggestion that carries a rate means "kitchens normally rent this out", so
  *   picking one opens the form on Paid with the price filled in; a $0 suggestion
  *   opens on Included. Either way it is visible and changeable before listing.
- * - `damageDeposit` is editable here. It is added to the chef's total in
- *   `server/routes/bookings.ts` and the Stripe webhook, but no manager surface
- *   could set it before — the onboarding step hardcoded 0.
+ * - Damage deposits are not offered (removed 2026-10): saving a listing writes
+ *   `damageDeposit: 0`, and no checkout path adds a deposit to the total.
  */
 
 /** Canonical display order for categories, used by both the form and the list. */
@@ -346,21 +345,6 @@ function EquipmentFields({
                 allowDecimals
                 value={values.sessionRate ? String(values.sessionRate) : ''}
                 onValueChange={(v) => onChange({ sessionRate: parseFloat(v) || 0 })}
-              />
-            </SettingsRow>
-
-            <SettingsRow
-              id="ef-deposit"
-              label={mt("damageDeposit")}
-              help={mt("helpDamageDeposit")}
-              hint={mt("damageDepositHint")}
-            >
-              <NumericInput
-                id="ef-deposit"
-                className="w-32"
-                allowDecimals
-                value={values.damageDeposit ? String(values.damageDeposit) : ''}
-                onValueChange={(v) => onChange({ damageDeposit: parseFloat(v) || 0 })}
               />
             </SettingsRow>
           </>
@@ -830,7 +814,7 @@ export function EquipmentListingContent({
     condition: values.condition,
     availabilityType: values.availabilityType,
     sessionRate: values.availabilityType === 'rental' ? Math.round(values.sessionRate * 100) : 0,
-    damageDeposit: values.availabilityType === 'rental' ? Math.round(values.damageDeposit * 100) : 0,
+    damageDeposit: 0,
     currency: 'CAD',
     isActive: true,
   });
@@ -1281,9 +1265,6 @@ export function EquipmentListingContent({
                             )}
                             <span>{categoryLabel(listing.category)}</span>
                             <span>{conditionLabel(listing.condition)}</span>
-                            {isRental && listing.damageDeposit ? (
-                              <span>${(listing.damageDeposit || 0).toFixed(2)} {mt("damageDeposit").toLowerCase()}</span>
-                            ) : null}
                           </div>
                           {alsoIn.length > 0 && (
                             <p className="mt-1 text-xs text-muted-foreground">

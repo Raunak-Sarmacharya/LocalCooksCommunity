@@ -15,10 +15,18 @@ export function recurringCronEnabled(env: NodeJS.ProcessEnv = process.env) {
     ((env.LIFECYCLE_ENVIRONMENT === 'production' && env.VERCEL_ENV === 'production') ||
       (env.LIFECYCLE_ENVIRONMENT === 'staging' && env.LIFECYCLE_STAGING_REHEARSAL === 'true'));
 }
+/** Worker cadence. Every 2 min overran Vercel Fluid CPU; user actions already
+ * deliver their own notices inline, so the tick is a backstop. Override with
+ * LIFECYCLE_CRON (5-field cron, minutes step 1-30 only) without a code change. */
+export function recurringCronSchedule(env: NodeJS.ProcessEnv = process.env) {
+  const value = env.LIFECYCLE_CRON?.trim();
+  const step = value?.match(/^\*\/(\d{1,2}) \* \* \* \*$/);
+  return step && Number(step[1]) >= 1 && Number(step[1]) <= 30 ? value! : '*/5 * * * *';
+}
 export const inngest = new Inngest({ id: process.env.LIFECYCLE_ENVIRONMENT === 'staging' ? 'localcooks-lifecycle-staging' : 'localcooks-lifecycle', isDev: false });
 export const lifecycleTick = inngest.createFunction({ id: 'lifecycle-recurring-worker',
   concurrency: { limit: 1 }, retries: 1,
-  triggers: recurringCronEnabled() ? [{ cron: '*/2 * * * *' }] : [{ event: 'localcooks/staging.lifecycle.rehearsal' }],
+  triggers: recurringCronEnabled() ? [{ cron: recurringCronSchedule() }] : [{ event: 'localcooks/staging.lifecycle.rehearsal' }],
 }, async ({ step }) => step.run('bounded-current-source-worker', async () => {
   if (process.env.LIFECYCLE_RECURRING_ENABLED !== 'true') return { disabled: true };
   const result = await runRecurringWorker(processExpiredCancellationRequests, requestClock.getStore());

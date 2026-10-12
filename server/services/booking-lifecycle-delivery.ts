@@ -10,10 +10,18 @@ import { escapeHtml } from '../security';
 import { getAppBaseUrl } from '../config';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { deliveryReserve, deliveryLeaseMs } from './worker-context';
+import { isPermanentRecipientRejection } from './bounded-smtp';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Email = { key: string; to: string; url: string; adminRecipient?: boolean; content?: Parameters<typeof sendEmail>[0] };
+/** Retryable failures back off (1 min doubling, capped at 6 h) and park after this
+ * many attempts. Parked events wait for Local Cooks recovery instead of costing
+ * an SMTP attempt on every worker tick forever. */
+export const bookingEmailAttemptLimit = 8;
+export function bookingEmailRetryDelayMs(failures: number) {
+  return Math.min(60_000 * 2 ** Math.max(0, failures - 1), 6 * 60 * 60_000);
+}
 
 /** Notifications and durable email/history evidence commit with the decision. */
 export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: number, kind: string, title: string,
@@ -115,6 +123,8 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
     const event = await db.transaction(async tx => {
       const [row] = await tx.select().from(bookingLifecycleEvents).where(and(onlyEventId ? eq(bookingLifecycleEvents.id, onlyEventId) : undefined, onlyBookingId === undefined ? undefined : eq(bookingLifecycleEvents.bookingId, onlyBookingId), isNull(bookingLifecycleEvents.completedAt),
         lte(bookingLifecycleEvents.nextAttemptAt, new Date()), or(isNull(bookingLifecycleEvents.leaseUntil), lte(bookingLifecycleEvents.leaseUntil, new Date())),
+        // Parked events only move through an explicit recovery replay of that event.
+        onlyEventId ? undefined : sql`coalesce(${bookingLifecycleEvents.metadata}->>'deliveryPaused', 'false') <> 'true'`,
         sql`(${bookingLifecycleEvents.kind} LIKE 'kitchen_change_%' OR NOT EXISTS (SELECT 1 FROM booking_lifecycle_events earlier WHERE earlier.booking_id = ${bookingLifecycleEvents.bookingId} AND earlier.id < ${bookingLifecycleEvents.id} AND earlier.completed_at IS NULL
           AND (earlier.metadata->'deliveryRecoveryOwnerIds' IS NULL
             OR (earlier.lease_until IS NOT NULL AND earlier.lease_until > clock_timestamp()))))`))
@@ -126,8 +136,10 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
     });
     if (!event) break;
     const delivered = event.deliveredEmailKeys as string[];
+    const eventMetadata = event.metadata as Record<string, unknown>;
+    const undeliverable = Array.isArray(eventMetadata.undeliverableEmailKeys) ? eventMetadata.undeliverableEmailKeys as string[] : [];
     let historical = replay;
-    let failed = false;
+    let failed = false, recipientRejected = false;
     let currentStatus: string | undefined;
     if (replay || (event.metadata as Record<string, unknown>).deliveryRecoveryOwnerIds) {
       const [current] = await db.select({ status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.id, event.bookingId)).limit(1);
@@ -136,6 +148,8 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
     }
     for (const email of event.emails as Email[]) {
       if (delivered.includes(email.key)) continue;
+      // The worker never retries a refused address; an admin Email Log retry of this event does.
+      if (!onlyEventId && undeliverable.includes(email.key)) continue;
       if (deadline - Date.now() < deliveryReserve()) { failed = true; break; }
       const trackingId = `booking-event:${event.id}:${email.key}`;
       try {
@@ -183,15 +197,26 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
           }
         }
         if (!sent && !await sendEmail(content,
-          { trackingId, emailType: 'booking', durableDelivery: true })) throw new Error('Email not accepted');
+          { trackingId, emailType: 'booking', durableDelivery: true, reportDeliveryFailure: true })) throw new Error('Email not accepted');
         delivered.push(email.key);
+        if (undeliverable.includes(email.key)) undeliverable.splice(undeliverable.indexOf(email.key), 1);
         await db.update(bookingLifecycleEvents).set({ deliveredEmailKeys: [...delivered] })
           .where(and(eq(bookingLifecycleEvents.id, event.id), eq(bookingLifecycleEvents.leaseToken, token)));
-      } catch { failed = true; }
+      } catch (error) {
+        // A bad address can never succeed: record it (the failed email_logs row is the
+        // evidence), raise recovery once below, and stop retrying this recipient.
+        if (isPermanentRecipientRejection(error)) { if (!undeliverable.includes(email.key)) undeliverable.push(email.key); recipientRejected = true; }
+        else failed = true;
+      }
     }
     await db.transaction(async tx => {
-      const metadata = event.metadata as Record<string, unknown>;
-      if (failed && !metadata.deliveryRecoveryOwnerIds) {
+      const metadata = eventMetadata;
+      if (undeliverable.length || metadata.undeliverableEmailKeys) metadata.undeliverableEmailKeys = [...undeliverable];
+      if (failed) {
+        metadata.deliveryFailures = Number(metadata.deliveryFailures || 0) + 1;
+        if (Number(metadata.deliveryFailures) >= bookingEmailAttemptLimit) metadata.deliveryPaused = true;
+      }
+      if ((failed || recipientRejected) && !metadata.deliveryRecoveryOwnerIds) {
         const owners = await tx.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
         for (const owner of owners) await notificationService.create({ userId: owner.id, target: 'manager', type: 'system_announcement',
           priority: 'high', title: 'Booking notice needs delivery recovery',
@@ -203,7 +228,7 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
         }
       }
     await tx.update(bookingLifecycleEvents).set({ metadata, leaseToken: null, leaseUntil: null,
-      ...(failed ? { nextAttemptAt: new Date(Date.now() + 60_000) } : { completedAt: new Date() }) })
+      ...(failed ? { nextAttemptAt: new Date(Date.now() + bookingEmailRetryDelayMs(Number(metadata.deliveryFailures))) } : { completedAt: new Date() }) })
       .where(and(eq(bookingLifecycleEvents.id, event.id), eq(bookingLifecycleEvents.leaseToken, token)));
     });
     if (!failed) completed++;

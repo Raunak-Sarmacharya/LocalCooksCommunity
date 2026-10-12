@@ -291,8 +291,11 @@ export async function retryFailedEmail(logId: number): Promise<{ success: boolea
     if (event.leaseUntil && event.leaseUntil > new Date()) return { success: false, error: 'Original event is being delivered; retry after its lease expires' };
     const keys = 'deliveredEmailKeys' in event ? event.deliveredEmailKeys : event.deliveredKeys;
     if ((keys as string[]).includes(ledger[3])) return { success: true };
-    if (event.completedAt) return { success: false, error: 'Completed event has no acknowledgment for this channel; review required' };
-    await db.update(table).set({ nextAttemptAt: new Date() }).where(and(eq(table.id, eventId),
+    // A booking channel the relay refused for good completes its event so the worker stops
+    // retrying it; an admin retry here reopens that one event and attempts the channel again.
+    const refused = 'metadata' in event && ((event.metadata as { undeliverableEmailKeys?: string[] } | null)?.undeliverableEmailKeys || []).includes(ledger[3]);
+    if (event.completedAt && !refused) return { success: false, error: 'Completed event has no acknowledgment for this channel; review required' };
+    await db.update(table).set({ nextAttemptAt: new Date(), ...(refused ? { completedAt: null } : {}) }).where(and(eq(table.id, eventId),
       sql`(${table.leaseUntil} IS NULL OR ${table.leaseUntil} <= CURRENT_TIMESTAMP)`));
     if (ledger[1] === 'booking') {
       const { deliverBookingLifecycleEvents } = await import('./booking-lifecycle-delivery');

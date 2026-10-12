@@ -4762,7 +4762,7 @@ router.put(
         const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
         const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id);
         const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
-        await deliverBookingLifecycleEvents().catch(error => logger.warn('Booking email delivery pending retry', error));
+        await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
         return res.json(result);
       }
 
@@ -4830,7 +4830,7 @@ router.put(
       const isFromPending = previousStatus === "pending";
 
       const { deliverBookingLifecycleEvents } = await import("../services/booking-lifecycle-delivery");
-      await deliverBookingLifecycleEvents().catch(error => logger.warn("Booking email delivery pending retry", error));
+      await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn("Booking email delivery pending retry", error));
 
       // Build response with refund info if applicable
       const responseData: any = {

@@ -319,7 +319,7 @@ export class BookingService {
                             endDate: data.bookingDate,
                             status: 'pending',
                             totalPrice: sessionRateCents.toString(),
-                            damageDeposit: (listing.damageDeposit || '0').toString(), 
+                            damageDeposit: '0', // Damage deposits are not collected
                             serviceFee: '0',
                             currency: pricing.currency,
                             pricingModel: 'daily' // Equipment uses flat session rate

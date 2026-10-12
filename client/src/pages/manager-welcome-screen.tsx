@@ -132,9 +132,9 @@ const RULES = [
   {
     icon: "mdi:shield-check-outline",
     key: "welcomeCap2",
-    label: "Damage deposits",
+    label: "Cancellation terms",
     valueKey: "welcomeCap2Value",
-    value: "Held per booking",
+    value: "Set by you",
   },
   {
     icon: "mdi:clock-outline",

@@ -5,7 +5,7 @@ const worker = vi.hoisted(() => ({ run: vi.fn(), query: vi.fn(), connect: vi.fn(
 vi.mock('./services/recurring-worker', () => ({ runRecurringWorker: worker.run, workerPool: { query: worker.query, connect: worker.connect }, assertWorkerSessionConnection: vi.fn(), initializeWorkerSession: worker.initialize }));
 vi.mock('./services/scheduled-cancellations', () => ({ processExpiredCancellationRequests: vi.fn() }));
 vi.mock('./services/chat-notices', () => ({ deliverStartingChatMessage: worker.chat }));
-import { recurringCronEnabled, registerInngest, registerLifecycleWorkerEndpoints, runStartingChatEmail } from './lifecycle-inngest';
+import { recurringCronEnabled, recurringCronSchedule, registerInngest, registerLifecycleWorkerEndpoints, runStartingChatEmail } from './lifecycle-inngest';
 afterEach(() => vi.unstubAllEnvs());
 describe('thin Inngest entry point and existing protected worker routes', () => {
   it('durably waits 15 seconds, delivers only the persisted starting message and retries unaccepted delivery', async () => {
@@ -25,6 +25,12 @@ describe('thin Inngest entry point and existing protected worker routes', () => 
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'production', LIFECYCLE_ENVIRONMENT: 'staging' })).toBe(false);
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'production', LIFECYCLE_ENVIRONMENT: 'production' })).toBe(true);
     expect(recurringCronEnabled({ LIFECYCLE_RECURRING_ENABLED: 'true', VERCEL_ENV: 'preview', LIFECYCLE_ENVIRONMENT: 'staging', LIFECYCLE_STAGING_REHEARSAL: 'true' })).toBe(true);
+  });
+  it('defaults the backstop tick to every 5 minutes and only accepts a bounded minute step override', () => {
+    expect(recurringCronSchedule({})).toBe('*/5 * * * *');
+    expect(recurringCronSchedule({ LIFECYCLE_CRON: '*/15 * * * *' })).toBe('*/15 * * * *');
+    for (const value of ['*/0 * * * *', '*/45 * * * *', '* * * * *', '0 9 * * *', 'garbage'])
+      expect(recurringCronSchedule({ LIFECYCLE_CRON: value })).toBe('*/5 * * * *');
   });
   it('delivers broadcast wakeups independently by validated recipient role', async () => {
     const step = { sleep: vi.fn(async () => {}), run: vi.fn(async (_id: string, action: () => Promise<unknown>) => action()) };

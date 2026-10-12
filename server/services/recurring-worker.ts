@@ -48,7 +48,7 @@ type Task = { name: string; run: () => Promise<unknown>; budgetMs?: number; minB
  * against continuing database/financial work. The driver enforces statement and
  * lock deadlines; provider helpers own socket/HTTP aborts. */
 export async function runFairTasks(tasks: Task[], state: WorkerState, save: () => Promise<void>, phaseDeadline = Infinity) {
-  const results: Record<string, unknown> = {}, failures: string[] = [];
+  const results: Record<string, unknown> = {}, failures: string[] = [], timings: Record<string, number> = {};
   const start = state.nextTask % tasks.length;
   for (let offset = 0; offset < tasks.length && Math.min(workerRemaining(), phaseDeadline - performance.now()) >= 2_500; offset++) {
     const index = (start + offset) % tasks.length, task = tasks[index];
@@ -58,6 +58,7 @@ export async function runFairTasks(tasks: Task[], state: WorkerState, save: () =
     const scope = workerContext.getStore()!;
     const databaseFailures = scope.databaseFailures || 0;
     scope.taskDeadline = Math.min(scope.deadline, phaseDeadline, performance.now() + (task.budgetMs ?? 5_000));
+    const taskStarted = performance.now();
     try {
       const result = await task.run();
       results[task.name] = result;
@@ -69,9 +70,10 @@ export async function runFairTasks(tasks: Task[], state: WorkerState, save: () =
       if (isWorkerBudgetError(error)) results[task.name] = { checkpoint: true };
       else { failures.push(task.name); logger.error(`[Worker] Task ${task.name} requires recovery`, error); }
     }
+    timings[task.name] = Math.round(performance.now() - taskStarted);
     scope.taskDeadline = scope.deadline;
   }
-  return { results, failures };
+  return { results, failures, timings };
 }
 
 export async function runRecurringWorker(cancellations: () => Promise<unknown>, requestStarted = performance.now()) {
@@ -143,7 +145,9 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
       if (!state.failures.length) state.lastHealthyAt = state.finishedAt;
       await save();
       return { elapsedMs: Math.round(performance.now() - requestStarted), configuredInvocationMs,
-        deferred: state.deferred, taskFailures: state.failures, delivery: delivery.results, background: background.results };
+        deferred: state.deferred, taskFailures: state.failures, delivery: delivery.results, background: background.results,
+        // Per-task wall time (ms) so cost hot spots are visible in the Inngest run output.
+        timings: { ...delivery.timings, ...background.timings } };
     });
   } finally {
     client.query = rawQuery as PoolClient['query'];

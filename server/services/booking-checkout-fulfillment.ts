@@ -68,7 +68,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           if (!listing) throw new Error('Quoted equipment is unavailable');
           const [item] = await tx.insert(equipmentBookings).values({ kitchenBookingId: parent.id, chefId, equipmentListingId: listingId,
             startDate: bookingDate, endDate: bookingDate, status: 'pending', paymentStatus, paymentIntentId: intent.id,
-            totalPrice: String(price), pricingModel: 'daily', damageDeposit: String(listing.damageDeposit || '0') }).returning();
+            totalPrice: String(price), pricingModel: 'daily', damageDeposit: '0' }).returning();
           equipmentItems.push({ id: item.id, equipmentBookingId: item.id, equipmentListingId: listingId, name: listing.equipmentType, totalPrice: price });
         }
         await tx.update(kitchenBookings).set({ storageItems, equipmentItems }).where(eq(kitchenBookings.id, parent.id));

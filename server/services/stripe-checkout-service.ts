@@ -339,6 +339,9 @@ export async function createPendingCheckoutSession(
       mode: 'payment',
       // Stripe requires at least 30 minutes from its own clock; allow for transit and clock skew.
       expires_at: Math.floor(Date.now() / 1000) + 32 * 60,
+      // Cards only (wallets like Apple Pay/Google Pay are cards). Keeps BNPL such as Klarna
+      // off kitchen bookings, which use manual capture and saved-card off-session charges.
+      payment_method_types: ['card'],
       customer_email: customerEmail,
       // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
       // This enables future charges for overstay penalties, damage deposits, etc.
@@ -518,6 +521,7 @@ export async function createCheckoutSession(
     // Create Checkout session
     const session = await provider.checkout.sessions.create({
       mode: 'payment',
+      payment_method_types: ['card'],
       customer_email: customerEmail,
       // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
       // This enables future charges for overstay penalties, damage deposits, etc.
