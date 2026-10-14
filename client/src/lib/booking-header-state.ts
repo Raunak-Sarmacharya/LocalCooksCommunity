@@ -1,3 +1,4 @@
+import { collapseDoublePeriods } from '@shared/i18n/sentence';
 /**
  * Booking details header: one status, one next step and at most one primary action per role.
  * Pure so the page and its tests share the same rules. Display only: no booking, payment or
@@ -111,7 +112,7 @@ export const canMessage = (status: string) => (MESSAGING_STATUSES as readonly st
 export const contactVisible = (status: string) => ['confirmed', 'cancellation_requested', 'completed'].includes(status);
 
 /** Avoids "a.m.." when a localized time that already ends in a period closes a sentence. */
-export const sentence = (text: string) => text.replace(/\.\.(?=\s|$)/g, '.');
+export const sentence = (text: string) => collapseDoublePeriods(text);
 
 /** "2:00 p.m." + "3:00 p.m." → "2:00–3:00 p.m."; other formats are joined unchanged. */
 export function timeRange(start: string, end: string) {
@@ -123,3 +124,20 @@ export function timeRange(start: string, end: string) {
 
 export const initials = (name?: string | null) => (name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2)
   .map(part => part[0]!.toUpperCase()).join('') || '?';
+
+const clockMinutes = (value: string) => { const [h, m] = value.split(':').map(Number); return h * 60 + (m || 0); };
+/**
+ * Hours shown in the header: the real start–end span of every visit (saved clocks first, then the visit rows, then the
+ * booking's own start/end), so extensions and early starts always show. `durationHours` is only a last resort.
+ */
+export function bookedHours(input: { closeoutVisits?: Array<{ scheduledStartAt: string; scheduledEndAt: string }> | null;
+  visits?: Array<{ startTime: string; endTime: string }> | null; startTime?: string | null; endTime?: string | null; durationHours?: number | string | null }) {
+  const round = (minutes: number) => Math.round(minutes / 60 * 100) / 100;
+  const saved = (input.closeoutVisits || []).map(visit => Date.parse(visit.scheduledEndAt) - Date.parse(visit.scheduledStartAt));
+  if (saved.length && saved.every(span => Number.isFinite(span) && span > 0)) return round(saved.reduce((a, b) => a + b, 0) / 60_000);
+  const span = (start: string, end: string) => { const diff = clockMinutes(end) - clockMinutes(start); return diff > 0 ? diff : diff + 1440; };
+  const rows = (input.visits || []).filter(visit => visit.startTime && visit.endTime);
+  if (rows.length) return round(rows.reduce((sum, visit) => sum + span(visit.startTime, visit.endTime), 0));
+  if (input.startTime && input.endTime) return round(span(input.startTime, input.endTime));
+  return Number(input.durationHours) || 0;
+}

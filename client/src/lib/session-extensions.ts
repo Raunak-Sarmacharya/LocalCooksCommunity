@@ -9,7 +9,7 @@ export type ExtensionItem = { id: number; kind: "request" | "offer" | "extra_tim
   status: "requested" | "offered" | "approved" | "declined" | "expired" | "paid" | "cancelled" | "disputed"
   authorized: boolean; paid: boolean; confirmed: boolean; originalEndAt: string; endAt: string; expiresAt: string; note: string | null
   autoApprove: boolean; createdAt: string; processing: boolean; escalated: boolean }
-export type EarlyOption = { minutes: number; startTime: string; startAt: string; defaultFree: boolean; billedMinutes: number; amountCents: number; kitchenGrossCents: number }
+export type EarlyOption = { minutes: number; startTime: string; startAt: string; defaultFree: boolean; billedMinutes: number; amountCents: number; kitchenGrossCents: number; startNow?: boolean }
 export type ExtensionState = { enabled: boolean; autoApprove: boolean; timezone: string; kitchenName: string; currency: string
   options: ExtensionOption[]; earlyOptions?: EarlyOption[]; startAt?: string | null; beforeStart?: boolean; extraTime: { actualMinutes: number; minutes: number; maximumAmountCents: number; amountCents: number; kitchenGrossCents: number } | null
   visitId: number | null; endAt: string | null; checkoutAt: string | null; inSession: boolean; canRequest: boolean; hasSavedCard: boolean
@@ -59,3 +59,13 @@ export const kitchenClockZone = (at: string, timezone: string, locale: string) =
 export const newRequestKey = () => crypto.randomUUID()
 /** Only the preselected default: up to 30 minutes starts as Free; the manager can switch either way. */
 export const defaultFreeChoice = (minutes: number) => minutes <= 30
+/** Shown as one-tap chips; every other free length is under "Choose a time…" (15-minute steps). */
+export const QUICK_PICK_MINUTES = [30, 60, 120] as const
+export const isQuickPick = (minutes: number) => (QUICK_PICK_MINUTES as readonly number[]).includes(minutes)
+/** "45 min", "2 hours", "1 h 15 min" from translated pieces (keys: Min, Hours, HM under the given prefix). */
+export function lengthText(minutes: number, t: (key: string, options: Record<string, unknown>) => string, prefix: string) {
+  const hours = Math.floor(minutes / 60), rest = minutes % 60
+  if (!hours) return t(`${prefix}LenMin`, { minutes, defaultValue: `${minutes} min` })
+  if (!rest) return t(`${prefix}LenHours`, { hours, defaultValue: `${hours} ${hours === 1 ? "hour" : "hours"}` })
+  return t(`${prefix}LenHM`, { hours, minutes: rest, defaultValue: `${hours} h ${rest} min` })
+}

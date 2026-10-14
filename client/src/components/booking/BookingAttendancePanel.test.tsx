@@ -144,3 +144,20 @@ it('keeps "No check-in recorded yet" while the visit has not ended', async () =>
   mount();
   expect(await screen.findByText('No check-in recorded yet')).toBeInTheDocument();
 });
+it('after the booked end (booking already completed), "Record when they left" opens straight on the departure form', async () => {
+  const late = { ...record, status: 'completed', visits: [{ ...record.visits[0], checkinStatus: 'checked_in' }] };
+  const endedClock = { timezone: 'America/St_Johns', visits: [{ visitId: 5, phase: 'ended', scheduledStartAt: '2026-10-03T11:30:00Z', arrivalRecorded: true, inspection: { outcome: 'due' } }] };
+  mount({ data: late, closeout: endedClock, fixOpen: true, onFixOpenChange: vi.fn(), fixAction: 'departure' });
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByRole('heading', { name: 'Alex left without checking out' })).toBeInTheDocument();
+  // Back returns to every choice; the preset is not forced again.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Back' }));
+  expect(within(dialog).getByRole('button', { name: /Alex left without checking out/ })).toBeInTheDocument();
+});
+it('does not offer a late departure once the inspection window has closed', async () => {
+  const late = { ...record, status: 'completed', visits: [{ ...record.visits[0], checkinStatus: 'checked_in' }] };
+  const closed = { timezone: 'America/St_Johns', visits: [{ visitId: 5, phase: 'ended', scheduledStartAt: '2026-10-03T11:30:00Z', arrivalRecorded: true, inspection: { outcome: 'auto_closed_uninspected' } }] };
+  mount({ data: late, closeout: closed });
+  const dialog = await open();
+  expect(within(dialog).queryByRole('button', { name: /left without/ })).not.toBeInTheDocument();
+});

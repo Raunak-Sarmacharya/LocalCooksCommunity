@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeCloseoutSnapshot, reduceClockCloseout, closeoutTransition, type ClockBooking } from './clock-closeout';
+import { makeCloseoutSnapshot, reduceClockCloseout, closeoutTransition, lateCheckoutOpen, recordedDepartureAt, snapshotBookedHours, type ClockBooking } from './clock-closeout';
 
 const timing = { serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 };
 const booking: ClockBooking = { bookingDate: '2026-10-13', startTime: '10:00', endTime: '11:00', status: 'confirmed', checkinStatus: 'not_checked_in' };
@@ -122,5 +122,27 @@ describe('clock closeout (fake clock, no providers)', () => {
     const row = { ...booking, status: 'completed', checkinStatus: 'checked_out', checkoutApprovedAt: '2026-10-13T12:50:00Z' };
     expect(at('2026-10-20T12:00:00Z', row).visits[0].inspection.outcome).toBe('legacy_closed');
     expect(at('2026-10-20T12:00:00Z', row).visits[0].attendance).toBe('unknown');
+  });
+});
+
+describe('late departure helpers', () => {
+  const clock = (phase: string, outcome: string) => ({ phase, inspection: { outcome } }) as any;
+  it('keeps checkout open after the end until the inspection window closes', () => {
+    expect(lateCheckoutOpen(clock('booked_time_ended', 'due'))).toBe(true);
+    expect(lateCheckoutOpen(clock('ended', 'due'))).toBe(true);
+    expect(lateCheckoutOpen(clock('ended', 'auto_closed_uninspected'))).toBe(false);
+    expect(lateCheckoutOpen(clock('in_booked_time', 'not_due'))).toBe(false);
+    expect(lateCheckoutOpen(undefined)).toBe(false);
+  });
+  it('uses the recorded departure time, never the time the kitchen typed it in', () => {
+    expect(recordedDepartureAt({ checkoutRequestedAt: '2026-10-14T21:00:00Z',
+      assistanceHistory: [{ action: 'arrival', actualAt: '2026-10-14T16:30:00Z' }, { action: 'departure', actualAt: '2026-10-14T19:40:00Z' }] })?.toISOString())
+      .toBe('2026-10-14T19:40:00.000Z');
+    expect(recordedDepartureAt({ checkoutRequestedAt: '2026-10-14T19:10:00Z' })?.toISOString()).toBe('2026-10-14T19:10:00.000Z');
+    expect(recordedDepartureAt({})).toBeNull();
+  });
+  it('derives booked hours from every saved visit span', () => {
+    expect(snapshotBookedHours({ visits: [{ scheduledStartAt: '2026-10-14T16:00:00Z', scheduledEndAt: '2026-10-14T19:25:00Z' } as any,
+      { scheduledStartAt: '2026-10-15T16:00:00Z', scheduledEndAt: '2026-10-15T17:00:00Z' } as any] })).toBe(4.42);
   });
 });

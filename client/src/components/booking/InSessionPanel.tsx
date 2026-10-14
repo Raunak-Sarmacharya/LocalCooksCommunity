@@ -79,7 +79,11 @@ export function InSessionPanel({
   const zone = friendlyTimezoneName(timezone, locale)
   const progress = Number.isFinite(startMs) && endMs > startMs ? Math.min(100, Math.max(0, ((now - startMs) / (endMs - startMs)) * 100)) : 0
 
-  const countdown = phase === "ended" ? t("kciIsTimeEnded", { defaultValue: "Your booked time ended" })
+  // After the end the header already says the booking ended; the count shows how long past it the chef is.
+  const minutesOver = Math.max(0, Math.floor((now - endMs) / 60_000))
+  const countdown = phase === "ended" ? minutesOver < 1 ? t("kciIsTimeEnded", { defaultValue: "Your booked time ended" })
+    : minutesOver >= 60 ? t("kciIsOverHM", { defaultValue: "{hours} h {minutes} min past your booking", hours: Math.floor(minutesOver / 60), minutes: minutesOver % 60 })
+    : t("kciIsOverM", { defaultValue: "{minutes} min past your booking", minutes: minutesOver })
     : minutesLeft < 1 ? t("kciIsLeftLessMinute", { defaultValue: "Less than a minute left" })
     : minutesLeft >= 60 ? t("kciIsLeftHM", { defaultValue: "{hours} h {minutes} min left", hours: Math.floor(minutesLeft / 60), minutes: minutesLeft % 60 })
     : t("kciIsLeftM", { defaultValue: "{minutes} min left", minutes: minutesLeft })
@@ -154,11 +158,10 @@ export function InSessionPanel({
       )}
       {phase !== "active" && (
         <div className="space-y-2">
-          <p className="text-sm font-medium">{phase === "ending"
-            ? t("kciIsLast15Hint", { defaultValue: "Your booked time is almost up. Start check-out when you are finished." })
-            : t("kciIsTimeEndedHint", { defaultValue: "Check out now to close your visit." })}</p>
+          {/* Once ended, the visit header carries the one "check out now" message; this is just the action. */}
+          {phase === "ending" && <p className="text-sm font-medium">{t("kciIsLast15Hint", { defaultValue: "Your booked time is almost up. Start check-out when you are finished." })}</p>}
           {canCheckout && <Button type="button" className={tap} onClick={onStartCheckout}>
-            <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsStartCheckout", { defaultValue: "Start check-out" })}
+            <LogOut className="h-4 w-4 mr-2 shrink-0" />{phase === "ended" ? t("kciIsCheckOutNow", { defaultValue: "Check out now" }) : t("kciIsStartCheckout", { defaultValue: "Start check-out" })}
           </Button>}
           {phase === "ending" && <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
             moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />}
@@ -166,7 +169,7 @@ export function InSessionPanel({
       )}
 
       <div className="space-y-2 border-t pt-4">
-        {canCheckout && <>
+        {canCheckout && phase !== "ended" && <>
           <Button type="button" variant="outline" className={tap} onClick={onStartCheckout}>
             <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsLeaveEarly", { defaultValue: "Leave early / check out now" })}
           </Button>

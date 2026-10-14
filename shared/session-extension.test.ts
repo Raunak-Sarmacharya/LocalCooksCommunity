@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extraTimeQuote, extensionDeadline, extensionPrice, sessionExtensionOptions, extendedSessionSnapshot, appendExtensionSlot, inExtensionWindow, extraTimeChargeOpen, earlyStartOptions, billedMinutes, defaultFree, inEarlyStartWindow, earlierSessionSnapshot, prependEarlySlot } from './session-extension';
+import { validExtensionMinutes, extraTimeQuote, extensionDeadline, extensionPrice, sessionExtensionOptions, extendedSessionSnapshot, appendExtensionSlot, inExtensionWindow, extraTimeChargeOpen, earlyStartOptions, billedMinutes, defaultFree, inEarlyStartWindow, earlierSessionSnapshot, prependEarlySlot } from './session-extension';
 import { absoluteOperatingSlotInterval } from './operating-hours';
 const ratios = { subtotalCents: 10000, taxCents: 1500, commissionCents: 500 };
 const input = { operatingDate: '2026-10-14', windowStartTime: '08:00', windowEndTime: '20:00', endTime: '16:00', endAt: '2026-10-14T18:30:00Z', timezone: 'America/St_Johns', durationMinutes: 120, maxMinutes: null, occupied: [], hourlyRateCents: 2500, ratios };
@@ -8,22 +8,40 @@ describe('session extensions', () => {
     expect(extensionPrice(60, 2500, ratios)).toEqual({ subtotalCents: 2500, taxCents: 375, commissionCents: 125, amountCents: 3000, kitchenGrossCents: 2875 });
     expect(extensionPrice(30, 2500, { ...ratios, commissionCents: 0 }).amountCents).toBe(1438);
   });
-  it('offers +30/+60/+120 and allows abutting bookings', () => {
-    expect(sessionExtensionOptions(input).map(o => o.minutes)).toEqual([30, 60, 120]);
+  it('offers every free end in 15-minute steps up to closing (quick picks included) and allows abutting bookings', () => {
+    // 16:00 end, closing 20:00: 15 … 240 minutes.
+    expect(sessionExtensionOptions(input).map(o => o.minutes)).toEqual(Array.from({ length: 16 }, (_, i) => (i + 1) * 15));
     const occupied = [absoluteOperatingSlotInterval(input.operatingDate, { startTime: '17:00', endTime: '18:00' }, '08:00')];
-    expect(sessionExtensionOptions({ ...input, occupied }).map(o => o.minutes)).toEqual([30, 60]);
+    // Boundary at the next booking: up to 17:00 exactly, never past it.
+    expect(sessionExtensionOptions({ ...input, occupied }).map(o => o.minutes)).toEqual([15, 30, 45, 60]);
+    expect(sessionExtensionOptions({ ...input, occupied }).at(-1)).toMatchObject({ endTime: '17:00', endAt: '2026-10-14T19:30:00.000Z' });
+  });
+  it('prices custom lengths in 30-minute blocks', () => {
+    const options = sessionExtensionOptions(input);
+    const byMinutes = (minutes: number) => options.find(o => o.minutes === minutes)!;
+    expect(byMinutes(15).amountCents).toBe(byMinutes(30).amountCents);
+    expect(byMinutes(45).amountCents).toBe(byMinutes(60).amountCents);
+    expect(byMinutes(60)).toMatchObject({ endTime: '17:00', amountCents: 3000, kitchenGrossCents: 2875 });
+    expect(byMinutes(75).amountCents).toBe(extensionPrice(90, 2500, ratios).amountCents);
+    expect([validExtensionMinutes(15), validExtensionMinutes(45), validExtensionMinutes(20), validExtensionMinutes(0), validExtensionMinutes(-15), validExtensionMinutes(7.5)])
+      .toEqual([true, true, false, false, false, false]);
   });
   it('limits by blackout, operating hours and maximum booking duration', () => {
-    expect(sessionExtensionOptions({ ...input, occupied: [absoluteOperatingSlotInterval(input.operatingDate, { startTime: '16:15', endTime: '18:00' }, '08:00')] })).toEqual([]);
-    expect(sessionExtensionOptions({ ...input, windowEndTime: '16:30' }).map(o => o.minutes)).toEqual([30]);
-    expect(sessionExtensionOptions({ ...input, maxMinutes: 180 }).map(o => o.minutes)).toEqual([30, 60]);
+    expect(sessionExtensionOptions({ ...input, occupied: [absoluteOperatingSlotInterval(input.operatingDate, { startTime: '16:10', endTime: '18:00' }, '08:00')] })).toEqual([]);
+    expect(sessionExtensionOptions({ ...input, occupied: [absoluteOperatingSlotInterval(input.operatingDate, { startTime: '16:15', endTime: '18:00' }, '08:00')] }).map(o => o.minutes)).toEqual([15]);
+    expect(sessionExtensionOptions({ ...input, windowEndTime: '16:30' }).map(o => o.minutes)).toEqual([15, 30]);
+    expect(sessionExtensionOptions({ ...input, maxMinutes: 180 }).map(o => o.minutes)).toEqual([15, 30, 45, 60]);
   });
   it('handles overnight windows', () => {
-    expect(sessionExtensionOptions({ ...input, windowStartTime: '20:00', windowEndTime: '03:00', endTime: '00:00', endAt: '2026-10-15T02:30:00Z' })[0].endAt).toBe('2026-10-15T03:00:00.000Z');
+    const options = sessionExtensionOptions({ ...input, windowStartTime: '20:00', windowEndTime: '03:00', endTime: '00:00', endAt: '2026-10-15T02:30:00Z' });
+    expect(options.find(o => o.minutes === 30)!.endAt).toBe('2026-10-15T03:00:00.000Z');
+    expect(options.at(-1)).toMatchObject({ minutes: 180, endTime: '03:00' });
   });
   it('rejects nonexistent and ambiguous DST times and elapsed/wall-clock mismatch', () => {
-    expect(sessionExtensionOptions({ ...input, operatingDate: '2026-03-08', windowStartTime: '00:00', windowEndTime: '04:00', endTime: '01:00', endAt: '2026-03-08T04:30:00Z' }).map(o => o.minutes)).toEqual([30]);
-    expect(sessionExtensionOptions({ ...input, operatingDate: '2026-11-01', windowStartTime: '00:00', windowEndTime: '04:00', endTime: '00:30', endAt: '2026-11-01T03:00:00Z' })).toEqual([]);
+    // 02:00 does not exist on 2026-03-08: the list stops at 01:45.
+    expect(sessionExtensionOptions({ ...input, operatingDate: '2026-03-08', windowStartTime: '00:00', windowEndTime: '04:00', endTime: '01:00', endAt: '2026-03-08T04:30:00Z' }).map(o => o.minutes)).toEqual([15, 30, 45]);
+    // 01:00–02:00 repeats on 2026-11-01: the list stops at 00:45, before the ambiguous hour.
+    expect(sessionExtensionOptions({ ...input, operatingDate: '2026-11-01', windowStartTime: '00:00', windowEndTime: '04:00', endTime: '00:30', endAt: '2026-11-01T03:00:00Z' }).map(o => o.minutes)).toEqual([15]);
   });
   it('rounds actual overstay up to 30-minute blocks and only permits a lower amount', () => {
     expect(extraTimeQuote(input.endAt, '2026-10-14T19:10:00Z', 2500, ratios)).toMatchObject({ actualMinutes: 40, minutes: 60, amountCents: 3000 });
@@ -78,6 +96,16 @@ describe('session extensions', () => {
       expect(earlyStartOptions({ ...early, occupied: [overlapping] })).toEqual([]);
       expect(earlyStartOptions({ ...early, windowStartTime: '13:00', startAt: early.startAt }).map(o => o.minutes)).toEqual([15, 30, 45, 60]);
       expect(earlyStartOptions({ ...early, maxMinutes: 180 }).map(o => o.minutes)).toEqual([15, 30, 45, 60]);
+    });
+    it('never offers a start in the past: steps from now (rounded up to 15 minutes), with "Start now" first', () => {
+      // Booked start 14:00 NDT (16:30Z); it is 13:13 NDT (15:43Z): 13:15, 13:30, 13:45 are offered, and "Start now" is 13:00.
+      const options = earlyStartOptions({ ...early, now: new Date('2026-10-14T15:43:00Z') });
+      expect(options.map(o => [o.startTime, o.startNow])).toEqual([['13:00', true], ['13:45', false], ['13:30', false], ['13:15', false]]);
+      expect(options.some(o => Date.parse(o.startAt) + 15 * 60_000 <= Date.parse('2026-10-14T15:43:00Z'))).toBe(false);
+      // Exactly on a step: that step is "Start now"; nothing earlier.
+      expect(earlyStartOptions({ ...early, now: new Date('2026-10-14T16:00:00Z') }).map(o => [o.startTime, o.startNow])).toEqual([['13:30', true], ['13:45', false]]);
+      // 10 minutes before the start: only "Start now" (13:45).
+      expect(earlyStartOptions({ ...early, now: new Date('2026-10-14T16:20:00Z') }).map(o => [o.startTime, o.startNow])).toEqual([['13:45', true]]);
     });
     it('opens the manager control 2 hours before the start until the start', () => {
       expect(inEarlyStartWindow(new Date('2026-10-14T14:29:00Z'), early.startAt)).toBe(false);

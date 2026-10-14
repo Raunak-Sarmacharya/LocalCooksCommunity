@@ -16,10 +16,10 @@ import { db } from '../db';
 import { kitchenAvailability, kitchenBookingExtensions, kitchenBookings, kitchenBookingVisits,
   kitchenCheckoutHolds, kitchenDateOverrides, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
 import { appendExtensionSlot, earlierSessionSnapshot, earlyStartOptions, extendedSessionSnapshot, extensionDeadline, extraTimeChargeOpen,
-  extraTimeQuote, inEarlyStartWindow, inExtensionWindow, prependEarlySlot, sessionExtensionOptions,
+  extraTimeQuote, inEarlyStartWindow, inExtensionWindow, prependEarlySlot, sessionExtensionOptions, validExtensionMinutes,
   type EarlyStartOption, type ExtensionKind, type ExtensionOperation, type ExtensionOption } from '@shared/session-extension';
 import { absoluteOperatingSlotInterval, occupiedIntervals, timeToMinutes } from '@shared/operating-hours';
-import { makeCloseoutSnapshot, reduceClockCloseout, savedCloseout, type VisitCloseout } from '@shared/clock-closeout';
+import { makeCloseoutSnapshot, recordedDepartureAt, reduceClockCloseout, savedCloseout, snapshotBookedHours, type VisitCloseout } from '@shared/clock-closeout';
 import { closeoutTiming, persistBookingCloseout } from './clock-closeout';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 import { lockBookingMoneySources } from './booking-support-flags';
@@ -124,7 +124,7 @@ async function availableEarly(tx: Tx, row: Context, visit: VisitCloseout, now: D
   // Never before the kitchen opens nor before the booking's own operating-window anchor (overnight resolution).
   const anchor = row.booking.operatingWindowStartTime || facts.window.startTime;
   const windowStartTime = timeToMinutes(facts.window.startTime) > timeToMinutes(anchor) ? facts.window.startTime : anchor;
-  return earlyStartOptions({ ...facts, windowStartTime, startTime: visit.startTime, startAt: visit.scheduledStartAt, timezone: row.timezone!, ...await priceTerms(tx, row) });
+  return earlyStartOptions({ ...facts, windowStartTime, startTime: visit.startTime, startAt: visit.scheduledStartAt, timezone: row.timezone!, now, ...await priceTerms(tx, row) });
 }
 /** Before the visit: booking confirmed, nobody has arrived, within 2 hours of the booked start. */
 const isBeforeStart = (row: Context, visit: VisitCloseout, now: Date) =>
@@ -153,11 +153,13 @@ async function chooseSession(tx: Tx, row: Context, now: Date, visitId?: number |
     : kind === 'early_start' ? clock.projection.visits.find(visit => isBeforeStart(row, visit, now)) || (clock.projection.visits.length === 1 ? clock.projection.visits[0] : undefined)
     : clock.projection.visits.find(visit => isInSession(row, visit, evidenceFor(visit), now, false))
       || clock.projection.visits.find(visit => isBeforeStart(row, visit, now))
-      || clock.projection.visits.find(visit => extraTimeChargeOpen(now, evidenceFor(visit)?.checkedOutAt || evidenceFor(visit)?.checkoutRequestedAt, visit.scheduledEndAt))
+      || clock.projection.visits.find(visit => extraTimeChargeOpen(now, recordedDepartureAt(evidenceFor(visit)), visit.scheduledEndAt))
       || (clock.projection.visits.length === 1 ? clock.projection.visits[0] : undefined);
   if (!visit) throw new SessionExtensionError('Choose a visit belonging to this booking');
   const evidence = evidenceFor(visit);
-  return { ...clock, visit, evidence, checkout: evidence?.checkedOutAt || evidence?.checkoutRequestedAt || null };
+  // The recorded departure (the chef's late checkout, or the time the kitchen recorded they left) against the CURRENT
+  // booked end, which already includes every approved or free extension.
+  return { ...clock, visit, evidence, checkout: recordedDepartureAt(evidence) };
 }
 async function mustBeEnabled(tx: Tx) {
   if (!await sessionExtensionsEnabled(tx)) throw new SessionExtensionError('Extra time is paused on Local Cooks right now. Message the kitchen or Local Cooks.');
@@ -268,8 +270,9 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
     if (input.kind === 'early_start') {
       if (!isBeforeStart(row, clock.visit, now)) throw new SessionExtensionError('An earlier start can be given from 2 hours before the booking until it starts, before check-in.');
       if (prior.some(ext => openActive(ext, clock.visit.blockIndex))) throw new SessionExtensionError('There is already an open offer for this visit.');
+      if (!validExtensionMinutes(input.minutes)) throw new SessionExtensionError('Choose a start time in 15-minute steps.', 400);
       const option = (await availableEarly(tx, row, clock.visit, now)).find(option => option.minutes === input.minutes);
-      if (!option) throw new SessionExtensionError('That earlier time is no longer free.');
+      if (!option) throw new SessionExtensionError('That start time was just booked or has passed — pick another.');
       quote = { ...option, endAt: option.startAt, endTime: option.startTime };
     } else if (input.kind === 'extra_time') {
       if (!input.note?.trim()) throw new SessionExtensionError('Please include a note to the chef');
@@ -283,8 +286,9 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
       if (!isInSession(row, clock.visit, clock.evidence, now, input.kind === 'request'))
         throw new SessionExtensionError(input.kind === 'request' ? 'You can ask for more time during the last hour of your session, before you check out.' : 'More time can only be offered while the chef is in session.');
       if (prior.some(ext => openActive(ext, clock.visit.blockIndex))) throw new SessionExtensionError('There is already an open extra-time request or offer for this visit.');
+      if (!validExtensionMinutes(input.minutes)) throw new SessionExtensionError('Choose a time in 15-minute steps.', 400);
       const option = (await available(tx, row, clock.visit, now)).find(option => option.minutes === input.minutes);
-      if (!option) throw new SessionExtensionError(`That time is no longer free. Message ${row.kitchen.name}.`);
+      if (!option) throw new SessionExtensionError('That time was just booked — pick another.');
       quote = option;
     }
     if (free) quote = { ...quote, subtotalCents: 0, taxCents: 0, commissionCents: 0, amountCents: 0, kitchenGrossCents: 0 };
@@ -430,10 +434,12 @@ async function applyBoundary(tx: Tx, row: Context, extension: Extension, now: Da
   if (Date.parse(visit.scheduledEndAt) !== extension.originalEndAt.getTime()) throw new SessionExtensionError('A captured extension needs schedule recovery by Local Cooks');
   const lastVisit = Math.max(...snapshot.visits.map((clock, index) => clock.blockIndex ?? index));
   // The accepted cancellation terms are immutable (0080); paid extra time is excluded from cancellation refunds instead.
+  const clockCloseout = extendedSessionSnapshot(snapshot, extension.blockIndex, extension.endTime, extension.endAt.toISOString());
   await tx.update(kitchenBookings).set({ endTime: extension.blockIndex === lastVisit ? extension.endTime : row.booking.endTime,
-    durationHours: String(Number(row.booking.durationHours) + extension.minutes / 60),
+    // Booked hours always equal the saved start–end spans, so every surface agrees after extensions and early starts.
+    durationHours: String(snapshotBookedHours(clockCloseout)),
     selectedSlots: appendExtensionSlot(occupiedIntervals(row.booking), extension.originalEndTime, extension.endTime),
-    visitDuties: { ...(row.booking.visitDuties as object || {}), clockCloseout: extendedSessionSnapshot(snapshot, extension.blockIndex, extension.endTime, extension.endAt.toISOString()) },
+    visitDuties: { ...(row.booking.visitDuties as object || {}), clockCloseout },
     updatedAt: now }).where(eq(kitchenBookings.id, row.booking.id));
   if (extension.visitId) await tx.update(kitchenBookingVisits).set({ endTime: extension.endTime, updatedAt: now }).where(eq(kitchenBookingVisits.id, extension.visitId));
   await tx.update(kitchenBookingExtensions).set({ appliedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
@@ -448,10 +454,11 @@ async function applyStart(tx: Tx, row: Context, extension: Extension, now: Date)
   if (Date.parse(visit.scheduledStartAt) !== extension.originalEndAt.getTime()) throw new SessionExtensionError('An early start needs schedule recovery by Local Cooks');
   const firstVisit = Math.min(...snapshot.visits.map((clock, index) => clock.blockIndex ?? index));
   // The accepted cancellation terms are immutable (0080); the paid early time is excluded from cancellation refunds.
+  const clockCloseout = earlierSessionSnapshot(snapshot, extension.blockIndex, extension.endTime, extension.endAt.toISOString());
   await tx.update(kitchenBookings).set({ startTime: extension.blockIndex === firstVisit ? extension.endTime : row.booking.startTime,
-    durationHours: String(Number(row.booking.durationHours) + extension.minutes / 60),
+    durationHours: String(snapshotBookedHours(clockCloseout)),
     selectedSlots: prependEarlySlot(occupiedIntervals(row.booking), extension.endTime, extension.originalEndTime),
-    visitDuties: { ...(row.booking.visitDuties as object || {}), clockCloseout: earlierSessionSnapshot(snapshot, extension.blockIndex, extension.endTime, extension.endAt.toISOString()) },
+    visitDuties: { ...(row.booking.visitDuties as object || {}), clockCloseout },
     updatedAt: now }).where(eq(kitchenBookings.id, row.booking.id));
   if (extension.visitId) await tx.update(kitchenBookingVisits).set({ startTime: extension.endTime, updatedAt: now }).where(eq(kitchenBookingVisits.id, extension.visitId));
   await tx.update(kitchenBookingExtensions).set({ appliedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));

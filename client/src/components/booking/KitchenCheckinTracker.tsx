@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils"
 import { calendarDateForBookingTime } from "@shared/operating-hours"
+import { lateCheckoutOpen } from "@shared/clock-closeout"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useKitchenCheckin, VisitCodeError, type KitchenCheckinStatus } from "@/hooks/use-kitchen-checkin"
@@ -355,9 +356,12 @@ export function KitchenCheckinTracker({
   const liveBooking = !clockEnded && !!data && ["confirmed", "cancellation_requested"].includes(data.status)
   const beforeCheckinOpens = !!checkinOpensAt && Date.now() < checkinOpensAt.getTime()
   const visitFinished = clockEnded || ["checked_out", "checkout_claim_filed", "no_show"].includes(checkinStatus)
-  const isDeparture = data?.status === "confirmed" && (canCheckout || checkinStatus === "checked_in")
-  const showInSessionEarly = !!data && data.status === "confirmed" && checkinStatus === "checked_in" && !!(data.visitCloseout || data.closeout?.visits[0])
-    && (data.visitCloseout || data.closeout?.visits[0])?.phase !== "ended" && !!data.chefId
+  // Still checked in after the booked end: checkout stays open until the inspection window closes (the booking may
+  // already read "completed"). One clear state: the booking ended, check out now, the kitchen may charge extra time.
+  const lateCheckout = !!data && ["confirmed", "completed"].includes(data.status) && checkinStatus === "checked_in" && clockEnded && lateCheckoutOpen(clockVisit)
+  const isDeparture = (data?.status === "confirmed" && (canCheckout || checkinStatus === "checked_in")) || lateCheckout
+  const showInSessionEarly = !!data && (data.status === "confirmed" || lateCheckout) && checkinStatus === "checked_in" && !!clockVisit
+    && (clockVisit.phase !== "ended" || lateCheckout) && !!data.chefId
   const isArrival = !isDeparture && data?.status === "confirmed" && checkinStatus === "not_checked_in"
   const title = showInSessionEarly ? t("kciInSessionTitle", "Your visit")
     : isDeparture ? t("kciDepartureTitle", "Kitchen departure")
@@ -370,8 +374,7 @@ export function KitchenCheckinTracker({
   const hasCheckoutTasks = (checklist?.checkoutItems || []).length > 0 || checkoutPhotoReqs.length > 0
 
   // In session: arrival recorded, departure not yet recorded, and the booked time has not fully closed.
-  const showInSession = !!data && data.status === "confirmed" && checkinStatus === "checked_in" && !!clockVisit
-    && clockVisit.phase !== "ended" && !!data.chefId
+  const showInSession = showInSessionEarly
   const requiredCheckoutTasks = (checklist?.checkoutItems || []).filter(item => item.required !== false).length
     + checkoutPhotoReqs.filter(photo => photo.required).length
   const startCheckout = () => {
@@ -381,14 +384,21 @@ export function KitchenCheckinTracker({
   }
 
   const hideIdleChip = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
-  const chip = clockEnded && showInSession
+  const chip = lateCheckout
     ? { variant: "warning" as InfoChipVariant, icon: <Clock className="h-3 w-3" />, label: t("kciIsTimeEnded", "Your booked time ended") }
     : clockEnded
     ? { variant: "outline" as InfoChipVariant, icon: <CheckCircle2 className="h-3 w-3" />, label: t("clockVisitFinished") }
     : data?.status === "cancelled" && checkinStatus === "not_checked_in"
     ? { variant: "outline" as InfoChipVariant, icon: <Ban className="h-3 w-3" />, label: t("kciCancelled", "Cancelled") }
     : { ...STATUS_CHIPS[checkinStatus], label: t(`visitStatus_${checkinStatus}`, STATUS_CHIPS[checkinStatus].fallback) }
-  const nextStep = clockEnded && showInSession ? t("kciIsTimeEndedHint", "Check out now to close your visit.") : clockEnded ? t("clockVisitFinished") : data ? nextStepMessage({
+  const overstayEnd = clockVisit ? `${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(clockVisit.scheduledEndAt))} ${friendlyTimezoneName(timezone, locale)}` : ""
+  const kitchenLabel = kitchenName || t("kitchenDefault", "Kitchen")
+  // The chip already says "Visit finished"; the line below says what that means for this visit, once.
+  const nextStep = lateCheckout
+    ? t("kciOverstayBanner", "Your booking ended at {end}. Please check out now — {kitchen} may charge for the extra time.", { end: overstayEnd, kitchen: kitchenLabel })
+    : clockEnded && checkinStatus === "checked_in" ? t("kciVisitEndedNoCheckout", "Your booked time has ended and your checkout wasn’t recorded. Message {kitchen} if your departure needs to be added.", { kitchen: kitchenLabel })
+    : clockEnded && checkinStatus === "not_checked_in" ? t("kciVisitEnded", "This visit is over. Your booking has the full record.")
+    : data ? nextStepMessage({
     bookingStatus: data.status, checkinStatus, checkinEnabled: data.checkinEnabled, checkoutEnabled: data.checkoutEnabled,
     canCheckin, canCheckout, beforeCheckinOpens,
   }, t) : ""
@@ -510,7 +520,7 @@ export function KitchenCheckinTracker({
           {!isLoading && data && (
             <section aria-label={t("kciVisitStatus", "Visit status")} className="mt-5 border-t pt-5 space-y-3">
               {!hideIdleChip && <InfoChip variant={chip.variant} icon={chip.icon}>{chip.label}</InfoChip>}
-              <p className="text-sm leading-relaxed">{nextStep}</p>
+              <p className={cn("text-sm leading-relaxed", lateCheckout && "font-medium")} data-testid="visit-next-step" role={lateCheckout ? "alert" : undefined}>{nextStep}</p>
               {arrivedAt && checkinStatus === "checked_in" && <p role="status" className="text-sm font-medium text-emerald-700">
                 {t("kciArrivalConfirmedAt", "Arrival confirmed at {time}", { time: new Intl.DateTimeFormat(locale, { timeZone: timezone, timeStyle: "short" }).format(new Date(data?.checkedInAt || arrivedAt)) })}
               </p>}
@@ -545,7 +555,7 @@ export function KitchenCheckinTracker({
             canCheckout={canCheckout && dutiesReady} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
             departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
         )}
-        {(clockEnded || checkinStatus !== "not_checked_in") && <ClockCloseoutSummary closeout={data?.closeout} visit={clockVisit} hideFinished={showInSession} />}
+        {(clockEnded || checkinStatus !== "not_checked_in") && <ClockCloseoutSummary closeout={data?.closeout} visit={clockVisit} hideFinished />}
 
         {data?.visits && data.visits.length > 1 && (
           <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">

@@ -13,6 +13,7 @@ import {
   type AppLocale,
   type I18nNamespace,
 } from "@shared/i18n";
+import { sentencePostProcessor } from "@shared/i18n/sentence";
 
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +66,7 @@ export function initServerI18n(): Promise<TFunction> {
 
   initPromise = i18n
     .use(ICU)
+    .use(sentencePostProcessor)
     .init({
       lng: DEFAULT_LOCALE,
       fallbackLng: buildFallbackLng(),
@@ -77,6 +79,8 @@ export function initServerI18n(): Promise<TFunction> {
       load: "currentOnly",
       returnNull: false,
       returnEmptyString: false,
+      // "until 7:55 p.m.." → "until 7:55 p.m." in every locale.
+      postProcess: ["sentence"],
     } as Parameters<typeof i18n.init>[0])
     .then(() => i18n.t.bind(i18n));
 

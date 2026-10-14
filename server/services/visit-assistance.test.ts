@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], managerId: 2, timezone: undefined as string | null | undefined, writes: [] as any[], notice: vi.fn(), captured: vi.fn() }));
+const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], managerId: 2, timezone: undefined as string | null | undefined, writes: [] as any[], notice: vi.fn(), captured: vi.fn(), lateOpen: vi.fn(async () => false), persist: vi.fn(async () => ({ changed: true })) }));
 vi.mock('../db', () => {
   const db: any = { execute: async () => [], select: () => { let table: string; const q: any = {
     from: (t: any) => { table = t[Symbol.for('drizzle:Name')]; return q; }, innerJoin: () => q, where: () => q,
@@ -11,6 +11,7 @@ vi.mock('../db', () => {
 vi.mock('./visit-duties', () => ({ kitchenDuties: state.captured }));
 vi.mock('./outcome-delivery', () => ({}));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.notice, deliverBookingLifecycleEvents: async () => { throw Error('SMTP unavailable'); } }));
+vi.mock('./clock-closeout', () => ({ lateDepartureOpen: state.lateOpen, persistBookingCloseout: state.persist }));
 import { assistKitchenVisit } from './visit-assistance';
 const input = { action: 'departure' as const, reason: 'Chef reported leaving; upload repeatedly failed', actualAt: '2026-10-02T19:30:00Z',
   expectedUpdatedAt: '2026-10-02T18:00:00Z', expectedBookingUpdatedAt: '2026-10-02T18:00:00Z' };
@@ -38,6 +39,20 @@ describe('audited manager assistance (mocked database)', () => {
   });
   it.each(['cancelled', 'completed', 'pending'])('does not assist a %s booking', async status => {
     state.booking.status = status; await expect(assistKitchenVisit(10, 2, input)).rejects.toThrow(/confirmed/); expect(state.notice).not.toHaveBeenCalled();
+  });
+  it('records when a chef who never checked out left, after the booking already reads completed (inspection window open)', async () => {
+    Object.assign(state.booking, { status: 'completed', checkinStatus: 'checked_in', checkedInAt: new Date('2026-10-02T16:00:00Z') });
+    state.lateOpen.mockResolvedValueOnce(true);
+    expect(await assistKitchenVisit(10, 2, input)).toEqual({ success: true });
+    expect(state.writes[0]).toMatchObject({ checkinStatus: 'checkout_requested', assistanceHistory: [expect.objectContaining({ action: 'departure', actualAt: '2026-10-02T19:30:00.000Z' })] });
+    expect(state.persist).toHaveBeenCalledWith(10, expect.anything(), expect.any(Date));
+  });
+  it('refuses a late departure once the inspection window has closed', async () => {
+    Object.assign(state.booking, { status: 'completed', checkinStatus: 'checked_in' });
+    state.lateOpen.mockResolvedValueOnce(false);
+    await expect(assistKitchenVisit(10, 2, input)).rejects.toThrow(/confirmed/);
+    await expect(assistKitchenVisit(10, 2, { ...input, action: 'arrival' })).rejects.toThrow(/confirmed/);
+    expect(state.writes).toEqual([]);
   });
   it.each(['checkout_requested', 'checkout_claim_filed', 'checked_out', 'no_show'])('preserves competing review/correction %s', async checkinStatus => {
     state.booking.checkinStatus = checkinStatus; await expect(assistKitchenVisit(10, 2, input)).rejects.toThrow(/correction|inspection/); expect(state.writes).toEqual([]);

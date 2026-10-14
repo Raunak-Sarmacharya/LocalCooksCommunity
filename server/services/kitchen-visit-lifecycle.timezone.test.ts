@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 
 const state = vi.hoisted(() => ({ context: {} as any, duties: {} as any, parent: {} as any,
-  writes: [] as any[], conditions: [] as any[], won: true, queue: vi.fn(), capture: vi.fn(), checkin: vi.fn(), checkout: vi.fn() }));
+  writes: [] as any[], conditions: [] as any[], won: true, queue: vi.fn(), capture: vi.fn(), checkin: vi.fn(), checkout: vi.fn(), lateOpen: vi.fn(async () => false), persist: vi.fn(async () => ({ changed: true })) }));
 vi.mock('../db', () => {
   const db: any = {
     select: (projection: any) => { const q: any = { from: () => q, innerJoin: () => q, where: () => q,
@@ -26,6 +26,7 @@ vi.mock('./kitchen-booking-visits', () => ({ ensureKitchenBookingVisits: vi.fn()
 vi.mock('./checkin-checkout-checklist', () => ({}));
 vi.mock('./lifecycle-settings', () => ({}));
 vi.mock('./worker-context', () => ({ inRecurringWorker: () => false }));
+vi.mock('./clock-closeout', () => ({ lateDepartureOpen: state.lateOpen, persistBookingCloseout: state.persist }));
 import { checkinKitchenVisit, checkoutKitchenVisit } from './kitchen-visit-lifecycle';
 
 const zones = [
@@ -126,5 +127,20 @@ describe('split kitchen visit timezone (mocked DB and notifications, real time h
     state.parent.status = 'confirmed'; state.won = false;
     expect((await checkinKitchenVisit(10, 5, 3)).success).toBe(false);
     expect(state.writes).toEqual([]); expect(state.queue).not.toHaveBeenCalled(); expect(state.capture).not.toHaveBeenCalled();
+  });
+  it('a chef still checked in after the end can check out late, even once the booking reads completed; departure = now', async () => {
+    state.context.visit.checkinStatus = 'checked_in'; state.context.booking.status = 'completed'; state.parent.status = 'completed';
+    const now = new Date('2026-10-02T18:40:00Z'); vi.setSystemTime(now); // 11:40 Vancouver, 1 h 40 min after the 10:00 end
+    state.lateOpen.mockResolvedValueOnce(true);
+    expect(await checkoutKitchenVisit(10, 5, 3)).toMatchObject({ success: true, checkinStatus: 'checkout_requested' });
+    expect(state.writes[0]).toMatchObject({ checkinStatus: 'checkout_requested', checkoutRequestedAt: now, actualEndTime: '11:40' });
+    expect(state.persist).toHaveBeenCalledWith(10, expect.anything());
+  });
+  it('refuses a late checkout once the inspection window has closed', async () => {
+    state.context.visit.checkinStatus = 'checked_in'; state.context.booking.status = 'completed'; state.parent.status = 'completed';
+    vi.setSystemTime(new Date('2026-10-04T18:40:00Z'));
+    state.lateOpen.mockResolvedValueOnce(false);
+    expect(await checkoutKitchenVisit(10, 5, 3)).toMatchObject({ success: false, error: expect.stringMatching(/checkout window has closed/) });
+    expect(state.writes).toEqual([]);
   });
 });

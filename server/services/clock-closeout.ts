@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchens, locations } from '@shared/schema';
-import { makeCloseoutSnapshot, savedCloseout, reduceClockCloseout, closeoutTransition,
+import { makeCloseoutSnapshot, savedCloseout, reduceClockCloseout, closeoutTransition, lateCheckoutOpen,
   type ClockBooking, type ClockEvidence, type CloseoutTiming } from '@shared/clock-closeout';
 import { getLifecycleSettings, getCloseoutNotificationsFrom } from './lifecycle-settings';
 import { getCheckinSettings } from './kitchen-checkout-service';
@@ -29,6 +29,20 @@ export async function projectBookingCloseout<T extends ClockBooking, V extends C
     // Stored rows pair with their clock by row id (set by the reducer from block index), never by hours.
     visits: visits.map(visit => { const clock = closeout.visits.find(clock => clock.visitId === visit.id);
       return { ...visit, closeout: clock, checkoutReviewDeadline: clock?.inspection.deadline }; }) };
+}
+
+/**
+ * Late departure: the booked time (plus grace) is over and the booking may already read "completed", but the chef is
+ * still checked in. Checkout (by the chef) or a recorded departure (by the kitchen) stays open until that visit's
+ * inspection window closes. `visitId` selects a stored visit; a single-visit legacy booking needs none.
+ */
+export async function lateDepartureOpen(booking: ClockBooking, timezone: string, visits: ClockEvidence[], visitId: number | undefined,
+  locationId?: number, reader: Reader = db, now = new Date()) {
+  if (!['confirmed', 'completed'].includes(booking.status)) return false;
+  const saved = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone, await closeoutTiming(locationId, reader));
+  const projection = reduceClockCloseout(booking, visits, saved, now);
+  const clock = visitId ? projection.visits.find(visit => visit.visitId === visitId) : projection.visits.length === 1 ? projection.visits[0] : undefined;
+  return lateCheckoutOpen(clock);
 }
 
 /** Fixed query count for list surfaces; retain the list's money/customer DTO. */
@@ -129,11 +143,15 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
     // the first sweep after rollout) close silently, as does one with a cancellation still unresolved.
     const cutover = await getCloseoutNotificationsFrom(tx, now);
     const reference = row.booking.referenceCode || `KB-${bookingId}`;
+    const stillCheckedIn = (visits.length ? visits : [row.booking]).some(visit => visit.checkinStatus === 'checked_in');
     if (new Date(next.serviceEndedAt ?? projection.serviceEndedAt) >= cutover && row.booking.status !== 'cancellation_requested') {
       if (announcesEnd) await queueBookingLifecycleEvent(tx, bookingId,
         'service_ended', 'Visit finished', `The booked time for ${reference} has ended. Open the booking for the details.`,
         undefined, { recipientPolicy: 'participants', serviceEndedAt: next.serviceEndedAt,
-          roleText: { chef: { title: 'Your visit is complete', message: `Your visit (${reference}) is complete. Open the booking for a summary or to report a problem.` },
+          // A chef still checked in is never told the visit is "complete": they are asked to check out now.
+          roleText: stillCheckedIn ? { chef: { title: 'Your booked time has ended', message: `Your booking (${reference}) has ended and you’re still checked in. Please check out now — the kitchen may charge for the extra time.` },
+            manager: { title: 'Booked time ended — not checked out', message: `The booked time for ${reference} has ended and the chef hasn’t checked out. Message them, or record when they left; you can then charge for the extra time.` } }
+            : { chef: { title: 'Your visit is complete', message: `Your visit (${reference}) is complete. Open the booking for a summary or to report a problem.` },
             manager: { title: 'A visit has ended', message: `The visit for ${reference} has ended. Review the checkout photos and notes before the inspection deadline.` } },
           attendance: projection.visits.map(visit => ({ key: visit.key, visitId: visit.visitId, localDate: visit.localDate, attendance: visit.attendance })) });
       // Manager only: the chef is not told an inspection window closed.

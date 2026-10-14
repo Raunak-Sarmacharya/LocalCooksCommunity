@@ -41,6 +41,19 @@ describe("chef: Need more time?", () => {
     expect(screen.getByText("You’re only charged if Harbour Kitchen approves with a charge.")).toBeInTheDocument();
     expect(screen.getByText("Extra time can’t be refunded once it’s added.")).toBeInTheDocument();
   });
+  it("Choose a time…: any free end in 15-minute steps, with a summary before the chef confirms", async () => {
+    const options = [15, 30, 45].map(minutes => ({ minutes, endTime: "", endAt: new Date(Date.parse(END) + minutes * 60_000).toISOString(),
+      amountCents: Math.ceil(minutes / 30) * 1500, kitchenGrossCents: 0 }))
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ options }) },
+      { match: /\/extensions$/, method: "POST", body: { extension: item({ minutes: 45, amountCents: 3000 }) } })
+    mount()
+    fireEvent.click(screen.getByRole("button", { name: "Need more time?" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Choose a time…" }))
+    fireEvent.change(screen.getByLabelText("New end time"), { target: { value: "45" } })
+    expect(screen.getByTestId("extension-custom-summary")).toHaveTextContent(/^Until 4:45\s?p\.m\. · \$30\.00$/)
+    fireEvent.click(within(screen.getByTestId("extension-custom")).getByRole("button", { name: /Request until 4:45\s?p\.m\. · up to \$30\.00/ }))
+    await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "request", minutes: 45, expectedAmountCents: 3000 }))
+  });
   it("one tap asks; it shows the waiting state", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state() }, { match: /\/extensions$/, method: "POST", body: { extension: item() } });
     mount();
@@ -126,7 +139,7 @@ describe("booking page: extra time", () => {
       { match: /\/extensions$/, method: "POST", body: { extension: item({ kind: "early_start", status: "offered" }) } });
     render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />);
     fireEvent.click(await screen.findByRole("button", { name: "Let them start early" }));
-    fireEvent.click(screen.getByRole("button", { name: /Start at 1:00\s?p\.m\. \(60 minutes early\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start at 1:00\s?p\.m\. \(1 hour early\)/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send offer · $30.00" }));
     await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "early_start", minutes: 60, free: false, expectedAmountCents: 3000, expectedEndAt: "2026-10-14T16:30:00.000Z" }));
   });
@@ -160,6 +173,57 @@ describe("booking page: extra time", () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history: [item({ kind: "early_start", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0 })] }) });
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />);
     expect(await screen.findByText("Harbour Kitchen let you start 30 minutes early — no charge")).toBeInTheDocument();
+  });
+  it("the manager reads their own free grants in the first person; the chef reads the kitchen's name", async () => {
+    const history = [item({ id: 6, kind: "early_start", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0 }),
+      item({ id: 7, kind: "offer", free: true, minutes: 30, status: "approved", confirmed: true, amountCents: 0, endAt: "2026-10-14T19:00:00.000Z" })]
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, history }) })
+    const manager = render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />)
+    expect(await screen.findByText("You let Maya Chen start 30 minutes early — no charge")).toBeInTheDocument()
+    expect(screen.getByText(/^You gave Maya Chen 30 more minutes \(until 4:30\s?p\.m\.\) — no charge$/)).toBeInTheDocument()
+    expect(screen.queryByText(/Harbour Kitchen let/)).not.toBeInTheDocument()
+    manager.unmount()
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />)
+    expect(await screen.findByText(/^Harbour Kitchen gave you 30 more minutes \(until 4:30\s?p\.m\.\) — no charge$/)).toBeInTheDocument()
+  });
+  it("Offer more time: quick picks as chips plus Choose a time… for any free end, with a summary and the right free copy", async () => {
+    const options = [15, 30, 45, 60, 75].map(minutes => ({ minutes, endTime: "", endAt: new Date(Date.parse(END) + minutes * 60_000).toISOString(),
+      amountCents: Math.ceil(minutes / 30) * 1500, kitchenGrossCents: 0 }))
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ options }) }, { match: /\/extensions$/, method: "POST", body: { extension: item({ kind: "offer" }) } })
+    render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Offer more time" }))
+    // Only the quick picks are chips; 15/45/75 live in the list.
+    expect(screen.getByRole("button", { name: /30 more minutes · until/ })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /45 min more/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Choose a time…" }))
+    const list = screen.getByRole("combobox", { name: "New end time" })
+    expect(Array.from((list as HTMLSelectElement).options).map(option => option.value)).toEqual(["", "15", "30", "45", "60", "75"])
+    fireEvent.change(list, { target: { value: "75" } })
+    expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Until 5:15\s?p\.m\. · \$45\.00$/)
+    fireEvent.click(screen.getByRole("radio", { name: "Free" }))
+    expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/· Free$/)
+    expect(screen.getByText(/^Maya Chen gets until 5:15\s?p\.m\. right away — we’ll let them know\.$/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Give it free" }))
+    await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "offer", minutes: 75, free: true, expectedAmountCents: 0 }))
+  });
+  it("Let them start early: Start now first, never a past time, and any later step from the list", async () => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ inSession: false, beforeStart: true, earlyOptions: [
+      { minutes: 60, startTime: "13:00", startAt: "2026-10-14T15:30:00.000Z", defaultFree: false, billedMinutes: 60, amountCents: 3000, kitchenGrossCents: 0, startNow: true },
+      { minutes: 15, startTime: "13:45", startAt: "2026-10-14T16:15:00.000Z", defaultFree: true, billedMinutes: 30, amountCents: 1501, kitchenGrossCents: 0, startNow: false },
+      { minutes: 45, startTime: "13:15", startAt: "2026-10-14T15:45:00.000Z", defaultFree: false, billedMinutes: 60, amountCents: 3000, kitchenGrossCents: 0, startNow: false }] }) },
+      { match: /\/extensions$/, method: "POST", body: { extension: item({ kind: "early_start", status: "approved", free: true, confirmed: true }) } })
+    render(<SessionExtensionsCard bookingId={10} manager chefName="Maya Chen" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Let them start early" }))
+    const chips = within(screen.getByRole("group", { name: "New start time" })).getAllByRole("button").map(button => button.textContent)
+    expect(chips[0]).toBe("Start now")
+    fireEvent.click(screen.getByRole("button", { name: "Choose a time…" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "New start time" }), { target: { value: "15" } })
+    expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Starts at 1:45\s?p\.m\. · Free$/)
+    expect(screen.getByText(/^Maya Chen can start at 1:45\s?p\.m\. right away — we’ll let them know\.$/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Start now" }))
+    expect(screen.getByTestId("extension-pick-summary")).toHaveTextContent(/^Starts at 1:00\s?p\.m\. · \$30\.00$/)
+    fireEvent.click(screen.getByRole("button", { name: "Send offer · $30.00" }))
+    await waitFor(() => expect(posts()[0].body).toMatchObject({ kind: "early_start", minutes: 60, free: false, expectedAmountCents: 3000 }))
   });
   it("renders nothing when extra time can't be loaded", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: { error: "nope" }, status: 500 });

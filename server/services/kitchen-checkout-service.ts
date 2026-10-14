@@ -500,7 +500,15 @@ export async function requestKitchenCheckout(
     if (!booking) return { success: false, error: 'Booking not found' };
     if (booking.chefId !== chefId) return { success: false, error: 'You do not have permission for this booking' };
 
-    if (booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
+    // Late departure: still checked in after the booked end (the booking may already read "completed"). Allowed until
+    // the inspection window closes; the recorded departure is the real time, so the kitchen can charge extra time.
+    let lateDeparture = false;
+    if (booking.status === 'completed' && booking.checkinStatus === 'checked_in') {
+      const [full] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+      lateDeparture = !!full && await (await import('./clock-closeout')).lateDepartureOpen(full, booking.timezone || DEFAULT_TIMEZONE, [], undefined, booking.locationId);
+    }
+    if (booking.status !== 'confirmed' && !lateDeparture) return { success: false, error: booking.status === 'completed'
+      ? 'This visit’s checkout window has closed. Message the kitchen if you need your departure recorded.' : 'Booking is not confirmed' };
     const duties = await kitchenDuties(bookingId);
     const status = booking.checkinStatus as KitchenCheckinStatus | null;
     const timezone = booking.timezone || DEFAULT_TIMEZONE;
@@ -543,11 +551,13 @@ export async function requestKitchenCheckout(
         and(
           eq(kitchenBookings.id, bookingId), eq(kitchenBookings.updatedAt, booking.updatedAt),
           departureOnly ? or(eq(kitchenBookings.checkinStatus, 'not_checked_in'), isNull(kitchenBookings.checkinStatus)) : eq(kitchenBookings.checkinStatus, 'checked_in'),
-          eq(kitchenBookings.status, 'confirmed'),
+          eq(kitchenBookings.status, lateDeparture ? 'completed' : 'confirmed'),
         )
       ).returning({ id: kitchenBookings.id });
     if (changed.length) {
       await captureKitchenDuties(tx, bookingId, duties);
+      // Re-derive the saved clock (inspection deadline, payout timing) from the late departure.
+      if (lateDeparture) await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
       await queueBookingLifecycleEvent(tx, bookingId, 'checkout_requested', 'Ready for kitchen inspection',
         'The chef has requested checkout. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.', chefId,
         { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });

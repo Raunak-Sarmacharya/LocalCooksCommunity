@@ -51,6 +51,15 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 10, 'service_ended', expect.anything(), expect.anything(), undefined,
       expect.objectContaining({ serviceEndedAt: '2026-10-13T13:45:00.000Z' }));
   });
+  it('a chef still checked in at the end is asked to check out now (never told the visit is complete), and the kitchen is told', async () => {
+    Object.assign(state.booking, { checkinStatus: 'checked_in', checkedInAt: new Date('2026-10-13T13:05:00Z') });
+    await db.transaction(tx => persistBookingCloseout(10, tx));
+    const call = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(args => args[2] === 'service_ended')!;
+    const roleText = (call[6] as any).roleText;
+    expect(roleText.chef).toMatchObject({ title: 'Your booked time has ended' });
+    expect(roleText.chef.message).toMatch(/still checked in\. Please check out now — the kitchen may charge for the extra time\./);
+    expect(roleText.manager.message).toMatch(/hasn’t checked out\. Message them, or record when they left/);
+  });
   it('delayed and duplicate sweep is idempotent and records the due instant, never worker time', async () => {
     vi.setSystemTime(new Date('2026-10-20T14:00:00Z'));
     expect((await sweepClockCloseout()).changed).toBe(1);

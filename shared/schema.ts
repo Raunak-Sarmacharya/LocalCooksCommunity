@@ -2230,6 +2230,17 @@ export const damageClaims = pgTable("damage_claims", {
   
   // Financial
   claimedAmountCents: integer("claimed_amount_cents").notNull(),
+  claimVersion: integer('claim_version').notNull().default(1),
+  requestKey: text('request_key'),
+  costLines: jsonb('cost_lines').$type<import('./damage-claims').ClaimLine[]>().notNull().default([]),
+  visitEvidence: jsonb('visit_evidence').$type<import('./damage-claims').ClaimVisitEvidence>(),
+  upheldAt: timestamp('upheld_at', { withTimezone: true }),
+  chefOwes: boolean('chef_owes').notNull().default(true),
+  holdReleasedAt: timestamp('hold_released_at', { withTimezone: true }),
+  fundedBy: text('funded_by').notNull().default('chef'),
+  paymentOperation: jsonb('payment_operation').$type<import('./damage-claims').ClaimMoneyOperation>(),
+  transferOperation: jsonb('transfer_operation').$type<import('./damage-claims').ClaimMoneyOperation>(),
+  compensationOperation: jsonb('compensation_operation').$type<import('./damage-claims').ClaimMoneyOperation>(),
   approvedAmountCents: integer("approved_amount_cents"),
   finalAmountCents: integer("final_amount_cents"),
   

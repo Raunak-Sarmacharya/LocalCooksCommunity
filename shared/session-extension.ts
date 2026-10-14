@@ -24,7 +24,18 @@ export function extensionPrice(minutes: number, hourlyRateCents: number, ratios:
   return { subtotalCents, taxCents, commissionCents, amountCents: subtotalCents + taxCents + commissionCents, kitchenGrossCents: subtotalCents + taxCents };
 }
 
-/** Only real, unambiguous kitchen-local intervals are offered, including overnight windows. */
+/** Quick picks shown as chips; any other free length can be chosen in 15-minute steps. */
+export const QUICK_PICK_MINUTES = SESSION_EXTENSION_MINUTES;
+/** Custom lengths move in 15-minute steps. */
+export const EXTENSION_STEP_MINUTES = 15;
+export const validExtensionMinutes = (minutes: unknown): minutes is number =>
+  typeof minutes === 'number' && Number.isSafeInteger(minutes) && minutes > 0 && minutes % EXTENSION_STEP_MINUTES === 0;
+
+/**
+ * Every later end in 15-minute steps that is really free: limited by the next booking/blackout/hold, the kitchen's
+ * closing time and max hours, and real unambiguous kitchen-local instants (overnight windows and DST included).
+ * The list is contiguous: a blocked step blocks every later one. Each option is priced in 30-minute blocks.
+ */
 export function sessionExtensionOptions(input: {
   operatingDate: string; windowStartTime: string; windowEndTime: string; endTime: string; endAt: string; timezone: string;
   durationMinutes: number; maxMinutes: number | null; occupied: Array<{ start: number; end: number }>;
@@ -35,16 +46,18 @@ export function sessionExtensionOptions(input: {
   if (closing <= timeToMinutes(input.windowStartTime)) closing += 1440;
   const oldEndMs = Date.parse(input.endAt);
   if (!Number.isFinite(oldEndMs)) throw Error('Saved session end is required');
-  return SESSION_EXTENSION_MINUTES.flatMap(minutes => {
-    if (end + minutes > closing || input.maxMinutes != null && input.durationMinutes + minutes > input.maxMinutes) return [];
+  const options: ExtensionOption[] = [];
+  for (let minutes = EXTENSION_STEP_MINUTES; end + minutes <= closing; minutes += EXTENSION_STEP_MINUTES) {
+    if (input.maxMinutes != null && input.durationMinutes + minutes > input.maxMinutes) break;
     const normalized = (end + minutes) % 1440;
     const endTime = `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
     const matches = matchingLocalInstants(calendarDateForOperatingTime(input.operatingDate, endTime, input.windowStartTime), endTime, input.timezone);
-    if (matches.length !== 1 || matches[0] - oldEndMs !== minutes * 60_000) return [];
+    if (matches.length !== 1 || matches[0] - oldEndMs !== minutes * 60_000) break;
     const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime: input.endTime, endTime }, input.windowStartTime);
-    if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) return [];
-    return [{ minutes, endTime, endAt: new Date(matches[0]).toISOString(), ...extensionPrice(minutes, input.hourlyRateCents, input.ratios) }];
-  });
+    if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) break;
+    options.push({ minutes, endTime, endAt: new Date(matches[0]).toISOString(), ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
+  }
+  return options;
 }
 
 export function extraTimeQuote(endAt: string, checkoutAt: string, hourlyRateCents: number, ratios: Parameters<typeof extensionPrice>[2], loweredAmountCents?: number) {
@@ -99,23 +112,25 @@ export const FREE_DEFAULT_MINUTES = 30;
 export const defaultFree = (minutes: number) => minutes <= FREE_DEFAULT_MINUTES;
 /** Charged time (early start or offered extra time) is billed in 30-minute blocks at the booking's hourly rate. */
 export const billedMinutes = (minutes: number) => Math.ceil(minutes / 30) * 30;
-export type EarlyStartOption = ExtensionQuote & { minutes: number; startTime: string; startAt: string; defaultFree: boolean; billedMinutes: number };
+export type EarlyStartOption = ExtensionQuote & { minutes: number; startTime: string; startAt: string; defaultFree: boolean; billedMinutes: number; startNow: boolean };
 const clockOf = (minutes: number) => { const normalized = ((minutes % 1440) + 1440) % 1440;
   return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`; };
 
 /**
  * Earlier starts in 15-minute steps (up to 2 hours), limited by the kitchen opening, the previous booking/blackout/hold,
  * the kitchen's max hours, and real unambiguous local instants (DST): the extension rules in reverse. Each option carries
- * the price if the manager chooses to charge for it.
+ * the price if the manager chooses to charge for it. Never a start in the past: only steps at or after `now`, plus the
+ * step `now` falls in ("Start now", first in the list) so the chef can begin at once.
  */
 export function earlyStartOptions(input: {
   operatingDate: string; windowStartTime: string; startTime: string; startAt: string; timezone: string;
   durationMinutes: number; maxMinutes: number | null; occupied: Array<{ start: number; end: number }>;
-  hourlyRateCents: number; ratios: Parameters<typeof extensionPrice>[2];
+  hourlyRateCents: number; ratios: Parameters<typeof extensionPrice>[2]; now?: Date | number;
 }): EarlyStartOption[] {
   const start = minutesInOperatingWindow(input.startTime, input.windowStartTime);
   const oldStartMs = Date.parse(input.startAt);
   if (!Number.isFinite(oldStartMs)) throw Error('Saved session start is required');
+  const nowMs = input.now === undefined ? -Infinity : typeof input.now === 'number' ? input.now : input.now.getTime();
   const options: EarlyStartOption[] = [];
   for (let minutes = 15; minutes <= EARLY_START_WINDOW_MINUTES; minutes += 15) {
     // Options are contiguous: a blocked step blocks every earlier one too.
@@ -124,12 +139,15 @@ export function earlyStartOptions(input: {
     const startTime = clockOf(start - minutes);
     const matches = matchingLocalInstants(calendarDateForOperatingTime(input.operatingDate, startTime, input.windowStartTime), startTime, input.timezone);
     if (matches.length !== 1 || oldStartMs - matches[0] !== minutes * 60_000) break;
+    // Steps wholly in the past are never offered; the step "now" falls in is the last one ("Start now").
+    if (matches[0] + 15 * 60_000 <= nowMs) break;
     const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime, endTime: input.startTime }, input.windowStartTime);
     if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) break;
     options.push({ minutes, startTime, startAt: new Date(matches[0]).toISOString(), defaultFree: defaultFree(minutes),
-      billedMinutes: billedMinutes(minutes), ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
+      billedMinutes: billedMinutes(minutes), startNow: matches[0] <= nowMs, ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
   }
-  return options;
+  // "Start now" first, then the later start times.
+  return options.sort((a, b) => Number(b.startNow) - Number(a.startNow) || a.minutes - b.minutes);
 }
 /** Manager control window: from 2 hours before the booked start until the start. */
 export function inEarlyStartWindow(now: Date | number, startAt: string) {

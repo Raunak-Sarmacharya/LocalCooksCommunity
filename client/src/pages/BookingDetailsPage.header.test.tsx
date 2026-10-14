@@ -1,10 +1,10 @@
 vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chef from "@shared/i18n/locales/en-CA/chef.json";
 import { IntlMessageFormat } from "intl-messageformat";
 
-const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unknown>, navigate: vi.fn() }));
+const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unknown>, navigate: vi.fn(), attendance: {} as Record<string, unknown> }));
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "token" } } }));
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ loading: false, user: { uid: "u" } }) }));
@@ -29,7 +29,7 @@ vi.mock("@/components/booking/KitchenBookingChanges", () => ({ KitchenBookingCha
 vi.mock("@/components/booking/BookingCancellationChooser", () => ({ BookingCancellationChooser: nothing }));
 vi.mock("@/components/booking/BookingHistoryPanel", () => ({ BookingHistoryPanel: nothing }));
 // Stand-ins with content, as the real panels always render a status line inside the Visit card.
-vi.mock("@/components/booking/BookingAttendancePanel", () => ({ BookingAttendancePanel: () => <p>Visit record line</p> }));
+vi.mock("@/components/booking/BookingAttendancePanel", () => ({ BookingAttendancePanel: (props: Record<string, unknown>) => { h.attendance = props; return <p>Visit record line</p>; } }));
 vi.mock("@/components/manager/bookings/VisitCodePanel", () => ({ VisitCodePanel: () => <p>Check-in code panel</p> }));
 vi.mock("@/components/booking/CancellationRefundReview", () => ({ CancellationRefundReview: nothing }));
 vi.mock("@/components/booking/BookingPricingBreakdown", () => ({ ChefBookingReceiptBreakdown: nothing, KitchenPayoutStatementBreakdown: nothing }));
@@ -360,5 +360,39 @@ describe("arrival package on the booking page", () => {
     h.manager = false; h.booking = { ...base(), ...confirmed, runningLate: lateNote };
     render(<BookingDetailsPage />);
     expect(await screen.findByText("You told the kitchen you’re running late")).toBeInTheDocument();
+  });
+});
+
+describe("after the booked end, the chef is still checked in (overstay)", () => {
+  // Started 30 minutes early (9:30) and given 30 more minutes (12:30): the stored hour count is stale on purpose.
+  const overstay = () => ({ ...base(), status: "completed", paymentStatus: "paid", checkinStatus: "checked_in", checkedInAt: "2030-01-15T13:02:00Z",
+    startTime: "09:30", endTime: "12:30", durationHours: 2.5,
+    closeout: { phase: "ended", timezone: "America/St_Johns", serviceEndedAt: "2030-01-15T16:15:00Z", visits: [{ key: "b", phase: "ended", arrivalRecorded: true,
+      scheduledStartAt: "2030-01-15T13:00:00Z", scheduledEndAt: "2030-01-15T16:00:00Z",
+      inspection: { outcome: "due", dueAt: "2030-01-15T16:00:00Z", deadline: "2030-01-16T16:00:00Z", closedAt: null, canRespond: true } }] } });
+  it("shows the real booked span, never the stored hour count", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
+    h.manager = true; h.booking = overstay();
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-when")).toHaveTextContent("9:30 a.m.–12:30 p.m. · 3 hrs ·");
+  });
+  it("manager: says when the booking ended and offers Message and Record when they left", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
+    h.manager = true; h.booking = overstay();
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("Ada Lovelace’s booking ended at 12:30 p.m. Newfoundland Time and they haven’t checked out yet.");
+    const actions = screen.getByTestId("overstay-actions");
+    expect(within(actions).getByRole("button", { name: "Message Ada Lovelace" })).toBeInTheDocument();
+    expect(actions).toHaveTextContent("you can charge for the extra time below");
+    fireEvent.click(within(actions).getByRole("button", { name: "Record when they left" }));
+    expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "departure" });
+  });
+  it("chef: one message to check out now, and the Check out action stays", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
+    h.manager = false; h.booking = overstay();
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("Your booking ended at 12:30 p.m. Newfoundland Time. Please check out now — Harbour Kitchen may charge for the extra time.");
+    expect(screen.getByTestId("booking-header").querySelector("[data-primary-action]")).toHaveTextContent("Check out");
+    expect(screen.queryByTestId("overstay-actions")).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { LogIn, LogOut, UserX, UserCheck, Undo2, LifeBuoy } from 'lucide-react';
@@ -13,7 +13,7 @@ import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { MessageKitchenButton } from './MessageKitchenButton';
 import { VisitAssistancePanel } from './VisitAssistancePanel';
 import { hasBookingAttendanceEvidence } from '@shared/booking-attendance';
-import type { BookingCloseout } from '@shared/clock-closeout';
+import { lateCheckoutOpen, type BookingCloseout } from '@shared/clock-closeout';
 
 type Event = { id: number; visitId: number | null; action: string; actorRole: string; sharedMessage: string | null; internalNotes?: string | null; createdAt: string };
 type Assistance = { actorId: number; action: string; reason: string; actualAt: string; recordedAt: string };
@@ -23,7 +23,7 @@ type Attendance = { bookingId: number; status: string; checkinStatus: string | n
 type Action = 'arrival' | 'departure' | 'report_no_show' | 'report_attended' | 'withdraw_attendance' | 'support';
 type VisitDetails = Parameters<typeof hasBookingAttendanceEvidence>[0] & { id?: number; checkedInAt?: string | null; checkoutRequestedAt?: string | null; checkedOutAt?: string | null };
 
-export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange }: {
+export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange, fixAction }: {
   bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void>; managerVisitHref?: string;
   timezone?: string | null; chefName?: string; closeout?: BookingCloseout; visitDetails?: VisitDetails[];
   /** Inside the booking page's Visit card: no card chrome, heading, zone line or extra Message button (the page header has them). */
@@ -32,6 +32,8 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   hideArrivalStatus?: boolean;
   /** Controls "Fix the visit record" from the page's overflow menu; the in-card trigger is then hidden. */
   fixOpen?: boolean; onFixOpenChange?: (open: boolean) => void;
+  /** Opens "Fix the visit record" straight on this choice when it applies (e.g. "Record when they left"). */
+  fixAction?: 'departure';
 }) {
   const { t, i18n } = useTranslation('chef');
   const locale = i18n?.resolvedLanguage || 'en-CA';
@@ -77,7 +79,10 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   const ended = !!chosen && (clock ? ['booked_time_ended', 'ended'].includes(clock.phase) : Date.now() >= Date.parse(selected?.scheduledEnd || data?.scheduledEnd || ''));
   // The visit is over and nobody checked in: one plain line instead of "No check-in yet".
   const missed = ended && !arrived && !noShow && latest?.action !== 'report_attended' && status !== 'checked_out';
-  const canAssist = manager && !localCooks && data?.status === 'confirmed' && chosen && !!clock && clock.phase !== 'upcoming'
+  // After the booked end the booking may already read "completed"; the kitchen can still record when a chef who never
+  // checked out left, until the inspection window closes.
+  const lateDeparture = data?.status === 'completed' && status === 'checked_in' && lateCheckoutOpen(clock);
+  const canAssist = manager && !localCooks && (data?.status === 'confirmed' || lateDeparture) && chosen && !!clock && clock.phase !== 'upcoming'
     && ['not_due', 'due'].includes(clock.inspection.outcome) && !!zone;
   const reset = () => { setAction(null); setMessage(''); setInternalNotes(''); setContacted(false); setError(''); };
   const saved = async (key: 'fixNoShowSaved' | 'fixSaved') => {
@@ -106,6 +111,12 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     { value: 'withdraw_attendance' as const, visible: chosen && noShow, icon: Undo2, hint: 'fixUndoHint' },
     { value: 'support' as const, visible: true, icon: LifeBuoy, hint: 'fixOtherHint' },
   ] as const;
+  const departureVisible = options.some(option => option.value === 'departure' && option.visible);
+  const [presetApplied, setPresetApplied] = useState(false);
+  useEffect(() => {
+    if (!open) { setPresetApplied(false); return; }
+    if (!presetApplied && fixAction === 'departure' && departureVisible) { setAction('departure'); setPresetApplied(true); }
+  }, [open, fixAction, departureVisible, presetApplied]);
   const visitPicker = data && data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
     <select className="ml-2 max-w-full rounded border bg-background p-2" value={visitId ?? ''} disabled={saving} onChange={event => { setVisitId(event.target.value ? Number(event.target.value) : undefined); reset(); }}>
       <option value="">{t('bookingAttendanceChooseVisit')}</option>{data.visits.map((visit, index) => <option key={visit.id} value={visit.id}>{t('fixVisitRange', { number: index + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</option>)}

@@ -367,6 +367,39 @@ describe("full-page kitchen visit", () => {
     expect(screen.queryByText("Use the side entrance.")).not.toBeInTheDocument();
   });
 
+  describe("after the booked end", () => {
+    const ended = (overrides: Record<string, any>, outcome = "due") => {
+      const now = Date.now();
+      return visit({ chefId: 3, checkedInAt: new Date(now - 4 * 3_600_000).toISOString(), ...overrides,
+        visitCloseout: { key: "b", phase: "ended", arrivalRecorded: true, scheduledStartAt: new Date(now - 4 * 3_600_000).toISOString(),
+          scheduledEndAt: new Date(now - 3_600_000).toISOString(), inspection: { outcome, deadline: new Date(now + 20 * 3_600_000).toISOString(), canRespond: outcome === "due" } } });
+    };
+    it("a chef still checked in can always check out late (the booking already reads completed), with one clear message", async () => {
+      status = ended({ status: "completed", checkinStatus: "checked_in" });
+      setup();
+      const message = await screen.findByTestId("visit-next-step");
+      expect(message).toHaveTextContent(/^Your booking ended at \d{1,2}:\d{2}\s[ap]\.m\. \S+\. Please check out now — Test kitchen may charge for the extra time\.$/);
+      expect(screen.queryByText("Visit finished")).not.toBeInTheDocument();
+      expect(screen.getByText(/min past your booking/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Check out now" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Submit checkout" }));
+      await waitFor(() => expect(posts().some(([url]) => String(url).endsWith("/checkout"))).toBe(true));
+    });
+    it("a finished visit says Visit finished once", async () => {
+      status = ended({ status: "completed", checkinStatus: "checked_out", checkoutRequestedAt: new Date(Date.now() - 3_000_000).toISOString() }, "manager_cleared");
+      setup();
+      expect(await screen.findAllByText("Visit finished")).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: /Check out now|Submit checkout/ })).not.toBeInTheDocument();
+    });
+    it("once the inspection window has closed there is no checkout, and it says what to do", async () => {
+      status = ended({ status: "completed", checkinStatus: "checked_in" }, "auto_closed_uninspected");
+      setup();
+      expect(await screen.findByTestId("visit-next-step")).toHaveTextContent("Your booked time has ended and your checkout wasn’t recorded. Message Test kitchen if your departure needs to be added.");
+      expect(screen.getAllByText("Visit finished")).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: /Check out now|Submit checkout/ })).not.toBeInTheDocument();
+    });
+  });
+
   it("shows a submitted checkout and its review deadline without implying payment completion", async () => {
     status = visit({ checkinStatus: "checkout_requested", checkedInAt: "2026-10-12T14:05:00Z", checkoutRequestedAt: "2026-10-12T17:10:00Z", checkoutReviewDeadline: "2026-10-12T18:10:00Z" });
     setup();

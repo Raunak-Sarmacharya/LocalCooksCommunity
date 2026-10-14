@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivalRecorded, canCancelOrChange, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canMessage, contactVisible, initials, sentence, timeRange } from "./booking-header-state";
+import { arrivalRecorded, bookedHours, canCancelOrChange, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canMessage, contactVisible, initials, sentence, timeRange } from "./booking-header-state";
 
 const startAt = new Date("2030-01-15T13:30:00Z"), endAt = new Date("2030-01-15T15:30:00Z");
 const checkinOpensAt = new Date(startAt.getTime() - 15 * 60_000);
@@ -105,5 +105,18 @@ describe("canCancelOrChange", () => {
     expect(arrivalRecorded({})).toBe(false);
     expect(arrivalRecorded({ checkinStatus: "checked_out" })).toBe(true);
     expect(arrivalRecorded({ visits: [{ checkinStatus: "not_checked_in" }, { checkinStatus: "checked_in" }] })).toBe(true);
+  });
+});
+
+describe('bookedHours (header duration)', () => {
+  it('uses the real start–end span of every visit, never a stale stored count', () => {
+    expect(bookedHours({ closeoutVisits: [{ scheduledStartAt: '2026-10-14T21:00:00Z', scheduledEndAt: '2026-10-15T00:00:00Z' }], durationHours: 2.5 })).toBe(3);
+    expect(bookedHours({ visits: [{ startTime: '09:00', endTime: '10:30' }, { startTime: '13:00', endTime: '14:15' }], durationHours: 1 })).toBe(2.75);
+    expect(bookedHours({ startTime: '22:00', endTime: '01:30', durationHours: 2 })).toBe(3.5);
+    expect(bookedHours({ durationHours: '4' })).toBe(4);
+  });
+  it('sentence() never leaves "p.m.." and keeps an ellipsis', () => {
+    expect(sentence('You have until 7:55 p.m..')).toBe('You have until 7:55 p.m.');
+    expect(sentence('Saving...')).toBe('Saving...');
   });
 });

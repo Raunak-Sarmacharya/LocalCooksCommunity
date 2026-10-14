@@ -10,16 +10,18 @@ import { useTranslation } from "react-i18next"
 import { Clock, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { createExtension, decideExtension, defaultFreeChoice, isExtensionState, kitchenClock, money, newRequestKey, readExtensions, withCardAction,
+import { createExtension, decideExtension, defaultFreeChoice, isExtensionState, isQuickPick, kitchenClock, lengthText, money, newRequestKey, readExtensions, withCardAction,
   type ExtensionItem, type ExtensionState } from "@/lib/session-extensions"
 
 /** A manager's pick before sending: which time, and Free or Charge (Free is only preselected up to 30 minutes). */
 type Pick = { kind: "offer" | "early_start"; minutes: number; at: string; amountCents: number; free: boolean }
 
-export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged, only }: {
+export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged, only, refreshKey }: {
   bookingId: number; manager: boolean; chefName: string; onChanged?: () => void | Promise<void>
   /** Visit page: show only early-start offers and grants. */
   only?: "early_start"
+  /** Re-reads when the visit record changes elsewhere on the page (e.g. a departure was recorded). */
+  refreshKey?: string
 }) {
   const { t, i18n } = useTranslation("booking")
   const locale = i18n.resolvedLanguage || i18n.language || "en-CA"
@@ -29,6 +31,8 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
   const [notice, setNotice] = useState("")
   const [offering, setOffering] = useState<"offer" | "early_start" | null>(null)
   const [pick, setPick] = useState<Pick | null>(null)
+  // "Choose a time…" opens a compact list of every free time (15-minute steps).
+  const [choosing, setChoosing] = useState(false)
   const [charging, setCharging] = useState(false)
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
@@ -44,7 +48,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
     const wake = () => { if (document.visibilityState !== "hidden") void load() }
     window.addEventListener("focus", wake)
     return () => window.removeEventListener("focus", wake)
-  }, [load])
+  }, [load, refreshKey])
 
   const now = state ? Date.parse(state.serverNow) : 0
   const view = useMemo(() => {
@@ -59,7 +63,10 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
   const zone = state.timezone, currency = state.currency, kitchen = state.kitchenName
   const clock = (at: string) => kitchenClock(at, zone, locale)
   const cash = (cents: number) => money(cents, currency, locale)
-  const duration = (minutes: number) => t(`sxbDuration${minutes}`, { defaultValue: minutes === 30 ? "30 more minutes" : minutes === 60 ? "1 more hour" : minutes === 120 ? "2 more hours" : `${minutes} minutes` })
+  const length = (minutes: number) => lengthText(minutes, (key, options) => String(t(key as never, options as never)), "sxb")
+  const duration = (minutes: number) => isQuickPick(minutes)
+    ? t(`sxbDuration${minutes}`, { defaultValue: minutes === 30 ? "30 more minutes" : minutes === 60 ? "1 more hour" : "2 more hours" })
+    : t("sxbDurationOther", { defaultValue: "{length} more", length: length(minutes) })
   const minutesText = (minutes: number) => t("sxbMinutes", { defaultValue: `${minutes} minutes`, minutes, count: minutes })
 
   const act = async (key: string, work: () => Promise<unknown>, success?: string) => {
@@ -158,42 +165,67 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
         </div>
       ))}
 
-      {showOffer && !offering && <Button type="button" variant="outline" className={tap} onClick={() => { setOffering("offer"); setPick(null) }}>{t("sxbOfferMore", { defaultValue: "Offer more time" })}</Button>}
-      {showEarly && !offering && <Button type="button" variant="outline" className={tap} onClick={() => { setOffering("early_start"); setPick(null) }}>{t("sxbLetStartEarly", { defaultValue: "Let them start early" })}</Button>}
+      {showOffer && !offering && <Button type="button" variant="outline" className={tap} onClick={() => { setOffering("offer"); setPick(null); setChoosing(false) }}>{t("sxbOfferMore", { defaultValue: "Offer more time" })}</Button>}
+      {showEarly && !offering && <Button type="button" variant="outline" className={tap} onClick={() => { setOffering("early_start"); setPick(null); setChoosing(false) }}>{t("sxbLetStartEarly", { defaultValue: "Let them start early" })}</Button>}
       {offering && (showOffer || showEarly) && (
         <div className="space-y-2 rounded-xl border p-3" data-testid="extension-offer-picker">
           <p className="text-sm font-medium">{offering === "early_start"
             ? t("sxbEarlyPick", { defaultValue: "When can {chef} start? Only free times are shown.", chef: chefName })
             : t("sxbOfferPick", { defaultValue: "How much time do you want to offer {chef}?", chef: chefName })}</p>
-          {(offering === "early_start"
-            ? (state.earlyOptions || []).map(option => ({ minutes: option.minutes, at: option.startAt, amountCents: option.amountCents }))
-            : state.options.map(option => ({ minutes: option.minutes, at: option.endAt, amountCents: option.amountCents }))).map(option => (
-            <Button key={option.minutes} type="button" variant={pick?.minutes === option.minutes ? "default" : "outline"} className={`${tap} w-full justify-between`} disabled={!!busy}
-              aria-pressed={pick?.minutes === option.minutes}
-              onClick={() => setPick({ kind: offering, minutes: option.minutes, at: option.at, amountCents: option.amountCents, free: defaultFreeChoice(option.minutes) || !state.hasSavedCard })}>
-              <span>{offering === "early_start"
-                ? t("sxbEarlyOption", { defaultValue: "Start at {time} ({early} early)", time: clock(option.at), early: minutesText(option.minutes) })
-                : t("sxbOfferOption", { defaultValue: "{duration} · until {time}", duration: duration(option.minutes), time: clock(option.at) })}</span>
-            </Button>
-          ))}
+          {(() => {
+            // Every free time from the server; the chips are the quick picks, the list holds the rest (15-minute steps).
+            const all = offering === "early_start"
+              ? (state.earlyOptions || []).map(option => ({ minutes: option.minutes, at: option.startAt, amountCents: option.amountCents, startNow: !!option.startNow }))
+              : state.options.map(option => ({ minutes: option.minutes, at: option.endAt, amountCents: option.amountCents, startNow: false }))
+            const chips = all.filter(option => option.startNow || isQuickPick(option.minutes))
+            const choose = (option: typeof all[number]) => setPick({ kind: offering, minutes: option.minutes, at: option.at, amountCents: option.amountCents, free: defaultFreeChoice(option.minutes) || !state.hasSavedCard })
+            const label = (option: typeof all[number]) => offering === "early_start"
+              ? option.startNow ? t("sxbStartNowOption", { defaultValue: "Start now (from {time})", time: clock(option.at) })
+                : t("sxbEarlyOption", { defaultValue: "Start at {time} ({early} early)", time: clock(option.at), early: length(option.minutes) })
+              : t("sxbOfferOption", { defaultValue: "{duration} · until {time}", duration: duration(option.minutes), time: clock(option.at) })
+            const fieldLabel = offering === "early_start" ? t("sxbNewStartLabel", { defaultValue: "New start time" }) : t("sxbNewEndLabel", { defaultValue: "New end time" })
+            return <>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={fieldLabel}>
+                {chips.map(option => (
+                  <Button key={option.minutes} type="button" size="sm" variant={pick?.minutes === option.minutes ? "default" : "outline"} className={tap} disabled={!!busy}
+                    aria-pressed={pick?.minutes === option.minutes} onClick={() => { setChoosing(false); choose(option) }}>
+                    {offering === "early_start" && option.startNow ? t("sxbStartNow", { defaultValue: "Start now" }) : label(option)}
+                  </Button>
+                ))}
+                <Button type="button" size="sm" variant={choosing ? "default" : "outline"} className={tap} disabled={!!busy} aria-expanded={choosing}
+                  onClick={() => setChoosing(open => !open)}>{t("sxbChooseTime", { defaultValue: "Choose a time…" })}</Button>
+              </div>
+              {choosing && <div className="space-y-1">
+                <label htmlFor={`extra-time-choice-${bookingId}`} className="block text-sm font-medium">{fieldLabel}</label>
+                <select id={`extra-time-choice-${bookingId}`} className="block w-full min-h-11 rounded-md border bg-background p-2" disabled={!!busy}
+                  value={pick?.minutes ?? ""} onChange={event => { const option = all.find(item => item.minutes === Number(event.target.value)); if (option) choose(option); else setPick(null) }}>
+                  <option value="">{t("sxbPickTime", { defaultValue: "Pick a time" })}</option>
+                  {all.map(option => <option key={option.minutes} value={option.minutes}>{label(option)}</option>)}
+                </select>
+              </div>}
+            </>
+          })()}
           {pick && <fieldset className="space-y-2 border-t pt-2">
+            <p className="text-sm font-medium tabular-nums" data-testid="extension-pick-summary">{pick.kind === "early_start"
+              ? t("sxbSummaryStart", { defaultValue: "Starts at {time} · {amount}", time: clock(pick.at), amount: pick.free ? t("sxbFree", { defaultValue: "Free" }) : cash(pick.amountCents) })
+              : t("sxbSummaryUntil", { defaultValue: "Until {time} · {amount}", time: clock(pick.at), amount: pick.free ? t("sxbFree", { defaultValue: "Free" }) : cash(pick.amountCents) })}</p>
             <legend className="text-sm font-medium">{t("sxbChargeChoice", { defaultValue: "Free, or charge {chef}?", chef: chefName })}</legend>
             <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={pick.free} onChange={() => setPick({ ...pick, free: true })} />
               {t("sxbFree", { defaultValue: "Free" })}</label>
             <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={!pick.free} disabled={!state.hasSavedCard} onChange={() => setPick({ ...pick, free: false })} />
               {t("sxbChargeFor", { defaultValue: "Charge for the extra time · {amount}", amount: cash(pick.amountCents) })}</label>
             <p className="text-xs text-muted-foreground">{pick.free
-              ? pick.kind === "early_start" ? t("sxbFreeStartHint", { defaultValue: "{chef} can start at {time} right away; we’ll let them know.", chef: chefName, time: clock(pick.at) })
-                : t("sxbFreeEndHint", { defaultValue: "{chef}’s booking ends at {time} right away; we’ll let them know.", chef: chefName, time: clock(pick.at) })
+              ? pick.kind === "early_start" ? t("sxbFreeStartHint", { defaultValue: "{chef} can start at {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
+                : t("sxbFreeEndHint", { defaultValue: "{chef} gets until {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
               : t("sxbPaidOfferHint", { defaultValue: "{chef} accepts and pays with their saved card. Nothing changes until they pay.", chef: chefName })}</p>
             <Button type="button" className={tap} disabled={!!busy} onClick={() => void act(`offer-${pick.minutes}`, () => createExtension(bookingId, { kind: pick.kind, minutes: pick.minutes,
                 requestKey, free: pick.free, expectedEndAt: pick.kind === "early_start" ? state.startAt : state.endAt, expectedAmountCents: pick.free ? 0 : pick.amountCents,
                 ...(state.visitId ? { visitId: state.visitId } : {}) }),
               pick.free ? t("sxbGranted", { defaultValue: "Done. We let {chef} know.", chef: chefName }) : t("sxbOfferDone", { defaultValue: "Offer sent to {chef}.", chef: chefName }))
-              .then(() => { setOffering(null); setPick(null) })}>
+              .then(() => { setOffering(null); setPick(null); setChoosing(false) })}>
               {pick.free ? t("sxbGiveFree", { defaultValue: "Give it free" }) : t("sxbSendOffer", { defaultValue: "Send offer · {amount}", amount: cash(pick.amountCents) })}</Button>
           </fieldset>}
-          <Button type="button" variant="ghost" className={tap} onClick={() => { setOffering(null); setPick(null) }}>{t("sxbCancel", { defaultValue: "Cancel" })}</Button>
+          <Button type="button" variant="ghost" className={tap} onClick={() => { setOffering(null); setPick(null); setChoosing(false) }}>{t("sxbCancel", { defaultValue: "Cancel" })}</Button>
         </div>
       )}
 
@@ -227,10 +259,12 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
         {view.done.map(item => <li key={item.id}>{item.kind === "extra_time"
           ? t("sxbHistoryExtra", { defaultValue: "Extra time paid · {amount}", amount: cash(item.amountCents) })
           : item.kind === "early_start" ? item.free
-            ? manager ? t("sxbHistoryEarlyFreeManager", { defaultValue: "{kitchen} let {chef} start {early} early — no charge", kitchen, chef: chefName, early: minutesText(item.minutes) })
+            // The manager reads their own decisions in the first person; the chef reads the kitchen's name.
+            ? manager ? t("sxbHistoryEarlyFreeManager", { defaultValue: "You let {chef} start {early} early — no charge", chef: chefName, early: minutesText(item.minutes) })
               : t("sxbHistoryEarlyFree", { defaultValue: "{kitchen} let you start {early} early — no charge", kitchen, early: minutesText(item.minutes) })
             : t("sxbHistoryEarly", { defaultValue: "Started earlier at {time} · {amount}", time: clock(item.endAt), amount: cash(item.amountCents) })
-          : item.free ? t("sxbHistoryFree", { defaultValue: "{kitchen} gave {duration} (until {time}) — no charge", kitchen, duration: duration(item.minutes), time: clock(item.endAt) })
+          : item.free ? manager ? t("sxbHistoryFreeManager", { defaultValue: "You gave {chef} {duration} (until {time}) — no charge", chef: chefName, duration: duration(item.minutes), time: clock(item.endAt) })
+            : t("sxbHistoryFree", { defaultValue: "{kitchen} gave you {duration} (until {time}) — no charge", kitchen, duration: duration(item.minutes), time: clock(item.endAt) })
           : t("sxbHistoryExtended", { defaultValue: "Extended until {time} · {amount}", time: clock(item.endAt), amount: cash(item.amountCents) })}</li>)}
       </ul>}
       {!state.enabled && manager && <p className="text-xs text-muted-foreground">{t("sxbPaused", { defaultValue: "Extra time is paused on Local Cooks right now." })}</p>}

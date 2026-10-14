@@ -36,18 +36,22 @@ export function validateAttendanceAssistance(input: { action: unknown; reason: u
 export async function assistKitchenVisit(bookingId: number, managerId: number, input: AssistanceInput) {
   await db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone })
+    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, locationId: locations.id })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
     if (!context || context.managerId !== managerId) throw Error('Booking not found');
     const timezone = context.timezone || DEFAULT_TIMEZONE;
     const { actual } = validateAttendanceAssistance(input, new Date(), timezone);
-    if (context.booking.status !== 'confirmed') throw Error('Only a confirmed visit may receive assistance');
     if (new Date(input.expectedBookingUpdatedAt).getTime() !== context.booking.updatedAt.getTime())
       throw Error('Booking changed; refresh before assisting');
     const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
     const visit = visits.find(row => row.id === input.visitId);
     if (visits.length && !visit || input.visitId !== undefined && !visit) throw Error('Choose a visit belonging to this booking');
+    // "Record when they left": the booked time is over (the booking may already read "completed") but the chef never
+    // checked out. Allowed until that visit's inspection window closes.
+    const lateDeparture = context.booking.status === 'completed' && input.action === 'departure' && (visit || context.booking).checkinStatus === 'checked_in'
+      && await (await import('./clock-closeout')).lateDepartureOpen(context.booking, timezone, visits, visit?.id, context.locationId, tx);
+    if (context.booking.status !== 'confirmed' && !lateDeparture) throw Error('Only a confirmed visit may receive assistance');
     if (visit) await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${visit.id} FOR UPDATE`);
     const current = visit || context.booking;
     if (new Date(input.expectedUpdatedAt).getTime() !== current.updatedAt.getTime()) throw Error('Visit changed; refresh before assisting');
@@ -72,6 +76,8 @@ export async function assistKitchenVisit(bookingId: number, managerId: number, i
     else await tx.update(kitchenBookings).set(values).where(eq(kitchenBookings.id, bookingId));
     // Manager-assisted arrival needs no code; it consumes the challenge (booking -> visit -> challenge lock order).
     if (input.action === 'arrival') await consumeForAssistedArrival(tx, { bookingId, visitId: visit?.id ?? null }, managerId);
+    // Re-derive the saved clock (inspection deadline, payout timing) once the late departure is on the record.
+    if (lateDeparture) await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx, now);
     await queueBookingLifecycleEvent(tx, bookingId, 'visit_assisted', `Visit ${input.action} time added`,
       `The kitchen added the ${input.action} time for this visit. Note: ${input.reason.trim()}. ${input.action === 'departure' ? 'The kitchen will review checkout next.' : 'Open the booking to see the update.'}`,
       managerId, { visitId: visit?.id, action: input.action, actualAt: actual.toISOString(), recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });

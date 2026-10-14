@@ -78,9 +78,11 @@ describe("in-session panel", () => {
   it("says the booked time ended and still offers check-out", async () => {
     mount();
     await advance(121 * MIN);
-    expect(screen.getAllByText("Your booked time ended").length).toBeGreaterThan(0);
-    expect(screen.getByText("Check out now to close your visit.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Start check-out" }));
+    // One message lives in the visit header; the panel counts the time past the booking and offers checkout.
+    expect(screen.getByText(/min past your booking/)).toBeInTheDocument();
+    expect(screen.queryByText("Check out now to close your visit.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leave early / check out now" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check out now" }));
     expect(onStartCheckout).toHaveBeenCalled();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   });

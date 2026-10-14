@@ -18,11 +18,11 @@ const auth = requireFirebaseAuthWithUser as RequestHandler;
 const cents = z.number().int().positive().max(10_000_000);
 // expectedEndAt: the boundary the person saw (booked end; booked start for an early start). free: the manager's choice.
 const create = z.object({ kind: z.enum(['request', 'offer', 'extra_time', 'early_start']),
-  minutes: z.number().int().positive().max(120).refine(value => value % 15 === 0).optional(),
+  // Any length in 15-minute steps; the service checks it against what is really free right now.
+  minutes: z.number().int().positive().max(1440).refine(value => value % 15 === 0, { message: 'Choose a time in 15-minute steps' }).optional(),
   amountCents: cents.optional(), note: z.string().max(1000).optional(), requestKey: z.string().uuid(), visitId: z.number().int().positive().optional(),
   expectedEndAt: z.string().datetime(), expectedAmountCents: z.number().int().nonnegative().max(10_000_000), free: z.boolean().optional() }).strict()
   .refine(input => input.kind === 'extra_time' || input.minutes !== undefined, { message: 'Choose how much time' })
-  .refine(input => input.kind === 'early_start' || input.kind === 'extra_time' || [30, 60, 120].includes(input.minutes!), { message: 'Choose 30 minutes, 1 hour or 2 hours' })
   .refine(input => input.free ? input.expectedAmountCents === 0 : input.expectedAmountCents > 0, { message: 'Review the price' });
 const decision = z.object({ action: z.enum(['approve', 'approve_free', 'decline', 'accept', 'pay', 'dispute']), expectedAmountCents: cents.optional(),
   note: z.string().max(1000).optional() }).strict();

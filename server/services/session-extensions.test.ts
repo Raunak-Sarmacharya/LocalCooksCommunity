@@ -206,7 +206,24 @@ describe('chef asks for more time (approval mode, the default)', () => {
     await expect(ask(60, 3000, new Date('2026-10-14T17:20:00Z'))).rejects.toThrow(/last hour/);
     state.tables.kitchen_checkout_holds.push({ id: 'other', kitchenId: 5, operatingDate: '2026-10-14', windowStartTime: '08:00',
       selectedSlots: [{ startTime: '16:30', endTime: '18:00' }], expiresAt: new Date('2026-10-15T00:00:00Z') });
-    await expect(ask(60)).rejects.toThrow(/no longer free/);
+    await expect(ask(60)).rejects.toThrow(/just booked — pick another/);
+    expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+  });
+  it('lists any free end in 15-minute steps up to the next booking, and accepts a custom length', async () => {
+    state.tables.kitchen_checkout_holds.push({ id: 'next', kitchenId: 5, operatingDate: '2026-10-14', windowStartTime: '08:00',
+      selectedSlots: [{ startTime: '17:15', endTime: '18:00' }], expiresAt: new Date('2026-10-15T00:00:00Z') });
+    const read = await readSessionExtensions(10, chef, undefined, IN_FINAL_HOUR);
+    expect(read.options.map(option => option.minutes)).toEqual([15, 30, 45, 60, 75]);
+    expect(read.options.at(-1)).toMatchObject({ endTime: '17:15', amountCents: 4501 }); // 75 min → billed as 90
+    const { extension } = await ask(45, 3000); // 45 min → billed as 60 minutes
+    expect(extension).toMatchObject({ minutes: 45, amountCents: 3000, endAt: '2026-10-14T19:15:00.000Z' });
+    expect(state.tables.kitchen_checkout_holds.find(hold => hold.id !== 'next').selectedSlots).toEqual([{ startTime: '16:00', endTime: '16:45' }]);
+  });
+  it('refuses a length past the next booking or not in 15-minute steps', async () => {
+    state.tables.kitchen_checkout_holds.push({ id: 'next', kitchenId: 5, operatingDate: '2026-10-14', windowStartTime: '08:00',
+      selectedSlots: [{ startTime: '17:15', endTime: '18:00' }], expiresAt: new Date('2026-10-15T00:00:00Z') });
+    await expect(ask(90, 4500)).rejects.toThrow(/just booked — pick another/);
+    await expect(ask(20, 1501)).rejects.toThrow(/15-minute steps/);
     expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
   });
 });
@@ -254,6 +271,11 @@ describe('kitchen offers more time: Free or Charge is the manager’s choice', (
     expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
     expect(notices()).toEqual(['offered', 'declined']);
   });
+  it('the manager can give any free length (a custom end) and the booked hours follow the new span', async () => {
+    const { extension } = await offer(true, 75);
+    expect(extension).toMatchObject({ minutes: 75, free: true, confirmed: true, endAt: '2026-10-14T19:45:00.000Z' });
+    expect(state.context.booking).toMatchObject({ endTime: '17:15', durationHours: '3.25' });
+  });
   it('an unanswered offer closes at the booked end without any charge', async () => {
     await offer(false);
     await expireSessionExtensions(stripe, 3, new Date(END));
@@ -270,8 +292,9 @@ describe('let them start early (manager, before the visit)', () => {
   it('lists earlier starts with the price if charged; nothing is sent by reading', async () => {
     const state1 = await readSessionExtensions(10, manager, undefined, BEFORE);
     expect(state1.beforeStart).toBe(true);
-    expect(state1.earlyOptions.map(option => option.minutes)).toEqual([15, 30, 45, 60, 75, 90, 105, 120]);
-    expect(state1.earlyOptions[3]).toMatchObject({ startTime: '13:00', defaultFree: false, amountCents: 3000 });
+    // It is 13:00: never a start in the past. "Start now" (13:00) first, then 13:45, 13:30, 13:15.
+    expect(state1.earlyOptions.map(option => option.minutes)).toEqual([60, 15, 30, 45]);
+    expect(state1.earlyOptions[0]).toMatchObject({ startTime: '13:00', startNow: true, defaultFree: false, amountCents: 3000 });
     expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
     expect(state.notify).not.toHaveBeenCalled();
     expect(extensions()).toHaveLength(0);
@@ -308,7 +331,16 @@ describe('let them start early (manager, before the visit)', () => {
     state.tables.kitchen_checkout_holds.push({ id: 'prev', kitchenId: 5, operatingDate: '2026-10-14', windowStartTime: '08:00',
       selectedSlots: [{ startTime: '12:00', endTime: '13:30' }], expiresAt: new Date('2026-10-15T00:00:00Z') });
     expect((await readSessionExtensions(10, manager, undefined, BEFORE)).earlyOptions.map(option => option.minutes)).toEqual([15, 30]);
-    await expect(early(true, 45, 0)).rejects.toThrow(/no longer free/);
+    await expect(early(true, 45, 0)).rejects.toThrow(/just booked/);
+  });
+  it('offers only start times from now on (the live bug offered 5:00 p.m. at 6:13 p.m.)', async () => {
+    const at = new Date('2026-10-14T15:43:00Z'); // 13:13 NDT; booked start 14:00
+    const read = await readSessionExtensions(10, manager, undefined, at);
+    expect(read.earlyOptions.map(option => [option.startTime, option.startNow])).toEqual([['13:00', true], ['13:45', false], ['13:30', false], ['13:15', false]]);
+    // A start that has passed can't be sent, even by a stale page.
+    await expect(early(true, 120, 0, at)).rejects.toThrow(/has passed/);
+    expect((await early(true, 60, 0, at)).extension).toMatchObject({ free: true, confirmed: true });
+    expect(state.context.booking).toMatchObject({ startTime: '13:00', durationHours: '3' });
   });
   it('is only available from 2 hours before the start and never after check-in', async () => {
     await expect(early(true, 30, 0, new Date('2026-10-14T14:00:00Z'))).rejects.toThrow(/2 hours/);
@@ -344,6 +376,23 @@ describe('extra-time charge after the visit', () => {
     expect(extensions()[0]).toMatchObject({ status: 'disputed' });
     expect(state.notify.mock.calls.at(-1)?.[2]).toBe('disputed');
     expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+  });
+  it('uses the departure time the kitchen recorded (not when it was typed in) on a completed booking', async () => {
+    // The chef never checked out; the kitchen recorded at 21:00Z that they left at 19:40Z. The booking already reads completed.
+    setup({ status: 'completed', checkinStatus: 'checkout_requested', checkoutRequestedAt: new Date('2026-10-14T21:00:00Z'),
+      assistanceHistory: [{ action: 'departure', actualAt: '2026-10-14T19:40:00.000Z', recordedAt: '2026-10-14T21:00:00.000Z' }] });
+    const read = await readSessionExtensions(10, manager, undefined, new Date('2026-10-14T21:05:00Z'));
+    expect(read.checkoutAt).toBe('2026-10-14T19:40:00.000Z');
+    expect(read.extraTime).toMatchObject({ actualMinutes: 70, minutes: 90, maximumAmountCents: 4501 });
+  });
+  it('charges extra time from the CURRENT booked end, after a free extension', async () => {
+    // Booked until 16:00, given 30 free minutes (now ends 16:30 = 19:00Z); left at 19:10Z → 10 minutes over, billed 30.
+    setup({ status: 'completed', endTime: '16:30', checkinStatus: 'checkout_requested', checkoutRequestedAt: new Date('2026-10-14T19:10:00Z'),
+      visitDuties: { clockCloseout: { version: 1, timezone: 'America/St_Johns', serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 30,
+        visits: [{ key: 'k', blockIndex: 0, localDate: '2026-10-14', startTime: '14:00', endTime: '16:30', scheduledStartAt: START, scheduledEndAt: '2026-10-14T19:00:00.000Z' }] } } });
+    const read = await readSessionExtensions(10, manager, undefined, AFTER);
+    expect(read.endAt).toBe('2026-10-14T19:00:00.000Z');
+    expect(read.extraTime).toMatchObject({ actualMinutes: 10, minutes: 30, maximumAmountCents: 1501 });
   });
   it('unanswered after 48 hours: escalated to Local Cooks, never charged automatically', async () => {
     await charge();

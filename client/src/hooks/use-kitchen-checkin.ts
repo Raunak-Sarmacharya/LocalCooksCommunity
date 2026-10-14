@@ -1,4 +1,4 @@
-import type { BookingCloseout, VisitCloseout } from '@shared/clock-closeout';
+import { lateCheckoutOpen, type BookingCloseout, type VisitCloseout } from '@shared/clock-closeout';
 import { logger } from "@/lib/logger";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -287,10 +287,12 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
   const canCheckout = (): boolean => {
     const s = status;
     if (!s) return false;
+    const clock = s.visitCloseout || s.closeout?.visits[0];
+    const phase = clock?.phase || "";
+    // A chef still on site after the booked end can always check out late (the booking may already read
+    // "completed") until the visit's inspection window closes; the kitchen may charge for the extra time.
+    if (s.checkinStatus === 'checked_in' && ['confirmed', 'completed'].includes(s.status) && lateCheckoutOpen(clock)) return true;
     if (s.status !== 'confirmed') return false;
-    const phase = (s.visitCloseout || s.closeout?.visits[0])?.phase || "";
-    // A chef still on site when booked time ends can check out until the service-end grace closes.
-    if (s.checkinStatus === 'checked_in' && phase === 'booked_time_ended') return true;
     if (["booked_time_ended", "ended"].includes(phase)) return false;
     if (s.checkinStatus === 'checked_in') return true;
     const legacyDepartureOnly = s.visitDuties?.version === 1 && !s.visitDuties.arrival.enabled && s.visitDuties.departure.enabled;

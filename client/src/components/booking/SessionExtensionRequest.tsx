@@ -1,6 +1,7 @@
 /**
  * Chef "Need more time?" (build-session-extensions.md). Loads nothing until tapped: the countdown never polls.
- * In the last hour it lists the server-priced options (+30 min, +1 h, +2 h); one tap places a hold on the saved card
+ * In the last hour it lists the server-priced quick picks (+30 min, +1 h, +2 h) plus "Choose a time…" (any free end in
+ * 15-minute steps, priced in 30-minute blocks); one tap places a hold on the saved card
  * (the kitchen approves) or charges it at once when the kitchen approves automatically. Outside that window, or when
  * extra time is unavailable, it opens the kitchen conversation with a prefilled message, as before.
  */
@@ -8,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { CheckCircle2, Clock, Loader2, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { createExtension, isExtensionState, kitchenClock, money, newRequestKey, readExtensions, withCardAction,
+import { createExtension, isExtensionState, isQuickPick, kitchenClock, lengthText, money, newRequestKey, readExtensions, withCardAction,
   type ExtensionItem, type ExtensionOption, type ExtensionState } from "@/lib/session-extensions"
 
 const POLL_MS = 20_000
@@ -29,6 +30,8 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
   const locale = i18n.resolvedLanguage || i18n.language || "en-CA"
   const [view, setView] = useState<View>({ kind: "idle" })
   const [error, setError] = useState("")
+  // "Choose a time…": any free end in 15-minute steps; a summary line shows before the chef confirms.
+  const [custom, setCustom] = useState<{ open: boolean; minutes: number | null }>({ open: false, minutes: null })
   const requestKey = useRef(newRequestKey())
   const extended = useRef(onExtended)
   extended.current = onExtended
@@ -83,7 +86,9 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     return () => window.clearInterval(timer)
   }, [bookingId, waitingId, waitingUntil, settle])
 
-  const duration = (minutes: number) => t(`sxDuration${minutes}`, { defaultValue: minutes === 30 ? "30 more minutes" : minutes === 60 ? "1 more hour" : "2 more hours" })
+  const duration = (minutes: number) => isQuickPick(minutes)
+    ? t(`sxDuration${minutes}`, { defaultValue: minutes === 30 ? "30 more minutes" : minutes === 60 ? "1 more hour" : "2 more hours" })
+    : t("sxDurationOther", { defaultValue: "{length} more", length: lengthText(minutes, (key, options) => String(t(key as never, options as never)), "sx") })
   const button = (
     <Button type="button" className={className} disabled={view.kind === "loading"} onClick={() => void open()}>
       {view.kind === "loading" ? <Loader2 className="h-4 w-4 mr-2 shrink-0 animate-spin" /> : <Clock className="h-4 w-4 mr-2 shrink-0" />}
@@ -128,11 +133,16 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     </div>
   )
   const busy = view.kind === "busy"
+  const quick = state.options.filter(option => isQuickPick(option.minutes))
+  const chosen = custom.minutes == null ? undefined : state.options.find(option => option.minutes === custom.minutes)
+  const optionLabel = (option: ExtensionOption) => state.autoApprove
+    ? t("sxAddUntil", { defaultValue: "Add until {time} · {amount}", time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })
+    : t("sxRequestUntil", { defaultValue: "Request until {time} · up to {amount}", time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })
   return (
     <div className="space-y-2 rounded-lg border p-3" data-testid="extension-options">
       <p className="text-sm font-medium">{t("sxChooseTime", { defaultValue: "How much more time do you need?" })}</p>
       <ul className="space-y-2">
-        {state.options.map(option => (
+        {quick.map(option => (
           <li key={option.minutes}>
             <Button type="button" variant="outline" className={`${className || ""} justify-between`} disabled={busy} onClick={() => void choose(state, option)}
               aria-label={t("sxOptionAria", { defaultValue: "{duration}, until {time}, {amount}", duration: duration(option.minutes), time: clock(option.endAt, state.timezone), amount: money(option.amountCents, state.currency, locale) })}>
@@ -144,6 +154,21 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
           </li>
         ))}
       </ul>
+      {!custom.open ? <Button type="button" variant="ghost" className={`${className || ""} justify-start`} disabled={busy}
+        onClick={() => setCustom({ open: true, minutes: null })}>{t("sxChooseOther", { defaultValue: "Choose a time…" })}</Button>
+        : <div className="space-y-2 rounded-md border p-2" data-testid="extension-custom">
+          <label htmlFor={`extension-end-${bookingId}`} className="block text-sm font-medium">{t("sxNewEndLabel", { defaultValue: "New end time" })}</label>
+          <select id={`extension-end-${bookingId}`} className="block w-full min-h-11 rounded-md border bg-background p-2" disabled={busy}
+            value={custom.minutes ?? ""} onChange={event => setCustom({ open: true, minutes: event.target.value ? Number(event.target.value) : null })}>
+            <option value="">{t("sxPickEnd", { defaultValue: "Pick a time" })}</option>
+            {state.options.map(option => <option key={option.minutes} value={option.minutes}>
+              {t("sxUntilLength", { defaultValue: "Until {time} ({duration})", time: clock(option.endAt, state.timezone), duration: duration(option.minutes) })}</option>)}
+          </select>
+          {chosen && <>
+            <p className="text-sm tabular-nums" data-testid="extension-custom-summary">{t("sxSummaryUntil", { defaultValue: "Until {time} · {amount}", time: clock(chosen.endAt, state.timezone), amount: money(chosen.amountCents, state.currency, locale) })}</p>
+            <Button type="button" className={className} disabled={busy} onClick={() => void choose(state, chosen)}>{optionLabel(chosen)}</Button>
+          </>}
+        </div>}
       <p className="text-xs text-muted-foreground">{state.autoApprove
         ? t("sxInstantHint", { defaultValue: "The time is free, so it’s confirmed right away and charged to your saved card." })
         : t("sxOnlyIfCharged", { defaultValue: "You’re only charged if {kitchen} approves with a charge.", kitchen: kitchenName })}</p>
@@ -152,7 +177,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-col gap-2 sm:flex-row">
         {messageInstead}
-        <Button type="button" variant="ghost" className={className} disabled={busy} onClick={() => { setError(""); setView({ kind: "idle" }) }}>{t("sxNotNow", { defaultValue: "Not now" })}</Button>
+        <Button type="button" variant="ghost" className={className} disabled={busy} onClick={() => { setError(""); setCustom({ open: false, minutes: null }); setView({ kind: "idle" }) }}>{t("sxNotNow", { defaultValue: "Not now" })}</Button>
       </div>
     </div>
   )

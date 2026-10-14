@@ -875,3 +875,38 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
   - Cancellation refunds already exclude extensions (now tested).
   - Open: booking-change/damage-claim rows have the same display/tax issue; legacy revenue fallback omits extensions; the client "Extra time" label.
 - Final checks: tsc 0; client 9 pre-existing failing files; server 15 files/50 tests (baseline 16/51), no new failures. **Migration 0081 applied to dev.**
+- **Deployed `3984ee75` to dev.** Live test on booking 159 (KB-6WAXEF, real sandbox 4242; times moved via DB, updated_at truncated to ms):
+  - the manager page shows the check-in code panel with the new wording; the chef sees "Arrived early? Message the kitchen";
+  - "Let them start early" → 6:15 (30 min) with Free preselected (Charge $15.26 shown) → "Give it free" → 6:15–7:45, history "… start 30 minutes early — no charge"; the chef's visit page shows the grant;
+  - chef check-in with code 287 169;
+  - "Need more time?" → options "Request until 7:25/7:55/8:55 · up to $15.26/$30.50/$61.00" + "You're only charged if… approves with a charge" + non-refundable line → requested +1 h → Stripe hold `requires_capture` 3050 (row `kitchen_booking_extensions` #2, expires 15 min);
+  - the manager banner "asked for 1 more hour (until 7:55 p.m.) · you'd get $28.75" with Approve · charge / Approve for free / Decline → approved with charge → PI succeeded 3050, a separate PT row (after_closeout), 0 transfers;
+  - "Offer more time" 30 min → Free → until 8:25 p.m., "no charge".
+- **Defects found** (→ Opus `.phase0-harness/extension-live-fixes-checkpoint.md`):
+  - (1) CRITICAL overstay dead end: after end + grace the chef's visit page shows "Visit finished" ×3 with no checkout button, and the manager has no action, so an overstay can't be recorded or charged;
+  - (2) early-start options include past times;
+  - (3) third-person history on the manager's own actions;
+  - (4) systematic double periods after "p.m.";
+  - (5) "booking ends at … right away" copy;
+  - (6) the header duration uses a stale `duration_hours`.
+  - Pending after the fix: closeout → payout release covering booking + extension (expect 2 transfers).
+- **Extension live fixes DONE (Opus)** → `.phase0-harness/extension-live-fixes-checkpoint.md`:
+  - overstay: late checkout allowed until the visit's inspection window closes; the manager can "Record when they left"; "Charge for extra time" is based on the recorded departure vs the current end after extensions; one clear "Your booked time ended" state;
+  - early start only offers times ≥ now, with "Start now";
+  - first-person manager history;
+  - a global double-period i18n post-processor;
+  - copy fixes;
+  - duration derived from the real spans;
+  - owner addition: any-length extensions/early starts (15-min steps up to availability, quick-pick chips + "Choose a time…").
+  - Suites: server 15/48 vs baseline 16/51; client = the known set.
+- **Owner design rule (Oct 14):** any setting that changes the flow (self check-in, auto-approve extensions, policy changes) must state, before confirming: what changes for chefs, when it applies (now vs new bookings), current impact ("affects 3 upcoming bookings; we'll tell those chefs"), how to undo; confirm step only for impactful changes. To be enforced in the design-consolidation pass.
+- **Owner:** the booking pages feel congested in places → a dedicated design-consolidation pass (Fable review/plan, then build), with screenshots of every state × role × 1280/390.
+- **Damage claims — owner decisions FINAL (Oct 14)** after research (Airbnb 14 d / 72 h guest response / platform review + AirCover; Peerspace 72 h + receipts, no arbitrary fines):
+  - the kitchen files within 72 h; damage + extra cleaning, itemized with receipts; check-in/checkout photos auto-attached; cap $250 (more → Local Cooks support case);
+  - the chef pays one-tap or disputes within 72 h; disputed/unanswered → Local Cooks review (uphold/reduce/reject/close; "Local Cooks pays the kitchen" with write-off or owed);
+  - NEVER auto-charged; an unpaid upheld claim after 7 days → new bookings held until resolved;
+  - disclosed in Terms/booking policy, not at checkout;
+  - claims do NOT hold the kitchen's booking payout (correction of earlier behaviour);
+  - Local Cooks absorbs the processing fee on claim payments so the kitchen is made whole.
+  - Stripe: no holds, so nothing expires (on-session PI at tap; compensation is a platform-balance transfer without source_transaction).
+  - Plan `build-damage-claims.md`; Codex Sol High implementing (migration 0082 if needed).

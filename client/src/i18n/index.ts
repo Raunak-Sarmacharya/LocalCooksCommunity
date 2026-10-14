@@ -2,6 +2,7 @@ import i18n from "i18next";
 import ICU from "i18next-icu";
 import { initReactI18next } from "react-i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
+import { sentencePostProcessor } from "@shared/i18n/sentence";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, I18N_NAMESPACES, buildFallbackLng, negotiateLocale, LOCALE_COOKIE, type AppLocale } from "@shared/i18n";
 
 function readCookie(name: string): string | null {
@@ -26,6 +27,7 @@ function initialLocale(): AppLocale {
 
 void i18n
   .use(ICU)
+  .use(sentencePostProcessor)
   .use(initReactI18next)
   .use(
     resourcesToBackend(
@@ -50,6 +52,8 @@ void i18n
     load: "currentOnly",
     returnNull: false,
     returnEmptyString: false,
+    // "until 7:55 p.m.." → "until 7:55 p.m." in every locale.
+    postProcess: ["sentence"],
   });
 
 export default i18n;

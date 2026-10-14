@@ -15,7 +15,7 @@ import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
-import { calendarDateForBookingTime, getHourlySlotStarts, sortTimesInOperatingWindow } from '@shared/operating-hours';
+import { calendarDateForBookingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
 import { useState, useEffect, useMemo, useRef, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { formatTime as formatKitchenClock } from "@/lib/formatters";
@@ -34,7 +34,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
 import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, Info, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
-import { arrivalRecorded, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canCancelOrChange, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
+import { arrivalRecorded, bookedHours, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canCancelOrChange, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
 import { bookingReference } from '@/lib/booking-reference';
 import { bookingStartDateKey, calendarDateKey } from '@/lib/calendar-date';
@@ -55,6 +55,7 @@ import { VisitCodePanel } from "@/components/manager/bookings/VisitCodePanel";
 import { ManagerInSessionBadge, inSessionEnds } from "@/components/manager/bookings/ManagerInSessionBadge";
 import { bookingResponseDeadline, formatResponseDeadline } from '@/lib/booking-response-deadline';
 import { createBookingDateTime, friendlyTimezoneName } from '@shared/timezone-utils';
+import { lateCheckoutOpen } from '@shared/clock-closeout';
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { ServiceFeeInfoPopover } from "@/components/booking/ServiceFeeInfoPopover";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -261,6 +262,8 @@ export default function BookingDetailsPage() {
   const [kitchenCancelOpen, setKitchenCancelOpen] = useState(false);
   const { t: policyT } = useTranslation('booking');
   const [fixOpen, setFixOpen] = useState(false);
+  // "Record when they left" opens Fix the visit record straight on the departure choice.
+  const [fixAction, setFixAction] = useState<'departure' | undefined>();
   const [codeShowsArrival, setCodeShowsArrival] = useState(false);
   const queryClient = useQueryClient();
 
@@ -583,14 +586,9 @@ export default function BookingDetailsPage() {
     return { summary: t('bdUnknownPaymentSummary', { defaultValue: 'Payment status is unavailable.' }), detail: t('bdUnknownPaymentDetail', { defaultValue: 'Contact Local Cooks if you need help with this payment.' }) };
   })();
 
-  const calculateDuration = () => {
-    if (!booking) return 0;
-    if (booking.durationHours) return booking.durationHours;
-    if (booking.selectedSlots && booking.selectedSlots.length > 0) {
-      return booking.selectedSlots.length;
-    }
-    return getHourlySlotStarts(booking.startTime, booking.endTime).length;
-  };
+  // The real start–end span of every visit, so an early start or extension always shows (never a stale stored count).
+  const calculateDuration = () => booking ? bookedHours({ closeoutVisits: booking.closeout?.visits, visits: booking.visits,
+    startTime: booking.startTime, endTime: booking.endTime, durationHours: booking.durationHours }) : 0;
 
   // ── Payment state helpers ─────────────────────────────────────────────────
   // VOID = auth was cancelled before capture (paymentStatus='failed') — never charged
@@ -1221,6 +1219,8 @@ export default function BookingDetailsPage() {
     : booking?.visits?.find(visit => visit.checkinStatus === 'checkout_requested')?.id;
   const inspectionHref = booking ? `/manager/booking/${booking.id}/inspection${inspectionVisitId ? `?visitId=${inspectionVisitId}` : ''}` : '';
 
+  // The booked end (after any extension) of the visit the chef is still checked in to.
+  const overstayEndAt = booking?.closeout?.visits?.find(visit => visit.arrivalRecorded && lateCheckoutOpen(visit))?.scheduledEndAt ?? visitBounds?.endAt ?? null;
   const nextStep = (() => {
     if (!booking) return '';
     const chef = chefName;
@@ -1248,7 +1248,10 @@ export default function BookingDetailsPage() {
       case 'in_session':
         return isManagerView ? t('bdhNextManagerInSession', { chef, time: visitBounds ? clockTime(visitBounds.endAt) : '' })
           : t('bdhNextChefInSession', { time: visitBounds ? clockTime(visitBounds.endAt) : '' });
-      case 'time_ended_in_session': return isManagerView ? t('bdhNextManagerTimeEnded', { chef }) : t('bdhNextChefTimeEnded');
+      case 'time_ended_in_session': {
+        const end = overstayEndAt ? `${clockTime(overstayEndAt)} ${friendlyTimezoneName(tz, lang)}` : '';
+        return isManagerView ? t('bdhNextManagerTimeEnded', { chef, end }) : t('bdhNextChefTimeEnded', { end, kitchen: kitchenName });
+      }
       case 'checkout_review':
         if (isManagerView && inspectionCanRespond && booking.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt)
           return t('bdhNextManagerReviewPayout', { chef, amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) });
@@ -1316,7 +1319,7 @@ export default function BookingDetailsPage() {
   if (managerCanManage) menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : booking?.status === 'confirmed' ? t('bdhChangeBooking') : t('bdhReviewCancellation'), icon: CalendarX, onSelect: openManagementDialog });
   if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
     if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
-    menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => setFixOpen(true) });
+    menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => { setFixAction(undefined); setFixOpen(true); } });
   }
   if (canDownload) menuItems.push({ key: 'download', label: isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt'), icon: Download, onSelect: () => void handleDownloadInvoice() });
   menuItems.push({ key: 'help', label: t('bdhGetHelp'), icon: LifeBuoy, onSelect: goToHelp });
@@ -1479,6 +1482,19 @@ export default function BookingDetailsPage() {
             <span className={`h-1.5 w-1.5 rounded-full ${dotClass[pillTone]}`} aria-hidden />{t(pillKey)}
           </span>
           <p role="status" className="text-sm leading-relaxed text-foreground/80" data-testid="booking-next-step">{sentence(nextStep)}</p>
+          {isManagerView && phase === 'time_ended_in_session' && (
+            // The chef is still checked in after the booked end: reach them, or record when they left; once a
+            // departure is on the record, "Charge for extra time" appears in Extra time below.
+            <div className="space-y-1.5" data-testid="overstay-actions">
+              <div className="flex flex-wrap gap-2">
+                {messageAllowed && <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => void openBookingConversation()} disabled={openingConversation}>
+                  <MessageSquare className="mr-1.5 h-4 w-4" aria-hidden />{t('bdhOverstayMessage', { chef: chefName })}</Button>}
+                <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => { setFixAction('departure'); setFixOpen(true); }}>
+                  <LogOut className="mr-1.5 h-4 w-4" aria-hidden />{t('bdhOverstayRecordLeft')}</Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('bdhOverstayHint')}</p>
+            </div>
+          )}
           {isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && !visitOver && visitBounds && Date.now() < visitBounds.endAt.getTime() && (
             <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
               {t('rlManagerLine', { chef: chefName, duration: t(`rlDurationShort${booking.runningLate.minutes}`), time: clockTime(booking.runningLate.reportedAt) })}
@@ -1496,7 +1512,8 @@ export default function BookingDetailsPage() {
           <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
           <KitchenBookingChanges timezone={booking.location?.timezone} key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
           {['confirmed', 'completed'].includes(booking.status) && (
-            <SessionExtensionsCard key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails} />
+            <SessionExtensionsCard key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails}
+              refreshKey={[booking.status, booking.checkinStatus, booking.endTime, ...(booking.visits || []).map(visit => visit.checkinStatus)].join('|')} />
           )}
 
           {/* ── Visit ── */}
@@ -1520,7 +1537,7 @@ export default function BookingDetailsPage() {
               {(visitStarted || isManagerView) && (
                 <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
                   chefName={chefName} closeout={booking.closeout} embedded
-                  {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, hideArrivalStatus: codeShowsArrival } : {})}
+                  {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, fixAction, hideArrivalStatus: codeShowsArrival } : {})}
                   visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />
               )}
               {isManagerView && ['confirmed', 'completed'].includes(booking.status) && (

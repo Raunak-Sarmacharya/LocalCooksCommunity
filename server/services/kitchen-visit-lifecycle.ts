@@ -52,11 +52,13 @@ async function finishBookingIfAllVisitsDone(bookingId: number, transaction?: Par
   return transaction ? persist(transaction) : db.transaction(persist);
 }
 
-async function updateConfirmedVisit(bookingId: number,visitId: number,expectedStatus: typeof kitchenBookingVisits.$inferSelect.checkinStatus,values: Partial<typeof kitchenBookingVisits.$inferInsert>,expectedParentUpdatedAt?: Date, duties?: VisitDuties, arrival?: ArrivalInput) {
+async function updateConfirmedVisit(bookingId: number,visitId: number,expectedStatus: typeof kitchenBookingVisits.$inferSelect.checkinStatus,values: Partial<typeof kitchenBookingVisits.$inferInsert>,expectedParentUpdatedAt?: Date, duties?: VisitDuties, arrival?: ArrivalInput, lateDeparture = false) {
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
     const [parent]=await tx.select({ status: kitchenBookings.status,updatedAt: kitchenBookings.updatedAt }).from(kitchenBookings).where(eq(kitchenBookings.id,bookingId)).limit(1);
-    if(parent?.status!=='confirmed'||(expectedParentUpdatedAt&&parent.updatedAt.getTime()!==expectedParentUpdatedAt.getTime())) return [];
+    // A late departure may land after the booking already reads "completed" (its booked time and grace are over).
+    const parentOpen = parent?.status === 'confirmed' || lateDeparture && parent?.status === 'completed';
+    if(!parentOpen||(expectedParentUpdatedAt&&parent.updatedAt.getTime()!==expectedParentUpdatedAt.getTime())) return [];
     if (values.checkinStatus === 'checked_in') await validateCurrentKitchenSubmission(tx, bookingId, 'arrival', values.checkinPhotoUrls as string[] | undefined, values.checkinChecklistItems as ChecklistItems | undefined);
     if (values.checkinStatus === 'checkout_requested') await validateCurrentKitchenSubmission(tx, bookingId, 'departure', values.checkoutPhotoUrls as string[] | undefined, values.checkoutChecklistItems as ChecklistItems | undefined);
     // Lock order: booking (above) -> visit -> challenge. The code is a gate here, not another writer of check-in state.
@@ -74,6 +76,8 @@ async function updateConfirmedVisit(bookingId: number,visitId: number,expectedSt
     if (changed.length && values.checkinStatus === 'checkout_requested') await queueBookingLifecycleEvent(tx, bookingId,
       'checkout_requested', 'Ready for kitchen inspection', 'The chef has requested checkout for this visit. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
+    // Re-derive the saved clock (inspection deadline, payout timing) from the late departure.
+    if (changed.length && lateDeparture && parent?.status === 'completed') await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
     if(changed.length&&values.checkinStatus==='checked_out') await queueBookingLifecycleEvent(tx,bookingId,'checkout_cleared','Kitchen inspection complete','The kitchen finished reviewing this visit. Open your booking for any remaining visits.',values.checkoutApprovedBy||undefined,{ visitId,recipientPolicy: 'chef' });
     if (changed.length && values.checkinStatus === 'checked_out' && inRecurringWorker()) await finishBookingIfAllVisitsDone(bookingId, tx);
     return changed;
@@ -132,7 +136,13 @@ export async function checkoutKitchenVisit(
 ): Promise<VisitResult> {
   const context = await visitContext(bookingId, visitId);
   if (!context || context.booking.chefId !== chefId) return { success: false, error: 'Visit not found' };
-  if (context.booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
+  // Late departure: still checked in after the booked end. Allowed until the inspection window closes; the recorded
+  // departure is the real time (now), so the kitchen can charge for the extra time.
+  const lateDeparture = context.visit.checkinStatus === 'checked_in' && context.booking.status === 'completed'
+    && await (await import('./clock-closeout')).lateDepartureOpen(context.booking, context.timezone || DEFAULT_TIMEZONE,
+      await db.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)), visitId, context.locationId);
+  if (context.booking.status !== 'confirmed' && !lateDeparture) return { success: false, error: context.booking.status === 'completed'
+    ? 'This visit’s checkout window has closed. Message the kitchen if you need your departure recorded.' : 'Booking is not confirmed' };
   const duties = await kitchenDuties(bookingId);
   const departureOnly = !duties.arrival.enabled && duties.departure.enabled && context.visit.checkinStatus === 'not_checked_in';
   const timezone = context.timezone || DEFAULT_TIMEZONE;
@@ -151,7 +161,7 @@ export async function checkoutKitchenVisit(
     checkoutNotes: notes || null, checkoutPhotoUrls: photos || [], checkoutChecklistItems: checklist || [],
     actualEndTime: new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now),
     updatedAt: now,
-  }, context.booking.updatedAt, duties);
+  }, context.booking.updatedAt, duties, undefined, lateDeparture);
   if (!updated) return { success: false, error: 'Visit status changed; refresh and try again' };
   await sendCheckoutRequestNotification(bookingId, chefId, visitId);
   return { success: true, bookingId, visitId, checkinStatus: 'checkout_requested' };

@@ -156,3 +156,31 @@ export function closeoutTransition(saved: CloseoutSnapshot, projection: BookingC
     phase: projection.phase, visitPhases: Object.fromEntries(projection.visits.map(visit => [visit.key, visit.phase])),
     inspections, nextDueAt: projection.nextDueAt };
 }
+
+/**
+ * A chef still checked in after the booked end can always check out late (and the kitchen can record when they left)
+ * until the visit's inspection window closes. Callers check that the visit is still `checked_in`.
+ */
+export function lateCheckoutOpen(visit: Pick<VisitCloseout, 'phase' | 'inspection'> | null | undefined) {
+  return !!visit && ['booked_time_ended', 'ended'].includes(visit.phase) && ['not_due', 'due'].includes(visit.inspection.outcome);
+}
+
+/**
+ * When the chef actually left: the kitchen's recorded departure time ("left without checking out") when one exists,
+ * else the chef's own checkout time. The recorded-at time of a manager entry is never the departure.
+ */
+export function recordedDepartureAt(row: { checkoutRequestedAt?: Date | string | null; checkedOutAt?: Date | string | null; assistanceHistory?: unknown } | null | undefined): Date | null {
+  if (!row) return null;
+  const history = Array.isArray(row.assistanceHistory) ? row.assistanceHistory as Array<{ action?: string; actualAt?: string }> : [];
+  const assisted = [...history].reverse().find(entry => entry?.action === 'departure' && typeof entry.actualAt === 'string');
+  const value = assisted?.actualAt ?? row.checkoutRequestedAt ?? row.checkedOutAt;
+  if (!value) return null;
+  const at = new Date(value);
+  return Number.isFinite(at.getTime()) ? at : null;
+}
+
+/** Booked hours from the saved visit clocks (start–end of every visit), so extensions and early starts always count. */
+export function snapshotBookedHours(snapshot: Pick<CloseoutSnapshot, 'visits'>) {
+  const minutes = snapshot.visits.reduce((sum, visit) => sum + (instant(visit.scheduledEndAt) - instant(visit.scheduledStartAt)) / 60_000, 0);
+  return Math.round(minutes / 60 * 100) / 100;
+}
