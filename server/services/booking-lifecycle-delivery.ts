@@ -9,7 +9,7 @@ import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { bookingLifecycleEvents, users, kitchens, locations, kitchenBookings, kitchenBookingVisits, emailLogs, storageBookings, equipmentBookings, storageListings, equipmentListings, paymentTransactions } from '@shared/schema';
 import { db } from '../db';
 import { notificationService } from './notification.service';
-import { sendEmail, generateBookingConfirmationEmail, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, emailLocalDateTime, emailZoneName, emailClock } from '../email';
+import { sendEmail, generateBookingConfirmationEmail, generateBookingRequestEmail, generateBookingNotificationEmail, bookingResponseDeadline, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, emailLocalDateTime, emailZoneName, emailClock } from '../email';
 import { resolveKitchenTracking } from '@shared/kitchen-tracking';
 import { adminBookingTransactionsPath } from '@shared/admin-booking-link';
 import { getAppBaseUrl } from '../config';
@@ -200,6 +200,22 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         ...storage.map(({ item, name }) => `${name}: ${date(item.startDate)}–${date(item.endDate)}. Storage removal is separate from kitchen checkout.`)].join('; '),
     };
   }
+  // A new request gets the same request templates as the legacy routes: deadline, hold, total.
+  let request: Omit<Parameters<typeof generateBookingRequestEmail>[0], 'chefEmail'> | undefined;
+  if (kind === 'requested') {
+    const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, location: locations }).from(kitchenBookings)
+      .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .where(eq(kitchenBookings.id, bookingId)).limit(1);
+    const [payment] = row?.booking.paymentIntentId ? await tx.select({ amount: paymentTransactions.amount, status: paymentTransactions.status })
+      .from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId)).limit(1) : [];
+    if (row) request = { bookingDate: row.booking.bookingDate, startTime: row.booking.startTime, endTime: row.booking.endTime,
+      selectedSlots: row.booking.selectedSlots, operatingWindowStartTime: row.booking.operatingWindowStartTime,
+      timezone: row.location.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchen.name, locationName: row.location.name,
+      locationAddress: row.location.address || undefined, referenceCode: row.booking.referenceCode, bookingId,
+      specialNotes: row.booking.specialNotes || undefined, chefName: nameOf(context.chefId) || 'the chef',
+      responseDeadline: bookingResponseDeadline(row.booking.createdAt!), totalCents: payment ? Number(payment.amount) : undefined,
+      paymentState: payment?.status === 'authorized' ? 'held' : payment?.status === 'succeeded' ? 'paid' : 'pending' };
+  }
   const confirmationTime = new Date();
   const arrivalDetails = confirmation ? await confirmationArrivalDetails(bookingId, tx, recipients.find(person => person.id === context.chefId)?.locale, confirmationTime) : undefined;
   for (const person of recipients.filter(person => arrivalNotice ? person.id === context.chefId : metadata.recipientPolicy === 'manager' ? person.id === context.managerId
@@ -219,6 +235,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
         ...(confirmation && chef ? { confirmation: { ...confirmation, arrivalInstructions: undefined, departureInstructions: undefined } } : {}),
+        ...(request && !localCooks ? { content: chef
+          ? generateBookingRequestEmail({ ...request, chefName: nameOf(person.id) || 'there', chefEmail: person.email, locale: person.locale })
+          : generateBookingNotificationEmail({ ...request, managerEmail: person.email, managerName: nameOf(person.id) || undefined, bookingId, locale: person.locale }) } : {}),
         ...(confirmation ? { content: generateBookingConfirmationEmail({ ...confirmation,
           ...(chef ? arrivalDetails : { arrivalMode: arrivalDetails?.arrivalMode }),
           locale: person.locale, chefEmail: person.email, chefName: localCooks ? 'Local Cooks' : nameOf(person.id),

@@ -72,8 +72,8 @@ export async function assistKitchenVisit(bookingId: number, managerId: number, i
     else await tx.update(kitchenBookings).set(values).where(eq(kitchenBookings.id, bookingId));
     // Manager-assisted arrival needs no code; it consumes the challenge (booking -> visit -> challenge lock order).
     if (input.action === 'arrival') await consumeForAssistedArrival(tx, { bookingId, visitId: visit?.id ?? null }, managerId);
-    await queueBookingLifecycleEvent(tx, bookingId, 'visit_assisted', `Manager-assisted ${input.action} recorded`,
-      `The kitchen manager recorded ${input.action} using reported or evidenced time ${actual.toISOString()}. Reason: ${input.reason.trim()}. Existing chef photos and checklists are preserved. ${input.action === 'departure' ? 'Inspection remains pending; this is not clearance or a charge.' : 'This is a manager statement, separate from chef submission.'}`,
+    await queueBookingLifecycleEvent(tx, bookingId, 'visit_assisted', `Visit ${input.action} time added`,
+      `The kitchen added the ${input.action} time for this visit. Note: ${input.reason.trim()}. ${input.action === 'departure' ? 'The kitchen will review checkout next.' : 'Open the booking to see the update.'}`,
       managerId, { visitId: visit?.id, action: input.action, actualAt: actual.toISOString(), recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
   });
   try { await deliverBookingLifecycleEvents(2, 20_000, bookingId); } catch { /* Durable intent is recoverable. */ }

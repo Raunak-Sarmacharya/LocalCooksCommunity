@@ -1,0 +1,105 @@
+/**
+ * Booking details header: one status, one next step and at most one primary action per role.
+ * Pure so the page and its tests share the same rules. Display only: no booking, payment or
+ * policy decision is made here.
+ */
+export type BookingHeaderPhase =
+  | 'pending' | 'confirmed' | 'today' | 'checkin_open' | 'in_session' | 'time_ended_in_session'
+  | 'checkout_review' | 'visit_ended' | 'completed' | 'no_show' | 'issue'
+  | 'cancellation_requested' | 'cancelled';
+
+export type BookingPillTone = 'amber' | 'blue' | 'green' | 'purple' | 'neutral' | 'grey' | 'red';
+
+export type BookingPrimaryAction = 'review_request' | 'review_cancellation' | 'review_checkout' | 'inspect_visit' | 'open_visit' | null;
+
+export interface BookingHeaderInput {
+  status: string;
+  checkinStatus?: string | null;
+  visits?: Array<{ checkinStatus: string }> | null;
+  /** Closeout phase of the (first) visit: upcoming | in_progress | booked_time_ended | ended. */
+  closeoutPhase?: string | null;
+  /** True while the manager can still inspect/respond for the visit. */
+  inspectionCanRespond?: boolean;
+  startAt?: Date | null;
+  endAt?: Date | null;
+  checkinOpensAt?: Date | null;
+  timezone?: string | null;
+  now?: number;
+}
+
+export function bookingHeaderPhase(input: BookingHeaderInput): BookingHeaderPhase {
+  const { status } = input;
+  if (status === 'cancelled' || status === 'rejected' || status === 'expired' || status === 'declined') return 'cancelled';
+  if (status === 'pending') return 'pending';
+  if (status === 'cancellation_requested') return 'cancellation_requested';
+  const visitStates = input.visits && input.visits.length > 1
+    ? input.visits.map(visit => visit.checkinStatus)
+    : [input.checkinStatus || 'not_checked_in'];
+  const ended = ['booked_time_ended', 'ended'].includes(input.closeoutPhase || '');
+  if (visitStates.includes('checkout_requested')) return 'checkout_review';
+  if (visitStates.includes('checked_in')) return ended ? 'time_ended_in_session' : 'in_session';
+  if (visitStates.includes('checkout_claim_filed')) return 'issue';
+  if (visitStates.includes('no_show')) return 'no_show';
+  const checkedOut = visitStates.length > 0 && visitStates.every(value => value === 'checked_out');
+  // Checked out but the kitchen can still inspect: the review is the open step.
+  if (checkedOut && status !== 'completed' && input.inspectionCanRespond) return 'checkout_review';
+  if (status === 'completed' || checkedOut) return 'completed';
+  if (ended) return 'visit_ended';
+  const now = input.now ?? Date.now();
+  if (input.endAt && now >= input.endAt.getTime()) return 'visit_ended';
+  if (input.checkinOpensAt && now >= input.checkinOpensAt.getTime()) return 'checkin_open';
+  if (input.startAt && input.timezone && sameKitchenDay(now, input.startAt.getTime(), input.timezone)) return 'today';
+  return 'confirmed';
+}
+
+function sameKitchenDay(a: number, b: number, timezone: string) {
+  try {
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    return day.format(a) === day.format(b);
+  } catch { return false; }
+}
+
+export function bookingPillTone(phase: BookingHeaderPhase): BookingPillTone {
+  switch (phase) {
+    case 'pending': case 'cancellation_requested': case 'issue': return 'amber';
+    case 'confirmed': case 'today': case 'checkin_open': return 'blue';
+    case 'in_session': case 'time_ended_in_session': return 'green';
+    case 'checkout_review': return 'purple';
+    case 'no_show': return 'red';
+    case 'cancelled': return 'grey';
+    default: return 'neutral';
+  }
+}
+
+/** Chef or manager; the single red action. Everything else is secondary or in the overflow menu. */
+export function bookingPrimaryAction(phase: BookingHeaderPhase, manager: boolean, inspectionCanRespond = false): BookingPrimaryAction {
+  if (manager) {
+    if (phase === 'pending') return 'review_request';
+    if (phase === 'cancellation_requested') return 'review_cancellation';
+    if (phase === 'checkout_review') return 'review_checkout';
+    if (phase === 'visit_ended' && inspectionCanRespond) return 'inspect_visit';
+    return null;
+  }
+  return ['checkin_open', 'in_session', 'time_ended_in_session'].includes(phase) ? 'open_visit' : null;
+}
+
+/** The booking conversation endpoint only opens for these statuses (server rule; see checkpoint gaps). */
+export const MESSAGING_STATUSES = ['pending', 'confirmed', 'cancellation_requested', 'completed'] as const;
+export const canMessage = (status: string) => (MESSAGING_STATUSES as readonly string[]).includes(status);
+
+/** Contact details (phone) are shown only once the booking is confirmed. */
+export const contactVisible = (status: string) => ['confirmed', 'cancellation_requested', 'completed'].includes(status);
+
+/** Avoids "a.m.." when a localized time that already ends in a period closes a sentence. */
+export const sentence = (text: string) => text.replace(/\.\.(?=\s|$)/g, '.');
+
+/** "2:00 p.m." + "3:00 p.m." → "2:00–3:00 p.m."; other formats are joined unchanged. */
+export function timeRange(start: string, end: string) {
+  const suffix = /\s([ap]\.?\s?m\.?)$/i;
+  const a = start.match(suffix), b = end.match(suffix);
+  if (a && b && a[1].toLowerCase() === b[1].toLowerCase()) return `${start.replace(suffix, '')}–${end}`;
+  return `${start}–${end}`;
+}
+
+export const initials = (name?: string | null) => (name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2)
+  .map(part => part[0]!.toUpperCase()).join('') || '?';

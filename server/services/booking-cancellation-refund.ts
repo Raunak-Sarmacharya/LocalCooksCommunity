@@ -176,7 +176,7 @@ export async function acceptCancellationRefund(bookingId: number, managerId: num
         ? { ...item, status: itemStatus, cancellationRequested: false, rejected: true } : item), updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
     }
     await queueBookingLifecycleEvent(tx, bookingId, 'cancellation_reviewed', scope ? 'Selected add-on cancellation accepted' : 'Kitchen cancellation accepted',
-      `${scope ? 'Selected add-on cancellation' : 'Cancellation'} accepted with a recorded manager-share refund quote. Refunds are being verified. Actual processing costs remain deducted; platform service fees require a separate manager request and admin approval. Occupied storage remains reserved until verified removal.`, managerId, { action: 'accept', quote: reviewed.quote });
+      `${scope ? 'Selected add-on cancellation' : 'Cancellation'} accepted. We’re checking the refund from the kitchen’s share. Processing costs are kept; the kitchen can ask Local Cooks to review the service fee separately. Storage in use stays reserved until collection is confirmed.`, managerId, { action: 'accept', quote: reviewed.quote });
   });
   await retryCancellationRefund(bookingId, managerId);
   return readCancellationRefund(bookingId, managerId, 'manager', scope);
@@ -213,8 +213,8 @@ export async function retryCancellationRefund(bookingId: number, managerId: numb
         if (['kitchen', 'bundle'].includes(source.bookingType)) await tx.update(kitchenBookings).set({ paymentStatus: status, updatedAt: new Date() })
           .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.paymentIntentId, source.paymentIntentId!)));
         await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: status, eventType: 'cancellation_refund_verified', description: 'Stripe verified the reserved cancellation refund; bank receipt is not confirmed', metadata: { ...operation, refundId: result.refundId }, createdBy: managerId }, tx);
-        await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', 'Cancellation refund verified',
-          `Stripe verified a refund of ${(operation.managerRefund / 100).toFixed(2)} ${source.currency}. Processing costs remain deducted. Bank receipt is not confirmed.`, managerId, { transactionId: source.id, refundId: result.refundId });
+        await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', 'Refund sent',
+          `A refund of ${(operation.managerRefund / 100).toFixed(2)} ${source.currency} has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`, managerId, { transactionId: source.id, refundId: result.refundId });
       });
     } catch (error) {
       await db.transaction(async tx => {
@@ -224,8 +224,8 @@ export async function retryCancellationRefund(bookingId: number, managerId: numb
         if (operation?.status === 'recovery_required' && operation.error === (error as Error).message) return;
         await tx.update(paymentTransactions).set({ metadata: { ...saved, cancellationRefundOperation: { ...operation, status: 'recovery_required', error: (error as Error).message } }, updatedAt: new Date() }).where(eq(paymentTransactions.id, source.id));
         await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'cancellation_refund_recovery', description: 'Cancellation refund requires original-operation verification', metadata: { operationId: operation.id, error: (error as Error).message }, createdBy: managerId }, tx);
-        await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Cancellation refund needs verification',
-          'The cancellation is accepted, but this refund is not verified as complete. Local Cooks must verify the original provider refund and reversal. The source remains reserved against another refund; do not refund or pay again.',
+        await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your refund',
+          'The cancellation is accepted. Local Cooks is checking the refund and will confirm the next step. Please don’t send another payment or refund.',
           managerId, { transactionId: source.id, operationId: operation.id, error: (error as Error).message });
       });
     }

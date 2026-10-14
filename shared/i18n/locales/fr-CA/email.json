@@ -197,5 +197,6 @@
   "bookingRequestPaidBody": "Votre paiement est enregistré, mais {kitchen} doit encore accepter la demande. Consultez la demande pour l’état actuel et les prochaines étapes.",
   "bookingNewRequestPendingBody": "Examinez cette demande et répondez au chef. La réservation n’est pas confirmée; consultez l’état du paiement.",
   "bookingClaimChargedHeading": "Paiement de réclamation enregistré",
-  "bookingClaimChargedBody": "Le paiement de la réclamation est enregistré. Consultez la réclamation pour voir le résultat et le paiement."
+  "bookingClaimChargedBody": "Le paiement de la réclamation est enregistré. Consultez la réclamation pour voir le résultat et le paiement.",
+  "bookingYourNote": "Votre note"
 }

@@ -1,3 +1,4 @@
+vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -26,15 +27,15 @@ it('saves a tracked live report with authentication and retains the retry key af
   expect(posts[0][0]).toBe('/api/commitment-problems/tour/20');
   expect(posts[0][1].headers.Authorization).toBe('Bearer fixture-token');
   expect(JSON.parse(posts[0][1].body).requestKey).toBe(JSON.parse(posts[1][1].body).requestKey);
-  expect(screen.getByText(/Mon–Fri, 9 AM–5 PM NL time/)).toBeInTheDocument(); client.clear();
+  expect(screen.getByText(/Mon–Fri, 9:00 a.m.–5:00 p.m. Newfoundland Time/)).toBeInTheDocument(); client.clear();
 });
 it('shows an open request to the manager without staff ownership language or resolution actions',async () => {
   const client=mount({role:'manager'},vi.fn(async()=>({ok:true,json:async()=>[{...problem,status:'acknowledged',claimedBy:1}]})));
-  expect(await screen.findByText(/Request #4/)).toHaveTextContent('In progress');
-  expect(screen.getByText(/Your request is still open/)).toBeInTheDocument();
+  expect(await screen.findByText(/Support request #4/)).toHaveTextContent('Local Cooks is looking into it');
+  expect(screen.getByText(/We’re still looking into this/)).toBeInTheDocument();
   expect(screen.queryByText(/owns|first response|staff #/i)).not.toBeInTheDocument();
-  expect(screen.queryByRole('button',{name:'Resolve request'})).not.toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Open current tour'})).toHaveAttribute('href','/manager/dashboard?view=viewings&viewing=20'); client.clear();
+  expect(screen.queryByRole('button',{name:'Mark as resolved'})).not.toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'Open tour'})).toHaveAttribute('href','/manager/dashboard?view=viewings&viewing=20'); client.clear();
 });
 it('connects the admin queue claim to its current persisted revision',async () => {
   const fetcher=vi.fn(async()=>({ok:true,json:async()=>[problem]}));
@@ -49,7 +50,7 @@ it('connects the admin queue claim to its current persisted revision',async () =
 it.each(['booking','tour'] as const)('keeps %s help discoverable without an empty problems banner or open form', async kind => {
   const client=mount({kind,id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[],reportingAvailable:true})})));
   expect(await screen.findByRole('button',{name:'Report a problem'})).toBeInTheDocument();
-  expect(screen.getByRole('heading',{name:`Need help with this ${kind}?`})).toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:'Need a hand?'})).toBeInTheDocument();
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.queryByText(/No tracked problems|owns the first response|Booking and tour problems/)).not.toBeInTheDocument(); client.clear();
 });
@@ -57,30 +58,30 @@ it.each(['booking','tour'] as const)('keeps %s help discoverable without an empt
 it('embeds booking reports without repeating the contact card or help heading', async () => {
   const client=mount({kind:'booking',id:20,canReport:true,embedded:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[],reportingAvailable:true})})));
   expect(await screen.findByRole('button',{name:'Report a problem'})).toBeInTheDocument();
-  expect(screen.queryByRole('heading',{name:'Need help with this booking?'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading',{name:'Need a hand?'})).not.toBeInTheDocument();
   expect(screen.queryByRole('link',{name:'support@localcooks.ca'})).not.toBeInTheDocument();
   client.clear();
 });
 
 it.each(['reported','acknowledged','escalated','resolved'])('shows existing %s reports even when new reporting is unavailable', async status => {
   const client=mount({kind:'tour',id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[{...problem,status}],reportingAvailable:false})})));
-  expect(await screen.findByText(/Request #4/)).toBeInTheDocument();
+  expect(await screen.findByText(/Support request #4/)).toBeInTheDocument();
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
   expect(screen.getByRole('link',{name:'support@localcooks.ca'})).toHaveAttribute('href','mailto:support@localcooks.ca');
-  expect(!!screen.queryByText(/Your request is still open|Your report has been received/)).toBe(status!=='resolved'); client.clear();
+  expect(!!screen.queryByText(/We’re still looking into this|Local Cooks has your report/)).toBe(status!=='resolved'); client.clear();
 });
 
 it('does not offer another staff member response controls before takeover', async () => {
   const client=mount({staff:true,role:'admin'},vi.fn(async()=>({ok:true,json:async()=>({problems:[{...problem,status:'acknowledged',claimedBy:1}],reportingAvailable:false,actorId:2})})));
-  expect(await screen.findByRole('button',{name:'Assign to me with reason'})).toBeDisabled();
-  expect(screen.queryByRole('button',{name:'Resolve request'})).not.toBeInTheDocument();
+  expect(await screen.findByRole('button',{name:'Take over with a note'})).toBeDisabled();
+  expect(screen.queryByRole('button',{name:'Mark as resolved'})).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('textbox'),{target:{value:'Taking over the customer response'}});
-  expect(screen.getByRole('button',{name:'Assign to me with reason'})).toBeEnabled(); client.clear();
+  expect(screen.getByRole('button',{name:'Take over with a note'})).toBeEnabled(); client.clear();
 });
 
 it('only the assigned staff member gets resolution controls and resolved requests have none', async () => {
   const client=mount({staff:true,role:'admin'},vi.fn(async()=>({ok:true,json:async()=>({problems:[{...problem,status:'acknowledged',claimedBy:1},{...problem,id:5,status:'resolved',claimedBy:1}],reportingAvailable:false,actorId:1})})));
-  expect(await screen.findByRole('button',{name:'Resolve request'})).toBeDisabled();
+  expect(await screen.findByRole('button',{name:'Mark as resolved'})).toBeDisabled();
   expect(screen.getAllByRole('textbox')).toHaveLength(1); client.clear();
 });
 
@@ -100,7 +101,7 @@ it('resets the report draft when the selected tour changes',async () => {
 it('lets current server eligibility enable reporting without reopening the parent tour',async () => {
   let available=false;
   const client=mount({kind:'tour',id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[],reportingAvailable:available})})));
-  await screen.findByRole('heading',{name:'Need help with this tour?'});
+  await screen.findByRole('heading',{name:'Need a hand?'});
   await waitFor(()=>expect(client.isFetching()).toBe(0));
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
   available=true;
@@ -110,7 +111,7 @@ it('lets current server eligibility enable reporting without reopening the paren
 
 it.each(['booking','tour'] as const)('explains when %s reporting opens while retaining support and existing replies', async kind => {
   const client=mount({kind,id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[problem],reportingAvailable:false,reportingOpensAt:'2026-10-05T12:00:00Z'})})));
-  expect(await screen.findByText(/Reporting opens at the scheduled start\./)).toHaveTextContent('Contact support if you need help.');
+  expect(await screen.findByText(/You can report a problem when your visit starts\./)).toHaveTextContent('Contact Local Cooks if you need help sooner.');
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
   expect(screen.getByRole('link',{name:'support@localcooks.ca'})).toHaveAttribute('href','mailto:support@localcooks.ca');
   expect(screen.getByRole('textbox',{name:'Add a reply'})).toBeInTheDocument(); client.clear();
@@ -162,10 +163,10 @@ it('closes a successful report and shows its persisted public trail to chef and 
   fireEvent.click(await screen.findByRole('button',{name:'Report a problem'}));
   fireEvent.change(screen.getByRole('textbox'),{target:{value:'Cannot enter the scheduled kitchen'}});
   fireEvent.click(screen.getByRole('button',{name:'Send report'}));
-  expect(await screen.findByText(/Report received. Follow its progress below/)).toBeInTheDocument();
+  expect(await screen.findByText(/Report sent. Follow updates and reply below/)).toBeInTheDocument();
   await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  expect(await screen.findByText(/Request #4/)).toBeInTheDocument();
-  expect(screen.getByText(/Latest update: Support is arranging access/)).toBeInTheDocument();
-  expect(screen.getByText('Response history')).toBeInTheDocument();
+  expect(await screen.findByText(/Support request #4/)).toBeInTheDocument();
+  expect(screen.getByText(/Latest reply: Support is arranging access/)).toBeInTheDocument();
+  expect(screen.getByText('Show replies')).toBeInTheDocument();
   expect(screen.queryByText('Private assignment')).not.toBeInTheDocument(); client.clear();
 });

@@ -2,34 +2,22 @@
  * TodaysKitchenBookings
  *
  * Manager view showing today's kitchen bookings with live check-in status.
- * Allows managers to: confirm check-in, clear checkout, file claims.
+ * Opens the booking or its focused inspection page for manager actions.
  * Mirrors PendingStorageCheckouts component pattern.
  */
 
-import { useState, useCallback } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { CheckCircle, Clock, User, Loader2, MoreHorizontal, Calendar, LogIn, LogOut, XCircle, ShieldCheck, FileWarning,  Camera, Upload, X,  } from "@/components/ui/manager-icons"
-import { toast } from "sonner"
+import { useLocation } from "wouter"
+import { useQuery } from "@tanstack/react-query"
+import { CheckCircle, Clock, User, MoreHorizontal, Calendar, LogOut, XCircle, ShieldCheck, FileWarning,  } from "@/components/ui/manager-icons"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { CurrencyInput } from "@/components/ui/currency-input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AppDialogContent } from "@/components/ui/app-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
-import { formatInTimezone as format } from "@shared/timezone-utils"
-import { useSessionFileUpload } from "@/hooks/useSessionFileUpload"
-import { getR2ProxyUrl } from "@/utils/r2-url-helper"
-import { SmartImage } from "@/components/ui/smart-image";
+import { friendlyTimezoneName, formatInTimezone as format } from "@shared/timezone-utils"
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { ct } from "@/i18n/chef-ns";
@@ -69,6 +57,7 @@ interface TodayBooking {
   checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null
   checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null
   kitchenName: string | null
+  timezone?: string | null
   locationName: string | null
   chefEmail: string | null
   chefName?: string | null
@@ -142,44 +131,10 @@ function getCheckinBadge(checkinStatus: string | null) {
 
 export function TodaysKitchenBookings() {
   
-  const queryClient = useQueryClient()
-  const [selectedBooking, setSelectedBooking] = useState<TodayBooking | null>(
-    null
-  )
-  const [actionMode, setActionMode] = useState<
-    "view" | "clear-checkout" | "file-claim"
-  >("view")
-  const [notes, setNotes] = useState("")
-  const [claimTitle, setClaimTitle] = useState("")
-  const [claimDescription, setClaimDescription] = useState("")
-  const [claimAmount, setClaimAmount] = useState("")
-  const [evidencePhotos, setEvidencePhotos] = useState<string[]>([])
-
-  const { uploadFile: uploadEvidenceFile, isUploading: isUploadingEvidence, uploadProgress: evidenceUploadProgress } = useSessionFileUpload({
-    maxSize: 4.5 * 1024 * 1024,
-    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-    onSuccess: (response) => {
-      setEvidencePhotos(prev => [...prev, response.url])
-    },
-    onError: (error) => {
-      toast.error(error)
-    },
-  })
-
-  const handleEvidencePhotoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (evidencePhotos.length >= 10) {
-        toast.error(tt("maximumPhotosAllowed", { count: 10 }))
-        return
-      }
-      uploadEvidenceFile(file, "damage-claims")
-      e.target.value = ''
-    }
-  }, [uploadEvidenceFile, evidencePhotos.length])
+  const [, navigate] = useLocation()
 
   // Fetch upcoming bookings
-  const { data, isLoading, refetch } = useQuery<TodayResponse>({
+  const { data, isLoading, error, refetch } = useQuery<TodayResponse>({
     queryKey: ["/api/manager/bookings/upcoming"],
     queryFn: async () => {
       const headers = await getAuthHeaders()
@@ -254,110 +209,9 @@ export function TodaysKitchenBookings() {
       return new Date(a.viewing?.scheduledAt).getTime() - new Date(b.viewing?.scheduledAt).getTime();
     });
 
-  // Clear checkout mutation
-  const clearCheckoutMutation = useMutation({
-    mutationFn: async ({
-      bookingId,
-      visitId,
-      managerNotes,
-    }: {
-      bookingId: number
-      visitId?: number
-      managerNotes?: string
-    }) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(
-        `/api/manager/bookings/${bookingId}/clear-kitchen-checkout`,
-        {
-          method: "POST",
-          headers,
-          credentials: "include",
-          body: JSON.stringify({ sharedManagerMessage: managerNotes, visitId }),
-        }
-      )
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to clear checkout")
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      toast.success(tt("checkoutClearedNoIssues"))
-      queryClient.invalidateQueries({
-        queryKey: ["/api/manager/bookings/today"],
-      })
-      closeDialog()
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
-  // File claim mutation
-  const fileClaimMutation = useMutation({
-    mutationFn: async ({
-      bookingId,
-      visitId,
-      claimData,
-    }: {
-      bookingId: number
-      visitId?: number
-      claimData: {
-        claimTitle: string
-        claimDescription: string
-        claimedAmountCents: number
-        managerNotes?: string
-      }
-    }) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(
-        `/api/manager/bookings/${bookingId}/kitchen-checkout-claim`,
-        {
-          method: "POST",
-          headers,
-          credentials: "include",
-          body: JSON.stringify({ ...claimData, managerNotes: undefined, sharedManagerMessage: claimData.managerNotes, visitId }),
-        }
-      )
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to file claim")
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      toast.success(tt("damageClaimFiled"))
-      queryClient.invalidateQueries({
-        queryKey: ["/api/manager/bookings/today"],
-      })
-      closeDialog()
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
-  const closeDialog = () => {
-    setSelectedBooking(null)
-    setActionMode("view")
-    setNotes("")
-    setClaimTitle("")
-    setClaimDescription("")
-    setClaimAmount("")
-    setEvidencePhotos([])
-  }
-
-  const openAction = (
-    booking: TodayBooking,
-    mode: typeof actionMode
-  ) => {
-    setSelectedBooking(booking)
-    setActionMode(mode)
-    setNotes("")
-    setClaimTitle("")
-    setClaimDescription("")
-    setClaimAmount("")
-    setEvidencePhotos([])
+  const openAction = (booking: TodayBooking, mode: 'view' | 'clear-checkout' | 'file-claim') => {
+    navigate(mode === 'view' ? `/manager/booking/${booking.id}`
+      : `/manager/booking/${booking.id}/inspection${booking.visitId ? `?visitId=${booking.visitId}` : ''}`)
   }
 
   // Stats
@@ -414,8 +268,8 @@ export function TodaysKitchenBookings() {
         </CardHeader>
 
         <CardContent>
-          {isLoading ? (
-            <div className="space-y-3 py-3" role="status" aria-label="Loading bookings">
+          {error ? <div role="alert" className="space-y-2 py-3 text-sm"><p>{mt("failedToFetchToday")}</p><Button variant="outline" onClick={() => void refetch()}>{ct("fixRetry")}</Button></div> : isLoading ? (
+            <div className="space-y-3 py-3" role="status" aria-label={mt("loadingBookings")}>
               {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-lg" />)}
             </div>
           ) : bookings.length === 0 ? (
@@ -431,14 +285,14 @@ export function TodaysKitchenBookings() {
                   <div className="min-w-0"><p className="break-words font-semibold">{booking.kitchenName}</p><p className="text-sm text-muted-foreground">{format(new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`), "MMM d, yyyy")} · {formatTime(booking.startTime)} – {formatTime(booking.endTime)}</p></div>
                   {booking.status === 'pending' ? <Badge variant="outline">{mt("awaitingApproval")}</Badge> : getCheckinBadge(booking.checkinStatus)}
                 </div>
+                {booking.timezone && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(booking.timezone, i18n.language)}</p>}
                 <p className="break-words text-sm">{booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}</p>
-                {booking.visitId && <p className="text-xs text-muted-foreground">Visit {(booking.visitBlockIndex ?? 0) + 1}</p>}
+                {booking.visitId && <p className="text-xs text-muted-foreground">{ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</p>}
                 {booking.referenceCode && <p className="break-all font-mono text-xs text-muted-foreground">{booking.referenceCode}</p>}
                 <div className="flex flex-wrap gap-2 border-t pt-3">
                   <Button variant="outline" size="sm" onClick={() => openAction(booking, "view")}>{mt("viewDetails")}</Button>
                   {booking.checkinStatus === "checkout_requested" && <>
-                    <Button variant="outline" size="sm" onClick={() => openAction(booking, "clear-checkout")}>{mt("clearNoIssues")}</Button>
-                    <Button variant="outline" size="sm" onClick={() => openAction(booking, "file-claim")}>{mt("fileDamageClaim")}</Button>
+                    <Button variant="outline" size="sm" onClick={() => openAction(booking, "clear-checkout")}>{ct('fixInspection')}</Button>
                   </>}
                 </div>
               </article>)}
@@ -468,8 +322,9 @@ export function TodaysKitchenBookings() {
                         <div className="text-muted-foreground mb-1">
                           {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
                         </div>
+                        {booking.timezone && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(booking.timezone, i18n.language)}</p>}
                         {booking.visitId && (
-                          <div className="text-xs text-muted-foreground">Visit {(booking.visitBlockIndex ?? 0) + 1}</div>
+                          <div className="text-xs text-muted-foreground">{ct('inspectVisit', { number: (booking.visitBlockIndex ?? 0) + 1 })}</div>
                         )}
                         <div className="whitespace-nowrap">
                           {booking.status === 'pending' ? (
@@ -491,7 +346,7 @@ export function TodaysKitchenBookings() {
                       )}
                       {booking.status === 'pending' && (
                         <Badge variant="outline" className="mt-1 text-purple-800 border-purple-300 bg-purple-100">
-                          PENDING
+                          {mt("awaitingApproval")}
                         </Badge>
                       )}
                       </TableCell>
@@ -528,15 +383,8 @@ export function TodaysKitchenBookings() {
                                   }
                                 >
                                   <ShieldCheck className="h-4 w-4 mr-2" />
-                                  {mt("clearNoIssues")}
+                                  {ct('fixInspection')}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    openAction(booking, "file-claim")
-                                  }
-                                  className="text-amber-600 focus:text-amber-700"
-                                >
-                                  <FileWarning className="h-4 w-4 mr-2" />{mt("fileDamageClaim")}</DropdownMenuItem>
                               </>
                             )}
                           </DropdownMenuContent>
@@ -646,410 +494,6 @@ export function TodaysKitchenBookings() {
         </CardContent>
       </Card>
 
-      {/* Action Dialog */}
-      <Dialog
-        open={selectedBooking !== null}
-        onOpenChange={(open) => !open && closeDialog()}
-      >
-        <AppDialogContent className="sm:max-w-md">
-          {selectedBooking && (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  {actionMode === "clear-checkout" && mt("clearCheckout")}
-                  {actionMode === "file-claim" && mt("fileDamageClaim")}
-                  {actionMode === "view" && mt("bookingDetailsTitle")}
-                </DialogTitle>
-                <DialogDescription>
-                  {selectedBooking.kitchenName} ·{" "}
-                  {formatTime(selectedBooking.startTime)} –{" "}
-                  {formatTime(selectedBooking.endTime)}
-                  {selectedBooking.visitId && ` · Visit ${(selectedBooking.visitBlockIndex ?? 0) + 1}`}
-                  {selectedBooking.referenceCode &&
-                    ` · ${selectedBooking.referenceCode}`}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="py-4 space-y-4">
-                {/* Common booking info */}
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("chef")}</span>
-                    <span>
-                      {selectedBooking.chefEmail ||
-                        `Chef #${selectedBooking.chefId}`}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{mt("status")}</span>
-                    {getCheckinBadge(selectedBooking.checkinStatus)}
-                  </div>
-                  {selectedBooking.checkedInAt && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{mt("checkedIn")}</span>
-                      <span className="text-xs">
-                        {format(
-                          new Date(selectedBooking.checkedInAt),
-                          "h:mm a"
-                        )}
-                        {selectedBooking.checkedInMethod &&
-                          ` (${selectedBooking.checkedInMethod})`}
-                      </span>
-                    </div>
-                  )}
-                  {selectedBooking.checkoutRequestedAt && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{mt("checkoutRequested")}</span>
-                      <span className="text-xs">
-                        {format(
-                          new Date(selectedBooking.checkoutRequestedAt),
-                          "h:mm a"
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Chef's Check-In / Check-Out Evidence (photos + notes) */}
-                {((selectedBooking.checkinPhotoUrls && selectedBooking.checkinPhotoUrls.length > 0) ||
-                  (selectedBooking.checkoutPhotoUrls && selectedBooking.checkoutPhotoUrls.length > 0) ||
-                  selectedBooking.checkinNotes ||
-                  selectedBooking.checkoutNotes) && (
-                  <>
-                    <Separator />
-                    <div className="space-y-3">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{mt("chefSVerification")}</p>
-
-                      {/* Check-in section */}
-                      {(selectedBooking.checkinPhotoUrls?.length ||
-                        selectedBooking.checkinNotes) && (
-                        <div className="rounded-lg border bg-green-50/40 border-green-200 p-3 space-y-2">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-green-800">
-                            <LogIn className="h-3 w-3" />{mt("checkIn2")}</div>
-                          {selectedBooking.checkinNotes && (
-                            <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                              {selectedBooking.checkinNotes}
-                            </p>
-                          )}
-                          {selectedBooking.checkinChecklistItems && selectedBooking.checkinChecklistItems.length > 0 && (
-                            <div className="space-y-1 mt-1">
-                              <p className="text-[11px] text-green-700 font-medium">{mt("checklistItemsConfirmed")}</p>
-                              {selectedBooking.checkinChecklistItems.map((item, index) => (
-                                <div key={item.id} className="flex items-center gap-1.5">
-                                  <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
-                                  <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
-                                  <span className={cn("text-[11px]", item.checked ? "text-green-700" : "text-red-600 line-through")}>{item.label}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {selectedBooking.checkinPhotoUrls &&
-                            selectedBooking.checkinPhotoUrls.length > 0 && (
-                              <div className="grid grid-cols-3 gap-2">
-                                {selectedBooking.checkinPhotoUrls.map((url, i) => {
-                                  const proxied = getR2ProxyUrl(url)
-                                  return (
-                                    <a
-                                      key={`ci-${i}`}
-                                      href={proxied}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block"
-                                    >
-                                      <SmartImage
-                                        src={proxied}
-                                        alt={`Check-in photo ${i + 1}`}
-                                        className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
-                                        onError={(e) => {
-                                          ;(e.currentTarget as HTMLImageElement).style.opacity = "0.3"
-                                        }}
-                                      />
-                                    </a>
-                                  )
-                                })}
-                              </div>
-                            )}
-                        </div>
-                      )}
-
-                      {/* Checkout section */}
-                      {(selectedBooking.checkoutPhotoUrls?.length ||
-                        selectedBooking.checkoutNotes) && (
-                        <div className="rounded-lg border bg-blue-50/40 border-blue-200 p-3 space-y-2">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-blue-800">
-                            <LogOut className="h-3 w-3" />{mt("checkOut2")}</div>
-                          {selectedBooking.checkoutNotes && (
-                            <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                              {selectedBooking.checkoutNotes}
-                            </p>
-                          )}
-                          {selectedBooking.checkoutChecklistItems && selectedBooking.checkoutChecklistItems.length > 0 && (
-                            <div className="space-y-1 mt-1">
-                              <p className="text-[11px] text-blue-700 font-medium">{mt("checklistItemsConfirmed")}</p>
-                              {selectedBooking.checkoutChecklistItems.map((item, index) => (
-                                <div key={item.id} className="flex items-center gap-1.5">
-                                  <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
-                                  <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
-                                  <span className={cn("text-[11px]", item.checked ? "text-blue-700" : "text-red-600 line-through")}>{item.label}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {selectedBooking.checkoutPhotoUrls &&
-                            selectedBooking.checkoutPhotoUrls.length > 0 && (
-                              <div className="grid grid-cols-3 gap-2">
-                                {selectedBooking.checkoutPhotoUrls.map((url, i) => {
-                                  const proxied = getR2ProxyUrl(url)
-                                  return (
-                                    <a
-                                      key={`co-${i}`}
-                                      href={proxied}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block"
-                                    >
-                                      <SmartImage
-                                        src={proxied}
-                                        alt={`Check-out photo ${i + 1}`}
-                                        className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
-                                        onError={(e) => {
-                                          ;(e.currentTarget as HTMLImageElement).style.opacity = "0.3"
-                                        }}
-                                      />
-                                    </a>
-                                  )
-                                })}
-                              </div>
-                            )}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                <Separator />
-
-                {/* Clear Checkout */}
-                {actionMode === "clear-checkout" && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Confirm the kitchen is in good condition. This completes
-                      the booking.
-                    </p>
-                    <div>
-                      <Label>{ct('bookingAttendanceMessage')}</Label>
-                      <Textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder={mt("eGKitchenInspectedAllClean")}
-                        rows={2}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* File Claim */}
-                {actionMode === "file-claim" && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-amber-700 bg-amber-50 rounded p-2">
-                      Filing a claim will charge the chef&apos;s payment method for
-                      damages or cleaning fees.
-                    </p>
-                    <div>
-                      <Label>{mt("claimTitle")}</Label>
-                      <Input
-                        value={claimTitle}
-                        onChange={(e) => setClaimTitle(e.target.value)}
-                        placeholder={mt("eGDamagedStovetopBurner")}
-                      />
-                    </div>
-                    <div>
-                      <Label>{mt("description")}</Label>
-                      <Textarea
-                        value={claimDescription}
-                        onChange={(e) => setClaimDescription(e.target.value)}
-                        placeholder={mt("describeTheDamageOrCleaningIssue")}
-                        rows={3}
-                      />
-                    </div>
-                    <div>
-                      <Label>{mt("claimAmountDollars")}</Label>
-                      <CurrencyInput
-                        value={claimAmount}
-                        onValueChange={(val: string) => setClaimAmount(val)}
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    {/* Evidence Photo Upload */}
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2">
-                        <Camera className="h-4 w-4" />
-                        {mt("photoEvidenceRequired")}
-                      </Label>
-                      <p className="text-xs text-muted-foreground">{mt("uploadPhotosDocumentingTheDamageOrIssueAtLeastOnePhotoIsRequ")}</p>
-
-                      {evidencePhotos.length > 0 && (
-                        <div className="grid grid-cols-3 gap-2">
-                          {evidencePhotos.map((url, i) => (
-                            <div key={i} className="relative group">
-                              <SmartImage
-                                src={getR2ProxyUrl(url)}
-                                alt={`Evidence photo ${i + 1}`}
-                                className="w-full h-20 object-cover rounded-lg border"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setEvidencePhotos(prev => prev.filter((_, idx) => idx !== i))}
-                                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className={cn(
-                        "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors",
-                        isUploadingEvidence && "opacity-50 cursor-not-allowed"
-                      )}>
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/jpg,image/png,image/webp"
-                          onChange={handleEvidencePhotoUpload}
-                          className="hidden"
-                          id="evidence-photo-upload"
-                          disabled={isUploadingEvidence || evidencePhotos.length >= 10}
-                        />
-                        <label htmlFor="evidence-photo-upload" className="flex flex-col items-center justify-center cursor-pointer">
-                          {isUploadingEvidence ? (
-                            <>
-                              <Upload className="h-6 w-6 text-primary mb-1" />
-                              <span className="text-xs text-muted-foreground">{mt("uploadingPercent", { percent: Math.round(evidenceUploadProgress) })}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="h-6 w-6 text-muted-foreground mb-1" />
-                              <span className="text-xs text-muted-foreground">
-                                {evidencePhotos.length === 0
-                                  ? mt("clickToUploadEvidencePhotos")
-                                  : mt("photosUploadedCount", { count: evidencePhotos.length })}
-                              </span>
-                            </>
-                          )}
-                        </label>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>{ct('bookingAttendanceMessage')}</Label>
-                      <Textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Message shared with the chef"
-                        rows={2}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {actionMode !== "view" && (
-                <DialogFooter className="gap-2 sm:gap-0">
-                  <Button variant="ghost" onClick={closeDialog}>{mt("cancel")}</Button>
-
-                  {actionMode === "clear-checkout" && (
-                    <Button
-                      onClick={() =>
-                        clearCheckoutMutation.mutate({
-                          bookingId: selectedBooking.id,
-                          visitId: selectedBooking.visitId,
-                          managerNotes: notes || undefined,
-                        })
-                      }
-                      disabled={clearCheckoutMutation.isPending}
-                    >
-                      {clearCheckoutMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="h-4 w-4 mr-2" />
-                      )}
-                      {mt("clearNoIssues")}
-                    </Button>
-                  )}
-
-                  {actionMode === "file-claim" && (
-                    <Button
-                      variant="destructive"
-                      onClick={async () => {
-                        const amountCents = Math.round(
-                          parseFloat(claimAmount || "0") * 100
-                        )
-                        if (!claimTitle || !claimDescription || amountCents <= 0) {
-                          toast.error(
-                            "Please fill in claim title, description, and amount"
-                          )
-                          return
-                        }
-                        if (evidencePhotos.length === 0) {
-                          toast.error(tt("uploadAtLeastOneEvidencePhoto"))
-                          return
-                        }
-                        try {
-                          const result = await fileClaimMutation.mutateAsync({
-                            bookingId: selectedBooking.id,
-                            visitId: selectedBooking.visitId,
-                            claimData: {
-                              claimTitle,
-                              claimDescription,
-                              claimedAmountCents: amountCents,
-                              managerNotes: notes || undefined,
-                            },
-                          })
-                          // Attach evidence photos to the created claim
-                          if (result.damageClaimId && evidencePhotos.length > 0) {
-                            const headers = await getAuthHeaders()
-                            for (let i = 0; i < evidencePhotos.length; i++) {
-                              try {
-                                await fetch(`/api/manager/damage-claims/${result.damageClaimId}/evidence`, {
-                                  method: "POST",
-                                  headers,
-                                  credentials: "include",
-                                  body: JSON.stringify({
-                                    evidenceType: "photo_after",
-                                    fileUrl: evidencePhotos[i],
-                                    fileName: `damage-evidence-${i + 1}.jpg`,
-                                    fileSize: 0,
-                                    mimeType: "image/jpeg",
-                                    description: `Manager damage evidence photo ${i + 1} of ${evidencePhotos.length}`,
-                                  }),
-                                })
-                              } catch {
-                                // Evidence upload is best-effort
-                              }
-                            }
-                          }
-                        } catch {
-                          // Error handled by mutation onError
-                        }
-                      }}
-                      disabled={fileClaimMutation.isPending || isUploadingEvidence || evidencePhotos.length === 0}
-                    >
-                      {fileClaimMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <FileWarning className="h-4 w-4 mr-2" />
-                      )}
-                      File Claim
-                    </Button>
-                  )}
-                </DialogFooter>
-              )}
-            </>
-          )}
-        </AppDialogContent>
-      </Dialog>
     </div>
   )
 }

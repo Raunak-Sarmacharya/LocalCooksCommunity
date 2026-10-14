@@ -56,8 +56,8 @@ export async function processExpiredCancellationRequests(): Promise<{ processed:
                     if (!updated) return false;
                     await cancelLinkedBookingDates(tx, booking.id);
                     const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
-                    await queueBookingLifecycleEvent(tx, booking.id, 'cancellation_reviewed', 'Kitchen cancellation auto-accepted',
-                        'The kitchen cancellation was automatically accepted. Occupied storage remains reserved until removal is confirmed. Any refund is handled separately.');
+                    await queueBookingLifecycleEvent(tx, booking.id, 'cancellation_reviewed', 'Kitchen cancellation accepted',
+                        'The kitchen cancellation has been accepted. Any refund is reviewed separately. Storage in use stays reserved until the kitchen confirms your belongings have been collected.');
                     return true;
                 });
                 if (!accepted) continue;
@@ -105,8 +105,8 @@ export async function processExpiredCancellationRequests(): Promise<{ processed:
                             (entry.storageBookingId ?? entry.id) === sb.id ? { ...entry, status: item.status, rejected: true } : entry), updatedAt: new Date() })
                             .where(eq(kitchenBookings.id, parent.id));
                         const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
-                        await queueBookingLifecycleEvent(tx, parent.id, 'storage_cancellation_reviewed', 'Storage cancellation auto-accepted',
-                            `Storage cancellation for booking #${parent.id}, item #${sb.id} was auto-accepted. Occupied storage remains reserved until removal is confirmed. Any refund is handled separately.`,
+                        await queueBookingLifecycleEvent(tx, parent.id, 'storage_cancellation_reviewed', 'Storage cancellation accepted',
+                            `Storage cancellation for booking #${parent.id} has been accepted. Any refund is reviewed separately. If you’re using this storage, it stays reserved until collection is confirmed.`,
                             undefined, { storageBookingId: sb.id });
                     }
                     if (!parent && sb.chefId) await notificationService.create({

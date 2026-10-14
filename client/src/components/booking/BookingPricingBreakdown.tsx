@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/formatters";
 import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown, type BookingPricingBreakdownInput } from "@shared/booking-pricing-breakdown";
@@ -118,16 +119,16 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
 export function KitchenPayoutStatementBreakdown({
   currency = "CAD",
   className,
-  title = "Net payout",
-  chargeLabel = "Total charged",
+  title = ct('sweepText02'),
+  chargeLabel = ct('sweepText03'),
   showProcessorFee,
-  processingFeeLabel = "Processing fee",
-  platformFeeLabel = "Local Cooks fee",
+  processingFeeLabel = ct('sweepText04'),
+  platformFeeLabel = ct('sweepText05'),
   platformFeeChefPaidLabel,
   platformFeeInfo,
-  refundLabel = "Refund",
+  refundLabel = ct('sweepText06'),
   hstLabel,
-  hstCollectedLabel = "Includes HST you collected and remit",
+  hstCollectedLabel = ct('sweepText07'),
   ...input
 }: KitchenPayoutStatementBreakdownProps) {
   const b = buildKitchenPayoutStatementBreakdown({
@@ -231,7 +232,7 @@ export function KitchenPayoutSummaryTiles({
 }: KitchenPayoutSummaryTilesProps) {
   const items = [
     {
-      label: "Your rental revenue before HST",
+      label: ct('sweepText08'),
       value: rentalRevenueBeforeHstCents,
     },
     {
@@ -239,11 +240,11 @@ export function KitchenPayoutSummaryTiles({
       value: hstCollectedCents,
     },
     {
-      label: "Local Cooks fees deducted",
+      label: ct('sweepText09'),
       value: localCooksFeesCents,
     },
     {
-      label: "Net payout sent",
+      label: ct('sweepText10'),
       value: netPayoutCents,
       highlight: true,
     },

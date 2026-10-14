@@ -1,3 +1,5 @@
+vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
+vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BookingCancellationChooser } from './BookingCancellationChooser';
@@ -13,11 +15,22 @@ describe('one parent cancellation chooser', () => {
     window.history.replaceState({}, '', '/booking/10');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ action: 'cancellation_requested', message: 'Manager review pending. Refund is separate.' }) })));
   });
+  it('opens from page entry points without its own button and reports closing', () => {
+    const onOpenChange = vi.fn();
+    const { rerender } = render(<BookingCancellationChooser hideTrigger open={false} onOpenChange={onOpenChange} bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
+    expect(screen.queryByRole('button', { name: 'Request cancellation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    rerender(<BookingCancellationChooser hideTrigger open onOpenChange={onOpenChange} bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Request cancellation' })).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
   it('entire booking submits only the parent; includes linked items and does not promise a refund', async () => {
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
     expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).checked)).toBe(true);
-    expect(screen.getByText(/If you are already using storage/)).toBeInTheDocument();
+    expect(screen.getByText(/Already using storage/)).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Refund is separate');
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -51,7 +64,7 @@ describe('one parent cancellation chooser', () => {
   it('saved paid cutoff blocks entire cancellation while the uncaptured exception stays available', async () => {
     const view = render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" paidCancellationAvailable={false} items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
-    expect(screen.getByText(/The cancellation deadline for this booking has passed/)).toBeInTheDocument();
+    expect(screen.getByText(/The booking’s cancellation deadline has passed/)).toBeInTheDocument();
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' })).toBeDisabled();
     view.unmount();
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" paidCancellationAvailable={false} items={items} onChanged={async () => {}} />);
@@ -62,7 +75,7 @@ describe('one parent cancellation chooser', () => {
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" items={[]} onChanged={async () => { throw Error('Offline'); }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel request' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('could not refresh');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your changes are saved');
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
     expect(fetch).toHaveBeenCalledTimes(1);
   });

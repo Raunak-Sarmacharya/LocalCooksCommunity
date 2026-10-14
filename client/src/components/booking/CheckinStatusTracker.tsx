@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 /**
@@ -163,7 +164,7 @@ export function CheckinStatusTracker({
 
         <div className="py-6">
           {isLoading ? (
-            <div className="space-y-4 py-3" role="status" aria-label="Loading check-in status">
+            <div className="space-y-4 py-3" role="status" aria-label={ct('sweepText12')}>
               {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
             </div>
           ) : (
@@ -200,9 +201,7 @@ export function CheckinStatusTracker({
                         {step.label}
                       </span>
                       {step.state === "active" && (
-                        <InfoChip variant="outline" className="font-normal">
-                          In Progress
-                        </InfoChip>
+                        <InfoChip variant="outline" className="font-normal">{ct('sweepLabel15')}</InfoChip>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -227,7 +226,7 @@ export function CheckinStatusTracker({
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Camera className="h-4 w-4" />
                 <span>
-                  {data.checkinPhotoUrls.length} photo{data.checkinPhotoUrls.length !== 1 ? "s" : ""} submitted
+                  {ct('sweepPhotosAdded', { count: data.checkinPhotoUrls.length })}
                 </span>
               </div>
             </>
@@ -239,7 +238,7 @@ export function CheckinStatusTracker({
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
                 <CheckCircle className="h-4 w-4" />
                 <span>
-                  {data.checkinChecklistItems.filter(i => i.checked).length}/{data.checkinChecklistItems.length} checklist items completed
+                  {ct('sweepChecklistCount', { done: data.checkinChecklistItems.filter(i => i.checked).length, total: data.checkinChecklistItems.length })}
                 </span>
               </div>
               <div className="space-y-1">

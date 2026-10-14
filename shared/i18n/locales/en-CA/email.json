@@ -197,5 +197,6 @@
   "bookingRequestPaidBody": "Your payment is recorded, and {kitchen} still needs to accept the request. Open the request for its current status and next steps.",
   "bookingNewRequestPendingBody": "Review this request and respond to the chef. The booking is not confirmed; open it for the current payment status.",
   "bookingClaimChargedHeading": "Claim payment recorded",
-  "bookingClaimChargedBody": "Your claim payment is recorded. Open the claim to review the outcome and payment record."
+  "bookingClaimChargedBody": "Your claim payment is recorded. Open the claim to review the outcome and payment record.",
+  "bookingYourNote": "Your note"
 }

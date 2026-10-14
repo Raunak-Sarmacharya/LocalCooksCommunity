@@ -1,3 +1,4 @@
+vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,7 +43,7 @@ async function open() {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Harbour Kitchens" initialDateIso="2099-10-04" initialSlots={['09:00']} onCancel={() => {}} onComplete={() => {}} />
   </QueryClientProvider>);
-  await screen.findByText(/Select consecutive hours for one continuous visit/);
+  await screen.findByText(/Choose consecutive hours for your visit/);
   await waitFor(() => expect(screen.getByRole('button', { name: /9:00.*10:00/ })).toBeEnabled());
 }
 const toConfirm = async () => {

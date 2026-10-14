@@ -62,8 +62,8 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
   if (operation?.status !== 'succeeded' && reconciledOperation?.status === 'succeeded') {
     await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: status, eventType: 'cancellation_refund_verified',
       description: 'Original provider receipt recovered with verified component allocations', metadata: reconciledOperation }, connection);
-    await queueBookingLifecycleEvent(connection, operation.bookingId, 'refund_issued', 'Cancellation refund verified',
-      `Stripe verified the original ${(reconciledOperation.refunded / 100).toFixed(2)} ${source.currency} refund. Processing costs remain deducted. Bank receipt is not confirmed.`,
+    await queueBookingLifecycleEvent(connection, operation.bookingId, 'refund_issued', 'Refund sent',
+      `The ${(reconciledOperation.refunded / 100).toFixed(2)} ${source.currency} refund has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`,
       undefined, { transactionId: source.id, refundId: reconciledOperation.refundId, operationId: operation.id });
   }
   return { sourceId: source.id, status, money, operation: reconciledOperation };

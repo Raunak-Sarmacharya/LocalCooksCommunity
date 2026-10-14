@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 /**
  * Storage Checkout Dialog
  * 
@@ -119,7 +120,7 @@ export function StorageCheckoutDialog({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to submit checkout request');
+        throw new Error(errorData.error || ct('sweepText26'));
       }
 
       toast({
@@ -159,8 +160,8 @@ export function StorageCheckoutDialog({
             {t("coDialogDesc")}
           </DialogDescription>
         </DialogHeader>
-        {dutiesQuery.isPending && <p role="status">Loading the booking’s departure requirements…</p>}
-        {dutiesQuery.error && <p role="alert">Requirements could not be loaded. <Button variant="link" onClick={() => void dutiesQuery.refetch()}>Retry</Button> or contact the kitchen manager for assistance.</p>}
+        {dutiesQuery.isPending && <p role="status">{ct('sweepLabel25')}</p>}
+        {dutiesQuery.error && <p role="alert">{ct('sweepLabel26')}{' '}<Button variant="link" onClick={() => void dutiesQuery.refetch()}>{ct('sweepLabel27')}</Button>{' '}{ct('sweepLabel28')}</p>}
 
         {(storageCheckoutItems.some((item) => item.required) ||
           storageCheckoutPhotoReqs.some((item) => item.required)) && (

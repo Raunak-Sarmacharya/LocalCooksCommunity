@@ -1,3 +1,4 @@
+vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -11,7 +12,7 @@ vi.mock('react-i18next', async () => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 function mount(role: 'chef' | 'manager' = 'chef') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const tree = (version: string) => <QueryClientProvider client={client}><BookingHistoryPanel id={10} reference="KB-TEST" version={version} role={role} /></QueryClientProvider>;
+  const tree = (version: string) => <QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={10} reference="KB-TEST" version={version} role={role} /></QueryClientProvider>;
   const view = render(tree('first'));
   return { client, view, tree };
 }
@@ -23,7 +24,7 @@ it('shows a dated tour-style trail and refreshes after the booking changes', asy
   vi.stubGlobal('fetch', fetcher);
   const { client, view, tree } = mount();
   expect(await screen.findByText('Booking confirmed')).toBeInTheDocument();
-  const region = screen.getByRole('region', { name: 'Recorded booking activity' });
+  const region = screen.getByRole('region', { name: 'Booking activity' });
   expect(region).toHaveAttribute('tabindex', '0');
   expect(region).toHaveClass('max-h-80', 'overflow-y-auto');
   expect(screen.getAllByTestId('booking-history-dot')).toHaveLength(2);
@@ -34,15 +35,32 @@ it('shows a dated tour-style trail and refreshes after the booking changes', asy
   view.rerender(tree('second'));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2)); client.clear();
 });
+it('shows only the latest events in the booking sidebar until Show all is pressed', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: '2', kind: 'confirmed', recordedAt: '2026-10-02T12:00:00Z' },
+    { key: '3', kind: 'requested', recordedAt: '2026-10-03T12:00:00Z' },
+    { key: '4', kind: 'confirmed', recordedAt: '2026-10-04T12:00:00Z' },
+  ] }) })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={10} version="v" role="chef" limit={3} /></QueryClientProvider>);
+  await waitFor(() => expect(screen.getAllByTestId('booking-history-dot')).toHaveLength(3));
+  const toggle = screen.getByRole('button', { name: /Show all/ });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(toggle);
+  expect(screen.getAllByTestId('booking-history-dot')).toHaveLength(4);
+  expect(screen.getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
+  client.clear();
+});
 it('offers retry after an unavailable history and labels legacy records honestly', async () => {
   const fetcher = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true, json: async () => ({ complete: false, events: [] }) });
   vi.stubGlobal('fetch', fetcher);
   const { client } = mount('manager');
   expect(await screen.findByRole('alert')).toHaveTextContent('Booking history could not be loaded');
-  expect(screen.queryByText('No recorded activity is available for this booking.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No updates to show yet.')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-  expect(await screen.findByText('No recorded activity is available for this booking.')).toBeInTheDocument();
-  expect(screen.getByText('Earlier activity may not be available for this booking.')).toBeInTheDocument(); client.clear();
+  expect(await screen.findByText('No updates to show yet.')).toBeInTheDocument();
+  expect(screen.queryByText('Earlier activity may not be available for this booking.')).not.toBeInTheDocument(); client.clear();
 });
 it('orders events that share a timestamp by lifecycle', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
@@ -51,7 +69,7 @@ it('orders events that share a timestamp by lifecycle', async () => {
   ] }) })));
   const { client } = mount();
   await screen.findByText('Booking confirmed');
-  const items = screen.getByRole('region', { name: 'Recorded booking activity' }).querySelectorAll('li');
+  const items = screen.getByRole('region', { name: 'Booking activity' }).querySelectorAll('li');
   expect(items[0].textContent).toMatch(/Booking requested/);
   expect(items[1].textContent).toMatch(/Booking confirmed/); client.clear();
 });

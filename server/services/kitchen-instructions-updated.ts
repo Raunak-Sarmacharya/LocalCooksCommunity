@@ -85,7 +85,7 @@ export async function queueKitchenInstructionUpdates(tx: Transaction, kitchenId:
       sections: Array.from(new Set([...(previous?.sections || []), ...eligible])), before: previous ? previous.before : before && activeChecklist(before) };
     const { queueBookingLifecycleEvent } = await import('./booking-lifecycle-delivery');
     await queueBookingLifecycleEvent(tx, booking.id, 'instructions_updated', 'Booking instructions updated',
-      'Review your current arrival and departure instructions and customer tasks.', actorId, metadata);
+      'Check the updated arrival and departure instructions and your visit checklist.', actorId, metadata);
   }
 }
 

@@ -1,23 +1,28 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
+import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAuthHeaders } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { problemCategoryLabel, problemDestination, problemStatusLabel, type ProblemHistory } from '@shared/commitment-problems';
+import { problemDestination, type ProblemHistory } from '@shared/commitment-problems';
 
 type Problem = {
   id: number; bookingId: number | null; viewingId: number | null; kind: string; status: string; claimedBy: number | null;
   revision: number; description: string; history: ProblemHistory[]; category?: string | null
 };
 async function problemRequest(path: string, method = 'GET', body?: unknown) {
+  const t = i18n.getFixedT(null, 'chef');
   const response = await fetch(path, { method, headers: await getAuthHeaders(), cache: 'no-store', ...(body ? { body: JSON.stringify(body) } : {}) });
   const result = await response.json();
-  if (!response.ok) throw Error(result.error || 'Could not load problems');
+  if (!response.ok) throw Error(result.error || t('problemCopy00'));
   return result;
 }
 
 function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staff: boolean; role: string; actorId?: number }) {
+  const { t, i18n } = useTranslation('chef');
   const [note, setNote] = useState('');
   const queryClient = useQueryClient();
   const action = useMutation({
@@ -28,30 +33,31 @@ function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staf
   const ownsTask = problem.claimedBy === actorId;
   const history = staff ? problem.history : problem.history.filter(entry => !['claim', 'reassign'].includes(entry.action));
   const latestUpdate = history.filter(entry => entry.action !== 'report').at(-1);
-  return <article className="space-y-3 rounded-lg border p-4" aria-label={`Problem ${problem.id}`}>
-    <p className="font-medium">{kind === 'booking' ? 'Booking' : 'Tour'} #{id} · Request #{problem.id} · {problemStatusLabel(problem.status)}</p>
-    {problem.category && <p className={problem.category === 'safety' ? 'text-sm font-semibold text-destructive' : 'text-sm'}>{problem.category === 'safety' ? 'SAFETY REPORT' : `Category: ${problemCategoryLabel(problem.category)}`}</p>}
-    {staff && <p className="text-sm">{problem.claimedBy ? `Assigned to staff #${problem.claimedBy}` : 'Unassigned'}</p>}
+  return <article className="space-y-3 rounded-lg border p-4" aria-label={t('problemRequest', { id: problem.id })}>
+    <p className="font-medium">{kind === 'booking' ? t('problemCopy01') : t('problemCopy02')} #{id} · {t('problemRequest', { id: problem.id })} · {t(`problemStatus_${problem.status}`, { defaultValue: t('problemStatus_reported') })}</p>
+    {problem.category && <p className={problem.category === 'safety' ? 'text-sm font-semibold text-destructive' : 'text-sm'}>{problem.category === 'safety' ? t('problemCopy03') : t(`problemCategory_${problem.category}`, { defaultValue: t('problemCategory_other') })}</p>}
+    {staff && <p className="text-sm">{problem.claimedBy ? t('problemAssigned', { id: problem.claimedBy }) : t('problemCopy04')}</p>}
     <p className="whitespace-pre-wrap text-sm">{problem.description}</p>
-    {latestUpdate && <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">Latest update: {latestUpdate.note}</p>}
-    <a className="text-sm underline" href={problemDestination(kind, id, role)}>Open current {kind}</a>
-    <details><summary className="cursor-pointer text-sm">Response history</summary>{history.map(entry => <p key={entry.revision} className="whitespace-pre-wrap border-t py-2 text-sm">{new Date(entry.at).toLocaleString()} · {entry.actorId === actorId ? 'You' : entry.actorRole === 'admin' ? 'Support' : entry.actorRole === 'manager' ? 'Kitchen manager' : entry.actorRole === 'chef' ? 'Chef' : 'Update'}: {entry.action === 'report' ? 'Report received' : entry.note}</p>)}</details>
-    {problem.status !== 'resolved' && <p className="text-sm">{problem.status === 'reported' ? 'Your report has been received. Updates will appear here.' : 'Your request is still open. View the latest response above.'}</p>}
+    {latestUpdate && <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">{t('problemLatest', { note: latestUpdate.note })}</p>}
+    <a className="text-sm underline" href={problemDestination(kind, id, role)}>{t(kind === 'booking' ? 'problemOpenBooking' : 'problemOpenTour')}</a>
+    <details><summary className="cursor-pointer text-sm">{t('problemCopy05')}</summary>{history.map(entry => <p key={entry.revision} className="whitespace-pre-wrap border-t py-2 text-sm">{formatVisitTime(entry.at, Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} {friendlyTimezoneName(Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} · {entry.actorId === actorId ? t('problemCopy06') : entry.actorRole === 'admin' ? t('problemCopy07') : entry.actorRole === 'manager' ? t('problemCopy08') : entry.actorRole === 'chef' ? t('problemCopy09') : t('problemCopy10')}: {entry.action === 'report' ? t('problemCopy11') : entry.note}</p>)}</details>
+    {problem.status !== 'resolved' && <p className="text-sm">{problem.status === 'reported' ? t('problemCopy12') : t('problemCopy13')}</p>}
     {staff && problem.status !== 'resolved' && <div className="space-y-2">
-      {!problem.claimedBy ? <Button disabled={action.isPending} onClick={() => action.mutate('claim')}>Assign to me</Button> : <>
-        <label className="block text-sm" htmlFor={`problem-response-${problem.id}`}>Participant-visible response / resolution evidence</label>
+      {!problem.claimedBy ? <Button disabled={action.isPending} onClick={() => action.mutate('claim')}>{t('problemCopy14')}</Button> : <>
+        <label className="block text-sm" htmlFor={`problem-response-${problem.id}`}>{t('problemCopy15')}</label>
         <Textarea id={`problem-response-${problem.id}`} value={note} maxLength={2000} onChange={event => setNote(event.target.value)} />
-        {ownsTask ? <div className="flex flex-wrap gap-2">{(problem.status === 'reported' ? ['acknowledge', 'escalate'] : ['reply', 'escalate', 'resolve']).map(value => <Button key={value} variant="outline" disabled={action.isPending || !note.trim()} onClick={() => action.mutate(value)}>{value === 'acknowledge' ? 'Acknowledge receipt' : value === 'escalate' ? 'Escalate for review' : value === 'reply' ? 'Send reply' : 'Resolve request'}</Button>)}</div>
-          : <Button variant="outline" disabled={action.isPending || !note.trim() || !actorId} onClick={() => action.mutate('reassign')}>Assign to me with reason</Button>}
+        {ownsTask ? <div className="flex flex-wrap gap-2">{(problem.status === 'reported' ? ['acknowledge', 'escalate'] : ['reply', 'escalate', 'resolve']).map(value => <Button key={value} variant="outline" disabled={action.isPending || !note.trim()} onClick={() => action.mutate(value)}>{value === 'acknowledge' ? t('problemCopy16') : value === 'escalate' ? t('problemCopy17') : value === 'reply' ? t('problemCopy18') : t('problemCopy19')}</Button>)}</div>
+          : <Button variant="outline" disabled={action.isPending || !note.trim() || !actorId} onClick={() => action.mutate('reassign')}>{t('problemCopy20')}</Button>}
       </>}
     </div>}
     {!staff && problem.status !== 'resolved' && <form className="space-y-2" onSubmit={event => { event.preventDefault(); if (note.trim() && !action.isPending) action.mutate('reply'); }}>
-      <label className="block text-sm" htmlFor={`problem-reply-${problem.id}`}>Add a reply</label>
+      <label className="block text-sm" htmlFor={`problem-reply-${problem.id}`}>{t('problemCopy21')}</label>
       <Textarea id={`problem-reply-${problem.id}`} value={note} maxLength={2000} onChange={event => setNote(event.target.value)} />
-      <Button variant="outline" type="submit" disabled={action.isPending || !note.trim()}>{action.isPending ? 'Sending reply…' : 'Send reply'}</Button>
-      {action.isSuccess && <p role="status" className="text-sm">Reply received.</p>}
+      <p className="text-xs text-muted-foreground">{t('problemReplyHint')}</p>
+      <Button variant="outline" type="submit" disabled={action.isPending || !note.trim()}>{action.isPending ? t('problemCopy22') : t('problemCopy18')}</Button>
+      {action.isSuccess && <p role="status" className="text-sm">{t('problemCopy23')}</p>}
     </form>}
-    {action.error && <p role="alert" className="text-sm text-destructive">{action.error.message} <button className="underline" onClick={() => void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] })}>Refresh task</button></p>}
+    {action.error && <p role="alert" className="text-sm text-destructive">{action.error.message} <button className="underline" onClick={() => void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] })}>{t('problemCopy24')}</button></p>}
   </article>;
 }
 
@@ -65,6 +71,7 @@ export function CommitmentProblems(props: ProblemsProps) {
 }
 
 function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'chef', embedded = false }: ProblemsProps) {
+  const { t } = useTranslation('chef');
   const [description, setDescription] = useState('');
   const [reportOpen, setReportOpen] = useState(false);
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
@@ -76,7 +83,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
       const result = await problemRequest(path);
       if (Array.isArray(result)) return { problems: result, reportingAvailable: false };
       if (!result || !Array.isArray(result.problems) || typeof result.reportingAvailable !== 'boolean') {
-        throw Error('Could not load the current problem state. Try again.');
+        throw Error(t('problemCopy25'));
       }
       return result;
     }, refetchInterval: 30000
@@ -87,37 +94,37 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   });
   const reportingAvailable = canReport && query.data?.reportingAvailable && !!kind && !!id;
   const hasProblems = !!query.data?.problems.length;
-  const heading = staff ? 'Support requests' : hasProblems ? `Support requests${kind ? ` for this ${kind}` : ''}` : kind ? `Need help with this ${kind}?` : 'Your support requests';
+  const heading = staff || hasProblems ? t('problemHeading') : t('problemHelp');
   if (embedded && !hasProblems && !reportingAvailable && !query.error) return null;
-  return <section className={embedded ? 'mt-4 space-y-3 border-t pt-4' : 'space-y-3 rounded-lg border bg-background p-4'} aria-label={embedded ? 'Booking support requests' : heading}>
-    {(!embedded || hasProblems) && <h3 className="font-semibold">{embedded ? 'Support requests' : heading}</h3>}
+  return <section className={embedded ? 'mt-4 space-y-3 border-t pt-4' : 'space-y-3 rounded-lg border bg-background p-4'} aria-label={embedded ? t('problemCopy28') : heading}>
+    {(!embedded || hasProblems) && <h3 className="font-semibold">{embedded ? t('problemCopy26') : heading}</h3>}
     {kind && !staff && !embedded && <div className="space-y-0.5 text-xs text-muted-foreground">
-      <p><span className="whitespace-nowrap">Call <a className="underline" href="tel:+17096318480">709-631-8480</a></span> <span className="whitespace-nowrap">or email <a className="underline" href="mailto:support@localcooks.ca">support@localcooks.ca</a></span></p>
-      <p><span className="whitespace-nowrap">Mon–Fri, 9 AM–5 PM NL time</span> · <span className="whitespace-nowrap">After hours, we reply within 24 hrs</span></p>
+      <p><span className="whitespace-nowrap">{t('problemCall')} <a className="underline" href="tel:+17096318480">709-631-8480</a></span> <span className="whitespace-nowrap">{t('problemEmail')} <a className="underline" href="mailto:support@localcooks.ca">support@localcooks.ca</a></span></p>
+      <p><span className="whitespace-nowrap">{t('problemCopy29')}</span> · <span className="whitespace-nowrap">{t('problemCopy30')}</span></p>
     </div>}
-    {!kind && !staff && <p className="text-sm">Need help with a visit? Open your <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=bookings' : '/dashboard?view=bookings'}>booking</a> or <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=viewings' : '/dashboard?view=viewings'}>tour details</a>.</p>}
-    {kind && !staff && canReport && !reportingAvailable && query.data?.reportingOpensAt && <p className="text-sm text-muted-foreground">Reporting opens at the scheduled start. Contact support if you need help.</p>}
+    {!kind && !staff && <p className="text-sm">{t('problemChooseHelp')} <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=bookings' : '/dashboard?view=bookings'}>{t('problemBookings')}</a> · <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=viewings' : '/dashboard?view=viewings'}>{t('problemTours')}</a></p>}
+    {kind && !staff && canReport && !reportingAvailable && query.data?.reportingOpensAt && <p className="text-sm text-muted-foreground">{t('problemCopy31')}</p>}
     <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-      {reportingAvailable && <DialogTrigger asChild><Button variant="outline" disabled={report.isPending}>Report a problem</Button></DialogTrigger>}
+      {reportingAvailable && <DialogTrigger asChild><Button variant="outline" disabled={report.isPending}>{t('problemCopy32')}</Button></DialogTrigger>}
       <DialogContent showCloseButton>
-        <DialogHeader><DialogTitle>Report a problem</DialogTitle>
-          <DialogDescription>{kind === 'tour' ? 'Tour' : 'Booking'} #{id} · Your report and replies are shared with the kitchen manager, chef and Support.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{t('problemCopy32')}</DialogTitle>
+          <DialogDescription>{t('problemShared', { id, kind: t(kind === 'tour' ? 'problemCopy02' : 'problemCopy01') })}</DialogDescription></DialogHeader>
         {reportingAvailable ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (description.trim().length >= 10 && !report.isPending) report.mutate(); }}>
-          <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`report-${kind}-${id}`}>What do you need help with?</label>
+          <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`report-${kind}-${id}`}>{t('problemCopy33')}</label>
             <Textarea id={`report-${kind}-${id}`} value={description} maxLength={2000} disabled={report.isPending} onChange={event => setDescription(event.target.value)} aria-describedby={`report-hint-${kind}-${id}`} />
-            <p id={`report-hint-${kind}-${id}`} className="text-xs text-muted-foreground">Describe what happened in 10–2000 characters. You can follow updates and reply in your support request.</p></div>
+            <p id={`report-hint-${kind}-${id}`} className="text-xs text-muted-foreground">{t('problemCopy34')}</p></div>
           {report.error && <p role="alert" className="text-sm text-destructive">{report.error.message}</p>}
-          {report.isPending && <p role="status" className="text-sm">Your report is being sent. Closing this window will not cancel the submission.</p>}
-          <DialogFooter><DialogClose asChild><Button variant="outline" type="button">{report.isPending ? 'Close' : 'Cancel'}</Button></DialogClose>
-            <Button disabled={report.isPending || description.trim().length < 10} type="submit">{report.isPending ? 'Saving report…' : 'Send report'}</Button></DialogFooter>
-        </form> : <><p role="status" className="text-sm">Reporting is unavailable for this account right now. Contact support for help. Your draft has not been sent.</p>
-          <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter></>}
+          {report.isPending && <p role="status" className="text-sm">{t('problemCopy35')}</p>}
+          <DialogFooter><DialogClose asChild><Button variant="outline" type="button">{report.isPending ? t('problemCopy36') : t('problemCopy37')}</Button></DialogClose>
+            <Button disabled={report.isPending || description.trim().length < 10} type="submit">{report.isPending ? t('problemCopy38') : t('problemCopy39')}</Button></DialogFooter>
+        </form> : <><p role="status" className="text-sm">{t('problemCopy40')}</p>
+          <DialogFooter><DialogClose asChild><Button variant="outline">{t('problemCopy36')}</Button></DialogClose></DialogFooter></>}
       </DialogContent>
     </Dialog>
-    {report.isPending && !reportOpen && <p role="status" className="text-sm">Your report is being sent. You can continue viewing this {kind}.</p>}
-    {report.isSuccess && <p role="status" className="text-sm">Report received. Follow its progress below.</p>}
-    {report.error && !reportOpen && <p role="alert" className="text-sm text-destructive">{report.error.message} Reopen the report to retry; your draft is retained.</p>}
-    {query.isPending ? <p role="status">Loading problems…</p> : query.error ? <p role="alert">{query.error.message} <button className="underline" onClick={() => void query.refetch()}>Try again</button></p>
-      : !hasProblems ? !kind && <p className="text-sm">{staff ? 'No support requests.' : 'You have no support requests.'}</p> : query.data!.problems.map(problem => <ProblemCard key={problem.id} problem={problem} staff={staff} role={role} actorId={query.data?.actorId} />)}
+    {report.isPending && !reportOpen && <p role="status" className="text-sm">{t('problemSending')}</p>}
+    {report.isSuccess && <p role="status" className="text-sm">{t('problemCopy41')}</p>}
+    {report.error && !reportOpen && <p role="alert" className="text-sm text-destructive">{report.error.message} {t('problemRetryDraft')}</p>}
+    {query.isPending ? <p role="status">{t('problemCopy42')}</p> : query.error ? <p role="alert">{query.error.message} <button className="underline" onClick={() => void query.refetch()}>{t('problemCopy43')}</button></p>
+      : !hasProblems ? !kind && <p className="text-sm">{staff ? t('problemCopy44') : t('problemCopy45')}</p> : query.data!.problems.map(problem => <ProblemCard key={problem.id} problem={problem} staff={staff} role={role} actorId={query.data?.actorId} />)}
   </section>;
 }

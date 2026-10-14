@@ -37,6 +37,13 @@ interface VisitCodePanelProps {
   /** Only a confirmed booking can have an active code to show; others render recorded history only. */
   bookingStatus?: string
   onChanged?: () => void | Promise<void>
+  /**
+   * Inside the booking page's Visit card: no own heading or card, no repeated chef/kitchen/time
+   * (the page header shows them), and a sentence instead of an empty block.
+   */
+  embedded?: boolean
+  /** The visit is over: only the arrival method/time is shown, never a code. */
+  visitEnded?: boolean
 }
 
 type Action = { kind: "issue" | "self" | "staffed"; target: ManagerVisitCodeState }
@@ -55,7 +62,7 @@ async function readError(response: Response, fallback: string) {
 }
 
 export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone, bookingDate, operatingWindowStartTime, startTime, endTime,
-  visits = [], bookingStatus, onChanged }: VisitCodePanelProps) {
+  visits = [], bookingStatus, onChanged, embedded = false, visitEnded = false }: VisitCodePanelProps) {
   const { t, i18n } = useTranslation("manager")
   const locale = i18n?.resolvedLanguage || i18n?.language || "en-CA"
   const queryClient = useQueryClient()
@@ -130,16 +137,16 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
       const begins = createBookingDateTime(calendarDateForBookingTime(day, start, operatingWindowStartTime), start, zone)
       const ends = createBookingDateTime(calendarDateForBookingTime(day, end, operatingWindowStartTime, start), end, zone)
       const date = new Intl.DateTimeFormat(locale, { timeZone: zone, dateStyle: "medium" }).format(begins)
-      const time = new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short" })
+      const time = new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short", hour12: true })
       return `${date}, ${time.format(begins)} – ${time.format(ends)} ${friendlyTimezoneName(zone, locale)}`
     } catch { return "" }
   }
   const consumedLabel = (target: ManagerVisitCodeState) => {
     const time = target.consumedAt && zone
-      ? new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short" }).format(new Date(target.consumedAt)) : ""
+      ? new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short", hour12: true }).format(new Date(target.consumedAt)) : ""
     const key = target.consumedMethod === "self" ? "visitCodeArrivedSelf" : target.consumedMethod === "assisted" ? "visitCodeArrivedAssisted" : "visitCodeArrivedCode"
-    const fallback = target.consumedMethod === "self" ? "Arrived {time} · self check-in"
-      : target.consumedMethod === "assisted" ? "Arrived {time} · recorded by manager" : "Arrived {time} · code"
+    const fallback = target.consumedMethod === "self" ? "Arrived {time} with self check-in"
+      : target.consumedMethod === "assisted" ? "Arrived {time}, added by the kitchen" : "Arrived {time} with the visit code"
     return t(key, { defaultValue: fallback, time })
   }
   const visitName = (target: ManagerVisitCodeState) => {
@@ -177,6 +184,9 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     }
   }
 
+  if (embedded && bookingStatus === "pending") {
+    return <p className="text-sm text-muted-foreground" data-testid="visit-code-empty">{t("visitCodeEmptyPending", { defaultValue: "A visit code is created when you confirm this request." })}</p>
+  }
   if (query.isPending) return <p role="status" className="text-sm text-muted-foreground">{t("visitCodeLoading", { defaultValue: "Loading visit code…" })}</p>
   if (query.isError) {
     return (
@@ -187,8 +197,26 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     )
   }
   // Legacy bookings (no challenge) and inactive bookings without a recorded arrival have nothing to show.
-  const visible = targets.filter(target => target.consumed || (!target.revoked && bookingStatus !== "cancelled"))
-  if (!visible.length) return null
+  const visible = targets.filter(target => target.consumed || (!visitEnded && !target.revoked && bookingStatus !== "cancelled"))
+  if (!visible.length) {
+    // No challenge at all: say so instead of leaving an empty heading.
+    if (embedded && !targets.length && bookingStatus === "confirmed" && !visitEnded) {
+      return <p className="text-sm text-muted-foreground" data-testid="visit-code-empty">{t("visitCodeEmptyLegacy", { defaultValue: "This booking uses tap check-in; no code needed." })}</p>
+    }
+    return null
+  }
+  if (embedded && visible.every(target => target.consumed)) {
+    return (
+      <ul className="space-y-1" aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
+        {visible.map(target => (
+          <li key={target.targetKey} className="flex items-center gap-2 text-sm" data-testid="visit-code-consumed">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            {visitName(target) ? `${visitName(target)} · ` : ""}{consumedLabel(target)}
+          </li>
+        ))}
+      </ul>
+    )
+  }
 
   const modeSelf = action?.kind === "self"
   const multiple = targets.filter(target => !target.consumed && !target.revoked).length > 1
@@ -201,11 +229,11 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
       : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new visit code is issued. The chef will need the code from kitchen staff." })
 
   return (
-    <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-4" aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
-      <div className="flex items-center gap-2">
+    <section className={embedded ? "space-y-3" : "rounded-2xl border bg-card p-5 sm:p-6 space-y-4"} aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
+      {!embedded && <div className="flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-muted-foreground" />
         <h2 className="font-semibold">{t("visitCodeTitle", { defaultValue: "Visit code" })}</h2>
-      </div>
+      </div>}
       <div className="space-y-4">
         {visible.map(target => {
           const name = visitName(target)
@@ -215,9 +243,9 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
             <article key={target.targetKey} className="rounded-xl border p-4 space-y-3" data-testid={`visit-code-${target.targetKey}`}>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                 {name && <div><dt className="text-xs text-muted-foreground">{t("visitCodeVisit", { defaultValue: "Visit" })}</dt><dd className="font-medium">{name}</dd></div>}
-                <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Chef" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">{t("visitCodeKitchen", { defaultValue: "Kitchen" })}</dt><dd className="font-medium">{kitchenName || "—"}</dd></div>
-                {when && <div><dt className="text-xs text-muted-foreground">{t("visitCodeWhen", { defaultValue: "Visit time (kitchen local)" })}</dt><dd className="font-medium tabular-nums">{when}</dd></div>}
+                {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Chef" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>}
+                {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeKitchen", { defaultValue: "Kitchen" })}</dt><dd className="font-medium">{kitchenName || "—"}</dd></div>}
+                {when && (!embedded || name) && <div><dt className="text-xs text-muted-foreground">{t("visitCodeWhen", { defaultValue: "Visit time (kitchen local)" })}</dt><dd className="font-medium tabular-nums">{when}</dd></div>}
                 <div><dt className="text-xs text-muted-foreground">{t("visitCodeMode", { defaultValue: "Check-in mode" })}</dt>
                   <dd className="font-medium">{staffed ? t("visitCodeModeStaffed", { defaultValue: "Staff gives the code" }) : t("visitCodeModeSelf", { defaultValue: "Self check-in" })}</dd></div>
               </dl>

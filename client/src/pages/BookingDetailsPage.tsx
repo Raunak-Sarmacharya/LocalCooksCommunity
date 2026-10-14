@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { ClockCloseoutSummary } from "@/components/booking/ClockCloseoutSummary";
 import { bookingStatusLabel } from "@/components/booking/booking-status-label";
 import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
@@ -11,8 +12,9 @@ import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { calendarDateForBookingTime, getHourlySlotStarts, sortTimesInOperatingWindow } from '@shared/operating-hours';
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
+import { formatTime as formatKitchenClock } from "@/lib/formatters";
 import { useLocation, useRoute } from "wouter";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
@@ -21,12 +23,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
-import { ArrowLeft, MapPin, Calendar, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, CreditCard, Phone, Mail, Receipt, Hash, Info, LogIn, LogOut, Camera, FileWarning, Clock } from "lucide-react";
+import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, Info, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
+import { bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
+import { bookingIcs, downloadBookingIcs } from "@/lib/booking-ics";
+import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown } from "@shared/booking-pricing-breakdown";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
@@ -215,10 +221,10 @@ export default function BookingDetailsPage() {
     try {
       const response = await fetch(`/api/bookings/${booking.id}/conversation`, { method: 'POST', headers: await getAuthHeaders(), credentials: 'include' });
       const result = await response.json();
-      if (!response.ok) throw Error(result.error || 'Kitchen messaging is unavailable');
+      if (!response.ok) throw Error(result.error || t('detailsCopy00'));
       navigate(result.path);
     } catch (error) {
-      toast({ title: 'Kitchen messaging', description: error instanceof Error ? error.message : 'Please retry or contact Local Cooks.', variant: 'destructive' });
+      toast({ title: t('detailsCopy01'), description: error instanceof Error ? error.message : t('detailsCopy02'), variant: 'destructive' });
     } finally { setOpeningConversation(false); }
   };
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -228,6 +234,8 @@ export default function BookingDetailsPage() {
   const [managementDialogOpen, setManagementDialogOpen] = useState(false);
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [fixOpen, setFixOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // When the chef clicks a sidebar tab from this booking-detail sub-page, we
@@ -241,7 +249,7 @@ export default function BookingDetailsPage() {
 
   useEffect(() => {
     if (!bookingId) {
-      setError("No booking ID provided");
+      setError(t('detailsCopy03'));
       setIsLoading(false);
       return;
     }
@@ -328,9 +336,9 @@ export default function BookingDetailsPage() {
         body: JSON.stringify({ status: 'confirmed', equipmentActions: [{ equipmentBookingId: id, action: accept ? 'cancelled' : 'confirmed' }] }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Cancellation review could not be saved');
+      if (!response.ok) throw new Error(result.error || t('detailsCopy04'));
       await reloadBookingDetails();
-    } catch (error) { toast({ title: t('crManagerReviewRequired'), description: error instanceof Error ? error.message : 'Review unavailable', variant: 'destructive' }); }
+    } catch (error) { toast({ title: t('crManagerReviewRequired'), description: error instanceof Error ? error.message : t('detailsCopy05'), variant: 'destructive' }); }
     finally { setItemCancellationPending(false); }
   };
 
@@ -387,22 +395,13 @@ export default function BookingDetailsPage() {
     }
   };
 
-  const formatTime = (timeStr: string) => {
-    if (!timeStr) return "";
-    const [hours, minutes] = timeStr.split(":").map(Number);
-    const date = createBookingDateTime('2000-01-01', `${hours}:${minutes || 0}`, 'America/St_Johns');
-    return new Intl.DateTimeFormat(i18n.language, {
-      timeZone: 'America/St_Johns',
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(date);
-  };
+  const formatTime = (timeStr: string) => formatKitchenClock(timeStr, i18n.language);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(/^\d{4}-\d{2}-\d{2}/.test(dateStr) ? `${dateStr.slice(0, 10)}T12:00:00Z` : dateStr);
     return date.toLocaleDateString(i18n.language, {
-      timeZone: 'America/St_Johns',
+      timeZone: booking?.location?.timezone || undefined,
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -414,7 +413,7 @@ export default function BookingDetailsPage() {
     if (!dateStr) return "";
     const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T12:00:00Z` : dateStr);
     return date.toLocaleDateString(i18n.language, {
-      timeZone: 'America/St_Johns',
+      timeZone: booking?.location?.timezone || undefined,
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -423,8 +422,8 @@ export default function BookingDetailsPage() {
 
   const formatEventTimestamp = (dateStr: string) => new Intl.DateTimeFormat(i18n.language, {
     dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'America/St_Johns',
+    timeStyle: 'short', hour12: true,
+    timeZone: booking?.location?.timezone || undefined,
   }).format(new Date(dateStr));
 
   const formatCurrency = (cents: number | undefined | null) => {
@@ -437,7 +436,7 @@ export default function BookingDetailsPage() {
     const rawSlots = booking.selectedSlots;
 
     if (!rawSlots || rawSlots.length === 0) {
-      return [`${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`];
+      return [timeRange(formatTime(booking.startTime), formatTime(booking.endTime))];
     }
 
     const slotOrder = sortTimesInOperatingWindow(rawSlots.map(slot => slot.startTime),
@@ -453,10 +452,10 @@ export default function BookingDetailsPage() {
     }
 
     if (isContiguous) {
-      return [`${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`];
+      return [timeRange(formatTime(booking.startTime), formatTime(booking.endTime))];
     }
 
-    return sorted.map((s) => `${formatTime(s.startTime)} - ${formatTime(s.endTime)}`);
+    return sorted.map((s) => timeRange(formatTime(s.startTime), formatTime(s.endTime)));
   };
 
   const formatContactPhone = (phone: string) => {
@@ -464,46 +463,6 @@ export default function BookingDetailsPage() {
     return normalizePhoneNumber(phone)?.startsWith('+1') ? `+1 ${formatted}` : formatted;
   };
   const bookingTimeSlots = formatBookingTimeSlots();
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return (
-          <InfoChip variant="success" icon={<CheckCircle2 className="h-3 w-3" />}>
-            {t("bdStatusConfirmed")}
-          </InfoChip>
-        );
-      case "pending":
-        return (
-          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
-            {t("bdStatusPending")}
-          </InfoChip>
-        );
-      case "cancelled": {
-        // A released authorization is also stored as failed after a manager/chef cancellation.
-        // Payment status alone cannot establish expiry or who cancelled the booking.
-        return (
-          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
-            {t("bdStatusCancelled")}
-          </InfoChip>
-        );
-      }
-      case "completed":
-        return (
-          <InfoChip variant="success" icon={<CheckCircle2 className="h-3 w-3" />}>
-            {bookingStatusLabel(status, t)}
-          </InfoChip>
-        );
-      case "cancellation_requested":
-        return (
-          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
-            {bookingStatusLabel(status, t)}
-          </InfoChip>
-        );
-      default:
-        return <InfoChip variant="outline">{bookingStatusLabel(status, t)}</InfoChip>;
-    }
-  };
 
   const getCheckinStatusBadge = (checkinStatus: string | null | undefined) => {
     if (!checkinStatus || checkinStatus === 'not_checked_in') {
@@ -551,69 +510,6 @@ export default function BookingDetailsPage() {
     return null;
   };
 
-  const getPaymentStatusBadge = (status: string | undefined) => {
-    switch (status) {
-      case "authorized":
-        return (
-          <InfoChip variant="outline" icon={<CreditCard className="h-3 w-3" />}>
-            {t("bdPayHeld")}
-          </InfoChip>
-        );
-      case "paid":
-        return (
-          <InfoChip variant="success" icon={<CreditCard className="h-3 w-3" />}>
-            {t("bdPayPaid")}
-          </InfoChip>
-        );
-      case "processing":
-        return (
-          <InfoChip variant="outline" icon={<Loader2 className="h-3 w-3 animate-spin" />}>
-            {t("bdPayProcessing")}
-          </InfoChip>
-        );
-      case "pending":
-        return (
-          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
-            {t("bdPayPending")}
-          </InfoChip>
-        );
-      case "refunded":
-        return (
-          <InfoChip variant="outline" icon={<Receipt className="h-3 w-3" />}>
-            {t("bdPayRefunded")}
-          </InfoChip>
-        );
-      case "partially_refunded":
-        return (
-          <InfoChip variant="warning" icon={<Receipt className="h-3 w-3" />}>
-            {t("bdPayPartialRefund")}
-          </InfoChip>
-        );
-      case "failed":
-        // Distinguish voided authorization (cancelled booking with 'failed' payment) from actual failures
-        if (booking?.status === 'cancelled') {
-          return (
-            <InfoChip variant="outline" icon={<CreditCard className="h-3 w-3" />}>
-              {t("bdPayAuthVoided")}
-            </InfoChip>
-          );
-        }
-        return (
-          <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
-            Failed
-          </InfoChip>
-        );
-      case "canceled":
-        return (
-          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
-            {t("bdPayCanceled")}
-          </InfoChip>
-        );
-      default:
-        return null;
-    }
-  };
-
   const responseDeadline = booking ? bookingResponseDeadline(booking) : null;
   const responseDeadlineText = responseDeadline ? formatResponseDeadline(responseDeadline, i18n.language, booking?.location?.timezone || undefined) : null;
 
@@ -628,7 +524,7 @@ export default function BookingDetailsPage() {
       detail: `${booking.paymentTransaction?.refundAmount ? (isManagerView ? t('bdRefundedToChef', { amount: formatCurrency(booking.paymentTransaction.refundAmount) }) : t('bdRefundedYou', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
     };
     if (status === 'paid' && booking.status === 'cancelled') return { summary: t('bdCancelledPaidSummary', { defaultValue: 'Your booking was cancelled after payment.' }), detail: t(isManagerView ? 'bdBookingCancelledManager' : 'bdBookingCancelledChef') };
-    if (status === 'paid') return { summary: t('bdPaidSummary', { defaultValue: 'Your payment was collected.' }), detail: t('bdPaymentCapturedInfo', { defaultValue: 'Your payment has been captured for this booking.' }) };
+    if (status === 'paid') return { summary: isManagerView ? t('bdPaidSummaryManager') : t('bdPaidSummary', { defaultValue: 'Your payment was collected.' }), detail: t('bdPaymentCapturedInfo', { defaultValue: 'Your payment has been captured for this booking.' }) };
     if (status === 'processing') return { summary: t('bdProcessingSummary', { defaultValue: 'Your payment is processing.' }), detail: t('bdPaymentProcessingInfo', { defaultValue: 'Your payment is being processed. This page will show the final status once it is available.' }) };
     if (status === 'pending') return { summary: t('bdPendingSummary', { defaultValue: 'Your payment is pending.' }), detail: t('bdPaymentPendingInfo', { defaultValue: 'Payment has not been completed yet.' }) };
     if (status === 'failed') return { summary: t('bdPaymentFailedInfo', { defaultValue: 'Payment failed.' }), detail: t('bdPaymentFailedDetail', { defaultValue: 'The payment could not be completed. Contact Local Cooks if you need help.' }) };
@@ -923,7 +819,7 @@ export default function BookingDetailsPage() {
       logger.error('Error updating booking:', err);
       toast({
         title: "Error",
-        description: err instanceof Error ? err.message : 'Failed to update booking',
+        description: err instanceof Error ? err.message : t('detailsCopy07'),
         variant: "destructive",
       });
     } finally {
@@ -997,17 +893,17 @@ export default function BookingDetailsPage() {
               equipmentActions: params.equipmentActions,
             }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel'); }
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || t('detailsCopy08')); }
           if (params.action === "cancel-booking-refund" && bookingForManagement?.transactionId) {
             const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
               method: 'POST', headers, credentials: 'include',
-              body: JSON.stringify({ reason: 'Full refund requested after manager cancellation' }),
+              body: JSON.stringify({ reason: ct('sweepText33') }),
             });
-            if (!requestRes.ok) { const d = await requestRes.json().catch(() => ({})); throw new Error(d.error || 'Booking cancelled, but the full refund request failed'); }
+            if (!requestRes.ok) { const d = await requestRes.json().catch(() => ({})); throw new Error(d.error || t('detailsCopy09')); }
           }
           toast({
             title: t("bdBookingCancelledToast"),
-            description: params.action === "cancel-booking-refund" ? 'Full refund sent to Local Cooks for approval.' : t("bdBookingCancelledDesc"),
+            description: params.action === "cancel-booking-refund" ? t('detailsCopy10') : t("bdBookingCancelledDesc"),
           });
           // Reload to get fresh payment status, refund amounts, and item statuses from server
           window.location.reload();
@@ -1019,7 +915,7 @@ export default function BookingDetailsPage() {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
-          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to update'); }
+          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || t('detailsCopy11')); }
 
           if (
             params.action === "partial-cancel-refund" &&
@@ -1033,13 +929,13 @@ export default function BookingDetailsPage() {
                 method: 'POST', headers, credentials: "include",
                 body: JSON.stringify({
                   amount: params.refundAmountCents,
-                  reason: 'Partial cancellation refund',
+                  reason: ct('sweepText34'),
                 }),
               },
             );
             if (!refundRes.ok) {
               const d = await refundRes.json().catch(() => ({}));
-              throw new Error(d.error || 'Items cancelled but refund failed');
+              throw new Error(d.error || t('detailsCopy12'));
             }
             toast({
               title: t("bdItemsCancelledToast"),
@@ -1063,13 +959,13 @@ export default function BookingDetailsPage() {
               method: 'POST', headers, credentials: "include",
               body: JSON.stringify({
                 amount: params.refundAmountCents,
-                reason: 'Refund issued by manager',
+                reason: ct('sweepText35'),
               }),
             },
           );
           if (!refundRes.ok) {
             const d = await refundRes.json().catch(() => ({}));
-            throw new Error(d.error || 'Failed to process refund');
+            throw new Error(d.error || t('detailsCopy13'));
           }
           toast({
             title: t("bdRefundProcessedDesc", {
@@ -1083,13 +979,13 @@ export default function BookingDetailsPage() {
           if (!bookingForManagement?.transactionId) throw new Error(t("bdRefundPanelInfo"));
           const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
             method: 'POST', headers, credentials: 'include',
-            body: JSON.stringify({ reason: 'Full refund requested by manager' }),
+            body: JSON.stringify({ reason: ct('sweepText36') }),
           });
           if (!requestRes.ok) {
             const d = await requestRes.json().catch(() => ({}));
-            throw new Error(d.error || 'Failed to request full refund');
+            throw new Error(d.error || t('detailsCopy14'));
           }
-          toast({ title: 'Full refund requested', description: 'Local Cooks will review and control the final refund.' });
+          toast({ title: t('detailsCopy15'), description: t('detailsCopy16') });
           setBooking({ ...booking, paymentTransaction: booking.paymentTransaction ? { ...booking.paymentTransaction, metadata: { ...booking.paymentTransaction.metadata, fullRefundRequest: { status: 'pending' } } } : undefined });
           setManagementDialogOpen(false);
           break;
@@ -1103,7 +999,7 @@ export default function BookingDetailsPage() {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'decline' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || t('detailsCopy06')); }
           setBooking({ ...booking, status: 'confirmed' });
           toast({ title: mt("cancellationDeclined") });
           break;
@@ -1119,7 +1015,7 @@ export default function BookingDetailsPage() {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'decline' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || t('detailsCopy06')); }
           toast({ title: mt("storageCancellationDeclined") });
           break;
         }
@@ -1173,22 +1069,32 @@ export default function BookingDetailsPage() {
     </div>
   );
 
-  // Main booking content
-  const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
-  const visitWrappedUp = !!booking && !hasMultipleVisits && (['checkout_requested', 'checked_out', 'checkout_claim_filed', 'no_show'].includes(booking.checkinStatus || '')
-    || ['booked_time_ended', 'ended'].includes(booking.closeout?.phase || '') || booking.status === 'completed');
-  const inspectionDue = booking?.closeout?.visits?.[0]?.inspection?.deadline;
-  const inspectionDueText = inspectionDue ? formatEventTimestamp(inspectionDue) : null;
-  const chefCanCheckIn = !isManagerView && booking?.status === 'confirmed' &&
-    booking.checkinEnabled === true && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
-  const chefCanCheckOut = !isManagerView && booking?.status === 'confirmed' &&
-    ((booking.checkinStatus === 'checked_in' && (booking.checkoutEnabled === true || booking.checkinEnabled === true)) ||
-      (booking.checkoutEnabled === true && booking.checkinEnabled !== true && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in')));
+  const cap = (value?: string | null) => value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+  const itemChip = (item: { status: string; paymentStatus?: string }, storage: boolean) => {
+    const voided = isItemVoided(item), refunded = isItemRefunded(item);
+    if (storage && item.status === 'completed') return <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>{cap(t('bdStatusCleared'))}</InfoChip>;
+    if (refunded) return <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>{cap(t('bdStatusRefunded'))}</InfoChip>;
+    if (voided) return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>{cap(t('bdStatusNotCharged'))}</InfoChip>;
+    if (item.status === 'cancelled') return <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>{cap(t('bdStatusCancelled'))}</InfoChip>;
+    if (item.status === 'confirmed' || item.status === 'active') return <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>{cap(t('bdStatusConfirmed'))}</InfoChip>;
+    return <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
+      {item.status === 'pending' ? cap(t('bdStatusPending')) : item.status === 'expired' ? cap(t('bdStatusExpired')) : bookingStatusLabel(item.status, t)}
+    </InfoChip>;
+  };
+  const payoutTitle = booking?.paymentStatus === 'authorized' ? t('bdEstimatedPayout', { defaultValue: 'Estimated payout' }) : t('bdYourPayout', { defaultValue: 'Your payout' });
+  const chefTotalLabel = booking?.paymentStatus === 'authorized' ? t('bdAmountAuthorized') : t('bdAmountCharged');
+  // Headline figure reuses the same shared breakdown builders the itemized list renders (display only).
+  const paymentHeadline = (() => {
+    if (!booking?.paymentTransaction || !pricingBreakdownInput || booking.paymentDecision?.state === 'pending'
+      || (booking.paymentStatus === 'failed' && booking.status === 'cancelled')) return null;
+    if (isManagerView) return { label: payoutTitle, cents: buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents, struck: false };
+    return { label: booking.paymentStatus === 'authorized' ? t('bdhOnHold') : t('bdhTotalPaid'), cents: buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
+  })();
   const renderChefCheckinPolicy = (startTime: string) => {
     if (!booking || isManagerView || booking.checkinWindowMinutesBefore == null || booking.noShowGraceMinutes == null) return null;
     return (
       <CheckinPolicyTimesCard
-        className="mt-4 border-t pt-4"
+        className="border-t pt-4"
         showIntro={false}
         layout="responsive"
         bookingDate={booking.bookingDate}
@@ -1200,177 +1106,384 @@ export default function BookingDetailsPage() {
       />
     );
   };
+
+  // Main booking content
+  const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
+  const tz = booking?.location?.timezone || undefined;
+  const lang = i18n.language;
+  const inspectionDue = booking?.closeout?.visits?.[0]?.inspection?.deadline;
+  const inspectionDueText = inspectionDue ? formatEventTimestamp(inspectionDue) : null;
+  const inspectionCanRespond = !!booking?.closeout?.visits?.some(visit => visit.inspection.canRespond);
+  // The kitchen's review window is still open (due or not yet due).
+  const inspectionOpen = !!booking?.closeout?.visits?.some(visit => ['not_due', 'due'].includes(visit.inspection.outcome));
+  const visitBounds = (() => {
+    if (!booking || !tz) return null;
+    try {
+      const day = booking.bookingDate.split('T')[0];
+      const startAt = createBookingDateTime(calendarDateForBookingTime(day, booking.startTime, booking.operatingWindowStartTime), booking.startTime, tz);
+      const endAt = createBookingDateTime(calendarDateForBookingTime(day, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, tz);
+      return { startAt, endAt, opensAt: new Date(startAt.getTime() - (booking.checkinWindowMinutesBefore ?? 15) * 60_000) };
+    } catch { return null; }
+  })();
+  const phase: BookingHeaderPhase = booking ? bookingHeaderPhase({
+    status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
+    inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
+  }) : 'confirmed';
+  const primary = bookingPrimaryAction(phase, isManagerView, inspectionCanRespond);
+  const chefName = booking?.chef?.fullName || booking?.chef?.username || t('bdhChefFallback');
+  const kitchenName = booking?.kitchen?.name || t('bdKitchenBookingFallback');
+  const visitActive = !!booking && (['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '') || (booking.visits || []).some(visit => ['checked_in', 'checkout_requested'].includes(visit.checkinStatus)));
+  const visitStarted = !!booking && (['in_booked_time', 'booked_time_ended', 'ended'].includes(booking.closeout?.phase || '')
+    || ![null, undefined, '', 'not_checked_in'].includes(booking.checkinStatus) || booking.status === 'completed'
+    || (booking.visits || []).some(visit => visit.checkinStatus !== 'not_checked_in'));
+  const visitOver = ['checkout_review', 'visit_ended', 'completed', 'no_show', 'issue'].includes(phase);
+  const shortWhen = (value: Date | string) => {
+    try { return new Intl.DateTimeFormat(lang, { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value)); }
+    catch { return ''; }
+  };
+  const clockTime = (value: Date | string) => {
+    try { return new Intl.DateTimeFormat(lang, { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value)); }
+    catch { return ''; }
+  };
+  const cancellationCutoff = (() => {
+    if (!booking) return null;
+    try { return kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return null; }
+  })();
+  const cancellationDeadlineText = cancellationCutoff != null ? formatEventTimestamp(new Date(cancellationCutoff).toISOString()) : undefined;
+  const paidCancellationAvailable = cancellationCutoff != null && Date.now() < cancellationCutoff;
+  const chefCanCancel = !isManagerView && !!booking && !visitActive && ['pending', 'confirmed'].includes(booking.status);
+  const managerCanManage = isManagerView && !!booking && (booking.status === 'confirmed' || booking.status === 'cancellation_requested'
+    || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')));
+  const canDownload = !!booking && booking.paymentDecision?.state !== 'pending' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '');
+  const showRefundReview = !!booking && (['cancelled', 'cancellation_requested'].includes(booking.status)
+    || [...(booking.storageBookings || []), ...(booking.equipmentBookings || [])].some(item => ['cancelled', 'cancellation_requested', 'removal_required'].includes(item.status)));
+  const inspectionVisitId = booking?.visits?.length === 1 ? booking.visits[0].id
+    : booking?.visits?.find(visit => visit.checkinStatus === 'checkout_requested')?.id;
+  const inspectionHref = booking ? `/manager/booking/${booking.id}/inspection${inspectionVisitId ? `?visitId=${inspectionVisitId}` : ''}` : '';
+
+  const nextStep = (() => {
+    if (!booking) return '';
+    const chef = chefName;
+    switch (phase) {
+      case 'pending':
+        if (responseDeadlineText) return isManagerView ? t('bdManagerRespondBy', { deadline: responseDeadlineText }) : t('bdRequestSentBanner', { kitchen: kitchenName, deadline: responseDeadlineText });
+        return isManagerView ? t('bdhNextManagerPending') : t('bdhNextChefPending', { kitchen: kitchenName });
+      case 'cancellation_requested': return isManagerView ? t('bdhNextManagerCancellationRequested', { chef }) : t('cancelCopy07');
+      case 'cancelled': return isManagerView ? t('bdhNextManagerCancelled') : t('bdhNextChefCancelled');
+      case 'confirmed': case 'today': {
+        if (isManagerView) return phase === 'today' && visitBounds ? t('bdhNextManagerToday', { chef, time: clockTime(visitBounds.startAt) }) : t('bdhNextManagerUpcoming', { chef });
+        const releaseAt = booking.location?.instructionsReleaseAt;
+        if (booking.location?.instructionsReleased === false && releaseAt && Date.parse(releaseAt) > Date.now()) return t('bdhNextChefDetailsAt', { time: shortWhen(releaseAt) });
+        return visitBounds ? t('bdhNextChefDetailsReady', { time: shortWhen(visitBounds.opensAt) }) : t('bdhNextChefConfirmed');
+      }
+      case 'checkin_open':
+        if (!isManagerView) return t('bdhNextChefCheckinOpen');
+        return visitBounds && Date.now() < visitBounds.startAt.getTime() ? t('bdhNextManagerToday', { chef, time: clockTime(visitBounds.startAt) }) : t('bdhNextManagerNotArrived', { chef });
+      case 'in_session':
+        return isManagerView ? t('bdhNextManagerInSession', { chef, time: visitBounds ? clockTime(visitBounds.endAt) : '' })
+          : t('bdhNextChefInSession', { time: visitBounds ? clockTime(visitBounds.endAt) : '' });
+      case 'time_ended_in_session': return isManagerView ? t('bdhNextManagerTimeEnded', { chef }) : t('bdhNextChefTimeEnded');
+      case 'checkout_review':
+        if (isManagerView) return inspectionDueText ? t('bdhNextManagerReviewBy', { chef, time: inspectionDueText }) : t('bdhNextManagerReview', { chef });
+        return inspectionDueText && inspectionOpen ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete');
+      case 'visit_ended':
+        if (isManagerView) return inspectionCanRespond && inspectionDueText ? t('bdhNextManagerInspectBy', { time: inspectionDueText }) : t('bdhNextManagerMissed');
+        return t('bdhNextChefMissed');
+      case 'completed': return isManagerView ? t('bdhNextManagerCompleted')
+        : inspectionDueText && inspectionOpen && booking.status !== 'completed' ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete');
+      case 'no_show': return isManagerView ? t('bdhNextManagerNoShow') : t('kciStatusNoShow');
+      case 'issue': return isManagerView ? t('bdhNextManagerIssue') : t('bdhNextChefIssue');
+    }
+  })();
+  const pillKey = phase === 'checkout_review' && !isManagerView ? 'bdhPill_checkout_submitted'
+    : phase === 'checkin_open' ? 'bdhPill_today' : phase === 'time_ended_in_session' ? 'bdhPill_in_session' : `bdhPill_${phase}`;
+  const pillTone = bookingPillTone(phase);
+  const pillClass: Record<typeof pillTone, string> = {
+    amber: 'border-amber-200 bg-amber-50 text-amber-900', blue: 'border-sky-200 bg-sky-50 text-sky-900',
+    green: 'border-emerald-200 bg-emerald-50 text-emerald-900', purple: 'border-violet-200 bg-violet-50 text-violet-900',
+    neutral: 'border-border bg-muted text-foreground', grey: 'border-border bg-muted text-muted-foreground', red: 'border-red-200 bg-red-50 text-red-900',
+  };
+  const dotClass: Record<typeof pillTone, string> = {
+    amber: 'bg-amber-500', blue: 'bg-sky-500', green: 'bg-emerald-500', purple: 'bg-violet-500', neutral: 'bg-foreground/60', grey: 'bg-muted-foreground', red: 'bg-red-500',
+  };
+
+  const whenLine = booking ? [
+    visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
+      : new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
+    timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
+    t('bdHours', { count: calculateDuration() }),
+    tz ? friendlyTimezoneName(tz, lang) : null,
+  ].filter(Boolean).join(' · ') : '';
+  const mapsHref = booking?.location?.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location.address)}` : null;
+
+  const primaryLabel = primary === 'review_request' ? t('bdTakeAction') : primary === 'review_cancellation' ? t('bdhReviewCancellation')
+    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? t('bdhOpenVisit') : '';
+  const runPrimary = () => {
+    if (!booking) return;
+    if (primary === 'review_request') openActionDialog();
+    else if (primary === 'review_cancellation') openManagementDialog();
+    else if (primary === 'review_checkout' || primary === 'inspect_visit') navigate(inspectionHref);
+    else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit`);
+  };
+  const primaryButton = (testId: string, className?: string) => primary && (
+    <Button type="button" className={className} data-testid={testId} data-primary-action="true" onClick={runPrimary}
+      disabled={(primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing)}>
+      {(primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing) ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+      {primaryLabel}
+    </Button>
+  );
+  const messageAllowed = !!booking && canMessage(booking.status);
+  const messageLabel = openingConversation ? t('detailsCopy18') : isManagerView ? t('detailsCopy19') : t('detailsCopy20');
+  const messageButton = (className?: string) => messageAllowed && (
+    <Button type="button" variant="outline" className={className} onClick={() => void openBookingConversation()} disabled={openingConversation}>
+      <MessageSquare className="mr-1.5 h-4 w-4" aria-hidden />{messageLabel}
+    </Button>
+  );
+  const goToHelp = () => document.getElementById('booking-support')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
+  if (chefCanCancel) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
+  if (managerCanManage) menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : t('bdhCancelOrChange'), icon: CalendarX, onSelect: openManagementDialog });
+  if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
+    if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
+    menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => setFixOpen(true) });
+  }
+  if (canDownload) menuItems.push({ key: 'download', label: isManagerView ? t('bdDownloadPayoutStatement') : t('bdDownloadReceipt'), icon: Download, onSelect: () => void handleDownloadInvoice() });
+  menuItems.push({ key: 'help', label: t('bdhGetHelp'), icon: LifeBuoy, onSelect: goToHelp });
+  const hasBottomBar = !!primary || messageAllowed;
+
+  const addToCalendar = () => {
+    if (!booking || !visitBounds) return;
+    const ics = bookingIcs({ uid: `booking-${booking.id}`, title: t('bdhCalendarTitle', { kitchen: kitchenName }), start: visitBounds.startAt, end: visitBounds.endAt,
+      location: [booking.location?.name, booking.location?.address].filter(Boolean).join(', '), description: booking.referenceCode || undefined });
+    downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
+  };
+
+  const renderVisitRows = () => booking && hasMultipleVisits && (booking.status === 'confirmed' || booking.status === 'completed') && (
+    <ul className="divide-y rounded-xl border" aria-label={t('bdhVisitsList')}>
+      {booking.visits?.map(visit => (
+        <li key={visit.id} className="space-y-1 p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium">{t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` })}: <span className="tabular-nums">{timeRange(formatTime(visit.startTime), formatTime(visit.endTime))}</span></p>
+            {getCheckinStatusBadge(visit.checkinStatus)}
+          </div>
+          <div className="space-y-0.5 text-xs text-muted-foreground">
+            {visit.checkedInAt && <p>{t('bdCheckedInAt')}: {formatEventTimestamp(visit.checkedInAt)}</p>}
+            {visit.checkoutRequestedAt && <p>{t('bdCheckoutRequested')}: {formatEventTimestamp(visit.checkoutRequestedAt)}</p>}
+            {visit.checkedOutAt && <p>{t('bdCheckedOutCleared')}: {formatEventTimestamp(visit.checkedOutAt)}</p>}
+            {visit.checkinStatus === 'checkout_claim_filed' && visit.checkoutApprovedAt && <p>{t('bdCiClaimFiled')}: {formatEventTimestamp(visit.checkoutApprovedAt)}</p>}
+            {visit.checkoutManagerMessage && <p>{t('bookingAttendanceManagerMessage')}: {visit.checkoutManagerMessage}</p>}
+            {visit.noShowDetectedAt && <p>{t('bdNoShowDetected')}: {formatEventTimestamp(visit.noShowDetectedAt)}</p>}
+          </div>
+          {!isManagerView && visit.checkinStatus === 'not_checked_in' && phase !== 'visit_ended' && renderChefCheckinPolicy(visit.startTime)}
+        </li>
+      ))}
+    </ul>
+  );
+
+  const renderPhotos = (urls: string[], prefix: string, alt: (n: number) => string) => (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {urls.map((url, i) => {
+        const proxied = getR2ProxyUrl(url);
+        return (
+          <a key={`${prefix}-${i}`} href={proxied} target="_blank" rel="noopener noreferrer" className="block">
+            <SmartImage src={proxied} alt={alt(i + 1)} className="h-20 w-full rounded-md border object-cover transition-opacity hover:opacity-80"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }} />
+          </a>
+        );
+      })}
+    </div>
+  );
+  const renderChecklist = (items: Array<{ id: string; label: string; checked: boolean }>, label: string) => (
+    <div>
+      <p className="mb-2 flex items-center gap-1 text-xs font-medium text-muted-foreground"><CheckCircle2 className="h-3 w-3" /> {label}</p>
+      <div className="space-y-1">
+        {items.map((item, index) => (
+          <div key={item.id} className="flex items-center gap-1.5">
+            <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+            <span className="text-xs font-medium tabular-nums text-muted-foreground">{index + 1}.</span>
+            <span className={`text-xs ${item.checked ? 'text-success' : 'text-destructive line-through'}`}>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  const visitEvidence = booking && !hasMultipleVisits && (
+    booking.checkinNotes || booking.checkoutNotes || booking.checkoutManagerMessage || booking.checkedInMethod
+    || booking.checkinPhotoUrls?.length || booking.checkoutPhotoUrls?.length || booking.checkinChecklistItems?.length || booking.checkoutChecklistItems?.length
+  ) ? (
+    <details className="rounded-xl border p-3" data-testid="visit-evidence">
+      <summary className="cursor-pointer text-sm font-medium">{t('bdhVisitDetails')}</summary>
+      <div className="mt-3 space-y-3">
+        {booking.checkedInAt && booking.checkedInMethod && (
+          <p className="text-xs text-muted-foreground">{booking.checkedInMethod === 'self' ? t(isManagerView ? 'bdViaSelfManager' : 'bdViaSelf') : t('bdVia', { method: booking.checkedInMethod })}</p>
+        )}
+        {booking.checkinNotes && (
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkedInMethod === 'self' ? t('bookingAttendanceChefMessage') : t('bookingAttendanceManagerMessage')}</p>
+            <p className="whitespace-pre-wrap text-sm">{booking.checkinNotes}</p>
+          </div>
+        )}
+        {booking.checkoutManagerMessage && <div><p className="text-xs text-muted-foreground">{t('bookingAttendanceManagerMessage')}</p><p className="whitespace-pre-wrap text-sm">{booking.checkoutManagerMessage}</p></div>}
+        {booking.checkoutNotes && (
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkoutNotes.startsWith('Message from kitchen manager: ') ? t('bookingAttendanceManagerMessage') : t('bookingAttendanceChefMessage')}</p>
+            <p className="whitespace-pre-wrap text-sm">{booking.checkoutNotes}</p>
+          </div>
+        )}
+        {!!booking.checkinChecklistItems?.length && renderChecklist(booking.checkinChecklistItems, t('bdCheckinChecklist'))}
+        {!!booking.checkinPhotoUrls?.length && <div>
+          <p className="mb-2 flex items-center gap-1 text-xs font-medium text-muted-foreground"><Camera className="h-3 w-3" /> {t('bdCheckinPhotos', { count: booking.checkinPhotoUrls.length })}</p>
+          {renderPhotos(booking.checkinPhotoUrls, 'ci', n => t('bdCheckinPhotoAlt', { n }))}
+        </div>}
+        {!!booking.checkoutPhotoUrls?.length && <div>
+          <p className="mb-2 flex items-center gap-1 text-xs font-medium text-muted-foreground"><Camera className="h-3 w-3" /> {t('bdCheckoutPhotos', { count: booking.checkoutPhotoUrls.length })}</p>
+          {renderPhotos(booking.checkoutPhotoUrls, 'co', n => t('bdCheckoutPhotoAlt', { n }))}
+        </div>}
+        {!!booking.checkoutChecklistItems?.length && renderChecklist(booking.checkoutChecklistItems, t('bdCheckoutChecklist'))}
+      </div>
+    </details>
+  ) : null;
+
+  // Visit card: hidden when it could only hold an empty state (before confirmation, or a cancellation with no visit).
+  const showVisitCard = !!booking && booking.status !== 'pending' && !(booking.status === 'cancelled' && !visitStarted);
+  const chefBeforeArrival = !isManagerView && !!booking && ['confirmed', 'cancellation_requested'].includes(booking.status)
+    && !visitStarted && phase !== 'visit_ended';
+  const chefInSession = !isManagerView && (phase === 'in_session' || phase === 'time_ended_in_session');
+
+  const sectionClass = 'rounded-2xl border bg-card p-5 sm:p-6';
+  const headingClass = 'text-base font-semibold leading-6';
   const bookingContent = booking && (
     <TooltipProvider>
-    <div className="max-w-4xl mx-auto">
-      {/* ── Page Header ── */}
-      <div className="mb-8 rounded-2xl border bg-card p-5 sm:p-7">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Hash className="h-3 w-3" />
-            {booking.referenceCode ? (
-              <span className="font-mono font-medium text-foreground">{booking.referenceCode}</span>
-            ) : (
-              <span className="font-mono">{booking.id}</span>
-            )}
-            <span className="text-border">·</span>
-            <span>{t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {getStatusBadge(booking.status)}
-            {(booking.status === 'confirmed' || booking.status === 'completed') &&
-              (booking.checkinEnabled === true || booking.checkoutEnabled === true) &&
-              (hasMultipleVisits
-                ? <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>{t('bdVisitCount', { count: booking.visits?.length ?? 0, defaultValue: `${booking.visits?.length ?? 0} visits` })}</InfoChip>
-                : getCheckinStatusBadge(booking.checkinStatus))}
-            {getPaymentStatusBadge(booking.paymentStatus)}
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div className="space-y-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {booking.kitchen?.name || t("bdKitchenBookingFallback")}
-            </h1>
-            {booking.location && (
-              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" />
-                {booking.location.name}
-                {booking.location.address && ` · ${booking.location.address}`}
-              </p>
-            )}
-            {!isManagerView && ['checkout_requested', 'checked_out', 'checkout_claim_filed'].includes(booking.checkinStatus || '') && !hasMultipleVisits && booking.status !== 'cancelled' && (
-              <p className="pt-3 text-sm text-muted-foreground" data-testid="visit-complete-status">
-                {inspectionDueText ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete')}
-              </p>
-            )}
-            {!isManagerView && !visitWrappedUp && !['booked_time_ended', 'ended'].includes(booking.closeout?.phase || '') && ['confirmed', 'cancellation_requested'].includes(booking.status) && (
-              <BookingPreparation inSession={booking.checkinStatus === 'checked_in'} bookingStatus={booking.status} arrivalInstructions={booking.location?.arrivalInstructions} departureInstructions={booking.location?.departureInstructions}
-                instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt}
-                arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone} address={booking.location?.address} contact={booking.kitchenContact}
-                visitStartAt={booking.location?.timezone ? createBookingDateTime(calendarDateForBookingTime(booking.bookingDate.split('T')[0], booking.startTime, booking.operatingWindowStartTime), booking.startTime, booking.location.timezone) : null} />
-            )}
-          </div>
-
-          {booking.status !== 'pending' && <ClockCloseoutSummary closeout={booking.closeout} manager={isManagerView} />}
-          {isManagerView && inSessionEnds(booking).length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {inSessionEnds(booking).map(session => {
-                const visit = session.visitId ? booking.visits?.find(row => row.id === session.visitId) : undefined;
-                return <ManagerInSessionBadge key={session.visitId ?? 'booking'} endsAt={session.endsAt} timezone={booking.location?.timezone}
-                  label={visit && (booking.visits?.length || 0) > 1 ? t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` }) : undefined} />;
-              })}
-            </div>
-          )}
-          {!isManagerView && <div className="flex shrink-0 justify-end md:ml-auto">
-            <BookingCancellationChooser visitActive={['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '') || (booking.visits || []).some(visit => ['checked_in', 'checkout_requested'].includes(visit.checkinStatus))} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
-              summary={{ kitchenName: booking.kitchen?.name || t('bdKitchenBookingFallback'), reference: booking.referenceCode || undefined,
-                schedule: `${formatDate(booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
-                amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
-              cancellationDeadline={(() => { try { return formatEventTimestamp(new Date(kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24)).toISOString()); } catch { return undefined; } })()}
-              decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
-              paidCancellationAvailable={(() => { try { return Date.now() < kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return false; } })()}
-              items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
-                name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
-                ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
-                  name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
-              onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
-          </div>}
-
-          {isManagerView && (booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'cancellation_requested' || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')) || booking.checkinStatus === 'checkout_requested') && (
-            <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
-            {booking.status === 'pending' && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={openActionDialog}
-                disabled={isUpdatingStatus}
-              >
-                {isUpdatingStatus ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    {t("bdTakeAction")}
-                  </>
-                )}
-              </Button>
-            )}
-            {(booking.status === 'confirmed' || booking.status === 'cancellation_requested' || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || ''))) && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={openManagementDialog}
-                disabled={isManagementProcessing}
-              >
-                {isManagementProcessing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <>{t("bdManageBooking")}</>
-                )}
-              </Button>
-            )}
-            {!hasMultipleVisits && (booking.status === 'confirmed' || booking.status === 'completed') && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => navigate(`/manager/booking/${booking.id}/inspection${booking.visits?.length === 1 ? `?visitId=${booking.visits[0].id}` : ''}`)}
-                disabled={isUpdatingStatus}
-              >
-                {isUpdatingStatus ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                )}
-                Visit inspection
-              </Button>
-            )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Separator className="mb-8" />
-      {responseDeadlineText && (
-        <p role="status" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="response-deadline-banner">
-          {isManagerView
-            ? t('bdManagerRespondBy', { deadline: responseDeadlineText })
-            : t('bdRequestSentBanner', { kitchen: booking.kitchen?.name || t('bdKitchenBookingFallback'), deadline: responseDeadlineText })}
+    <div className={`mx-auto max-w-5xl min-w-0 ${hasBottomBar ? 'pb-24 sm:pb-0' : ''}`}>
+      {/* ── Header: who, when, one status, one next step, actions ── */}
+      <header className={`${sectionClass} mb-6`} aria-label={t('bdhHeaderLabel')} data-testid="booking-header">
+        <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span className="font-mono font-medium text-foreground">{booking.referenceCode || booking.id}</span>
+          <span aria-hidden>·</span>
+          <span>{t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}</span>
         </p>
-      )}
-      {!isManagerView && booking.status === 'pending' && <div className="mb-6"><BookingRefundPolicyNotice single /></div>}
-      {booking.paymentDecision?.state === 'pending' && <p role="status" className="mb-6 rounded-lg border p-4 text-sm">{t('bdPaymentRecovery')}</p>}
+        <div className="mt-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            {isManagerView && (
+              <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(chefName)}</AvatarFallback></Avatar>
+            )}
+            <div className="min-w-0">
+              <h1 className="break-words text-2xl font-semibold tracking-tight" data-testid="booking-who">{isManagerView ? chefName : kitchenName}</h1>
+              {isManagerView ? (
+                <p className="mt-0.5 text-sm text-muted-foreground">{t('bdhKitchenSession', { kitchen: kitchenName })}</p>
+              ) : booking.location && (
+                mapsHref ? (
+                  <a href={mapsHref} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex max-w-full items-start gap-1 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{booking.location.address}</span>
+                  </a>
+                ) : <p className="mt-0.5 text-sm text-muted-foreground">{booking.location.name}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 sm:flex" data-testid="header-actions">
+              {messageButton()}
+              {primaryButton('header-primary-action')}
+            </div>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className="h-10 w-10" aria-label={t('bdhMoreActions')}>
+                  <MoreHorizontal className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                {menuItems.map(item => (
+                  <DropdownMenuItem key={item.key} onSelect={item.onSelect} className="gap-2">
+                    <item.icon className="h-4 w-4 text-muted-foreground" />{item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <p className="mt-4 text-base font-medium tabular-nums sm:text-lg" data-testid="booking-when">{whenLine}</p>
+        <div className="mt-3 flex flex-col items-start gap-2">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${pillClass[pillTone]}`} data-testid="booking-status-pill" data-tone={pillTone}>
+            <span className={`h-1.5 w-1.5 rounded-full ${dotClass[pillTone]}`} aria-hidden />{t(pillKey)}
+          </span>
+          <p role="status" className="text-sm leading-relaxed text-foreground/80" data-testid="booking-next-step">{sentence(nextStep)}</p>
+        </div>
+      </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
-          {(['cancelled', 'cancellation_requested'].includes(booking.status) || [...(booking.storageBookings || []), ...(booking.equipmentBookings || [])].some(item => ['cancelled', 'cancellation_requested', 'removal_required'].includes(item.status))) && <Button variant="outline" onClick={() => { setCancellationRefundScope(undefined); setCancellationRefundOpen(true); }}>View cancellation and refund outcomes</Button>}
-          <KitchenBookingChanges key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
-          <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
-            managerVisitHref={isManagerView ? `/manager/booking/${booking.id}/inspection` : undefined} />
-          {isManagerView && ['confirmed', 'completed'].includes(booking.status) && (
-            <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status}
-              customerName={booking.chef?.fullName || booking.chef?.username} kitchenName={booking.kitchen?.name}
-              timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
-              startTime={booking.startTime} endTime={booking.endTime} visits={booking.visits} onChanged={reloadBookingDetails} />
-          )}
-          {/* ── Schedule ── */}
-          <section className="rounded-2xl border bg-card p-5 sm:p-6">
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-5">{t("bdSchedule")}</h2>
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,0.6fr)] sm:divide-x sm:divide-border">
-              <div className="sm:pr-4">
-                <p className="text-xs text-muted-foreground mb-1">{t("bdDate")}</p>
-                <p className="text-sm font-medium">{formatDate(booking.bookingDate)}</p>
+          <KitchenBookingChanges timezone={booking.location?.timezone} key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+
+          {/* ── Visit ── */}
+          {showVisitCard && (
+            <section className={`${sectionClass} space-y-4`} aria-labelledby="booking-visit-title" data-testid="visit-card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="booking-visit-title" className={headingClass}>{isManagerView ? t('bdhVisitTitle') : t('bdhYourVisitTitle')}</h2>
+                {!isManagerView && primary !== 'open_visit' && ['confirmed', 'cancellation_requested'].includes(booking.status) && !visitOver && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/booking/${booking.id}/visit`)}>{t('bdhOpenVisit')}</Button>
+                )}
               </div>
-              <div className="sm:px-4">
-                <p className="text-xs text-muted-foreground mb-1">{t("bdTime")}</p>
-                <div className="text-sm font-medium">
-                  {bookingTimeSlots.slice(0, 2).map((slot, index) => <div key={`${slot}-${index}`} className="whitespace-nowrap">{slot}</div>)}
+              {isManagerView && inSessionEnds(booking).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {inSessionEnds(booking).map(session => {
+                    const visit = session.visitId ? booking.visits?.find(row => row.id === session.visitId) : undefined;
+                    return <ManagerInSessionBadge key={session.visitId ?? 'booking'} endsAt={session.endsAt} timezone={booking.location?.timezone}
+                      label={visit && (booking.visits?.length || 0) > 1 ? t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` }) : undefined} />;
+                  })}
+                </div>
+              )}
+              {(visitStarted || isManagerView) && (
+                <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
+                  chefName={chefName} closeout={booking.closeout} embedded
+                  {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen } : {})}
+                  visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />
+              )}
+              {isManagerView && ['confirmed', 'completed'].includes(booking.status) && (
+                <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded
+                  visitEnded={visitOver || booking.closeout?.phase === 'ended'}
+                  customerName={chefName} kitchenName={booking.kitchen?.name}
+                  timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
+                  startTime={booking.startTime} endTime={booking.endTime} visits={booking.visits} onChanged={reloadBookingDetails} />
+              )}
+              {chefBeforeArrival && (
+                <BookingPreparation bookingStatus={booking.status} arrivalInstructions={booking.location?.arrivalInstructions}
+                  instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt}
+                  arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone}
+                  visitStartAt={visitBounds?.startAt ?? null} />
+              )}
+              {chefInSession && (
+                <BookingPreparation inSession bookingStatus={booking.status} departureInstructions={booking.location?.departureInstructions}
+                  instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt} />
+              )}
+              {chefBeforeArrival && !hasMultipleVisits && renderChefCheckinPolicy(booking.startTime)}
+              {visitStarted && <ClockCloseoutSummary closeout={booking.closeout} manager={isManagerView} embedded hideInspectionDeadline hideFinished={chefInSession} />}
+              {renderVisitRows()}
+              {visitEvidence}
+            </section>
+          )}
+
+          {/* ── When & where ── */}
+          <section className={sectionClass} aria-labelledby="booking-when-title">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 id="booking-when-title" className={headingClass}>{t('bdhWhenWhere')}</h2>
+              {visitBounds && !['cancelled'].includes(phase) && !visitOver && (
+                <Button type="button" variant="outline" size="sm" onClick={addToCalendar}><CalendarPlus className="mr-1.5 h-4 w-4" aria-hidden />{t('bdhAddToCalendar')}</Button>
+              )}
+            </div>
+            <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">{t('bdDate')}</dt>
+                <dd className="mt-0.5 font-medium">{formatDate(booking.bookingDate)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">{t('bdTime')}</dt>
+                <dd className="mt-0.5 font-medium tabular-nums">
+                  {bookingTimeSlots.slice(0, 2).map((slot, index) => <div key={`${slot}-${index}`}>{slot}</div>)}
                   {bookingTimeSlots.length > 2 && (
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button type="button" className="mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <button type="button" className="mt-1 text-xs font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                           {t('bdShowAllTimes', { defaultValue: 'Show all times' })}
                         </button>
                       </PopoverTrigger>
@@ -1380,612 +1493,299 @@ export default function BookingDetailsPage() {
                       </PopoverContent>
                     </Popover>
                   )}
+                  <span className="block text-xs font-normal text-muted-foreground">{t('bdHours', { count: calculateDuration() })}</span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">{t('bdhPlace')}</dt>
+                <dd className="mt-0.5 font-medium">{kitchenName}{booking.location?.name && booking.location.name !== kitchenName && <span className="block text-xs font-normal text-muted-foreground">{booking.location.name}</span>}</dd>
+              </div>
+              {booking.location?.address && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">{t('bdhAddress')}</dt>
+                  <dd className="mt-0.5">
+                    <a href={mapsHref!} target="_blank" rel="noopener noreferrer" className="break-words font-medium underline underline-offset-4">{booking.location.address}</a>
+                  </dd>
                 </div>
+              )}
+            </dl>
+          </section>
+
+          {/* ── The other party ── */}
+          <section className={sectionClass} aria-labelledby="booking-person-title" data-testid="person-card">
+            <div className="flex items-start gap-3">
+              <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(isManagerView ? chefName : kitchenName)}</AvatarFallback></Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-muted-foreground">{isManagerView ? t('bdhChefLabel') : t('bdhKitchenLabel')}</p>
+                <h2 id="booking-person-title" className={`${headingClass} break-words`}>{isManagerView ? chefName : kitchenName}</h2>
+                {!isManagerView && booking.location?.name && booking.location.name !== kitchenName && <p className="text-sm text-muted-foreground">{booking.location.name}</p>}
               </div>
-              <div className="sm:pl-4">
-                <p className="text-xs text-muted-foreground mb-1">{t("bdDuration")}</p>
-                <p className="text-sm font-medium">{t("bdHours", { count: calculateDuration() })}</p>
-              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {messageButton('w-full sm:w-auto')}
+              {(() => {
+                const phone = isManagerView ? booking.chef?.phone : booking.kitchenContact?.phone;
+                return phone && contactVisible(booking.status) ? (
+                  <div data-testid="contact-phone">
+                    <a href={`tel:${phone}`} className="text-sm font-medium underline underline-offset-4">{formatContactPhone(phone)}</a>
+                    <p className="mt-1 text-xs text-muted-foreground">{t('bdhSafetyHelper')}</p>
+                  </div>
+                ) : null;
+              })()}
+              {(() => {
+                const email = isManagerView ? booking.chef?.username : booking.kitchenContact?.email;
+                return email ? <a href={`mailto:${email}`} className="block break-all text-xs text-muted-foreground underline-offset-4 hover:underline">{email}</a> : null;
+              })()}
             </div>
           </section>
 
-          {hasMultipleVisits && (booking.status === 'confirmed' || booking.status === 'completed') && (
-            <section className="rounded-2xl border bg-card p-5 sm:p-6">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <LogIn className="h-3.5 w-3.5" />{t("bdCiCoSection")}
-                </h2>
-                {!isManagerView && booking.status === 'confirmed' && (
-                  <Button variant="outline" size="sm" className="h-8 border-primary/30 px-3 text-xs font-semibold text-primary shadow-none hover:bg-primary/5 hover:text-primary" onClick={() => navigate(`/booking/${booking.id}/visit`)}>
-                    {t('bdManageVisits', { defaultValue: 'Manage visits' })}
-                  </Button>
-                )}
-              </div>
-              <div className="divide-y border-t">
-                {booking.visits?.map(visit => (
-                  <div key={visit.id} className="flex flex-wrap items-start justify-between gap-3 py-4 text-sm">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">{t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` })}: {formatTime(visit.startTime)}–{formatTime(visit.endTime)}</p>
-                      <div className="mt-1">{getCheckinStatusBadge(visit.checkinStatus)}</div>
-                      <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                        {visit.checkedInAt && <p>{t("bdCheckedInAt")}: {formatEventTimestamp(visit.checkedInAt)}</p>}
-                        {visit.checkoutRequestedAt && <p>{t("bdCheckoutRequested")}: {formatEventTimestamp(visit.checkoutRequestedAt)}</p>}
-                        {visit.checkedOutAt && <p>{t("bdCheckedOutCleared")}: {formatEventTimestamp(visit.checkedOutAt)}</p>}
-                        {visit.checkinStatus === 'checkout_claim_filed' && visit.checkoutApprovedAt && <p>{t("bdCiClaimFiled")}: {formatEventTimestamp(visit.checkoutApprovedAt)}</p>}
-                        {visit.checkoutManagerMessage && <p>{t('bookingAttendanceManagerMessage')}: {visit.checkoutManagerMessage}</p>}
-                        {visit.noShowDetectedAt && <p>{t("bdNoShowDetected")}: {formatEventTimestamp(visit.noShowDetectedAt)}</p>}
+          {/* ── Add-ons ── */}
+          {(allStorageBookings.length > 0 || allEquipmentBookings.length > 0) && (
+            <section className={`${sectionClass} space-y-4`} aria-labelledby="booking-addons-title">
+              <h2 id="booking-addons-title" className={headingClass}>{t('bdhAddOns')}</h2>
+              {allStorageBookings.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><Package className="h-3.5 w-3.5 text-muted-foreground" />{t('bdStorageSection')}</h3>
+                  {allStorageBookings.map((storage) => {
+                    const voided = isItemVoided(storage);
+                    const refunded = isItemRefunded(storage);
+                    const cancelled = voided || refunded || storage.status === 'cancelled';
+                    return (
+                      <div key={storage.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-3 ${cancelled ? 'bg-muted/40 opacity-60' : ''}`}>
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{storage.storageListing?.name || `Storage #${storage.storageListingId}`}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {storage.storageListing?.storageType}
+                            {storage.startDate && ` · ${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}`}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <span className={`font-mono text-sm tabular-nums ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(storage.totalPrice)}</span>
+                          {itemChip(storage, true)}
+                        </div>
                       </div>
-                      {(visit.checkinStatus === 'not_checked_in' || visit.checkinStatus === 'no_show') && renderChefCheckinPolicy(visit.startTime)}
-                    </div>
-                    {isManagerView && (
-                      <Button type="button" size="sm" disabled={isUpdatingStatus}
-                        onClick={() => navigate(`/manager/booking/${booking.id}/inspection?visitId=${visit.id}`)}>Inspect visit</Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ── Single-visit check-in / checkout ── */}
-          {!hasMultipleVisits && (booking.status === 'confirmed' || booking.status === 'completed') &&
-            (booking.checkinEnabled === true || booking.checkoutEnabled === true) &&
-            (chefCanCheckIn || chefCanCheckOut || booking.checkedInAt || booking.checkoutRequestedAt || booking.checkoutApprovedAt || booking.noShowDetectedAt) && (
-            <section className="rounded-2xl border bg-card p-5 sm:p-6">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <LogIn className="h-3.5 w-3.5" />{t("bdCiCoSection")}
-                </h2>
-                {(chefCanCheckIn || chefCanCheckOut) && (
-                  <Button variant="outline" size="sm" className="h-8 border-primary/30 px-3 text-xs font-semibold text-primary shadow-none hover:bg-primary/5 hover:text-primary" onClick={() => navigate(`/booking/${booking.id}/visit`)}>
-                    {chefCanCheckIn ? t("bdOpenCheckin") : t("bdCheckOutNow")}
-                  </Button>
-                )}
-              </div>
-              <div>
-                {(chefCanCheckIn || chefCanCheckOut) && (
-                  <div>
-                    <p className="text-sm font-medium">{chefCanCheckIn ? t("bdCheckInRequired") : t("bdReadyToCheckOut")}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{chefCanCheckIn ? t("bdCheckInBody") : t("bdCheckOutBody")}</p>
-                  </div>
-                )}
-                {(booking.checkinStatus === 'not_checked_in' || booking.checkinStatus === 'no_show' || chefCanCheckIn) && renderChefCheckinPolicy(booking.startTime)}
-                {(booking.checkedInAt || booking.checkoutRequestedAt || booking.checkoutApprovedAt || booking.noShowDetectedAt) && (
-                <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${(chefCanCheckIn || chefCanCheckOut) ? 'mt-4 border-t pt-4' : ''}`}>
-                {booking.checkedInAt && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">{t("bdCheckedInAt")}</p>
-                    <p className="text-sm font-medium">
-                      {formatEventTimestamp(booking.checkedInAt)}
-                    </p>
-                    {booking.checkedInMethod && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {booking.checkedInMethod === 'self' ? t(isManagerView ? "bdViaSelfManager" : "bdViaSelf") : t("bdVia", { method: booking.checkedInMethod })}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {booking.checkoutRequestedAt && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">{t("bdCheckoutRequested")}</p>
-                    <p className="text-sm font-medium">
-                      {formatEventTimestamp(booking.checkoutRequestedAt)}
-                    </p>
-                  </div>
-                )}
-                {booking.checkoutApprovedAt && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">{t("bdCheckedOutCleared")}</p>
-                    <p className="text-sm font-medium">{formatEventTimestamp(booking.checkoutApprovedAt)}</p>
-                  </div>
-                )}
-                {booking.noShowDetectedAt && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">{t("bdNoShowDetected")}</p>
-                    <p className="text-sm font-medium text-destructive">{formatEventTimestamp(booking.noShowDetectedAt)}</p>
-                  </div>
-                )}
-                </div>
-                )}
-              </div>
-              {/* Check-in / checkout notes */}
-              {(booking.checkinNotes || booking.checkoutNotes || booking.checkoutManagerMessage) && (
-                <div className="mt-3 space-y-2">
-                  {booking.checkinNotes && (
-                    <div className="p-3 rounded-lg border border-border bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{booking.checkedInMethod === 'self' ? t('bookingAttendanceChefMessage') : t('bookingAttendanceManagerMessage')}</p>
-                      <p className="text-sm whitespace-pre-wrap">{booking.checkinNotes}</p>
-                    </div>
-                  )}
-                  {booking.checkoutManagerMessage && <div><p className="text-xs text-muted-foreground">{t('bookingAttendanceManagerMessage')}</p><p className="text-sm whitespace-pre-wrap">{booking.checkoutManagerMessage}</p></div>}
-                  {booking.checkoutNotes && (
-                    <div className="p-3 rounded-lg border border-border bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{booking.checkoutNotes.startsWith('Message from kitchen manager: ') ? t('bookingAttendanceManagerMessage') : t('bookingAttendanceChefMessage')}</p>
-                      <p className="text-sm whitespace-pre-wrap">{booking.checkoutNotes}</p>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               )}
-              {/* Photos & Checklist Audit */}
-              {((booking.checkinPhotoUrls && booking.checkinPhotoUrls.length > 0) ||
-                (booking.checkoutPhotoUrls && booking.checkoutPhotoUrls.length > 0) ||
-                (booking.checkinChecklistItems && booking.checkinChecklistItems.length > 0) ||
-                (booking.checkoutChecklistItems && booking.checkoutChecklistItems.length > 0)) && (
-                <div className="mt-3 space-y-3">
-                  {/* Check-in checklist audit */}
-                  {booking.checkinChecklistItems && booking.checkinChecklistItems.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> {t("bdCheckinChecklist")}
-                      </p>
-                      <div className="space-y-1">
-                        {booking.checkinChecklistItems.map((item, index) => (
-                          <div key={item.id} className="flex items-center gap-1.5">
-                            <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
-                            <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
-                            <span className={`text-[11px] ${item.checked ? "text-success" : "text-destructive line-through"}`}>{item.label}</span>
-                          </div>
-                        ))}
+              {allEquipmentBookings.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><Wrench className="h-3.5 w-3.5 text-muted-foreground" />{t('bdEquipmentSection')}</h3>
+                  {allEquipmentBookings.map((equipment) => {
+                    const voided = isItemVoided(equipment);
+                    const refunded = isItemRefunded(equipment);
+                    const cancelled = voided || refunded || equipment.status === 'cancelled';
+                    return (
+                      <div key={equipment.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-3 ${cancelled ? 'bg-muted/40 opacity-60' : ''}`}>
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}</p>
+                          {equipment.equipmentListing?.brand && <p className="text-xs text-muted-foreground">{equipment.equipmentListing.brand}</p>}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          {isManagerView && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
+                            <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
+                          </div>}
+                          <span className={`font-mono text-sm tabular-nums ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(equipment.totalPrice)}</span>
+                          {itemChip(equipment, false)}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {booking.checkinPhotoUrls && booking.checkinPhotoUrls.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <Camera className="h-3 w-3" /> {t("bdCheckinPhotos", { count: booking.checkinPhotoUrls.length })}
-                      </p>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {booking.checkinPhotoUrls.map((url, i) => {
-                          const proxied = getR2ProxyUrl(url);
-                          return (
-                            <a
-                              key={`ci-${i}`}
-                              href={proxied}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block"
-                            >
-                              <SmartImage
-                                src={proxied}
-                                alt={t("bdCheckinPhotoAlt", { n: i + 1 })}
-                                className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
-                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }}
-                              />
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {booking.checkoutPhotoUrls && booking.checkoutPhotoUrls.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <Camera className="h-3 w-3" /> {t("bdCheckoutPhotos", { count: booking.checkoutPhotoUrls.length })}
-                      </p>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {booking.checkoutPhotoUrls.map((url, i) => {
-                          const proxied = getR2ProxyUrl(url);
-                          return (
-                            <a
-                              key={`co-${i}`}
-                              href={proxied}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block"
-                            >
-                              <SmartImage
-                                src={proxied}
-                                alt={t("bdCheckoutPhotoAlt", { n: i + 1 })}
-                                className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
-                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }}
-                              />
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {/* Check-out checklist audit */}
-                  {booking.checkoutChecklistItems && booking.checkoutChecklistItems.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> {t("bdCheckoutChecklist")}
-                      </p>
-                      <div className="space-y-1">
-                        {booking.checkoutChecklistItems.map((item, index) => (
-                          <div key={item.id} className="flex items-center gap-1.5">
-                            <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
-                            <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
-                            <span className={`text-[11px] ${item.checked ? "text-success" : "text-destructive line-through"}`}>{item.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </section>
           )}
 
-          {/* ── Add-ons: Storage ── */}
-          {allStorageBookings.length > 0 && (
-            <section>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5" />
-                {t("bdStorageSection")}
-              </h2>
-              <div className="space-y-2">
-                {allStorageBookings.map((storage) => {
-                  const voided = isItemVoided(storage);
-                  const refunded = isItemRefunded(storage);
-                  const cancelled = voided || refunded || storage.status === 'cancelled';
-                  return (
-                    <div
-                      key={storage.id}
-                      className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
-                        cancelled ? "bg-muted/40 border-border opacity-60" : "border-border"
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium ${cancelled ? "text-muted-foreground line-through" : ""}`}>
-                          {storage.storageListing?.name || `Storage #${storage.storageListingId}`}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {storage.storageListing?.storageType}
-                          {storage.startDate && ` · ${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
-                          {formatCurrency(storage.totalPrice)}
-                        </span>
-                        {storage.status === "completed" ? (
-                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
-                            {t("bdStatusCleared")}
-                          </InfoChip>
-                        ) : refunded ? (
-                          <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>
-                            {t("bdStatusRefunded")?.toLowerCase()}
-                          </InfoChip>
-                        ) : voided ? (
-                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
-                            {t("bdStatusNotCharged")}
-                          </InfoChip>
-                        ) : storage.status === "cancelled" ? (
-                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
-                            {t("bdStatusCancelled")?.toLowerCase()}
-                          </InfoChip>
-                        ) : storage.status === "confirmed" || storage.status === "active" ? (
-                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
-                            {t("bdStatusConfirmed")?.toLowerCase()}
-                          </InfoChip>
-                        ) : (
-                          <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
-                            {storage.status === 'pending' ? t("bdStatusPending")?.toLowerCase() : 
-                             storage.status === 'expired' ? t("bdStatusExpired")?.toLowerCase() : 
-                             storage.status}
-                          </InfoChip>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* ── Add-ons: Equipment ── */}
-          {allEquipmentBookings.length > 0 && (
-            <section>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                <Wrench className="h-3.5 w-3.5" />
-                {t("bdEquipmentSection")}
-              </h2>
-              <div className="space-y-2">
-                {allEquipmentBookings.map((equipment) => {
-                  const voided = isItemVoided(equipment);
-                  const refunded = isItemRefunded(equipment);
-                  const cancelled = voided || refunded || equipment.status === 'cancelled';
-                  return (
-                    <div
-                      key={equipment.id}
-                      className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
-                        cancelled ? "bg-muted/40 border-border opacity-60" : "border-border"
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium ${cancelled ? "text-muted-foreground line-through" : ""}`}>
-                          {equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}
-                        </p>
-                        {equipment.equipmentListing?.brand && (
-                          <p className="text-xs text-muted-foreground">{equipment.equipmentListing.brand}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        {isManagerView && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex gap-2">
-                          <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
-                          <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
-                        </div>}
-                        <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
-                          {formatCurrency(equipment.totalPrice)}
-                        </span>
-                        {refunded ? (
-                          <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>
-                            {t("bdStatusRefunded")?.toLowerCase()}
-                          </InfoChip>
-                        ) : voided ? (
-                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
-                            {t("bdStatusNotCharged")}
-                          </InfoChip>
-                        ) : equipment.status === "cancelled" ? (
-                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
-                            {t("bdStatusCancelled")?.toLowerCase()}
-                          </InfoChip>
-                        ) : equipment.status === "confirmed" || equipment.status === "active" ? (
-                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
-                            {t("bdStatusConfirmed")?.toLowerCase()}
-                          </InfoChip>
-                        ) : (
-                          <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
-                            {equipment.status === 'pending' ? t("bdStatusPending")?.toLowerCase() : 
-                             equipment.status === 'expired' ? t("bdStatusExpired")?.toLowerCase() : 
-                             equipment.status}
-                          </InfoChip>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* ── Notes ── */}
+          {/* ── Note ── */}
           {booking.specialNotes && (
-            <section>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                {t("bdNotesSection")}
-              </h2>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{booking.specialNotes}</p>
-            </section>
-          )}
-
-          {/* Contact details — same header / hint / content pattern as Contact Local Cooks. */}
-          {!isManagerView && booking.kitchenContact?.email && (
-            <section className="rounded-2xl border bg-card p-5">
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('bdContactKitchen', { defaultValue: 'Contact the kitchen' })}
-              </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t('bdContactKitchenHint', { defaultValue: 'Questions about your visit? Reach the kitchen directly.' })}
-              </p>
-              <div className="mt-4 space-y-3 text-sm">
-                {['confirmed', 'cancellation_requested', 'completed'].includes(booking.status) && <Button variant="outline" onClick={openBookingConversation} disabled={openingConversation}>{openingConversation ? 'Opening conversation…' : isManagerView ? 'Message chef' : 'Message kitchen'}</Button>}
-                <a
-                  className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline"
-                  href={`mailto:${booking.kitchenContact.email}`}
-                >
-                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 break-all">{booking.kitchenContact.email}</span>
-                </a>
-                {booking.kitchenContact.phone ? (
-                  <a
-                    className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline"
-                    href={`tel:${booking.kitchenContact.phone}`}
-                  >
-                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    {formatContactPhone(booking.kitchenContact.phone)}
-                  </a>
-                ) : null}
-              </div>
-            </section>
-          )}
-
-          {isManagerView && booking.chef && (
-            <section className="rounded-2xl border bg-card p-5">
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('bdContactChef', { defaultValue: 'Contact the chef' })}
-              </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t('bdContactChefHint', {
-                  defaultValue: 'Questions about this booking? Reach the chef directly.',
-                })}
-              </p>
-              <div className="mt-4 space-y-3 text-sm">
-                {(booking.chef.fullName || booking.chef.username) ? (
-                  <p className="font-medium text-foreground">
-                    {booking.chef.fullName || booking.chef.username}
-                  </p>
-                ) : null}
-                <a
-                  className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline"
-                  href={`mailto:${booking.chef.username}`}
-                >
-                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 break-all">{booking.chef.username}</span>
-                </a>
-                {booking.chef.phone ? (
-                  <a
-                    className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline"
-                    href={`tel:${booking.chef.phone}`}
-                  >
-                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    {formatContactPhone(booking.chef.phone)}
-                  </a>
-                ) : null}
-              </div>
+            <section className={sectionClass} aria-labelledby="booking-note-title">
+              <h2 id="booking-note-title" className={`${headingClass} mb-3`}>{isManagerView ? t('bdhNoteFrom', { name: chefName }) : t('bdhYourNote')}</h2>
+              <blockquote className="whitespace-pre-wrap border-l-2 pl-4 text-sm leading-relaxed text-foreground/80">{booking.specialNotes}</blockquote>
             </section>
           )}
         </div>
 
         {/* ── Sidebar ── */}
-        <div className="space-y-6">
-          <Card className="border-border shadow-none">
-            <CardContent className="p-5">
-              {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">{t("bdPaymentSection")}</h3>
+        <div className="min-w-0 space-y-6">
+          <section className={sectionClass} aria-labelledby="booking-payment-title" data-testid="payment-card">
+            {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
+            <h2 id="booking-payment-title" className={headingClass}>{t('bdPaymentSection')}</h2>
+            {paymentHeadline && (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">{paymentHeadline.label}</p>
+                <p className={`text-2xl font-semibold tabular-nums ${paymentHeadline.struck ? 'text-muted-foreground line-through' : ''}`} data-testid="payment-headline">{formatCurrency(paymentHeadline.cents)}</p>
+              </div>
+            )}
+            {paymentMessage && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs">
+                <span className="min-w-0 flex-1 text-muted-foreground">{paymentMessage.summary}</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" className="shrink-0 rounded-full p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t('bdPaymentMoreInfo', { defaultValue: 'More about payment status' })}>
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" side="top" className="w-64 max-w-[calc(100vw-2rem)] text-xs leading-relaxed">{paymentMessage.detail}</PopoverContent>
+                </Popover>
+              </div>
+            )}
 
-              {booking.paymentDecision?.state === 'pending' ? <p className="text-sm">{t('bdRecordedDecisionAmount', { amount: formatCurrency(booking.paymentDecision.amount || 0) })}</p> : (
-              <div className="space-y-2.5">
+            {booking.paymentDecision?.state === 'pending' ? <p className="mt-4 text-sm">{t('bdRecordedDecisionAmount', { amount: formatCurrency(booking.paymentDecision.amount || 0) })}</p> : (
+            <details className="group mt-4" data-testid="payment-breakdown" open={!paymentHeadline || undefined}>
+              <summary className="cursor-pointer list-none text-sm font-medium underline underline-offset-4 [&::-webkit-details-marker]:hidden">
+                <span className="group-open:hidden">{t('bdhShowBreakdown')}</span><span className="hidden group-open:inline">{t('bdhHideBreakdown')}</span>
+              </summary>
+            <div className="mt-3 space-y-2.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">{ct('sweepLabel34')}</span>
+                <span className="font-mono tabular-nums">
+                  {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
+                </span>
+              </div>
+
+              {allStorageTotal > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    Kitchen · original payment
-                  </span>
-                  <span className="font-mono">
-                    {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
-                  </span>
-                </div>
-
-                {allStorageTotal > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{t("bdStorageLine")}</span>
-                    <div className="text-right">
-                      {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && (
-                        <span className="font-mono text-muted-foreground line-through mr-2 text-xs">{formatCurrency(allStorageTotal)}</span>
-                      )}
-                      <span className={`font-mono ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-muted-foreground line-through" : ""}`}>
-                        {rejectedStorageTotal === allStorageTotal ? formatCurrency(allStorageTotal) : formatCurrency(totals.storage)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {allEquipmentTotal > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{t("bdEquipmentLine")}</span>
-                    <div className="text-right">
-                      {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && (
-                        <span className="font-mono text-muted-foreground line-through mr-2 text-xs">{formatCurrency(allEquipmentTotal)}</span>
-                      )}
-                      <span className={`font-mono ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-muted-foreground line-through" : ""}`}>
-                        {rejectedEquipmentTotal === allEquipmentTotal ? formatCurrency(allEquipmentTotal) : formatCurrency(totals.equipment)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
-                      ? t("bdOriginalQuote")
-                      : isRefunded || isPartiallyRefunded
-                        ? t("bdAmountCharged")
-                        : t("bdSubtotal")}
-                  </span>
-                  <span className={`font-mono tabular-nums ${
-                    (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
-                      ? 'text-muted-foreground line-through'
-                      : ''
-                  }`}>
-                    {formatCurrency(totals.subtotal)}
-                  </span>
-                </div>
-
-                {/* Taxes, fees and total continue the same list — no second header */}
-                {/* VOIDED AUTH: skip entirely — no money was captured */}
-                {booking.paymentTransaction && pricingBreakdownInput && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
-                  isManagerView ? (
-                    <KitchenPayoutStatementBreakdown
-                      {...pricingBreakdownInput}
-                      currency={booking.currency || "CAD"}
-                      title={
-                        booking.paymentStatus === 'authorized'
-                          ? t("bdEstimatedPayout", { defaultValue: "Estimated payout" })
-                          : t("bdYourPayout", { defaultValue: "Your payout" })
-                      }
-                      showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
-                      chargeLabel={t("bdTotalCharged", { defaultValue: "Total charged" })}
-                      processingFeeLabel={
-                        pricingBreakdownInput.paymentProcessorFeeIsEstimate
-                          ? t("bdEstProcessingFee", {
-                              defaultValue: "Est. processing fee",
-                            })
-                          : t("bdProcessingFee")
-                      }
-                      platformFeeLabel={t("bdLocalCooksServiceFee", {
-                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
-                        defaultValue: "Service fee ({percent}%)",
-                      })}
-                      platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", {
-                        defaultValue: "Service fee",
-                      })}
-                      platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
-                      refundLabel={t("bdRefund")}
-                      hstLabel={t("bdHstPercent", {
-                        percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0,
-                      })}
-                      hstCollectedLabel={t("bdHstCollectedLine")}
-                    />
-                  ) : (
-                    <ChefBookingReceiptBreakdown
-                      {...pricingBreakdownInput}
-                      currency={booking.currency || "CAD"}
-                      totalLabel={booking.paymentStatus === 'authorized' ? t("bdAmountAuthorized") : t("bdAmountCharged")}
-                      platformFeeLabel={t("bdLocalCooksServiceFee", {
-                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
-                        defaultValue: "Service fee ({percent}%)",
-                      })}
-                    />
-                  )
-                )}
-
-                {!isManagerView && refundAmount > 0 && (
-                  <div className="flex justify-between text-sm items-center gap-2">
-                    <span className="text-warning inline-flex items-center gap-1">
-                      {t("bdRefundedLine")}
-                      <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
+                  <span className="text-muted-foreground">{t("bdStorageLine")}</span>
+                  <div className="text-right">
+                    {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && (
+                      <span className="mr-2 font-mono text-xs text-muted-foreground line-through">{formatCurrency(allStorageTotal)}</span>
+                    )}
+                    <span className={`font-mono tabular-nums ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-muted-foreground line-through" : ""}`}>
+                      {rejectedStorageTotal === allStorageTotal ? formatCurrency(allStorageTotal) : formatCurrency(totals.storage)}
                     </span>
-                    <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
                   </div>
+                </div>
+              )}
+
+              {allEquipmentTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{t("bdEquipmentLine")}</span>
+                  <div className="text-right">
+                    {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && (
+                      <span className="mr-2 font-mono text-xs text-muted-foreground line-through">{formatCurrency(allEquipmentTotal)}</span>
+                    )}
+                    <span className={`font-mono tabular-nums ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-muted-foreground line-through" : ""}`}>
+                      {rejectedEquipmentTotal === allEquipmentTotal ? formatCurrency(allEquipmentTotal) : formatCurrency(totals.equipment)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
+                    ? t("bdOriginalQuote")
+                    : isRefunded || isPartiallyRefunded
+                      ? t("bdAmountCharged")
+                      : t("bdSubtotal")}
+                </span>
+                <span className={`font-mono tabular-nums ${
+                  (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
+                    ? 'text-muted-foreground line-through'
+                    : ''
+                }`}>
+                  {formatCurrency(totals.subtotal)}
+                </span>
+              </div>
+
+              {/* Taxes, fees and total continue the same list. Voided authorization: nothing was captured. */}
+              {booking.paymentTransaction && pricingBreakdownInput && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
+                isManagerView ? (
+                  <KitchenPayoutStatementBreakdown
+                    {...pricingBreakdownInput}
+                    currency={booking.currency || "CAD"}
+                    title={payoutTitle}
+                    showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
+                    chargeLabel={t("bdTotalCharged", { defaultValue: "Total charged" })}
+                    processingFeeLabel={
+                      pricingBreakdownInput.paymentProcessorFeeIsEstimate
+                        ? t("bdEstProcessingFee", { defaultValue: "Est. processing fee" })
+                        : t("bdProcessingFee")
+                    }
+                    platformFeeLabel={t("bdLocalCooksServiceFee", {
+                      percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
+                      defaultValue: "Service fee ({percent}%)",
+                    })}
+                    platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", { defaultValue: "Service fee" })}
+                    platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
+                    refundLabel={t("bdRefund")}
+                    hstLabel={t("bdHstPercent", { percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0 })}
+                    hstCollectedLabel={t("bdHstCollectedLine")}
+                  />
+                ) : (
+                  <ChefBookingReceiptBreakdown
+                    {...pricingBreakdownInput}
+                    currency={booking.currency || "CAD"}
+                    totalLabel={chefTotalLabel}
+                    platformFeeLabel={t("bdLocalCooksServiceFee", {
+                      percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
+                      defaultValue: "Service fee ({percent}%)",
+                    })}
+                  />
+                )
+              )}
+
+              {!isManagerView && refundAmount > 0 && (
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="inline-flex items-center gap-1 text-warning">
+                    {t("bdRefundedLine")}
+                    <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
+                  </span>
+                  <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
+                </div>
+              )}
+            </div>
+            </details>
+            )}
+
+            {(canDownload || showRefundReview) && (
+              <div className="mt-5 flex flex-col gap-2">
+                {canDownload && (
+                  <Button onClick={handleDownloadInvoice} disabled={isDownloading} variant="outline" className="w-full" size="sm">
+                    {isDownloading ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t("bdGenerating")}</>
+                      : <><Download className="mr-1.5 h-3.5 w-3.5" />{isManagerView ? t("bdDownloadPayoutStatement") : t("bdDownloadReceipt")}</>}
+                  </Button>
+                )}
+                {showRefundReview && (
+                  <Button variant="link" size="sm" className="h-auto justify-start px-0 text-foreground underline" onClick={() => { setCancellationRefundScope(undefined); setCancellationRefundOpen(true); }}>{t('detailsCopy17')}</Button>
                 )}
               </div>
-              )}
+            )}
+          </section>
 
-              {paymentMessage && (
-                <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs">
-                  <span className="min-w-0 flex-1 text-muted-foreground">{paymentMessage.summary}</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button type="button" className="shrink-0 rounded-full p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t('bdPaymentMoreInfo', { defaultValue: 'More about payment status' })}>
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" side="top" className="w-64 max-w-[calc(100vw-2rem)] text-xs leading-relaxed">{paymentMessage.detail}</PopoverContent>
-                  </Popover>
-                </div>
-              )}
-              {booking.paymentDecision?.state !== 'pending' && (booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded" || booking.paymentStatus === "refunded") && (
-                <Button
-                  onClick={handleDownloadInvoice}
-                  disabled={isDownloading}
-                  variant="outline"
-                  className="w-full mt-5"
-                  size="sm"
-                >
-                  {isDownloading ? (
-                    <>
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      {t("bdGenerating")}
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-1.5 h-3.5 w-3.5" />
-                      {isManagerView
-                        ? t("bdDownloadPayoutStatement", { defaultValue: "Download payout statement" })
-                        : t("bdDownloadReceipt", { defaultValue: "Download booking receipt" })}
-                    </>
-                  )}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+          {!isManagerView && (chefCanCancel || booking.status === 'cancellation_requested') && (
+            <section className={sectionClass} aria-labelledby="booking-cancellation-title" data-testid="cancellation-card">
+              <h2 id="booking-cancellation-title" className={`${headingClass} mb-2`}>{t('bdhCancellationTitle')}</h2>
+              <div className="text-sm text-muted-foreground">
+                {booking.status === 'pending' ? <BookingRefundPolicyNotice single />
+                  : booking.status === 'cancellation_requested' ? <p>{t('cancelCopy07')}</p>
+                  : paidCancellationAvailable && cancellationDeadlineText ? <p>{sentence(t('bdhCancelUntil', { time: cancellationDeadlineText }))}</p>
+                  : <p>{t('bdhCancelPassed')}</p>}
+              </div>
+              {chefCanCancel && <Button variant="link" size="sm" className="mt-2 h-auto px-0 text-foreground underline" onClick={() => setCancelOpen(true)}>{t('bdhCancelOrChangeShort')}</Button>}
+            </section>
+          )}
+          {!isManagerView && (
+            <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
+              summary={{ kitchenName, reference: booking.referenceCode || undefined,
+                schedule: `${formatDate(booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
+                amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
+              cancellationDeadline={cancellationDeadlineText}
+              decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
+              paidCancellationAvailable={paidCancellationAvailable}
+              items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
+                name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
+                ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
+                  name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
+              onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+          )}
 
-          <BookingHistoryPanel id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} version={booking.updatedAt || booking.createdAt} />
+          <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} version={booking.updatedAt || booking.createdAt} limit={3} />
 
-          <Card id="booking-support" className="border-border shadow-none">
-            <CardContent className="p-5">
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h3>
+          <Card id="booking-support" className="scroll-mt-24 rounded-2xl border-border shadow-none">
+            <CardContent className="p-5 sm:p-6">
+              <h2 className={`${headingClass} mb-2`}>{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h2>
               <p className="text-xs leading-relaxed text-muted-foreground">{t('bdContactSupportHint', { defaultValue: 'Need help with your booking or payment?' })}</p>
               <div className="mt-4 space-y-3 text-sm">
                 <a className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
@@ -1994,9 +1794,18 @@ export default function BookingDetailsPage() {
               <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded />
             </CardContent>
           </Card>
-
         </div>
       </div>
+
+      {/* ── Mobile: primary + Message stay in reach ── */}
+      {hasBottomBar && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur sm:hidden" role="region" aria-label={t('bdhMobileActions')} data-testid="mobile-action-bar">
+          <div className="mx-auto flex max-w-md gap-2">
+            {messageButton('min-h-11 flex-1')}
+            {primaryButton('mobile-primary-action', 'min-h-11 flex-1')}
+          </div>
+        </div>
+      )}
     </div>
     </TooltipProvider>
   );

@@ -3629,7 +3629,7 @@ export const generateBookingRequestEmail = (data: BookingRequestEmailDetails & {
   return renderBookingNotice(data, { to: data.chefEmail, recipientName: data.chefName,
     key: 'bookingRequestSent', messageKey: data.paymentState === 'pending' ? 'bookingRequestPendingBody' : data.paymentState === 'paid' ? 'bookingRequestPaidBody' : undefined, params: { chef: data.chefName, deadline }, action: 'bookingViewRequest',
     url: getSubdomainUrl('chef') + (data.bookingId ? '/booking/' + data.bookingId : '/dashboard?view=bookings'),
-    timeLabel: calendar.timeLabel, facts: [...(data.specialNotes ? [{ label: tEmail(data.locale, 'bookingChefMessage'), value: data.specialNotes }] : []),
+    timeLabel: calendar.timeLabel, facts: [...(data.specialNotes ? [{ label: tEmail(data.locale, 'bookingYourNote'), value: data.specialNotes }] : []),
       ...(data.totalCents != null ? [{ label: tEmail(data.locale, data.paymentState === 'paid' ? 'bookingTotalPaid' : data.paymentState === 'pending' ? 'bookingEstimatedTotal' : 'bookingTotalHold'), value: `CAD $${(data.totalCents / 100).toFixed(2)}` }] : [])] });
 };
 

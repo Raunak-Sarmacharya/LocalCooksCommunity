@@ -63,8 +63,8 @@ export async function recordCapturedBookingReview(bookingId: number, actorId: nu
     if (!booking || booking.status !== 'pending') return;
     const [existing] = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, bookingId),
       eq(bookingLifecycleEvents.kind, 'payment_recovery_needed'), sql`${bookingLifecycleEvents.metadata}->>'capturedPaymentReview' = 'true'`)).limit(1);
-    if (!existing) await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Booking payment needs Local Cooks review',
-      'Confirmation is awaiting verification of the original payment outcome and terms. Local Cooks must review this booking. Do not pay again. Contact support@localcooks.ca for help.',
+    if (!existing) await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your payment',
+      'Local Cooks is checking your payment before confirming the booking. Please don’t pay again. Contact support@localcooks.ca for help.',
       actorId, { capturedPaymentReview: true });
   });
 }

@@ -82,8 +82,8 @@ export async function recordKitchenInspection(bookingId: number, managerId: numb
       const { kitchenDuties } = await import('./visit-duties');
       const duties = context.booking.visitDuties || await kitchenDuties(bookingId, tx);
       await tx.update(kitchenBookings).set({ visitDuties: { ...duties as object, clockCloseout: context.saved } }).where(eq(kitchenBookings.id, bookingId));
-      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_cleared', 'Visit inspection recorded',
-        'The kitchen manager recorded an inspection with no issue observed. Booked service time and any separate case retain their own deadlines.',
+      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_cleared', 'Kitchen inspection complete',
+        'The kitchen finished its inspection and found no issues. Open the booking to see the kitchen’s note.',
         managerId, { visitId, recipientPolicy: 'chef', autoClear: false });
       const closeout = await persistBookingCloseout(bookingId, tx, now);
       return { success: true, bookingId, visitId, checkinStatus: 'checked_out' as const, bookingCompleted: closeout.projection?.status === 'completed' };
@@ -128,11 +128,11 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
         'service_ended', 'Visit finished', `The booked time for ${reference} has ended. Open the booking for the details.`,
         undefined, { recipientPolicy: 'participants', serviceEndedAt: next.serviceEndedAt,
           roleText: { chef: { title: 'Your visit is complete', message: `Your visit (${reference}) is complete. Open the booking for a summary or to report a problem.` },
-            manager: { title: 'A visit has ended', message: `The visit for ${reference} has ended. Record your inspection before the window closes.` } },
+            manager: { title: 'A visit has ended', message: `The visit for ${reference} has ended. Review the checkout photos and notes before the inspection deadline.` } },
           attendance: projection.visits.map(visit => ({ key: visit.key, visitId: visit.visitId, localDate: visit.localDate, attendance: visit.attendance })) });
       // Manager only: the chef is not told an inspection window closed.
       for (const visit of closedInspections) await queueBookingLifecycleEvent(tx, bookingId, 'inspection_auto_closed',
-        'Inspection window closed', `The inspection window for ${reference} closed and no inspection was recorded. This is not an approval or a finding about damage.`,
+        'Inspection window closed', `The inspection window for ${reference} has ended without a kitchen review. Contact Local Cooks if you have a concern.`,
         undefined, { recipientPolicy: 'manager', visitKey: visit.key, closedAt: next.inspections![visit.key].closedAt });
     }
   }

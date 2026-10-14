@@ -256,15 +256,15 @@
   "bssMinDaysShortLabel": "Min. {count, plural, one {# day} other {# days}}",
   "preConfirmationRefundTitle": "Free to cancel until the kitchen confirms your request — your card is only on hold.",
   "preConfirmationRefundPolicy": "Cancel before your booking is confirmed for a 100% refund of any amount paid, including taxes and fees. ",
-  "confirmedBookingRefundPolicy": "After confirmation, the saved cancellation deadline applies. Cancellation and any refund are reviewed separately; processing costs and platform service fees may be retained. Review your cancellation and refund outcome for the exact amount.",
+  "confirmedBookingRefundPolicy": "After confirmation, your saved cancellation deadline applies. The kitchen reviews your cancellation and refund separately. Processing costs and service fees may be kept. See your refund details for the exact amount.",
   "historyTitle": "Booking history",
-  "historyActivity": "Recorded booking activity",
+  "historyActivity": "Booking activity",
   "historyTimezone": "Times shown in Newfoundland time",
   "historyLoading": "Loading booking history…",
   "historyError": "Booking history could not be loaded. Please try again.",
   "historyRetry": "Retry",
   "historyPartial": "Earlier activity may not be available for this booking.",
-  "historyEmpty": "No recorded activity is available for this booking.",
+  "historyEmpty": "No updates to show yet.",
   "historyVisit": "Visit #{{id}}",
   "historyItem_storage": "Storage #{{id}}",
   "historyItem_equipment": "Equipment #{{id}}",
@@ -325,5 +325,8 @@
   "sheetWhatNextReview": "The kitchen reviews your request within 24 hours.",
   "sheetWhatNextCharge": "You are charged only if they accept. Until then your card is just on hold.",
   "sheetWhatNextArrival": "Arrival details are sent 48 hours before your visit.",
-  "sheetWhatNextCancel": "After the kitchen confirms, you can cancel up to {hours, plural, one {# hour} other {# hours}} before your visit. Refunds follow the cancellation policy."
+  "sheetWhatNextCancel": "After the kitchen confirms, you can cancel up to {hours, plural, one {# hour} other {# hours}} before your visit. Refunds follow the cancellation policy.",
+  "historyTimeUnavailable": "Kitchen time zone unavailable",
+  "historyShowAll": "Show all ({count})",
+  "historyShowFewer": "Show fewer"
 }

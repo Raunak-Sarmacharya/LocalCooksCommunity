@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { BookingRefundPolicyNotice } from "./BookingRefundPolicyNotice";
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
@@ -14,7 +15,9 @@ import { Badge } from "@/components/ui/badge"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
-import type { TFunction } from "i18next"
+import { friendlyTimezoneName } from "@shared/timezone-utils"
+import i18n, { type TFunction } from "i18next"
+import { formatTime as formatKitchenClock } from "@/lib/formatters"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -169,19 +172,14 @@ const formatDate = (dateStr: string) => {
   }
 }
 
-const formatTime = (timeString: string) => {
-  const [hours, minutes] = timeString.split(":")
-  const hour = parseInt(hours)
-  const ampm = hour >= 12 ? "PM" : "AM"
-  const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour
-  return `${displayHour}:${minutes} ${ampm}`
-}
+const formatTime = (timeString: string) => formatKitchenClock(timeString, i18n.language)
 
 const formatBookingTimeSlots = (booking: Booking): string => {
+  const zone = booking.locationTimezone ? ` ${friendlyTimezoneName(booking.locationTimezone, i18n.language)}` : ""
   const rawSlots = booking.selectedSlots
 
   if (!rawSlots || rawSlots.length === 0) {
-    return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`
+    return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}${zone}`
   }
 
   const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
@@ -208,10 +206,10 @@ const formatBookingTimeSlots = (booking: Booking): string => {
   }
 
   if (isContiguous) {
-    return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`
+    return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}${zone}`
   }
 
-  return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ')
+  return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ') + zone
 }
 
 type LooseTFunction = (key: string, options?: Record<string, unknown>) => string
@@ -234,7 +232,7 @@ const canCancelBooking = (booking: Booking, now: Date): boolean => {
     // Resolve the booking start in the LOCATION's timezone — the kitchen's
     // wall-clock time is what the cancellation policy is measured against,
     // not the chef's browser timezone.
-    const timezone = DEFAULT_TIMEZONE
+    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
     const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) return false
@@ -362,7 +360,7 @@ const getChefBookingColumns = ({
         const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
         // Resolve booking start in the location's timezone so "time until
         // booking" is measured against the kitchen's clock, not the chef's.
-        const timezone = DEFAULT_TIMEZONE
+        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
         const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
         if (!isNaN(bookingDateTime.getTime())) {
           const isUpcoming = bookingDateTime >= now
@@ -627,7 +625,7 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm text-muted-foreground line-through">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-muted-foreground">Refunded: {formatPrice(refundAmount)}</div>
+                  <div className="text-xs text-muted-foreground">{ct('sweepLabel17')}{' '}{formatPrice(refundAmount)}</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
@@ -668,7 +666,7 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-muted-foreground">Refund: {formatPrice(refundAmount)}</div>
+                  <div className="text-xs text-muted-foreground">{ct('sweepLabel18')}{' '}{formatPrice(refundAmount)}</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
@@ -756,7 +754,7 @@ const getChefBookingColumns = ({
       return (
         <div className="flex flex-wrap items-center gap-2">
         {showCancel && <Button variant="outline" size="sm" onClick={() => onNavigate(`/booking/${booking.id}?cancel=1`)}>
-          {booking.status === 'pending' ? 'Cancel request' : 'Request cancellation'}
+          {booking.status === 'pending' ? ct('sweepText14') : ct('sweepText15')}
         </Button>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -959,16 +957,12 @@ const getStorageBookingColumns = ({
         const isManagerDeclined = parentKB && (parentKB.status === 'confirmed' || parentKB.paymentStatus === 'paid')
         if (isManagerDeclined) {
           return (
-            <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
-              Declined
-            </InfoChip>
+            <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>{ct('sweepLabel19')}</InfoChip>
           )
         }
         // Payment auth expired or failed — never charged
         return (
-          <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>
-            Expired
-          </InfoChip>
+          <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>{ct('sweepLabel08')}</InfoChip>
         )
       } else if (status === 'cancelled' && storageBooking.cancellationRequestedAt) {
         // Chef requested cancellation, manager accepted
@@ -1247,7 +1241,7 @@ export default function ChefBookingsView({
       if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return
 
       try {
-        const timezone = DEFAULT_TIMEZONE
+        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
         const bookingDateStr = booking.bookingDate.split('T')[0]
 
         if (isBookingPast(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)) {
@@ -1345,7 +1339,7 @@ export default function ChefBookingsView({
       })
 
       if (!response.ok) {
-        let errorMessage = 'Failed to generate invoice'
+        let errorMessage = ct('sweepText00')
         try {
           const contentType = response.headers.get('content-type')
           if (contentType && contentType.includes('application/json')) {
@@ -1397,7 +1391,7 @@ export default function ChefBookingsView({
       })
 
       if (!response.ok) {
-        let errorMessage = 'Failed to generate invoice'
+        let errorMessage = ct('sweepText00')
         try {
           const contentType = response.headers.get('content-type')
           if (contentType && contentType.includes('application/json')) {
@@ -1443,7 +1437,7 @@ export default function ChefBookingsView({
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || 'Failed to cancel storage booking')
+        throw new Error(err.error || ct('sweepText16'))
       }
       return response.json()
     },
@@ -1491,7 +1485,7 @@ export default function ChefBookingsView({
     const dateStr = booking.bookingDate.split('T')[0]
     // Resolve in the location's timezone so the cancellation-window math
     // agrees with the server (which measures against the kitchen's wall clock).
-    const timezone = DEFAULT_TIMEZONE
+    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
     const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) {
@@ -1810,7 +1804,7 @@ export default function ChefBookingsView({
             <div>
               <CardTitle className="text-xl font-semibold">{t("bkMyBookings")}</CardTitle>
               <CardDescription>
-                {table.getFilteredRowModel().rows.length} of {currentViewData.length} booking{currentViewData.length !== 1 ? 's' : ''}
+                {ct('sweepBookingCount', { shown: table.getFilteredRowModel().rows.length, count: currentViewData.length })}
               </CardDescription>
             </div>
 

@@ -423,8 +423,8 @@ export async function requestKitchenCheckin(
       ).returning({ id: kitchenBookings.id });
     if (changed.length) await captureKitchenDuties(tx, bookingId, duties);
     if (changed.length) await consumeForArrival(tx, gate, arrival);
-    if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkin_recorded', 'Kitchen check-in recorded',
-      'Arrival was recorded. Open the booking for the submitted checklist and photos.', chefId,
+    if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkin_recorded', 'Arrival confirmed',
+      'Arrival is confirmed. Open the booking to see the chef’s checklist and photos.', chefId,
       { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     return changed;
     });
@@ -548,8 +548,8 @@ export async function requestKitchenCheckout(
       ).returning({ id: kitchenBookings.id });
     if (changed.length) {
       await captureKitchenDuties(tx, bookingId, duties);
-      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_requested', 'Kitchen checkout needs inspection',
-        'Checkout was requested. The kitchen manager owns inspection; open the booking for evidence and the review deadline. A request is not clearance or a charge.', chefId,
+      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_requested', 'Ready for kitchen inspection',
+        'The chef has requested checkout. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.', chefId,
         { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     }
     return changed;
@@ -695,8 +695,8 @@ export async function processKitchenCheckoutClaim(
       })
       .where(and(eq(kitchenBookings.id, bookingId), inArray(kitchenBookings.status, ['confirmed', 'completed']), eq(kitchenBookings.checkinStatus, booking.checkinStatus ?? 'not_checked_in')))
       .returning({ id: kitchenBookings.id });
-    if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Inspection handed to a draft claim',
-      `Kitchen inspection was handed to draft damage claim #${claimId}. The manager must attach evidence and submit the claim. A draft is not clearance, claim approval or a charge.`,
+    if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Visit concern sent for review',
+      `The kitchen started a draft damage claim (#${claimId}). The kitchen needs to add photos and details before submitting it for review. Nothing has been charged for this draft.`,
       managerId, { damageClaimId: claimId, recipientPolicy: 'participants' });
     return changed;
     });

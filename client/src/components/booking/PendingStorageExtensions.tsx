@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -236,7 +237,7 @@ export function PendingStorageExtensions() {
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to sync');
+        throw new Error(error.error || ct('sweepText22'));
       }
       return response.json();
     },

@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { useState, useMemo, useEffect } from "react";
 import { Calendar } from "@/components/ui/calendar";
@@ -80,7 +81,7 @@ export function StorageExtensionDialog({
           body: JSON.stringify({ newEndDate: selectedDate.toISOString() }),
         });
         const result = await response.json();
-        if (!response.ok) throw Error(result.error || 'Could not verify extension eligibility');
+        if (!response.ok) throw Error(result.error || ct('sweepText27'));
         return result;
     },
     enabled: open && !!selectedDate && selectedDate > currentEndDate,
@@ -120,7 +121,7 @@ export function StorageExtensionDialog({
       };
     }
 
-    return { valid: false, error: previewError?.message || (previewLoading ? 'Checking current extension eligibility…' : 'Select an eligible date to verify the current price and availability.') };
+    return { valid: false, error: previewError?.message || (previewLoading ? ct('sweepText28') : ct('sweepText29')) };
   }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, extensionPreview, previewError, previewLoading]);
 
   // Create checkout session for storage extension payment
@@ -137,7 +138,7 @@ export function StorageExtensionDialog({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create checkout session');
+        throw new Error(error.error || ct('sweepText30'));
       }
 
       return response.json();
@@ -213,7 +214,7 @@ export function StorageExtensionDialog({
             {t("sxDialogTitle")}
           </DialogTitle>
           <DialogDescription>
-            {booking.storageName} at {booking.kitchenName}
+            {booking.storageName}{' '}{ct('sweepLabel29')}{' '}{booking.kitchenName}
           </DialogDescription>
         </DialogHeader>
         
@@ -278,8 +279,7 @@ export function StorageExtensionDialog({
                         <p className={`font-semibold ${isSelected ? 'text-foreground' : 'text-foreground'}`}>
                           {option.label}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          Until {format(option.date, "MMM d")}
+                        <p className="text-xs text-muted-foreground">{ct('sweepLabel30')}{format(option.date, "MMM d")}
                         </p>
                       </div>
                       <p className={`font-bold ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>
@@ -299,7 +299,7 @@ export function StorageExtensionDialog({
               className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
             >
               <CalendarDays className="h-4 w-4" />
-              {showCalendar ? 'Hide calendar' : 'Choose custom date'}
+              {showCalendar ? ct('sweepText31') : ct('sweepText32')}
             </button>
             
             {showCalendar && (
@@ -326,7 +326,7 @@ export function StorageExtensionDialog({
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${((booking.basePrice || 0) / 100).toFixed(2)} per day
+                    {ct('sweepExtensionPrice', { count: extensionDetails.extensionDays, price: '$' + ((booking.basePrice || 0) / 100).toFixed(2) })}
                   </span>
                   <span className="font-medium">${((extensionDetails.extensionBasePriceCents ?? 0) / 100).toFixed(2)}</span>
                 </div>

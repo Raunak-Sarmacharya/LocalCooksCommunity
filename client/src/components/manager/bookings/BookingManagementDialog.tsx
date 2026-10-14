@@ -544,7 +544,7 @@ function BookingManagementContent({
                 onClick={(e) => handleCancellationAction("accept", e)}
               >
                 {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
-                Accept &amp; Cancel
+                {mt('sweepAcceptCancel')}
               </Button>
               <Button
                 type="button"
@@ -565,9 +565,9 @@ function BookingManagementContent({
         <RefundRequestStatus request={booking.fullRefundRequest} />
         {booking.transactionId && ["paid", "succeeded", "partially_refunded"].includes(booking.paymentStatus || "") && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">Request a full refund for Local Cooks approval.</p>
+            <div><p className="text-xs text-muted-foreground">{mt('sweepRefundExplain')}</p>{booking.fullRefundRequest?.status === 'pending' && <p className="text-xs text-muted-foreground">{mt('sweepReviewPending')}</p>}</div>
             <Button type="button" variant="outline" size="sm" onClick={handleFullRefundRequest} disabled={isProcessing || booking.fullRefundRequest?.status === "pending"}>
-              Request full refund from Local Cooks
+              {mt('sweepRequestRefund')}
             </Button>
           </div>
         )}
@@ -649,7 +649,7 @@ function BookingManagementContent({
                       <div className="flex items-center justify-between p-2 rounded-md border border-amber-200 bg-amber-50/50 text-xs">
                         <span className="text-amber-700 flex items-center gap-1">
                           <ShieldAlert className="h-3 w-3" />
-                          Chef requested cancellation
+                          {mt('sweepChefCancel')}
                           {item.cancellationReason && `: "${item.cancellationReason}"`}
                         </span>
                         <div className="flex gap-1.5">
@@ -763,7 +763,7 @@ function BookingManagementContent({
               {activeEquipmentItems.map((item) => {
                 if (item.status === 'cancellation_requested') return <Button key={item.equipmentBookingId} variant="outline" disabled={isProcessing}
                   onClick={() => { setCancellationScope({ kind: 'equipment', id: item.equipmentBookingId }); setCancellationReviewOpen(true); }}>
-                  Review {item.name} cancellation refund
+                  {mt('sweepReviewItemRefund', { name: item.name })}
                 </Button>;
                 const decision = equipmentDecisions.get(item.equipmentBookingId) || "keep";
                 const isKeeping = decision === "keep";

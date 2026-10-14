@@ -1,3 +1,4 @@
+vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chef from "@shared/i18n/locales/en-CA/chef.json";
@@ -67,7 +68,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe("pending booking page", () => {
   it("tells the chef when the kitchen must answer and that the card is only held", async () => {
     render(<BookingDetailsPage />);
-    const banner = await screen.findByTestId("response-deadline-banner");
+    const banner = await screen.findByTestId("booking-next-step");
     expect(banner).toHaveTextContent(/Request sent\. Harbour Kitchen has until .+ Newfoundland Time to respond\./);
     expect(banner).toHaveTextContent("you’re only charged if they accept");
     expect(screen.queryByText("Arrival not recorded")).not.toBeInTheDocument();
@@ -81,22 +82,25 @@ describe("pending booking page", () => {
   it("tells the manager the consequence of not responding", async () => {
     h.manager = true;
     render(<BookingDetailsPage />);
-    const banner = await screen.findByTestId("response-deadline-banner");
+    const banner = await screen.findByTestId("booking-next-step");
     expect(banner).toHaveTextContent(/Respond by .+ Newfoundland Time\. If you don’t, the request expires and the chef’s payment hold is released\./);
   });
 
   it("shows no deadline banner without a live card hold", async () => {
     h.booking = { ...base(), paymentStatus: "paid", status: "confirmed" };
     render(<BookingDetailsPage />);
-    await waitFor(() => expect(screen.getByText("Harbour Kitchen")).toBeInTheDocument());
-    expect(screen.queryByTestId("response-deadline-banner")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: "Harbour Kitchen" })).toBeInTheDocument());
+    expect(screen.getByTestId("booking-next-step")).not.toHaveTextContent(/Respond by|has until/);
   });
 
   it("describes a finished visit by its review deadline instead of pre-arrival guidance", async () => {
     h.booking = { ...base(), status: "confirmed", paymentStatus: "paid", checkinStatus: "checked_out",
       closeout: { phase: "ended", timezone: "America/St_Johns", visits: [{ key: "b", phase: "ended", arrivalRecorded: true, scheduledStartAt: "2030-01-15T14:00:00Z", inspection: { deadline: "2030-01-17T14:00:00Z", canRespond: false, outcome: "not_due" } }] } };
     render(<BookingDetailsPage />);
-    expect(await screen.findByTestId("visit-complete-status")).toHaveTextContent(/Visit complete\. The kitchen reviews by .+/);
+    const next = await screen.findByTestId("booking-next-step");
+    expect(next).toHaveTextContent(/Visit complete\. The kitchen reviews by .+/);
+    // A localized time ending in "p.m." must not leave a double period.
+    expect(next.textContent).not.toMatch(/\.\.$/);
     expect(screen.queryByText("What to expect")).not.toBeInTheDocument();
   });
 });

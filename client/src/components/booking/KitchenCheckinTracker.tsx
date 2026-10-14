@@ -53,7 +53,7 @@ type Translate = (key: string, defaultText?: string, vars?: Record<string, unkno
 function formatTimestamp(ts: string | null | undefined, timezone: string, locale: string): string {
   if (!ts) return ""
   try {
-    return new Intl.DateTimeFormat(locale, { timeZone: timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(ts))
+    return new Intl.DateTimeFormat(locale, { timeZone: timezone, dateStyle: "medium", timeStyle: "short", hour12: true }).format(new Date(ts))
   } catch {
     return ""
   }
@@ -427,14 +427,15 @@ export function KitchenCheckinTracker({
     title: t("kciDepartureInstructions", "Departure instructions"),
     body: checklist?.checkoutInstructions || t("kciNoDepartureInstructions", "No departure instructions provided. Contact the kitchen manager if you need help leaving the kitchen ready."),
   }
-  // Lead with the instructions for the step the chef is on.
-  // In session the arrival is behind them: keep departure only.
-  const instructions = showInSession ? [departureInstructions] : isDeparture ? [departureInstructions, arrivalInstructions] : [arrivalInstructions, departureInstructions]
+  // Only the step the chef is on: arrival before check-in, departure once checked in.
+  const beforeArrival = checkinStatus === "not_checked_in" && !isDeparture
+  const instructions = showInSession ? [departureInstructions] : isDeparture ? [departureInstructions, arrivalInstructions] : beforeArrival ? [arrivalInstructions] : [arrivalInstructions, departureInstructions]
   const instructionsShown = liveBooking && !visitFinished && instructionsReleased
-  const recordedLines = [
+  // The saved copy is history: while the visit is live the current instructions above are what matters.
+  const recordedLines = instructionsShown ? [] : [
     data?.checkedInAt ? duties?.arrival.instructions : null,
     data?.checkoutRequestedAt ? duties?.departure.instructions : null,
-  ].filter((line): line is string => !!line && !(instructionsShown && instructions.some(item => item.body === line)))
+  ].filter((line): line is string => !!line)
 
   const renderChecklist = (items: ChecklistItem[], label: string) => (
     <div className="space-y-2">
@@ -569,7 +570,9 @@ export function KitchenCheckinTracker({
               <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
             </div>
           ))}
-          {codeGate !== "locked" && codeGate !== "revoked" && <div className="space-y-2">
+          {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
+          {/* In session the panel above already offers Message kitchen. */}
+          {!showInSession && codeGate !== "locked" && codeGate !== "revoked" && <div className="space-y-2">
             <p className="text-sm text-muted-foreground">{t("kciHelpActions", "Having trouble getting in or submitting? Reach the kitchen:")}</p>
             <MessageKitchenButton bookingId={bookingId} phone={kitchenPhone} />
           </div>}
@@ -697,8 +700,8 @@ export function KitchenCheckinTracker({
               </section>
             )}
 
-            {duties && recordedLines.length > 0 && <section className="rounded-xl border p-4 space-y-2" aria-label={t("kciRecordedInstructions", "Booking instruction record")}>
-              <h2 className="text-sm font-medium">{t("kciRecordedInstructions", "Booking instruction record")}</h2>
+            {duties && recordedLines.length > 0 && <section className="rounded-xl border p-4 space-y-2" aria-label={t("kciRecordedInstructions", "Instructions saved with your booking")}>
+              <h2 className="text-sm font-medium">{t("kciRecordedInstructions", "Instructions saved with your booking")}</h2>
               {recordedLines.map(line => <p key={line} className="text-sm whitespace-pre-line">{line}</p>)}
             </section>}
             {/* Recorded checklists stay visible as history after each step. */}

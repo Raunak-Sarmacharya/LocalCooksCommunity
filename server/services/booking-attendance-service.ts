@@ -118,10 +118,10 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
     if (visit) await tx.update(kitchenBookingVisits).set(values).where(and(eq(kitchenBookingVisits.id, visit.id), eq(kitchenBookingVisits.bookingId, bookingId)));
     else await tx.update(kitchenBookings).set(values).where(eq(kitchenBookings.id, bookingId));
     // No status/completion/checkout/financial/inventory mutation here.
-    const title = input.action === 'report_no_show' ? 'No-show reported' : input.action === 'report_attended' ? 'Attendance reported' : 'Visit report withdrawn';
+    const title = input.action === 'report_no_show' ? 'No-show reported' : input.action === 'report_attended' ? 'Visit confirmed as attended' : 'Visit update withdrawn';
     const shared = message ? ` Message from ${actor.role === 'manager' ? 'kitchen manager' : 'Local Cooks'}: ${message}` : '';
     await queueBookingLifecycleEvent(tx, bookingId, input.action, title,
-      `${title} for booking #${bookingId}${visit ? `, visit ${visit.blockIndex + 1}` : ''}.${shared} Contact Local Cooks Support if this is incorrect. This visit report does not change payment, cancellation, or inventory.`,
+      `${title} for booking #${bookingId}${visit ? `, visit ${visit.blockIndex + 1}` : ''}.${shared} If this doesn’t look right, contact Local Cooks. Open the booking to see the update and reply.`,
       actor.id, { ...(visit ? { visitId: visit.id } : {}), ...(input.action === 'report_no_show' ? { policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false } : {}) });
   });
   return readBookingAttendance(bookingId, actor);

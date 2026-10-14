@@ -180,18 +180,18 @@ async function freshQuote(tx: Tx, row: Awaited<ReturnType<typeof context>>, kind
     { daily, taxRate, feeCents, originalTaxCents: recorded.originalTaxCents });
 }
 
-const labels: Record<KitchenChangeState, string> = { requested: 'Awaiting manager decision', awaiting_consent: 'Updated quote needs chef consent',
-  awaiting_payment: 'Chef must authorize the additional amount', payment_pending: 'Card authorization verification in progress',
-  authorized: 'Card hold authorized; awaiting manager decision', capture_pending: 'Approved; capture verification in progress',
-  refund_pending: 'Approved; refund verification in progress',
-  release_pending: 'Card hold release verification in progress',
-  recovery_required: 'Local Cooks must reconcile payment and schedule', applied: 'Change confirmed', declined: 'Change declined',
+const labels: Record<KitchenChangeState, string> = { requested: 'Waiting for the kitchen’s reply', awaiting_consent: 'Updated price ready for the chef to review',
+  awaiting_payment: 'Extra payment needed', payment_pending: 'Checking the card hold',
+  authorized: 'Card hold ready; waiting for the kitchen’s reply', capture_pending: 'Accepted; checking the payment',
+  refund_pending: 'Accepted; checking the refund',
+  release_pending: 'Releasing the card hold',
+  recovery_required: 'Local Cooks is checking the payment and booking', applied: 'Change confirmed', declined: 'Change declined',
   withdrawn: 'Request withdrawn', expired: 'Request expired' };
 
 function quoteMessage(change: Pick<Change, 'original' | 'destination' | 'quote'>) {
   const old = schedule(change.original), destination = schedule(change.destination), money = quote(change.quote);
   const amount = (cents: number | null) => cents === null ? 'awaiting policy' : `${money.currency} ${(cents / 100).toFixed(2)}`;
-  return `Original: ${old.date} ${old.slots[0].startTime}–${old.slots.at(-1)!.endTime}; requested: ${destination.date} ${destination.slots[0].startTime}–${destination.slots.at(-1)!.endTime} (Newfoundland time). Recorded kitchen ${amount(money.originalKitchenCents)}; current quote ${amount(money.currentKitchenCents)}; kitchen after change ${amount(money.retainedKitchenCents)}. Additional kitchen ${amount(money.addedKitchenCents)}, tax ${amount(money.taxCents)}, service fee ${amount(money.feeCents)}, payment ${amount(money.payableCents)}. Refund on approval: kitchen ${amount(money.refundKitchenCents)} plus original tax ${amount(money.refundTaxCents)}, total ${amount(money.refundableCents)}. The original service fee stays charged. Whole-booking cancellation keeps its separate policy.`;
+  return 'Open the booking to review the requested time, any extra payment and any refund before replying.';
 }
 
 async function transition(tx: Tx, change: Change, next: KitchenChangeState, message: string, actorId?: number, values: Partial<typeof kitchenBookingChanges.$inferInsert> = {}, replacementQuote?: ChangeQuote) {
@@ -312,7 +312,7 @@ async function settleKitchenChangeDecision(change: Change) {
       const retired = await db.transaction(async tx => {
         const { change: current } = await lockedChange(tx, change.bookingId, change.id);
         if (current.state !== 'capture_pending') return current;
-        return transition(tx, current, 'release_pending', 'Confirmed booking changes are retired. Release the original additional authorization; no new capture or itinerary change is permitted.', undefined, { releaseOutcome: 'expired' });
+        return transition(tx, current, 'release_pending', 'This older change request can no longer be accepted. The extra card hold is being released. Your original booking stays reserved.', undefined, { releaseOutcome: 'expired' });
       });
       return settleKitchenChangeDecision(retired);
     }
@@ -333,7 +333,7 @@ async function settleKitchenChangeDecision(change: Change) {
       await releaseHold(tx, current);
       const outcome = current.releaseOutcome as KitchenChangeState;
       if (!['declined', 'withdrawn', 'expired', 'awaiting_consent'].includes(outcome)) throw new KitchenChangeError('Card hold release outcome requires review.');
-      return transition(tx, current, outcome, 'Stripe verified release of the additional card hold. The original booking remains reserved.', undefined,
+      return transition(tx, current, outcome, 'The extra card hold has been released. Your original booking stays reserved.', undefined,
         { holdId: null, releaseOutcome: null });
     });
   }
@@ -352,13 +352,13 @@ async function settleKitchenChangeRefund(change: Change) {
       const { change: current } = await lockedChange(tx, change.bookingId, change.id);
       if (current.state !== 'refund_pending') return current;
       await releaseHold(tx, current);
-      return transition(tx, current, 'recovery_required', 'The approved refund outcome could not be verified before the change deadline. Local Cooks must reconcile any transfer reversal and refund; the original booking remains recorded.');
+      return transition(tx, current, 'recovery_required', 'Local Cooks is checking the refund because the change deadline has passed. Your original booking stays reserved.');
     });
   }
   if (!receipts.length) return db.transaction(async tx => {
     const { change: current } = await lockedChange(tx, change.bookingId, change.id);
     await releaseHold(tx, current);
-    return transition(tx, current, 'recovery_required', 'Historical reduction is retired. No new refund or itinerary change was initiated. Local Cooks must verify any earlier reversal or provider outcome.');
+    return transition(tx, current, 'recovery_required', 'This older change request needs Local Cooks to check the booking and any earlier refund. No new payment or refund has been started.');
   });
   const refund = { refundId: receipts[0].id, refundAmount: receipts[0].amount, refundStatus: receipts[0].status };
   if (refund.refundAmount !== plan.amount || refund.refundStatus !== 'succeeded') throw new KitchenChangeError('The refund is not verified as complete. The original booking remains recorded; verify the same request instead of issuing another refund.');
@@ -376,7 +376,7 @@ async function settleKitchenChangeRefund(change: Change) {
     await updatePaymentTransaction(source.id, { status: 'partially_refunded', refundId: refund.refundId, refundAmount: cumulative,
       refundReason: 'Approved kitchen reschedule price decrease', refundedAt: new Date(), metadata }, tx, true);
     await tx.update(kitchenBookingChanges).set({ refundId: refund.refundId }).where(eq(kitchenBookingChanges.id, current.id));
-    if (current.state === 'recovery_required') return transition(tx, current, 'recovery_required', 'The original approved refund is now verified and recorded. The destination schedule still requires Local Cooks reconciliation.', undefined, { refundId: refund.refundId });
+    if (current.state === 'recovery_required') return transition(tx, current, 'recovery_required', 'The refund has been confirmed. Local Cooks is checking the new visit time.', undefined, { refundId: refund.refundId });
     await tx.execute(sql`SAVEPOINT kitchen_change_refund_apply`);
     try {
       if (Date.now() >= current.decisionBy.getTime() || row.managerId !== current.managerId) throw new KitchenChangeError('The approved change window or assigned manager changed during refund verification.');
@@ -386,7 +386,7 @@ async function settleKitchenChangeRefund(change: Change) {
     } catch {
       await tx.execute(sql`ROLLBACK TO SAVEPOINT kitchen_change_refund_apply`);
       await releaseHold(tx, current);
-      return transition(tx, current, 'recovery_required', 'The approved refund is recorded, but the destination schedule is not confirmed. The original booking remains recorded. Local Cooks must reconcile the refund and reservation; do not issue another refund.');
+      return transition(tx, current, 'recovery_required', 'The refund has been confirmed, but the new visit time isn’t confirmed yet. Local Cooks is checking the booking. Please don’t send another refund.');
     }
   });
 }
@@ -462,7 +462,7 @@ export async function reconcileKitchenChangePayment(intent: Stripe.PaymentIntent
       await tx.execute(sql`ROLLBACK TO SAVEPOINT kitchen_change_apply`);
       // Keep successful funds and original commitment truthful. No automatic refund or second charge.
       await releaseHold(tx, change);
-      if (change.state !== 'recovery_required') await transition(tx, change, 'recovery_required', `Additional payment was received, but the schedule is not confirmed. The original booking remains recorded. Local Cooks must reconcile the payment and reservation; do not pay again. ${(error as Error).message}`);
+      if (change.state !== 'recovery_required') await transition(tx, change, 'recovery_required', `The extra payment was received, but the new visit time isn’t confirmed yet. Local Cooks is checking the booking. Please don’t pay again.`);
       return { transaction, applied: false };
     }
   });
@@ -482,7 +482,7 @@ export async function reconcileKitchenChangeAuthorization(intent: Stripe.Payment
     if (['capture_pending', 'release_pending', 'applied', 'recovery_required', 'declined', 'withdrawn', 'expired', 'awaiting_consent'].includes(change.state)) return change;
     if (change.state !== 'payment_pending') throw new KitchenChangeError('This authorization requires Local Cooks reconciliation.');
     await tx.update(kitchenBookingChanges).set({ intentId: intent.id }).where(eq(kitchenBookingChanges.id, change.id));
-    return transition(tx, change, 'release_pending', 'Confirmed booking changes are retired. The verified additional authorization must be released; the original itinerary remains recorded.', undefined, { intentId: intent.id, releaseOutcome: 'expired' });
+    return transition(tx, change, 'release_pending', 'This older change request can no longer be accepted. The extra card hold is being released. Your original booking stays reserved.', undefined, { intentId: intent.id, releaseOutcome: 'expired' });
   });
 }
 
@@ -499,7 +499,7 @@ export async function reconcileKitchenChangeCancellation(intent: Stripe.PaymentI
     const outcome = change.state === 'release_pending' ? change.releaseOutcome as KitchenChangeState : 'expired';
     if (!['declined', 'withdrawn', 'expired', 'awaiting_consent'].includes(outcome)) throw new KitchenChangeError('Card hold release outcome requires review.');
     const replacement = [...change.history as Array<{ replacementQuote?: ChangeQuote }>].reverse().find(entry => entry.replacementQuote)?.replacementQuote;
-    return transition(tx, change, outcome, 'Stripe verified release of the additional card hold. The original booking remains reserved.', undefined,
+    return transition(tx, change, outcome, 'The extra card hold has been released. Your original booking stays reserved.', undefined,
       { holdId: null, releaseOutcome: null, ...(outcome === 'awaiting_consent' && replacement ? { quote: replacement } : {}) });
   });
 }
@@ -551,7 +551,7 @@ export async function syncKitchenChange(stripe: Stripe, bookingId: number, chang
     const { change: current } = await lockedChange(tx, bookingId, changeId, actor);
     if (current.state === 'payment_pending' && current.sessionId === session.id && !current.intentId) {
       await releaseHold(tx, current);
-      return transition(tx, current, 'expired', 'Stripe confirmed that Checkout expired without successful payment. The original booking remains unchanged.');
+      return transition(tx, current, 'expired', 'The payment window ended without a payment. Your original booking stays reserved.');
     }
     return current;
   });

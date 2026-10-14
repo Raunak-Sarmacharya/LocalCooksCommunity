@@ -68,6 +68,42 @@ Last updated: 2026-10-13.
   - (3) the Google Calendar link was double-encoded (`%2520`).
   - Fix: the producer uses `getUserDisplayName` (profile name, then Firebase name, never an email; outside the tx, failures fall back to "there"), and `URLSearchParams` values are no longer pre-encoded.
   - Re-rendered: "Hi TestSprite chef", "Booking confirmed · TestSprite chef", a clean calendar title. 89/89 targeted tests pass; full tsc clean.
+- **Dev deploy `624e0c0d` re-walk (KB-149, real sandbox checkout in a visible preview):**
+  - **Verified on dev:**
+    - the checkout "What happens next" block;
+    - consistent a.m./p.m. times;
+    - the chef pending banner with the deadline and "only charged if they accept";
+    - "Booked {date}";
+    - the manager "Respond by…", "The chef's payment is on hold" and the HST line;
+    - after approval, the dialog closes and the page refreshes to Confirmed;
+    - the visit-code panel says "Chef";
+    - the redesigned confirmation emails.
+  - **Bug found:** the real checkout path queues a generic `requested` lifecycle event ("Booking #149 awaits manager approval. Payment is authorized and has not been captured."), so the new request templates were never used. Parent fix (local, not yet deployed): the `requested` event now renders `generateBookingRequestEmail` (chef) and `generateBookingNotificationEmail` (manager) with the stored deadline, hold state and total. Verified in the mail sink ("Request sent to PHASE0 Main Kitchen", "New booking request · TestSprite chef"); tsc clean; 65 tests pass.
+  - Harness: `seed-requested.mjs`.
+- **Owner flagged** the manager "Attendance correction" dialog ("Message to chef (shared with chef and kitchen manager)", unexplained No-show/Attended/Withdraw buttons, duplicated Manage visit / Visit inspection).
+  - The owner wants every surface at top-platform level, with nothing ignored.
+  - → `build-ux-sweep.md`: Part 1 is a binding redesign "Fix the visit record" (guided option cards, Turo-style no-show reporting with a note to the chef and the ability to reply); Part 2 is a sweep of all chef/manager booking surfaces plus in-app notification copy.
+  - Launched on Codex Sol high.
+- **Owner: revamp the booking details page** (hierarchy, platform messaging, odd tags, empty visit-code heading).
+  - Parent review agreed with all four points.
+  - Pushed back on adding a progress stepper (Airbnb's reservation page has none) and on redesigning the payment card, history and help, which are already at par.
+  - Spec: `design-booking-details-page.md`:
+    - header with who and when, one status pill, one next-step line, one state-based primary action, Message always, an overflow menu;
+    - main: Visit / When & where / person card / add-ons / note;
+    - sidebar: Payment / Cancellation / Activity / Help.
+  - Owner decision on phone: show it as an underlined `tel:` link (no call button), with Airbnb-style "keep messages in Local Cooks" guidance. The parent shows it **once confirmed** (the owner may override).
+  - Build after the UX sweep lands, on an **Opus** agent (owner's preference for this work).
+- **UX sweep RETURNED** (Codex) → `.phase0-harness/ux-sweep-checkpoint.md` (+ `ux-sweep-inventory.md`: 53 surfaces, about 2,755 strings).
+  - "Fix the visit record" built to spec. Inspection page cleaned (in-app confirm, no legalese, one deadline, no visit code after the visit). Dashboard inline clear/claim dialogs removed in favour of the inspection page. Notification copy is plain language. "Your note"; Stripe date "Fri, Oct 16".
+  - tsc clean; no new failures.
+  - Parent spot-check: the server diffs are copy only; none of the changed event titles is matched by logic.
+  - Gaps: notifications are persisted as rendered English (no per-recipient i18n); the standalone admin correction lacks name/zone context.
+- **Booking details page redesign launched** on an Opus agent: `design-booking-details-page.md` plus `.phase0-harness/ux-sweep-review-notes.md` leftovers. Client only.
+- **Owner (Oct 14):** once the booking-page redesign passes the parent's review, **deploy to Vercel development without reconfirming** (this one deploy only).
+  - **Next session**, in order:
+    1. walk both roles through every booking state, including at 390 px;
+    2. the admin Booking support screen (`build-booking-support.md`);
+    3. the remaining booking-cycle parts, end to end, to top-platform level: reminders → private reviews → payout after closeout with receipt vs final invoice → cancellation policy engine → invites → extension/early/late offers → multi-day (0078+) → storage; reschedule (simple, Food Corridor style) after the cancellation engine.
 - The booking side was already environment-aware (`getAppBaseUrl`). About 15 older storage/auth-expiry stragglers use `VITE_APP_URL || 'https://localcooks.ca'` (wrong subdomain); they are folded into the email cleanup.
 
 ## Step 2 live test (booking KB-132, local, synthetic) + two Codex designs returned

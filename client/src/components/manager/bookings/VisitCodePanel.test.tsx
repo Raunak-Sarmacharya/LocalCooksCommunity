@@ -133,9 +133,9 @@ describe("VisitCodePanel", () => {
   });
 
   it.each([
-    ["code", /^Arrived 9:02\s*[ap]\.m\. · code$/],
-    ["self", /^Arrived 9:02\s*[ap]\.m\. · self check-in$/],
-    ["assisted", /^Arrived 9:02\s*[ap]\.m\. · recorded by manager$/],
+    ["code", /^Arrived 9:02\s*[ap]\.m\. with the visit code$/],
+    ["self", /^Arrived 9:02\s*[ap]\.m\. with self check-in$/],
+    ["assisted", /^Arrived 9:02\s*[ap]\.m\., added by the kitchen$/],
   ])("after a %s arrival shows only the method and time, never the code", async (method, pattern) => {
     state.targets = [{ ...base, consumed: true, consumedMethod: method, consumedAt: "2026-10-13T11:32:00Z", code: null }];
     await mount();
@@ -151,6 +151,29 @@ describe("VisitCodePanel", () => {
     const { container } = await mount();
     await waitFor(() => expect(api.get).toHaveBeenCalled());
     await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it("inside the booking page says why there is no code instead of an empty heading", async () => {
+    state.targets = [];
+    await mount({ embedded: true });
+    expect(await screen.findByTestId("visit-code-empty")).toHaveTextContent("This booking uses tap check-in; no code needed.");
+    cleanup(); client.clear();
+    await mount({ embedded: true, bookingStatus: "pending" });
+    expect(screen.getByTestId("visit-code-empty")).toHaveTextContent("A visit code is created when you confirm this request.");
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+  });
+
+  it("inside the booking page shows one arrival line after the visit and never a leftover code", async () => {
+    state.targets = [{ ...base, visitId: null, consumed: true, consumedMethod: "code", consumedAt: "2026-10-13T11:32:00Z", code: null }];
+    await mount({ embedded: true, visitEnded: true });
+    expect((await screen.findByTestId("visit-code-consumed")).textContent?.replace(/[  ]/g, " ")).toMatch(/^Arrived 9:02\s*a\.m\. with the visit code$/);
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    cleanup(); client.clear();
+    state.targets = [{ ...base }];
+    const { container } = await mount({ embedded: true, visitEnded: true });
+    await waitFor(() => expect(api.get).toHaveBeenCalled());
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    expect(document.body.textContent).not.toMatch(/123\s?456/);
   });
 
   it("shows a load error with retry", async () => {

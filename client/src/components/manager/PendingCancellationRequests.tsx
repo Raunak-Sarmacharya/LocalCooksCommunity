@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { useState, useMemo } from "react";
 import { mt } from "@/i18n/manager";
@@ -193,8 +194,7 @@ export function PendingCancellationRequests({
             <Badge
               variant="warning"
             >
-              {requests.length} pending
-            </Badge>
+              {requests.length}{' '}{ct('sweepLabel02')}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">

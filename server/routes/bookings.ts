@@ -85,8 +85,9 @@ router.post('/bookings/:id/conversation', requireFirebaseAuthWithUser, async (re
             .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, id)).limit(1);
         if (!row || (req.neonUser!.id !== row.booking.chefId && req.neonUser!.id !== row.managerId))
             return res.status(404).json({ error: 'Booking not found' });
-        if (!row.booking.chefId || !['confirmed', 'cancellation_requested', 'completed'].includes(row.booking.status))
-            return res.status(409).json({ error: 'Messaging requires a confirmed booking' });
+        // Like Airbnb, either side can message while a request is pending.
+        if (!row.booking.chefId || !['pending', 'confirmed', 'cancellation_requested', 'completed'].includes(row.booking.status))
+            return res.status(409).json({ error: 'Messaging is not available for this booking' });
         const [application] = await db.select().from(chefKitchenApplications).where(and(
             eq(chefKitchenApplications.chefId, row.booking.chefId), eq(chefKitchenApplications.locationId, row.locationId),
             eq(chefKitchenApplications.status, 'approved'))).orderBy(desc(chefKitchenApplications.id)).limit(1);
@@ -2267,8 +2268,8 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                 if (!changed) throw new Error('Booking changed; refresh before cancelling');
                 await cancelLinkedBookingDates(tx, id);
                 const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
-                await queueBookingLifecycleEvent(tx, id, 'cancelled', 'Unpaid kitchen booking cancelled',
-                    'The unpaid kitchen booking was cancelled. No payment was captured.', req.neonUser!.id);
+                await queueBookingLifecycleEvent(tx, id, 'cancelled', 'Kitchen booking request cancelled',
+                    'The kitchen booking request is cancelled. No payment was taken.', req.neonUser!.id);
             });
             return res.json({ success: true, action: 'cancelled', message: 'Unpaid booking cancelled.' });
         }
@@ -2289,7 +2290,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             if (!changed) throw new Error('Booking changed; refresh before requesting cancellation');
             const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
             await queueBookingLifecycleEvent(tx, id, 'cancellation_requested', 'Kitchen cancellation requested',
-                `The chef requested cancellation of booking #${id}. The kitchen manager will review the request. Any refund is handled separately.${reason?.trim() ? ` Chef message: ${reason.trim()}` : ''}`, req.neonUser!.id);
+                `The chef asked to cancel booking #${id}. The kitchen will review the cancellation and any refund separately.${reason?.trim() ? ` Note from the chef: ${reason.trim()}` : ''}`, req.neonUser!.id);
             });
 
             return res.json({

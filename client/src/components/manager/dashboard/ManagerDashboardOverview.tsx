@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { StorageIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
@@ -440,7 +441,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                 <Card className="animate-in fade-in slide-in-from-bottom-5 duration-300">
                     <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-4 gap-4">
                         <CardTitle className="text-lg leading-tight">
-                            Bookings for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                            {ct('sweepBookingsFor', { date: selectedDate.toLocaleDateString(i18n.language, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) })}
                         </CardTitle>
                         <Button
                             variant="ghost"
@@ -512,8 +513,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 )}
                                                 {booking.chefName && (
                                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
-                                                        <User className="h-3 w-3" />
-                                                        Chef: {booking.chefName}
+                                                        <User className="h-3 w-3" />{ct('sweepLabel31')}{' '}{booking.chefName}
                                                     </p>
                                                 )}
                                                 {/* Storage & Equipment Add-ons */}
@@ -575,9 +575,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                         >
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                                    <Badge className="bg-purple-600 text-white hover:bg-purple-700">
-                                                        VIEWING
-                                                    </Badge>
+                                                    <Badge className="bg-purple-600 text-white hover:bg-purple-700">{ct('sweepLabel32')}</Badge>
                                                     <Badge
                                                         variant={
                                                             viewingRec.viewing.status === 'pending' ? "outline" :
@@ -611,8 +609,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 )}
                                                 {(viewingRec.chefName || viewingRec.chefUsername) && (
                                                     <div className="flex items-center text-gray-600 mt-1">
-                                                        <User className="h-3 w-3 mr-1 text-gray-400" />
-                                                        Chef: {viewingRec.chefName || viewingRec.chefUsername?.split('@')[0]}
+                                                        <User className="h-3 w-3 mr-1 text-gray-400" />{ct('sweepLabel31')}{' '}{viewingRec.chefName || viewingRec.chefUsername?.split('@')[0]}
                                                     </div>
                                                 )}
                                             </div>

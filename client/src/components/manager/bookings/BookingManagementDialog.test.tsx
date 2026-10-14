@@ -15,7 +15,7 @@ describe('manager storage cancellation entry', () => {
       storageItems: [{ id: 77, storageBookingId: 77, name: 'Cold storage', storageType: 'cold', totalPrice: 2000,
         status: 'cancellation_requested', cancellationRequested: false }],
     }} />);
-    expect(screen.getByText('Chef requested cancellation')).toBeInTheDocument();
+    expect(screen.getByText('sweepChefCancel')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'accept' }));
     expect(screen.getByText('Quoted storage #77')).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();

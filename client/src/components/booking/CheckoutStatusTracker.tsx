@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 /**
@@ -169,7 +170,7 @@ export function CheckoutStatusTracker({
 
         <div className="py-6">
           {isLoading ? (
-            <div className="space-y-4 py-3" role="status" aria-label="Loading checkout status">
+            <div className="space-y-4 py-3" role="status" aria-label={ct('sweepText13')}>
               {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}
             </div>
           ) : (
@@ -209,9 +210,7 @@ export function CheckoutStatusTracker({
                         <InfoChip
                           variant="outline"
                           className="font-normal"
-                        >
-                          In Progress
-                        </InfoChip>
+                        >{ct('sweepLabel15')}</InfoChip>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -236,7 +235,7 @@ export function CheckoutStatusTracker({
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Camera className="h-4 w-4" />
                 <span>
-                  {data.checkoutPhotoUrls.length} photo{data.checkoutPhotoUrls.length !== 1 ? "s" : ""} submitted
+                  {ct('sweepPhotosAdded', { count: data.checkoutPhotoUrls.length })}
                 </span>
               </div>
             </>
@@ -335,9 +334,7 @@ function buildSteps(
           variant="warning"
           icon={<FileWarning className="h-3 w-3" />}
           className="font-normal mt-1"
-        >
-          Check Damage Claims in your dashboard
-        </InfoChip>
+        >{ct('sweepLabel16')}</InfoChip>
       ),
     });
   } else {

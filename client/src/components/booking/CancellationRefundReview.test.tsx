@@ -1,3 +1,5 @@
+vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
+vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -17,29 +19,29 @@ describe('shared quoted cancellation review', () => {
   });
   it('shows exact amounts before acceptance and submits the reviewed hash', async () => {
     show(); expect(await screen.findByText('$111.16')).toBeInTheDocument(); expect(screen.getByText('$3.84')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Accept cancellation and initiate shown refunds'));
+    fireEvent.click(screen.getByText('Accept cancellation and send these refunds'));
     await waitFor(() => expect(request).toHaveBeenCalledWith('PUT', '/api/manager/bookings/10/cancellation-request', { action: 'accept', quoteHash: 'a'.repeat(64) }));
   });
   it('keeps an acceptance error visible and permits refreshing the quote', async () => {
     request.mockImplementation(async (method: string) => { if (method === 'PUT') throw Error('Refund quote changed'); return { json: async () => data }; });
-    show(); fireEvent.click(await screen.findByText('Accept cancellation and initiate shown refunds'));
+    show(); fireEvent.click(await screen.findByText('Accept cancellation and send these refunds'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Refund quote changed');
-    expect(screen.getByText('Refresh quote and outcomes')).toBeEnabled();
+    expect(screen.getByText('Refresh refund details')).toBeEnabled();
   });
   it('shows pending recovery without claiming customer bank receipt or another refund', async () => {
     data = { accepted: true, sources: [{ transactionId: 99, operation: { ...source, status: 'recovery_required', error: 'Original refund pending' } }] };
     show(false); expect(await screen.findByText('Original refund pending')).toBeInTheDocument();
-    expect(screen.queryByText('Accept cancellation and initiate shown refunds')).not.toBeInTheDocument();
-    expect(screen.queryByText('Request service-fee return from admin')).not.toBeInTheDocument();
+    expect(screen.queryByText('Accept cancellation and send these refunds')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ask Local Cooks to review the service fee')).not.toBeInTheDocument();
   });
   it('routes selected storage through the same reviewed quote with its exact identity', async () => {
     show(true, { kind: 'storage', id: 77 });
-    fireEvent.click(await screen.findByText('Accept cancellation and initiate shown refunds'));
+    fireEvent.click(await screen.findByText('Accept cancellation and send these refunds'));
     await waitFor(() => expect(request).toHaveBeenCalledWith('PUT', '/api/manager/bookings/10/items/storage/77/cancellation-request', expect.objectContaining({ quoteHash: 'a'.repeat(64) })));
   });
   it('requests platform fees through the existing admin-review endpoint only after verified manager refund', async () => {
     data = { accepted: true, sources: [{ transactionId: 99, operation: { ...source, status: 'succeeded', refunded: 11116 } }] };
-    show(); fireEvent.click(await screen.findByText('Request service-fee return from admin'));
+    show(); fireEvent.click(await screen.findByText('Ask Local Cooks to review the service fee'));
     await waitFor(() => expect(request).toHaveBeenCalledWith('POST', '/api/manager/revenue/transactions/99/full-refund-request', expect.any(Object)));
   });
   it('refreshes the host booking state after accepted cancellation rather than leaving its request pending', async () => {
@@ -49,8 +51,17 @@ describe('shared quoted cancellation review', () => {
       return { json: async () => data };
     });
     show(true, undefined, changed);
-    fireEvent.click(await screen.findByText('Accept cancellation and initiate shown refunds'));
+    fireEvent.click(await screen.findByText('Accept cancellation and send these refunds'));
     await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('Accept cancellation and initiate shown refunds')).not.toBeInTheDocument();
+    expect(screen.queryByText('Accept cancellation and send these refunds')).not.toBeInTheDocument();
   });
+  it('explains completed used items and a declined service-fee review without raw status codes', async () => {
+    data = { accepted: true, sources: [{ ...source, serviceFeeRequest: { status: 'rejected' } }],
+      items: [{ kind: 'storage', id: 77, treatment: 'completed', paymentTreatment: 'used_payment_retained' }] };
+    show();
+    expect(await screen.findByText(/Payment kept for storage or equipment already used/)).toHaveTextContent('Finished');
+    expect(screen.getByText(/Service fee review:/)).toHaveTextContent('Refund request declined');
+    expect(screen.queryByText(/used_payment_retained|completed;/)).not.toBeInTheDocument();
+  });
+
 });

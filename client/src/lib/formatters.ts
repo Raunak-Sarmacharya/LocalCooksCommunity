@@ -81,7 +81,7 @@ export function formatChartDate(
 
 /**
  * Format time string (HH:MM) using the active locale.
- * 12-hour with AM/PM for en-CA; 24-hour for fr-CA/uk (via Intl).
+ * 12-hour clocks with localized day periods.
  * @param time - Time string in HH:MM format
  */
 export function formatTime(time: string, locale: string = DEFAULT_LOCALE): string {
@@ -93,6 +93,7 @@ export function formatTime(time: string, locale: string = DEFAULT_LOCALE): strin
         return new Intl.DateTimeFormat(locale, {
             hour: 'numeric',
             minute: '2-digit',
+            hour12: true,
         }).format(date);
     } catch {
         const hour = parseInt(hours);

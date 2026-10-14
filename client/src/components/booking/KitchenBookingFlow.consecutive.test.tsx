@@ -1,3 +1,4 @@
+vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,7 +35,7 @@ async function open(slots: string[] = []) {
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <KitchenBookingFlow locationId={1} locationName="Test Location" initialDateIso="2099-10-04" initialSlots={slots} onCancel={() => {}} onComplete={() => {}} />
   </QueryClientProvider>);
-  await screen.findByText(/Select consecutive hours for one continuous visit/);
+  await screen.findByText(/Choose consecutive hours for your visit/);
   const first = Number(fixture.times[0].slice(0, 2));
   await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(`${first % 12 || 12}:00.*${(first + 1) % 12 || 12}:00`) })).toBeEnabled());
 }
@@ -47,7 +48,7 @@ describe('actual kitchen picker consecutive selection', () => {
     fireEvent.click(hour(9)); fireEvent.click(hour(11));
     selected(9); expect(hour(11).className).not.toContain('bg-[#F51042]');
     fireEvent.click(hour(10)); fireEvent.click(hour(11)); fireEvent.click(hour(10));
-    selected(10); expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Select consecutive hours' }));
+    selected(10); expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose consecutive hours' }));
     fireEvent.click(hour(11)); expect(hour(11).className).not.toContain('bg-[#F51042]');
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'true');
@@ -56,13 +57,13 @@ describe('actual kitchen picker consecutive selection', () => {
     expect(hour(12).className).not.toContain('bg-[#F51042]');
     fireEvent.click(hour(11)); selected(11);
     fireEvent.click(hour(10)); selected(10);
-    fireEvent.click(screen.getByRole('button', { name: /Save time/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Save visit time/ }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
   it('clears a restored gap and blocks advancing below the minimum duration', async () => {
     fixture.minimum = 2;
     await open(['09:00', '11:00']);
-    await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your hours again' })));
+    await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' })));
     expect(hour(9).className).not.toContain('bg-[#F51042]');
     fireEvent.click(hour(9)); fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringContaining('at least 2') }));
@@ -70,7 +71,7 @@ describe('actual kitchen picker consecutive selection', () => {
   });
   it('clears a restored selection with a held middle hour rather than buying around it', async () => {
     fixture.full = ['10:00']; await open(['09:00', '10:00', '11:00']);
-    await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your hours again' })));
+    await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' })));
     expect(hour(10)).toBeDisabled();
     fireEvent.click(hour(9)); fireEvent.click(hour(11));
     expect(hour(11).className).not.toContain('bg-[#F51042]');
@@ -89,11 +90,11 @@ describe('actual kitchen picker consecutive selection', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
     fireEvent.click(hour(12));
-    expect(screen.getByRole('button', { name: /Save time/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Save visit time/ })).toBeDisabled();
     expect(screen.getByText('A daily booking must include the full available operating day.')).toBeVisible();
     cleanup(); fixture.rateMode = 'hourly'; fixture.toast.mockClear();
     await open(['25:00']);
-    expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your hours again' }));
+    expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' }));
     expect(hour(9).className).not.toContain('bg-[#F51042]');
   });
 });

@@ -39,10 +39,10 @@ export async function cancelBookingItem(kind: 'storage' | 'equipment', id: numbe
     await tx.update(kitchenBookings).set({ [snapshotKey]: (parent[snapshotKey] as Record<string, unknown>[] || [])
       .map(entry => (entry[itemKey] ?? entry.id) === id ? { ...entry, status, ...(unpaid ? { rejected: true } : {}) } : entry),
       updatedAt: new Date() }).where(eq(kitchenBookings.id, parent.id));
-    const title = unpaid ? `${kind === 'storage' ? 'Storage' : 'Equipment'} item withdrawn` : `${kind === 'storage' ? 'Storage' : 'Equipment'} cancellation requested`;
-    const message = `${title} for booking #${parent.id}, item #${id}. The kitchen and other items remain reserved. ${unpaid
-      ? 'The shared payment authorization remains in place; acceptance will capture only approved items.'
-      : 'The kitchen manager will review the request. Cancellation and refunds are separate.'}${reason?.trim() ? ` Chef message: ${reason.trim()}` : ''}`;
+    const title = unpaid ? `${kind === 'storage' ? 'Storage' : 'Equipment'} add-on cancelled` : `${kind === 'storage' ? 'Storage' : 'Equipment'} cancellation requested`;
+    const message = `${title} for booking #${parent.id}, item #${id}. Your kitchen time and other add-ons stay reserved. ${unpaid
+      ? 'Your card hold stays in place. Only accepted items will be charged when the booking is confirmed.'
+      : 'The kitchen will review your cancellation request and refund separately.'}${reason?.trim() ? ` Note from the chef: ${reason.trim()}` : ''}`;
     await queueBookingLifecycleEvent(tx, parent.id, unpaid ? 'item_withdrawn' : 'item_cancellation_requested', title, message, chefId, { itemKind: kind, itemId: id });
     return { success: true, action: status, message };
   });

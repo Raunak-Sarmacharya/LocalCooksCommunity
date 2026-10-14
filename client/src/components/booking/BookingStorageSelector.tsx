@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { useMemo, useState } from "react";
 import { differenceInDays, format, isBefore, startOfDay, startOfToday } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -362,7 +363,7 @@ export function BookingStorageSelector({
           <div className="mb-2 flex items-center gap-2">
             <Icon icon="mdi:calendar-month-outline" width={16} height={16} className="text-[#F51042]" aria-hidden />
             <p className="text-sm font-semibold text-gray-900">
-              {dateMode === "same" ? "Dates for all selected storage" : currentListing?.name}
+              {dateMode === "same" ? ct('sweepText11') : currentListing?.name}
             </p>
           </div>
           <Calendar
@@ -409,15 +410,13 @@ export function BookingStorageSelector({
             className={chefOutlineCtaClass()}
             onClick={() => setStage(selectedIds.length > 1 ? "date-mode" : "select")}
           >
-            <Icon icon="mdi:arrow-left" width={16} height={16} className="mr-2" aria-hidden /> Back
-          </Button>
+            <Icon icon="mdi:arrow-left" width={16} height={16} className="mr-2" aria-hidden />{ct('sweepLabel13')}</Button>
           <Button
             className={chefPrimaryCtaClass()}
             disabled={!canSave}
             onClick={saveDates}
           >
-            <Icon icon="mdi:check" width={16} height={16} className="mr-2" aria-hidden /> Save storage
-          </Button>
+            <Icon icon="mdi:check" width={16} height={16} className="mr-2" aria-hidden />{ct('sweepLabel14')}</Button>
         </div>
       </div>
     </div>

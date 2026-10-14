@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 import { EQUIPMENT_ICON_NAME, STORAGE_ICON_NAME } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
@@ -773,7 +774,7 @@ export default function KitchenBookingFlow({
       setAllSlots(filteredSlots);
       // A stale middle hour invalidates the draft; never silently leave two visits.
       if (selectedSlotsRef.current.length && validateKitchenSlotSelection(selectedSlotsRef.current, filteredSlots)) {
-        toast({ title: 'Choose your hours again', description: 'Your saved hours must be consecutive and available. Select one continuous range.', variant: 'destructive' });
+        toast({ title: ct('sweepText17'), description: ct('sweepText18'), variant: 'destructive' });
         setSelectedSlots([]);
         setCurrentStep('slots');
       }
@@ -964,7 +965,7 @@ export default function KitchenBookingFlow({
         setCalendarMonth(new Date(y, m - 1, 1));
         if (restore.slots?.length) {
           if (restore.slots.some(time => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) {
-            toast({ title: 'Choose your hours again', description: 'Your saved hours are invalid. Select consecutive available hours.', variant: 'destructive' });
+            toast({ title: ct('sweepText17'), description: ct('sweepText19'), variant: 'destructive' });
           } else {
             // Availability loading validates the complete draft before continuing.
             setSelectedSlots(restore.slots);
@@ -1034,7 +1035,7 @@ export default function KitchenBookingFlow({
         return prev;
       }
       if (next.length && validateKitchenSlotSelection(next, allSlots)) {
-        toast({ title: 'Select consecutive hours', description: CONSECUTIVE_SLOTS_MESSAGE, variant: 'destructive' });
+        toast({ title: ct('sweepText20'), description: CONSECUTIVE_SLOTS_MESSAGE, variant: 'destructive' });
         return prev;
       }
       return sortSelectedSlots(next);
@@ -1120,7 +1121,7 @@ export default function KitchenBookingFlow({
   const requireValidSelection = () => {
     const error = selectionError();
     if (!error) return true;
-    toast({ title: 'Review your booking hours', description: error, variant: 'destructive' });
+    toast({ title: ct('sweepText21'), description: error, variant: 'destructive' });
     setCurrentStep('slots');
     return false;
   };
@@ -1520,7 +1521,7 @@ export default function KitchenBookingFlow({
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
-              <p className="text-sm text-muted-foreground">Select consecutive hours for one continuous visit. Add adjacent hours; remove hours from either end.</p>
+              <p className="text-sm text-muted-foreground">{ct('sweepLabel20')}</p>
               {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
                 <div className="shrink-0 rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
                   <Icon icon="mdi:clock-outline" className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
@@ -1714,8 +1715,7 @@ export default function KitchenBookingFlow({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-gray-900">{storage.name}</p>
                         <p className="truncate text-sm text-muted-foreground">
-                          {formatCurrency(storage.basePrice || 0)}/day
-                        </p>
+                          {formatCurrency(storage.basePrice || 0)}{ct('sweepLabel21')}</p>
                         {selection ? (
                           <p className="truncate text-sm font-medium text-gray-900">
                             {formatDate(selection.startDate)} – {formatDate(selection.endDate)}
@@ -2433,8 +2433,7 @@ export default function KitchenBookingFlow({
                 setTimeModalOpen(false);
               }}
             >
-              <Icon icon="mdi:check" className="mr-2 h-4 w-4" aria-hidden /> Save time
-            </Button>
+              <Icon icon="mdi:check" className="mr-2 h-4 w-4" aria-hidden />{ct('sweepLabel22')}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2533,7 +2532,7 @@ export default function KitchenBookingFlow({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-gray-900">{equipmentName(equipment)}</span>
-                        <span className="block text-sm text-muted-foreground">{formatCurrency(equipment.sessionRate || 0)} per session</span>
+                        <span className="block text-sm text-muted-foreground">{formatCurrency(equipment.sessionRate || 0)}{' '}{ct('sweepLabel23')}</span>
                       </span>
                       <span className={cn(
                         "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",

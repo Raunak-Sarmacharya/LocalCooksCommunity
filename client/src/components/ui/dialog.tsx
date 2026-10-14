@@ -3,6 +3,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 import * as React from "react"
+import i18n from "i18next"
 
 import { cn } from "@/lib/utils"
 import { ScrollCues, useScrollCues } from "@/components/ui/scroll-area"
@@ -66,7 +67,7 @@ const DialogContent = React.forwardRef<
       {showCloseButton ? (
         <DialogPrimitive.Close className="absolute right-2 top-2 w-11 h-11 sm:right-3 sm:top-3 sm:w-8 sm:h-8 flex items-center justify-center z-50 focus:outline-none hover:bg-muted rounded-full transition-colors duration-200">
           <X className="h-4 w-4 text-muted-foreground" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{i18n.t('common:close', { defaultValue: 'Close' })}</span>
         </DialogPrimitive.Close>
       ) : null}
       <ScrollCues top={canScrollTop} bottom={canScrollBottom} />

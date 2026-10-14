@@ -69,12 +69,12 @@ async function updateConfirmedVisit(bookingId: number,visitId: number,expectedSt
     if (changed.length && duties) await captureKitchenDuties(tx, bookingId, duties);
     if (changed.length && arrival && values.checkinStatus === 'checked_in') await consumeForArrival(tx, gate, arrival);
     if (changed.length && values.checkinStatus === 'checked_in') await queueBookingLifecycleEvent(tx, bookingId,
-      'checkin_recorded', 'Kitchen visit check-in recorded', 'Arrival was recorded for this visit. Open the booking for the submitted checklist and photos.',
+      'checkin_recorded', 'Arrival confirmed', 'Arrival is confirmed for this visit. Open the booking to see the chef’s checklist and photos.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     if (changed.length && values.checkinStatus === 'checkout_requested') await queueBookingLifecycleEvent(tx, bookingId,
-      'checkout_requested', 'Kitchen visit needs inspection', 'Checkout was requested for this visit. The kitchen manager owns inspection; open the booking for evidence and the review deadline. A request is not inspection clearance or a charge.',
+      'checkout_requested', 'Ready for kitchen inspection', 'The chef has requested checkout for this visit. The kitchen can now review the photos and checklist. Open the booking for the inspection deadline.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
-    if(changed.length&&values.checkinStatus==='checked_out') await queueBookingLifecycleEvent(tx,bookingId,'checkout_cleared','Kitchen visit checkout cleared','This visit checkout has been cleared. Open the booking for the current visit and any remaining visits.',values.checkoutApprovedBy||undefined,{ visitId,recipientPolicy: 'chef' });
+    if(changed.length&&values.checkinStatus==='checked_out') await queueBookingLifecycleEvent(tx,bookingId,'checkout_cleared','Kitchen inspection complete','The kitchen finished reviewing this visit. Open your booking for any remaining visits.',values.checkoutApprovedBy||undefined,{ visitId,recipientPolicy: 'chef' });
     if (changed.length && values.checkinStatus === 'checked_out' && inRecurringWorker()) await finishBookingIfAllVisitsDone(bookingId, tx);
     return changed;
   });
@@ -216,8 +216,8 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
           : `Damage claim #${claimId} filed during kitchen checkout`,
         updatedAt: new Date(),
       }).where(eq(kitchenBookingVisits.id, visitId));
-      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Inspection handed to a draft claim',
-        `Visit inspection was handed to draft damage claim #${claimId}. The manager must attach evidence and submit it before the chef response deadline starts. This is not inspection clearance, claim approval or a charge.`,
+      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Visit concern sent for review',
+        `The kitchen started a draft damage claim (#${claimId}) for this visit. The kitchen needs to add photos and details, then submit it before the chef is asked to reply. Nothing has been charged for this draft.`,
         managerId, { visitId, damageClaimId: claimId, recipientPolicy: 'participants' });
       return claimId;
     });

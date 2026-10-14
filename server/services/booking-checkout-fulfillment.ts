@@ -83,9 +83,9 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
               ...storageItems.map(item => ({ kind: 'storage' as const, bookingId: Number(item.storageBookingId), subtotalCents: Number(item.totalPrice) })),
               ...equipmentItems.map(item => ({ kind: 'equipment' as const, bookingId: Number(item.equipmentBookingId), subtotalCents: Number(item.totalPrice) })),
             ], terms.tax) } });
-        await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'Kitchen booking requested',
-          authorized ? `Booking #${parent.id} awaits manager approval. Payment is authorized and has not been captured.`
-            : `Booking #${parent.id} awaits manager approval. The original checkout payment was received.`, chefId);
+        await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'New kitchen booking request',
+          authorized ? `A new kitchen booking request is ready to review. The chef’s card is on hold and will only be charged if the kitchen accepts.`
+            : `A new kitchen booking request is ready to review. The checkout payment has been received.`, chefId);
         return parent;
       }));
     return booking.id;

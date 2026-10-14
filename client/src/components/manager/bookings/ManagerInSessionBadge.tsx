@@ -47,7 +47,7 @@ export function ManagerInSessionBadge({ endsAt, timezone, label }: { endsAt: str
   if (!Number.isFinite(endMs)) return null
   const minutes = Math.max(0, Math.ceil((endMs - now) / 60_000))
   const over = endMs - now <= 0
-  const time = new Intl.DateTimeFormat(locale, { ...(timezone ? { timeZone: timezone } : {}), hour: "numeric", minute: "2-digit" }).format(new Date(endMs))
+  const time = new Intl.DateTimeFormat(locale, { ...(timezone ? { timeZone: timezone } : {}), hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(endMs))
   const zone = timezone ? ` ${friendlyTimezoneName(timezone, locale)}` : ""
   const text = over ? t("inSessionOver", { defaultValue: "In session · booked time ended at {time}", time })
     : minutes >= 60 ? t("inSessionLeftHM", { defaultValue: "In session · {hours} h {minutes} min left · ends {time}", hours: Math.floor(minutes / 60), minutes: minutes % 60, time })

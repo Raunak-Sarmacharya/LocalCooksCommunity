@@ -1,6 +1,8 @@
+import { ct } from '@/i18n/chef-ns';
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +21,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
 import { useTranslation } from "react-i18next";
+import { formatTime as formatKitchenClock } from "@/lib/formatters";
 import { tt } from "@/i18n/common-ns";
 import { bt } from "@/i18n/booking-ns";
 
@@ -77,10 +80,10 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 export default function BookingControlPanel({
   bookings,
   isLoading,
-  onCancelBooking,
   kitchens = [],
 }: BookingControlPanelProps) {
   const { t, i18n } = useTranslation("chef");
+  const [, navigate] = useLocation();
 
   const translateGroupLabel = (groupKey: string): string => {
     const map: Record<string, string> = {
@@ -376,13 +379,7 @@ export default function BookingControlPanel({
     });
   };
 
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
+  const formatTime = (timeString: string) => formatKitchenClock(timeString, i18n.language);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -510,7 +507,7 @@ export default function BookingControlPanel({
 
       if (!response.ok) {
         // Try to get error message from response
-        let errorMessage = 'Failed to generate invoice';
+        let errorMessage = ct('sweepText00');
         try {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
@@ -572,56 +569,7 @@ export default function BookingControlPanel({
     }
   };
 
-  const handleCancel = (bookingId: number, bookingDate: string, startTime: string, booking: Booking) => {
-    try {
-      const dateStr = bookingDate.split('T')[0]; // Extract date part if ISO
-      // Resolve in the location's timezone — the cancellation-window math
-      // must agree with what the server enforces (kitchen's wall clock).
-      const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
-      const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, startTime, booking.operatingWindowStartTime), startTime, timezone);
-
-      if (isNaN(bookingDateTime.getTime())) {
-        toast.error(tt("errorTitle"), {
-          description: bt("invalidBookingDateFormat")
-        });
-        return;
-      }
-      
-      // Get cancellation policy from location (default to 24 hours)
-      const cancellationHours = booking.location?.cancellationPolicyHours ?? 24;
-      const policyMessage = booking.location?.cancellationPolicyMessage 
-        ?.replace('{hours}', cancellationHours.toString()) 
-        ?? `Bookings cannot be cancelled within ${cancellationHours} hours of the scheduled time.`;
-      
-      const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-      // Don't allow cancellation if booking time has passed
-      if (hoursUntilBooking < 0) {
-        toast.error(tt("cannotCancel"), {
-          description: bt("cannotCancelPastBooking")
-        });
-        return;
-      }
-
-      // Only apply cancellation policy to future bookings
-      // Past bookings cannot be cancelled - only upcoming bookings outside cancellation window can be cancelled
-      if (hoursUntilBooking >= 0 && hoursUntilBooking < cancellationHours) {
-        toast.error(tt("cancellationPolicy"), {
-          description: policyMessage
-        });
-        return;
-      }
-
-      if (window.confirm(bt("confirmCancelBooking"))) {
-        onCancelBooking(bookingId);
-      }
-    } catch (error) {
-      logger.error('Error in handleCancel:', error);
-      toast.error(tt("errorTitle"), {
-        description: bt("failedToProcessCancellation")
-      });
-    }
-  };
+  const handleCancel = (bookingId: number) => navigate(`/booking/${bookingId}?cancel=1`);
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-4 h-fit max-h-[calc(100vh-2rem)] flex flex-col">
@@ -832,7 +780,7 @@ export default function BookingControlPanel({
                                 } else if (hoursUntil > 0) {
                                   return `${hoursUntil} hour${hoursUntil > 1 ? "s" : ""} away`;
                                 } else {
-                                  return "Starting soon";
+                                  return ct('sweepText01');
                                 }
                               } catch {
                                 return "Upcoming";
@@ -873,7 +821,7 @@ export default function BookingControlPanel({
                           return (
                             <div className="flex items-center gap-1 mt-1.5 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-md w-fit">
                               <Package className="h-3 w-3" />
-                              <span>{rejectedCount} storage {rejectedCount === 1 ? 'item' : 'items'} rejected</span>
+                              <span>{ct('sweepStorageCancelled', { count: rejectedCount })}</span>
                             </div>
                           );
                         }
@@ -881,7 +829,7 @@ export default function BookingControlPanel({
                           return (
                             <div className="flex items-center gap-1 mt-1.5 text-xs text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-md w-fit">
                               <Package className="h-3 w-3" />
-                              <span>{pendingCount} storage {pendingCount === 1 ? 'item' : 'items'} pending</span>
+                              <span>{ct('sweepStoragePending', { count: pendingCount })}</span>
                             </div>
                           );
                         }
@@ -913,7 +861,7 @@ export default function BookingControlPanel({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleCancel(booking.id, booking.bookingDate, booking.startTime, booking);
+                            handleCancel(booking.id);
                           }}
                           className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           aria-label={tt("cancelBooking")}
@@ -967,7 +915,7 @@ export default function BookingControlPanel({
                       <div className="flex items-start gap-2">
                         <Calendar className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-xs text-muted-foreground mb-0.5">Created</p>
+                          <p className="text-xs text-muted-foreground mb-0.5">{ct('sweepLabel03')}</p>
                           <p className="text-gray-900">
                             {new Date(booking.createdAt).toLocaleString("en-US", {
                               month: "short",
@@ -1006,14 +954,10 @@ export default function BookingControlPanel({
                         >
                           {downloadingInvoiceId === booking.id ? (
                             <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Generating Invoice...
-                            </>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{ct('sweepLabel04')}</>
                           ) : (
                             <>
-                              <FileText className="mr-2 h-4 w-4" />
-                              Download Invoice
-                            </>
+                              <FileText className="mr-2 h-4 w-4" />{ct('sweepLabel05')}</>
                           )}
                         </Button>
                       </div>
@@ -1035,15 +979,11 @@ export default function BookingControlPanel({
             <div className="mt-6 pt-6 border-t-2 border-purple-200 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-purple-900 flex items-center gap-2">
-              <Package className="h-5 w-5 text-purple-600" />
-              Storage Bookings
-            </h3>
+              <Package className="h-5 w-5 text-purple-600" />{ct('sweepLabel06')}</h3>
             <span className="text-sm text-purple-600 font-medium">
-              {storageBookings.filter((sb: any) => sb.status !== 'cancelled').length} active
-              {storageBookings.some((sb: any) => sb.status === 'cancelled') && (
+              {storageBookings.filter((sb: any) => sb.status !== 'cancelled').length}{ct('sweepLabel07')}{storageBookings.some((sb: any) => sb.status === 'cancelled') && (
                 <span className="text-red-500 ml-1">
-                  · {storageBookings.filter((sb: any) => sb.status === 'cancelled').length} rejected
-                </span>
+                  · {storageBookings.filter((sb: any) => sb.status === 'cancelled').length}{' '}{ct('sweepLabel01')}</span>
               )}
             </span>
           </div>
@@ -1094,19 +1034,16 @@ export default function BookingControlPanel({
                             {getStatusBadge(storageBooking.status)}
                             {storageBooking.status === 'confirmed' && isExpiringSoon && (
                               <span className="text-xs text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded">
-                                Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
+                                {ct('sweepExpiresIn', { count: daysUntilExpiry })}
                               </span>
                             )}
                             {storageBooking.status === 'confirmed' && isExpired && !storageBooking.paidPenalty && (
-                              <span className="text-xs text-red-700 font-medium bg-red-100 px-2 py-0.5 rounded">
-                                Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
+                              <span className="text-xs text-red-700 font-medium bg-red-100 px-2 py-0.5 rounded">{ct('sweepExpiredAgo', { count: Math.abs(daysUntilExpiry) })}
                               </span>
                             )}
                             {storageBooking.paidPenalty && (
                               <span className="text-xs text-green-700 font-medium bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
-                                <CheckCircle className="h-3 w-3" />
-                                Resolved
-                              </span>
+                                <CheckCircle className="h-3 w-3" />{ct('sweepLabel09')}</span>
                             )}
                           </div>
 
@@ -1142,9 +1079,7 @@ export default function BookingControlPanel({
                                 setExtendDialogOpen(storageBooking.id);
                               }}
                             >
-                              <CalendarPlus className="h-3 w-3 mr-1" />
-                              Extend
-                            </Button>
+                              <CalendarPlus className="h-3 w-3 mr-1" />{ct('sweepLabel10')}</Button>
                           )}
                           {isExpanded ? (
                             <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -1169,7 +1104,7 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <Calendar className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-muted-foreground mb-0.5">Period</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">{ct('sweepLabel11')}</p>
                               <p className="text-gray-900">
                                 {format(new Date(storageBooking.startDate), "PPP")} - {format(endDate, "PPP")}
                               </p>
@@ -1179,7 +1114,7 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <Building className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-muted-foreground mb-0.5">Kitchen</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">{ct('sweepLabel12')}</p>
                               <p className="text-gray-900">{storageBooking.kitchenName}</p>
                             </div>
                           </div>
@@ -1203,11 +1138,11 @@ export default function BookingControlPanel({
                               <span className="font-medium text-green-800">{bt("bcpOverstayPenaltyResolved")}</span>
                             </div>
                             <p className="text-sm text-green-700 mt-1">
-                              ${storageBooking.paidPenalty.amountDollars} CAD paid
-                              {storageBooking.paidPenalty.paidAt && ` on ${format(new Date(storageBooking.paidPenalty.paidAt), "MMM d, yyyy")}`}
+                              {ct('sweepAmountPaid', { amount: '$' + storageBooking.paidPenalty.amountDollars })}
+                              {storageBooking.paidPenalty.paidAt && ct('sweepPaidOn', { date: format(new Date(storageBooking.paidPenalty.paidAt), 'MMM d, yyyy') })}
                               {storageBooking.paidPenalty.daysOverdue > 0 && (
                                 <span className="text-xs ml-1">
-                                  ({storageBooking.paidPenalty.daysOverdue} day{storageBooking.paidPenalty.daysOverdue !== 1 ? 's' : ''} overdue)
+                                  ({ct('sweepDaysOverdue', { count: storageBooking.paidPenalty.daysOverdue })})
                                 </span>
                               )}
                             </p>
@@ -1217,8 +1152,7 @@ export default function BookingControlPanel({
                         {storageBooking.status === 'confirmed' && isExpiringSoon && (
                           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                             <p className="text-xs text-amber-800">
-                              <strong>⚠️ Expiring Soon:</strong> Your storage expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}. 
-                              Extend now to avoid interruption.
+                              {ct('sweepStorageEnding', { count: daysUntilExpiry })}
                             </p>
                           </div>
                         )}
@@ -1226,8 +1160,7 @@ export default function BookingControlPanel({
                         {storageBooking.status === 'confirmed' && isExpired && !storageBooking.paidPenalty && (
                           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                             <p className="text-xs text-red-800">
-                              <strong>⚠️ Expired:</strong> Your storage expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago. 
-                              Please extend immediately or contact support.
+                              {ct('sweepStorageEnded', { count: Math.abs(daysUntilExpiry) })}
                             </p>
                           </div>
                         )}

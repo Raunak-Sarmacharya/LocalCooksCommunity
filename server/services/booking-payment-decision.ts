@@ -134,8 +134,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       const [existing] = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, bookingId),
         eq(bookingLifecycleEvents.kind, 'payment_recovery_needed'), sql`${bookingLifecycleEvents.metadata}->>'decisionId' = ${decision!.id}`)).limit(1);
       if (existing) return;
-      await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Booking payment needs Local Cooks review',
-        `The payment decision for booking #${bookingId} is awaiting reconciliation. Do not create another payment. The original decision and amount are preserved.`,
+      await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your payment',
+        `Local Cooks is checking the payment for booking #${bookingId}. Please don’t pay again. Open the booking for the latest update.`,
         decision!.actorId, { decisionId: decision!.id });
     }).catch(() => { /* The persisted decision remains the source of truth during a database outage. */ });
     throw error;
@@ -179,8 +179,8 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
       await tx.update(kitchenBookings).set({ paymentStatus: 'paid', updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
       const [notice] = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, bookingId),
         eq(bookingLifecycleEvents.kind, 'payment_recovery_needed'), sql`${bookingLifecycleEvents.metadata}->>'decisionId' = ${decision!.id}`)).limit(1);
-      if (!notice) await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Capture won cancellation release; Local Cooks review required',
-        'The original payment was captured while the uncaptured request was being cancelled. The card hold was not released. Local Cooks must reconcile the booking and paid cancellation; any refund requires separate verification. Linked resources remain recorded.',
+      if (!notice) await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your payment',
+        'The payment went through while the cancellation was being processed. Local Cooks is checking the booking and any refund. Please don’t pay again. Your booking details are available on the booking page.',
         decision!.actorId, { decisionId: decision!.id, capturedCancellationRace: true });
     });
     throw new Error('The original payment was captured before the hold could be released. Paid funds are recorded; Local Cooks must reconcile cancellation. No refund is confirmed.');
@@ -221,8 +221,8 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     if (decision!.target === 'confirmed') await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
     await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
-      decision!.target === 'confirmed' ? `Booking #${bookingId} is confirmed. Payment was captured for the approved items. Follow the applicable check-in and checkout requirements.`
-        : `Booking #${bookingId} is cancelled. Stripe confirmed that the payment authorization was cancelled. Occupied storage remains reserved until removal is confirmed.`,
+      decision!.target === 'confirmed' ? `Your kitchen booking is confirmed and the approved items are paid. Open the booking for arrival details and next steps.`
+        : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
       decision!.actorId, { decisionId: decision!.id });
   });
   return { success: true, status: decision.target,

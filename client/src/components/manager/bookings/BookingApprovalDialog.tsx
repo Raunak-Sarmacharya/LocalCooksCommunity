@@ -322,7 +322,7 @@ function BookingApprovalDialogContent({
                       className="text-[10px] text-warning border-warning/30"
                     >
                       <AlertTriangle className="h-2.5 w-2.5 mr-1" />
-                      {storageOverrideCount} modified
+                      {storageOverrideCount} {mt('sweepModified')}
                     </Badge>
                   )}
                 </div>

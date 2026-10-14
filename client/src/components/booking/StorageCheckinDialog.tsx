@@ -1,3 +1,4 @@
+import { ct } from '@/i18n/chef-ns';
 /**
  * Storage Check-In Dialog
  *
@@ -189,8 +190,8 @@ export function StorageCheckinDialog({
             {t("ciDialogDesc")}
           </DialogDescription>
         </DialogHeader>
-        {dutiesQuery.isPending && <p role="status">Loading the booking’s arrival requirements…</p>}
-        {dutiesQuery.error && <p role="alert">Requirements could not be loaded. <Button variant="link" onClick={() => void dutiesQuery.refetch()}>Retry</Button> or contact the kitchen manager for assistance.</p>}
+        {dutiesQuery.isPending && <p role="status">{ct('sweepLabel24')}</p>}
+        {dutiesQuery.error && <p role="alert">{ct('sweepLabel26')}{' '}<Button variant="link" onClick={() => void dutiesQuery.refetch()}>{ct('sweepLabel27')}</Button>{' '}{ct('sweepLabel28')}</p>}
 
         {!isAlreadySubmitted &&
           (storageCheckinItems.some((item) => item.required) ||
