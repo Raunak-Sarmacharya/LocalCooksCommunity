@@ -110,6 +110,8 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
   platformFeeInfo?: React.ReactNode;
   refundLabel?: string;
   hstLabel?: string;
+  /** Informational line under the payout: HST is part of what was collected for the kitchen, who remits it. */
+  hstCollectedLabel?: string;
 };
 
 /** Kitchen manager payout statement — not a Local Cooks tax invoice */
@@ -125,6 +127,7 @@ export function KitchenPayoutStatementBreakdown({
   platformFeeInfo,
   refundLabel = "Refund",
   hstLabel,
+  hstCollectedLabel = "Includes HST you collected and remit",
   ...input
 }: KitchenPayoutStatementBreakdownProps) {
   const b = buildKitchenPayoutStatementBreakdown({
@@ -195,6 +198,14 @@ export function KitchenPayoutStatementBreakdown({
           className="text-base"
           amountClassName="font-semibold text-emerald-700"
         />
+        {chargedAmount != null && b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 && (
+          <BreakdownLine
+            label={hstCollectedLabel}
+            amountCents={b.kitchenHstAmountCents}
+            currency={currency}
+            className="mt-1 text-xs"
+          />
+        )}
       </div>
     </div>
   );

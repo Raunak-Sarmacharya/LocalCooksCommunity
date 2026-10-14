@@ -34,6 +34,8 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { ct } from "@/i18n/chef-ns";
 import { calendarDateForBookingTime } from '@shared/operating-hours';
+import i18n from "@/i18n";
+import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,15 +100,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTime(t: string): string {
-  try {
-    const [h, m] = t.split(":")
-    const hour = parseInt(h)
-    const ampm = hour >= 12 ? "PM" : "AM"
-    const displayHour = hour % 12 || 12
-    return `${displayHour}:${m} ${ampm}`
-  } catch {
-    return t
-  }
+  return formatClockTime(t, i18n.language)
 }
 
 function getCheckinBadge(checkinStatus: string | null) {

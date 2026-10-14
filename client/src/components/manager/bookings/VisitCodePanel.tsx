@@ -196,9 +196,9 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     : modeSelf ? t("visitCodeSelfTitle", { defaultValue: "Set up self check-in?" })
       : t("visitCodeStaffedTitle", { defaultValue: "Switch back to staffed check-in?" })
   const dialogBody = !action ? "" : action.kind === "issue"
-    ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Give the new code to the customer when they arrive." })
-    : modeSelf ? t("visitCodeSelfBody", { defaultValue: "The customer will be able to confirm their arrival without staff and without a code. The kitchen must provide access instructions for this visit. The current code stops working." })
-      : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new visit code is issued. The customer will need the code from kitchen staff." })
+    ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Give the new code to the chef when they arrive." })
+    : modeSelf ? t("visitCodeSelfBody", { defaultValue: "The chef will be able to confirm their arrival without staff and without a code. The kitchen must provide access instructions for this visit. The current code stops working." })
+      : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new visit code is issued. The chef will need the code from kitchen staff." })
 
   return (
     <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-4" aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
@@ -215,7 +215,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
             <article key={target.targetKey} className="rounded-xl border p-4 space-y-3" data-testid={`visit-code-${target.targetKey}`}>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                 {name && <div><dt className="text-xs text-muted-foreground">{t("visitCodeVisit", { defaultValue: "Visit" })}</dt><dd className="font-medium">{name}</dd></div>}
-                <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Customer" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Chef" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">{t("visitCodeKitchen", { defaultValue: "Kitchen" })}</dt><dd className="font-medium">{kitchenName || "—"}</dd></div>
                 {when && <div><dt className="text-xs text-muted-foreground">{t("visitCodeWhen", { defaultValue: "Visit time (kitchen local)" })}</dt><dd className="font-medium tabular-nums">{when}</dd></div>}
                 <div><dt className="text-xs text-muted-foreground">{t("visitCodeMode", { defaultValue: "Check-in mode" })}</dt>
@@ -232,7 +232,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                     <div className="space-y-2">
                       {target.code ? (
                         <div>
-                          <p className="text-xs text-muted-foreground">{t("visitCodeGiveHint", { defaultValue: "Give this code to the customer in person when they arrive." })}</p>
+                          <p className="text-xs text-muted-foreground">{t("visitCodeGiveHint", { defaultValue: "Give this code to the chef in person when they arrive." })}</p>
                           <p className="mt-1 text-4xl font-semibold tabular-nums tracking-[0.2em] sm:text-5xl" data-testid="visit-code-value"
                             aria-label={t("visitCodeA11y", { defaultValue: "Visit code {digits}", digits: target.code.split("").join(" ") })}>{groupVisitCode(target.code)}</p>
                         </div>
@@ -244,7 +244,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                     </div>
                   ) : (
                     <div className="space-y-1 text-sm">
-                      <p>{t("visitCodeSelfActive", { defaultValue: "The customer can confirm arrival without a code. Make sure they have the access instructions for this visit." })}</p>
+                      <p>{t("visitCodeSelfActive", { defaultValue: "The chef can confirm arrival without a code. Make sure they have the access instructions for this visit." })}</p>
                       {target.modeReason && <p className="text-muted-foreground">{t("visitCodeReasonShown", { defaultValue: "Reason: {reason}", reason: target.modeReason })}</p>}
                     </div>
                   )}

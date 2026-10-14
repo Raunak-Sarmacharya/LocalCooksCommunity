@@ -44,3 +44,14 @@ it('offers retry after an unavailable history and labels legacy records honestly
   expect(await screen.findByText('No recorded activity is available for this booking.')).toBeInTheDocument();
   expect(screen.getByText('Earlier activity may not be available for this booking.')).toBeInTheDocument(); client.clear();
 });
+it('orders events that share a timestamp by lifecycle', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: 'b', kind: 'confirmed', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: 'a', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+  ] }) })));
+  const { client } = mount();
+  await screen.findByText('Booking confirmed');
+  const items = screen.getByRole('region', { name: 'Recorded booking activity' }).querySelectorAll('li');
+  expect(items[0].textContent).toMatch(/Booking requested/);
+  expect(items[1].textContent).toMatch(/Booking confirmed/); client.clear();
+});

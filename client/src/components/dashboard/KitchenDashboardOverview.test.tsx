@@ -186,3 +186,18 @@ it("uses the parent booking chef identity in recent storage activity",()=>{state
 it("keeps payout branding distinct from normal workflow icons",()=>{state.activity.paymentsNeedAttention=true;const html=render();expect(html).toContain("text-stripe");expect(html).toContain("overviewPaymentsUpdate");expect(html.match(/overviewPaymentsAttention/g)).toHaveLength(1);});
 
 it("shows only payment recovery work for a linked item with an unfinished parent decision",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,status:"pending",paymentStatus:"authorized",paymentDecision:{state:"pending"},bookingDate:"2099-01-01",startTime:"09:00",endTime:"10:00"}];state.activity.storageBookings=[{id:91,kitchenBookingId:90,status:"pending",storageName:"Held shelf",createdAt:"2025-01-01"}];const html=render();expect(html).toContain("overviewPaymentRecovery");expect(html).not.toContain("overviewStorageRequests");expect(html).not.toContain("overviewBookingRequests");});
+
+it("lists a booking request once in Recent activity, not as both the booking and its 'requested' event", () => {
+  state.bookings = [{ id: 90, kitchenId: 10, locationId: 1, chefName: "Morgan", kitchenName: "Kitchen East", bookingDate: "2025-01-01", createdAt: "2024-12-01T12:00:00Z", startTime: "09:00", endTime: "12:00", status: "pending" }];
+  (state.activity as Record<string, unknown>).bookingEvents = [
+    { id: 1, bookingId: 90, kind: "requested", title: "Kitchen booking requested", createdAt: "2024-12-01T12:00:00Z", kitchenName: "Kitchen East" },
+    { id: 2, bookingId: 90, kind: "confirmed", title: "Kitchen booking confirmed", createdAt: "2024-12-02T12:00:00Z", kitchenName: "Kitchen East" },
+  ];
+  try {
+    const html = render();
+    const history = html.slice(html.indexOf("overviewHistory"));
+    expect(history).toContain("activityBookingRequested");
+    expect(history).not.toContain("Kitchen booking requested");
+    expect(history).toContain("Kitchen booking confirmed");
+  } finally { delete (state.activity as Record<string, unknown>).bookingEvents; }
+});

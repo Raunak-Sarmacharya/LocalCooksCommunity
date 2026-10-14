@@ -1,4 +1,5 @@
 import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
+import { getShopLoginUrl } from "../shop-urls";
 import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import fs from "fs";
@@ -930,9 +931,7 @@ router.get("/:id/shop-credentials", async (req: Request, res: Response) => {
         // exactly what was sent to the PHP bridge when the shop was created.
         const { username, password } = generateVendorCredentials(shopName, cleanPhone);
 
-        const loginUrl =
-            process.env.PHP_SHOP_LOGIN_URL ||
-            "https://stagingwebapp.localcook.shop/app/shop/index.php";
+        const loginUrl = getShopLoginUrl();
 
         return res.json({
             applicationId: application.id,

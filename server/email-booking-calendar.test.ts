@@ -33,9 +33,9 @@ describe('kitchen booking calendar invite', () => {
     expect(ics).toContain('DTEND:20260925T123000Z');
     expect(ics).toContain('DTSTART:20260925T163000Z');
     expect(ics).toContain('DTEND:20260925T173000Z');
-    expect(email.text).toContain('09:00–10:00, 14:00–15:00');
-    expect(email.html).toContain('Add 09:00–10:00 to calendar');
-    expect(email.html).toContain('Add 14:00–15:00 to calendar');
+    expect(email.text).toContain('9:00 a.m.–10:00 a.m., 2:00 p.m.–3:00 p.m.');
+    expect(email.html).toContain('Add to Google Calendar · 9:00 a.m.–10:00 a.m.');
+    expect(email.html).toContain('Add to Google Calendar · 2:00 p.m.–3:00 p.m.');
   });
 
   it('keeps an overnight continuous booking in one event on the correct calendar dates', () => {
@@ -68,8 +68,8 @@ describe('kitchen booking calendar invite', () => {
     const email = generateBookingConfirmationEmail({
       ...base, checkinEnabled: true, checkInWindowMinutesBefore: 20, noShowGraceMinutes: 45,
     });
-    expect(email.text).toContain('20 minutes before');
-    expect(email.text).toContain('may be marked a no-show 45 minutes after');
+    expect(email.text).toContain('Follow the arrival instructions');
+    expect(email.text).not.toContain('Request checkout for each visit');
     expect(email.text).not.toContain('closes 45 minutes after');
   });
 });

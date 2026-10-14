@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getShopHomeUrl } from "@/lib/shop-urls";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
 import { tt } from "@/i18n/common-ns";
@@ -9,11 +10,7 @@ import type { Application } from "@shared/schema";
 // ─── Shop URLs ──────────────────────────────────────────────────────────────
 
 export function getChefShopHomeUrl(): string {
-  const isProd =
-    typeof window !== "undefined" && window.location.hostname === "chef.localcooks.ca";
-  return isProd
-    ? "https://shop.localcook.shop/app/shop/home.php"
-    : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+  return getShopHomeUrl();
 }
 
 export function openChefShopHome(): void {

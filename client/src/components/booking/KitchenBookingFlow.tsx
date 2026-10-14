@@ -9,7 +9,7 @@ import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
-import { formatCurrency, formatHourSlotRange } from "@/lib/formatters";
+import { formatCurrency, formatHourSlotRange, formatTime as formatClockTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { buildCancellationPolicyText } from "./CancellationPolicyDialog";
 import { BookingStorageSelector } from "./BookingStorageSelector";
@@ -1045,13 +1045,8 @@ export default function KitchenBookingFlow({
     updateSlotSelection(setSelectedSlots, slot);
   };
 
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
+  // Same locale-aware formatter as the slot buttons, so the summary reads "10:00 a.m." not "10:00 AM".
+  const formatTime = (timeString: string) => formatClockTime(timeString, i18n.language);
 
   const formatSlotRange = (slotStartTime: string) => {
     return formatHourSlotRange(slotStartTime, i18n.language);
@@ -1931,6 +1926,21 @@ export default function KitchenBookingFlow({
               className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-[#F51042] focus:ring-2 focus:ring-[#F51042]/30"
             />
           </div>
+
+          <section className="rounded-[1.35rem] border bg-muted/30 p-4" data-testid="what-happens-next">
+            <h4 className="text-sm font-semibold text-gray-900">{t("sheetWhatNextTitle", "What happens next")}</h4>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>{t("sheetWhatNextReview", "The kitchen reviews your request within 24 hours.")}</li>
+              <li>{t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.")}</li>
+              <li>{t("sheetWhatNextArrival", "Arrival details are sent 48 hours before your visit.")}</li>
+            </ol>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t("sheetWhatNextCancel", {
+                hours: selectedKitchen?.cancellationPolicyHours ?? selectedKitchen?.location?.cancellationPolicyHours ?? 24,
+                defaultValue: "After the kitchen confirms, you can cancel up to {hours, plural, one {# hour} other {# hours}} before your visit. Refunds follow the cancellation policy.",
+              })}
+            </p>
+          </section>
         </div>
       );
     }

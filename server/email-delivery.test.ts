@@ -12,6 +12,17 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe('ordinary SMTP acknowledgment', () => {
+  it('uses EMAIL_FROM for the sender and the configured support inbox in the notice shell', async () => {
+    vi.stubEnv('EMAIL_FROM', 'Local Cooks <test_automated@localcooks.ca>');
+    vi.stubEnv('SUPPORT_EMAIL', 'support@localcooks.ca');
+    smtp.send.mockResolvedValueOnce({ accepted: ['chef@example.test'], rejected: [] });
+    const { generateBookingRequestEmail } = await import('./email');
+    const email = generateBookingRequestEmail({ chefEmail: 'chef@example.test', chefName: 'Alex', kitchenName: 'Kitchen',
+      bookingDate: '2026-10-20', startTime: '09:00', endTime: '10:00' });
+    expect(await sendEmail(email, { durableDelivery: true })).toBe(true);
+    expect(smtp.send.mock.calls[0][0].from).toBe('Local Cooks <test_automated@localcooks.ca>');
+    expect(smtp.send.mock.calls[0][0].html).toContain('mailto:support@localcooks.ca');
+  });
   it.each(['support@localcooks.ca', 'Support <SUPPORT@LOCALCOOKS.CA>', 'chef@example.test, support@localcooks.ca',
     'Support team: support@localcooks.ca;', '"support"@localcooks.ca',
     'support@localcook.shop', 'Support <SUPPORT@LOCALCOOK.SHOP>', 'chef@example.test, support@localcook.shop',

@@ -4,6 +4,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import Logo from "@/components/ui/logo";
 import { SiStripe } from "react-icons/si";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -52,6 +53,20 @@ interface OverviewTabContentProps {
   onSetApplicationViewMode: (mode: "list" | "form" | "documents") => void;
   isSellerApplicationFullyApproved?: boolean;
   isShopCreated?: boolean;
+  /** True while applications, kitchen access or bookings are still loading; shows skeletons instead of empty states. */
+  isLoading?: boolean;
+}
+
+function StatCardSkeleton() {
+  return (
+    <Card className="h-full shadow-none" aria-hidden>
+      <CardContent className="p-4">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="mt-3 h-6 w-24" />
+        <Skeleton className="mt-2 h-3 w-32" />
+      </CardContent>
+    </Card>
+  );
 }
 
 function StatusDot({ tone, className }: { tone: StatusTone; className?: string }) {
@@ -183,6 +198,7 @@ export default function OverviewTabContent({
   onSetApplicationViewMode,
   isSellerApplicationFullyApproved,
   isShopCreated,
+  isLoading = false,
 }: OverviewTabContentProps) {
   useTourClock();
   const { t, i18n } = useTranslation("chef");
@@ -193,7 +209,7 @@ export default function OverviewTabContent({
   const [, navigate] = useLocation();
 
   const { user: authUser } = useFirebaseAuth();
-  const { data: viewings = [], isError: toursFailed } = useQuery({
+  const { data: viewings = [], isError: toursFailed, isLoading: toursLoading } = useQuery({
     queryKey: ["/api/viewings", "chef", authUser?.uid],
     queryFn: async () => {
       if (!authUser) return [];
@@ -399,6 +415,7 @@ export default function OverviewTabContent({
   };
 
   const openShop = () => openChefShopHome();
+  const showSkeleton = isLoading || toursLoading;
 
   return (
     <div className="space-y-8">
@@ -407,9 +424,14 @@ export default function OverviewTabContent({
           {getGreeting()}
           {firstName ? `, ${firstName}` : ""}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+        {showSkeleton ? <Skeleton className="mt-2 h-4 w-48" /> : <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
 
+      {showSkeleton ? (
+        <div role="status" aria-busy="true" aria-label={t("ovLoading", "Loading your dashboard")} className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="overview-skeleton">
+          {[0, 1, 2, 3].map((key) => <StatCardSkeleton key={key} />)}
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label={t("ovStatSeller")}
@@ -454,6 +476,7 @@ export default function OverviewTabContent({
           onClick={() => onSetActiveTab("bookings")}
         />
       </div>
+      )}
 
       {toursFailed && <p role="status" className="text-sm text-destructive">{t('ovTourLoadFailed')}</p>}
       {recentTours.length > 0 && <Card className="shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base">{t('ovTourRecentActivity')}</CardTitle></CardHeader>

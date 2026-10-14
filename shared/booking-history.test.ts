@@ -38,3 +38,13 @@ describe('public booking history from recorded evidence', () => {
     ]);
   });
 });
+
+describe('same-instant ordering', () => {
+  it('puts requested before confirmed when they share a timestamp', () => {
+    const history = buildBookingHistory({}, [
+      { id: 1, kind: 'confirmed', createdAt: '2026-10-02T12:00:00Z' },
+      { id: 2, kind: 'requested', createdAt: '2026-10-02T12:00:00Z' },
+    ]);
+    expect(history.events.map(event => event.kind)).toEqual(['requested', 'confirmed']);
+  });
+});

@@ -1,3 +1,4 @@
+import { emailLocalDateTime, renderTransactionalEmail } from '../email';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
@@ -66,8 +67,8 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
     : `${categoryLabel || 'Other'} problem reported · ${kind === 'booking' ? 'Booking' : 'Tour'} #${id}`
     : `${kind === 'booking' ? 'Booking' : 'Tour'} #${id}: ${categoryLabel || 'Support'} problem ${problemStatusLabel(problem.status).toLowerCase()}`;
   const last = (problem.history as ProblemHistory[]).at(-1);
-  const time = new Intl.DateTimeFormat('en-CA', { timeZone: context.timezone, dateStyle: 'medium', timeStyle: 'short' }).format(problem.createdAt || new Date());
-  const message = `Kitchen: ${context.kitchenName || 'See commitment details'}\nReported: ${time} (${context.timezone})\n${categoryLabel ? `Category: ${categoryLabel}\n` : ''}${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow your support request for updates and replies.'}`;
+  const time = emailLocalDateTime(problem.createdAt || new Date(), context.timezone);
+  const message = `Kitchen: ${context.kitchenName || 'See commitment details'}\nReported: ${time}\n${categoryLabel ? `Category: ${categoryLabel}\n` : ''}${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow your support request for updates and replies.'}`;
   const assignmentOnly = ['claim', 'reassign'].includes(action);
   for (const person of people) {
     const role = person.role === 'admin' ? 'admin' : person.id === context.chefId ? 'chef' : 'manager';
@@ -79,10 +80,11 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
       actionUrl: path, actionLabel: role === 'admin' ? 'Claim or review problem' : 'View problem', metadata: { problemId: problem.id, revision: problem.revision } }, tx);
     // Keep admin bell alerts for everyone; only opted-in admins receive email.
     if (assignmentOnly || !operationalEmailAllowed(person) || isPlatformEmailRecipientBlocked(person.username)) continue;
+    const content = renderTransactionalEmail({ to: person.username || '', locale: person.preferredLocale, subject: title, recipientName: person.username || 'there', message, facts: [{ label: 'Kitchen', value: context.kitchenName || 'See commitment details' }, { label: 'Reference', value: `${kind === 'booking' ? 'KB' : 'TOUR'}-${id}` }, { label: 'Reported', value: time }], actionLabel: role === 'admin' ? 'Review problem' : 'View problem', actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
     await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id, recipientRole: role,
       subject: title, category: 'lifecycle_outcome', status: 'queued', previewText: message,
       trackingId: `problem-outcome:${problem.id}:${problem.revision}:${person.id}`,
-      textBody: `${message}\n\n${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
+      textBody: content.text, htmlBody: content.html });
   }
 }
 

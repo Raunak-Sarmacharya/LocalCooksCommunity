@@ -22,13 +22,10 @@ import {
   generateBookingRequestEmail,
   generateBookingConfirmationEmail,
   generateBookingCancellationEmail,
-  generateKitchenAvailabilityChangeEmail,
   generateKitchenSettingsChangeEmail,
   generateChefProfileRequestEmail,
   generateChefLocationAccessApprovedEmail,
-  generateChefKitchenAccessApprovedEmail,
   generateBookingCancellationNotificationEmail,
-  generateBookingStatusChangeNotificationEmail,
   generateLocationEmailChangedEmail
 } from "./email";
 import {
@@ -1083,7 +1080,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create unsubscribe notification email content
       const unsubscribeNotificationContent = {
-        to: 'localcooks@localcook.shop',
+        to: process.env.SUPPORT_EMAIL || 'support@localcooks.ca',
         subject: `🚫 Unsubscribe Request - ${email}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
@@ -1182,7 +1179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               <p style="color: #374151; line-height: 1.6;">
                 If you have any questions or if this was done in error, please don't hesitate to contact us at 
-                <a href="mailto:localcooks@localcook.shop" style="color: #F51042; text-decoration: none;">localcooks@localcook.shop</a>.
+                <a href="mailto:support@localcooks.ca" style="color: #F51042; text-decoration: none;">support@localcooks.ca</a>.
               </p>
               
               <p style="color: #374151; line-height: 1.6;">
@@ -1192,7 +1189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
                   Local Cooks Team<br>
-                  <a href="mailto:localcooks@localcook.shop" style="color: #F51042; text-decoration: none;">localcooks@localcook.shop</a>
+                  <a href="mailto:support@localcooks.ca" style="color: #F51042; text-decoration: none;">support@localcooks.ca</a>
                 </p>
               </div>
             </div>
@@ -1208,12 +1205,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           What happens next:
           Your email address will be removed from our mailing lists within 24 hours. You may receive one final confirmation email once the process is complete.
           
-          If you have any questions or if this was done in error, please contact us at localcooks@localcook.shop.
+          If you have any questions or if this was done in error, please contact us at support@localcooks.ca.
           
           Thank you for being part of the Local Cooks community!
           
           Local Cooks Team
-          localcooks@localcook.shop
+          support@localcooks.ca
         `
       };
 

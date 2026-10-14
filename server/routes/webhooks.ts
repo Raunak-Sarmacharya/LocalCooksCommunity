@@ -612,7 +612,7 @@ async function handleCheckoutSessionCompleted(
         // Direct insert is faster and more reliable in webhook context
         // AUTH-THEN-CAPTURE: For manual capture, paymentStatus = 'authorized' (held, not charged)
         const bookingPaymentStatus = isManualCapture ? "authorized" : "paid";
-        let booking: { id: number; referenceCode: string | null; kitchenId: number; chefId: number | null; bookingDate: Date; startTime: string; endTime: string; status: string; paymentStatus: string | null; paymentIntentId: string | null } | undefined;
+        let booking: { id: number; referenceCode: string | null; kitchenId: number; chefId: number | null; bookingDate: Date; startTime: string; endTime: string; status: string; paymentStatus: string | null; paymentIntentId: string | null; createdAt?: Date } | undefined;
         
         try {
           const kbRefCode = await generateReferenceCode('kitchen_booking');
@@ -657,6 +657,7 @@ async function handleCheckoutSessionCompleted(
             booking = {
               id: directBooking.id,
               referenceCode: directBooking.referenceCode,
+              createdAt: directBooking.createdAt,
               kitchenId: directBooking.kitchenId,
               chefId: directBooking.chefId,
               bookingDate: directBooking.bookingDate,
@@ -1064,11 +1065,14 @@ async function handleCheckoutSessionCompleted(
             const [location] = await db
               .select({
                 name: locations.name,
+                address: locations.address,
                 managerId: locations.managerId,
                 notificationEmail: locations.notificationEmail,
                 timezone: locations.timezone,
+                managerLocale: users.preferredLocale,
               })
               .from(locations)
+              .leftJoin(users, eq(users.id, locations.managerId))
               .where(eq(locations.id, kitchen.locationId))
               .limit(1);
 
@@ -1076,7 +1080,7 @@ async function handleCheckoutSessionCompleted(
               // Get chef details
               let chefName = "Chef";
               const [chef] = await db
-                .select({ username: users.username })
+                .select({ username: users.username, preferredLocale: users.preferredLocale })
                 .from(users)
                 .where(eq(users.id, chefId))
                 .limit(1);
@@ -1086,7 +1090,7 @@ async function handleCheckoutSessionCompleted(
               let managerEmailAddress = location.notificationEmail;
               if (!managerEmailAddress) {
                 const [manager] = await db
-                  .select({ username: users.username })
+                  .select({ username: users.username, preferredLocale: users.preferredLocale })
                   .from(users)
                   .where(eq(users.id, location.managerId))
                   .limit(1);
@@ -1098,7 +1102,7 @@ async function handleCheckoutSessionCompleted(
 
               // Send manager email notification
               if (managerEmailAddress) {
-                const { sendEmail, generateBookingNotificationEmail } = await import("../email");
+                const { sendEmail, generateBookingNotificationEmail, bookingResponseDeadline } = await import("../email");
                 const managerEmail = generateBookingNotificationEmail({
                   managerEmail: managerEmailAddress,
                   chefName,
@@ -1111,6 +1115,11 @@ async function handleCheckoutSessionCompleted(
                   locationName: location.name,
                   bookingId: booking.id,
                   referenceCode: booking.referenceCode,
+                  responseDeadline: booking.createdAt ? bookingResponseDeadline(booking.createdAt) : undefined,
+                  totalCents: session.amount_total ?? undefined,
+                  paymentState: isManualCapture ? "held" : "paid",
+                  locationAddress: location?.address || undefined,
+                  locale: location.managerLocale,
                   operatingWindowStartTime: metadata.window_start_time,
                   selectedSlots,
                 });
@@ -1145,7 +1154,7 @@ async function handleCheckoutSessionCompleted(
         // Send chef confirmation email
         try {
           const [chef] = await db
-            .select({ username: users.username })
+            .select({ username: users.username, preferredLocale: users.preferredLocale })
             .from(users)
             .where(eq(users.id, chefId))
             .limit(1);
@@ -1158,15 +1167,20 @@ async function handleCheckoutSessionCompleted(
 
           if (chef && kitchen) {
             const [location] = await db
-              .select({ name: locations.name, timezone: locations.timezone })
+              .select({ name: locations.name, address: locations.address, timezone: locations.timezone })
               .from(locations)
               .where(eq(locations.id, kitchen.locationId))
               .limit(1);
 
-            const { sendEmail, generateBookingRequestEmail } = await import("../email");
+            const { sendEmail, generateBookingRequestEmail, bookingResponseDeadline } = await import("../email");
             const chefEmail = generateBookingRequestEmail({
               bookingId: booking.id,
               referenceCode: booking.referenceCode,
+                  responseDeadline: booking.createdAt ? bookingResponseDeadline(booking.createdAt) : undefined,
+                  totalCents: session.amount_total ?? undefined,
+                  paymentState: isManualCapture ? "held" : "paid",
+                  locationAddress: location?.address || undefined,
+                  locale: chef?.preferredLocale,
               chefEmail: chef.username,
               chefName: chef.username,
               kitchenName: kitchen.name,

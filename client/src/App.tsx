@@ -28,7 +28,7 @@ import ManagerProtectedRoute from "@/components/manager/ManagerProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
 import ManagerLogin from "@/pages/ManagerLogin";
-import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
+import { AuthEntry } from "@/components/auth/AuthEntry";
 import ForgotPasswordPage from "@/pages/ForgotPassword";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/not-found";
@@ -249,8 +249,8 @@ function Router() {
         {localePublicRoutes("/", LandingPage)}
         <SubdomainRoute path="/apply" component={ApplicationForm} subdomain={subdomain} />
         <Route path="/success" component={Success} />
-        <Route path="/auth" component={EnhancedAuthPage} />
-        {localePublicRoutes("/auth", EnhancedAuthPage)}
+        <Route path="/auth" component={AuthEntry} />
+        {localePublicRoutes("/auth", AuthEntry)}
         <Route path="/dev-login" component={DevLoginPage} />
 
         {/* One landing route for every verification email — Firebase action codes

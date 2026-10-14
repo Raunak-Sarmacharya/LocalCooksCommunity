@@ -30,11 +30,14 @@ import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded }
 import { InSessionPanel } from "./InSessionPanel"
 import { VISIT_CODE_LENGTH } from "@shared/visit-code"
 import { ArrivalModeLine, InstructionsOverview } from "./BookingPreparation"
+import { MessageKitchenButton } from "./MessageKitchenButton"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface KitchenCheckinTrackerProps {
-  onSuccess: () => void
+  onSuccess: (kind: "checkin" | "checkout") => void
+  /** Kitchen phone, when the booking has one; shown beside "Message kitchen". */
+  kitchenPhone?: string | null
   initialVisitId?: number | null
   bookingId: number
   kitchenName?: string
@@ -104,6 +107,7 @@ function nextStepMessage(args: {
 
 export function KitchenCheckinTracker({
   onSuccess,
+  kitchenPhone,
   initialVisitId,
   bookingId,
   kitchenName,
@@ -150,6 +154,7 @@ export function KitchenCheckinTracker({
   ]) !== JSON.stringify([duties.arrival.instructions, duties.departure.instructions, duties.arrival.items,
     duties.departure.items, duties.arrival.photos, duties.departure.photos])
 
+  const [arrivedAt, setArrivedAt] = useState<string | null>(null)
   const [checkinNotes, setCheckinNotes] = useState("")
   const [checkoutNotes, setCheckoutNotes] = useState("")
   const [submitError, setSubmitError] = useState("")
@@ -264,7 +269,9 @@ export function KitchenCheckinTracker({
       setCheckinNotes("")
       setCheckinPhotos({})
       setCheckedItems(new Set())
-      onSuccess()
+      setArrivedAt(new Date().toISOString())
+      void refetch()
+      onSuccess("checkin")
     } catch (error) {
       if (error instanceof VisitCodeError) {
         // Code problems stay beside the field; the code, tasks, photos and notes are all kept.
@@ -312,7 +319,7 @@ export function KitchenCheckinTracker({
       setCheckoutNotes("")
       setCheckoutPhotos({})
       setCheckedItems(new Set())
-      onSuccess()
+      onSuccess("checkout")
     } catch (error) {
       const message = error instanceof Error ? error.message : t("kciCheckoutRequestFailed")
       setSubmitError(message)
@@ -351,8 +358,11 @@ export function KitchenCheckinTracker({
   const beforeCheckinOpens = !!checkinOpensAt && Date.now() < checkinOpensAt.getTime()
   const visitFinished = clockEnded || ["checked_out", "checkout_claim_filed", "no_show"].includes(checkinStatus)
   const isDeparture = data?.status === "confirmed" && (canCheckout || checkinStatus === "checked_in")
+  const showInSessionEarly = !!data && data.status === "confirmed" && checkinStatus === "checked_in" && !!(data.visitCloseout || data.closeout?.visits[0])
+    && (data.visitCloseout || data.closeout?.visits[0])?.phase !== "ended" && !!data.chefId
   const isArrival = !isDeparture && data?.status === "confirmed" && checkinStatus === "not_checked_in"
-  const title = isDeparture ? t("kciDepartureTitle", "Kitchen departure")
+  const title = showInSessionEarly ? t("kciInSessionTitle", "Your visit")
+    : isDeparture ? t("kciDepartureTitle", "Kitchen departure")
     : isArrival ? t("kciArrivalTitle", "Kitchen arrival")
       : t("kciVisitTitle", "Kitchen visit")
   const dutiesReady = !!currentDuties || !!currentChecklist
@@ -372,6 +382,7 @@ export function KitchenCheckinTracker({
     document.getElementById("visit-checkout-title")?.focus()
   }
 
+  const hideIdleChip = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
   const chip = clockEnded && showInSession
     ? { variant: "warning" as InfoChipVariant, icon: <Clock className="h-3 w-3" />, label: t("kciIsTimeEnded", "Your booked time ended") }
     : clockEnded
@@ -417,7 +428,13 @@ export function KitchenCheckinTracker({
     body: checklist?.checkoutInstructions || t("kciNoDepartureInstructions", "No departure instructions provided. Contact the kitchen manager if you need help leaving the kitchen ready."),
   }
   // Lead with the instructions for the step the chef is on.
-  const instructions = isDeparture ? [departureInstructions, arrivalInstructions] : [arrivalInstructions, departureInstructions]
+  // In session the arrival is behind them: keep departure only.
+  const instructions = showInSession ? [departureInstructions] : isDeparture ? [departureInstructions, arrivalInstructions] : [arrivalInstructions, departureInstructions]
+  const instructionsShown = liveBooking && !visitFinished && instructionsReleased
+  const recordedLines = [
+    data?.checkedInAt ? duties?.arrival.instructions : null,
+    data?.checkoutRequestedAt ? duties?.departure.instructions : null,
+  ].filter((line): line is string => !!line && !(instructionsShown && instructions.some(item => item.body === line)))
 
   const renderChecklist = (items: ChecklistItem[], label: string) => (
     <div className="space-y-2">
@@ -486,8 +503,11 @@ export function KitchenCheckinTracker({
 
           {!isLoading && data && (
             <section aria-label={t("kciVisitStatus", "Visit status")} className="mt-5 border-t pt-5 space-y-3">
-              <InfoChip variant={chip.variant} icon={chip.icon}>{chip.label}</InfoChip>
+              {!hideIdleChip && <InfoChip variant={chip.variant} icon={chip.icon}>{chip.label}</InfoChip>}
               <p className="text-sm leading-relaxed">{nextStep}</p>
+              {arrivedAt && checkinStatus === "checked_in" && <p role="status" className="text-sm font-medium text-emerald-700">
+                {t("kciArrivalConfirmedAt", "Arrival confirmed at {time}", { time: new Intl.DateTimeFormat(locale, { timeZone: timezone, timeStyle: "short" }).format(new Date(data?.checkedInAt || arrivedAt)) })}
+              </p>}
               {times.length > 0 && (
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                   {times.map(time => (
@@ -507,7 +527,7 @@ export function KitchenCheckinTracker({
             canCheckout={canCheckout && dutiesReady} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
             departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
         )}
-        <ClockCloseoutSummary closeout={data?.closeout} visit={clockVisit} hideFinished={showInSession} />
+        {(clockEnded || checkinStatus !== "not_checked_in") && <ClockCloseoutSummary closeout={data?.closeout} visit={clockVisit} hideFinished={showInSession} />}
 
         {data?.visits && data.visits.length > 1 && (
           <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
@@ -549,7 +569,10 @@ export function KitchenCheckinTracker({
               <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
             </div>
           ))}
-          <p className="text-sm text-muted-foreground">{t("kciHelpBody", "Having trouble getting in or submitting? Contact the kitchen manager using your booking contact details.")}</p>
+          {codeGate !== "locked" && codeGate !== "revoked" && <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{t("kciHelpActions", "Having trouble getting in or submitting? Reach the kitchen:")}</p>
+            <MessageKitchenButton bookingId={bookingId} phone={kitchenPhone} />
+          </div>}
         </section>}
         {!currentDuties && checklistQuery.isError && <div role="alert" className="rounded-lg border p-3 text-sm">
           <p>{t("kciDutiesLoadFailed", "Could not load your visit requirements. Retry before submitting.")}</p>
@@ -674,10 +697,9 @@ export function KitchenCheckinTracker({
               </section>
             )}
 
-            {duties && (data?.checkedInAt || data?.checkoutRequestedAt) && <section className="rounded-xl border p-4 space-y-2" aria-label={t("kciRecordedInstructions", "Booking instruction record")}>
+            {duties && recordedLines.length > 0 && <section className="rounded-xl border p-4 space-y-2" aria-label={t("kciRecordedInstructions", "Booking instruction record")}>
               <h2 className="text-sm font-medium">{t("kciRecordedInstructions", "Booking instruction record")}</h2>
-              {data?.checkedInAt && duties.arrival.instructions && <p className="text-sm whitespace-pre-line">{duties.arrival.instructions}</p>}
-              {data?.checkoutRequestedAt && duties.departure.instructions && <p className="text-sm whitespace-pre-line">{duties.departure.instructions}</p>}
+              {recordedLines.map(line => <p key={line} className="text-sm whitespace-pre-line">{line}</p>)}
             </section>}
             {/* Recorded checklists stay visible as history after each step. */}
             {data?.checkinChecklistItems && Array.isArray(data.checkinChecklistItems) && data.checkinChecklistItems.length > 0 &&

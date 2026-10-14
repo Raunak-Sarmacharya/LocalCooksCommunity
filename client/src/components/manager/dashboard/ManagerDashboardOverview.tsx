@@ -22,6 +22,8 @@ import { RevenueMetricCards } from "@/components/manager/revenue/components/Reve
 import type { RevenueMetrics } from "@/components/manager/revenue/types";
 import { tt } from "@/i18n/common-ns";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import i18n from "@/i18n";
+import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // Storage/Equipment item types
 interface StorageItem {
@@ -462,14 +464,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                         ) : (
                             <div className="space-y-3">
                                 {getBookingsForDate(selectedDate).map((booking) => {
-                                    const formatTime = (time: string) => {
-                                        if (!time) return '';
-                                        const [hours, minutes] = time.split(':');
-                                        const hour = parseInt(hours);
-                                        const ampm = hour >= 12 ? 'PM' : 'AM';
-                                        const displayHour = hour % 12 || 12;
-                                        return `${displayHour}:${minutes} ${ampm}`;
-                                    };
+                                    const formatTime = (time: string) => formatClockTime(time, i18n.language);
 
                                     return (
                                         <div

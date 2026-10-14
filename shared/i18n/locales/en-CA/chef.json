@@ -2791,5 +2791,20 @@
   "kciAcGetHelp": "Get help from Local Cooks",
   "kciAcNetwork": "Arrival hasn't been confirmed yet. Your details are kept while this page stays open. Try again when you're connected, or ask the kitchen to record your arrival.",
   "kciAcModeChanged": "Arrival details changed. Review the current instructions.",
-  "bookingAttendanceNotEndedManager": "The chef checks in on arrival and checks out when they leave."
+  "bookingAttendanceNotEndedManager": "The chef checks in on arrival and checks out when they leave.",
+  "bdBookedOn": "Booked {date}",
+  "bdRequestSentBanner": "Request sent. {kitchen} has until {deadline} to respond. Your card is on hold; you’re only charged if they accept.",
+  "bdManagerRespondBy": "Respond by {deadline}. If you don’t, the request expires and the chef’s payment hold is released.",
+  "bdPaymentHeldSummaryManager": "The chef’s payment is on hold.",
+  "bdHstCollectedLine": "Includes HST you collected and remit",
+  "ovLoading": "Loading your dashboard",
+  "kciMessageUnavailable": "Kitchen messaging is unavailable",
+  "kciMessageOpening": "Opening conversation…",
+  "kciMessageKitchen": "Message kitchen",
+  "kciCallKitchen": "Call kitchen",
+  "kciArrivalConfirmedAt": "Arrival confirmed at {time}",
+  "kciInSessionTitle": "Your visit",
+  "kciHelpActions": "Having trouble getting in or submitting? Reach the kitchen:",
+  "bdVisitComplete": "Visit complete.",
+  "bdVisitCompleteReview": "Visit complete. The kitchen reviews by {time}."
 }

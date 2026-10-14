@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { BookingHistoryResponse } from '@shared/booking-history';
+import { compareHistoryEvents, type BookingHistoryResponse } from '@shared/booking-history';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 
@@ -16,7 +16,7 @@ export function BookingHistoryPanel({ id, version, reference, role }: { id: numb
       if (!response.ok) throw new Error('History unavailable');
       const data = await response.json();
       if (!Array.isArray(data.events) || typeof data.complete !== 'boolean') throw new Error('Invalid history');
-      return data;
+      return { ...data, events: [...data.events].sort(compareHistoryEvents) } as BookingHistoryResponse;
     },
   });
   const when = (value: string, compact = false) => new Intl.DateTimeFormat(i18n.resolvedLanguage || 'en-CA', {

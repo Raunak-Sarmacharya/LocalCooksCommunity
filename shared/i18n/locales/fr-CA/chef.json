@@ -2791,5 +2791,20 @@
   "kciAcGetHelp": "Obtenir de l’aide de Local Cooks",
   "kciAcNetwork": "Votre arrivée n’est pas encore confirmée. Vos renseignements sont conservés tant que cette page reste ouverte. Réessayez une fois reconnecté ou demandez à la cuisine d’enregistrer votre arrivée.",
   "kciAcModeChanged": "Les détails d’arrivée ont changé. Consultez les instructions actuelles.",
-  "bookingAttendanceNotEndedManager": "Le chef confirme son arrivée à son arrivée et son départ lorsqu’il quitte."
+  "bookingAttendanceNotEndedManager": "Le chef confirme son arrivée à son arrivée et son départ lorsqu’il quitte.",
+  "bdBookedOn": "Réservé le {date}",
+  "bdRequestSentBanner": "Demande envoyée. {kitchen} a jusqu’au {deadline} pour répondre. Votre carte est mise en attente; vous n’êtes débité que si la cuisine accepte.",
+  "bdManagerRespondBy": "Répondez avant le {deadline}. Sinon, la demande expire et la retenue sur la carte du chef est levée.",
+  "bdPaymentHeldSummaryManager": "Le paiement du chef est en attente.",
+  "bdHstCollectedLine": "Comprend la TVH que vous avez perçue et remise",
+  "ovLoading": "Chargement de votre tableau de bord",
+  "kciMessageUnavailable": "La messagerie de la cuisine est indisponible",
+  "kciMessageOpening": "Ouverture de la conversation…",
+  "kciMessageKitchen": "Écrire à la cuisine",
+  "kciCallKitchen": "Appeler la cuisine",
+  "kciArrivalConfirmedAt": "Arrivée confirmée à {time}",
+  "kciInSessionTitle": "Votre visite",
+  "kciHelpActions": "Un problème pour entrer ou pour soumettre? Joignez la cuisine :",
+  "bdVisitComplete": "Visite terminée.",
+  "bdVisitCompleteReview": "Visite terminée. La cuisine fait son examen d’ici le {time}."
 }

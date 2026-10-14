@@ -33,6 +33,7 @@ import { eq, desc, and, or, inArray, lt, isNull, sql } from "drizzle-orm";
 import { storageDuties } from './visit-duties';
 import { validateDutySection, readVisitDuties } from '@shared/visit-duties';
 import { queueStorageVisitAction } from './outcome-delivery';
+import { generateStorageCheckoutEmail } from '../email';
 import { logger } from "../logger";
 
 // ============================================================================
@@ -580,6 +581,10 @@ async function sendCheckoutRequestNotification(storageBookingId: number, chefId:
         storageName: storageListings.name,
         kitchenName: kitchens.name,
         locationName: locations.name,
+        address: locations.address,
+        timezone: locations.timezone,
+        locale: users.preferredLocale,
+        referenceCode: storageBookings.referenceCode,
         locationId: locations.id,
         managerId: locations.managerId,
         notificationEmail: locations.notificationEmail,
@@ -589,6 +594,7 @@ async function sendCheckoutRequestNotification(storageBookingId: number, chefId:
       .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
       .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
       .innerJoin(locations, eq(kitchens.locationId, locations.id))
+      .leftJoin(users, eq(users.id, locations.managerId))
       .where(eq(storageBookings.id, storageBookingId))
       .limit(1);
 
@@ -622,23 +628,10 @@ async function sendCheckoutRequestNotification(storageBookingId: number, chefId:
 
     const { sendEmail } = await import('../email');
     
-    const emailContent = {
-      to: managerEmail,
-      subject: `Storage Checkout Request - ${booking.storageName}`,
-      html: `
-        <h2>Storage Checkout Request</h2>
-        <p>A chef has requested checkout for their storage booking.</p>
-        <table style="border-collapse: collapse; margin: 20px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Chef:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${chefEmail}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>End Date:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${new Date(booking.endDate).toLocaleDateString()}</td></tr>
-        </table>
-        <p>Please review the checkout request and verify the storage unit is empty before approving.</p>
-        <p><a href="${process.env.VITE_APP_URL || 'https://localcooks.ca'}/manager/dashboard?tab=checkouts" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Review Checkout Request</a></p>
-      `,
-      text: `Storage Checkout Request\n\nA chef has requested checkout for their storage booking.\n\nChef: ${chefEmail}\nStorage: ${booking.storageName}\nKitchen: ${booking.kitchenName}\nEnd Date: ${new Date(booking.endDate).toLocaleDateString()}\n\nPlease review the checkout request in your dashboard.`,
-    };
+    const emailContent = generateStorageCheckoutEmail({ ...booking, locationAddress: booking.address || undefined,
+      timezone: booking.timezone || undefined, referenceCode: booking.referenceCode, kind: 'request',
+      to: managerEmail, recipientName: 'Kitchen manager', storageBookingId,
+      storageName: booking.storageName || 'Storage', kitchenName: booking.kitchenName || 'Kitchen', chefName: chefEmail });
 
     await sendEmail(emailContent);
     logger.info(`[StorageCheckout] Sent checkout request notification to manager ${managerEmail}`);
@@ -680,7 +673,7 @@ async function sendCheckoutClaimNotification(
     if (!chefId) return;
 
     const [chef] = await db
-      .select({ username: users.username })
+      .select({ username: users.username, locale: users.preferredLocale })
       .from(users)
       .where(eq(users.id, chefId))
       .limit(1);
@@ -691,10 +684,13 @@ async function sendCheckoutClaimNotification(
       .select({
         storageName: storageListings.name,
         kitchenName: kitchens.name,
+        address: locations.address,
+        referenceCode: storageBookings.referenceCode,
       })
       .from(storageBookings)
       .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
       .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+      .innerJoin(locations, eq(kitchens.locationId, locations.id))
       .where(eq(storageBookings.id, storageBookingId))
       .limit(1);
 
@@ -702,22 +698,10 @@ async function sendCheckoutClaimNotification(
 
     const { sendEmail } = await import('../email');
 
-    const emailContent = {
-      to: chef.username,
-      subject: `Storage Checkout \u2014 Claim Filed - ${booking.storageName}`,
-      html: `
-        <h2>Storage Checkout Complete \u2014 Claim Filed</h2>
-        <p>Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim that requires your attention.</p>
-        <table style="border-collapse: collapse; margin: 20px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Claim:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${claimTitle}</td></tr>
-        </table>
-        <p>You will receive a separate notification with the full claim details. You can accept or dispute the claim from your dashboard.</p>
-        <p><a href="${process.env.VITE_APP_URL || 'https://localcooks.ca'}/dashboard?view=damage-claims" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Claim Details</a></p>
-      `,
-      text: `Storage Checkout Complete \u2014 Claim Filed\n\nYour storage checkout has been processed. The kitchen has filed a damage/cleaning claim "${claimTitle}".\n\nStorage: ${booking.storageName}\nKitchen: ${booking.kitchenName}\n\nPlease review the claim in your dashboard.`,
-    };
+    const emailContent = generateStorageCheckoutEmail({ ...booking, locationAddress: booking.address || undefined,
+      locale: chef.locale, referenceCode: booking.referenceCode, kind: 'claim', to: chef.username,
+      recipientName: chef.username.split('@')[0], storageBookingId, storageName: booking.storageName || 'Storage',
+      kitchenName: booking.kitchenName || 'Kitchen', claimId, claimTitle });
     await sendEmail(emailContent);
 
     // In-app notification for chef

@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { chefKitchenApplications, chefLocationAccess, emailLogs, kitchenBookings, kitchens, locations } from '@shared/schema';
 import { getAppBaseUrl } from '../config';
-import { renderTransactionalEmail, sendEmail } from '../email';
+import { renderTransactionalEmail, sendEmail, emailClock, emailZoneName } from '../email';
 import { notificationService } from './notification.service';
 import { DomainError } from '../shared/errors/domain-error';
 import { calendarDateForBookingTime } from '@shared/operating-hours';

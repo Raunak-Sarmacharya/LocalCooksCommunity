@@ -11,6 +11,7 @@ vi.mock('stripe', () => ({
     checkout = { sessions: stripeSessions };
   },
 }));
+vi.mock('../db', () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ name: 'Harbour Kitchen' }] }) }) }) } }));
 
 let expireAbandonedCheckoutSession: (sessionId: string) => Promise<boolean>;
 let createPendingCheckoutSession: typeof import('./stripe-checkout-service').createPendingCheckoutSession;

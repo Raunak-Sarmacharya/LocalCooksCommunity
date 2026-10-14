@@ -13,14 +13,16 @@ vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn(), ackno
     start: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.startTime, timezone),
     end: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.endTime, timezone) })) }));
 import { scheduleAdvanceReminders, acknowledgeConfirmationReminders } from './advance-reminders';
-const state = vi.hoisted(() => ({ closeoutEmail: vi.fn(), instructionEmail: vi.fn(), notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, activeTargets: [] as any[], noticeRow: null as any, event: null as any, database: null as any, rows: [] as any[][] }));
+const state = vi.hoisted(() => ({ closeoutEmail: vi.fn(), instructionEmail: vi.fn(), notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, activeTargets: [] as any[], noticeRow: null as any, event: null as any, database: null as any, rows: [] as any[][], people: [] as any[] }));
 vi.mock('./closeout-notice-email', () => ({ closeoutNoticeKinds: ['service_ended', 'inspection_auto_closed'], currentCloseoutEmail: state.closeoutEmail }));
 vi.mock('./kitchen-instructions-updated', () => ({ currentKitchenInstructionEmail: state.instructionEmail }));
+// Mirrors the real helper's first rule (profile name), without consuming the mocked query queue.
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async (id: number) => (state.people || []).find((row: any) => row.id === id)?.profile?.fullName || '' }));
 vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.select(...args), update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
 vi.mock('./email-log-service', () => ({ logOutgoingEmail: state.log }));
 vi.mock('./notification.service', () => ({ notificationService: { create: state.notify } }));
 vi.mock('../email', async importOriginal => ({ ...await importOriginal<typeof import('../email')>(), sendEmail: state.send }));
-import { currentArrivalNotice, deliverBookingLifecycleEvents, queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+import { bookingLifecycleEmailMessage, currentArrivalNotice, deliverBookingLifecycleEvents, queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateBookingConfirmationEmail } from '../email';
 const tx: any = { select: (fields?: any) => {
   if (fields?.adminEmailNotifications && !fields.id) return { from: () => ({ where: () => ({ limit: async () => [{ role: 'admin', adminEmailNotifications: state.adminEmailEnabled }] }) }) };
@@ -40,6 +42,13 @@ const tx: any = { select: (fields?: any) => {
     return chain;
   } }) }),
 };
+it('keeps recorded change totals and schedule without emailing the itemized quote', () => {
+  const message = bookingLifecycleEmailMessage('kitchen_change_awaiting_payment', 'Review this change. Original: 2026-10-20 09:00–11:00; requested: 2026-10-21 13:00–15:00 (Newfoundland time). Recorded kitchen CAD 100.00; current quote CAD 120.00; kitchen after change CAD 120.00. Additional kitchen CAD 20.00, tax CAD 2.60, service fee CAD 1.40, payment CAD 24.00. Refund on approval: kitchen CAD 0.00 plus original tax CAD 0.00, total CAD 0.00. The original service fee stays charged.');
+  expect(message).toContain('Additional total: CAD 24.00');
+  expect(message).toContain('Refund on approval: CAD 0.00');
+  expect(message).toContain('9:00 a.m.');
+  expect(message).not.toMatch(/service fee|\btax\b|09:00|13:00|%/i);
+});
 describe('instruction update outbox delivery', () => {
   beforeEach(() => {
     vi.clearAllMocks(); vi.stubEnv('INNGEST_EVENT_KEY', ''); state.database = tx;
@@ -179,25 +188,27 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-06T12:00:00Z')); vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
     [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' }],
-    [confirmed()], [{ amount: '1220', tax: '150', fee: '70' }],
+    [confirmed()], [{ amount: '1220', tax: '150', fee: '70', payout: '1080' }],
     [{ name: 'Approved cold storage', item: { totalPrice: '500', startDate: new Date('2026-10-07'), endDate: new Date('2026-10-10') } }],
     [{ name: 'Approved oven', item: { totalPrice: '200' } }],
-  ]; });
+  ]; state.people = state.rows[1]; });
   it('persists actual captured money, approved linked items, separate visits and role-specific destinations', async () => {
     state.rows[1][0].profile = { fullName: 'Sam Taylor' };
     await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking', 10);
     const emails = state.insert.mock.calls[0][0].emails;
-    expect(emails[0].content.text).toContain('Payment captured: CAD $12.20 (tax CAD $1.50, service fee CAD $0.70)');
+    expect(emails[0].content.text).toContain('Total paid: CAD $12.20');
     expect(emails[0].content.text).toContain('2026-10-07–2026-10-10');
-    expect(emails[0].content.text).toContain('Check in for each visit');
-    expect(emails[0].content.text).toContain('Hi Sam,');
+    expect(emails[0].content.text).not.toContain('Check in for each visit');
+    expect(emails[1].content.text).toContain('Estimated payout: CAD $10.80');
+    expect(emails[0].content.text).not.toMatch(/service fee|tax CAD|America\//i);
+    expect(emails[0].content.text).toContain('Hi Sam Taylor,');
     expect(emails[0].content.text).not.toContain('Hi Chef,');
     expect(emails[0].content.text).toContain('Meet at side entrance');
     expect(emails[0].content.text).toContain('manager@example.test');
     expect(emails[0].content.text).toContain('/booking/10');
     expect(emails[1].content.text).toContain('/manager/booking/10');
-    expect(emails[0].content.text).toContain('(2h; America/St_Johns)');
+    expect(emails[0].content.text).toContain('Newfoundland Time');
     const ics = emails[0].content.attachments[0].content;
     expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(2);
     expect(ics).toContain('UID:booking-10@localcooks.com-1');
@@ -231,15 +242,15 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
   it.each(['2026-10-01T12:00:00Z', '2026-10-06T12:00:00Z'])('refreshes older queued confirmations without structured inputs at %s', async instant => {
     vi.setSystemTime(new Date(instant));
     const old = generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Alex', kitchenName: 'Fixture Kitchen',
-      ...confirmed().booking, bookingId: 10, timezone: 'America/St_Johns', isStaff: true,
-      paymentSummary: 'Payment captured: CAD $12.20', arrivalInstructions: 'PRIVATE-LEGACY-SENTINEL' });
+      ...confirmed().booking, bookingId: 10, timezone: 'America/St_Johns', isStaff: false,
+      totalCents: 1220, paymentSummary: 'Payment captured: CAD $12.20', arrivalInstructions: 'PRIVATE-LEGACY-SENTINEL' });
     state.event = { id: 99, bookingId: 10, kind: 'confirmed', title: 'Confirmed', message: 'Captured', metadata: {},
       emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10', content: old }], deliveredEmailKeys: [] };
     state.database = tx; state.rows = [[state.event], []]; state.send.mockResolvedValue(true);
     expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
     const content = state.send.mock.calls[0][0];
     expect(JSON.stringify(content)).not.toContain('PRIVATE-LEGACY-SENTINEL');
-    expect(content.text).toContain('Payment captured: CAD $12.20');
+    expect(content.text).toContain('Total paid: CAD $12.20');
     expect(content.attachments).toEqual(old.attachments);
     expect(content.text.includes('Arrival instructions:')).toBe(instant.includes('10-06'));
   });

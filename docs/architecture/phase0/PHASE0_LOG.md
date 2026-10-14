@@ -3,6 +3,73 @@
 Single source of truth for everything done, decided and pending in Phase 0. Read this first when resuming.
 Last updated: 2026-10-13.
 
+## Oct13 late — dev end-to-end walkthrough, email unification, receipt vs invoice
+- **Owner:**
+  - Booking emails must match the tour emails (same platform, mobile, Airbnb-level).
+  - Sender: dev `test_automated@localcooks.ca`, prod `automated@localcooks.ca`. Support: `support@localcooks.ca` for both (confirmed; "localcook.ca" was a typo).
+  - **Emails show the total only**; the itemized breakdown goes in an attached PDF. The fee rate is admin-configurable (pilot 0% or 7%) and is never printed in email copy.
+- **Owner (roadmap, payment cycle): receipt vs invoice are separate.** Parent design, to be confirmed with the owner at the closeout/payout step:
+  - **Receipt** at capture (confirmation): proves payment; attached to the confirmation email.
+  - **Final invoice** at closeout (manager inspection or automatic deadline): reflects refunds, partial cancellations, extensions and any approved post-visit charges. Issued together with the manager payout statement.
+  - Research: Airbnb receipt vs VAT invoice; Turo post-trip invoices (fuel/tolls with evidence within set windows).
+- Done by the parent: `getSupportEmail()` now returns `SUPPORT_EMAIL` or support@localcooks.ca (it was derived from the sender's domain). Local `.env` sender aligned with dev (backup at `.phase0-harness/.env.bak-email`). Deployed dev already sends as `Local Cooks <test_automated@localcooks.ca>` (verified in `email_logs`).
+- **Dev walkthrough (KB-143, real Stripe sandbox checkout, manager approve).** Works end to end; capture OK; visit code is live on dev with the Vercel secret. UX findings → `build-booking-email-and-ux.md` Package U.
+  - Possible harness artifacts, to re-check in a visible tab: the approve dialog stays open, and the cancellation dialog lingers (its data-state was "closed").
+  - The cancellation dialog's vague refund copy waits for the policy engine.
+- DeepSeek inventory → `map-booking-emails.md`: 12 notice-layout, 19 legacy-uniform (plus 16 dead), 5 bare, 2 text-only; duplicate storage-extension sends.
+- Launched: Package E (emails onto the tour shell, PDF receipt, no breakdown in bodies) on Codex Sol high; Package U (walkthrough UX fixes) on Sonnet.
+- **Dev walkthrough, continued (KB-145, check-in → in session → checkout → inspection clear).** All steps work on dev.
+  - Bug found in the arrival work: after checkout, the chef page showed the pre-release "What to expect" card with a past date.
+  - Plus post-arrival UX issues; all sent to Package U as items 12–17.
+  - Inspection page copy issues to fix in a later pass: IANA zone, raw "Booking status: confirmed", "person booking", a legalistic photo line, the duplicated deadline, and a native `window.confirm` (should be an in-app dialog).
+- **Admin walkthrough** (synthetic admin 381; the parent set its password via `set-pw.cjs`, `@localcooks.test` only):
+  - **no Booking support screen**: the ⌘K lookup lands on Transactions;
+  - admin times are shown in UTC without a label;
+  - Damage Claims navigation is stale (deposits were removed);
+  - the Overview "Total bookings 5" looks wrong.
+  - This confirms audit P0 (`audit-admin-support-controls.md` §4).
+- **Owner decisions (support):**
+  - Pilot support is **one person** (the owner): no second approver; every action requires a reason and note, is audited, and notifies both parties.
+  - **Goodwill cap $25** per booking from Local Cooks' pocket; above that, a double confirmation recorded as an exception.
+  - **Chargebacks and failed payouts:** flag properly on the booking, notify the admin (email + in-app), freeze conflicting refunds and payouts, and keep the user-facing experience trustworthy and top-platform-like. Resolution happens in the Stripe dashboard for now.
+- The owner offered the Comet browser on their PC for testing; it is not connected to this session. The fallback is API and DB verification.
+- **Planned:** `build-booking-support.md`: an admin Booking support case screen.
+  - Search; case view with chronology; a state-valid action panel reusing existing services; `support_actions` audit; `booking_flags` for disputes and payout failures with freeze plus admin notify; $25 goodwill cap.
+  - Migration **0077** goes to support, so **multi-day moves to 0078+**.
+  - Launch after Package E lands (shared email shell).
+- **Seller-side staging links fixed** (colleague report: the shop-credentials email linked to staging in production).
+  - Cause: hard-coded `stagingwebapp.localcook.shop` fallbacks. `VENDOR_DASHBOARD_URL` is set only for dev/preview, and `PHP_SHOP_LOGIN_URL` is set nowhere.
+  - Fix:
+    - New `server/shop-urls.ts` derives the shop origin from `SHOP_BASE_URL`, else `PHP_BRIDGE_API_URL` (Vercel prod = `shop.localcook.shop`, dev/preview = `stagingwebapp.localcook.shop`; verified with the owner's go-ahead), else `VERCEL_ENV`.
+    - New `client/src/lib/shop-urls.ts`: `VITE_SHOP_BASE_URL`, else production hostnames → shop, else staging.
+  - Replaced in:
+    - the credentials email (HTML + text);
+    - the vendor onboarding link;
+    - the applications credentials endpoint;
+    - **seller analytics, which was fetching from the staging PHP API in production**;
+    - `ChefStripeConnectSetup`, `ApplicantDashboard`, `useSellerRevenue`.
+  - The unsubscribe emails now use support@localcooks.ca instead of `localcooks@localcook.shop`.
+  - Full tsc clean. Not committed or deployed; production gets it on the next merge.
+- **Package U RETURNED** (Sonnet) → `.phase0-harness/booking-ux-checkpoint.md`.
+  - Items 1–17 done; client tsc clean.
+  - Parent verification: 14 of the other client failures also fail at HEAD `517df182` (tour, manager getting-started and cancellation-policy-dialog tests, checked in a clean worktree); the 15th, KitchenHero, passes alone (a timeout under load). **No new failures.**
+  - API gaps to add server-side:
+    - a `responseDeadlineAt` field on booking payloads (the client currently derives created + 24 h);
+    - `preparationReminderHours` exposed to the checkout step (the "48 hours" text is a literal).
+  - Extra: `compareHistoryEvents` was added in `shared/booking-history.ts`.
+- **Package E RETURNED** (Codex) → `.phase0-harness/booking-email-checkpoint.md`.
+  - Every live booking/storage/access/licence email is on the tour notice shell, with plain-text parts.
+  - 20 dead generators removed; duplicate storage-extension sends removed.
+  - Totals only in email bodies. The PDF receipt is a **link** ("Download PDF receipt"; the generator is too heavy for send time on Hobby, and Airbnb uses "Get receipt" too).
+  - The Stripe line item names the kitchen and date. Request emails carry the response deadline (stored `createdAt` + `AUTH_EXPIRY_HOURS`).
+- **Parent review on rendered mail** found and fixed three bugs:
+  - (1) the chef confirmation greeted "Hi Kitchen manager";
+  - (2) the manager email used the chef's EMAIL as their name;
+  - (3) the Google Calendar link was double-encoded (`%2520`).
+  - Fix: the producer uses `getUserDisplayName` (profile name, then Firebase name, never an email; outside the tx, failures fall back to "there"), and `URLSearchParams` values are no longer pre-encoded.
+  - Re-rendered: "Hi TestSprite chef", "Booking confirmed · TestSprite chef", a clean calendar title. 89/89 targeted tests pass; full tsc clean.
+- The booking side was already environment-aware (`getAppBaseUrl`). About 15 older storage/auth-expiry stragglers use `VITE_APP_URL || 'https://localcooks.ca'` (wrong subdomain); they are folded into the email cleanup.
+
 ## Step 2 live test (booking KB-132, local, synthetic) + two Codex designs returned
 - **Live-verified:**
   - manager panel shows the code beside customer, kitchen and local time; "Issue new code" asks for confirmation, then rotates (old code rejected);
@@ -70,6 +137,11 @@ Last updated: 2026-10-13.
   - the generic notice footer uses `getSupportEmail()` (locally support@localcook.shop) while confirmations hard-code support@localcooks.ca;
   - the chef visit-time note says "(America/St_Johns)";
   - for overnight operating windows, the itinerary header date (booking date) differs from the calendar and visit instant (operating day). This is pre-existing.
+- **DEPLOYED to dev (owner approved, "All environments"):**
+  - `VISIT_CODE_HMAC_SECRET` was added to Vercel: sensitive for production and preview, encrypted for development. It is a fresh value, different from the local `.env` one.
+  - Commit `517df182` on `development` → preview deployment `dpl_G6c1KWraqFyDRnmGcWZBAj9Ucm1v`.
+  - Excluded from the commit: `.workbuddy-ai/`, `graphify-out/`, `.verify-tour-instruction-update/`.
+  - Migrations 0072–0076 were verified present on dev Supabase before the push.
 
 ## Checkpoint — closeout + access fixes re-tested locally (synthetic data)
 - Passed: deadline guard (a manager cannot confirm after 24 h; the hold is released); closeout cutover (KB-129 before the cutover closes silently, KB-130 queues `service_ended`); role-specific closeout emails for chef and manager, tour-quality, UTF-8 verified at the byte level (the earlier "�" was an extraction artifact); expired-document banner and renew link; early renewal does not block booking; manager renewal approve updates the expiry; the revoke menu opens the "End access" dialog directly (lists KB-127, reason required); "before the kitchen confirms" refund copy.

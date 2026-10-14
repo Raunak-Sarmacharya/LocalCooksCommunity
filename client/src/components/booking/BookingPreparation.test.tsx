@@ -69,3 +69,20 @@ describe('preparation before action windows and without tracking', () => {
     });
   });
 });
+
+describe('after the visit has started or finished', () => {
+  const past = new Date(Date.now() - 86_400_000).toISOString();
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  it('does not show a pre-release overview whose release time already passed', () => {
+    const { container, rerender } = render(<BookingPreparation bookingStatus="confirmed" instructionsReleased={false} instructionsReleaseAt={past} arrivalMode="staffed" />);
+    expect(container).toBeEmptyDOMElement();
+    rerender(<BookingPreparation bookingStatus="confirmed" instructionsReleased={false} instructionsReleaseAt={future} arrivalMode="staffed" />);
+    expect(screen.getByTestId('instructions-overview')).toBeInTheDocument();
+  });
+  it('drops arrival guidance once checked in and keeps departure details', () => {
+    render(<BookingPreparation inSession bookingStatus="confirmed" arrivalMode="staffed" arrivalInstructions="Meet staff at the door" departureInstructions="Lock the side door" />);
+    expect(screen.queryByText('Meet staff at the door')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('arrival-mode-line')).not.toBeInTheDocument();
+    expect(screen.getByText('Lock the side door')).toBeVisible();
+  });
+});

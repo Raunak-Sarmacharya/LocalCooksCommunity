@@ -7,14 +7,14 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { getVendorOnboardingUrl } from "@/lib/shop-urls";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CreditCard, AlertCircle, ExternalLink, Lock, Loader2 } from "lucide-react";
 import { useShopStatus, useStripeDashboardLink } from "./seller-revenue/hooks/useSellerRevenue";
 
-// PHP app URL for chef Stripe Connect setup (vendor onboarding)
-const CHEF_STRIPE_CONNECT_URL = 'https://stagingwebapp.localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Fstagingwebapp.localcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
+
 
 interface ChefStripeConnectSetupProps {
   isApproved?: boolean; // Whether the chef's seller application is approved
@@ -37,7 +37,7 @@ export default function ChefStripeConnectSetup({ isApproved = false, isShopCreat
         console.error("Failed to open Stripe dashboard", err);
       }
     } else {
-      window.open(CHEF_STRIPE_CONNECT_URL, '_blank', 'noopener,noreferrer');
+      window.open(getVendorOnboardingUrl(), '_blank', 'noopener,noreferrer');
     }
   };
 

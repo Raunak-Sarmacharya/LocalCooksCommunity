@@ -319,5 +319,11 @@
   "bookingErrorNetwork": "We could not reach Local Cooks. Check your connection and try again.",
   "bookingErrorLoadAvailability": "We could not load availability. Please check your connection and try again.",
   "bookingErrorLoadOptions": "We could not load this kitchen's add-on options. Reload the page to try again.",
-  "bookingErrorLoadKitchen": "We could not load this kitchen's pricing. Reload the page before booking."
+  "bookingErrorLoadKitchen": "We could not load this kitchen's pricing. Reload the page before booking.",
+  "preConfirmationRefundSingle": "Free to cancel until the kitchen confirms. You will get a full refund of anything paid, including taxes and fees.",
+  "sheetWhatNextTitle": "What happens next",
+  "sheetWhatNextReview": "The kitchen reviews your request within 24 hours.",
+  "sheetWhatNextCharge": "You are charged only if they accept. Until then your card is just on hold.",
+  "sheetWhatNextArrival": "Arrival details are sent 48 hours before your visit.",
+  "sheetWhatNextCancel": "After the kitchen confirms, you can cancel up to {hours, plural, one {# hour} other {# hours}} before your visit. Refunds follow the cancellation policy."
 }

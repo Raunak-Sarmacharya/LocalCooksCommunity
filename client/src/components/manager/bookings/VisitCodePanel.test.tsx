@@ -102,7 +102,7 @@ describe("VisitCodePanel", () => {
     fireEvent.click(submit);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/manager/bookings/55/visit-code/mode",
       { target: "booking:55", mode: "self", reason: "Front desk is closed today" }));
-    expect(await screen.findByText(/customer can confirm arrival without a code/)).toBeInTheDocument();
+    expect(await screen.findByText(/chef can confirm arrival without a code/)).toBeInTheDocument();
     expect(screen.queryByTestId("visit-code-value")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Switch back to staffed" })).toBeInTheDocument();
   });

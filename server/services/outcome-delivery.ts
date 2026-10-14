@@ -2,12 +2,12 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { damageClaims, damageClaimHistory, emailLogs, users, storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations, commitmentProblems } from '@shared/schema';
 import { db } from '../db';
 import { getAppBaseUrl } from '../config';
-import { sendEmail } from '../email';
+import { sendEmail, renderTransactionalEmail, bookingDeliveryEmail, emailLocalDateTime } from '../email';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { notificationService } from './notification.service';
 import { chefIssuesHref, managerDashboardView } from '@shared/notification-deep-links';
 import { deliveryReserve, inRecurringWorker } from './worker-context';
-import { problemDestination, problemStatusLabel } from '@shared/commitment-problems';
+import { problemCategoryLabel, problemDestination, problemStatusLabel } from '@shared/commitment-problems';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser } from './admin-email-preferences';
 import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
 
@@ -98,7 +98,8 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
           const [kind, identity] = intent.trackingId!.split(':');
           const id = Number(identity);
           let currentState = 'unavailable; contact Local Cooks';
-          let problemText: string | undefined;
+          let problemContent: Parameters<typeof sendEmail>[0] | undefined;
+          let recipientLocale: string | null | undefined;
           if (kind === 'problem-outcome') {
             const [current] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.id, id)).limit(1);
             if (!current) throw Error('Problem source missing; Local Cooks must review delivery');
@@ -107,6 +108,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             if (!context) throw Error('Problem commitment missing');
             if (intent.recipientUserId) {
               const [recipient] = await tx.select().from(users).where(eq(users.id, intent.recipientUserId)).limit(1);
+              recipientLocale = recipient?.preferredLocale;
               if (!recipient || recipient.username !== intent.recipientEmail || !(intent.recipientRole === 'admin'
                 ? recipient.role === 'admin' && recipient.adminEmailNotifications
                 : [context.chefId, context.managerId].includes(recipient.id)))
@@ -116,7 +118,15 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             const role = intent.recipientRole || 'chef';
             const lastResponse = (current.history as Array<{ action: string; note: string }>).filter(entry => !['report', 'claim', 'reassign'].includes(entry.action)).at(-1)?.note;
             const path = problemDestination(current.bookingId ? 'booking' : 'tour', current.bookingId || current.viewingId!, role);
-            problemText = `Support request #${current.id}: ${currentState}.\n\n${current.description}${lastResponse ? `\n\nLatest update: ${lastResponse}` : ''}\n\n${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'manager' ? 'kitchen' : 'chef')}${path}`;
+            const reported = emailLocalDateTime(current.createdAt || intent.createdAt, context.timezone, recipientLocale || 'en-CA');
+            problemContent = renderTransactionalEmail({ to: intent.recipientEmail, locale: recipientLocale,
+              subject: intent.subject, heading: intent.subject, recipientName: intent.recipientEmail.split('@')[0],
+              message: `${current.description}${lastResponse ? `\n\nLatest update: ${lastResponse}` : ''}\n\n${currentState}. Open the report to read the response or contact Local Cooks.`,
+              facts: [{ label: 'Category', value: problemCategoryLabel(current.category) || 'Other' },
+                { label: 'Kitchen', value: context.kitchenName || 'See commitment details' },
+                { label: 'Reported', value: reported }, { label: 'Reference', value: `${current.bookingId ? 'KB' : 'TOUR'}-${current.bookingId || current.viewingId}` }],
+              actionLabel: role === 'admin' ? 'Review problem' : 'View problem',
+              actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'manager' ? 'kitchen' : 'chef')}${path}` });
           } else if (kind === 'claim-outcome') {
             const [current] = await tx.select({ status: damageClaims.status }).from(damageClaims).where(eq(damageClaims.id, id)).limit(1);
             if (current) currentState = current.status.replaceAll('_', ' ');
@@ -130,9 +140,9 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             const result = await tx.execute(sql`SELECT status FROM payment_transactions WHERE id = ${id}`);
             if (result.rows[0]) currentState = String(result.rows[0].status).replaceAll('_', ' ');
           }
-          const note = `Recorded outcome notice from ${intent.createdAt.toISOString()}. Current state: ${currentState}. Historical money evidence below remains unchanged. Use the current page for available actions and current deadlines; older instructions may be obsolete.`;
-          sent = await sendEmail({ to: intent.recipientEmail, subject: intent.subject,
-            text: problemText || `${note}\n\n${intent.textBody || ''}` },
+          const note = `Recorded outcome notice from ${emailLocalDateTime(intent.createdAt, undefined, recipientLocale || 'en-CA')}. Current state: ${currentState}. Historical money evidence below remains unchanged. Use the current page for available actions and current deadlines; older instructions may be obsolete.`;
+          sent = await sendEmail(problemContent || bookingDeliveryEmail({ to: intent.recipientEmail, subject: intent.subject,
+            text: `${note}\n\n${intent.textBody || ''}` }, 'lifecycle_outcome_attempt'),
             { trackingId: intent.trackingId!, emailType: 'lifecycle_outcome_attempt', durableDelivery: true, retryOfId: intent.id });
         }
         catch { sent = false; }

@@ -57,7 +57,9 @@ export function InstructionsOverview({ mode, releaseAt, visitStartAt, timezone, 
   </div>;
 }
 
-export default function BookingPreparation({ arrivalInstructions, departureInstructions, bookingStatus, instructionsReleased, instructionsReleaseAt, arrivalMode, visitStartAt, timezone, address, contact, requiredTasks }: {
+export default function BookingPreparation({ arrivalInstructions, departureInstructions, bookingStatus, instructionsReleased, instructionsReleaseAt, arrivalMode, visitStartAt, timezone, address, contact, requiredTasks, inSession = false }: {
+  /** Chef is checked in: arrival guidance is behind them, so only departure details remain. */
+  inSession?: boolean;
   arrivalInstructions?: string | null; departureInstructions?: string | null; bookingStatus?: string;
   /** Missing = released (older server). */
   instructionsReleased?: boolean; instructionsReleaseAt?: string | null; arrivalMode?: ArrivalMode | null;
@@ -67,13 +69,16 @@ export default function BookingPreparation({ arrivalInstructions, departureInstr
   const { t } = useTranslation("chef");
   if (bookingStatus && !['confirmed', 'cancellation_requested'].includes(bookingStatus)) return null;
   if (instructionsReleased === false) {
+    // A release time already in the past means the visit is over (the server never releases for finished visits); a stale "will appear on <past date>" is wrong.
+    const releaseMs = instructionsReleaseAt ? Date.parse(instructionsReleaseAt) : NaN;
+    if (inSession || (Number.isFinite(releaseMs) && releaseMs <= Date.now())) return null;
     return <div className="pt-3"><InstructionsOverview mode={arrivalMode} releaseAt={instructionsReleaseAt} visitStartAt={visitStartAt}
       timezone={timezone} address={address} contact={contact} requiredTasks={requiredTasks} /></div>;
   }
   return <div className="pt-3 space-y-2 text-sm">
-    {arrivalMode && <ArrivalModeLine mode={arrivalMode} />}
-    <p className="font-medium">{t("kciRequiredArrivalInstructions", "Arrival instructions")}</p>
-    <p className="whitespace-pre-line">{arrivalInstructions || t("kciNoArrivalInstructions", "No arrival instructions provided. Use your booking contact details if you need help getting in.")}</p>
+    {!inSession && arrivalMode && <ArrivalModeLine mode={arrivalMode} />}
+    {!inSession && <p className="font-medium">{t("kciRequiredArrivalInstructions", "Arrival instructions")}</p>}
+    {!inSession && <p className="whitespace-pre-line">{arrivalInstructions || t("kciNoArrivalInstructions", "No arrival instructions provided. Use your booking contact details if you need help getting in.")}</p>}
     {departureInstructions && <div><p className="font-medium">{t("kciRequiredDepartureInstructions", "Departure instructions")}</p><p className="whitespace-pre-line">{departureInstructions}</p></div>}
     <p className="text-muted-foreground">{t("kciPreparationBody", "Follow the kitchen instructions for your visit. Use the kitchen contact below if you need help.")}</p>
   </div>;

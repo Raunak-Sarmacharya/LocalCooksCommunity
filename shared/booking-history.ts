@@ -3,6 +3,11 @@ const kinds = ['requested', 'confirmed', 'cancelled', 'cancellation_requested', 
   'checkin_recorded', 'checkout_requested', 'checkout_cleared', 'checkout_claim_filed',
   'report_no_show', 'report_attended', 'withdraw_attendance', 'kitchen_change_requested', 'kitchen_change_applied',
   'kitchen_change_declined', 'kitchen_change_withdrawn', 'kitchen_change_expired'] as const;
+/** Same-instant events read in lifecycle order (requested before confirmed), then by key. */
+export function compareHistoryEvents(a: { kind: string; recordedAt: string; key: string }, b: { kind: string; recordedAt: string; key: string }): number {
+  const rank = (kind: string) => { const index = (kinds as readonly string[]).indexOf(kind); return index < 0 ? kinds.length : index; };
+  return Date.parse(a.recordedAt) - Date.parse(b.recordedAt) || rank(a.kind) - rank(b.kind) || a.key.localeCompare(b.key);
+}
 export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; recordedAt: string; visitId?: number; itemKind?: 'storage' | 'equipment'; itemId?: number };
 export type BookingHistoryResponse = { events: BookingHistoryEvent[]; complete: boolean };
 type Facts = { createdAt?: unknown; cancellationRequestedAt?: unknown; cancellationRequestDeclinedAt?: unknown;
@@ -45,5 +50,5 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     fact('checkout_requested', visit.checkoutRequestedAt, visitId);
     fact('checkout_cleared', visit.checkoutApprovedAt, visitId);
   }
-  return { events: events.sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt) || a.key.localeCompare(b.key)), complete };
+  return { events: events.sort(compareHistoryEvents), complete };
 }

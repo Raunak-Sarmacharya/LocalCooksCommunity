@@ -37,7 +37,8 @@ import { BookingManagementDialog, type BookingForManagement, type ManagementSubm
 import { BookingAttendancePanel } from "@/components/booking/BookingAttendancePanel";
 import { VisitCodePanel } from "@/components/manager/bookings/VisitCodePanel";
 import { ManagerInSessionBadge, inSessionEnds } from "@/components/manager/bookings/ManagerInSessionBadge";
-import { createBookingDateTime } from '@shared/timezone-utils';
+import { bookingResponseDeadline, formatResponseDeadline } from '@/lib/booking-response-deadline';
+import { createBookingDateTime, friendlyTimezoneName } from '@shared/timezone-utils';
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { ServiceFeeInfoPopover } from "@/components/booking/ServiceFeeInfoPopover";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -613,11 +614,14 @@ export default function BookingDetailsPage() {
     }
   };
 
+  const responseDeadline = booking ? bookingResponseDeadline(booking) : null;
+  const responseDeadlineText = responseDeadline ? formatResponseDeadline(responseDeadline, i18n.language, booking?.location?.timezone || undefined) : null;
+
   const paymentMessage = (() => {
     if (!booking) return null;
     if (booking.paymentDecision?.state === 'pending') return { summary: t('bdPaymentRecovery'), detail: t('bdPaymentRecovery') };
     const status = booking.paymentStatus;
-    if (status === 'authorized') return { summary: t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
+    if (status === 'authorized') return { summary: isManagerView ? t('bdPaymentHeldSummaryManager') : t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
     if (status === 'failed' && booking.status === 'cancelled') return { summary: t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
     if (status === 'refunded' || status === 'partially_refunded') return {
       summary: status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
@@ -911,6 +915,10 @@ export default function BookingDetailsPage() {
           description: params.status === 'confirmed' ? t("bdBookingConfirmedDesc") : t("bdBookingRejectedDesc"),
         });
       }
+      // Success: close the dialog, then refetch so the page shows the server's decision.
+      setIsUpdatingStatus(false);
+      setActionDialogOpen(false);
+      await reloadBookingDetails();
     } catch (err) {
       logger.error('Error updating booking:', err);
       toast({
@@ -1167,6 +1175,10 @@ export default function BookingDetailsPage() {
 
   // Main booking content
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
+  const visitWrappedUp = !!booking && !hasMultipleVisits && (['checkout_requested', 'checked_out', 'checkout_claim_filed', 'no_show'].includes(booking.checkinStatus || '')
+    || ['booked_time_ended', 'ended'].includes(booking.closeout?.phase || '') || booking.status === 'completed');
+  const inspectionDue = booking?.closeout?.visits?.[0]?.inspection?.deadline;
+  const inspectionDueText = inspectionDue ? formatEventTimestamp(inspectionDue) : null;
   const chefCanCheckIn = !isManagerView && booking?.status === 'confirmed' &&
     booking.checkinEnabled === true && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
   const chefCanCheckOut = !isManagerView && booking?.status === 'confirmed' &&
@@ -1202,7 +1214,7 @@ export default function BookingDetailsPage() {
               <span className="font-mono">{booking.id}</span>
             )}
             <span className="text-border">·</span>
-            <span>{formatShortDate(booking.createdAt)}</span>
+            <span>{t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {getStatusBadge(booking.status)}
@@ -1227,15 +1239,20 @@ export default function BookingDetailsPage() {
                 {booking.location.address && ` · ${booking.location.address}`}
               </p>
             )}
-            {!isManagerView && !['booked_time_ended', 'ended'].includes(booking.closeout?.phase || '') && ['confirmed', 'cancellation_requested'].includes(booking.status) && (
-              <BookingPreparation bookingStatus={booking.status} arrivalInstructions={booking.location?.arrivalInstructions} departureInstructions={booking.location?.departureInstructions}
+            {!isManagerView && ['checkout_requested', 'checked_out', 'checkout_claim_filed'].includes(booking.checkinStatus || '') && !hasMultipleVisits && booking.status !== 'cancelled' && (
+              <p className="pt-3 text-sm text-muted-foreground" data-testid="visit-complete-status">
+                {inspectionDueText ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete')}
+              </p>
+            )}
+            {!isManagerView && !visitWrappedUp && !['booked_time_ended', 'ended'].includes(booking.closeout?.phase || '') && ['confirmed', 'cancellation_requested'].includes(booking.status) && (
+              <BookingPreparation inSession={booking.checkinStatus === 'checked_in'} bookingStatus={booking.status} arrivalInstructions={booking.location?.arrivalInstructions} departureInstructions={booking.location?.departureInstructions}
                 instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt}
                 arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone} address={booking.location?.address} contact={booking.kitchenContact}
                 visitStartAt={booking.location?.timezone ? createBookingDateTime(calendarDateForBookingTime(booking.bookingDate.split('T')[0], booking.startTime, booking.operatingWindowStartTime), booking.startTime, booking.location.timezone) : null} />
             )}
           </div>
 
-          <ClockCloseoutSummary closeout={booking.closeout} manager={isManagerView} />
+          {booking.status !== 'pending' && <ClockCloseoutSummary closeout={booking.closeout} manager={isManagerView} />}
           {isManagerView && inSessionEnds(booking).length > 0 && (
             <div className="flex flex-wrap gap-2">
               {inSessionEnds(booking).map(session => {
@@ -1248,7 +1265,7 @@ export default function BookingDetailsPage() {
           {!isManagerView && <div className="flex shrink-0 justify-end md:ml-auto">
             <BookingCancellationChooser visitActive={['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '') || (booking.visits || []).some(visit => ['checked_in', 'checkout_requested'].includes(visit.checkinStatus))} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
               summary={{ kitchenName: booking.kitchen?.name || t('bdKitchenBookingFallback'), reference: booking.referenceCode || undefined,
-                schedule: `${formatDate(booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · Newfoundland time`,
+                schedule: `${formatDate(booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
                 amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
               cancellationDeadline={(() => { try { return formatEventTimestamp(new Date(kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24)).toISOString()); } catch { return undefined; } })()}
               decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
@@ -1315,7 +1332,14 @@ export default function BookingDetailsPage() {
       </div>
 
       <Separator className="mb-8" />
-      {!isManagerView && booking.status === 'pending' && <div className="mb-6"><BookingRefundPolicyNotice /></div>}
+      {responseDeadlineText && (
+        <p role="status" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="response-deadline-banner">
+          {isManagerView
+            ? t('bdManagerRespondBy', { deadline: responseDeadlineText })
+            : t('bdRequestSentBanner', { kitchen: booking.kitchen?.name || t('bdKitchenBookingFallback'), deadline: responseDeadlineText })}
+        </p>
+      )}
+      {!isManagerView && booking.status === 'pending' && <div className="mb-6"><BookingRefundPolicyNotice single /></div>}
       {booking.paymentDecision?.state === 'pending' && <p role="status" className="mb-6 rounded-lg border p-4 text-sm">{t('bdPaymentRecovery')}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1891,6 +1915,7 @@ export default function BookingDetailsPage() {
                       hstLabel={t("bdHstPercent", {
                         percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0,
                       })}
+                      hstCollectedLabel={t("bdHstCollectedLine")}
                     />
                   ) : (
                     <ChefBookingReceiptBreakdown

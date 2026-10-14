@@ -15,6 +15,8 @@ import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown"
 import { calendarDateForBookingTime } from "@shared/operating-hours"
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks"
+import i18n from "@/i18n";
+import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // Storage/Equipment item types from JSONB fields
 export type StorageItem = {
@@ -113,13 +115,7 @@ const formatDate = (dateStr: string) => {
     });
 };
 
-const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-};
+const formatTime = (time: string) => formatClockTime(time, i18n.language);
 
 // Check-In / Check-Out badge config (shared with TodaysKitchenBookings semantics)
 function getCheckinBadgeProps(checkinStatus: string | null | undefined):

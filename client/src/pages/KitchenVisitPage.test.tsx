@@ -147,7 +147,8 @@ describe("full-page kitchen visit", () => {
     expect(within(instructions).queryByText('Lock the side entrance.')).not.toBeInTheDocument();
     expect(screen.getByText('Updated by the kitchen since you booked')).toBeInTheDocument();
     expect(screen.getByText('Original submitted task')).toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: 'Booking instruction record' })).getByText('Use the side entrance.')).toBeInTheDocument();
+    // The recorded text equals the arrival instructions still shown above, so it is not repeated.
+    expect(screen.queryByRole('region', { name: 'Booking instruction record' })).not.toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Submit checkout' });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Check the new exit/ }));
@@ -238,29 +239,40 @@ describe("full-page kitchen visit", () => {
   });
 
   it("refreshes status, details, list and attendance before returning to the booking", async () => {
+    status = visit({ checkinStatus: "checked_in", checkedInAt: new Date().toISOString() });
     const { navigation } = setup(true);
-    await screen.findByRole("button", { name: "Confirm check-in" });
+    await screen.findByRole("button", { name: "Submit checkout" });
     client.setQueryData(["/api/chef/bookings"], []);
     client.setQueryData(["/api/chef/bookings/901/attendance"], {});
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    fireEvent.click(screen.getByRole("button", { name: "Confirm check-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit checkout" }));
     await waitFor(() => expect(navigation.history).toEqual(["/booking/901"]));
     for (const key of [["kitchen-checkin-status", 901], ["/api/chef/bookings"], ["/api/chef/bookings/901/details"], ["/api/chef/bookings/901/attendance"]]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
     }
-    expect(client.getQueryData<any>(["kitchen-checkin-status", 901]).checkinStatus).toBe("checked_in");
+    expect(client.getQueryData<any>(["kitchen-checkin-status", 901]).checkinStatus).toBe("checkout_requested");
     expect(client.getQueryState(["/api/chef/bookings"])?.isInvalidated).toBe(true);
     expect(client.getQueryState(["/api/chef/bookings/901/attendance"])?.isInvalidated).toBe(true);
     expect(mocks.apiGet).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("heading", { name: "Returned to booking" })).toBeInTheDocument();
   });
 
-  it("waits for active booking details to refresh before navigating", async () => {
+  it("stays on the visit page after arrival and says when it was confirmed", async () => {
     const { navigation } = setup(true);
     await screen.findByRole("button", { name: "Confirm check-in" });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm check-in" }));
+    expect(await screen.findByText(/Arrival confirmed at/)).toBeInTheDocument();
+    expect(navigation.history).toEqual(["/booking/901/visit"]);
+    expect(screen.queryByRole("heading", { name: "Returned to booking" })).not.toBeInTheDocument();
+  });
+
+  it("waits for active booking details to refresh before navigating", async () => {
+    status = visit({ checkinStatus: "checked_in", checkedInAt: new Date().toISOString() });
+    const { navigation } = setup(true);
+    await screen.findByRole("button", { name: "Submit checkout" });
     let finishRefresh!: (value: any) => void;
     mocks.apiGet.mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm check-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit checkout" }));
     await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(2));
     expect(navigation.history).toEqual(["/booking/901/visit"]);
     await act(async () => finishRefresh({ kitchen: { name: "Test kitchen" }, bookingDate: status.bookingDate, startTime: status.startTime, endTime: status.endTime }));
@@ -320,8 +332,11 @@ describe("full-page kitchen visit", () => {
     const { container } = setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
     expect(container.querySelector("details")).toBeNull();
-    expect(within(summary).getByText("Not checked in")).toBeInTheDocument();
+    // One status line: the next-step sentence, not a "Not checked in" chip repeating it.
+    expect(within(summary).queryByText("Not checked in")).not.toBeInTheDocument();
     expect(within(summary).getByText(/Check-in is open/)).toBeInTheDocument();
+    expect(screen.queryByText("Arrival not recorded")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Message kitchen" })).toBeInTheDocument();
     expect(screen.getByText(/^\w{3} \d{1,2}, \d{4}, 12:00 a\.m\. – 11:59 p\.m\.$/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Check in" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Confirm check-in" })).toBeVisible();

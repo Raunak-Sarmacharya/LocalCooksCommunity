@@ -1,3 +1,6 @@
+import { db } from '../db';
+import { kitchens } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 import { logger } from "../logger";
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
 /**
@@ -161,15 +164,19 @@ export async function createPendingCheckoutSession(
       quantity: number;
     }>;
 
+    const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq(kitchens.id, bookingData.kitchenId)).limit(1);
+    const clock = (time: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit', hour12: true })
+      .format(new Date(`2000-01-01T${time.slice(0, 5)}:00Z`));
+    const kitchenSessionName = `Kitchen session · ${kitchen?.name || `Kitchen #${bookingData.kitchenId}`} · ${bookingData.bookingDate.slice(0, 10)} ${clock(bookingData.startTime)}–${clock(bookingData.endTime)}`;
+
     if (lineItemBreakdown) {
       lineItems = [];
 
-      // Kitchen session line item
       if (lineItemBreakdown.kitchenPriceCents > 0) {
         lineItems.push({
           price_data: {
             currency: currency.toLowerCase(),
-            product_data: { name: lineItemBreakdown.kitchenLabel || lineItemName },
+            product_data: { name: kitchenSessionName },
             unit_amount: lineItemBreakdown.kitchenPriceCents,
           },
           quantity: 1,
@@ -237,7 +244,7 @@ export async function createPendingCheckoutSession(
         lineItems.push({
           price_data: {
             currency: currency.toLowerCase(),
-            product_data: { name: lineItemName },
+            product_data: { name: kitchenSessionName },
             unit_amount: bookingPriceInCents,
           },
           quantity: 1,
@@ -249,7 +256,7 @@ export async function createPendingCheckoutSession(
         {
           price_data: {
             currency: currency.toLowerCase(),
-            product_data: { name: lineItemName },
+            product_data: { name: kitchenSessionName },
             unit_amount: bookingPriceInCents,
           },
           quantity: 1,

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { kitchenCheckinPolicyTimes } from "@/lib/kitchen-checkin-policy";
 import { calendarDateForBookingTime } from "@shared/operating-hours";
-import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { createBookingDateTime, DEFAULT_TIMEZONE, friendlyTimezoneName } from "@shared/timezone-utils";
 
 function formatPolicyTimestamp(iso: Date | string, locale: string, timezone: string) {
   return new Intl.DateTimeFormat(locale, {
@@ -93,7 +93,7 @@ export function CheckinPolicyTimesCard({
       <p className="mt-3 text-xs text-muted-foreground">
         {t(
           "bdKitchenLocalTime",
-          { timezone: tz, defaultValue: `Times are shown in the kitchen’s local time (${tz}).` },
+          { timezone: friendlyTimezoneName(tz, i18n.language), defaultValue: `Times are shown in the kitchen’s local time (${friendlyTimezoneName(tz, i18n.language)}).` },
         )}
       </p>
     </PolicyHeroShell>
@@ -191,7 +191,7 @@ export function CheckoutReadyCard({
       <p className="mt-3 text-xs text-muted-foreground">
         {t(
           "bdKitchenLocalTime",
-          { timezone: tz, defaultValue: `Times are shown in the kitchen’s local time (${tz}).` },
+          { timezone: friendlyTimezoneName(tz, i18n.language), defaultValue: `Times are shown in the kitchen’s local time (${friendlyTimezoneName(tz, i18n.language)}).` },
         )}
       </p>
     </PolicyHeroShell>

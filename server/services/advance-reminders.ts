@@ -8,7 +8,7 @@ import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone, friendlyTime
 import { makeVisitDuties, readVisitDuties } from '@shared/visit-duties';
 import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { getAppBaseUrl } from '../config';
-import { sendEmail, renderTransactionalEmail, arrivalModeLine, type ArrivalMode } from '../email';
+import { sendEmail, renderTransactionalEmail, emailLocalDateTime, emailZoneName, arrivalModeLine, type ArrivalMode } from '../email';
 import { operationalEmailAllowedForUser } from './admin-email-preferences';
 import { getUserDisplayName } from '../utils/user-display';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
@@ -371,7 +371,7 @@ function renderSessionEndingEmail(r: Reminder, url: string) {
 export function renderBookingVisitReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`) {
   if (r.kind === 'session_ending') return renderSessionEndingEmail(r, url);
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: r.timezone, year: 'numeric', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'longGeneric' });
   const message = r.role === 'manager' ? r.message : r.kind === 'preparation' ? `${arrivalModeLine(r.arrivalMode, r.locale)} ${tEmail(r.locale, 'instructionsReleased')}` : r.kind === 'arrival' ? `${arrivalModeLine(r.arrivalMode, r.locale, true)} ${tEmail(r.locale, 'visitArrivalInstructionsLink')}` : r.kind === 'departure'
     ? 'Your kitchen visit is ending soon. Follow the departure instructions and complete any tasks marked Required before submitting checkout.'
     : r.kind === 'checkin_open'
@@ -513,7 +513,7 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
             title: intent.subject, message: r.message, actionUrl: r.path, actionLabel: 'View current reservation',
             metadata: { reminderKey: intent.trackingId, reservationId: r.reservationId } }, tx);
           sent = true;
-        } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : { to: r.email, subject: intent.subject, text: `${r.message}\n\n${url}` },
+        } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : renderTransactionalEmail({ to: r.email, locale: r.locale, subject: intent.subject, recipientName: r.recipientName || 'there', message: r.message, facts: [{ label: tEmail(r.locale, 'bookingReference'), value: `${r.source === 'storage_arrival' ? 'Storage' : 'KB'}-${r.reservationId}` }, { label: 'Respond by', value: emailLocalDateTime(r.due, r.timezone, r.locale || 'en-CA') }], actionLabel: tEmail(r.locale, r.source === 'storage_arrival' ? 'bookingViewStorage' : 'bookingOpen'), actionUrl: url }),
           { trackingId: intent.trackingId!, emailType: 'advance_reminder_attempt', durableDelivery: true, retryOfId: intent.id });
       } catch { sent = false; }
       if (!sent && intent.retryCount === 0) {

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getSellerAnalyticsApiUrl } from "../shop-urls";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -23,8 +24,7 @@ router.get("/seller/:uid", async (req, res) => {
     const sid = user.phpShopId;
 
     // 2. Fetch the analytics data from the newly created PHP API
-    // We use stagingwebapp.localcook.shop as it's the known domain mapping to the FTP root
-    const phpApiUrl = `https://stagingwebapp.localcook.shop/app/seller_analytics_api.php?sid=${sid}`;
+    const phpApiUrl = getSellerAnalyticsApiUrl(sid);
     
     const response = await fetch(phpApiUrl);
     

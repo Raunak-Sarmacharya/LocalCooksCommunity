@@ -63,7 +63,7 @@ describe('problem category', () => {
       expect(emails[0].subject).toBe(category === 'safety' ? 'Safety issue reported — urgent · Booking #10' : 'Equipment problem reported · Booking #10');
       expect(emails[0].textBody).toContain(`Category: ${category === 'safety' ? 'Safety' : 'Equipment'}`);
       expect(emails[0].textBody).toContain('Harbour Kitchen');
-      expect(emails[0].textBody).toContain('America/St_Johns');
+      expect(emails[0].textBody).toContain('Newfoundland Time');
       expect(emails[0].textBody).toContain('9:40');
       expect(emails[0].textBody).toContain('The cooler stopped working.');
       expect(emails[0].textBody).toContain('/booking/10');

@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import i18n from "@/i18n";
+import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -59,14 +61,7 @@ interface PendingCancellationRequestsProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const formatTime = (time: string) => {
-  if (!time) return "";
-  const [hours, minutes] = time.split(":");
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
-};
+const formatTime = (time: string) => formatClockTime(time, i18n.language);
 
 // ─── Component ───────────────────────────────────────────────────────────────
 

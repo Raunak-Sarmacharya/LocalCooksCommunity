@@ -28,6 +28,8 @@ import { Input } from "@/components/ui/input";
 import { getBookingColumns, Booking } from "@/components/manager/bookings/columns";
 import { auth } from "@/lib/firebase";
 import { calendarDateForOperatingTime, sortTimesInOperatingWindow } from "@shared/operating-hours";
+import i18n from "@/i18n";
+import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // Booking type imported from columns.tsx
 
@@ -601,13 +603,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
     });
   };
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
+  const formatTime = (time: string) => formatClockTime(time, i18n.language);
 
   /*
    * A plain div now, not a main element — the shell owns the main element, the page gutters and the

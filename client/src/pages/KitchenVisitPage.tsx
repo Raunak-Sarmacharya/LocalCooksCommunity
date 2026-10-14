@@ -20,7 +20,7 @@ export default function KitchenVisitPage() {
   const selectedVisitId = Number(new URLSearchParams(search).get("visitId"));
   const { loading: authLoading } = useFirebaseAuth();
   const { t } = useTranslation("chef");
-  const booking = useQuery<{ kitchen?: { name: string }; bookingDate: string; startTime: string; endTime: string }>({
+  const booking = useQuery<{ kitchen?: { name: string }; kitchenContact?: { phone?: string | null } | null; bookingDate: string; startTime: string; endTime: string }>({
     queryKey: [`/api/chef/bookings/${bookingId}/details`],
     queryFn: () => apiGet(`/chef/bookings/${bookingId}/details`),
     enabled: validId && !authLoading,
@@ -47,7 +47,9 @@ export default function KitchenVisitPage() {
       <KitchenCheckinTracker key={bookingId} bookingId={bookingId} kitchenName={booking.data.kitchen?.name}
         bookingDate={booking.data.bookingDate} startTime={booking.data.startTime} endTime={booking.data.endTime}
         initialVisitId={Number.isSafeInteger(selectedVisitId) && selectedVisitId > 0 ? selectedVisitId : null}
-        onSuccess={() => navigate(`/booking/${bookingId}`, { replace: true })} />}
+        kitchenPhone={booking.data.kitchenContact?.phone}
+        // Stay on the visit page after arrival so the in-session panel shows at once; checkout returns to the booking.
+        onSuccess={kind => { if (kind === "checkout") navigate(`/booking/${bookingId}`, { replace: true }) }} />}
   </div>;
   return inShell ? body : <ChefDashboardLayout activeView="bookings" onViewChange={onViewChange} breadcrumbs={breadcrumbs}>{body}</ChefDashboardLayout>;
 }

@@ -5,9 +5,10 @@ import {
     portalUserApplications,
     portalUserLocationAccess,
     locations,
-    kitchens
+    kitchens,
+    users
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, or } from "drizzle-orm";
 
 import { requirePortalUser, getAuthenticatedUser } from "./middleware";
 import { bookingService } from "../domains/bookings/booking.service";
@@ -475,7 +476,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
 
         // Send notifications (Manager & Portal User)
         try {
-            const { sendEmail, generateBookingNotificationEmail, generateBookingRequestEmail } = await import('../email');
+            const { sendEmail, generateBookingNotificationEmail, generateBookingRequestEmail, bookingResponseDeadline } = await import('../email');
             const { sendSMS, generatePortalUserBookingConfirmationSMS, generateManagerPortalBookingSMS } = await import('../sms');
 
             // Get location notification email
@@ -483,6 +484,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             const notificationEmail = (locationData as any)?.notificationEmail;
             const timezone = (locationData as any)?.timezone || 'America/St_Johns';
             const locationName = (locationData as any)?.name || 'Location';
+            const emailRecipients = await db.select({ id: users.id, locale: users.preferredLocale }).from(users).where(or(eq(users.id, userId), locationData?.managerId ? eq(users.id, locationData.managerId) : undefined));
 
             // Send to manager
             if (notificationEmail) {
@@ -498,6 +500,10 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     locationName,
                     bookingId: booking.id,
                     referenceCode: booking.referenceCode,
+                    responseDeadline: bookingResponseDeadline(booking.createdAt),
+                    paymentState: "pending",
+                    locale: emailRecipients.find(person => person.id === locationData?.managerId)?.locale,
+                    locationAddress: locationData?.address || undefined,
                     operatingWindowStartTime: availabilityCheck.windowStartTime,
                 });
                 await sendEmail(managerEmail);
@@ -509,6 +515,10 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                 const portalUserEmail = generateBookingRequestEmail({
                     bookingId: booking.id,
                     referenceCode: booking.referenceCode,
+                    responseDeadline: bookingResponseDeadline(booking.createdAt),
+                    paymentState: "pending",
+                    locale: emailRecipients.find(person => person.id === userId)?.locale,
+                    locationAddress: locationData?.address || undefined,
                     chefEmail: bookingEmail,
                     chefName: bookingName,
                     kitchenName: kitchen.name,

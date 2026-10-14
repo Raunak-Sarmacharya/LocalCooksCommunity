@@ -306,5 +306,11 @@
   "bookingErrorNetwork": "Nous n’avons pas pu joindre Local Cooks. Vérifiez votre connexion et réessayez.",
   "bookingErrorLoadAvailability": "Nous n’avons pas pu charger les disponibilités. Vérifiez votre connexion et réessayez.",
   "bookingErrorLoadOptions": "Nous n’avons pas pu charger les options complémentaires de cette cuisine. Rechargez la page pour réessayer.",
-  "bookingErrorLoadKitchen": "Nous n’avons pas pu charger les tarifs de cette cuisine. Rechargez la page avant de réserver."
+  "bookingErrorLoadKitchen": "Nous n’avons pas pu charger les tarifs de cette cuisine. Rechargez la page avant de réserver.",
+  "preConfirmationRefundSingle": "Annulation gratuite jusqu’à la confirmation par la cuisine. Vous serez remboursé en totalité de tout montant payé, taxes et frais compris.",
+  "sheetWhatNextTitle": "Ce qui se passe ensuite",
+  "sheetWhatNextReview": "La cuisine examine votre demande dans les 24 heures.",
+  "sheetWhatNextCharge": "Vous n’êtes débité que si la cuisine accepte. D’ici là, votre carte est simplement mise en attente.",
+  "sheetWhatNextArrival": "Les détails d’arrivée vous sont envoyés 48 heures avant votre visite.",
+  "sheetWhatNextCancel": "Après la confirmation de la cuisine, vous pouvez annuler jusqu’à {hours, plural, one {# heure} other {# heures}} avant votre visite. Les remboursements suivent la politique d’annulation."
 }

@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { parseLocalDateInput } from "@/lib/kitchen-typed-date";
+import i18n from "@/i18n";
+import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -142,14 +144,7 @@ const formatDate = (dateStr: string) => {
   });
 };
 
-const formatTime = (time: string) => {
-  if (!time) return "";
-  const [hours, minutes] = time.split(":");
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
-};
+const formatTime = (time: string) => formatClockTime(time, i18n.language);
 
 const formatStorageDate = (dateStr?: string) => {
   if (!dateStr) return "";

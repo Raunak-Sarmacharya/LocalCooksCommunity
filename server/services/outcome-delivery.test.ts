@@ -107,6 +107,28 @@ beforeEach(() => {
 });
 
 describe('actual producer → persisted intent → worker → admin replay', () => {
+  it('renders a current problem with category, kitchen, local reported time and its current destination', async () => {
+    state.tables.kitchen_bookings = [{ id: 10, booking: state.tables.kitchen_bookings[0], managerId: 2,
+      timezone: 'America/St_Johns', kitchenName: 'Harbour Kitchen' }];
+    state.tables.commitment_problems = [{ id: 7, bookingId: 10, category: 'equipment', status: 'acknowledged',
+      createdAt: new Date('2026-10-04T12:10:00Z'), description: 'The cooler stopped working.',
+      history: [{ action: 'reply', note: 'A repair is scheduled.' }] }];
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'chef@example.test', recipientUserId: 3, recipientRole: 'chef',
+      category: 'lifecycle_outcome', status: 'queued', subject: 'Equipment problem reported · Booking #10',
+      trackingId: 'problem-outcome:7:1:3', textBody: 'Old support request', createdAt: new Date(), retryCount: 0 }];
+    state.send.mockResolvedValue(true);
+    expect(await deliverOutcomeEmails(1)).toEqual({ completed: 1 });
+    const email = state.send.mock.calls[0][0];
+    expect(email.html).toContain('class="email-title"');
+    expect(email.html).toContain('max-width:560px');
+    expect(email.text).toContain('Category: Equipment');
+    expect(email.text).toContain('Harbour Kitchen');
+    expect(email.text).toContain('9:40 a.m.');
+    expect(email.text).toContain('Newfoundland Time');
+    expect(email.text).toContain('A repair is scheduled.');
+    expect(email.text).toContain('/booking/10');
+    expect(email.text).not.toContain('America/St_Johns');
+  });
   it('queues schedule impacts for opted-in admins and participants, while keeping all admin bell alerts', async () => {
     state.tables.kitchen_bookings = [{ id: 10, booking: state.tables.kitchen_bookings[0], managerId: 2, timezone: 'America/St_Johns' }];
     state.tables.users.push({ id: 4, username: 'off-admin@example.test', role: 'admin', adminEmailNotifications: false });
@@ -292,7 +314,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(state.tables.booking_lifecycle_events[0].deliveredEmailKeys).toEqual(['3']);
     const [content, options] = state.send.mock.calls[0];
     expect(content.text).toContain(`Current booking status: ${status}`);
-    expect(content.text).toContain('Payment captured: CAD $10.00');
+    expect(content.text).toContain('Total paid: CAD $10.00');
     expect(content.text).toContain('Current booking: https://chef.example.test/booking/10');
     expect(content.text).not.toContain('https://calendar.google.com');
     expect(content.html).not.toContain('https://calendar.google.com');

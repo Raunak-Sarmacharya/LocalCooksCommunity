@@ -31,21 +31,17 @@ const {
   generateManagerCredentialsEmail,
   generateBookingNotificationEmail,
   generateBookingCancellationNotificationEmail,
-  generateBookingStatusChangeNotificationEmail,
   generateBookingRequestEmail,
   generateBookingConfirmationEmail,
   generateBookingCancellationEmail,
-  generateKitchenAvailabilityChangeEmail,
   generateKitchenSettingsChangeEmail,
   generateChefProfileRequestEmail,
   generateChefLocationAccessApprovedEmail,
-  generateChefKitchenAccessApprovedEmail,
   generateLocationEmailChangedEmail,
   generateStorageExtensionPendingApprovalEmail,
   generateStorageExtensionPaymentReceivedEmail,
   generateStorageExtensionApprovedEmail,
   generateStorageExtensionRejectedEmail,
-  generateStorageExpiringWarningEmail,
   generateOverstayDetectedEmail,
   generatePenaltyChargedEmail,
   generateOverstayManagerNotificationEmail,
@@ -56,10 +52,6 @@ const {
   generateKitchenLicenseApprovedEmail,
   generateKitchenLicenseRejectedEmail,
   generateKitchenLicenseSubmittedAdminEmail,
-  generateDamageClaimFiledEmail,
-  generateDamageClaimResponseEmail,
-  generateDamageClaimDisputedAdminEmail,
-  generateDamageClaimDecisionEmail,
   generateDamageClaimChargedEmail,
   generateNewUserRegistrationAdminEmail,
 } = await import('../server/email');
@@ -222,24 +214,8 @@ function generateAllTemplates(): TemplateEntry[] {
       startTime: '09:00', endTime: '14:00', cancellationReason: 'Schedule conflict',
     })
   );
-  add('Booking Confirmed (Manager)', 'Booking', 'Manager', () =>
-    generateBookingStatusChangeNotificationEmail({
-      managerEmail: 'manager@example.com', managerName: 'John Manager', chefName: 'Jane Doe',
-      kitchenName: 'Downtown Kitchen A', bookingDate: '2026-03-20',
-      startTime: '09:00', endTime: '14:00', status: 'confirmed',
-      timezone: 'America/St_Johns', locationName: 'Downtown Location',
-      addons: 'Commercial Mixer, Cold Storage (Mar 20–22)',
-    })
-  );
 
   // ── Kitchen Settings & Access ──
-  add('Kitchen Availability Change', 'Kitchen', 'Chef', () =>
-    generateKitchenAvailabilityChangeEmail({
-      chefEmail: 'jane@example.com', chefName: 'Jane Doe',
-      kitchenName: 'Downtown Kitchen A', changeType: 'Hours Updated',
-      details: 'New hours: Mon-Fri 8AM-6PM (previously 9AM-5PM)',
-    })
-  );
   add('Kitchen Settings Change (Chef)', 'Kitchen', 'Chef', () =>
     generateKitchenSettingsChangeEmail({
       email: 'jane@example.com', name: 'Jane Doe',
@@ -262,12 +238,6 @@ function generateAllTemplates(): TemplateEntry[] {
     generateChefLocationAccessApprovedEmail({
       chefEmail: 'jane@example.com', chefName: 'Jane Doe',
       locationName: 'Downtown Location', locationId: 1,
-    })
-  );
-  add('Chef Kitchen Access Approved', 'Kitchen', 'Chef', () =>
-    generateChefKitchenAccessApprovedEmail({
-      chefEmail: 'jane@example.com', chefName: 'Jane Doe',
-      kitchenName: 'Downtown Kitchen A', kitchenId: 10,
     })
   );
   add('Location Email Changed', 'Kitchen', 'Manager', () =>
@@ -354,13 +324,6 @@ function generateAllTemplates(): TemplateEntry[] {
   );
 
   // ── Overstay Penalties ──
-  add('Storage Expiring Warning (Chef)', 'Overstay', 'Chef', () =>
-    generateStorageExpiringWarningEmail({
-      chefEmail: 'jane@example.com', chefName: 'Jane Doe',
-      storageName: 'Cold Storage Unit B', endDate: sampleEndDate,
-      daysUntilExpiry: 2, gracePeriodDays: 3, penaltyRate: 1.5, dailyRateCents: 400,
-    })
-  );
   add('Overstay Detected — Grace Period (Chef)', 'Overstay', 'Chef', () =>
     generateOverstayDetectedEmail({
       chefEmail: 'jane@example.com', chefName: 'Jane Doe',
@@ -404,60 +367,6 @@ function generateAllTemplates(): TemplateEntry[] {
   );
 
   // ── Damage Claims ──
-  add('Damage Claim Filed (Chef)', 'Damage Claim', 'Chef', () =>
-    generateDamageClaimFiledEmail({
-      chefEmail: 'jane@example.com', chefName: 'Jane Doe',
-      managerName: 'John Manager', locationName: 'Downtown Location',
-      claimTitle: 'Stove top damage', claimedAmount: '$150.00 CAD',
-      damageDate: 'March 15, 2026', responseDeadline: 'March 22, 2026', claimId: 10,
-    })
-  );
-  add('Damage Claim Response — Accepted (Manager)', 'Damage Claim', 'Manager', () =>
-    generateDamageClaimResponseEmail({
-      managerEmail: 'manager@example.com', managerName: 'John Manager',
-      chefName: 'Jane Doe', claimTitle: 'Stove top damage',
-      claimedAmount: '$150.00 CAD', response: 'accepted', claimId: 10,
-    })
-  );
-  add('Damage Claim Response — Disputed (Manager)', 'Damage Claim', 'Manager', () =>
-    generateDamageClaimResponseEmail({
-      managerEmail: 'manager@example.com', managerName: 'John Manager',
-      chefName: 'Jane Doe', claimTitle: 'Stove top damage',
-      claimedAmount: '$150.00 CAD', response: 'disputed',
-      chefResponse: 'The damage was pre-existing. I documented the stove condition before use.', claimId: 10,
-    })
-  );
-  add('Damage Claim Disputed (Admin)', 'Damage Claim', 'Admin', () =>
-    generateDamageClaimDisputedAdminEmail({
-      adminEmail: 'admin@localcooks.ca', chefName: 'Jane Doe',
-      chefEmail: 'jane@example.com', managerName: 'John Manager',
-      locationName: 'Downtown Location', claimTitle: 'Stove top damage',
-      claimedAmount: '$150.00 CAD',
-      chefResponse: 'The damage was pre-existing. I documented the stove condition before use.', claimId: 10,
-    })
-  );
-  add('Damage Claim Decision — Approved (Chef)', 'Damage Claim', 'Chef', () =>
-    generateDamageClaimDecisionEmail({
-      recipientEmail: 'jane@example.com', recipientName: 'Jane Doe', recipientRole: 'chef',
-      claimTitle: 'Stove top damage', claimedAmount: '$150.00 CAD',
-      decision: 'approved', decisionReason: 'Evidence supports the claim.', claimId: 10,
-    })
-  );
-  add('Damage Claim Decision — Partially Approved (Manager)', 'Damage Claim', 'Manager', () =>
-    generateDamageClaimDecisionEmail({
-      recipientEmail: 'manager@example.com', recipientName: 'John Manager', recipientRole: 'manager',
-      claimTitle: 'Stove top damage', claimedAmount: '$150.00 CAD',
-      decision: 'partially_approved', finalAmount: '$75.00 CAD',
-      decisionReason: 'Partial wear existed prior to this booking.', claimId: 10,
-    })
-  );
-  add('Damage Claim Decision — Rejected (Chef)', 'Damage Claim', 'Chef', () =>
-    generateDamageClaimDecisionEmail({
-      recipientEmail: 'jane@example.com', recipientName: 'Jane Doe', recipientRole: 'chef',
-      claimTitle: 'Stove top damage', claimedAmount: '$150.00 CAD',
-      decision: 'rejected', decisionReason: 'Insufficient evidence to support the claim.', claimId: 10,
-    })
-  );
   add('Damage Claim Charged (Chef)', 'Damage Claim', 'Chef', () =>
     generateDamageClaimChargedEmail({
       chefEmail: 'jane@example.com', chefName: 'Jane Doe',

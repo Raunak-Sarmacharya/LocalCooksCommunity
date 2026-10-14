@@ -62,8 +62,6 @@ import { userService } from "../domains/users/user.service";
 import {
   sendEmail,
   generateBookingConfirmationEmail,
-  generateBookingStatusChangeNotificationEmail,
-  generateKitchenAvailabilityChangeEmail,
   generateKitchenSettingsChangeEmail,
   generateChefLocationAccessApprovedEmail,
   generateBookingCancellationEmail,
@@ -6929,32 +6927,7 @@ router.post(
             }),
           });
 
-          // Email notification to chef
-          const [chefUser] = await db
-            .select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, extension.chefId))
-            .limit(1);
-          if (chefUser?.username) {
-            const { sendEmail } = await import("../email");
-            const dashboardUrl = process.env.VITE_APP_URL || 'https://localcooks.ca';
-            const formattedEndDate = extension.newEndDate.toLocaleDateString("en-US", {
-              year: "numeric", month: "long", day: "numeric",
-            });
-            await sendEmail({
-              to: chefUser.username,
-              subject: `Storage Extension Approved - ${extension.storageName}`,
-              html: `
-                <h2>Storage Extension Approved!</h2>
-                <p>Your ${extension.extensionDays}-day extension for <strong>${extension.storageName}</strong> has been approved.</p>
-                <p><strong>New End Date:</strong> ${formattedEndDate}</p>
-                <p>You can view your updated storage booking in your dashboard.</p>
-                <p><a href="${dashboardUrl}/dashboard?view=storage" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Storage</a></p>
-              `,
-              text: `Storage Extension Approved!\n\nYour ${extension.extensionDays}-day extension for ${extension.storageName} has been approved.\nNew End Date: ${formattedEndDate}\n\nView your storage booking in your dashboard.`,
-            });
-            logger.info(`[Manager] Sent storage extension approval email to chef ${chefUser.username}`);
-          }
+
         }
       } catch (notifError) {
         logger.error(
@@ -7229,6 +7202,7 @@ router.post(
       try {
         const rejectionEmail = generateStorageExtensionRejectedEmail({
           chefEmail: extension.chefEmail,
+          storageBookingId: extension.storageBookingId,
           chefName: extension.chefEmail,
           storageName: (extension as any).storageName || "Storage",
           extensionDays: (extension as any).extensionDays || 0,
@@ -7258,31 +7232,7 @@ router.post(
             reason: reason || "Extension request declined by manager",
           });
 
-          // Email notification to chef
-          const [chefUser] = await db
-            .select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, extension.chefId))
-            .limit(1);
-          if (chefUser?.username) {
-            const { sendEmail } = await import("../email");
-            const dashboardUrl = process.env.VITE_APP_URL || 'https://localcooks.ca';
-            const storageName = (extension as any).storageName || "Storage";
-            const rejectionReason = reason || "Extension request declined by manager";
-            await sendEmail({
-              to: chefUser.username,
-              subject: `Storage Extension Declined - ${storageName}`,
-              html: `
-                <h2>Storage Extension Declined</h2>
-                <p>Your extension request for <strong>${storageName}</strong> has been declined by the kitchen manager.</p>
-                ${rejectionReason ? `<p><strong>Reason:</strong> ${rejectionReason}</p>` : ''}
-                <p>A refund will be processed for the extension payment.</p>
-                <p><a href="${dashboardUrl}/dashboard?view=storage" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Storage</a></p>
-              `,
-              text: `Storage Extension Declined\n\nYour extension request for ${storageName} has been declined by the kitchen manager.\n${rejectionReason ? `Reason: ${rejectionReason}\n` : ''}A refund will be processed for the extension payment.`,
-            });
-            logger.info(`[Manager] Sent storage extension rejection email to chef ${chefUser.username}`);
-          }
+
         }
       } catch (notifError) {
         logger.error(

@@ -1,0 +1,102 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import chef from "@shared/i18n/locales/en-CA/chef.json";
+import { IntlMessageFormat } from "intl-messageformat";
+
+const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unknown> }));
+
+vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "token" } } }));
+vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ loading: false, user: { uid: "u" } }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
+vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
+vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }), useQuery: () => ({ data: undefined, isLoading: false }) }));
+vi.mock("wouter", () => ({
+  useRoute: (pattern: string) => (pattern === "/manager/booking/:id" ? (h.manager ? [true, { id: "5" }] : [false, null]) : (!h.manager && pattern === "/booking/:id" ? [true, { id: "5" }] : [false, null])),
+  useLocation: () => ["/", vi.fn()],
+  Link: ({ children }: any) => children,
+}));
+vi.mock("@/layouts/ChefDashboardLayout", () => ({ default: ({ children }: any) => <main>{children}</main> }));
+vi.mock("@/layouts/ManagerBookingLayout", () => ({ default: ({ children }: any) => <main>{children}</main> }));
+vi.mock("@/layouts/chef-shell-context", () => ({ useChefShellChrome: () => false }));
+vi.mock("@/components/ui/smart-image", () => ({ SmartImage: () => null }));
+vi.mock("@/components/booking/ClockCloseoutSummary", () => ({ ClockCloseoutSummary: () => <p>Arrival not recorded</p> }));
+vi.mock("@/components/booking/BookingPreparation", () => ({ default: () => <p>What to expect</p> }));
+const nothing = vi.hoisted(() => () => null);
+vi.mock("@/components/booking/KitchenBookingChanges", () => ({ KitchenBookingChanges: nothing }));
+vi.mock("@/components/booking/BookingCancellationChooser", () => ({ BookingCancellationChooser: nothing }));
+vi.mock("@/components/booking/BookingHistoryPanel", () => ({ BookingHistoryPanel: nothing }));
+vi.mock("@/components/booking/BookingAttendancePanel", () => ({ BookingAttendancePanel: nothing }));
+vi.mock("@/components/booking/CancellationRefundReview", () => ({ CancellationRefundReview: nothing }));
+vi.mock("@/components/booking/BookingPricingBreakdown", () => ({ ChefBookingReceiptBreakdown: nothing, KitchenPayoutStatementBreakdown: nothing }));
+vi.mock("@/components/booking/CheckinPolicyTimesCard", () => ({ CheckinPolicyTimesCard: nothing }));
+vi.mock("@/components/booking/RefundRequestStatus", () => ({ RefundRequestStatus: nothing }));
+vi.mock("@/components/booking/StripeProcessingFeeRefundInfo", () => ({ StripeProcessingFeeRefundInfo: nothing }));
+vi.mock("@/components/booking/ServiceFeeInfoPopover", () => ({ ServiceFeeInfoPopover: nothing }));
+vi.mock("@/components/booking/BookingRefundPolicyNotice", () => ({ BookingRefundPolicyNotice: () => <p>refund notice</p> }));
+vi.mock("@/components/manager/bookings/BookingActionDialog", () => ({ BookingActionDialog: () => null }));
+vi.mock("@/components/manager/bookings/BookingManagementDialog", () => ({ BookingManagementDialog: () => null }));
+vi.mock("@/components/manager/bookings/VisitCodePanel", () => ({ VisitCodePanel: () => null }));
+vi.mock("@/components/manager/bookings/ManagerInSessionBadge", () => ({ ManagerInSessionBadge: () => null, inSessionEnds: () => [] }));
+vi.mock("@/components/support/CommitmentProblems", () => ({ CommitmentProblems: () => null }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({
+  i18n: { language: "en-CA", resolvedLanguage: "en-CA" },
+  t: (key: string, options?: any) => {
+    const value = (chef as Record<string, string>)[key] ?? options?.defaultValue ?? key;
+    try { return new IntlMessageFormat(value, "en-CA").format(typeof options === "object" ? options : {}) as string; } catch { return value; }
+  },
+}) }));
+
+import BookingDetailsPage from "./BookingDetailsPage";
+
+const base = () => ({
+  id: 5, referenceCode: "KB-5", chefId: 1, kitchenId: 2, bookingDate: "2030-01-15", startTime: "10:00", endTime: "12:00",
+  status: "pending", paymentStatus: "authorized", createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+  kitchen: { id: 2, name: "Harbour Kitchen", locationId: 3 },
+  location: { id: 3, name: "Harbour", timezone: "America/St_Johns" },
+  chef: { id: 1, username: "ada@example.com", fullName: "Ada" },
+  closeout: undefined,
+});
+
+beforeEach(() => {
+  h.manager = false; h.booking = base();
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(h.booking))));
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+describe("pending booking page", () => {
+  it("tells the chef when the kitchen must answer and that the card is only held", async () => {
+    render(<BookingDetailsPage />);
+    const banner = await screen.findByTestId("response-deadline-banner");
+    expect(banner).toHaveTextContent(/Request sent\. Harbour Kitchen has until .+ Newfoundland Time to respond\./);
+    expect(banner).toHaveTextContent("you’re only charged if they accept");
+    expect(screen.queryByText("Arrival not recorded")).not.toBeInTheDocument();
+  });
+
+  it("labels the header date as the booking date, not the visit date", async () => {
+    render(<BookingDetailsPage />);
+    expect(await screen.findByText(/^Booked [A-Z][a-z]{2} \d{1,2}, \d{4}$/)).toBeInTheDocument();
+  });
+
+  it("tells the manager the consequence of not responding", async () => {
+    h.manager = true;
+    render(<BookingDetailsPage />);
+    const banner = await screen.findByTestId("response-deadline-banner");
+    expect(banner).toHaveTextContent(/Respond by .+ Newfoundland Time\. If you don’t, the request expires and the chef’s payment hold is released\./);
+  });
+
+  it("shows no deadline banner without a live card hold", async () => {
+    h.booking = { ...base(), paymentStatus: "paid", status: "confirmed" };
+    render(<BookingDetailsPage />);
+    await waitFor(() => expect(screen.getByText("Harbour Kitchen")).toBeInTheDocument());
+    expect(screen.queryByTestId("response-deadline-banner")).not.toBeInTheDocument();
+  });
+
+  it("describes a finished visit by its review deadline instead of pre-arrival guidance", async () => {
+    h.booking = { ...base(), status: "confirmed", paymentStatus: "paid", checkinStatus: "checked_out",
+      closeout: { phase: "ended", timezone: "America/St_Johns", visits: [{ key: "b", phase: "ended", arrivalRecorded: true, scheduledStartAt: "2030-01-15T14:00:00Z", inspection: { deadline: "2030-01-17T14:00:00Z", canRespond: false, outcome: "not_due" } }] } };
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("visit-complete-status")).toHaveTextContent(/Visit complete\. The kitchen reviews by .+/);
+    expect(screen.queryByText("What to expect")).not.toBeInTheDocument();
+  });
+});

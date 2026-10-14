@@ -3532,11 +3532,13 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         }));
 
         // Create payment transaction record if payment intent is present
+        let requestTotalCents: number | undefined;
         if (paymentIntentId) {
             try {
                 const { createPaymentTransaction, findPaymentTransactionByIntentId } = await import('../services/payment-transactions-service');
                 const existingTransaction = await findPaymentTransactionByIntentId(paymentIntentId, db);
 
+                if (existingTransaction) requestTotalCents = Number(existingTransaction.amount);
                 if (!existingTransaction) {
                     const subtotalCents = booking?.totalPrice != null ? parseInt(String(booking.totalPrice)) : 0;
                     const serviceFeeCents = booking?.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
@@ -3547,7 +3549,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     const managerId = (location as any)?.managerId || (location as any)?.manager_id || null;
                     const normalizedStatus: 'succeeded' | 'processing' = paymentIntentStatus === 'succeeded' ? 'succeeded' : 'processing';
 
-                    await createPaymentTransaction({
+                    const requestTransaction = await createPaymentTransaction({
                         bookingId: booking.id,
                         bookingType: 'kitchen',
                         chefId,
@@ -3566,6 +3568,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                             taxCents,
                         },
                     }, db);
+                    requestTotalCents = Number(requestTransaction.amount);
                 }
             } catch (ptError) {
                 logger.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
@@ -3584,7 +3587,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
 
             if (chef && kitchen) {
                 // Send booking request email to chef (pending approval)
-                const { sendEmail, generateBookingRequestEmail } = await import('../email');
+                const { sendEmail, generateBookingRequestEmail, bookingResponseDeadline } = await import('../email');
 
                 // Send "Booking Request Received" email to chef (not confirmation - that comes when manager approves)
                 // NOTE: This is sent immediately so chef knows their booking request was received
@@ -3592,6 +3595,11 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 const chefEmail = generateBookingRequestEmail({
                     bookingId: booking.id,
                     referenceCode: booking.referenceCode,
+                    responseDeadline: bookingResponseDeadline(booking.createdAt),
+                    paymentState: booking.paymentStatus === "authorized" ? "held" : booking.paymentStatus === "paid" ? "paid" : "pending",
+                    locationAddress: location?.address || undefined,
+                    locale: chef.preferredLocale,
+                    totalCents: requestTotalCents,
                     chefEmail: chef.username,
                     chefName: chef.username,
                     kitchenName: kitchen.name,
@@ -3599,7 +3607,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     startTime,
                     endTime,
                     specialNotes,
-                    timezone: 'America/St_Johns',
+                    timezone: location?.timezone || 'America/St_Johns',
                     locationName: (location as any)?.name,
                     operatingWindowStartTime: booking.operatingWindowStartTime,
                     selectedSlots: booking.selectedSlots,
@@ -3851,12 +3859,15 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                 if (kitchen) {
                     const [location] = await db
                         .select({ 
-                            name: locations.name, 
+                            name: locations.name,
+                            address: locations.address,
                             managerId: locations.managerId,
                             notificationEmail: locations.notificationEmail,
                             timezone: locations.timezone,
+                            managerLocale: users.preferredLocale,
                         })
                         .from(locations)
+                        .leftJoin(users, eq(users.id, locations.managerId))
                         .where(eq(locations.id, kitchen.locationId))
                         .limit(1);
                     
@@ -3881,7 +3892,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                         }
                         
                         if (managerEmailAddress) {
-                            const { sendEmail, generateBookingNotificationEmail } = await import('../email');
+                            const { sendEmail, generateBookingNotificationEmail, bookingResponseDeadline } = await import('../email');
                             const managerEmail = generateBookingNotificationEmail({
                                 managerEmail: managerEmailAddress,
                                 chefName,
@@ -3894,6 +3905,11 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 locationName: location.name,
                                 bookingId: newBooking.id,
                                 referenceCode: newBooking.referenceCode,
+                                responseDeadline: bookingResponseDeadline(newBooking.createdAt),
+                                totalCents: session.amount_total ?? undefined,
+                                paymentState: fallbackPaymentStatus === "authorized" ? "held" : "paid",
+                                locationAddress: location.address || undefined,
+                                locale: location.managerLocale,
                                 operatingWindowStartTime: newBooking.operatingWindowStartTime,
                                 selectedSlots: newBooking.selectedSlots,
                             });

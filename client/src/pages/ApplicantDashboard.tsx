@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { getVendorOnboardingUrl } from "@/lib/shop-urls";
 import { Button } from "@/components/ui/button";
 import { useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -218,7 +219,7 @@ export default function ApplicantDashboard() {
   }, [location, dashboardSearch]);
 
   // Get chef applications for chat access
-  const { applications: kitchenApplications } = useChefKitchenApplications();
+  const { applications: kitchenApplications, isLoading: kitchenApplicationsLoading } = useChefKitchenApplications();
 
   // Get chef Neon user ID
   const { data: chefInfo } = useQuery({
@@ -705,6 +706,7 @@ export default function ApplicantDashboard() {
       onSetApplicationViewMode={setApplicationViewMode}
       isSellerApplicationFullyApproved={isSellerApplicationFullyApproved}
       isShopCreated={isShopCreated}
+      isLoading={userDisplayInfo.isLoading || kitchenApplicationsLoading || isLoadingBookings}
     />
   );
 
@@ -1085,7 +1087,7 @@ export default function ApplicantDashboard() {
           <div className="p-8 pt-0 space-y-6">
             <div className="space-y-3">
               <Button asChild className="w-full h-12 text-base font-semibold shadow-lg shadow-primary/10 rounded-xl" onClick={handleCloseVendorPopup}>
-                <a href="https://stagingwebapp.localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Fstagingwebapp.localcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
+                <a href={getVendorOnboardingUrl()} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
                   <Shield className="h-5 w-5" />
                   {t("shellProceedToVendorStorefront")}
                 </a>
