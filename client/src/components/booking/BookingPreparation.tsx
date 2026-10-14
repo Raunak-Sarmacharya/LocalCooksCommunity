@@ -8,9 +8,9 @@ export type ArrivalMode = 'staffed' | 'self' | 'mixed' | 'legacy';
 export function ArrivalModeLine({ mode }: { mode?: ArrivalMode | null }) {
   const { t } = useTranslation("chef");
   const text = mode === 'staffed'
-    ? t("kciAcStaffed", { defaultValue: "When you arrive, meet kitchen staff and ask for your 6-digit visit code. Enter it in Local Cooks to confirm arrival. The visit code is for the app; it does not open the door." })
+    ? t("kciAcStaffed", { defaultValue: "When you arrive, ask kitchen staff for your 6-digit check-in code and enter it in Local Cooks. It's for checking in only; it doesn't open the door." })
     : mode === 'self'
-      ? t("kciAcSelf", { defaultValue: "Self check-in is on for this visit. Follow the kitchen's instructions to get in, then confirm arrival in Local Cooks. No visit code needed." })
+      ? t("kciAcSelf", { defaultValue: "Self check-in is on for this visit. Follow the kitchen's instructions to get in, then confirm arrival in Local Cooks. No check-in code needed." })
       : mode === 'mixed'
         ? t("kciAcMixed", { defaultValue: "Arrival method varies by visit. Open each visit for details." })
         : t("kciAcLegacy", { defaultValue: "Follow the arrival instructions and confirm arrival in Local Cooks when you're there." });

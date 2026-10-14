@@ -10,22 +10,12 @@ import { cancelLinkedBookingDates, cancelledStorageStatus } from './booking-link
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { addPaymentHistory } from './payment-transactions-service';
 import { assertBookingMoneyWritable } from './booking-money-guard';
+import { allocateCents, legacyCancellationSnapshot, quoteCancellation, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
+import { policySessionStart } from './cancellation-policy-settings';
 
-/** Staff requests use the same saved cutoff and cancellation-request path as the chef. */
-export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string) {
-  return db.transaction(async tx => {
-    const ctx = await context(tx, bookingId, chefId, 'chef', true);
-    if (ctx.parent.status !== 'confirmed' || !['paid', 'partially_refunded'].includes(ctx.parent.paymentStatus || '')
-      || (ctx.parent.paymentDecision as { state?: string } | null)?.state === 'pending') throw Error('This booking cannot request cancellation in its current state.');
-    if (Date.now() >= kitchenRescheduleCutoff(bookingChangeSchedule(ctx.parent), ctx.parent.cancellationPolicyHours ?? 24))
-      throw Error('The saved cancellation deadline has passed. Local Cooks needs to review the next step.');
-    await tx.update(kitchenBookings).set({ status: 'cancellation_requested', cancellationRequestedAt: new Date(),
-      cancellationRequestReason: publicMessage || null, updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
-    await queueBookingLifecycleEvent(tx, bookingId, 'cancellation_requested', 'Kitchen cancellation requested',
-      `Local Cooks support updated your booking: a cancellation was requested on your behalf. The kitchen will review the cancellation and refund.${publicMessage ? ` ${publicMessage}` : ''}`,
-      actorId, { recipientPolicy: 'participants' });
-    return { success: true };
-  });
+/** Staff use the same instant frozen-policy command as the chef. */
+export async function requestChefCancellation(bookingId: number, chefId: number, actorId: number, publicMessage?: string, operationKey = `support-chef-cancel-${bookingId}`) {
+  return cancelChefBooking(bookingId, chefId, operationKey, publicMessage, actorId);
 }
 
 /** Local Cooks goodwill changes neither the manager transfer nor their entitlement. */
@@ -65,11 +55,12 @@ export async function refundSupportGoodwill(bookingId: number, managerId: number
 
 /** Full customer refund for a kitchen failure; Local Cooks absorbs the processing cost.
  * Used or separately charged add-ons need their own allocation review before this command. */
-export async function cancelKitchenCausedBooking(bookingId: number, managerId: number, actorId: number, operationKey: string) {
+export async function cancelKitchenCausedBooking(bookingId: number, managerId: number, actorId: number, operationKey: string, reason = 'Kitchen unavailable') {
   return db.transaction(async tx => {
     const ctx = await context(tx, bookingId, managerId, 'manager', true);
+    if (ctx.parent.cancellationOperationKey === operationKey && ctx.parent.cancellationCause === 'kitchen') return { success: true, replayed: true };
     await assertBookingMoneyWritable({ bookingId, operationKey }, tx);
-    if (ctx.parent.status !== 'confirmed' || ctx.sources.length !== 1 || ctx.storage.some(usedStorage) || ctx.equipment.some(usedEquipment))
+    if (ctx.parent.status !== 'confirmed' || ctx.sources.length !== 1 || ctx.storage.some(item => usedStorage(item) || item.checkinStatus === 'checkin_requested' || item.startDate && item.startDate.getTime() <= Date.now()) || ctx.equipment.some(usedEquipment))
       throw Error('This cancellation needs a review of linked payments or items already used. No refund has been sent.');
     const source = ctx.sources[0], saved = metadata(source);
     if (!source.paymentIntentId || source.paymentIntentId !== ctx.parent.paymentIntentId || source.chefId !== ctx.parent.chefId || source.managerId !== managerId
@@ -96,12 +87,16 @@ export async function cancelKitchenCausedBooking(bookingId: number, managerId: n
         platform_processing_cost_cents: String(amount - managerDebit - serviceFeeReturn) },
     });
     await (await import('./payment-refund-reconciliation')).reconcilePaymentRefundReceipts(source.paymentIntentId, tx);
-    await tx.update(kitchenBookings).set({ status: 'cancelled', paymentStatus: 'refunded', updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
+    await tx.update(kitchenBookings).set({ status: 'cancelled', paymentStatus: 'refunded', cancellationEffectiveAt: new Date(), cancellationOperationKey: operationKey,
+      cancellationCause: 'kitchen', cancellationRequestReason: reason.trim(), updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
     await cancelLinkedBookingDates(tx, bookingId);
     if (source.payoutTiming === 'after_closeout') await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx);
     await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: 'refunded', eventType: 'kitchen_caused_cancellation',
       description: 'Kitchen cancellation fully refunded; Local Cooks absorbed processing cost', createdBy: actorId,
       metadata: { operationKey, amountCents: amount, processingCostAbsorbedCents: amount - managerDebit - serviceFeeReturn, refundId: refund.refundId } }, tx);
+    await queueBookingLifecycleEvent(tx, bookingId, 'cancelled', 'The kitchen cancelled your booking',
+      `We’re sorry, the kitchen needs to cancel: ${reason.trim()}. Your full payment of $${(amount / 100).toFixed(2)} is being refunded, including the card processing fee. Your bank may take a few days to show it.`, actorId,
+      { kitchenCaused: true, cancellationNotice: { cause: 'kitchen', refundCents: amount, reason: reason.trim(), kitchenShareRetainedCents: 0 }, roleText: { manager: { title: 'You cancelled as the kitchen', message: 'The chef receives a full refund. Your payout for this booking is $0.00.' } } });
     return { refundId: refund.refundId, transferReversalId: refund.transferReversalId, amountCents: amount, paymentIntentId: source.paymentIntentId,
       managerPaysCents: managerDebit, localCooksPaysCents: amount - managerDebit, processingCostAbsorbedCents: amount - managerDebit - serviceFeeReturn };
   });
@@ -115,7 +110,7 @@ const usedStorage = (item: typeof storageBookings.$inferSelect) => item.status =
 const usedEquipment = (item: typeof equipmentBookings.$inferSelect) => item.status === 'completed';
 
 async function context(tx: Tx, bookingId: number, actorId: number, role: 'manager' | 'chef', lock = false) {
-  const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId }).from(kitchenBookings)
+  const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone }).from(kitchenBookings)
     .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq(kitchens.locationId, locations.id))
     .where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!row || (role === 'manager' ? row.managerId : row.booking.chefId) !== actorId) throw new Error('Booking not found or access denied');
@@ -147,7 +142,118 @@ async function context(tx: Tx, bookingId: number, actorId: number, role: 'manage
     [parent.paymentIntentId, ...storage.map(item => item.paymentIntentId), ...equipment.map(item => item.paymentIntentId)], extensions.map(item => item.stripePaymentIntentId), parent.paymentIntentId));
   const intentIds = reservationSources.map(source => source.paymentIntentId).filter(Boolean);
   if (new Set(intentIds).size !== intentIds.length) throw new Error('Duplicate captured source identity requires Local Cooks review before cancellation');
-  return { parent, managerId: row.managerId!, storage, equipment, sources: reservationSources };
+  return { parent, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', storage, equipment, sources: reservationSources };
+}
+
+async function chefQuote(tx: Tx, ctx: Awaited<ReturnType<typeof context>>, cancelAt: Date, recoveringFee = false) {
+  const snapshot = ctx.parent.cancellationPolicySnapshot as CancellationPolicySnapshot | null ?? legacyCancellationSnapshot(ctx.parent.cancellationPolicyHours, ctx.timezone,
+    [{ startAt: policySessionStart(ctx.parent.bookingDate.toISOString(), ctx.parent.startTime, ctx.parent.operatingWindowStartTime || ctx.parent.startTime, ctx.timezone) }]);
+  if (snapshot.policyId && snapshot.sessions[0]?.startAt && Date.parse(snapshot.sessions[0].startAt) !== Date.parse(policySessionStart(ctx.parent.bookingDate.toISOString(), ctx.parent.startTime, ctx.parent.operatingWindowStartTime || ctx.parent.startTime, snapshot.timezone)))
+    throw new DomainError('CANCELLATION_AMENDMENT_REVIEW', 'The booking time changed after these terms were accepted. Local Cooks must verify the accepted new deadline before quoting a refund.', 409);
+  const sources = [];
+  for (const source of ctx.sources) {
+    if (['pending', 'failed', 'canceled'].includes(source.status)) continue;
+    if (!source.paymentIntentId || source.status === 'authorized' || source.chefId !== ctx.parent.chefId || source.managerId !== ctx.managerId) throw Error('Payment ownership or an unresolved hold needs review');
+    const saved = metadata(source);
+    if (saved.refundRecovery && saved.refundRecovery.status !== 'succeeded' || saved.fullRefundRequest?.status === 'pending'
+      || saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded'
+        && !(recoveringFee && saved.cancellationRefundOperation.status === 'fee_pending')) throw Error('An earlier refund needs review before cancellation');
+    const facts = await getCancellationPaymentFacts(source.paymentIntentId);
+    if (facts.currency !== source.currency.toLowerCase() || facts.captured !== Number(source.amount)) throw Error('Captured source differs from the payment ledger');
+    const verified = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: saved.refunds });
+    let allocations = saved.capturedComponentAllocations as Array<{ kind: 'kitchen' | 'equipment' | 'storage'; bookingId: number; managerGrossCents: number; sessionIndex?: number }> | undefined;
+    if (!allocations) {
+      if (['kitchen', 'bundle'].includes(source.bookingType) && [...ctx.storage, ...ctx.equipment].some(item => item.paymentIntentId === source.paymentIntentId)
+        || snapshot.sessions.length !== 1) throw Error('Shared or multi-session payment needs frozen component allocations');
+      allocations = [{ kind: source.bookingType === 'storage' ? 'storage' : source.bookingType === 'equipment' ? 'equipment' : 'kitchen', bookingId: source.bookingId!, managerGrossCents: facts.captured - Number(source.serviceFee) }];
+    }
+    if (allocations.reduce((sum, item) => sum + item.managerGrossCents, 0) !== facts.captured - Number(source.serviceFee)) throw Error('Frozen component allocation differs from capture');
+    if (snapshot.sessions.length > 1 && allocations.some(item => item.sessionIndex === undefined)) throw Error('Multiple sessions need frozen per-session payment allocations before quoting a refund');
+    const platform = allocateCents(Number(source.serviceFee), allocations.map(item => item.managerGrossCents));
+    const components = allocations.map((item, index) => ({ id: `${item.kind}:${item.bookingId}:${item.sessionIndex ?? 0}`, bookingId: item.bookingId, kind: item.kind, sessionIndex: item.sessionIndex ?? 0,
+      kitchenCents: item.managerGrossCents, platformCents: platform[index] }));
+    const startedComponents = components.filter(item => item.kind === 'storage' ? ctx.storage.some(storage => item.bookingId === storage.id &&
+      (usedStorage(storage) || ['checkin_requested', 'checkin_completed'].includes(storage.checkinStatus || '') || storage.startDate <= cancelAt))
+      : item.kind === 'equipment' && ctx.equipment.some(equipment => item.bookingId === equipment.id && usedEquipment(equipment))).map(item => item.id);
+    const engine = quoteCancellation(snapshot, { cancelAt, confirmedAt: ctx.parent.createdAt || cancelAt, capturedCents: facts.captured, processingFeeCents: facts.processingCost,
+      components, startedComponents, cause: 'chef', alreadyRefundedCents: facts.refunded,
+      alreadyKitchenRefundedCents: verified.receipts.reduce((sum, item) => sum + item.managerDebited, 0),
+      alreadyPlatformRefundedCents: verified.receipts.reduce((sum, item) => sum + item.platformServiceFeeReturned, 0) });
+    if (!engine.quoteReady) throw Error('Actual card processing fee is not yet verified');
+    const funding = engine.kitchenRefundCents ? await verifyCancellationRefundFunding(source.paymentIntentId, source.transferId, engine.kitchenRefundCents) : null;
+    sources.push({ transactionId: source.id, intentId: source.paymentIntentId, currency: source.currency, processingCost: facts.processingCost,
+      feeProvenance: { balanceTransactionId: facts.balanceTransactionId, details: facts.feeDetails, classification: 'stripe_fee' },
+      serviceFee: Number(source.serviceFee), receipts: verified.receipts, funding, ...engine });
+  }
+  if (!sources.length) throw Error('No captured booking payment is verified');
+  return { bookingId: ctx.parent.id, quoteReady: true, snapshot, cancelAt: cancelAt.toISOString(),
+    alreadyRefundedCents: sources.reduce((sum, source) => sum + source.alreadyRefundedCents, 0),
+    chefRefundCents: sources.reduce((sum, source) => sum + source.chefRefundCents, 0), feeRetainedCents: sources.reduce((sum, source) => sum + source.feeRetainedCents, 0),
+    retainedCents: sources.reduce((sum, source) => sum + source.retainedCents, 0), kitchenShareRetainedCents: sources.reduce((sum, source) => sum + source.kitchenShareRetainedCents, 0), sources };
+}
+
+export async function readChefCancellationQuote(bookingId: number, chefId: number) {
+  return db.transaction(async tx => {
+    const ctx = await context(tx, bookingId, chefId, 'chef', true);
+    if (ctx.parent.status === 'pending' && ['pending', 'authorized', 'failed'].includes(ctx.parent.paymentStatus || ''))
+      return { bookingId, quoteReady: true, reasonCode: 'hold_release', chefRefundCents: 0, feeRetainedCents: 0, retainedCents: 0, sources: [] };
+    if (ctx.parent.status === 'cancelled') return { bookingId, cancelled: true, sources: ctx.sources.map(source => metadata(source).cancellationRefundOperation) };
+    if (!['confirmed', 'cancellation_requested'].includes(ctx.parent.status)) throw Error('This booking cannot be cancelled');
+    await assertBookingMoneyWritable({ bookingId }, tx);
+    try { return await chefQuote(tx, ctx, new Date()); }
+    catch (error) { if ((error as Error).message.includes('not yet verified')) return { bookingId, quoteReady: false, reasonCode: 'processing_fee_pending' }; throw error; }
+  });
+}
+
+/** Reserve the received time and every source operation before provider work. */
+export async function cancelChefBooking(bookingId: number, chefId: number, operationKey: string, reason?: string, actorId = chefId, expectedRefundCents?: number) {
+  if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(operationKey || '')) throw Error('A cancellation operation key is required');
+  const managerId = await db.transaction(async tx => {
+    const ctx = await context(tx, bookingId, chefId, 'chef', true);
+    if (ctx.parent.cancellationOperationKey) {
+      if (ctx.parent.cancellationOperationKey !== operationKey || ctx.parent.cancellationCause !== 'chef') throw Error('This booking was cancelled by another operation');
+      return ctx.managerId;
+    }
+    await assertBookingMoneyWritable({ bookingId, operationKey }, tx);
+    if (!['confirmed', 'cancellation_requested'].includes(ctx.parent.status) || (ctx.parent.paymentDecision as any)?.state === 'pending') throw Error('This booking cannot be cancelled in its current state');
+    const cancelAt = new Date();
+    let quoted: Awaited<ReturnType<typeof chefQuote>>;
+    try { quoted = await chefQuote(tx, ctx, cancelAt); }
+    catch (error) {
+      if (!(error as Error).message.includes('not yet verified')) throw error;
+      for (const source of ctx.sources.filter(source => !['pending', 'failed', 'canceled'].includes(source.status)))
+        await tx.update(paymentTransactions).set({ metadata: { ...metadata(source), cancellationRefundOperation: {
+          id: `chef-cancel-${bookingId}-${source.id}-${operationKey}`, intentId: source.paymentIntentId, bookingId, managerId: ctx.managerId,
+          policyEngine: true, status: 'fee_pending', acceptedAt: cancelAt.toISOString(), supportOperationKey: actorId !== chefId ? operationKey : undefined,
+        } }, updatedAt: cancelAt }).where(eq(paymentTransactions.id, source.id));
+      await tx.update(kitchenBookings).set({ status: 'cancelled', cancellationEffectiveAt: cancelAt, cancellationOperationKey: operationKey, cancellationCause: 'chef',
+        cancellationRequestReason: reason?.trim() || null, updatedAt: cancelAt }).where(eq(kitchenBookings.id, bookingId));
+      await cancelLinkedBookingDates(tx, bookingId);
+      await queueBookingLifecycleEvent(tx, bookingId, 'cancelled', 'Booking cancelled',
+        'Your booking is cancelled. We’re confirming the card processing fee before showing and issuing the exact refund. Local Cooks will follow up.', actorId, { feePending: true, cancellationNotice: { cause: 'chef', feePending: true } });
+      return ctx.managerId;
+    }
+    if (expectedRefundCents !== undefined && expectedRefundCents !== quoted.chefRefundCents) throw Error('The cancellation refund changed. Review the refreshed amounts before cancelling.');
+    for (const money of quoted.sources) {
+      const source = ctx.sources.find(item => item.id === money.transactionId)!;
+      const operation = { ...money, id: `chef-cancel-${bookingId}-${source.id}-${operationKey}`, bookingId, managerId: ctx.managerId, policyEngine: true,
+        managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents,
+        status: money.chefRefundCents ? 'pending' : 'succeeded', acceptedAt: cancelAt.toISOString(), supportOperationKey: actorId !== chefId ? operationKey : undefined };
+      await tx.update(paymentTransactions).set({ stripeProcessingFee: String(money.processingCost), managerRevenue: String(money.capturedCents - money.processingCost - money.serviceFee),
+        metadata: { ...metadata(source), refunds: money.receipts, cancellationRefundOperation: operation }, updatedAt: cancelAt }).where(eq(paymentTransactions.id, source.id));
+      await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'policy_cancellation_reserved', description: 'Frozen policy refund reserved before provider work', createdBy: actorId, metadata: operation }, tx);
+    }
+    await tx.update(kitchenBookings).set({ status: 'cancelled', cancellationEffectiveAt: cancelAt, cancellationOperationKey: operationKey, cancellationCause: 'chef', cancellationRequestReason: reason?.trim() || null, updatedAt: cancelAt }).where(eq(kitchenBookings.id, bookingId));
+    await cancelLinkedBookingDates(tx, bookingId);
+    if (ctx.sources.some(source => source.payoutTiming === 'after_closeout')) await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx);
+    const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+    await queueBookingLifecycleEvent(tx, bookingId, 'cancelled', 'Booking cancelled',
+      quoted.chefRefundCents ? `You cancelled your booking. Your refund is ${dollars(quoted.chefRefundCents)}; the ${dollars(quoted.feeRetainedCents)} card processing fee is kept. Your bank may take a few days to show it.` : 'You cancelled your booking. There is no refund under your booking’s saved policy.', actorId,
+      { cancellationNotice: { cause: 'chef', refundCents: quoted.chefRefundCents, alreadyRefundedCents: quoted.alreadyRefundedCents, feeCents: quoted.feeRetainedCents, kitchenShareRetainedCents: quoted.kitchenShareRetainedCents }, roleText: { manager: { title: 'Booking cancelled', message: `The chef cancelled. Your payout for this booking is ${dollars(quoted.kitchenShareRetainedCents)}.` } }, cancellationQuote: quoted });
+    return ctx.managerId;
+  });
+  await retryCancellationRefund(bookingId, managerId);
+  return { success: true, action: 'cancelled', ...(await readCancellationRefund(bookingId, chefId, 'chef')) };
 }
 
 async function quote(tx: Tx, bookingId: number, managerId: number, scope?: CancellationScope) {
@@ -283,7 +389,28 @@ export async function acceptCancellationRefund(bookingId: number, managerId: num
 }
 
 export async function retryCancellationRefund(bookingId: number, managerId: number) {
-  const ctx = await db.transaction(tx => context(tx, bookingId, managerId, 'manager'));
+  let ctx = await db.transaction(tx => context(tx, bookingId, managerId, 'manager'));
+  if (ctx.sources.some(source => metadata(source).cancellationRefundOperation?.status === 'fee_pending')) {
+    try {
+      await db.transaction(async tx => {
+        const locked = await context(tx, bookingId, managerId, 'manager', true);
+        const pending = locked.sources.filter(source => metadata(source).cancellationRefundOperation?.status === 'fee_pending');
+        if (!pending.length) return;
+        await assertBookingMoneyWritable({ bookingId, operationKey: metadata(pending[0]).cancellationRefundOperation.supportOperationKey }, tx);
+        const quoted = await chefQuote(tx, locked, new Date(metadata(pending[0]).cancellationRefundOperation.acceptedAt), true);
+        for (const money of quoted.sources) {
+          const source = pending.find(item => item.id === money.transactionId);
+          if (!source) throw Error('Fee-pending source set changed; review required');
+          const operation = metadata(source).cancellationRefundOperation;
+          await tx.update(paymentTransactions).set({ stripeProcessingFee: String(money.processingCost), managerRevenue: String(money.capturedCents - money.processingCost - money.serviceFee),
+            metadata: { ...metadata(source), refunds: money.receipts, cancellationRefundOperation: { ...operation, ...money,
+              managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents,
+              status: money.chefRefundCents ? 'pending' : 'succeeded' } }, updatedAt: new Date() }).where(eq(paymentTransactions.id, source.id));
+        }
+      });
+      ctx = await db.transaction(tx => context(tx, bookingId, managerId, 'manager'));
+    } catch { return readCancellationRefund(bookingId, managerId, 'manager'); }
+  }
   if (!ctx.sources.some(source => metadata(source).cancellationRefundOperation)) throw new Error('No accepted cancellation to reconcile');
   for (const original of ctx.sources) {
     const originalOperation = metadata(original).cancellationRefundOperation;
@@ -298,23 +425,26 @@ export async function retryCancellationRefund(bookingId: number, managerId: numb
         const previous = receipts.filter(item => item.metadata?.refund_operation_id === operation.id);
         if (previous.length > 1) throw new Error('Multiple provider receipts require Local Cooks review');
         if (previous[0] && previous[0].status !== 'succeeded') throw new Error(`Original refund ${previous[0].status}; verify the same operation with Local Cooks`);
-        const result = await reverseTransferAndRefund(operation.intentId, operation.managerRefund, 'requested_by_customer', {
+        const customerRefund = operation.customerRefund ?? operation.managerRefund;
+        const platformRefund = operation.platformRefund ?? 0;
+        await assertBookingMoneyWritable({ bookingId, operationKey: operation.supportOperationKey }, tx);
+        const result = await reverseTransferAndRefund(operation.intentId, customerRefund, 'requested_by_customer', {
           sourceConnection: tx, idempotencyKey: operation.id, supportOperationKey: operation.supportOperationKey, reverseTransferAmount: operation.managerRefund, refundApplicationFee: false,
           metadata: { booking_id: String(bookingId), transaction_id: String(source.id), manager_id: String(managerId),
-            customer_receives: String(operation.managerRefund), manager_debited: String(operation.managerRefund), platform_service_fee_returned: '0' } });
+            customer_receives: String(customerRefund), manager_debited: String(operation.managerRefund), platform_service_fee_returned: String(platformRefund) } });
         const facts = await getCancellationPaymentFacts(operation.intentId);
         const money = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: saved.refunds });
-        if (!money.receipts.some(item => item.id === result.refundId && item.managerDebited === operation.managerRefund && item.platformServiceFeeReturned === 0))
+        if (!money.receipts.some(item => item.id === result.refundId && item.customerReceived === customerRefund && item.managerDebited === operation.managerRefund && item.platformServiceFeeReturned === platformRefund))
           throw new Error('Provider refund allocation differs from the reserved quote');
         const status = money.alreadyRefunded >= money.captured - money.processingCost ? 'refunded' : 'partially_refunded';
         await tx.update(paymentTransactions).set({ refundAmount: String(money.alreadyRefunded), netAmount: String(money.captured - money.alreadyRefunded),
           status, refundId: result.refundId, refundedAt: new Date(), updatedAt: new Date(), metadata: { ...saved, refunds: money.receipts,
-            cancellationRefundOperation: { ...operation, status: 'succeeded', refundId: result.refundId, refunded: operation.managerRefund, verifiedAt: new Date().toISOString(), error: null } } }).where(eq(paymentTransactions.id, source.id));
+            cancellationRefundOperation: { ...operation, status: 'succeeded', refundId: result.refundId, refunded: customerRefund, verifiedAt: new Date().toISOString(), error: null } } }).where(eq(paymentTransactions.id, source.id));
         if (['kitchen', 'bundle'].includes(source.bookingType)) await tx.update(kitchenBookings).set({ paymentStatus: status, updatedAt: new Date() })
           .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.paymentIntentId, source.paymentIntentId!)));
         await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: status, eventType: 'cancellation_refund_verified', description: 'Stripe verified the reserved cancellation refund; bank receipt is not confirmed', metadata: { ...operation, refundId: result.refundId }, createdBy: managerId }, tx);
         await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', 'Refund sent',
-          `A refund of ${(operation.managerRefund / 100).toFixed(2)} ${source.currency} has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`, managerId, { transactionId: source.id, refundId: result.refundId });
+          `A refund of ${(customerRefund / 100).toFixed(2)} ${source.currency} has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`, managerId, { transactionId: source.id, refundId: result.refundId });
       });
     } catch (error) {
       await db.transaction(async tx => {

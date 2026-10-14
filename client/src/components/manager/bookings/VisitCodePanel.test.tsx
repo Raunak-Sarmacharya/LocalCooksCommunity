@@ -56,27 +56,27 @@ describe("VisitCodePanel", () => {
     expect(card).toHaveTextContent(/9:00.*11:00/);
     expect(card.textContent).not.toContain("America/St_Johns");
     expect(card).toHaveTextContent(/Newfoundland/);
-    expect(within(card).getByText("Staff gives the code")).toBeInTheDocument();
-    expect(within(card).getByText("Wrong attempts: 0 of 5")).toBeInTheDocument();
+    expect(within(card).getByText("You share this code in person")).toBeInTheDocument();
+    expect(card.textContent).not.toMatch(/wrong tr/);
     for (const button of within(card).getAllByRole("button")) expect(button.className).toContain("min-h-11");
   });
 
   it("shows the locked state", async () => {
     state.targets = [{ ...base, locked: true, failedAttempts: 5, attemptsLeft: 0 }];
     await mount();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Locked after too many wrong attempts");
-    expect(screen.getByText("Wrong attempts: 5 of 5")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Locked after too many wrong tries");
+    expect(screen.getByText("5 wrong tries. The code locks after 5.")).toBeInTheDocument();
   });
 
   it("asks for confirmation before issuing a new code and updates the displayed code", async () => {
     await mount();
     await screen.findByTestId("visit-code-value");
     api.post.mockResolvedValue(json({ bookingId: 55, targets: [{ ...base, revision: 2, code: "654321" }] }));
-    fireEvent.click(screen.getByRole("button", { name: "Issue new code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Get a new code" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/current code stops working immediately/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Issue new code" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Get a new code" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/manager/bookings/55/visit-code/issue", { target: "booking:55" }));
     await waitFor(() => expect(screen.getByTestId("visit-code-value")).toHaveTextContent("654 321"));
     expect(toasts.success).toHaveBeenCalledTimes(1);
@@ -87,7 +87,7 @@ describe("VisitCodePanel", () => {
   it("requires a reason for self check-in and explains what it means", async () => {
     await mount();
     await screen.findByTestId("visit-code-value");
-    fireEvent.click(screen.getByRole("button", { name: "Set up self check-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Let them check in without staff" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/confirm their arrival without staff/)).toBeInTheDocument();
     expect(within(dialog).getByText(/kitchen must provide access instructions/)).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("VisitCodePanel", () => {
     await screen.findByTestId("visit-code-visit:1");
     expect(screen.getByText("Visit 1")).toBeInTheDocument();
     expect(screen.getByText("Visit 2")).toBeInTheDocument();
-    fireEvent.click(within(screen.getByTestId("visit-code-visit:1")).getByRole("button", { name: "Set up self check-in" }));
+    fireEvent.click(within(screen.getByTestId("visit-code-visit:1")).getByRole("button", { name: "Let them check in without staff" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/Reason/), { target: { value: "Kitchen closed all day" } });
     fireEvent.click(within(dialog).getByLabelText("Apply to all visits of this booking"));
@@ -133,7 +133,7 @@ describe("VisitCodePanel", () => {
   });
 
   it.each([
-    ["code", /^Checked in 9:02\s*[ap]\.m\. with the visit code$/],
+    ["code", /^Checked in 9:02\s*[ap]\.m\. with the check-in code$/],
     ["self", /^Checked in 9:02\s*[ap]\.m\. with self check-in$/],
     ["assisted", /^Checked in 9:02\s*[ap]\.m\., added by the kitchen$/],
   ])("after a %s arrival shows only the method and time, never the code", async (method, pattern) => {
@@ -142,7 +142,7 @@ describe("VisitCodePanel", () => {
     const consumed = await screen.findByTestId("visit-code-consumed");
     expect(consumed.textContent?.replace(/[  ]/g, " ")).toMatch(pattern);
     expect(screen.queryByTestId("visit-code-value")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Issue new code" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Get a new code" })).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/123\s?456/);
   });
 
@@ -159,14 +159,14 @@ describe("VisitCodePanel", () => {
     expect(await screen.findByTestId("visit-code-empty")).toHaveTextContent("This booking uses tap check-in; no code needed.");
     cleanup(); client.clear();
     await mount({ embedded: true, bookingStatus: "pending" });
-    expect(screen.getByTestId("visit-code-empty")).toHaveTextContent("A visit code is created when you confirm this request.");
+    expect(screen.getByTestId("visit-code-empty")).toHaveTextContent("A check-in code is created when you confirm this request.");
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
   });
 
   it("inside the booking page shows one arrival line after the visit and never a leftover code", async () => {
     state.targets = [{ ...base, visitId: null, consumed: true, consumedMethod: "code", consumedAt: "2026-10-13T11:32:00Z", code: null }];
     await mount({ embedded: true, visitEnded: true });
-    expect((await screen.findByTestId("visit-code-consumed")).textContent?.replace(/[  ]/g, " ")).toMatch(/^Checked in 9:02\s*a\.m\. with the visit code$/);
+    expect((await screen.findByTestId("visit-code-consumed")).textContent?.replace(/[  ]/g, " ")).toMatch(/^Checked in 9:02\s*a\.m\. with the check-in code$/);
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
     cleanup(); client.clear();
     // The page is told this panel already states the arrival, so the record line does not repeat it.
@@ -191,10 +191,10 @@ describe("VisitCodePanel", () => {
   it("surfaces a failed action in the dialog and a toast and keeps the old code", async () => {
     await mount();
     await screen.findByTestId("visit-code-value");
-    api.post.mockResolvedValue(json({ error: "This visit code can no longer be changed." }, 400));
-    fireEvent.click(screen.getByRole("button", { name: "Issue new code" }));
-    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue new code" }));
-    expect(await screen.findByText("This visit code can no longer be changed.")).toBeInTheDocument();
+    api.post.mockResolvedValue(json({ error: "This check-in code can no longer be changed." }, 400));
+    fireEvent.click(screen.getByRole("button", { name: "Get a new code" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Get a new code" }));
+    expect(await screen.findByText("This check-in code can no longer be changed.")).toBeInTheDocument();
     expect(toasts.error).toHaveBeenCalled();
     expect(screen.getByTestId("visit-code-value")).toHaveTextContent("123 456");
   });
@@ -289,7 +289,7 @@ describe("VisitCodePanel refresh", () => {
     const before = api.get.mock.calls.length
     state = { bookingId: 55, targets: [{ ...base, locked: true, failedAttempts: 5, attemptsLeft: 0 }] }
     document.dispatchEvent(new Event("visibilitychange"))
-    expect(await screen.findByText(/Locked after too many wrong attempts/)).toBeInTheDocument()
+    expect(await screen.findByText(/Locked after too many wrong tries/)).toBeInTheDocument()
     expect(api.get.mock.calls.length).toBeGreaterThan(before)
   })
 })

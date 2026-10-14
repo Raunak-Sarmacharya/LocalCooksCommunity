@@ -9,7 +9,7 @@ vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) 
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
 import { acknowledgeConfirmationReminders, dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder, renderBookingVisitReminder,
-  formatVisitRange, selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
+  formatVisitRange, endInstructionSentence, selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
 import { currentDeadlineReminders, deadlineWarningDue } from './deadline-reminders';
 import { retryFailedEmail } from './email-log-service';
 import { describeDelivery } from './delivery-visibility';
@@ -161,8 +161,8 @@ describe('manager request decision reminders', () => {
 afterEach(() => vi.useRealTimers());
 
 it('renders the approved mode lines in all three outbound locales', () => {
-  expect(arrivalModeLine('staffed')).toBe('When you arrive, meet kitchen staff and ask for your 6-digit visit code. Enter it in Local Cooks to confirm arrival. The visit code is for the app; it does not open the door.');
-  expect(arrivalModeLine('self')).toContain('No visit code needed.');
+  expect(arrivalModeLine('staffed')).toBe('When you arrive, ask kitchen staff for your 6-digit check-in code and enter it in Local Cooks. It\'s for checking in only; it doesn\'t open the door.');
+  expect(arrivalModeLine('self')).toContain('No check-in code needed.');
   expect(arrivalModeLine('mixed')).toContain('varies by visit');
   expect(arrivalModeLine('legacy')).toContain('Follow the arrival instructions');
   expect(arrivalModeLine('staffed', 'fr-CA')).toContain('À votre arrivée');
@@ -213,7 +213,7 @@ it('keeps instruction text out of pre-release reminder intents and confirmation 
     instructionsReleased: false, instructionsReleaseAt: '2026-10-08T08:00:00Z', arrivalMode: 'staffed',
     arrivalInstructions: 'PRIVATE-ACCESS-SENTINEL', departureInstructions: 'PRIVATE-ACCESS-SENTINEL' });
   expect(JSON.stringify(content)).not.toContain('PRIVATE-ACCESS-SENTINEL');
-  expect(content.text).toContain('6-digit visit code');
+  expect(content.text).toContain('6-digit check-in code');
   expect(content.text).toContain('48 hours');
 });
 
@@ -283,6 +283,16 @@ describe('reminder visit copy', () => {
     expect(formatVisitRange('2026-10-21T01:30:00Z', '2026-10-21T04:30:00Z', 'America/St_Johns'))
       .toBe('Tue, Oct 20 · 11:00 p.m. – Wed, Oct 21 · 2:00 a.m. Newfoundland Time');
   });
+  it('collapses a shared meridiem in same-day ranges and keeps different ones', () => {
+    expect(formatVisitRange('2026-10-16T16:30:00Z', '2026-10-16T17:30:00Z', 'America/St_Johns'))
+      .toBe('Fri, Oct 16 · 2:00–3:00 p.m. Newfoundland Time');
+  });
+  it('does not double the period after instructions that already end a sentence', () => {
+    expect(endInstructionSentence('Lock side door.')).toBe('Lock side door.');
+    expect(endInstructionSentence('Lock side door')).toBe('Lock side door.');
+    expect(endInstructionSentence('Is it locked?')).toBe('Is it locked?');
+    expect(endInstructionSentence('')).toBe('');
+  });
   it('words each reminder kind for its own action instead of reusing the arrival text', async () => {
     const reminders = await currentReminders(state.db, 'booking', 10, policy, now);
     const byKind = (kind: string) => reminders.find(reminder => reminder.kind === kind)!;
@@ -291,7 +301,7 @@ describe('reminder visit copy', () => {
     expect(byKind('arrival').message).not.toContain('Your visit ends at');
     expect(byKind('departure').message).toContain('Your visit ends at 12:00 p.m.');
     expect(byKind('departure').message).toContain('check out in Local Cooks');
-    expect(byKind('departure').message).not.toMatch(/When you arrive|visit code/i);
+    expect(byKind('departure').message).not.toMatch(/When you arrive|visit code|check-in code/i);
   });
   it('titles chef and manager reminders with the kitchen name and reference, falling back to #id', async () => {
     expect((await currentReminders(state.db, 'booking', 10, policy, now)).every(reminder => reminder.title === 'Fixture kitchen · #10')).toBe(true);
@@ -871,7 +881,7 @@ describe('session_ending reminder for the chef in-session screen', () => {
     expect(mail.text).not.toMatch(/access code|visit code|\b\d{6}\b/i);
     const [alert] = state.alerts.filter(value => value.title.includes('booked time ends soon'));
     expect(alert).toMatchObject({ userId: 3, actionUrl: '/booking/10/visit' });
-    expect(alert.message).not.toMatch(/access code|visit code/i);
+    expect(alert.message).not.toMatch(/access code|visit code|check-in code/i);
     // Idempotent: a second pass sends nothing more.
     await schedule(); await dispatchAt('2026-10-05T11:46:00Z');
     expect(sessionMail()).toHaveLength(1);

@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle2, Loader2 } from 'lucide-react';
-import { BookingRefundPolicyNotice } from './BookingRefundPolicyNotice';
 import { auth } from '@/lib/firebase';
+import { CancellationPolicySummary } from './CancellationPolicySummary';
+import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
+type ExactQuote = { quoteReady: boolean; chefRefundCents?: number; alreadyRefundedCents?: number; feeRetainedCents?: number; retainedCents?: number; snapshot?: CancellationPolicySnapshot };
 
 type Item = { id: number; kind: 'storage' | 'equipment'; name: string; status: string; dates?: string };
-export function BookingCancellationChooser({ bookingId, status, paymentStatus, items, onChanged, paidCancellationAvailable = true, decisionPending = false, declined = false, summary, cancellationDeadline, visitActive = false, open: controlledOpen, onOpenChange, hideTrigger = false }: {
+export function BookingCancellationChooser({ bookingId, status, paymentStatus, items, onChanged, decisionPending = false, declined = false, summary, cancellationDeadline, visitActive = false, open: controlledOpen, onOpenChange, hideTrigger = false }: {
   bookingId: number; status: string; paymentStatus?: string; items: Item[]; onChanged: () => Promise<void>;
   summary?: { kitchenName: string; reference?: string; schedule: string; amount?: string }; cancellationDeadline?: string;
   visitActive?: boolean;
@@ -20,6 +22,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   hideTrigger?: boolean;
 }) {
   const { t } = useTranslation('chef');
+  const { t: policyT, i18n } = useTranslation('booking');
   const [internalOpen, setInternalOpen] = useState(() => new URLSearchParams(window.location.search).get('cancel') === '1');
   const open = controlledOpen ?? internalOpen;
   const setOpen = (value: boolean) => { setInternalOpen(value); onOpenChange?.(value); };
@@ -27,10 +30,28 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const [reason, setReason] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [results, setResults] = useState<Record<string, string>>({});
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const operationKey = useRef(crypto.randomUUID());
+  const [quote, setQuote] = useState<ExactQuote | null>(null);
+  const money = (cents = 0) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const beforeConfirmation = status === 'pending';
   const unpaid = beforeConfirmation && ['pending', 'authorized', 'failed'].includes(paymentStatus || '');
   const eligible = !visitActive && ['pending', 'confirmed'].includes(status);
-  const entireAvailable = eligible && !decisionPending && (beforeConfirmation || paidCancellationAvailable);
+  const entireAvailable = eligible && !decisionPending && (beforeConfirmation || !!quote);
+  useEffect(() => {
+    if (!open || beforeConfirmation || decisionPending) return;
+    const controller = new AbortController();
+    setQuote(null);
+    void (async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/bookings/${bookingId}/cancellation-quote`, { credentials: 'include', headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok) throw Error(result.error || policyT('cpError'));
+        if (!controller.signal.aborted) setQuote(result);
+      } catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : policyT('cpError')); }
+    })();
+    return () => controller.abort();
+  }, [open, beforeConfirmation, bookingId, decisionPending, i18n.language]);
   const key = (item: Item) => `${item.kind}:${item.id}`;
   const itemEligible = (item: Item) => ['pending', 'confirmed'].includes(item.status);
   const saved = Object.keys(results).length > 0;
@@ -47,10 +68,10 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
       for (const target of targets) {
         if (results[target.key]) continue;
         const response = await fetch(target.url, { method: 'PUT', credentials: 'include',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.trim() }) });
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.trim(), operationKey: operationKey.current, expectedRefundCents: quote?.chefRefundCents }) });
         const result = await response.json();
         if (!response.ok) throw Error(result.error || t('cancelCopy00'));
-        setResults(current => ({ ...current, [target.key]: result.message || (result.action === 'cancelled' ? t('cancelCopy02') : t('cancelCopy03')) }));
+        setResults(current => ({ ...current, [target.key]: result.message || (result.action === 'cancelled' ? policyT('cpCancelled') : t('cancelCopy03')) }));
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('cancelCopy01')); }
     finally {
@@ -68,12 +89,12 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   }, [open]);
   if (visitActive) return null;
   return <>
-    {hideTrigger ? null : eligible ? <Button variant="outline" className="shrink-0" onClick={() => { reset(); setOpen(true); }}>{beforeConfirmation ? t('cancelCopy05') : t('cancelCopy06')}</Button>
+    {hideTrigger ? null : eligible ? <Button variant="outline" className="shrink-0" onClick={() => { reset(); setOpen(true); }}>{beforeConfirmation ? t('cancelCopy05') : policyT('cpCancel')}</Button>
       : status === 'cancellation_requested' ? <span className="max-w-xs text-sm text-muted-foreground">{t('cancelCopy07')}</span> : null}
     <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
       <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" onOpenAutoFocus={event => { event.preventDefault(); titleRef.current?.focus(); }}>
         <DialogHeader className="shrink-0 border-b px-5 py-5 text-left sm:px-6">
-          <DialogTitle ref={titleRef} tabIndex={-1} className="text-xl outline-none">{complete ? t('cancelCopy08') : beforeConfirmation ? t('cancelCopy09') : t('cancelCopy10')}</DialogTitle>
+          <DialogTitle ref={titleRef} tabIndex={-1} className="text-xl outline-none">{complete ? policyT('cpCancelled') : beforeConfirmation ? t('cancelCopy09') : policyT('cpCancel')}</DialogTitle>
           <DialogDescription className="pt-1">{complete ? t('cancelCopy11') : t('cancelCopy12')}</DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
@@ -85,11 +106,19 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
           </section>}
           {!complete && <section className="space-y-3">
             <h3 className="text-sm font-medium">{t('cancelCopy15')}</h3>
-            {beforeConfirmation && scope === 'entire' ? <BookingRefundPolicyNotice /> : <div className="rounded-xl border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
+            {beforeConfirmation && scope === 'entire' ? <p className="rounded-xl border bg-muted/30 p-3 text-sm">{policyT('cpHold')}</p> : scope === 'entire' ? <div className="space-y-2 rounded-xl border bg-muted/30 p-3 text-sm" aria-live="polite">
+              {quote ? quote.quoteReady ? <>
+                <p>{quote.chefRefundCents || quote.alreadyRefundedCents ? policyT('cpExact', { refund: money(quote.chefRefundCents), fee: money(quote.feeRetainedCents) }) : policyT('cpNoRefund')}</p>
+                {!!quote.alreadyRefundedCents && <p>{t('bdRefundedLine')}: {money(quote.alreadyRefundedCents)}</p>}
+                <p className="font-medium">{policyT('cpKept', { amount: money(quote.retainedCents) })}</p>
+                {quote.snapshot && <><p className="text-xs">{policyT(quote.snapshot.version === 0 ? 'cpOriginal' : 'cpFrozen')}</p><CancellationPolicySummary policy={quote.snapshot} timezone={quote.snapshot.timezone} startAt={quote.snapshot.sessions[0]?.startAt} processingFeeCents={quote.feeRetainedCents} /></>}
+              </> : <p>{policyT('cpFeePending')}</p> : <Loader2 className="h-4 w-4 animate-spin" aria-label={t('cancelCopy40')} />}
+              <p className="text-xs text-muted-foreground">{policyT('cpAddons')}</p>
+            </div> : <div className="rounded-xl border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
               {scope === 'items' && unpaid ? t('cancelCopy16') : t('cancelPolicy')}
               {!unpaid && <p className="mt-2">{t('cancelCopy17')}</p>}
             </div>}
-            {!beforeConfirmation && cancellationDeadline && <p className="text-xs text-muted-foreground">{t('cancelDeadline', { time: cancellationDeadline })}</p>}
+            {!beforeConfirmation && scope === 'items' && cancellationDeadline && <p className="text-xs text-muted-foreground">{t('cancelDeadline', { time: cancellationDeadline })}</p>}
             {items.some(item => item.kind === 'storage' && itemEligible(item)) && <p className="text-xs leading-relaxed text-muted-foreground">{t('cancelCopy18')}</p>}
           </section>}
           {!complete && items.length > 0 && <fieldset className="space-y-2">
@@ -113,8 +142,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
           </section>}
 
           {decisionPending && <p role="status" className="rounded-xl border p-3 text-sm">{t('cancelCopy29')}</p>}
-          {!beforeConfirmation && !paidCancellationAvailable && !complete && <p className="rounded-xl border p-3 text-sm">{t('cancelCopy30')}</p>}
-          {declined && !complete && <p className="text-sm text-muted-foreground">{t('cancelCopy31')}</p>}
+          {declined && scope === 'items' && !complete && <p className="text-sm text-muted-foreground">{t('cancelCopy31')}</p>}
           {!complete && <div className="space-y-2">
             <label htmlFor={'cancel-reason-' + bookingId} className="text-sm font-medium">{t('cancelReason')} <span className="font-normal text-muted-foreground">{t('cancelCopy33')}</span></label>
             <Textarea id={'cancel-reason-' + bookingId} className="min-h-20 resize-none" placeholder={t('cancelCopy34')} value={reason} maxLength={500} disabled={busy} onChange={event => setReason(event.target.value)} />
@@ -125,7 +153,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
         </div>
         <div className="flex shrink-0 flex-col-reverse gap-2 rounded-b-2xl border-t bg-background px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>{complete ? t('cancelCopy36') : saved ? t('cancelCopy37') : beforeConfirmation ? t('cancelCopy38') : t('cancelCopy39')}</Button>
-          {!complete && <Button disabled={!canSubmit} onClick={() => void submit()}>{busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('cancelCopy40')}</> : beforeConfirmation && scope === 'entire' ? t('cancelCopy05') : unpaid && scope === 'items' ? t('cancelCopy41') : t('cancelCopy06')}</Button>}
+          {!complete && <Button disabled={!canSubmit} onClick={() => void submit()}>{busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('cancelCopy40')}</> : beforeConfirmation && scope === 'entire' ? t('cancelCopy05') : unpaid && scope === 'items' ? t('cancelCopy41') : scope === 'entire' && quote?.quoteReady === false ? policyT('cpPendingButton') : policyT('cpCancel')}</Button>}
         </div>
       </DialogContent>
     </Dialog>

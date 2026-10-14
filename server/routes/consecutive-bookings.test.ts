@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ insert: vi.fn(), payment: vi.fn(), release: vi.fn(),
+const state = vi.hoisted(() => ({ insert: vi.fn(), payment: vi.fn(), release: vi.fn(), quote: vi.fn(), cancel: vi.fn(), deliver: vi.fn(async () => ({})),
   kitchen: { id: 4, locationId: 1, isActive: true, listingStatus: 'active', hourlyRate: 1000, minimumBookingHours: 0 },
   rows: {} as Record<string, any[]> }));
 vi.mock('../db', () => ({ pool: { connect: async () => ({ query: vi.fn(), release: state.release }) }, db: {
@@ -14,6 +14,8 @@ vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: {
 } }));
 vi.mock('../domains/users/chef.service', () => ({ chefService: { getApplicationStatusForBooking: async () => ({ canBook: true }) } }));
 vi.mock('../services/stripe-service', () => ({ createPaymentIntent: state.payment }));
+vi.mock('../services/booking-cancellation-refund', () => ({ readChefCancellationQuote: state.quote, cancelChefBooking: state.cancel }));
+vi.mock('../services/booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: state.deliver, queueBookingLifecycleEvent: vi.fn() }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), hasVerifiedEmail: () => true }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn(), requireNoUnpaidPenalties: vi.fn(), requirePortalUser: vi.fn() }));
 vi.mock('../r2-storage', () => ({ getPresignedUrl: vi.fn() }));
@@ -75,5 +77,24 @@ describe('actual fresh booking boundaries', () => {
     await reserveKitchenCheckout(4, 3, '2099-10-04', adjacent, '08:00');
     await expect(reserveKitchenCheckout(4, 5, '2099-10-04', adjacent, '08:00')).rejects.toThrow('no longer available');
     expect(state.insert).toHaveBeenCalledOnce();
+  });
+});
+describe('actual self-serve cancellation route boundary', () => {
+  it('quotes for the authenticated chef rather than a body-supplied person', async () => {
+    state.quote.mockResolvedValue({ quoteReady: true, chefRefundCents: 0 });
+    const route = (router as any).stack.find((entry: any) => Array.isArray(entry.route?.path) && entry.route.path.includes('/bookings/:id/cancellation-quote')).route;
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    await route.stack.at(-1).handle({ params: { id: '10' }, neonUser: { id: 3 }, body: { chefId: 999 } }, res);
+    expect(state.quote).toHaveBeenCalledWith(10, 3); expect(res.json).toHaveBeenCalledWith({ quoteReady: true, chefRefundCents: 0 });
+  });
+  it('a late paid cancellation calls the idempotent command directly without manager approval', async () => {
+    state.rows.kitchen_bookings = [{ id: 10, kitchenId: 4, chefId: 3, status: 'confirmed', paymentStatus: 'paid', bookingDate: new Date('2020-01-01'), startTime: '09:00', paymentIntentId: 'pi_fixture' }];
+    state.cancel.mockResolvedValue({ success: true, action: 'cancelled' });
+    const route = (router as any).stack.find((entry: any) => entry.route?.path === '/chef/bookings/:id/cancel' && entry.route.methods.put).route;
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    const request = { params: { id: '10' }, neonUser: { id: 3 }, body: { operationKey: 'chef-route-operation', expectedRefundCents: 0 } };
+    await route.stack.at(-1).handle(request, res); await route.stack.at(-1).handle(request, res);
+    expect(state.cancel).toHaveBeenCalledTimes(2); expect(state.cancel).toHaveBeenCalledWith(10, 3, 'chef-route-operation', undefined, 3, 0);
+    expect(res.json).toHaveBeenCalledWith({ success: true, action: 'cancelled' }); expect(res.status).not.toHaveBeenCalledWith(400);
   });
 });

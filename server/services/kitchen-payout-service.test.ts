@@ -142,7 +142,7 @@ describe('closeout scheduling, notice and sweep', () => {
     expect(state.source).toMatchObject({ transferId: 'tr_7', managerRevenue: '10942', payoutHoldReason: null });
     expect(state.source.metadata.payoutSent).toMatchObject({ amountCents: 10942 });
     expect(state.queue).toHaveBeenCalledWith(expect.anything(), 7, 'payout_released', 'You’ve been paid', expect.stringContaining('$109.42'),
-      undefined, { recipientPolicy: 'manager', transactionId: 11, amountCents: 10942 });
+      undefined, expect.objectContaining({ recipientPolicy: 'manager', transactionId: 11, amountCents: 10942 }));
     state.notices = [{ id: 1 }]; state.queue.mockClear();
     await recordReleasedPayout(11, result, db as any);
     expect(state.queue).not.toHaveBeenCalled();

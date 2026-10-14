@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useRoute, useSearch } from 'wouter';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api';
 import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
@@ -41,6 +42,7 @@ export type ManagerInspectionDetails = Omit<Evidence, "closeout"> & {
   chef?: { fullName?: string; username: string } | null;
   visits: Array<Evidence & { blockIndex: number }>;
   inspection?: { duties: VisitDuties; dutiesSaved: boolean; checkoutReviewDeadline: string | null };
+  payout?: import("@shared/kitchen-payout").KitchenPayout;
 };
 
 async function readDetails(bookingId: number): Promise<ManagerInspectionDetails> {
@@ -189,6 +191,8 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   useEffect(() => { if (assistanceOpen) assistanceRef.current?.focus(); }, [assistanceOpen]);
   const deadline = visitId ? evidence.checkoutReviewDeadline : booking.inspection?.checkoutReviewDeadline;
   const clock = visitId ? evidence.closeout as import('@shared/clock-closeout').VisitCloseout | undefined : booking.closeout?.visits[0];
+  const payoutNow = booking.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 ? booking.payout : null;
+  const payoutAmount = payoutNow ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(payoutNow.amountCents / 100) : '';
   const canClear = clock ? clock.inspection.canRespond : booking.status === 'confirmed' && evidence.checkinStatus === 'checkout_requested' && !!deadline && Number.isFinite(Date.parse(deadline));
   const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus);
   // Done once the manager has cleared it (or this page just did). The report link only stays while the review window is open.
@@ -219,6 +223,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       const result = await response.json();
       if (!response.ok || result.success !== true) throw Error(result.error || t('inspectCopy44'));
       accepted = true; setSaved(true); setConfirmOpen(false);
+      if (payoutNow) toast.success(t('inspectToastPayout', { amount: payoutAmount }));
       await refresh();
       onNoteChange('');
     } catch (cause) {
@@ -229,6 +234,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   return <>
     <Dialog open={confirmOpen} onOpenChange={value => { if (!saving) setConfirmOpen(value); }}>
       <DialogContent showCloseButton><DialogHeader><DialogTitle>{t('inspectConfirmTitle')}</DialogTitle><DialogDescription>{t('inspectConfirmBody', { chef })}</DialogDescription></DialogHeader>
+        {payoutNow && <p className="text-sm font-medium">{t('inspectConfirmPayoutLine', { amount: payoutAmount })}</p>}
         {note && <blockquote className="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{note}</blockquote>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setConfirmOpen(false)}>{t('fixBack')}</Button><Button disabled={saving || blocked || !canClear} onClick={() => void clear()}>{t(saving ? 'fixSaving' : 'inspectConfirmButton')}</Button></DialogFooter>
@@ -237,6 +243,8 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
     {finished ? <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectDoneTitle')} data-testid="inspection-done">
       <h2 className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden />{t('inspectDoneTitle')}</h2>
       <p role="status">{finishedAt ? sentence(t('inspectDoneBody', { date: finishedAt.date, time: finishedAt.time, chef })) : t('inspectDoneBodyNoTime', { chef })}</p>
+      {booking.payout?.timing === 'after_closeout' && booking.payout.status === 'sent' && booking.payout.sentAt && <p role="status" className="text-sm" data-testid="inspection-payout-sent">{t('inspectDonePayoutSent', { amount: new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(booking.payout.amountCents / 100), date: new Intl.DateTimeFormat(i18n.language, { timeZone: booking.location.timezone || undefined, dateStyle: 'medium' }).format(new Date(booking.payout.sentAt)) })}</p>}
+      {booking.payout?.timing === 'after_closeout' && booking.payout.status === 'on_hold' && <p role="status" className="text-sm">{t('inspectDonePayoutHold')}</p>}
       {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-wrap items-center gap-4">
@@ -257,7 +265,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
       {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{t(blocked ? 'inspectRefreshFirst' : clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome) ? 'inspectWindowClosed' : 'inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
-        <Button disabled={!canClear || blocked || saving || saved || !booking.inspection} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t('inspectCopy60')}</Button>
+        <Button disabled={!canClear || blocked || saving || saved || !booking.inspection} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>
         <Button variant="outline" disabled={saving} onClick={() => { setIssueOpen(true); issueRef.current?.focus(); }}>{t('inspectCopy61')}</Button>
         {canAssist && <Button variant="outline" disabled={saving || blocked} onClick={() => { setAssistanceOpen(true); assistanceRef.current?.focus(); }}>{t('inspectCopy62')}</Button>}
       </div>

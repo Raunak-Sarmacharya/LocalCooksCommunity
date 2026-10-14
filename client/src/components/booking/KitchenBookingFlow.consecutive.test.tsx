@@ -22,6 +22,7 @@ beforeEach(() => {
   fixture.times = ['09:00', '10:00', '11:00', '12:00']; fixture.full = [];
   fixture.rateMode = 'hourly';
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/cancellation-policy')) return { ok: true, json: async () => ({ policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 100 }, timezone: 'America/St_Johns', settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] } }) } as any;
     const data = url.includes('/pricing') ? { hourlyRate: 100, dailyRate: 400, pricingModel: fixture.rateMode, minimumBookingHours: fixture.minimum,
       preparationReminderHours: 36, managerResponseBufferHours: 2, timezone: 'America/St_Johns' }
       : url.includes('/policy') ? { maxSlotsPerChef: 4 }

@@ -159,8 +159,9 @@ export async function recordReleasedPayout(id: number, result: TransferResult, t
     .where(and(eq(bookingLifecycleEvents.bookingId, source.bookingId), eq(bookingLifecycleEvents.kind, 'payout_released'),
       sql`${bookingLifecycleEvents.metadata}->>'transactionId' = ${String(id)}`)).limit(1);
   if (!notice) await queueBookingLifecycleEvent(tx, source.bookingId, 'payout_released', 'You’ve been paid',
-    `You’ve been paid $${(result.transferredCents / 100).toFixed(2)} for this booking. It’s on its way to your bank on your usual Stripe payout schedule.`,
-    undefined, { recipientPolicy: 'manager', transactionId: id, amountCents: result.transferredCents });
+    `You’ve been paid $${(result.transferredCents / 100).toFixed(2)} for this booking. It’s on its way to your bank.`,
+    undefined, { recipientPolicy: 'manager', transactionId: id, amountCents: result.transferredCents, chefPaidCents: Number(source.amount),
+      feeCents: result.platformCommissionCents, processingCents: result.actualStripeFeeCents });
 }
 
 /** Re-checked by the transfer engine under its source lock, so a hold opened after the decision still wins. */

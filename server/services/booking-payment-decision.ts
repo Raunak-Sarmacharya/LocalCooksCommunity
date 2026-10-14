@@ -227,12 +227,15 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     // New confirmations only: one staffed arrival challenge per arrival target, same transaction as the status change.
     if (decision!.target === 'confirmed') await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
     if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
-    else await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
+    else {
+    const [paidTiming] = decision!.target === 'confirmed' ? await tx.select({ timing: paymentTransactions.payoutTiming }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1) : [];
+    await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
       decision!.target === 'confirmed' ? `The kitchen confirmed your booking. Arrival details will be in your booking.`
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
       decision!.actorId, { decisionId: decision!.id, ...(decision!.target === 'confirmed' ? { roleText: {
-        manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Give them the visit code in person when they arrive.' } } } : {}) });
+        manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Share the check-in code with them in person when they arrive.' + (paidTiming?.timing === 'after_closeout' ? ' Paid after the visit: as soon as you finish the inspection, or automatically 24 hours after it ends.' : '') } } } : {}) });
+    }
   });
   return { success: true, status: decision.target,
     authorizationVoided: decision.target === 'cancelled', recovered: false };

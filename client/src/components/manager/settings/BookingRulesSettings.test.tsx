@@ -66,7 +66,7 @@ const termsDropzone = () => document.getElementById("terms-upload");
 describe("BookingRulesSettings", () => {
   it("leaves the embedded tab's save action to its parent", () => {
     render(<BookingRulesSettings location={baseLocation} onSave={vi.fn()} hideHeader hideArrivalTimings hideTerms />);
-    fireEvent.change(screen.getByRole("textbox", { name: "cancellationWindow" }), { target: { value: "48" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "48" } });
     expect(screen.queryByRole("button", { name: /save\s*changes/i })).not.toBeInTheDocument();
   });
   it("groups kitchen minimum duration with policies without duplicating arrival or terms controls", async () => {
@@ -92,7 +92,7 @@ describe("BookingRulesSettings", () => {
     expect(screen.queryByRole("button", { name: /save\s*changes/i })).not.toBeInTheDocument();
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "cancellationWindow" }), { target: { value: "48" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "48" } });
 
     const saveButton = await screen.findByRole("button", { name: /save\s*changes/i });
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
@@ -102,9 +102,9 @@ describe("BookingRulesSettings", () => {
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
         locationId: 7,
-        cancellationPolicyHours: 48,
+        cancellationPolicyHours: 24,
         defaultDailyBookingLimit: 2,
-        minimumBookingWindowHours: 1,
+        minimumBookingWindowHours: 48,
         checkinWindowMinutesBefore: null,
         noShowGraceMinutes: null,
       });

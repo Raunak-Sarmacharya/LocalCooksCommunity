@@ -85,8 +85,8 @@ type Context = Awaited<ReturnType<typeof loadContext>>;
 const labels: Record<SupportActionType, string> = {
   confirm_for_manager: 'Confirm for the kitchen', decline_for_manager: 'Decline for the kitchen', release_hold_for_chef: 'Release the card hold',
   replay_payment_decision: 'Check the saved payment decision', cancel_kitchen_caused: 'Cancel because the kitchen cannot host',
-  request_cancellation_for_chef: 'Request cancellation for the chef', accept_cancellation_for_manager: 'Accept the cancellation for the kitchen',
-  issue_visit_code: 'Issue a new visit code', set_arrival_mode: 'Change how arrival is recorded', record_assisted_arrival: 'Add a reported arrival',
+  request_cancellation_for_chef: 'Cancel the booking for the chef', accept_cancellation_for_manager: 'Accept the cancellation for the kitchen',
+  issue_visit_code: 'Get a new check-in code', set_arrival_mode: 'Change how arrival is recorded', record_assisted_arrival: 'Add a reported arrival',
   correct_attendance: 'Fix the visit record', clear_checkout_for_manager: 'Clear the kitchen inspection', report_issue_for_manager: 'Report a visit concern',
   goodwill_refund: 'Send a Local Cooks goodwill refund', resend_notice: 'Send a booking notice again', open_flag: 'Pause refunds and kitchen payments', resolve_flag: 'Resolve a support flag',
   release_payout: 'Release payout',
@@ -95,8 +95,8 @@ const updates: Record<SupportActionType, string> = {
   confirm_for_manager: 'the kitchen has confirmed your booking', decline_for_manager: 'the kitchen request was declined and the card hold was released',
   release_hold_for_chef: 'your booking request was withdrawn and the card hold was released', replay_payment_decision: 'the saved payment decision has been checked',
   cancel_kitchen_caused: 'the kitchen could not host this booking, so it has been cancelled and the remaining payment has been refunded',
-  request_cancellation_for_chef: 'a cancellation has been requested on your behalf', accept_cancellation_for_manager: 'the kitchen has accepted the cancellation and the refund has been checked',
-  issue_visit_code: 'the arrival details have been updated; ask kitchen staff for the current visit code', set_arrival_mode: 'the arrival method has been updated',
+  request_cancellation_for_chef: 'your booking has been cancelled under its saved terms', accept_cancellation_for_manager: 'the kitchen has accepted the cancellation and the refund has been checked',
+  issue_visit_code: 'the arrival details have been updated; ask kitchen staff for the current check-in code', set_arrival_mode: 'the arrival method has been updated',
   record_assisted_arrival: 'a reported arrival time has been added', correct_attendance: 'the visit record has been corrected',
   clear_checkout_for_manager: 'the kitchen inspection is complete', report_issue_for_manager: 'a visit concern has been recorded for review; no new charge has been made',
   goodwill_refund: 'a goodwill refund has been sent by Local Cooks', resend_notice: 'a booking notice has been queued to send again',
@@ -134,7 +134,7 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
     result.push('decline_for_manager', 'release_hold_for_chef');
   }
   if (!busy && !recovering && booking.status === 'confirmed' && ['paid', 'partially_refunded'].includes(booking.paymentStatus || '')) {
-    if (now.getTime() < kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? 24)) result.push('request_cancellation_for_chef');
+    if (!flags && !moneyNeedsReview) result.push('request_cancellation_for_chef');
     if (!flags && !moneyNeedsReview && !priorGoodwill && ctx.payments.length === 1 && !ctx.storage.some(item => item.status === 'completed' || item.checkinStatus === 'checkin_completed')
       && !ctx.equipment.some(item => item.status === 'completed')) result.push('cancel_kitchen_caused');
   }
@@ -166,6 +166,7 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
 }
 function snapshot(booking: Booking) {
   return { status: booking.status, paymentStatus: booking.paymentStatus, checkinStatus: booking.checkinStatus,
+    cancellationPolicySnapshot: booking.cancellationPolicySnapshot ?? null,
     updatedAt: booking.updatedAt.toISOString(), paymentIntentId: booking.paymentIntentId };
 }
 /** Only selected fields cross the staff API; never return challenge rows, email bodies or arbitrary metadata. */
@@ -288,7 +289,7 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
     case 'decline_for_manager': case 'release_hold_for_chef': return decideAuthorizedBooking(id, 'cancelled', [], [], actorId);
     case 'replay_payment_decision': return reconcileBookingDecision(id);
     case 'cancel_kitchen_caused': return cancelKitchenCausedBooking(id, managerId!, actorId, input.operationKey);
-    case 'request_cancellation_for_chef': return requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage);
+    case 'request_cancellation_for_chef': return requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage, input.operationKey);
     case 'accept_cancellation_for_manager': return acceptCancellationRefund(id, managerId!, d.quoteHash!, undefined, input.operationKey);
     case 'goodwill_refund': return refundSupportGoodwill(id, managerId!, actorId, input.amountCents!, input.operationKey);
     case 'release_payout': {

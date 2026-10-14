@@ -11,6 +11,7 @@ import { auth } from "@/lib/firebase";
 import { AlertCircle, Clock, DollarSign, RefreshCw, Save, TrendingUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { LifecycleSettings } from '../LifecycleSettings';
+import { CancellationSettings } from '../CancellationSettings';
 
 export function PlatformSettingsSection() {
   const { toast } = useToast();
@@ -583,6 +584,7 @@ export function PlatformSettingsSection() {
 
       {/* Info Card */}
       <LifecycleSettings />
+      <CancellationSettings />
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>How Fees Work</AlertTitle>

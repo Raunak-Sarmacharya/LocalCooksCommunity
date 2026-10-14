@@ -70,6 +70,19 @@ export function formatVisitClock(value: Date | string, timezone: string, locale 
   return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value));
 }
 
+/** "2:00 p.m." + "3:00 p.m." -> "2:00–3:00 p.m."; different or absent meridiems stay in full. */
+function sameDayClockRange(from: string, to: string) {
+  const meridiem = /\s*(a\.m\.|p\.m\.|am|pm)$/i;
+  const a = from.match(meridiem)?.[1], b = to.match(meridiem)?.[1];
+  return a && b && a.toLowerCase() === b.toLowerCase() ? `${from.replace(meridiem, '')}–${to}` : `${from}–${to}`;
+}
+
+/** Ends a free-text instruction as a sentence without doubling punctuation the manager already wrote. */
+export function endInstructionSentence(text: string) {
+  const trimmed = text.trim();
+  return !trimmed || /[.!?…]["')\]]?$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 /** Kitchen-local visit window, e.g. "Tue, Oct 20 · 11:00 a.m.–12:00 p.m. Newfoundland Time".
  * The date is shown once for same-day visits and on both ends for overnight visits. */
 export function formatVisitRange(start: Date | string, end: Date | string, timezone: string, locale = 'en-CA') {
@@ -78,7 +91,7 @@ export function formatVisitRange(start: Date | string, end: Date | string, timez
   const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
   const zone = friendlyTimezoneName(timezone, locale);
   return dayKey.format(from) === dayKey.format(to)
-    ? `${day.format(from)} · ${formatVisitClock(from, timezone, locale)}–${formatVisitClock(to, timezone, locale)} ${zone}`
+    ? `${day.format(from)} · ${sameDayClockRange(formatVisitClock(from, timezone, locale), formatVisitClock(to, timezone, locale))} ${zone}`
     : `${day.format(from)} · ${formatVisitClock(from, timezone, locale)} – ${day.format(to)} · ${formatVisitClock(to, timezone, locale)} ${zone}`;
 }
 
@@ -231,7 +244,7 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
         checkinWindowMinutesBefore: savedDuties?.checkinWindowMinutesBefore,
         requirement: [block.start.toISOString(), block.end.toISOString(), timezone, chef?.username] }, policy).map(reminder => ({ ...reminder,
           message: reminder.kind === 'preparation' ? facts + (release.instructionsReleased
-            ? `${arrivalModeLine(mode, locale)} ${tEmail(locale, 'instructionsReleased')} Arrival instructions: ${duties.arrival.instructions || ''} Departure instructions: ${duties.departure.instructions || ''}. Required tasks/photos: ${tasks || 'None requested'}. Contact: ${manager?.username || 'Support'}.`
+            ? `${arrivalModeLine(mode, locale)} ${tEmail(locale, 'instructionsReleased')} Arrival instructions: ${endInstructionSentence(duties.arrival.instructions || '')} Departure instructions: ${endInstructionSentence(duties.departure.instructions || '')} Required tasks/photos: ${tasks || 'None requested'}. Contact: ${manager?.username || 'Support'}.`
             : arrivalModeLine(mode, locale))
             : reminder.kind === 'arrival' ? facts + `${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`
             : reminder.kind === 'checkin_open' ? facts + `Check-in is now available for this visit. ${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`

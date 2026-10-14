@@ -17,7 +17,7 @@ describe("cancellation-policy-dialog", () => {
 
     const t = (key: string, options?: Record<string, unknown>) => {
       if (key === "cancellationPolicyDefaultMessage") {
-        return `Bookings cannot be cancelled within ${options?.hours} hours of the scheduled time.`;
+        return `Cancel at least ${options?.hours} hours before for a full refund minus the actual card processing fee.`;
       }
       return String(options?.defaultValue || key);
     };
@@ -28,12 +28,11 @@ describe("cancellation-policy-dialog", () => {
 
     const full = buildCancellationPolicyText(48, null, t);
     assert.equal(full.includes("48 hours"), true);
-    assert.equal(full.includes("100% refund of any amount paid, including taxes and fees"), true);
-    assert.equal(full.includes("hold will be released instead"), true);
-    assert.equal(full.indexOf("After confirmation") > full.indexOf("hold will be released instead"), true);
-    assert.equal(full.indexOf("48 hours") > full.indexOf("After confirmation"), true);
-    const custom = buildCancellationPolicyText(48, "Cancel at least {hours} hours before arrival.", t);
-    assert.equal(custom.includes("Cancel at least 48 hours before arrival."), true);
+    assert.equal(full.includes("No payment is taken"), true);
+    assert.equal(full.includes("actual card processing fee"), true);
+    assert.equal(full.includes("reviewed separately"), false);
+    const custom = buildCancellationPolicyText(48, "No refunds ever.", t);
+    assert.equal(custom.includes("No refunds ever."), false);
 
     console.log("cancellation-policy-dialog.test.ts: ok");
 

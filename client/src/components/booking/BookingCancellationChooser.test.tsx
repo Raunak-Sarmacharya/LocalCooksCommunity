@@ -9,63 +9,74 @@ const items = [{ id: 22, kind: 'storage' as const, name: 'Cold storage', status:
 describe('one parent cancellation chooser', () => {
   it('hides cancellation while a visit is checked in or awaiting checkout review', () => {
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" visitActive items={items} onChanged={async () => {}} />);
-    expect(screen.queryByRole('button', { name: 'Request cancellation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
   beforeEach(() => {
     window.history.replaceState({}, '', '/booking/10');
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ action: 'cancellation_requested', message: 'Manager review pending. Refund is separate.' }) })));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('cancellation-quote') ? { quoteReady: true, chefRefundCents: 9800, feeRetainedCents: 200, retainedCents: 200 } : { action: 'cancelled', message: 'Your booking is cancelled.' } })));
   });
   it('opens from page entry points without its own button and reports closing', () => {
     const onOpenChange = vi.fn();
     const { rerender } = render(<BookingCancellationChooser hideTrigger open={false} onOpenChange={onOpenChange} bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
-    expect(screen.queryByRole('button', { name: 'Request cancellation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     rerender(<BookingCancellationChooser hideTrigger open onOpenChange={onOpenChange} bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Request cancellation' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel booking' })).toBeInTheDocument();
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
-  it('entire booking submits only the parent; includes linked items and does not promise a refund', async () => {
+  it('shows exact dollars then cancels only the parent and linked items', async () => {
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByText(/Already using storage/)).toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Refund is separate');
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('/api/chef/bookings/10/cancel');
-    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Request cancellation' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Your refund is.*98.00/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Your booking is cancelled');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/api/chef/bookings/10/cancel');
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)).toMatchObject({ expectedRefundCents: 9800 });
+    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Cancel booking' })).not.toBeInTheDocument();
   });
   it('selected add-ons retain the parent and a partial API failure retains the saved result', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ message: 'Storage cancellation requested.' }) } as any)
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 9800, feeRetainedCents: 200, retainedCents: 200 }) } as any)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ message: 'Storage cancellation requested.' }) } as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Mixer cutoff passed' }) } as any);
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    await screen.findByText(/Your refund is.*98.00/);
     fireEvent.click(screen.getByLabelText(/Selected add-ons/));
     fireEvent.click(screen.getByLabelText(/Cold storage/)); fireEvent.click(screen.getByLabelText(/Mixer/));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Mixer cutoff passed');
     expect(screen.getByRole('status')).toHaveTextContent('Storage cancellation requested');
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
-    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/chef/storage-bookings/22/cancel', '/api/chef/equipment-bookings/31/cancel', '/api/chef/equipment-bookings/31/cancel']);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+    expect(vi.mocked(fetch).mock.calls.filter(call => !(call[0] as string).endsWith('cancellation-quote')).map(call => call[0])).toEqual(['/api/chef/storage-bookings/22/cancel', '/api/chef/equipment-bookings/31/cancel', '/api/chef/equipment-bookings/31/cancel']);
+  });
+  it('shows earlier refunds separately so the current refund and retained dollars reconcile', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 2000, alreadyRefundedCents: 5000, feeRetainedCents: 200, retainedCents: 3000 }) } as any);
+    render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="partially_refunded" items={[]} onChanged={async () => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    expect(await screen.findByText('Refunded: $50.00')).toBeInTheDocument();
+    expect(screen.getByText(/Your refund is.*20.00/)).toBeInTheDocument(); expect(screen.getByText('Amount kept: $30.00')).toBeInTheDocument();
   });
   it('uncaptured requests have an explicit confirm action and Escape exits without submitting', async () => {
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }));
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel request' })).toBeInTheDocument();
-    expect(screen.getByText(/100% refund of any amount paid, including taxes and fees/)).toBeInTheDocument();
-    expect(screen.getByText(/hold will be released instead/)).toBeInTheDocument();
+    expect(screen.getByText(/your whole card hold is released/)).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(fetch).not.toHaveBeenCalled();
   });
-  it('saved paid cutoff blocks entire cancellation while the uncaptured exception stays available', async () => {
+  it('a saved paid cutoff still allows exact-quote cancellation and uncaptured withdrawal', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 0, feeRetainedCents: 200, retainedCents: 10000 }) } as any);
     const view = render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" paidCancellationAvailable={false} items={items} onChanged={async () => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
-    expect(screen.getByText(/The booking’s cancellation deadline has passed/)).toBeInTheDocument();
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+    expect(await screen.findByText(/There is no refund under/)).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' })).toBeEnabled();
     view.unmount();
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" paidCancellationAvailable={false} items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }));
@@ -81,10 +92,10 @@ describe('one parent cancellation chooser', () => {
   });
   it('does not submit a selected add-on while payment verification is pending', () => {
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" decisionPending items={items} onChanged={async () => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     fireEvent.click(screen.getByLabelText(/Selected add-ons/));
     fireEvent.click(screen.getByLabelText(/Mixer/));
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Request cancellation' })).toBeDisabled();
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' })).toBeDisabled();
     expect(fetch).not.toHaveBeenCalled();
   });
 });

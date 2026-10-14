@@ -90,17 +90,17 @@ describe('booking email notice shell', () => {
     expect(email.html).toContain('Add to Google Calendar');
   });
 
-  it('uses self arrival copy for managers without showing a visit code', () => {
+  it('uses self arrival copy for managers without showing a check-in code', () => {
     const email = emails.generateBookingConfirmationEmail({ ...fixture, isStaff: true, arrivalMode: 'self', reservationChefName: 'Alex' });
     expect(email.text).toContain('Self check-in is on for Alex');
     expect(email.text).toContain('Estimated payout: CAD $107.50');
-    expect(email.text).not.toContain('give it to the chef');
+    expect(email.text).not.toContain('share it with the chef');
     expect(email.text).not.toContain('918273');
   });
   it.each(['staffed', 'mixed', 'legacy'] as const)('keeps the manager arrival guidance appropriate for %s', arrivalMode => {
     const email = emails.generateBookingConfirmationEmail({ ...fixture, isStaff: true, arrivalMode, reservationChefName: 'Alex' });
     expect(email.text).toContain('Alex');
-    expect(email.text).toContain(arrivalMode === 'staffed' ? 'give it to the chef in person'
+    expect(email.text).toContain(arrivalMode === 'staffed' ? 'share it with the chef in person'
       : arrivalMode === 'mixed' ? 'Arrival method varies by visit' : 'Review the arrival arrangements');
     expect(email.text).not.toContain('918273');
   });

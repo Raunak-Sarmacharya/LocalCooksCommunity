@@ -84,7 +84,7 @@ describe('manager inspection with isolated API mocks', () => {
     expect(screen.getByText('Mock kitchen')).toBeInTheDocument();
     expect(screen.getAllByText(/Newfoundland Time/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/America\/St_Johns/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Visit code' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Check-in code' })).not.toBeInTheDocument();
     expect(screen.getByText(/Inspect by:/)).toHaveTextContent('Oct 13, 2026, 1:07');
     expect(within(screen.getByRole('region', { name: 'About this visit' })).getByText(/Mon, Oct 12 · 11:00\s*p\.m\.\s*[–-]\s*Tue, Oct 13 · 1:00\s*a\.m\./)).toBeInTheDocument();
     expect(screen.getByText('Arrival message')).toBeInTheDocument(); expect(screen.getByText('Departure message')).toBeInTheDocument();

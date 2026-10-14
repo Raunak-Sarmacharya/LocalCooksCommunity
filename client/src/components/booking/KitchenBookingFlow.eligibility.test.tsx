@@ -29,6 +29,7 @@ beforeEach(() => {
   fixture.eligibilityBody = { hasApplication: true, canBook: true, bookingEligibility: approved };
   fixture.checkoutResponse = json({ sessionUrl: 'https://checkout.example/session' });
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/cancellation-policy')) return { ok: true, json: async () => ({ policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent: 100 }, timezone: 'America/St_Johns', settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] } }) } as any;
     if (url.includes('/api/firebase/chef/kitchen-applications/location/')) return json(fixture.eligibilityBody);
     if (url.includes('/api/chef/bookings/checkout')) { fixture.checkoutCalls += 1; return fixture.checkoutResponse; }
     return json(url.includes('/pricing') ? { hourlyRate: 100, dailyRate: 400, pricingModel: 'hourly', minimumBookingHours: 1 }
@@ -50,6 +51,8 @@ const toConfirm = async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: /^Continue$/ })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
   expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'true');
+  const acknowledgement = screen.queryByRole('checkbox', { name: 'cpAck' });
+  if (acknowledgement) { await waitFor(() => expect(acknowledgement).toBeEnabled()); fireEvent.click(acknowledgement); }
 };
 const submit = () => screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ });
 

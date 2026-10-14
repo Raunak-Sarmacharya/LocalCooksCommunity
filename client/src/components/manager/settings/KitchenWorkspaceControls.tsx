@@ -5,6 +5,7 @@ import { mt } from "@/i18n/manager";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import BookingRulesSettings, { type BookingPoliciesHandle } from "./BookingRulesSettings";
+import { CancellationPolicyEditor } from './CancellationPolicyEditor';
 import type { resolveKitchenBookingPolicies } from "@shared/kitchen-booking-policies";
 import { kitchenWorkspaceSettingsKey } from "@/lib/manager-kitchens-navigation";
 import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
@@ -58,6 +59,7 @@ export default function KitchenWorkspaceControls({ kitchenId, location, mode, on
 
   return (
     <div className="space-y-4">
+      <CancellationPolicyEditor kitchenId={kitchenId} />
       <BookingRulesSettings ref={rulesRef} location={policyLocation} hideHeader hideArrivalTimings hideTerms={!showTerms} termsNote={termsNote}
         kitchenName={data.kitchen.name} policyUpdating={change.isPending}
         minimumBookingHours={data.kitchen.minimumBookingHours ?? 0}

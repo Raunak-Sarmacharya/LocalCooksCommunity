@@ -25,7 +25,7 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
     if (matches.length > 1) throw new Error('Multiple receipts match the reserved refund');
     if (matches[0]) {
       const receipt = money.receipts.find(item => item.id === matches[0].id)!;
-      if (receipt.managerDebited !== operation.managerRefund || receipt.platformServiceFeeReturned !== 0 || receipt.customerReceived !== operation.managerRefund)
+      if (receipt.managerDebited !== operation.managerRefund || receipt.platformServiceFeeReturned !== (operation.platformRefund ?? 0) || receipt.customerReceived !== (operation.customerRefund ?? operation.managerRefund))
         throw new Error('Refund receipt differs from the reserved cancellation allocation');
       reconciledOperation = { ...operation, status: 'succeeded', refunded: receipt.customerReceived, refundId: receipt.id, verifiedAt: new Date().toISOString(), error: null };
     }

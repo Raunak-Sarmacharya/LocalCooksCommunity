@@ -94,7 +94,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     queryKey: queryKey(bookingId),
     queryFn: async () => {
       const response = await apiClient.get(`/manager/bookings/${bookingId}/visit-code`)
-      if (!response.ok) throw new Error(await readError(response, t("visitCodeLoadFailed", { defaultValue: "Could not load the visit code." })))
+      if (!response.ok) throw new Error(await readError(response, t("visitCodeLoadFailed", { defaultValue: "Could not load the check-in code." })))
       return response.json()
     },
     retry: false,
@@ -113,7 +113,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   const mutation = useMutation({
     mutationFn: async (input: { path: "issue" | "mode"; body: Record<string, unknown> }) => {
       const response = await apiClient.post(`/manager/bookings/${bookingId}/visit-code/${input.path}`, input.body)
-      if (!response.ok) throw new Error(await readError(response, t("visitCodeActionFailed", { defaultValue: "Could not update the visit code." })))
+      if (!response.ok) throw new Error(await readError(response, t("visitCodeActionFailed", { defaultValue: "Could not update the check-in code." })))
       return (await response.json()) as ManagerVisitCodeResponse
     },
     onSuccess: async data => {
@@ -151,9 +151,10 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
       ? new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short", hour12: true }).format(new Date(target.consumedAt)) : ""
     const key = target.consumedMethod === "self" ? "visitCodeArrivedSelf" : target.consumedMethod === "assisted" ? "visitCodeArrivedAssisted" : "visitCodeArrivedCode"
     const fallback = target.consumedMethod === "self" ? "Checked in {time} with self check-in"
-      : target.consumedMethod === "assisted" ? "Checked in {time}, added by the kitchen" : "Checked in {time} with the visit code"
+      : target.consumedMethod === "assisted" ? "Checked in {time}, added by the kitchen" : "Checked in {time} with the check-in code"
     return t(key, { defaultValue: fallback, time })
   }
+  const chefName = customerName || t("visitCodeChefFallback", { defaultValue: "the chef" })
   const visitName = (target: ManagerVisitCodeState) => {
     const visit = target.visitId ? visits.find(row => row.id === target.visitId) : undefined
     return visit ? t("visitCodeVisitN", { defaultValue: "Visit {number}", number: visit.blockIndex + 1 }) : ""
@@ -172,7 +173,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     try {
       if (action.kind === "issue") {
         await mutation.mutateAsync({ path: "issue", body: { target: action.target.targetKey } })
-        toast.success(t("visitCodeIssuedToast", { defaultValue: "New visit code issued. The old code no longer works." }))
+        toast.success(t("visitCodeIssuedToast", { defaultValue: "New check-in code ready. The old code no longer works." }))
       } else if (action.kind === "self") {
         if (!reasonValid) { setReasonTouched(true); return }
         await mutation.mutateAsync({ path: "mode", body: { ...(allVisits ? { all: true } : { target: action.target.targetKey }), mode: "self", reason: trimmed } })
@@ -183,19 +184,19 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
       }
       setAction(null)
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("visitCodeActionFailed", { defaultValue: "Could not update the visit code." })
+      const message = error instanceof Error ? error.message : t("visitCodeActionFailed", { defaultValue: "Could not update the check-in code." })
       setDialogError(message)
       toast.error(message)
     }
   }
 
   if (embedded && bookingStatus === "pending") {
-    return <p className="text-sm text-muted-foreground" data-testid="visit-code-empty">{t("visitCodeEmptyPending", { defaultValue: "A visit code is created when you confirm this request." })}</p>
+    return <p className="text-sm text-muted-foreground" data-testid="visit-code-empty">{t("visitCodeEmptyPending", { defaultValue: "A check-in code is created when you confirm this request." })}</p>
   }
-  if (query.isPending) return <p role="status" className="text-sm text-muted-foreground">{t("visitCodeLoading", { defaultValue: "Loading visit code…" })}</p>
+  if (query.isPending) return <p role="status" className="text-sm text-muted-foreground">{t("visitCodeLoading", { defaultValue: "Loading check-in code…" })}</p>
   if (query.isError) {
     return (
-      <section className="rounded-2xl border bg-card p-5 space-y-2" aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
+      <section className="rounded-2xl border bg-card p-5 space-y-2" aria-label={t("visitCodeTitle", { defaultValue: "Check-in code" })}>
         <p role="alert" className="text-sm text-destructive">{query.error.message}</p>
         <Button type="button" variant="outline" className="min-h-11" onClick={() => void query.refetch()}>{t("visitCodeRetry", { defaultValue: "Try again" })}</Button>
       </section>
@@ -212,7 +213,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   }
   if (embedded && visible.every(target => target.consumed)) {
     return (
-      <ul className="space-y-1" aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
+      <ul className="space-y-1" aria-label={t("visitCodeTitle", { defaultValue: "Check-in code" })}>
         {visible.map(target => (
           <li key={target.targetKey} className="flex items-center gap-2 text-sm" data-testid="visit-code-consumed">
             <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -225,19 +226,19 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
 
   const modeSelf = action?.kind === "self"
   const multiple = targets.filter(target => !target.consumed && !target.revoked).length > 1
-  const dialogTitle = !action ? "" : action.kind === "issue" ? t("visitCodeIssueTitle", { defaultValue: "Issue a new visit code?" })
+  const dialogTitle = !action ? "" : action.kind === "issue" ? t("visitCodeIssueTitle", { defaultValue: "Get a new check-in code?" })
     : modeSelf ? t("visitCodeSelfTitle", { defaultValue: "Set up self check-in?" })
       : t("visitCodeStaffedTitle", { defaultValue: "Switch back to staffed check-in?" })
   const dialogBody = !action ? "" : action.kind === "issue"
-    ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Give the new code to the chef when they arrive." })
+    ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Share the new code with the chef when they arrive." })
     : modeSelf ? t("visitCodeSelfBody", { defaultValue: "The chef will be able to confirm their arrival without staff and without a code. The kitchen must provide access instructions for this visit. The current code stops working." })
-      : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new visit code is issued. The chef will need the code from kitchen staff." })
+      : t("visitCodeStaffedBody", { defaultValue: "Self check-in is turned off and a new check-in code is issued. The chef will need the code from kitchen staff." })
 
   return (
-    <section className={embedded ? "space-y-3" : "rounded-2xl border bg-card p-5 sm:p-6 space-y-4"} aria-label={t("visitCodeTitle", { defaultValue: "Visit code" })}>
+    <section className={embedded ? "space-y-3" : "rounded-2xl border bg-card p-5 sm:p-6 space-y-4"} aria-label={t("visitCodeTitle", { defaultValue: "Check-in code" })}>
       {!embedded && <div className="flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-muted-foreground" />
-        <h2 className="font-semibold">{t("visitCodeTitle", { defaultValue: "Visit code" })}</h2>
+        <h2 className="font-semibold">{t("visitCodeTitle", { defaultValue: "Check-in code" })}</h2>
       </div>}
       <div className="space-y-4">
         {visible.map(target => {
@@ -251,8 +252,8 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                 {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Chef" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>}
                 {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeKitchen", { defaultValue: "Kitchen" })}</dt><dd className="font-medium">{kitchenName || "—"}</dd></div>}
                 {when && (!embedded || name) && <div><dt className="text-xs text-muted-foreground">{t("visitCodeWhen", { defaultValue: "Visit time (kitchen local)" })}</dt><dd className="font-medium tabular-nums">{when}</dd></div>}
-                <div><dt className="text-xs text-muted-foreground">{t("visitCodeMode", { defaultValue: "Check-in mode" })}</dt>
-                  <dd className="font-medium">{staffed ? t("visitCodeModeStaffed", { defaultValue: "Staff gives the code" }) : t("visitCodeModeSelf", { defaultValue: "Self check-in" })}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">{t("visitCodeMode", { defaultValue: "How {chef} checks in", chef: chefName })}</dt>
+                  <dd className="font-medium">{staffed ? t("visitCodeModeStaffed", { defaultValue: "You share this code in person" }) : t("visitCodeModeSelf", { defaultValue: "{chef} checks in on their own, no code needed", chef: chefName })}</dd></div>
               </dl>
 
               {target.consumed ? (
@@ -265,15 +266,16 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                     <div className="space-y-2">
                       {target.code ? (
                         <div>
-                          <p className="text-xs text-muted-foreground">{t("visitCodeGiveHint", { defaultValue: "Give this code to the chef in person when they arrive." })}</p>
+                          <h3 className="text-sm font-semibold">{t("visitCodeHeading", { defaultValue: "Check-in code for {chef}", chef: chefName })}</h3>
+                          <p className="mt-0.5 text-sm text-muted-foreground">{t("visitCodeGiveHint", { defaultValue: "Share this code with {chef} when they arrive. They enter it in Local Cooks to check in.", chef: chefName })}</p>
                           <p className="mt-1 text-4xl font-semibold tabular-nums tracking-[0.2em] sm:text-5xl" data-testid="visit-code-value"
-                            aria-label={t("visitCodeA11y", { defaultValue: "Visit code {digits}", digits: target.code.split("").join(" ") })}>{groupVisitCode(target.code)}</p>
+                            aria-label={t("visitCodeA11y", { defaultValue: "Check-in code {digits}", digits: target.code.split("").join(" ") })}>{groupVisitCode(target.code)}</p>
                         </div>
                       ) : target.codeUnavailable ? (
                         <p role="alert" className="text-sm text-destructive">{t("visitCodeUnavailable", { defaultValue: "The code cannot be shown right now. Try again shortly or contact Local Cooks." })}</p>
                       ) : null}
-                      <p className="text-sm text-muted-foreground">{t("visitCodeAttempts", { defaultValue: "Wrong attempts: {used} of {max}", used: target.failedAttempts, max: VISIT_CODE_MAX_ATTEMPTS })}</p>
-                      {target.locked && <p role="alert" className="text-sm font-medium text-destructive">{t("visitCodeLockedState", { defaultValue: "Locked after too many wrong attempts. Issue a new code to unlock." })}</p>}
+                      {target.failedAttempts > 0 && <p className="text-sm text-muted-foreground">{t("visitCodeAttempts", { defaultValue: "{used, plural, one {# wrong try} other {# wrong tries}}. The code locks after {max}.", used: target.failedAttempts, max: VISIT_CODE_MAX_ATTEMPTS })}</p>}
+                      {target.locked && <p role="alert" className="text-sm font-medium text-destructive">{t("visitCodeLockedState", { defaultValue: "Locked after too many wrong tries. Get a new code to unlock it." })}</p>}
                     </div>
                   ) : (
                     <div className="space-y-1 text-sm">
@@ -286,10 +288,10 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                       {staffed ? (
                         <>
                           <Button type="button" variant="outline" className="min-h-11" onClick={() => open("issue", target)}>
-                            <RefreshCw className="mr-2 h-4 w-4" />{t("visitCodeIssueNew", { defaultValue: "Issue new code" })}
+                            <RefreshCw className="mr-2 h-4 w-4" />{t("visitCodeIssueNew", { defaultValue: "Get a new code" })}
                           </Button>
                           <Button type="button" variant="outline" className="min-h-11" onClick={() => open("self", target)}>
-                            <UserCheck className="mr-2 h-4 w-4" />{t("visitCodeSelfSetup", { defaultValue: "Set up self check-in" })}
+                            <UserCheck className="mr-2 h-4 w-4" />{t("visitCodeSelfSetup", { defaultValue: "Let them check in without staff" })}
                           </Button>
                         </>
                       ) : (
@@ -342,7 +344,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
               <Button type="button" variant="outline" className="min-h-11" disabled={mutation.isPending} onClick={close}>{t("visitCodeCancel", { defaultValue: "Cancel" })}</Button>
               <Button type="submit" className="min-h-11" disabled={mutation.isPending || (modeSelf && !reasonValid)}>
                 {mutation.isPending ? t("visitCodeSaving", { defaultValue: "Saving…" })
-                  : action?.kind === "issue" ? t("visitCodeIssueConfirm", { defaultValue: "Issue new code" })
+                  : action?.kind === "issue" ? t("visitCodeIssueConfirm", { defaultValue: "Get a new code" })
                     : modeSelf ? t("visitCodeSelfConfirm", { defaultValue: "Turn on self check-in" })
                       : t("visitCodeStaffedConfirm", { defaultValue: "Switch to staffed" })}
               </Button>

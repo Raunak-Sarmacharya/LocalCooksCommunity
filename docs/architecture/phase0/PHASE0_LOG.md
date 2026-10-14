@@ -772,3 +772,50 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
   - Payout-after-closeout re-delegated to Claude Opus, which first inventories Codex's partial edits (keep/fix/redo) and preserves the uncommitted polish batch.
   - Code Buddy DeepSeek fixes the reminder copy (b, c, d) in `advance-reminders.ts` only, and maps producers (a, e) read-only (those live in payout-owned files and are fixed after payout lands).
 - **Owner (Oct14): pre-authorized for THIS round:** after the lead reviews the payout + notification-copy + polish work, push to development and deploy on Vercel dev, applying the needed dev migration (0079), without asking again.
+- **Deployed `14f0d405` to dev** after the lead's review.
+  - Review: Opus's partial-state inventory; the gate/release/sweep code reviewed (decision persisted before Stripe, no lock held across I/O, holds re-checked under the source lock; commitment problems have an admin resolve path + the `release_payout` override, so no permanent hold).
+  - Lead fixes: the chef's own request notice via `roleText` (made non-blocking after the fulfillment tests showed a copy failure could roll back a booking); the manager confirmation `roleText`; plain-language deadline reminders.
+  - Full suites: server 51 failures/16 files, all in baseline files; client 11 pre-existing files; tsc clean.
+  - Migration 0079 applied to dev. Vercel env `KITCHEN_PAYOUT_TIMING=after_closeout` added (preview, git branch `development` only; production unset → at_capture).
+- **Payout live test, booking 155 (KB-22VHDC), real sandbox 4242, Oct 14 4–5 p.m.:**
+  - checkout showed the R5 deadline "Oct 14, 3:00 p.m." (start − 1 h);
+  - the chef in-app notice is "Request sent to PHASE0 Main Kitchen… until Oct 14, 2026, 3:00 p.m. · Newfoundland Time";
+  - the manager approved → PT `succeeded`, `payout_timing=after_closeout`, `transfer_id` null, eligible Oct 15 17:00 NDT;
+  - Stripe sandbox: PI succeeded, received 3050, charge.transfer null, 0 transfers in the group;
+  - the manager card reads "Sent after the visit closes (around Oct 15, 2026, 5:00 p.m.)".
+- **Next-batch findings:**
+  - (1) the manager payment card repeats "Your payout $27.32" (the new `KitchenPayoutStatus` + the old headline);
+  - (2) checkout "What happens next" for same-day bookings says "Arrival details are shared 48 hours before" and "you can cancel up to 24 hours before" (both already past; use the late-booking variants);
+  - (3) the "3:00 p.m. · Newfoundland Time to respond" separator in sentences (`emailLocalDateTime` is for fact rows; use a sentence variant);
+  - (4) the reminder range "2:00 p.m.–3:00 p.m." should collapse to "2:00–3:00 p.m.";
+  - (5) a double period after manager instructions that end with ".";
+  - (6) the manager list overnight date (follow-up from polish).
+- **PAYOUT LIVE TEST PASSED (booking 155, sandbox).**
+  - To avoid waiting for 3:45 p.m. (owner: manipulate dev as needed), the booking time was moved to 14:30–15:30 and its saved closeout snapshot cleared. Lesson: set `updated_at` with `date_trunc('milliseconds', …)`, or the optimistic version check refuses the check-in ("Booking changed; refresh before checking in").
+  - Real code check-in (952 636) → chef checkout → manager "Finish inspection".
+  - Result: `payout_released_at` set (reason `inspection_clear`); Stripe sandbox transfer `tr_3UQVOWCvcNYAkDXN1UlqpwKi` of $27.32 to `acct_1UPWdbCf9PlKmwqd` with `source_transaction` = the charge; event `payout_released` queued; no transfer existed before the inspection.
+- **Owner UX points (Oct 14):**
+  - (1) the kitchen code panel "Staff gives the code" is unintuitive → rename to "check-in code" everywhere; staffed panel "Share this code with {chef} when they arrive…";
+  - (2) kitchens must understand that finishing the inspection gets them paid sooner. The lead's nuance: the inspection is optional (auto-release ~24 h after the end), so the copy says "sooner", not "must".
+  - Both delegated to Sonnet → `.phase0-harness/checkin-code-payout-copy-checkpoint.md`.
+- **Next-batch fixes DONE (Sonnet)** → `.phase0-harness/next-batch-checkpoint.md`: the payout amount shown once, late-booking checkout copy, `emailLocalDateTimeSentence` for prose, "2:00–3:00 p.m." ranges, no double periods, manager overnight dates.
+- **Cancellation engine — owner decisions (Oct 14):**
+  - short-notice bookings inside the no-refund window are ALLOWED with a clear warning before payment;
+  - add-ons cancel together at the same %; started storage goes to support (storage note kept for the storage redesign);
+  - POLICY MODEL = **Food Corridor style** (after research on TFC + real shared kitchens): the kitchen picks a notice period 24/48/72 h + a late charge 50%/100% of kitchen time; % only (no flat fee); NO grace period (Peerspace's was researched and not adopted); admin controls allowed options/default + a per-kitchen override with a reason.
+  - Plan: `build-cancellation-engine.md`. Codex Sol High r2 is implementing (r1 was cancelled before any edits, when the model changed).
+- **Cancellation engine RETURNED (Codex Sol High r2)** → `.phase0-harness/cancellation-engine-checkpoint.md`:
+  - pure two-knob engine;
+  - the actual Stripe `stripe_fee` only (fee pending → the refund waits, no estimate);
+  - self-serve instant cancel (no manager approval);
+  - kitchen-caused cancel 100% with a reason;
+  - admin options/default/override (audited);
+  - checkout acknowledgement + short-notice warning;
+  - a frozen snapshot per booking (DB-immutable).
+- **Lead review fixes:**
+  - added RLS + PUBLIC/anon/authenticated revokes to 0080 (missing);
+  - updated the payout-notice test to the new "You've been paid $X · KB-…" title and the shorter in-app text;
+  - made the BookingPreparation test dates relative (they were hard-coded and had gone stale).
+  - Full suites: server 50 failures in 15 files, all on the baseline list; client 9 pre-existing files (the BookingCancellationChooser, cancellation-policy-dialog and BookingPreparation failures are now fixed).
+- **Migration 0080 applied to dev:** 5 kitchens mapped, all 24 h / 100% (kitchen 54 included).
+- **Check-in code + payout clarity copy DONE (Sonnet)** → `.phase0-harness/checkin-code-payout-copy-checkpoint.md`: "visit code" → "check-in code" everywhere; staffed panel "Check-in code for {chef}"; finish-inspection-to-get-paid-sooner messaging; payout toast/done state; "You've been paid $X · KB-…" email with a breakdown; "Payment confirmed" replaces "Payment Received from <email>"; manager check-in/checkout notices.

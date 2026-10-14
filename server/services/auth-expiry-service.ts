@@ -412,12 +412,12 @@ export async function sendAuthExpiryNotification(
     if (!row) throw new Error('Expired request was not found');
     const { getUserDisplayName } = await import('../utils/user-display');
     const name = chefId ? await getUserDisplayName(chefId, 'chef', tx) : 'The chef';
-    const { emailLocalDateTime } = await import('../email');
+    const { emailLocalDateTimeSentence } = await import('../email');
     const zone = row.location.timezone || DEFAULT_TIMEZONE;
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: zone, dateStyle: 'medium' })
       .format((await import('@shared/booking-response-deadline')).firstBookingVisitStart(row.booking, zone));
     const chefMessage = `${row.kitchen.name} didn't respond in time, so your request for ${date} expired. Your card wasn't charged.`;
-    const managerMessage = `${name}'s request for ${date} expired because it wasn't answered by ${emailLocalDateTime(responseDeadlineAt, zone)}. Their card hold was released.`;
+    const managerMessage = `${name}'s request for ${date} expired because it wasn't answered by ${emailLocalDateTimeSentence(responseDeadlineAt, zone)}. Their card hold was released.`;
     await (await import('./booking-lifecycle-delivery')).queueBookingLifecycleEvent(tx, recordId, 'cancelled', 'Booking request expired', chefMessage,
       undefined, { requestExpired: true, kitchenId: row.kitchen.id, kitchenPath: `/kitchen-preview/${row.location.id}?kitchenId=${row.kitchen.id}`, responseDeadlineAt,
         roleText: { chef: { title: 'Booking request expired', message: chefMessage }, manager: { title: 'Booking request expired', message: managerMessage } } });

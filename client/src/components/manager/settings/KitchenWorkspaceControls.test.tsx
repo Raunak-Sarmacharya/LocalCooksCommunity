@@ -44,12 +44,12 @@ describe("kitchen policy write scope", () => {
 
   it("saves a zero cutoff to this kitchen without altering the sibling or location defaults", async () => {
     const { client, ref } = mount();
-    api.put.mockResolvedValue({ ...original, kitchen: { ...original.kitchen, cancellationPolicyHours: 0 },
-      effective: { ...defaults, cancellationPolicyHours: 0 } });
-    fireEvent.change(screen.getByRole("textbox", { name: "cancellationWindow" }), { target: { value: "0" } });
+    api.put.mockResolvedValue({ ...original, kitchen: { ...original.kitchen, minimumBookingWindowHours: 0 },
+      effective: { ...defaults, minimumBookingWindowHours: 0 } });
+    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "0" } });
     expect(screen.queryByText("kitchenPolicyPendingOverride")).not.toBeInTheDocument();
     await ref.current!.saveAllChanges("kitchen");
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { cancellationPolicyHours: 0 }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { minimumBookingWindowHours: 0 }));
     expect(client.getQueryData(kitchenWorkspaceSettingsKey(47))).toEqual(original);
     expect(client.getQueryData<any>(kitchenWorkspaceSettingsKey(40)).defaults).toEqual(defaults);
     client.clear();
@@ -58,10 +58,10 @@ describe("kitchen policy write scope", () => {
   it("clears only the kitchen override when restoring a location default", async () => {
     const { client } = mount();
     client.setQueryData(kitchenWorkspaceSettingsKey(40), { ...original,
-      kitchen: { ...original.kitchen, cancellationPolicyHours: 0 }, effective: { ...defaults, cancellationPolicyHours: 0 } });
+      kitchen: { ...original.kitchen, minimumBookingWindowHours: 0 }, effective: { ...defaults, minimumBookingWindowHours: 0 } });
     api.put.mockResolvedValue(original);
     fireEvent.click(await screen.findByRole("button", { name: "kitchenPolicyReset" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { cancellationPolicyHours: null }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { minimumBookingWindowHours: null }));
     expect(client.getQueryData(kitchenWorkspaceSettingsKey(47))).toEqual(original);
     client.clear();
   });
@@ -80,9 +80,9 @@ describe("kitchen policy write scope", () => {
   it("protects other unsaved policy edits before restoring a default", async () => {
     const { client } = mount();
     client.setQueryData(kitchenWorkspaceSettingsKey(40), { ...original,
-      kitchen: { ...original.kitchen, cancellationPolicyHours: 0 }, effective: { ...defaults, cancellationPolicyHours: 0 } });
+      kitchen: { ...original.kitchen, minimumBookingWindowHours: 0 }, effective: { ...defaults, minimumBookingWindowHours: 0 } });
     await screen.findByRole("button", { name: "kitchenPolicyReset" });
-    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "dailyBookingLimit" }), { target: { value: "3" } });
     expect(screen.getByRole("button", { name: "kitchenPolicyReset" })).toBeDisabled();
     expect(screen.getByText("kitchenPolicyResetAfterSave")).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();

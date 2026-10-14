@@ -1488,6 +1488,9 @@ router.post("/kitchens", async (req: Request, res: Response) => {
             pricingModel: 'hourly',
             taxRatePercent: taxRatePercent ? parseFloat(taxRatePercent) : null
         });
+        const { cancellationSettings, publishCancellationPolicy } = await import('../services/cancellation-policy-settings');
+        const defaults = (await cancellationSettings()).default;
+        await publishCancellationPolicy(kitchen.id, user.id, { noticeHours: defaults.notice, lateChargePercent: defaults.charge, reason: 'Initial platform default for a new kitchen' }, true, true);
         res.status(201).json(kitchen);
     } catch (error: any) {
         logger.error("Error creating kitchen:", error);
@@ -4411,6 +4414,22 @@ router.post("/email-logs/:id/retry", requireFirebaseAuthWithUser, requireAdmin, 
 
 // temporary file to hold the patch
 
+router.get('/cancellation-settings', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { res.json(await (await import('../services/cancellation-policy-settings')).cancellationSettings()); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Settings unavailable' }); }
+});
+router.put('/cancellation-settings', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try { res.json(await (await import('../services/cancellation-policy-settings')).saveCancellationSettings(req.body, req.neonUser!.id)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Settings could not be saved' }); }
+});
+router.put('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try { res.json(await (await import('../services/cancellation-policy-settings')).publishCancellationPolicy(Number(req.params.id), req.neonUser!.id, req.body, true)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Override could not be saved' }); }
+});
+router.get('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try { res.json(await (await import('../services/cancellation-policy-settings')).managedCancellationPolicy(Number(req.params.id), req.neonUser!.id, true)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy unavailable' }); }
+});
 router.get("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { key } = req.params;
@@ -4431,6 +4450,7 @@ router.patch("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async 
     try {
         const { key } = req.params;
         const value = JSON.stringify(req.body);
+        if (['cancellation_notice_options', 'cancellation_charge_options', 'cancellation_default'].includes(key)) return res.status(400).json({ error: 'Use the audited cancellation settings endpoint' });
 
         const [setting] = await db.select().from(platformSettings).where(eq(platformSettings.key, key));
 

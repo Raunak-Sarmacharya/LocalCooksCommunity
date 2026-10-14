@@ -49,6 +49,15 @@ describe('atomic quoted checkout fulfillment', () => {
     expect(state.rows.storage_bookings).toHaveLength(1);
     expect(state.event).toHaveBeenCalledOnce();
   });
+  it('persists the exact accepted policy from session metadata even after a kitchen edits it', async () => {
+    const accepted = { ...session, metadata: { ...session.metadata, cancellation_policy_id: '8', cancellation_policy_version: '2',
+      cancellation_notice: '48', cancellation_charge: '50', cancellation_timezone: 'America/St_Johns', cancellation_start: '2099-01-01T13:30:00Z',
+      cancellation_disclosure: 'food-corridor-v1', cancellation_accepted_at: '2026-10-14T12:00:00Z' } };
+    state.rows.kitchen_cancellation_policies = [{ id: 9, version: 3, noticeHours: 72, lateChargePercent: 100 }];
+    await fulfillQuotedKitchenBooking(accepted, intent, {} as any);
+    expect(state.rows.kitchen_bookings[0].cancellationPolicySnapshot).toMatchObject({ policyId: 8, version: 2, noticeHours: 48, lateChargePercent: 50,
+      acceptedAt: '2026-10-14T12:00:00Z' });
+  });
   it('commits no partial booking or ledger when durable delivery fails', async () => {
     state.event.mockRejectedValueOnce(new Error('delivery unavailable'));
     await expect(fulfillQuotedKitchenBooking(session, intent, {} as any)).rejects.toThrow('delivery unavailable');

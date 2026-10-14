@@ -35,18 +35,19 @@ describe('preparation before action windows and without tracking', () => {
     expect(screen.getByText(/Use your booking contact details if you need help getting in/)).toBeVisible();
   });
   describe('instruction release', () => {
-    const release = '2026-10-14T12:00:00.000Z';
-    const start = new Date('2026-10-16T12:00:00.000Z');
+    // Relative to now so the release stays in the future whenever the suite runs.
+    const release = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    const start = new Date(Date.now() + 4 * 86_400_000);
     it('shows the overview and no instruction headings before release', () => {
       render(<BookingPreparation bookingStatus="confirmed" arrivalInstructions={null} departureInstructions={null} instructionsReleased={false}
         instructionsReleaseAt={release} visitStartAt={start} timezone="UTC" arrivalMode="staffed" address="1 Harbour Rd"
         contact={{ email: 'k@example.com', phone: '555-0100' }} requiredTasks={['Wipe benches', 'Photo of the sink']} />);
       expect(screen.getByTestId('instructions-overview')).toBeVisible();
-      expect(screen.getByText(/ask for your 6-digit visit code/)).toBeVisible();
+      expect(screen.getByText(/for your 6-digit check-in code/)).toBeVisible();
       expect(screen.getByText(/1 Harbour Rd/)).toBeVisible();
       expect(screen.getByText(/555-0100 · k@example.com/)).toBeVisible();
       expect(screen.getByText('Wipe benches')).toBeVisible();
-      expect(screen.getByText(/Arrival and departure instructions will appear here on .*Oct 14.* \(48 hours before your visit\)\. We'll email them to you too\./)).toBeVisible();
+      expect(screen.getByText(/Arrival and departure instructions will appear here on .+ \(48 hours before your visit\)\. We'll email them to you too\./)).toBeVisible();
       expect(screen.queryByText('Arrival instructions')).toBeNull();
       expect(screen.queryByText(/No arrival instructions provided/)).toBeNull();
     });

@@ -4,7 +4,10 @@ import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet } from '@/lib/api';
+import { CancellationPolicySummary, type PolicyResponse } from './CancellationPolicySummary';
+import { CheckoutCancellationDisclosure } from './CheckoutCancellationDisclosure';
 import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
 import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
@@ -12,7 +15,6 @@ import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard"
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { formatCurrency, formatHourSlotRange, formatTime as formatClockTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
-import { buildCancellationPolicyText } from "./CancellationPolicyDialog";
 import { BookingStorageSelector } from "./BookingStorageSelector";
 import { BookingPriceSummary, FeesInfoPopover } from "./BookingPriceSummary";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
@@ -38,7 +40,7 @@ import { matchingLocalInstants } from '@shared/booking-dst';
 import { bookingVisitBlocks } from '@shared/booking-visit-blocks';
 import { validateKitchenSlotSelection, CONSECUTIVE_SLOTS_MESSAGE } from '@shared/consecutive-booking-slots';
 import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
-import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
+import { firstBookingVisitStart, responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { formatResponseDeadline } from '@/lib/booking-response-deadline';
 
 /** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
@@ -150,22 +152,6 @@ function InventoryPreviewList({
       </ul>
     </section>
   );
-}
-
-function cancellationPolicyCopy(
-  kitchen: any,
-  t: (key: string, options?: Record<string, unknown>) => string,
-  fallbackHours = 24
-): string {
-  const location = kitchen?.location;
-  const hours =
-    location?.cancellationPolicyHours ??
-    location?.cancellation_policy_hours ??
-    fallbackHours;
-  const custom =
-    location?.cancellationPolicyMessage ??
-    location?.cancellation_policy_message;
-  return buildCancellationPolicyText(hours, custom, t);
 }
 
 /** Persistent place context carried from preview through every booking step. */
@@ -391,6 +377,11 @@ export default function KitchenBookingFlow({
 
   // State
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
+  const { t: policyT } = useTranslation('booking');
+  const { data: acceptedPolicy } = useQuery<PolicyResponse>({ queryKey: ['cancellation-policy', selectedKitchen?.id], enabled: !!selectedKitchen?.id,
+    queryFn: async () => { const result = await apiGet(`/kitchens/${selectedKitchen.id}/cancellation-policy`); if (!result?.policy || !result?.settings) throw Error(policyT('cpError')); return result; } });
+  const [policyAcknowledged, setPolicyAcknowledged] = useState(false);
+  useEffect(() => setPolicyAcknowledged(false), [selectedKitchen?.id, acceptedPolicy?.policy.version]);
   const [currentStep, setCurrentStep] = useState<BookingStep>("calendar");
   /** When true, date was prefilled — hide Date from the step rail and start after it. */
   const [hideDateStep, setHideDateStep] = useState(false);
@@ -1130,6 +1121,20 @@ export default function KitchenBookingFlow({
         selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time }, zone, kitchenPricing?.managerResponseBufferHours), i18n.language, zone);
     } catch { return null; }
   })();
+  const hoursUntilVisit = (() => {
+    if (!selectedDate || !orderedSelectedSlots.length) return null;
+    try {
+      const start = firstBookingVisitStart({ bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
+        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time, status: 'pending' } as any, kitchenPricing?.timezone || DEFAULT_TIMEZONE);
+      return (start.getTime() - Date.now()) / 3_600_000;
+    } catch { return null; }
+  })();
+  const preparationLeadHours = kitchenPricing?.preparationReminderHours ?? 48;
+  const policyStartAt = (() => {
+    if (!selectedDate || !orderedSelectedSlots.length || !acceptedPolicy) return undefined;
+    try { return firstBookingVisitStart({ bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
+      selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time, status: 'pending' } as any, acceptedPolicy.timezone).toISOString(); } catch { return undefined; }
+  })();
   const selectionError = (times = selectedSlots) => validateKitchenSlotSelection(
     times, allSlots, bookingRateMode === 'hourly' ? Math.max(1, kitchenPricing?.minimumBookingHours ?? 0) : 1,
     bookingRateMode === 'hourly' ? maxSlotsPerChef : Infinity,
@@ -1149,6 +1154,7 @@ export default function KitchenBookingFlow({
   // Redirect to Stripe Checkout
   const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (!acceptedPolicy || !policyAcknowledged) { setCheckoutError(policyT('cpAck')); return; }
     if (bookingBlocked) return;
     if (!requireValidSelection()) return;
     setCheckoutError(null);
@@ -1201,6 +1207,8 @@ export default function KitchenBookingFlow({
         credentials: 'include',
         body: JSON.stringify({
           kitchenId: selectedKitchen.id,
+          cancellationPolicyAccepted: policyAcknowledged,
+          cancellationPolicyVersion: acceptedPolicy.policy.version,
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
@@ -1949,14 +1957,11 @@ export default function KitchenBookingFlow({
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
               <li>{checkoutResponseDeadline ? t("sheetResponseDeadline", { deadline: checkoutResponseDeadline, defaultValue: "The kitchen has until {deadline} to respond." }) : t("sheetResponseDeadlineOnPage", "Your booking page will show when the kitchen needs to respond.")}</li>
               <li>{t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.")}</li>
-              <li>{t("sheetPreparationLead", { hours: kitchenPricing?.preparationReminderHours ?? 48, defaultValue: "Arrival details are shared {hours} hours before your visit, once the kitchen accepts." })}</li>
+              <li>{hoursUntilVisit !== null && hoursUntilVisit <= preparationLeadHours
+                ? t("sheetPreparationLeadLate", "Arrival details are shared as soon as the kitchen accepts.")
+                : t("sheetPreparationLead", { hours: preparationLeadHours, defaultValue: "Arrival details are shared {hours} hours before your visit, once the kitchen accepts." })}</li>
             </ol>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("sheetWhatNextCancel", {
-                hours: selectedKitchen?.cancellationPolicyHours ?? selectedKitchen?.location?.cancellationPolicyHours ?? 24,
-                defaultValue: "After the kitchen confirms, you can cancel up to {hours, plural, one {# hour} other {# hours}} before your visit. Refunds follow the cancellation policy.",
-              })}
-            </p>
+
           </section>
         </div>
       );
@@ -2240,6 +2245,7 @@ export default function KitchenBookingFlow({
       return (
         <div className="space-y-3">
           <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>
+          {grandTotal > 0 && <CheckoutCancellationDisclosure policy={acceptedPolicy} startAt={policyStartAt} acknowledged={policyAcknowledged} onAcknowledged={setPolicyAcknowledged} />}
           <div className="flex gap-3">
             {cancelButton}
             {previousButton}
@@ -2252,7 +2258,7 @@ export default function KitchenBookingFlow({
                   grandTotal > 0 ? redirectToStripeCheckout() : handleFreeBookingSubmit()
                 )
               }
-              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
+              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking || grandTotal > 0 && (!acceptedPolicy || !policyAcknowledged)}
             >
               {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
                 <>
@@ -2638,11 +2644,7 @@ export default function KitchenBookingFlow({
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </DialogTitle>
             <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
-              {selectedKitchen
-                ? cancellationPolicyCopy(selectedKitchen, (key, options) =>
-                    String(t(`kitchen:${key}`, options as any))
-                  )
-                : ""}
+              {acceptedPolicy ? <CancellationPolicySummary policy={acceptedPolicy.policy} timezone={acceptedPolicy.timezone} startAt={policyStartAt} /> : policyT('cpError')}
             </DialogDescription>
           </DialogHeader>
           <Button className="mt-2 w-full" variant="outline" onClick={() => setCancellationPolicyOpen(false)}>

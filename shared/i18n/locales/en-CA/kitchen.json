@@ -340,7 +340,7 @@
   "cancelAuthModalDesc": "Your request will not be submitted. You can start again later.",
   "cancelAuthModalTitle": "Are you sure you want to cancel?",
   "cancelBtn": "Cancel",
-  "cancellationPolicyDefaultMessage": "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+  "cancellationPolicyDefaultMessage": "Cancel at least {hours} hours before for a full refund minus the actual card processing fee. After that, the saved late charge applies.",
   "cancelTourModalDesc": "Your tour progress is saved on this device. You can come back and continue later.",
   "catering": "Catering",
   "certExpired": "Certificate Expired",
@@ -1726,6 +1726,6 @@
   "requirementsOpeningChat": "Opening messages…",
   "requirementsChatError": "Couldn’t open kitchen messages. Please try again.",
   "preConfirmationRefundTitle": "Free to cancel until the kitchen confirms your request — your card is only on hold.",
-  "preConfirmationRefundPolicy": "Cancel before your booking is confirmed for a 100% refund of any amount paid, including taxes and fees. ",
-  "confirmedBookingRefundPolicy": "After confirmation, the saved cancellation deadline applies. Cancellation and any refund are reviewed separately; processing costs and platform service fees may be retained. Review your cancellation and refund outcome for the exact amount."
+  "preConfirmationRefundPolicy": "Withdraw before the kitchen confirms. No payment is taken; your whole card hold is released.",
+  "confirmedBookingRefundPolicy": "After confirmation, you can cancel immediately under your booking’s saved policy. Any refund keeps the actual card processing fee. Review the exact dollars before cancelling."
 }

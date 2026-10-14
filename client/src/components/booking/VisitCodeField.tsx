@@ -54,7 +54,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
       const response = await fetch(`/api/bookings/${bookingId}/conversation`, { method: "POST", headers: await getAuthHeaders(), credentials: "include" })
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result.conversationId) throw new Error(result.error || failed)
-      setChat({ conversationId: result.conversationId, draft: t("kciVcAskNewDraft", { defaultValue: "Hi, I need a new visit code for my booking at {kitchen}.", kitchen: kitchenName }) })
+      setChat({ conversationId: result.conversationId, draft: t("kciVcAskNewDraft", { defaultValue: "Hi, I need a new check-in code for my booking at {kitchen}.", kitchen: kitchenName }) })
     } catch (error) {
       setChatError(error instanceof Error ? error.message : failed)
     } finally { setBusy(false) }
@@ -64,8 +64,8 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   const attemptsText = (count: number) => t("kciVcAttemptsLeft", { defaultValue: "{count, plural, one {# attempt left} other {# attempts left}}", count })
   const problemText = (() => {
     switch (problem?.code) {
-      case "VISIT_CODE_WRONG": return t("kciVcWrong", { defaultValue: "That visit code is not correct. Check it with the kitchen staff and try again." })
-      case "VISIT_CODE_REQUIRED": return t("kciVcRequired", { defaultValue: "Enter the 6-digit visit code the kitchen gave you to confirm arrival." })
+      case "VISIT_CODE_WRONG": return t("kciVcWrong", { defaultValue: "That check-in code is not correct. Check it with the kitchen staff and try again." })
+      case "VISIT_CODE_REQUIRED": return t("kciVcRequired", { defaultValue: "Enter the 6-digit check-in code the kitchen gave you to confirm arrival." })
       case "VISIT_CODE_ALREADY_RECORDED": return t("kciVcAlreadyRecorded", { defaultValue: "Arrival is already recorded for this visit." })
       default: return ""
     }
@@ -99,7 +99,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
     return (
       <div className="rounded-lg border bg-muted/30 p-3 text-sm" data-testid="visit-code-self">
         <p className="flex items-start gap-2"><KeyRound className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>{t("kciVcSelfNote", { defaultValue: "The kitchen turned on self check-in for this visit, so you do not need a visit code. Follow the arrival instructions, then confirm your arrival." })}</span></p>
+          <span>{t("kciVcSelfNote", { defaultValue: "The kitchen turned on self check-in for this visit, so you do not need a check-in code. Follow the arrival instructions, then confirm your arrival." })}</span></p>
       </div>
     )
   }
@@ -108,9 +108,9 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
     return (
       <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3" data-testid="visit-code-blocked">
         <p role="alert" className="text-sm text-destructive">{gate === "locked"
-          ? t("kciVcLockedAsk", { defaultValue: "Ask the kitchen for a new visit code" })
-          : t("kciVcRevoked", { defaultValue: "This visit code is no longer valid. Contact the kitchen." })}</p>
-        {gate === "locked" && <p className="text-sm text-muted-foreground">{t("kciVcLocked", { defaultValue: "Too many incorrect visit codes. Your check-in details are kept while you wait." })}</p>}
+          ? t("kciVcLockedAsk", { defaultValue: "Ask the kitchen for a new check-in code" })
+          : t("kciVcRevoked", { defaultValue: "This check-in code is no longer valid. Contact the kitchen." })}</p>
+        {gate === "locked" && <p className="text-sm text-muted-foreground">{t("kciVcLocked", { defaultValue: "Too many incorrect check-in codes. Your check-in details are kept while you wait." })}</p>}
         {noAccess}
         {message}
         {gate === "locked" && <a className="flex min-h-11 items-center text-sm underline underline-offset-4" href="mailto:support@localcooks.ca">{t("kciAcGetHelp", { defaultValue: "Get help from Local Cooks" })}</a>}
@@ -121,7 +121,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   const showAttempts = problem?.code === "VISIT_CODE_WRONG" || attemptsLeft < VISIT_CODE_MAX_ATTEMPTS
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="block text-sm font-medium">{t("kciVcLabel", { defaultValue: "Visit code" })}</label>
+      <label htmlFor={id} className="block text-sm font-medium">{t("kciVcLabel", { defaultValue: "Check-in code" })}</label>
       <Input
         id={id}
         name="visit-code"
@@ -138,7 +138,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
         className="h-12 sm:h-12 min-h-12 max-w-[12rem] text-center text-2xl font-semibold tracking-[0.35em] tabular-nums"
         onChange={event => onChange(event.target.value.replace(/\D/g, "").slice(0, VISIT_CODE_LENGTH))}
       />
-      <p id={`${id}-hint`} className="text-sm text-muted-foreground">{t("kciVcHint", { defaultValue: "Kitchen staff will give you your visit code when you arrive." })}</p>
+      <p id={`${id}-hint`} className="text-sm text-muted-foreground">{t("kciVcHint", { defaultValue: "Kitchen staff will give you your check-in code when you arrive." })}</p>
       {noAccess}
       <div id={`${id}-status`} aria-live="polite" className="space-y-1">
         {problemText && <p className="text-sm text-destructive">{problemText}</p>}

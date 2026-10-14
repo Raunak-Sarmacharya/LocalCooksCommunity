@@ -349,6 +349,7 @@ interface PaymentNotificationData {
   currency: string;
   chefName: string;
   kitchenName: string;
+  payoutTiming?: string | null;
 }
 
 async function notifyPaymentReceived(data: PaymentNotificationData) {
@@ -358,8 +359,8 @@ async function notifyPaymentReceived(data: PaymentNotificationData) {
     locationId: data.locationId,
     type: 'payment_received',
     priority: 'normal',
-    title: 'Payment Received',
-    message: `Received $${formattedAmount} ${data.currency} from ${data.chefName} for booking at ${data.kitchenName}.`,
+    title: 'Payment confirmed',
+    message: `${data.chefName}’s payment of $${formattedAmount} ${data.currency} went through. ${data.payoutTiming === 'after_closeout' ? 'Your payout is sent after the visit.' : 'Your payout is on its way.'}`,
     metadata: {
       bookingId: data.bookingId,
       amount: data.amount,

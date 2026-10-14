@@ -310,23 +310,6 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} className="w-32" />
             </SettingsRow>}
             <SettingsRow
-              id="cancellation-hours"
-              label={mt("cancellationWindow")}
-              hint={mt("minimumHoursBeforeCancellationAllowed")}
-              help={mt("cancellationRefundPlatformNote")}
-            >
-              <div className="flex flex-col items-end gap-2"><NumericInput
-                id="cancellation-hours"
-                disabled={policyUpdating}
-                suffix={hourUnit(cancellationHours)}
-                value={String(cancellationHours)}
-                onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
-                className="w-32"
-              />
-              {resetPolicyControl("cancellationPolicyHours")}</div>
-            </SettingsRow>
-
-            <SettingsRow
               id="daily-limit"
               label={mt("dailyBookingLimit")}
               hint={mt("maximumHoursAChefCanBookInASingleDay124Hours")}

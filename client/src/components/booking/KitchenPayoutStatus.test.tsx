@@ -12,9 +12,9 @@ import { KitchenPayoutStatus } from './KitchenPayoutStatus';
 const resources = { 'en-CA': { booking: enBooking }, 'fr-CA': { booking: frBooking }, uk: { booking: ukBooking } };
 const payout = (extra: Partial<KitchenPayout> = {}): KitchenPayout => ({ timing: 'after_closeout', status: 'scheduled', holdReason: null,
   expectedAt: '2026-10-15T13:30:00.000Z', sentAt: null, amountCents: 2732, ...extra });
-async function show(value: KitchenPayout, lng = 'en-CA') {
+async function show(value: KitchenPayout, lng = 'en-CA', showAmount = true, extra: { chefName?: string; stage?: 'before_checkout' | 'inspect' | 'closed' } = {}) {
   const i18n = createInstance(); await i18n.use(ICU).init({ lng, resources, defaultNS: 'booking', interpolation: { escapeValue: false } });
-  render(<I18nextProvider i18n={i18n}><KitchenPayoutStatus payout={value} timezone="America/St_Johns" /></I18nextProvider>);
+  render(<I18nextProvider i18n={i18n}><KitchenPayoutStatus payout={value} timezone="America/St_Johns" showAmount={showAmount} {...extra} /></I18nextProvider>);
   return screen.getByTestId('kitchen-payout-status');
 }
 afterEach(cleanup);
@@ -23,6 +23,15 @@ describe('manager payment card: kitchen payout after closeout', () => {
     const card = await show(payout());
     expect(card).toHaveTextContent('Your payout $27.32');
     expect(card).toHaveTextContent('Sent after the visit closes (around Oct 15, 2026, 11:00 a.m.)');
+  });
+  it('tells the kitchen the inspection gets it paid sooner, before and after checkout', async () => {
+    expect(await show(payout(), 'en-CA', true, { chefName: 'Ada', stage: 'before_checkout' })).toHaveTextContent('Paid after the visit. Finish the inspection after Ada checks out to get it sooner.');
+    cleanup();
+    expect(await show(payout(), 'en-CA', true, { chefName: 'Ada', stage: 'inspect' })).toHaveTextContent("Finish the inspection to send it now, or it's sent automatically on Oct 15, 2026, 11:00 a.m.");
+  });
+  it('can show only the status line when the page already headlines the amount', async () => {
+    const card = await show(payout(), 'en-CA', false);
+    expect(card).not.toHaveTextContent('$27.32'); expect(card).toHaveTextContent('Sent after the visit closes');
   });
   it('on hold for a reported issue or a support review', async () => {
     expect(await show(payout({ status: 'on_hold', holdReason: 'reported_issue' }))).toHaveTextContent('On hold while Local Cooks reviews the reported issue');

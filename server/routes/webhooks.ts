@@ -2110,13 +2110,13 @@ async function handlePaymentIntentSucceeded(
             .limit(1);
 
           if (location && location.managerId) {
-            const [chef] = await db
-              .select({ username: users.username })
-              .from(users)
-              .where(eq(users.id, booking.chefId as number))
-              .limit(1);
-
-            const chefName = chef?.username || "Chef";
+            // Display name only; never show the chef's email address as a name.
+            const { getUserDisplayName } = await import("../utils/user-display");
+            const displayName = booking.chefId ? await getUserDisplayName(booking.chefId, "chef").catch(() => "") : "";
+            const chefName = displayName && displayName !== "A chef" && !displayName.includes("@") ? displayName : "The chef";
+            const { paymentTransactions: paymentRows } = await import("@shared/schema");
+            const [paid] = await db.select({ timing: paymentRows.payoutTiming }).from(paymentRows)
+              .where(eq(paymentRows.paymentIntentId, paymentIntent.id)).limit(1);
 
             // Create in-app notification
             await notificationService.notifyPaymentReceived({
@@ -2127,6 +2127,7 @@ async function handlePaymentIntentSucceeded(
               currency: paymentIntent.currency.toUpperCase(),
               chefName,
               kitchenName: kitchen.name,
+              payoutTiming: paid?.timing,
             });
 
             // Payment received email to manager removed — not needed in current flow
@@ -3371,6 +3372,11 @@ async function handleChargeUpdated(
     }
 
     // Check if we already have the Stripe fee synced
+    if ((paymentTransaction.metadata as any)?.cancellationRefundOperation?.policyEngine) {
+      if (!paymentTransaction.booking_id || !paymentTransaction.manager_id) throw Error('Cancellation source ownership requires review');
+      await (await import('../services/booking-cancellation-refund')).retryCancellationRefund(paymentTransaction.booking_id, paymentTransaction.manager_id);
+      return; // The frozen cancellation owns this source; never release a transfer while reconciling it.
+    }
     const existingFee = parseInt(String(paymentTransaction.stripe_processing_fee || '0')) || 0;
     if (existingFee > 0) {
       logger.info(`[Webhook] charge.updated: Stripe fee already synced for ${paymentIntentId}: ${existingFee} cents; validating captured amount and transfer split`);

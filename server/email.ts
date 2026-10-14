@@ -3568,6 +3568,11 @@ export function emailLocalDateTime(value: Date | string, timezone = DEFAULT_TIME
     hour: 'numeric', minute: '2-digit', hour12: true }).format(date)} · ${emailZoneName(timezone, locale, date)}`;
 }
 
+/** For use inside sentences: "Oct 14, 2026, 3:00 p.m. Newfoundland Time" (fact rows keep the dot form). */
+export function emailLocalDateTimeSentence(value: Date | string, timezone = DEFAULT_TIMEZONE, locale = 'en-CA') {
+  return emailLocalDateTime(value, timezone, locale).replace(' · ', ' ');
+}
+
 function emailDate(value: Date | string, locale = 'en-CA') {
   const date = value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
   return new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -3610,7 +3615,7 @@ export function bookingResponseDeadline(createdAt: Date | string, startAt?: Date
 
 export const generateBookingNotificationEmail = (data: BookingRequestEmailDetails & { managerEmail: string; managerName?: string; bookingId: number }): EmailContent => {
   const calendar = bookingCalendarParts(data, data.managerEmail, data.kitchenName, data.locationAddress || data.kitchenName, '', data.timezone || DEFAULT_TIMEZONE);
-  const deadline = data.responseDeadline ? emailLocalDateTime(data.responseDeadline, data.timezone, data.locale || 'en-CA') : tEmail(data.locale, 'bookingDeadlineOnPage');
+  const deadline = data.responseDeadline ? emailLocalDateTimeSentence(data.responseDeadline, data.timezone, data.locale || 'en-CA') : tEmail(data.locale, 'bookingDeadlineOnPage');
   return renderBookingNotice(data, { to: data.managerEmail, recipientName: data.managerName || tEmail(data.locale, "bookingManager"),
     key: 'bookingNewRequest', messageKey: data.paymentState && data.paymentState !== 'held' ? 'bookingNewRequestPendingBody' : undefined, params: { chef: data.chefName, deadline }, action: 'bookingReviewRequest',
     url: getSubdomainUrl('kitchen') + (data.bookingId ? '/manager/booking/' + data.bookingId : '/dashboard?view=bookings'),
@@ -3628,7 +3633,7 @@ export const generateBookingCancellationNotificationEmail = (bookingData: { mana
 
 export const generateBookingRequestEmail = (data: BookingRequestEmailDetails & { chefEmail: string }): EmailContent => {
   const calendar = bookingCalendarParts(data, data.chefEmail, data.kitchenName, data.locationAddress || data.kitchenName, '', data.timezone || DEFAULT_TIMEZONE);
-  const deadline = data.responseDeadline ? emailLocalDateTime(data.responseDeadline, data.timezone, data.locale || 'en-CA') : tEmail(data.locale, 'bookingDeadlineOnPage');
+  const deadline = data.responseDeadline ? emailLocalDateTimeSentence(data.responseDeadline, data.timezone, data.locale || 'en-CA') : tEmail(data.locale, 'bookingDeadlineOnPage');
   return renderBookingNotice(data, { to: data.chefEmail, recipientName: data.chefName,
     key: 'bookingRequestSent', messageKey: data.paymentState === 'pending' ? 'bookingRequestPendingBody' : data.paymentState === 'paid' ? 'bookingRequestPaidBody' : undefined, params: { chef: data.chefName, deadline }, action: 'bookingViewRequest',
     url: getSubdomainUrl('chef') + (data.bookingId ? '/booking/' + data.bookingId : '/dashboard?view=bookings'),
@@ -3641,7 +3646,7 @@ export function arrivalModeLine(mode: ArrivalMode = 'legacy', locale?: string | 
   return tEmail(locale, `${short ? 'arrivalAction' : 'arrivalMode'}${mode[0].toUpperCase()}${mode.slice(1)}`);
 }
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string; locale?: string | null; arrivalMode?: ArrivalMode; instructionsReleased?: boolean; instructionsReleaseAt?: string; preparationHours?: number; visitGuidance?: string; referenceCode?: string | null; totalCents?: number; payoutCents?: number; reservationChefName?: string; cancellationPolicyHours?: number; cancellationDeadline?: string; receiptUrl?: string; isAdmin?: boolean }): EmailContent => {
+export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string; locale?: string | null; arrivalMode?: ArrivalMode; instructionsReleased?: boolean; instructionsReleaseAt?: string; preparationHours?: number; visitGuidance?: string; referenceCode?: string | null; totalCents?: number; payoutCents?: number; payoutAfterCloseout?: boolean; reservationChefName?: string; cancellationPolicyHours?: number; cancellationDeadline?: string; receiptUrl?: string; isAdmin?: boolean }): EmailContent => {
   const locale = bookingData.locale || 'en-CA';
   const timezone = bookingData.timezone || DEFAULT_TIMEZONE;
   const staff = bookingData.isStaff;
@@ -3650,7 +3655,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   const calendar = bookingCalendarParts(bookingData, bookingData.chefEmail, `Kitchen booking · ${bookingData.kitchenName}`,
     bookingData.locationAddress || bookingData.locationName || bookingData.kitchenName, heading, timezone);
   const overview = bookingData.instructionsReleaseAt ? tEmail(locale, 'instructionsReleaseOverview', {
-    releaseAt: emailLocalDateTime(bookingData.instructionsReleaseAt, timezone, locale), hours: bookingData.preparationHours ?? 48 }) : tEmail(locale, 'bookingReleaseOnPage');
+    releaseAt: emailLocalDateTimeSentence(bookingData.instructionsReleaseAt, timezone, locale), hours: bookingData.preparationHours ?? 48 }) : tEmail(locale, 'bookingReleaseOnPage');
   const managerBody = bookingData.arrivalMode === 'self' ? 'bookingManagerSelfBody' : bookingData.arrivalMode === 'mixed'
     ? 'bookingManagerMixedBody' : bookingData.arrivalMode === 'staffed' ? 'bookingManagerStaffedBody' : 'bookingManagerLegacyBody';
   const guidance = staff ? tEmail(locale, bookingData.isAdmin ? 'bookingAdminConfirmedBody' : managerBody, { chef: bookingData.reservationChefName || bookingData.chefName })
@@ -3658,12 +3663,12 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       ? [tEmail(locale, 'instructionsReleased'), bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : '',
         bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : ''].filter(Boolean).join('\n') : overview].join('\n');
   const cancellation = !staff && bookingData.cancellationDeadline ? tEmail(locale, 'bookingCancellationPolicy', {
-    deadline: emailLocalDateTime(bookingData.cancellationDeadline, timezone, locale), hours: bookingData.cancellationPolicyHours ?? 24 }) : '';
+    deadline: emailLocalDateTimeSentence(bookingData.cancellationDeadline, timezone, locale), hours: bookingData.cancellationPolicyHours ?? 24 }) : '';
   const total = staff ? bookingData.payoutCents : bookingData.totalCents;
   // Legacy structured inputs can contain a breakdown; retain only their captured total.
   const legacyTotal = bookingData.paymentSummary?.match(/(?:CAD\s*)?\$[\d,.]+/)?.[0];
   const content = renderTransactionalEmail({ to: bookingData.chefEmail, locale, recipientName: bookingData.chefName || 'there', subject: heading, heading,
-    message: [guidance, cancellation].filter(Boolean).join('\n\n'),
+    message: [guidance, cancellation, staff && !bookingData.isAdmin && bookingData.payoutAfterCloseout ? tEmail(locale, 'bookingManagerPayoutAfterCloseout') : ''].filter(Boolean).join('\n\n'),
     facts: [...bookingEmailFacts(bookingData, calendar.timeLabel),
       ...(total != null || !staff && legacyTotal ? [{ label: tEmail(locale, staff ? 'bookingEstimatedPayout' : 'bookingTotalPaid'), value: total != null ? `CAD $${(total / 100).toFixed(2)}` : legacyTotal! }] : []),
       ...(bookingData.contactEmail ? [{ label: tEmail(locale, 'bookingContact'), value: bookingData.contactEmail }] : []),

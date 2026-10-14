@@ -32,6 +32,7 @@ const workerStripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
 const decisionStripe = () => inRecurringWorker() ? workerStripe : stripe;
 
 export interface CreatePaymentIntentParams {
+  captureMethod?: 'manual' | 'automatic';
   amount: number; // Amount in cents
   currency?: string;
   chefId: number;
@@ -157,7 +158,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       // Don't auto-confirm - we'll confirm after collecting payment method
       confirm: false,
       // Use automatic capture: payments are immediately processed when confirmed
-      capture_method: 'automatic',
+      capture_method: params.captureMethod ?? 'automatic',
       metadata: {
         booking_type: 'kitchen',
         kitchen_id: kitchenId.toString(),
@@ -308,7 +309,9 @@ export async function getCancellationPaymentFacts(paymentIntentId: string) {
   if (!charge.balance_transaction || !charge.amount_captured) throw new Error('Actual captured amount and processing cost are not yet verified');
   const balance = typeof charge.balance_transaction === 'string' ? await provider.balanceTransactions.retrieve(charge.balance_transaction) : charge.balance_transaction;
   if (balance.currency !== intent.currency || !Number.isSafeInteger(balance.fee) || balance.fee < 0) throw new Error('Actual processing cost requires review');
-  return { captured: charge.amount_captured, processingCost: balance.fee, currency: intent.currency,
+  const { actualCardProcessingFee } = await import('@shared/card-processing-fee');
+  const processingCost = actualCardProcessingFee(balance.fee_details, intent.currency);
+  return { captured: charge.amount_captured, processingCost, balanceTransactionId: balance.id, feeDetails: balance.fee_details, currency: intent.currency,
     chargeId: charge.id, refunded: charge.amount_refunded, refunds: await getPaymentIntentRefunds(paymentIntentId) };
 }
 

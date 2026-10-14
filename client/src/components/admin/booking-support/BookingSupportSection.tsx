@@ -11,6 +11,8 @@ import { loadCase, searchBookings, type TokenGetter } from "./api";
 import { ActionDialog } from "./ActionDialog";
 import { ActionPanel, CaseHeader, Chronology, DeadlinesCard, FeedbackCard, MoneyCard, PaymentEvidenceCard, VisitCodesCard } from "./CaseView";
 import type { AvailableSupportAction, SearchRow, SupportCase } from "./types";
+import { FrozenCancellationPolicy } from './FrozenCancellationPolicy';
+import { CancellationPolicyEditor } from '@/components/manager/settings/CancellationPolicyEditor';
 
 function readBookingParam(): number | null {
   const raw = new URLSearchParams(window.location.search).get("booking");
@@ -106,6 +108,8 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
           <ActionPanel actions={c.availableActions} supportActions={c.supportActions} onChoose={(action) => { setDoneLabel(null); setChosen(action); }} />
         </div>
         <div className="order-2 space-y-4 xl:order-1">
+          <FrozenCancellationPolicy snapshot={c.cancellationPolicySnapshot} />
+          {c.kitchen && <CancellationPolicyEditor kitchenId={c.kitchen.id} admin />}
           <MoneyCard c={c} /><DeadlinesCard c={c} /><FeedbackCard c={c} getFirebaseToken={getFirebaseToken} /><VisitCodesCard c={c} /><PaymentEvidenceCard c={c} />
         </div>
         <div className="order-3 min-w-0 xl:order-2"><Chronology c={c} /></div>

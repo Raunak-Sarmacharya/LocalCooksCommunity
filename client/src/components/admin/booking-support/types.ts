@@ -41,6 +41,7 @@ export type ChronologyEntry =
 export type CloseoutVisit = { key?: string; visitId?: number; blockIndex: number; phase?: string; inspection?: { outcome?: string; dueAt?: string | null } };
 
 export type SupportCase = {
+  cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   bookingId: number; referenceCode: string; status: string; paymentStatus: string | null; checkinStatus: string | null;
   updatedAt: string; paymentIntentId: string | null;

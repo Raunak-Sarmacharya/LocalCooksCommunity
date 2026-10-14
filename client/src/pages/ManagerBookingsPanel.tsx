@@ -29,7 +29,7 @@ import { getBookingColumns, Booking } from "@/components/manager/bookings/column
 import { auth } from "@/lib/firebase";
 import { calendarDateForOperatingTime, sortTimesInOperatingWindow } from "@shared/operating-hours";
 import i18n from "@/i18n";
-import { formatCalendarDate } from "@/lib/calendar-date";
+import { bookingStartDateKey, formatCalendarDate } from "@/lib/calendar-date";
 import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // Booking type imported from columns.tsx
@@ -756,7 +756,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{t("date2")}</span>
-                      <span>{formatDate(bookingToCancel.bookingDate)}</span>
+                      <span>{formatDate(bookingStartDateKey(bookingToCancel) ?? bookingToCancel.bookingDate)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{t("time2")}</span>

@@ -6,6 +6,8 @@ import { CancellationRefundReview } from '@/components/booking/CancellationRefun
 import BookingPreparation from "@/components/booking/BookingPreparation";
 import { KitchenBookingChanges } from '@/components/booking/KitchenBookingChanges';
 import { BookingCancellationChooser } from '@/components/booking/BookingCancellationChooser';
+import { CancellationBookingCard } from '@/components/booking/CancellationBookingCard';
+import { KitchenCausedCancellation } from '@/components/booking/KitchenCausedCancellation';
 import { BookingRefundPolicyNotice } from '@/components/booking/BookingRefundPolicyNotice';
 import { BookingHistoryPanel } from '@/components/booking/BookingHistoryPanel';
 import { BookingFeedbackCard } from '@/components/booking/BookingFeedbackCard';
@@ -243,6 +245,8 @@ export default function BookingDetailsPage() {
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [kitchenCancelOpen, setKitchenCancelOpen] = useState(false);
+  const { t: policyT } = useTranslation('booking');
   const [fixOpen, setFixOpen] = useState(false);
   const [codeShowsArrival, setCodeShowsArrival] = useState(false);
   const queryClient = useQueryClient();
@@ -1229,6 +1233,8 @@ export default function BookingDetailsPage() {
           : t('bdhNextChefInSession', { time: visitBounds ? clockTime(visitBounds.endAt) : '' });
       case 'time_ended_in_session': return isManagerView ? t('bdhNextManagerTimeEnded', { chef }) : t('bdhNextChefTimeEnded');
       case 'checkout_review':
+        if (isManagerView && inspectionCanRespond && booking.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt)
+          return t('bdhNextManagerReviewPayout', { chef, amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) });
         if (isManagerView) return inspectionDueText ? t('bdhNextManagerReviewBy', { chef, time: inspectionDueText }) : t('bdhNextManagerReview', { chef });
         return inspectionDueText && inspectionOpen ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete');
       case 'visit_ended':
@@ -1287,6 +1293,7 @@ export default function BookingDetailsPage() {
   );
   const goToHelp = () => document.getElementById('booking-support')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
+  if (isManagerView && booking?.status === 'confirmed') menuItems.push({ key: 'kitchen-cancel', label: policyT('cpKitchenCancel'), icon: CalendarX, onSelect: () => setKitchenCancelOpen(true) });
   if (chefCanCancel) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
   if (managerCanManage) menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : t('bdhCancelOrChange'), icon: CalendarX, onSelect: openManagementDialog });
   if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
@@ -1401,6 +1408,7 @@ export default function BookingDetailsPage() {
   const bookingContent = booking && (
     <TooltipProvider>
     <div className={`mx-auto max-w-5xl min-w-0 ${hasBottomBar ? 'pb-24 sm:pb-0' : ''}`}>
+      <KitchenCausedCancellation bookingId={booking.id} open={kitchenCancelOpen} onOpenChange={setKitchenCancelOpen} onChanged={reloadBookingDetails} />
       {/* ── Header: who, when, one status, one next step, actions ── */}
       <header className={`${sectionClass} mb-6`} aria-label={t('bdhHeaderLabel')} data-testid="booking-header">
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
@@ -1662,13 +1670,14 @@ export default function BookingDetailsPage() {
           <section className={sectionClass} aria-labelledby="booking-payment-title" data-testid="payment-card">
             {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
             <h2 id="booking-payment-title" className={headingClass}>{t('bdPaymentSection')}</h2>
-            {isManagerView && booking.payout?.timing === 'after_closeout' && <KitchenPayoutStatus payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} />}
             {paymentHeadline && (
               <div className="mt-3">
                 <p className="text-xs text-muted-foreground">{paymentHeadline.label}</p>
                 <p className={`text-2xl font-semibold tabular-nums ${paymentHeadline.struck ? 'text-muted-foreground line-through' : ''}`} data-testid="payment-headline">{formatCurrency(paymentHeadline.cents)}</p>
               </div>
             )}
+            {isManagerView && booking.payout?.timing === 'after_closeout' && <KitchenPayoutStatus payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} showAmount={!paymentHeadline} chefName={chefName}
+              stage={['cancelled', 'no_show', 'issue', 'completed', 'pending', 'cancellation_requested'].includes(phase) ? 'closed' : ['checkout_review', 'visit_ended'].includes(phase) ? (inspectionCanRespond ? 'inspect' : 'closed') : 'before_checkout'} />}
             {paymentMessage && (
               <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs">
                 <span className="min-w-0 flex-1 text-muted-foreground">{paymentMessage.summary}</span>
@@ -1819,7 +1828,8 @@ export default function BookingDetailsPage() {
             )}
           </section>
 
-          {!isManagerView && (chefCanCancel || booking.status === 'cancellation_requested') && (
+          {!isManagerView && chefCanCancel && booking.status === 'confirmed' && <CancellationBookingCard bookingId={booking.id} onCancel={() => setCancelOpen(true)} />}
+          {!isManagerView && booking.status !== 'confirmed' && (chefCanCancel || booking.status === 'cancellation_requested') && (
             <section className={sectionClass} aria-labelledby="booking-cancellation-title" data-testid="cancellation-card">
               <h2 id="booking-cancellation-title" className={`${headingClass} mb-2`}>{t('bdhCancellationTitle')}</h2>
               <div className="text-sm text-muted-foreground">

@@ -69,6 +69,24 @@ import { notificationService } from "../services/notification.service";
 import { generateDamageClaimInvoicePDF } from "../services/invoice-service";
 
 const router = Router();
+router.get('/kitchens/:id/cancellation-policy', async (req, res) => {
+    try {
+        const { publishedCancellationPolicy, cancellationSettings } = await import('../services/cancellation-policy-settings');
+        const [row] = await db.select({ timezone: locations.timezone }).from(kitchens).innerJoin(locations, eq(kitchens.locationId, locations.id)).where(eq(kitchens.id, Number(req.params.id))).limit(1);
+        if (!row) return res.status(404).json({ error: 'Kitchen not found' });
+        const policy = await publishedCancellationPolicy(Number(req.params.id));
+        res.json({ policy: { id: policy.id, version: policy.version, noticeHours: policy.noticeHours, lateChargePercent: policy.lateChargePercent }, settings: await cancellationSettings(), timezone: row.timezone });
+    } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Cancellation policy unavailable' }); }
+});
+router.get(['/bookings/:id/cancellation-quote', '/chef/bookings/:id/cancellation-quote'], requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+    try { res.json(await (await import('../services/booking-cancellation-refund')).readChefCancellationQuote(Number(req.params.id), req.neonUser!.id)); }
+    catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Cancellation quote needs review' }); }
+});
+router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
+    // Forward to the existing pending-hold route as well as the new captured path.
+    req.method = 'PUT'; req.url = `/chef/bookings/${req.params.id}/cancel`;
+    router(req, res, () => res.status(404).json({ error: 'Booking not found' }));
+});
 router.use(bookingAttendancePrivacy);
 router.get('/bookings/:id/cancellation-refund', requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -465,7 +483,7 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
             return res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled successfully.' });
         }
 
-        // ── TIER 2: Confirmed + Paid → Cancellation Request to Manager ────────
+        // Captured payments use the same locked quote and durable refund operation.
         if (booking.status === 'confirmed' && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')) {
             await db.transaction(async tx => {
             const [changed] = await tx.update(storageBookings)
@@ -2174,8 +2192,7 @@ router.get("/chef/invoices/storage/:id", requireChef, async (req: Request, res: 
 // CHEF CANCELLATION — TIERED APPROACH
 // ═══════════════════════════════════════════════════════════════════════════
 // Tier 1: pending/authorized → immediate cancel (void auth if applicable, $0 loss)
-// Tier 2: confirmed/paid → cancellation REQUEST sent to manager for review
-//         Manager uses the existing Issue Refund flow with editable amount
+// Captured payments cancel instantly under their frozen policy.
 // ═══════════════════════════════════════════════════════════════════════════
 router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
@@ -2200,6 +2217,8 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                 paymentIntentId: kitchenBookings.paymentIntentId,
                 paymentStatus: kitchenBookings.paymentStatus,
                 cancellationPolicyHours: kitchenBookings.cancellationPolicyHours,
+                cancellationOperationKey: kitchenBookings.cancellationOperationKey,
+                cancellationCause: kitchenBookings.cancellationCause,
                 paymentDecision: kitchenBookings.paymentDecision,
                 updatedAt: kitchenBookings.updatedAt,
                 locationTimezone: locations.timezone,
@@ -2230,36 +2249,19 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         if ((booking.paymentDecision as { state?: string } | null)?.state === 'pending')
             return res.status(409).json({ error: 'A payment decision is being reconciled. Local Cooks must review this booking before cancellation.' });
         if (booking.status === 'cancelled') {
-            return res.status(400).json({ error: "Booking is already cancelled" });
-        }
-        if (booking.status === 'cancellation_requested') {
-            return res.status(400).json({ error: "A cancellation request is already pending for this booking" });
+            if (booking.paymentStatus === 'failed' && booking.cancellationCause !== 'kitchen') return res.json({ success: true, action: 'cancelled', message: 'This booking request is already cancelled.' });
+            const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
+            return res.json(await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, req.body.expectedRefundCents));
         }
         if (booking.status === 'completed') {
             return res.status(400).json({ error: "Cannot cancel a completed booking" });
         }
 
-        // Check cancellation policy window
-        const { createBookingDateTime } = await import('@shared/timezone-utils');
-        const operatingDate = booking.bookingDate.toISOString().slice(0, 10);
-        const calendarDate = booking.operatingWindowStartTime
-            ? calendarDateForOperatingTime(operatingDate, booking.startTime, booking.operatingWindowStartTime) : operatingDate;
-        const bookingDateTime = createBookingDateTime(calendarDate, booking.startTime, 'America/St_Johns');
-        const now = new Date();
-        const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        const cancellationHours = booking.cancellationPolicyHours ?? 24;
-
-        const uncapturedRequest = booking.status === 'pending' && (booking.paymentStatus === 'authorized'
-            || !booking.paymentIntentId && ['pending', 'failed'].includes(booking.paymentStatus || ''));
-        if (!uncapturedRequest && hoursUntilBooking <= cancellationHours) {
-            const policyMessage = (booking.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.")
-                .replace('{hours}', String(cancellationHours));
-            return res.status(400).json({ error: policyMessage });
-        }
-
         if (booking.status === 'pending' && booking.paymentStatus === 'authorized') {
             const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
             const result = await decideAuthorizedBooking(id, 'cancelled', [], [], req.neonUser!.id);
+            await db.update(kitchenBookings).set({ cancellationEffectiveAt: new Date(), cancellationCause: 'chef', cancellationOperationKey: req.body.operationKey || `chef-withdraw-${id}-${req.neonUser!.id}` })
+                .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, 'cancelled')));
             const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
             await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
             return res.json({ ...result, action: 'cancelled', message: 'Booking cancelled. Stripe confirmed the payment authorization was cancelled.' });
@@ -2269,7 +2271,8 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         // No money captured yet. Void auth if applicable, cancel booking directly.
         if (booking.status === 'pending' && !booking.paymentIntentId && ['pending', 'failed'].includes(booking.paymentStatus || '')) {
             await db.transaction(async tx => {
-                const [changed] = await tx.update(kitchenBookings).set({ status: 'cancelled', updatedAt: new Date() })
+                const [changed] = await tx.update(kitchenBookings).set({ status: 'cancelled', cancellationEffectiveAt: new Date(), cancellationCause: 'chef',
+                    cancellationOperationKey: req.body.operationKey || `chef-withdraw-${id}-${req.neonUser!.id}`, updatedAt: new Date() })
                     .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, 'pending'), eq(kitchenBookings.updatedAt, booking.updatedAt))).returning();
                 if (!changed) throw new Error('Booking changed; refresh before cancelling');
                 await cancelLinkedBookingDates(tx, id);
@@ -2280,30 +2283,12 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             return res.json({ success: true, action: 'cancelled', message: 'Unpaid booking cancelled.' });
         }
 
-        // ── TIER 2: Confirmed + Paid → Cancellation Request to Manager ────────
-        // Money is captured. Chef cannot self-refund. Manager reviews and uses
-        // the existing Issue Refund flow with editable amount.
-        if (booking.status === 'confirmed' && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')) {
-            await db.transaction(async tx => {
-            const [changed] = await tx.update(kitchenBookings)
-                .set({
-                    status: 'cancellation_requested',
-                    cancellationRequestedAt: new Date(),
-                    cancellationRequestReason: reason || null,
-                    updatedAt: new Date(),
-                })
-                .where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.updatedAt, booking.updatedAt))).returning();
-            if (!changed) throw new Error('Booking changed; refresh before requesting cancellation');
-            const { queueBookingLifecycleEvent } = await import('../services/booking-lifecycle-delivery');
-            await queueBookingLifecycleEvent(tx, id, 'cancellation_requested', 'Kitchen cancellation requested',
-                `The chef asked to cancel booking #${id}. The kitchen will review the cancellation and any refund separately.${reason?.trim() ? ` Note from the chef: ${reason.trim()}` : ''}`, req.neonUser!.id);
-            });
-
-            return res.json({
-                success: true,
-                action: 'cancellation_requested',
-                message: 'Your cancellation request has been submitted to the kitchen manager for review.',
-            });
+        // Captured payments use the same locked quote and durable refund operation.
+        if (['confirmed', 'cancellation_requested'].includes(booking.status) && ['paid', 'partially_refunded'].includes(booking.paymentStatus || '')) {
+            const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
+            const result = await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, req.body.expectedRefundCents);
+            await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Cancellation notice pending retry', error));
+            return res.json(result);
         }
 
         return res.status(409).json({ error: 'The payment outcome needs Local Cooks review before this booking can be cancelled.' });
@@ -2873,9 +2858,13 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             taxRatePercent: String(taxRatePercent)
         };
 
+        const { checkoutCancellationSnapshot, cancellationSnapshotMetadata } = await import('../services/cancellation-policy-settings');
+        const policySnapshot = await checkoutCancellationSnapshot(kitchenId, bookingDate, startTime, availability.windowStartTime!,
+            location?.timezone || 'America/St_Johns', req.body.cancellationPolicyAccepted, req.body.cancellationPolicyVersion);
         // Create payment intent
         const paymentIntent = await createPaymentIntent({
             amount: chefChargeCents,
+            captureMethod: 'manual',
             currency: kitchenPricing.currency.toLowerCase(),
             chefId,
             kitchenId,
@@ -2886,6 +2875,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             enableACSS: false, // Disable ACSS - only use card payments with automatic capture
             enableCards: true, // Enable card payments only
             metadata: {
+                ...cancellationSnapshotMetadata(policySnapshot),
                 booking_date: bookingDate,
                 start_time: startTime,
                 end_time: endTime,
@@ -2894,7 +2884,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 tax_rate_percent: String(taxRatePercent),
                 platform_fee_cents: String(feeCalculation.platformCommissionInCents),
                 approved_subtotal: String(totalPriceCents),
-                cancellation_policy_hours: String(resolveKitchenBookingPolicies(kitchen, location).cancellationPolicyHours),
+                cancellation_policy_hours: String(policySnapshot.noticeHours),
                 approved_tax: String(taxCents),
                 has_storage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
                 has_equipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
@@ -2908,6 +2898,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             paymentIntentId: paymentIntent.id,
             id: paymentIntent.id,
             amount: chefChargeCents,
+            captureMethod: 'manual',
             currency: kitchenPricing.currency.toUpperCase(),
             breakdown: {
                 subtotal: totalPriceCents,
@@ -3075,7 +3066,7 @@ router.post("/chef/bookings/checkout/cancel", requireChef, async (req: Request, 
 
 router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds, cancellationPolicyAccepted, cancellationPolicyVersion } = req.body;
         const chefId = req.neonUser!.id;
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
@@ -3283,6 +3274,9 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             : `Kitchen Session (${effectiveDurationHours} hr${effectiveDurationHours !== 1 ? 's' : ''})`;
         const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : 'Tax';
 
+        const { checkoutCancellationSnapshot } = await import('../services/cancellation-policy-settings');
+        const cancellationPolicySnapshot = await checkoutCancellationSnapshot(kitchenId, bookingDateStr, startTime,
+            availabilityCheck.windowStartTime!, location.timezone || 'America/St_Johns', cancellationPolicyAccepted, cancellationPolicyVersion);
         const holdId = await reserveKitchenCheckout(kitchenId, chefId, bookingDateStr, bookingSlots,
             availabilityCheck.windowStartTime!, selectedPricingMode === 'daily');
         let checkoutSession: Awaited<ReturnType<typeof createPendingCheckoutSession>>;
@@ -3311,7 +3305,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 hourlyRateCents: appliedRateCents,
                 durationHours: effectiveDurationHours,
                 pricingMode: selectedPricingMode,
-                cancellationPolicyHours: location.cancellationPolicyHours ?? 24,
+                cancellationPolicyHours: cancellationPolicySnapshot.noticeHours,
+                cancellationPolicySnapshot,
                 holdId,
                 windowStartTime: availabilityCheck.windowStartTime,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
@@ -3469,6 +3464,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         // Verify payment intent if provided
         let paymentIntentStatus: string | undefined;
         let acceptedCancellationHours = resolveKitchenBookingPolicies(kitchenDetails, location).cancellationPolicyHours;
+        let acceptedPolicySnapshot: import('@shared/cancellation-policy').CancellationPolicySnapshot | null = null;
         if (paymentIntentId) {
             const { getPaymentIntent } = await import('../services/stripe-service');
             const paymentIntent = await getPaymentIntent(paymentIntentId);
@@ -3477,13 +3473,14 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 return res.status(400).json({ error: "Invalid payment intent" });
             }
 
-            if (paymentIntent.status !== 'succeeded') {
+            if (!['succeeded', 'requires_capture'].includes(paymentIntent.status)) {
                 return res.status(400).json({
                     error: `Payment not completed. Status: ${paymentIntent.status}`
                 });
             }
 
             const intentMetadata = paymentIntent.metadata || {};
+            acceptedPolicySnapshot = (await import('../services/cancellation-policy-settings')).cancellationSnapshotFromMetadata(intentMetadata);
             if (intentMetadata.cancellation_policy_hours !== undefined) {
                 const cutoff = Number(intentMetadata.cancellation_policy_hours);
                 if (!Number.isSafeInteger(cutoff) || cutoff < 0) return res.status(400).json({ error: "Invalid payment policy" });
@@ -3530,10 +3527,11 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             selectedSlots: selectedSlots || [], // Pass discrete time slots
             pricingMode,
             status: 'pending', // Requires manager approval before confirmation
-            paymentStatus: paymentIntentId ? 'paid' : 'pending',
+            paymentStatus: paymentIntentStatus === 'requires_capture' ? 'authorized' : paymentIntentId ? 'paid' : 'pending',
             paymentIntentId,
             specialNotes,
             cancellationPolicyHours: acceptedCancellationHours,
+            cancellationPolicySnapshot: acceptedPolicySnapshot,
             selectedStorage: selectedStorage || [], // Pass storage with explicit dates
             selectedEquipmentIds: selectedEquipmentIds || []
         }));
@@ -3554,7 +3552,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     const totalAmountCents = subtotalCents + taxCents;
                     const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
                     const managerId = (location as any)?.managerId || (location as any)?.manager_id || null;
-                    const normalizedStatus: 'succeeded' | 'processing' = paymentIntentStatus === 'succeeded' ? 'succeeded' : 'processing';
+                    const normalizedStatus: 'succeeded' | 'processing' | 'authorized' = paymentIntentStatus === 'succeeded' ? 'succeeded' : paymentIntentStatus === 'requires_capture' ? 'authorized' : 'processing';
 
                     const requestTransaction = await createPaymentTransaction({
                         bookingId: booking.id,

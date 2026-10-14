@@ -1,4 +1,5 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
+import { bookingStartDateKey } from '@/lib/calendar-date';
 import { useState, useMemo, useRef, type ReactNode } from "react";
 import { mt } from "@/i18n/manager";
 import { Dialog } from "@/components/ui/dialog";
@@ -565,7 +566,7 @@ function BookingActionDialogContent({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {formatDate(booking.bookingDate)}
+                {formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />

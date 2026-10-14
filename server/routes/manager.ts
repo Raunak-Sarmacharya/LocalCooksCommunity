@@ -969,6 +969,23 @@ router.get(
 // reviews and either accepts (cancels the booking — refund via Issue Refund)
 // or declines (reverts booking to confirmed).
 // ═══════════════════════════════════════════════════════════════════════════
+router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    if (typeof req.body?.reason !== 'string' || !req.body.reason.trim() || req.body.reason.length > 2000) return res.status(400).json({ error: 'Please explain why the kitchen needs to cancel' });
+    if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body.operationKey || '')) return res.status(400).json({ error: 'A cancellation operation key is required' });
+    const { cancelKitchenCausedBooking } = await import('../services/booking-cancellation-refund');
+    res.json(await cancelKitchenCausedBooking(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason));
+  } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
+});
+router.put('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/cancellation-policy-settings')).publishCancellationPolicy(Number(req.params.id), req.neonUser!.id, req.body)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy could not be published' }); }
+});
+router.get('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try { res.json(await (await import('../services/cancellation-policy-settings')).managedCancellationPolicy(Number(req.params.id), req.neonUser!.id)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy unavailable' }); }
+});
+
 router.put(
   "/bookings/:id/cancellation-request",
   requireFirebaseAuthWithUser,
@@ -1483,8 +1500,15 @@ router.post(
           )
         : Math.min(currentRefundAmount, managerRevenue);
       const managerRefundableBalance = Math.max(0, managerRevenue - managerAlreadyDebited - Number(currentMetadata.cancellationRefundOperation?.retainedUsedAddonCents || 0));
+      const extra = currentMetadata.cancellationRefundOperation?.policyEngine
+        ? (await import('@shared/cancellation-policy')).additionalCancellationRefund({ capturedCents: totalAmount, feeCents: stripeProcessingFee, platformCents: serviceFee,
+          alreadyRefundedCents: currentRefundAmount, kitchenDebitedCents: managerAlreadyDebited,
+          platformReturnedCents: (currentMetadata.refunds || []).reduce((sum: number, receipt: any) => sum + Number(receipt.platformServiceFeeReturned || 0), 0),
+          additionalCents: amountCents,
+          usedStorageKitchenCents: (currentMetadata.cancellationRefundOperation.perComponent || []).filter((item: any) => item.reasonCode === 'used_storage').reduce((sum: number, item: any) => sum + item.kitchenCents - item.feeCents, 0),
+          usedStoragePlatformCents: (currentMetadata.cancellationRefundOperation.perComponent || []).filter((item: any) => item.reasonCode === 'used_storage').reduce((sum: number, item: any) => sum + item.platformCents, 0) }) : null;
 
-      if (amountCents > managerRefundableBalance) {
+      if (!extra && amountCents > managerRefundableBalance) {
         throw new DomainError("REFUND_LIMIT_EXCEEDED", `Refund amount exceeds your available share. Max refundable: $${(managerRefundableBalance / 100).toFixed(2)}`, 400, {
           maxRefundable: managerRefundableBalance,
           managerBalance: managerRefundableBalance,
@@ -1504,8 +1528,8 @@ router.post(
       }
 
       const refundToCustomer = amountCents;
-      const deductFromManager = amountCents;
-      const platformServiceFeeCents = 0;
+      const deductFromManager = extra?.kitchenCents ?? amountCents;
+      const platformServiceFeeCents = extra?.platformCents ?? 0;
 
       const { reverseTransferAndRefund } = await import(
         "../services/stripe-service"
@@ -2659,6 +2683,9 @@ router.post(
         pricingModel: dailyRate > 0 && !(hourlyRate > 0) ? "daily" : "hourly",
       });
 
+      const { cancellationSettings, publishCancellationPolicy } = await import('../services/cancellation-policy-settings');
+      const defaults = (await cancellationSettings()).default;
+      await publishCancellationPolicy(created.id, req.neonUser!.id, { noticeHours: defaults.notice, lateChargePercent: defaults.charge });
       res.status(201).json(created);
     } catch (error: any) {
       logger.error("Error creating kitchen:", error);
@@ -8041,7 +8068,7 @@ router.post('/bookings/:id/assist-visit', requireFirebaseAuthWithUser, requireMa
 const visitCodeFailure = (res: Response, error: unknown) => {
   if (error instanceof Error && error.name === 'VisitCodeManagerError')
     return res.status((error as Error & { status: number }).status).json({ error: error.message });
-  return res.status(500).json({ error: 'Could not update the visit code' });
+  return res.status(500).json({ error: 'Could not update the check-in code' });
 };
 router.get('/bookings/:id/visit-code', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   const bookingId = Number(req.params.id);

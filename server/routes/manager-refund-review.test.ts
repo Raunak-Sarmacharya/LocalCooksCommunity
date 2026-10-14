@@ -27,6 +27,13 @@ beforeEach(() => {
     status: 'succeeded', amount: '12200', refund_amount: '0', manager_revenue: '11116', stripe_processing_fee: '384', service_fee: '700', metadata: {} };
   state.refund.mockResolvedValue({ refundId: 're_fixture', refundAmount: 2300, refundStatus: 'succeeded', transferReversalId: 'trr_fixture' });
 });
+it('an extra award on a policy-cancelled booking returns proportional platform money and keeps the actual fee', async () => {
+  state.transaction.metadata = { cancellationRefundOperation: { policyEngine: true, status: 'succeeded', perComponent: [] }, refunds: [] };
+  const response = await refund(3000);
+  expect(response.status).not.toHaveBeenCalledWith(400);
+  expect(state.refund).toHaveBeenCalledWith('pi_fixture', 3000, 'requested_by_customer', expect.objectContaining({ reverseTransferAmount: 2822,
+    metadata: expect.objectContaining({ customer_receives: '3000', manager_debited: '2822', platform_service_fee_returned: '178' }) }));
+});
 describe('manager refund allocations and truthful recovery', () => {
   it('records the zero platform contribution required to reconcile later payout callbacks', async () => {
     await refund();

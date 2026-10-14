@@ -30,7 +30,7 @@ vi.mock("@/components/booking/BookingCancellationChooser", () => ({ BookingCance
 vi.mock("@/components/booking/BookingHistoryPanel", () => ({ BookingHistoryPanel: nothing }));
 // Stand-ins with content, as the real panels always render a status line inside the Visit card.
 vi.mock("@/components/booking/BookingAttendancePanel", () => ({ BookingAttendancePanel: () => <p>Visit record line</p> }));
-vi.mock("@/components/manager/bookings/VisitCodePanel", () => ({ VisitCodePanel: () => <p>Visit code panel</p> }));
+vi.mock("@/components/manager/bookings/VisitCodePanel", () => ({ VisitCodePanel: () => <p>Check-in code panel</p> }));
 vi.mock("@/components/booking/CancellationRefundReview", () => ({ CancellationRefundReview: nothing }));
 vi.mock("@/components/booking/BookingPricingBreakdown", () => ({ ChefBookingReceiptBreakdown: nothing, KitchenPayoutStatementBreakdown: nothing }));
 vi.mock("@/components/booking/CheckinPolicyTimesCard", () => ({ CheckinPolicyTimesCard: nothing }));
@@ -76,7 +76,7 @@ const cases: Case[] = [
     primary: { chef: null, manager: "Review request" }, message: true },
   { name: "confirmed upcoming", now: START - 3 * 86_400_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" },
     pill: { chef: "Confirmed", manager: "Confirmed" },
-    next: { chef: /^Your arrival details are ready\. Check-in opens Jan 15, 9:45 a\.m\.$/, manager: /^Ada Lovelace is booked\. Give them the visit code in person when they arrive\.$/ },
+    next: { chef: /^Your arrival details are ready\. Check-in opens Jan 15, 9:45 a\.m\.$/, manager: /^Ada Lovelace is booked\. Share the check-in code with them in person when they arrive\.$/ },
     primary: { chef: null, manager: null }, message: true },
   { name: "today, in the check-in window", now: START - 5 * 60_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" },
     pill: { chef: "Today", manager: "Today" },

@@ -5,8 +5,8 @@ const input = { reference: 'KB-A7K9MX', amountCents: 2732, chef: 'Maya Chen', da
 describe('kitchen payout notices (manager only, people language)', () => {
   it('says the manager has been paid, when it reaches the bank, and links the payout statement', async () => {
     const notice = await kitchenPayoutNotice('payout_released', 'en-CA', input);
-    expect(notice.title).toBe('You’ve been paid');
-    expect(notice.message).toBe('You’ve been paid $27.32 for Maya Chen’s booking on October 14, 2026. It’s on its way to your bank on your usual Stripe payout schedule.');
+    expect(notice.title).toBe('You’ve been paid $27.32 · KB-A7K9MX');
+    expect(notice.message).toBe('You’ve been paid $27.32 for Maya Chen’s booking on October 14, 2026. It’s on its way to your bank.');
     expect(notice.actionLabel).toBe('View payout statement');
   });
   it('explains a hold without blame and promises a follow-up', async () => {

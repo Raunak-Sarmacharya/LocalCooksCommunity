@@ -2,9 +2,9 @@ import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { formatCancellationWindowText } from "@/lib/cancellation-policy";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { PRE_CONFIRMATION_REFUND_POLICY, CONFIRMED_BOOKING_REFUND_POLICY } from '@shared/kitchen-booking-policies';
+import { PublishedCancellationPolicySummary } from './CancellationPolicySummary';
 
 /** Full cancellation + refund copy (same text as /book/ policy modal). */
 export function buildCancellationPolicyText(
@@ -12,14 +12,10 @@ export function buildCancellationPolicyText(
   customMessage: string | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  const windowText = formatCancellationWindowText(
-    hours,
-    customMessage,
-    t("cancellationPolicyDefaultMessage", {
+  const windowText = t("cancellationPolicyDefaultMessage", {
       hours,
-      defaultValue: `Bookings cannot be cancelled within ${hours} hours of the scheduled time.`,
-    })
-  );
+      defaultValue: `Cancel at least ${hours} hours before for a full refund minus the actual card processing fee. After that, the saved late charge applies.`,
+    });
   return `${t('preConfirmationRefundPolicy', { defaultValue: PRE_CONFIRMATION_REFUND_POLICY })}\n\n${t('confirmedBookingRefundPolicy', { defaultValue: CONFIRMED_BOOKING_REFUND_POLICY })}\n${windowText}`;
 }
 
@@ -38,12 +34,14 @@ export function CancellationPolicyDialog({
   hours,
   customMessage,
   ns = "kitchen",
+  kitchenId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hours?: number | null;
   customMessage?: string | null;
   ns?: "kitchen" | "booking";
+  kitchenId?: number;
 }) {
   const { t } = useTranslation(ns);
   const h = hours ?? 24;
@@ -67,7 +65,7 @@ export function CancellationPolicyDialog({
             {t("sheetCancellationPolicyTitle", "Cancellation policy")}
           </DialogTitle>
           <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
-            {full}
+            {kitchenId ? <PublishedCancellationPolicySummary kitchenId={kitchenId} /> : full}
           </DialogDescription>
         </DialogHeader>
         <Button className="mt-2 w-full" variant="outline" onClick={() => onOpenChange(false)}>

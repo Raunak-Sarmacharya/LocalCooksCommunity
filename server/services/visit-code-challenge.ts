@@ -31,17 +31,17 @@ export type ArrivalGate =
   | { kind: 'ok'; challenge: Challenge; method: 'code' | 'self' };
 
 const MESSAGES: Record<VisitCodeErrorCode, string> = {
-  VISIT_CODE_REQUIRED: `Enter the ${VISIT_CODE_LENGTH}-digit visit code the kitchen gave you to confirm arrival.`,
-  VISIT_CODE_WRONG: 'That visit code is not correct.',
-  VISIT_CODE_LOCKED: 'Too many incorrect visit codes. Ask the kitchen for a new visit code.',
+  VISIT_CODE_REQUIRED: `Enter the ${VISIT_CODE_LENGTH}-digit check-in code the kitchen gave you to confirm arrival.`,
+  VISIT_CODE_WRONG: 'That check-in code is not correct.',
+  VISIT_CODE_LOCKED: 'Too many incorrect check-in codes. Ask the kitchen for a new check-in code.',
   VISIT_CODE_ALREADY_RECORDED: 'Arrival is already recorded for this visit.',
-  VISIT_CODE_REVOKED: 'This visit code is no longer valid. Contact the kitchen.',
+  VISIT_CODE_REVOKED: 'This check-in code is no longer valid. Contact the kitchen.',
 };
 
 export class VisitCodeError extends Error {
   constructor(public code: VisitCodeErrorCode, public attemptsLeft?: number) {
     super(code === 'VISIT_CODE_WRONG' && attemptsLeft !== undefined
-      ? `That visit code is not correct. ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left.` : MESSAGES[code]);
+      ? `That check-in code is not correct. ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left.` : MESSAGES[code]);
     this.name = 'VisitCodeError';
   }
 }
@@ -390,7 +390,7 @@ async function lockOwnedBooking(tx: Tx, bookingId: number, managerId: number) {
 }
 function selectTargets(rows: Challenge[], which: { targetKey?: string; all?: boolean }) {
   const picked = which.all ? rows : rows.filter(row => row.targetKey === which.targetKey);
-  if (!picked.length) throw new VisitCodeManagerError('Visit code target not found for this booking', 404);
+  if (!picked.length) throw new VisitCodeManagerError('Check-in code target not found for this booking', 404);
   return picked;
 }
 
@@ -405,17 +405,17 @@ export async function getManagerVisitCodes(bookingId: number, managerId: number)
 
 /** Revokes the previous revision: new nonce, revision + 1, attempts reset, unlocked. */
 export async function issueNewCode(bookingId: number, managerId: number, targetKey: string): Promise<ManagerVisitCodeState[]> {
-  if (!visitCodeKeyConfigured()) throw new VisitCodeManagerError('Visit codes are not configured on this server', 503);
+  if (!visitCodeKeyConfigured()) throw new VisitCodeManagerError('Check-in codes are not configured on this server', 503);
   return db.transaction(async tx => {
     const booking = await lockOwnedBooking(tx, bookingId, managerId);
-    if (booking.status !== 'confirmed') throw new VisitCodeManagerError('Only a confirmed booking has a visit code');
+    if (booking.status !== 'confirmed') throw new VisitCodeManagerError('Only a confirmed booking has a check-in code');
     const [row] = selectTargets(await lockForBooking(tx, bookingId), { targetKey });
     if (row.consumedAt) throw new VisitCodeManagerError('Arrival is already recorded for this visit');
-    if (row.revokedAt) throw new VisitCodeManagerError('This visit code was revoked');
+    if (row.revokedAt) throw new VisitCodeManagerError('This check-in code was revoked');
     if (row.mode === 'self') throw new VisitCodeManagerError('This visit uses self check-in. Switch it back to staffed to issue a code');
     await rotate(tx, row, managerId, {});
     await queueBookingLifecycleEvent(tx, bookingId, 'arrival_code_reissued', 'Arrival details updated',
-      'Meet kitchen staff as planned. If they already gave you a visit code, ask for the current one before confirming arrival.', managerId,
+      'Meet kitchen staff as planned. If they already gave you a check-in code, ask for the current one before confirming arrival.', managerId,
       { targets: [{ targetKey: row.targetKey, visitId: row.visitId, revision: row.revision + 1, mode: row.mode }] }, row.failedAttempts > 0);
     return (await readForBooking(tx, bookingId)).map(managerProjection);
   });
@@ -436,10 +436,10 @@ export async function setMode(bookingId: number, managerId: number,
   if (input.mode === 'self' && (reason.length < 10 || reason.length > 500))
     throw new VisitCodeManagerError('Explain why self check-in is allowed (10-500 characters)');
   if (reason.length > 500) throw new VisitCodeManagerError('Reason is too long (500 characters maximum)');
-  if (input.mode === 'staffed' && !visitCodeKeyConfigured()) throw new VisitCodeManagerError('Visit codes are not configured on this server', 503);
+  if (input.mode === 'staffed' && !visitCodeKeyConfigured()) throw new VisitCodeManagerError('Check-in codes are not configured on this server', 503);
   return db.transaction(async tx => {
     const booking = await lockOwnedBooking(tx, bookingId, managerId);
-    if (booking.status !== 'confirmed') throw new VisitCodeManagerError('Only a confirmed booking has a visit code');
+    if (booking.status !== 'confirmed') throw new VisitCodeManagerError('Only a confirmed booking has a check-in code');
     const targets = selectTargets(await lockForBooking(tx, bookingId), input);
     const changeable = targets.filter(row => !row.consumedAt && !row.revokedAt && row.mode !== input.mode);
     if (!input.all && targets.length === 1 && targets[0].consumedAt) throw new VisitCodeManagerError('Arrival is already recorded for this visit');

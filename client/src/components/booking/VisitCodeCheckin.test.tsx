@@ -49,10 +49,10 @@ function setup(initialVisitId: number | null = null) {
 }
 const checkinPosts = () => fetchMock.mock.calls.filter(([url, options]) => options?.method === "POST" && String(url).endsWith("/checkin"));
 const bodyOf = (index: number) => JSON.parse(checkinPosts()[index][1].body as string);
-const field = () => screen.getByLabelText("Visit code") as HTMLInputElement;
+const field = () => screen.getByLabelText("Check-in code") as HTMLInputElement;
 const confirm = () => screen.getByRole("button", { name: "Confirm check-in" }) as HTMLButtonElement;
 
-describe("chef arrival visit code", () => {
+describe("chef arrival check-in code", () => {
   beforeEach(() => {
     status = visit(); failure = null;
     fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
@@ -69,11 +69,11 @@ describe("chef arrival visit code", () => {
 
   it("shows one numeric one-time-code field with the kitchen hint for a staffed visit", async () => {
     setup();
-    const input = await screen.findByLabelText("Visit code") as HTMLInputElement;
+    const input = await screen.findByLabelText("Check-in code") as HTMLInputElement;
     expect(input).toHaveAttribute("inputmode", "numeric");
     expect(input).toHaveAttribute("autocomplete", "one-time-code");
     expect(input).toHaveAttribute("maxlength", "6");
-    expect(screen.getByText("Kitchen staff will give you your visit code when you arrive.")).toBeInTheDocument();
+    expect(screen.getByText("Kitchen staff will give you your check-in code when you arrive.")).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "12a34-5678" } });
     expect(input.value).toBe("123456");
     expect(screen.queryByText(/attempts? left/)).not.toBeInTheDocument();
@@ -81,7 +81,7 @@ describe("chef arrival visit code", () => {
 
   it("requires six digits before arrival can be submitted", async () => {
     setup();
-    await screen.findByLabelText("Visit code");
+    await screen.findByLabelText("Check-in code");
     expect(confirm()).toBeDisabled();
     fireEvent.change(field(), { target: { value: "12345" } });
     expect(confirm()).toBeDisabled();
@@ -93,7 +93,7 @@ describe("chef arrival visit code", () => {
     status = visit({ visitCode: { ...staffed, mode: "self", codeRequired: false } });
     setup();
     await screen.findByRole("button", { name: "Confirm check-in" });
-    expect(screen.queryByLabelText("Visit code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
     expect(screen.getByTestId("visit-code-self")).toHaveTextContent(/kitchen turned on self check-in/);
     fireEvent.click(confirm());
     await waitFor(() => expect(checkinPosts()).toHaveLength(1));
@@ -104,7 +104,7 @@ describe("chef arrival visit code", () => {
     status = visit({ visitCode: null });
     setup();
     await screen.findByRole("button", { name: "Confirm check-in" });
-    expect(screen.queryByLabelText("Visit code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
     expect(confirm()).toBeEnabled();
     fireEvent.click(confirm());
     await waitFor(() => expect(checkinPosts()).toHaveLength(1));
@@ -113,7 +113,7 @@ describe("chef arrival visit code", () => {
 
   it("submits the code with the arrival evidence in one request and a requestKey", async () => {
     setup();
-    await screen.findByLabelText("Visit code");
+    await screen.findByLabelText("Check-in code");
     fireEvent.change(screen.getByLabelText(/Your message to the kitchen manager/), { target: { value: "Arrived at the side door" } });
     fireEvent.change(field(), { target: { value: "123456" } });
     fireEvent.click(confirm());
@@ -125,14 +125,14 @@ describe("chef arrival visit code", () => {
   });
 
   it("keeps the field and the evidence after a wrong code and shows the attempts left", async () => {
-    failure = { status: 400, body: { error: "That visit code is not correct. 3 attempts left.", code: "VISIT_CODE_WRONG", attemptsLeft: 3 } };
+    failure = { status: 400, body: { error: "That check-in code is not correct. 3 attempts left.", code: "VISIT_CODE_WRONG", attemptsLeft: 3 } };
     setup();
-    await screen.findByLabelText("Visit code");
+    await screen.findByLabelText("Check-in code");
     fireEvent.change(screen.getByLabelText(/Your message to the kitchen manager/), { target: { value: "Side door notes" } });
     fireEvent.change(field(), { target: { value: "000000" } });
     fireEvent.click(confirm());
     expect(await screen.findByText("3 attempts left")).toBeInTheDocument();
-    expect(screen.getByText(/That visit code is not correct/)).toBeInTheDocument();
+    expect(screen.getByText(/That check-in code is not correct/)).toBeInTheDocument();
     expect(field().value).toBe("000000");
     expect((screen.getByLabelText(/Your message to the kitchen manager/) as HTMLTextAreaElement).value).toBe("Side door notes");
     // The code problem lives beside the field in a polite live region, not in the generic retry banner.
@@ -143,7 +143,7 @@ describe("chef arrival visit code", () => {
   it("reuses one requestKey on retry of the same code and changes it when the code changes", async () => {
     failure = { status: 400, body: { error: "x", code: "VISIT_CODE_WRONG", attemptsLeft: 4 } };
     setup();
-    await screen.findByLabelText("Visit code");
+    await screen.findByLabelText("Check-in code");
     fireEvent.change(field(), { target: { value: "111111" } });
     fireEvent.click(confirm());
     await waitFor(() => expect(checkinPosts()).toHaveLength(1));
@@ -161,22 +161,22 @@ describe("chef arrival visit code", () => {
   it("shows the locked state with a message-kitchen action and no way to submit", async () => {
     status = visit({ visitCode: { ...staffed, locked: true, attemptsLeft: 0 } });
     setup();
-    expect(await screen.findByText("Ask the kitchen for a new visit code")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Visit code")).not.toBeInTheDocument();
+    expect(await screen.findByText("Ask the kitchen for a new check-in code")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Check-in code")).not.toBeInTheDocument();
     expect(confirm()).toBeDisabled();
     fetchMock.mockImplementation(async (url: string, options?: RequestInit) => String(url).endsWith("/conversation")
       ? new Response(JSON.stringify({ conversationId: "conv-1" })) : new Response(JSON.stringify(status)));
     fireEvent.click(screen.getByRole("button", { name: "Message kitchen" }));
-    expect(await screen.findByTestId("chat")).toHaveTextContent("I need a new visit code");
+    expect(await screen.findByTestId("chat")).toHaveTextContent("I need a new check-in code");
   });
 
   it("locks the form when the last wrong attempt is used", async () => {
     failure = { status: 400, body: { error: "x", code: "VISIT_CODE_WRONG", attemptsLeft: 0 } };
     setup();
-    await screen.findByLabelText("Visit code");
+    await screen.findByLabelText("Check-in code");
     fireEvent.change(field(), { target: { value: "999999" } });
     fireEvent.click(confirm());
-    expect(await screen.findByText("Ask the kitchen for a new visit code")).toBeInTheDocument();
+    expect(await screen.findByText("Ask the kitchen for a new check-in code")).toBeInTheDocument();
     expect(confirm()).toBeDisabled();
   });
 });
@@ -198,7 +198,7 @@ describe("arrival communication on the visit page", () => {
     status = visit({ instructionsReleased: false, instructionsReleaseAt: releaseAt, currentVisitDuties: { version: 2, ...gated } })
     setup()
     const overview = await screen.findByTestId("instructions-overview")
-    expect(overview).toHaveTextContent(/ask for your 6-digit visit code/)
+    expect(overview).toHaveTextContent(/for your 6-digit check-in code/)
     expect(overview).toHaveTextContent("Wipe the benches")
     expect(overview).toHaveTextContent("Photo of the sink")
     expect(overview).toHaveTextContent(/will appear here on .* \(48 hours before your visit\)\. We'll email them to you too\./)
@@ -213,7 +213,7 @@ describe("arrival communication on the visit page", () => {
     setup()
     expect(await screen.findAllByText("Use the side entrance.")).not.toHaveLength(0)
     expect(screen.queryByTestId("instructions-overview")).not.toBeInTheDocument()
-    expect(screen.getByTestId("arrival-mode-line")).toHaveTextContent(/meet kitchen staff/)
+    expect(screen.getByTestId("arrival-mode-line")).toHaveTextContent(/ask kitchen staff/)
     cleanup(); client.clear()
     status = visit({ visitCode: { ...staffed, mode: "self", codeRequired: false } })
     setup()
@@ -244,20 +244,20 @@ describe("arrival communication on the visit page", () => {
   it("clears the stale locked state when the kitchen reissues the code, keeping tasks and notes", async () => {
     status = visit({ visitCode: { ...staffed, locked: true, attemptsLeft: 0 } })
     setup()
-    await screen.findByText("Ask the kitchen for a new visit code")
+    await screen.findByText("Ask the kitchen for a new check-in code")
     fireEvent.change(screen.getByLabelText(/Your message to the kitchen manager/), { target: { value: "Waiting at the side door" } })
     status = visit({ visitCode: { ...staffed, locked: false, attemptsLeft: 5 } })
     document.dispatchEvent(new Event("visibilitychange"))
-    const input = await screen.findByLabelText("Visit code") as HTMLInputElement
+    const input = await screen.findByLabelText("Check-in code") as HTMLInputElement
     expect(input.value).toBe("")
-    expect(screen.queryByText("Ask the kitchen for a new visit code")).not.toBeInTheDocument()
+    expect(screen.queryByText("Ask the kitchen for a new check-in code")).not.toBeInTheDocument()
     expect(screen.getByText("Arrival details changed. Review the current instructions.")).toBeInTheDocument()
     expect((screen.getByLabelText(/Your message to the kitchen manager/) as HTMLTextAreaElement).value).toBe("Waiting at the side door")
   })
 
   it("explains a network failure without losing the entered code", async () => {
     setup()
-    await screen.findByLabelText("Visit code")
+    await screen.findByLabelText("Check-in code")
     fetchMock.mockImplementation(async (_url: string, options?: RequestInit) => {
       if (options?.method === "POST") throw new TypeError("Failed to fetch")
       return new Response(JSON.stringify(status))

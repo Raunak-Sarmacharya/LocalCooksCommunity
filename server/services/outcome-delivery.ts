@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { damageClaims, damageClaimHistory, emailLogs, users, storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations, commitmentProblems } from '@shared/schema';
 import { db } from '../db';
 import { getAppBaseUrl } from '../config';
-import { sendEmail, renderTransactionalEmail, bookingDeliveryEmail, emailLocalDateTime } from '../email';
+import { sendEmail, renderTransactionalEmail, bookingDeliveryEmail, emailLocalDateTime, emailLocalDateTimeSentence } from '../email';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { notificationService } from './notification.service';
 import { chefIssuesHref, managerDashboardView } from '@shared/notification-deep-links';
@@ -140,7 +140,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             const result = await tx.execute(sql`SELECT status FROM payment_transactions WHERE id = ${id}`);
             if (result.rows[0]) currentState = String(result.rows[0].status).replaceAll('_', ' ');
           }
-          const note = `Recorded outcome notice from ${emailLocalDateTime(intent.createdAt, undefined, recipientLocale || 'en-CA')}. Current state: ${currentState}. Historical money evidence below remains unchanged. Use the current page for available actions and current deadlines; older instructions may be obsolete.`;
+          const note = `Recorded outcome notice from ${emailLocalDateTimeSentence(intent.createdAt, undefined, recipientLocale || 'en-CA')}. Current state: ${currentState}. Historical money evidence below remains unchanged. Use the current page for available actions and current deadlines; older instructions may be obsolete.`;
           sent = await sendEmail(problemContent || bookingDeliveryEmail({ to: intent.recipientEmail, subject: intent.subject,
             text: `${note}\n\n${intent.textBody || ''}` }, 'lifecycle_outcome_attempt'),
             { trackingId: intent.trackingId!, emailType: 'lifecycle_outcome_attempt', durableDelivery: true, retryOfId: intent.id });

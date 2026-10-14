@@ -84,6 +84,7 @@ export interface CreatePendingCheckoutSessionParams {
     durationHours: number;
     pricingMode?: 'hourly' | 'daily';
     cancellationPolicyHours?: number;
+    cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot;
     holdId?: string;
     windowStartTime?: string;
     platform_fee_cents?: number;
@@ -296,6 +297,7 @@ export async function createPendingCheckoutSession(
       duration_hours: bookingData.durationHours.toString(),
       ...(bookingData.pricingMode ? { pricing_mode: bookingData.pricingMode } : {}),
       ...(bookingData.cancellationPolicyHours != null ? { cancellation_policy_hours: String(bookingData.cancellationPolicyHours) } : {}),
+      ...(bookingData.cancellationPolicySnapshot ? (await import('./cancellation-policy-settings')).cancellationSnapshotMetadata(bookingData.cancellationPolicySnapshot) : {}),
       ...(bookingData.holdId ? { hold_id: bookingData.holdId } : {}),
       ...(bookingData.windowStartTime ? { window_start_time: bookingData.windowStartTime } : {}),
       booking_price_cents: bookingPriceInCents.toString(),

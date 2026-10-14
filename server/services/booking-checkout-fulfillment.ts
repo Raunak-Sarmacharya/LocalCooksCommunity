@@ -7,20 +7,21 @@ import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 import { parseCheckoutCancellationPolicy, parseCheckoutSlots } from './checkout-metadata';
+import { cancellationSnapshotFromMetadata } from './cancellation-policy-settings';
 import { fulfillKitchenCheckout, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
 import { storageListingAwaitingRemoval } from './booking-linked-cancellation';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
 import { getBookingResponseDeadline } from './booking-response-deadline';
-import { emailLocalDateTime } from '../email';
+import { emailLocalDateTimeSentence } from '../email';
 
 /** The chef's own in-app notice for a new request; the manager keeps the review copy. */
 async function chefRequestCopy(booking: Parameters<typeof getBookingResponseDeadline>[0], reader: Parameters<typeof getBookingResponseDeadline>[1], kitchenName: string | null, timezone: string | null) {
   const kitchen = kitchenName || 'the kitchen';
   // Copy must never block the booking: without a computable deadline the notice simply omits it.
   const deadline = await getBookingResponseDeadline(booking, reader, timezone)
-    .then(value => emailLocalDateTime(value, timezone || undefined)).catch(() => null);
+    .then(value => emailLocalDateTimeSentence(value, timezone || undefined)).catch(() => null);
   return { title: `Request sent to ${kitchen}`,
     message: `Request sent to ${kitchen}. You’re only charged if they accept.${deadline ? ` They have until ${deadline} to respond.` : ''}` };
 }
@@ -57,6 +58,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           paymentIntentId: intent.id, totalPrice: String(terms.subtotal), serviceFee: String(terms.commission),
           hourlyRate: metadata.hourly_rate_cents, durationHours: metadata.duration_hours,
           cancellationPolicyHours: parseCheckoutCancellationPolicy(metadata.cancellation_policy_hours),
+          cancellationPolicySnapshot: cancellationSnapshotFromMetadata(metadata),
           specialNotes: metadata.special_notes || null, stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId }).returning();
         const storageItems: Record<string, unknown>[] = [], equipmentItems: Record<string, unknown>[] = [];
         for (const [listingId, price] of prices.s) {

@@ -39,6 +39,7 @@ import { getAuthHeaders } from "@/lib/api";
 import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
 import { CancellationPolicyDialog, KitchenTermsDialog, cancellationPolicyFirstLine } from "@/components/booking/CancellationPolicyDialog";
+import { PublishedCancellationPolicySummary } from '@/components/booking/CancellationPolicySummary';
 import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton } from "@/components/kitchen-application/KitchenInventory";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
@@ -1393,10 +1394,12 @@ function RateHoursFacts({ kitchenId }: { kitchenId: number }) {
 }
 
 function ThingsToKnowSection({
+  kitchenId,
   cancellationPolicyHours,
   cancellationPolicyMessage,
   kitchenTermsUrl,
 }: {
+  kitchenId?: number;
   cancellationPolicyHours?: number | null;
   cancellationPolicyMessage?: string | null;
   kitchenTermsUrl?: string | null;
@@ -1460,7 +1463,7 @@ function ThingsToKnowSection({
               <PreviewIcon icon={col.icon} size={16} className="text-[#F51042]" />
               <h3 className="text-sm font-semibold text-gray-900">{col.title}</h3>
             </div>
-            <p className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-600">{col.body}</p>
+            <div className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-600">{col.id === 'cancellation' && kitchenId ? <PublishedCancellationPolicySummary kitchenId={kitchenId} /> : col.body}</div>
             {col.id === "cancellation" ? (
               <button
                 type="button"
@@ -1489,6 +1492,7 @@ function ThingsToKnowSection({
         ))}
       </div>
       <CancellationPolicyDialog
+        kitchenId={kitchenId}
         open={policyOpen}
         onOpenChange={setPolicyOpen}
         hours={cancellationPolicyHours}
@@ -3833,6 +3837,7 @@ export default function KitchenPreviewPage() {
         </div>
 
         <ThingsToKnowSection
+          kitchenId={selectedKitchen?.id}
           cancellationPolicyHours={selectedKitchen?.cancellationPolicyHours ?? location.cancellationPolicyHours}
           cancellationPolicyMessage={location.cancellationPolicyMessage}
           kitchenTermsUrl={location.kitchenTermsUrl}

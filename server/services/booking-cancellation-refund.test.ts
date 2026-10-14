@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableName } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ parent: null as any, sources: [] as any[], storage: [] as any[], equipment: [] as any[], extensions: [] as any[],
-  managerId: 2, receipts: {} as Record<string, any[]>, providerStatus: 'succeeded', secondProviderPending: false, failResponse: false, calls: [] as any[], notices: vi.fn(), history: vi.fn(), goodwill: vi.fn(), frozen: false }));
+  managerId: 2, receipts: {} as Record<string, any[]>, providerStatus: 'succeeded', secondProviderPending: false, failResponse: false, feePending: false, calls: [] as any[], notices: vi.fn(), history: vi.fn(), goodwill: vi.fn(), frozen: false }));
 vi.mock('../db', () => ({ db: { transaction: async (work: any) => work(connection) } }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.notices }));
 vi.mock('./payment-transactions-service', () => ({ addPaymentHistory: state.history }));
@@ -11,6 +11,7 @@ vi.mock('./booking-linked-cancellation', () => ({ cancelledStorageStatus: 'cance
   for (const item of state.equipment) if (item.status !== 'completed') item.status = 'cancelled';
 } }));
 vi.mock('./stripe-service', () => ({ createRefund: state.goodwill, verifyCancellationRefundFunding: async () => ({ transferId: null, available: null }), getCancellationPaymentFacts: async (intent: string) => {
+  if (state.feePending) throw Error('Actual card processing fee is not yet verified');
   const source = state.sources.find(row => row.paymentIntentId === intent);
   const refunds = state.receipts[intent] || [];
   return { captured: Number(source.amount), processingCost: 384, currency: 'cad', chargeId: `ch_${source.id}`,
@@ -57,8 +58,9 @@ const connection: any = {
     return { returning: async () => [target], then: (resolve: any) => resolve() };
   } }) }),
 };
-import { acceptCancellationRefund, readCancellationRefund, retryCancellationRefund, refundSupportGoodwill, cancelKitchenCausedBooking, requestChefCancellation } from './booking-cancellation-refund';
+import { acceptCancellationRefund, readCancellationRefund, retryCancellationRefund, refundSupportGoodwill, cancelKitchenCausedBooking, requestChefCancellation, cancelChefBooking, readChefCancellationQuote } from './booking-cancellation-refund';
 describe('quoted parent cancellation reservation and provider recovery', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.clearAllMocks(); vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-01T12:00:00Z'));
     state.parent = { id: 10, kitchenId: 4, chefId: 3, status: 'cancellation_requested', paymentStatus: 'paid', paymentIntentId: 'pi_original',
@@ -66,7 +68,7 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
       operatingWindowStartTime: '08:00', cancellationPolicyHours: 24, cancellationRequestedAt: new Date('2026-11-01T11:00:00Z'), updatedAt: new Date('2026-11-01T11:00:00Z') };
     state.sources = [{ id: 99, bookingId: 10, bookingType: 'kitchen', chefId: 3, managerId: 2, paymentIntentId: 'pi_original', status: 'succeeded',
       amount: '12200', baseAmount: '11500', managerRevenue: '11116', serviceFee: '700', refundAmount: '0', currency: 'CAD', metadata: {}, updatedAt: new Date('2026-11-01T11:00:00Z') }];
-    state.storage = []; state.equipment = []; state.extensions = []; state.receipts = {}; state.providerStatus = 'succeeded'; state.secondProviderPending = false; state.failResponse = false; state.calls = []; state.managerId = 2; state.frozen = false;
+    state.storage = []; state.equipment = []; state.extensions = []; state.receipts = {}; state.providerStatus = 'succeeded'; state.secondProviderPending = false; state.failResponse = false; state.feePending = false; state.calls = []; state.managerId = 2; state.frozen = false;
     state.goodwill.mockImplementation(async (intent: string, amount: number, _reason: string, options: any) => {
       const receipt = { id: 're_goodwill', charge: 'ch_99', amount, status: state.providerStatus,
         metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
@@ -74,6 +76,75 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     });
   });
   const reviewed = async () => await readCancellationRefund(10, 2, 'manager') as any;
+  it('quotes and self-serves the full refundable pool with no manager approval; replays once', async () => {
+    state.parent.status = 'confirmed';
+    const quote = await readChefCancellationQuote(10, 3) as any;
+    expect(quote).toMatchObject({ chefRefundCents: 11816, feeRetainedCents: 384, kitchenShareRetainedCents: 0 });
+    await cancelChefBooking(10, 3, 'chef-operation-one', undefined, 3, quote.chefRefundCents);
+    expect(state.parent.status).toBe('cancelled'); expect(state.calls).toHaveLength(1);
+    expect(state.calls[0]).toMatchObject({ amount: 11816, options: { reverseTransferAmount: 11116, metadata: { platform_service_fee_returned: '700' } } });
+    await cancelChefBooking(10, 3, 'chef-operation-one'); expect(state.calls).toHaveLength(1);
+    await expect(cancelChefBooking(10, 3, 'chef-operation-two')).rejects.toThrow('another operation');
+  });
+  it('keeps a frozen 50% short-notice policy and returns platform share automatically', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
+    state.parent.status = 'confirmed';
+    state.parent.cancellationPolicySnapshot = { policyId: 10, version: 1, noticeHours: 72, lateChargePercent: 50,
+      tiers: [{ minHoursBeforeStart: 72, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], timezone: 'America/St_Johns',
+      sessions: [{ startAt: '2026-11-10T12:30:00Z' }], disclosureVersion: 'food-corridor-v1', acceptedAt: new Date().toISOString() };
+    state.parent.cancellationPolicyHours = 24; // A live/legacy edit cannot replace the snapshot.
+    expect((await readChefCancellationQuote(10, 3) as any).chefRefundCents).toBe(5908);
+    await cancelChefBooking(10, 3, 'chef-half-operation');
+    expect(state.calls[0]).toMatchObject({ amount: 5908, options: { reverseTransferAmount: 5558 } });
+    expect(state.sources[0].metadata.cancellationRefundOperation.kitchenShareRetainedCents).toBe(5558);
+  });
+  it('allows a zero-refund cancellation without any Stripe refund', async () => {
+    state.parent.status = 'confirmed'; state.parent.bookingDate = new Date('2020-01-01');
+    await cancelChefBooking(10, 3, 'chef-no-refund');
+    expect(state.parent.status).toBe('cancelled'); expect(state.calls).toHaveLength(0);
+    expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ status: 'succeeded', customerRefund: 0 });
+  });
+  it('quotes each frozen session separately on one captured source', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-11T12:30:00Z')); state.parent.status = 'confirmed';
+    state.parent.cancellationPolicySnapshot = { policyId: 1, version: 1, noticeHours: 24, lateChargePercent: 100,
+      tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 0 }], timezone: 'America/St_Johns',
+      sessions: [{ startAt: '2026-11-10T12:30:00Z' }, { startAt: '2026-11-12T12:30:00Z' }] };
+    state.sources[0].metadata.capturedComponentAllocations = [0, 1].map(sessionIndex => ({ kind: 'kitchen', bookingId: 10, managerGrossCents: 5750, sessionIndex }));
+    const quote = await readChefCancellationQuote(10, 3) as any;
+    expect(quote.chefRefundCents).toBe(5908); expect(quote.sources[0].perComponent.map((item: any) => item.refundPercent)).toEqual([0, 100]);
+    await cancelChefBooking(10, 3, 'chef-two-sessions'); expect(state.calls[0].amount).toBe(5908);
+  });
+  it('refuses stale exact amounts, foreign chefs, and money flags before reserving', async () => {
+    state.parent.status = 'confirmed';
+    await expect(cancelChefBooking(10, 3, 'chef-stale-quote', undefined, 3, 999)).rejects.toThrow('refund changed');
+    await expect(cancelChefBooking(10, 999, 'chef-wrong-owner')).rejects.toThrow('access denied');
+    state.frozen = true; await expect(cancelChefBooking(10, 3, 'chef-flagged')).rejects.toThrow('paused');
+    expect(state.parent.status).toBe('confirmed'); expect(state.calls).toHaveLength(0);
+  });
+  it('recovers a lost self-serve response using the same refund and funding shares', async () => {
+    state.parent.status = 'confirmed'; state.failResponse = true;
+    await cancelChefBooking(10, 3, 'chef-lost-response'); expect(state.parent.status).toBe('cancelled');
+    expect(state.sources[0].metadata.cancellationRefundOperation.status).toBe('recovery_required');
+    await cancelChefBooking(10, 3, 'chef-lost-response');
+    expect(state.calls).toHaveLength(1); expect(state.sources[0].metadata.cancellationRefundOperation.status).toBe('succeeded');
+  });
+  it('manager kitchen cancellation replays without sending another full refund', async () => {
+    state.parent.status = 'confirmed';
+    await cancelKitchenCausedBooking(10, 2, 2, 'support-kitchen-replay', 'Kitchen equipment is unavailable');
+    await cancelKitchenCausedBooking(10, 2, 2, 'support-kitchen-replay', 'Kitchen equipment is unavailable');
+    expect(state.calls).toHaveLength(1); expect(state.parent.cancellationCause).toBe('kitchen');
+  });
+  it('unknown fee cancels instantly, holds entitlement and recovers at the original received time', async () => {
+    state.parent.status = 'confirmed'; state.feePending = true;
+    expect(await readChefCancellationQuote(10, 3)).toMatchObject({ quoteReady: false });
+    await cancelChefBooking(10, 3, 'chef-pending-fee');
+    expect(state.parent.status).toBe('cancelled'); expect(state.calls).toHaveLength(0);
+    const received = state.sources[0].metadata.cancellationRefundOperation.acceptedAt;
+    expect(state.sources[0].metadata.cancellationRefundOperation.status).toBe('fee_pending');
+    state.feePending = false; await cancelChefBooking(10, 3, 'chef-pending-fee');
+    expect(state.calls).toHaveLength(1); expect(state.calls[0].amount).toBe(11816);
+    expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ acceptedAt: received, status: 'succeeded' });
+  });
   it('sends goodwill on the original charge without reversing the kitchen transfer and reconciles its allocation', async () => {
     state.parent.status = 'confirmed'; state.sources[0].transferId = 'tr_kitchen';
     const result = await refundSupportGoodwill(10, 2, 77, 1000, 'support-goodwill');
@@ -112,11 +183,10 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     await expect(cancelKitchenCausedBooking(10, 2, 77, 'support-kitchen-failure')).rejects.toThrow('funding review');
     expect(state.calls).toHaveLength(0);
   });
-  it('uses the existing chef request/cutoff path and keeps the internal note out of the notice', async () => {
+  it('support uses instant cancellation and keeps the internal note out of the notice', async () => {
     state.parent.status = 'confirmed'; await requestChefCancellation(10, 3, 77);
-    expect(state.parent.status).toBe('cancellation_requested'); expect(state.notices.mock.calls[0][5]).toBe(77);
-    state.parent.status = 'confirmed'; state.parent.bookingDate = new Date('2026-11-01');
-    await expect(requestChefCancellation(10, 3, 77)).rejects.toThrow('deadline');
+    expect(state.parent.status).toBe('cancelled'); expect(state.notices.mock.calls[0][5]).toBe(77);
+    expect(state.calls[0].amount).toBe(11816);
   });
   it('shows the $122 quote and reserves before refund, then deduplicates acceptance', async () => {
     const quote = await reviewed(); expect(quote.sources[0]).toMatchObject({ managerRefund: 11116, serviceFeeReview: 700, processingCost: 384 });

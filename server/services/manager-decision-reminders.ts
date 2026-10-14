@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { kitchenBookings, kitchens, locations, users } from '@shared/schema';
 import { responseDeadlineForBooking, MIN_RESPONSE_MINUTES } from '@shared/booking-response-deadline';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
-import { emailLocalDateTime } from '../email';
+import { emailLocalDateTimeSentence } from '../email';
 import { db } from '../db';
 import { getLifecycleSettings } from './lifecycle-settings';
 import { getUserDisplayName } from '../utils/user-display';
@@ -26,9 +26,9 @@ export async function currentManagerDecisionReminders(tx: Parameters<Parameters<
   const [manager] = await tx.select().from(users).where(eq(users.id, row.location.managerId)).limit(1);
   const chef = row.booking.chefId ? await getUserDisplayName(row.booking.chefId, 'chef', tx) : 'The chef';
   const start = (await import('@shared/booking-response-deadline')).firstBookingVisitStart(row.booking, timezone);
-  const deadlineText = emailLocalDateTime(deadline, timezone);
+  const deadlineText = emailLocalDateTimeSentence(deadline, timezone);
   const title = `Reminder: respond to ${chef}'s request by ${deadlineText}`;
-  const message = `${chef} asked for ${row.kitchen.name} on ${emailLocalDateTime(start, timezone)}. If you don't respond by ${deadlineText}, the request expires and their card hold is released.`;
+  const message = `${chef} asked for ${row.kitchen.name} on ${emailLocalDateTimeSentence(start, timezone)}. If you don't respond by ${deadlineText}, the request expires and their card hold is released.`;
   return managerDecisionDueTimes(row.booking.createdAt, deadline, [timing.managerDecisionFirstReminderHours, timing.managerDecisionFinalReminderHours])
     .map(({ index, due }) => ({ source: 'manager_decision', reservationId: id, resource: `booking-${id}-decision-${index}`,
       kind: 'manager_decision', recipientId: row.location.managerId!, role: 'manager', email: manager?.username || '', timezone,

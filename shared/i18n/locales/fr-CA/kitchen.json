@@ -340,7 +340,7 @@
   "cancelAuthModalDesc": "Votre demande ne sera pas soumise. Vous pourrez recommencer plus tard.",
   "cancelAuthModalTitle": "Voulez-vous vraiment annuler?",
   "cancelBtn": "Annuler",
-  "cancellationPolicyDefaultMessage": "Les réservations ne peuvent pas être annulées dans les {hours} heures précédant l'heure prévue.",
+  "cancellationPolicyDefaultMessage": "Annulez au moins {hours} heures avant pour un remboursement complet moins les frais réels de traitement de carte. Ensuite, les frais tardifs acceptés s’appliquent.",
   "cancelTourModalDesc": "La progression de votre visite est enregistrée sur cet appareil. Vous pouvez revenir et continuer plus tard.",
   "catering": "Restauration / Traiteur",
   "certExpired": "Certificat expiré",
@@ -1726,6 +1726,6 @@
   "requirementsOpeningChat": "Ouverture des messages…",
   "requirementsChatError": "Impossible d’ouvrir les messages. Veuillez réessayer.",
   "preConfirmationRefundTitle": "Annulation gratuite tant que la cuisine n’a pas confirmé votre demande — votre carte est seulement retenue.",
-  "preConfirmationRefundPolicy": "Annulez avant la confirmation de votre réservation pour obtenir un remboursement de 100 % de toute somme payée, y compris les taxes et les frais. Si votre paiement fait seulement l’objet d’une retenue, celle-ci sera levée.",
-  "confirmedBookingRefundPolicy": "Après la confirmation, la date limite d’annulation enregistrée s’applique. L’annulation et tout remboursement sont examinés séparément; les frais de traitement et les frais de service de la plateforme peuvent être retenus. Consultez le résultat de votre annulation et de votre remboursement pour connaître le montant exact."
+  "preConfirmationRefundPolicy": "Retirez la demande avant la confirmation de la cuisine. Aucun paiement n’est prélevé; la retenue entière sur votre carte est libérée.",
+  "confirmedBookingRefundPolicy": "Après confirmation, vous pouvez annuler immédiatement selon les conditions acceptées. Les frais réels de traitement de carte sont conservés. Consultez les montants exacts avant d’annuler."
 }

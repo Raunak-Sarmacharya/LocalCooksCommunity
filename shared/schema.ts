@@ -571,6 +571,10 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
   paymentDecision: jsonb('payment_decision'), // Durable authorized-payment decision; retained for recovery/audit
   cancellationPolicyHours: integer("cancellation_policy_hours"), // Frozen when the booking is created.
+  cancellationPolicySnapshot: jsonb('cancellation_policy_snapshot'),
+  cancellationEffectiveAt: timestamp('cancellation_effective_at', { withTimezone: true }),
+  cancellationOperationKey: text('cancellation_operation_key'),
+  cancellationCause: text('cancellation_cause'),
   // Stripe fields for off-session damage claim charging
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for damage claims
   stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
@@ -1676,6 +1680,22 @@ export type UpdateEquipmentBooking = z.infer<typeof updateEquipmentBookingSchema
 export type UpdateEquipmentBookingStatus = z.infer<typeof updateEquipmentBookingStatusSchema>;
 
 // ===== PLATFORM SETTINGS TABLE =====
+
+export const kitchenCancellationPolicies = pgTable('kitchen_cancellation_policies', {
+  id: serial('id').primaryKey(), kitchenId: integer('kitchen_id').notNull().references(() => kitchens.id),
+  version: integer('version').notNull(), status: text('status').notNull().default('published'),
+  noticeHours: integer('notice_hours').notNull(), lateChargePercent: integer('late_charge_percent').notNull(),
+  tiers: jsonb('tiers').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  publishedBy: integer('published_by').references(() => users.id), adminOverrideReason: text('admin_override_reason'),
+}, table => [uniqueIndex('kitchen_cancellation_policy_version').on(table.kitchenId, table.version)]);
+
+export const cancellationPolicyAudit = pgTable('cancellation_policy_audit', {
+  id: serial('id').primaryKey(), kitchenId: integer('kitchen_id').references(() => kitchens.id),
+  actorId: integer('actor_id').notNull().references(() => users.id), reason: text('reason').notNull(),
+  beforeState: jsonb('before_state'), afterState: jsonb('after_state').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const platformSettings = pgTable("platform_settings", {
   id: serial("id").primaryKey(),

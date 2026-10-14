@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { ct } from '@/i18n/chef-ns';
 import { bookingListPhase, bookingPhasePillKey, PHASE_PILL_CLASS, showArrivalLine } from '@/lib/booking-list-status';
 import { bookingPillTone } from '@/lib/booking-header-state';
-import { formatCalendarDate } from '@/lib/calendar-date';
+import { bookingStartDateKey, formatCalendarDate } from '@/lib/calendar-date';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown"
@@ -214,7 +214,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onTakeAction,
                 <div className="flex flex-col text-sm">
                     <div className="flex items-center">
                         <CalendarIcon className="h-3 w-3 mr-2 text-muted-foreground" />
-                        {formatDate(row.getValue("bookingDate"))}
+                        {formatDate(bookingStartDateKey(row.original) ?? row.getValue("bookingDate"))}
                     </div>
                     {showAsRange ? (
                         <div className="flex items-center text-xs text-muted-foreground mt-1">

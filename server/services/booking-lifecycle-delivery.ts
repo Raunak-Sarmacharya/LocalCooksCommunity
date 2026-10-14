@@ -9,7 +9,7 @@ import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { bookingLifecycleEvents, users, kitchens, locations, kitchenBookings, kitchenBookingVisits, emailLogs, storageBookings, equipmentBookings, storageListings, equipmentListings, paymentTransactions } from '@shared/schema';
 import { db } from '../db';
 import { notificationService } from './notification.service';
-import { sendEmail, generateBookingConfirmationEmail, generateBookingRequestEmail, generateBookingNotificationEmail, bookingResponseDeadline, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, emailLocalDateTime, emailZoneName, emailClock } from '../email';
+import { sendEmail, generateBookingConfirmationEmail, generateBookingRequestEmail, generateBookingNotificationEmail, bookingResponseDeadline, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, emailLocalDateTimeSentence, emailZoneName, emailClock } from '../email';
 import { resolveKitchenTracking } from '@shared/kitchen-tracking';
 import { adminBookingTransactionsPath } from '@shared/admin-booking-link';
 import { getAppBaseUrl } from '../config';
@@ -19,7 +19,8 @@ import { deliveryReserve, deliveryLeaseMs } from './worker-context';
 import { isPermanentRecipientRejection } from './bounded-smtp';
 import { closeoutNoticeKinds, currentCloseoutEmail, type CloseoutNoticeKind } from './closeout-notice-email';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
-import { kitchenPayoutNotice } from './kitchen-payout-notice';
+import { kitchenPayoutNotice, kitchenCheckoutPayoutNotice, managerVisitNotice } from './kitchen-payout-notice';
+import { cancellationNotice, type CancellationNotice } from './cancellation-notice';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Email = { key: string; to: string; url: string; adminRecipient?: boolean; content?: Parameters<typeof sendEmail>[0]; confirmation?: Parameters<typeof generateBookingConfirmationEmail>[0]; afterFailedAttempts?: boolean; facts?: ReturnType<typeof bookingEmailFacts>; locale?: string | null; recipientName?: string };
@@ -170,7 +171,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     if (!row || row.booking.status !== 'confirmed' || row.booking.paymentStatus !== 'paid')
       throw new Error('Confirmed itinerary requires verified paid booking state');
     await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
-    const [payment] = await tx.select({ amount: paymentTransactions.amount, payout: paymentTransactions.managerRevenue }).from(paymentTransactions)
+    const [payment] = await tx.select({ amount: paymentTransactions.amount, payout: paymentTransactions.managerRevenue, payoutTiming: paymentTransactions.payoutTiming }).from(paymentTransactions)
       .where(and(eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId!), eq(paymentTransactions.status, 'succeeded'))).limit(1);
     if (!payment) throw new Error('Confirmed itinerary requires recorded successful payment');
     const storage = await tx.select({ item: storageBookings, name: storageListings.name }).from(storageBookings)
@@ -188,7 +189,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       durationHours: row.booking.durationHours == null ? undefined : Number(row.booking.durationHours),
       kitchenName: row.kitchen.name, locationName: row.location.name, locationAddress: row.location.address || '',
       referenceCode: row.booking.referenceCode, reservationChefName: nameOf(context.chefId) || 'the chef',
-      totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout),
+      payoutAfterCloseout: payment.payoutTiming === 'after_closeout', totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout),
       cancellationPolicyHours: row.booking.cancellationPolicyHours ?? 24,
       cancellationDeadline: new Date(Math.min(...(await import('./advance-reminders')).reminderVisitTimes(row.booking, row.location.timezone || DEFAULT_TIMEZONE).map(visit => visit.start.getTime())) - (row.booking.cancellationPolicyHours ?? 24) * 3600000).toISOString(),
       specialNotes: row.booking.specialNotes || undefined,
@@ -217,6 +218,27 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       responseDeadline: await (await import('./booking-response-deadline')).getBookingResponseDeadline(row.booking, tx, row.location.timezone), totalCents: payment ? Number(payment.amount) : undefined,
       paymentState: payment?.status === 'authorized' ? 'held' : payment?.status === 'succeeded' ? 'paid' : 'pending' };
   }
+  // Checkout while the payout waits for closeout: tell the manager that finishing the inspection sends it sooner.
+  let checkoutPayout: { amountCents: number; expectedAt: Date } | undefined;
+  let reviewBy: Date | undefined;
+  if (kind === 'checkout_requested') {
+    try {
+      const payout = await (await import('./kitchen-payout-service')).readKitchenPayout(bookingId, tx as never);
+      if (payout.timing === 'after_closeout' && payout.status === 'scheduled' && payout.amountCents > 0 && payout.expectedAt)
+        checkoutPayout = { amountCents: payout.amountCents, expectedAt: new Date(payout.expectedAt) };
+    } catch { /* keep the generic checkout notice */ }
+    if (!checkoutPayout) {
+      try {
+        const [row] = await tx.select({ booking: kitchenBookings, timezone: locations.timezone }).from(kitchenBookings)
+          .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
+          .where(eq(kitchenBookings.id, bookingId)).limit(1);
+        const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
+        const projected = row?.timezone ? await (await import('./clock-closeout')).projectBookingCloseout(row.booking, row.timezone, visits, undefined, tx) : undefined;
+        const clock = projected?.closeout.visits.find(visit => visit.visitId === metadata.visitId) ?? projected?.closeout.visits[0];
+        if (clock?.inspection.deadline) reviewBy = new Date(clock.inspection.deadline);
+      } catch { /* keep the generic checkout notice */ }
+    }
+  }
   const confirmationTime = new Date();
   const arrivalDetails = confirmation ? await confirmationArrivalDetails(bookingId, tx, recipients.find(person => person.id === context.chefId)?.locale, confirmationTime) : undefined;
   for (const person of recipients.filter(person => arrivalNotice ? person.id === context.chefId : metadata.recipientPolicy === 'admins' ? person.role === 'admin' : metadata.recipientPolicy === 'manager' ? person.id === context.managerId
@@ -231,11 +253,21 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const feedbackCopy = ['feedback_requested', 'feedback_flagged'].includes(kind)
       ? (await import('./booking-feedback-service')).bookingFeedbackNoticeCopy(kind, context.kitchenName, person.locale) : undefined;
     // Manager-only payout notices (payout after closeout); the operating date is a calendar date, read in UTC.
-    const payoutCopy = kind === 'payout_released' || kind === 'payout_on_hold' ? await kitchenPayoutNotice(kind, person.locale,
+    const payoutCopy: { title: string; message: string; actionLabel: string; emailMessage?: string;
+      facts?: Array<{ label: string; value: string; url?: string }>; actions?: Array<{ label: string; url: string }> } | undefined = kind === 'payout_released' || kind === 'payout_on_hold' ? await kitchenPayoutNotice(kind, person.locale,
       { reference: String(metadata.reference || context.referenceCode || `#${bookingId}`), amountCents: Number(metadata.amountCents || 0),
-        chef: nameOf(context.chefId) || null, date: context.bookingDate, timezone: 'UTC' }) : undefined;
+        chef: nameOf(context.chefId) || null, date: context.bookingDate, timezone: 'UTC', startTime: context.startTime,
+        chefPaidCents: typeof metadata.chefPaidCents === 'number' ? metadata.chefPaidCents : undefined, feeCents: Number(metadata.feeCents || 0),
+        processingCents: typeof metadata.processingCents === 'number' ? metadata.processingCents : undefined,
+        payoutsUrl: `${getAppBaseUrl('kitchen')}/manager/dashboard?view=revenue` })
+      : checkoutPayout && !chef && !localCooks ? await kitchenCheckoutPayoutNotice(person.locale, { ...checkoutPayout, chef: nameOf(context.chefId) || null,
+        timezone: context.timezone || DEFAULT_TIMEZONE })
+      : (kind === 'checkout_requested' || kind === 'checkin_recorded') && !chef && !localCooks && (kind === 'checkin_recorded' || reviewBy)
+        ? await managerVisitNotice(kind === 'checkin_recorded' ? 'checkin' : 'review', person.locale, { chef: nameOf(context.chefId) || null,
+          at: kind === 'checkin_recorded' ? new Date() : reviewBy!, timezone: context.timezone || DEFAULT_TIMEZONE }) : undefined;
     // A producer may word the in-app notice per role; email content is rendered separately.
-    const roleText = (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
+    const roleText = metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, metadata.cancellationNotice as CancellationNotice)
+      : (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     if (!arrivalNotice) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
       title: payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
@@ -244,9 +276,10 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
         ...(payoutCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
-          subject: payoutCopy.title, heading: payoutCopy.title, message: payoutCopy.message, facts: [], actionLabel: payoutCopy.actionLabel,
+          subject: payoutCopy.title, heading: payoutCopy.title, message: payoutCopy.emailMessage ?? payoutCopy.message,
+          facts: payoutCopy.facts ?? [], actions: payoutCopy.actions, actionLabel: payoutCopy.actionLabel,
           // The booking page holds the per-booking payout statement download (the API route needs an app session).
-          actionUrl: kind === 'payout_released' ? `${url}#booking-payment-title` : url }) } : {}),
+          actionUrl: kind === 'payout_released' ? `${url}#booking-payment-title` : kind === 'checkout_requested' && !chef ? `${url}/inspection${typeof metadata.visitId === 'number' ? `?visitId=${metadata.visitId}` : ''}` : url }) } : {}),
         ...(metadata.requestExpired ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
           subject: roleText?.title ?? title, heading: roleText?.title ?? title, message: roleText?.message ?? message, facts: [],
           actionLabel: chef ? 'Find another time' : 'View booking', actionUrl: chef ? `${getAppBaseUrl('chef')}${metadata.kitchenPath}` : url }) } : {}),
@@ -446,7 +479,7 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
           content = { ...content, text: `${note}\n\n${content.text}`, html: renderTransactionalEmail({ to: email.to, subject: content.subject, recipientName: email.recipientName || 'there', message: `${note}\n\n${content.text || ''}`, facts: email.facts || [], actionLabel: 'Open booking', actionUrl: email.url }).html };
         }
         if (historical && event.kind !== 'instructions_updated') {
-          const note = `Historical booking notice, recorded ${emailLocalDateTime(event.createdAt, 'UTC', email.locale || 'en-CA')}. Current booking status: ${currentStatus}. Recorded financial evidence below is unchanged. Older action instructions/calendar may be obsolete; open the current booking before acting.`;
+          const note = `Historical booking notice, recorded ${emailLocalDateTimeSentence(event.createdAt, 'UTC', email.locale || 'en-CA')}. Current booking status: ${currentStatus}. Recorded financial evidence below is unchanged. Older action instructions/calendar may be obsolete; open the current booking before acting.`;
           if (event.kind === 'confirmed' && currentStatus !== 'confirmed') {
             // Preserve the stored receipt, but don't reissue an actionable invite
             // for a cancelled/completed reservation. Keep non-calendar evidence.
