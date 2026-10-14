@@ -1,4 +1,5 @@
 import { mt } from "@/i18n/manager";
+import { DamageCleaningPolicy } from '@/components/legal/DamageCleaningPolicy';
 /**
  * Booking Policies Settings Component
  *
@@ -279,6 +280,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
     return (
       <div className="space-y-6">
+        <DamageCleaningPolicy />
         {!hideHeader && <ChefPageHeader
           title={mt("navBookingRules")}
           description={mt(policyOverrides ? "kitchenPoliciesInheritedDescription" : "configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}

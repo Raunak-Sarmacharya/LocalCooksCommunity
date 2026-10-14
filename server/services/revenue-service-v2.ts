@@ -121,6 +121,7 @@ export async function getRevenueMetricsFromTransactions(
     // Include refunded/partially_refunded to track refund amounts properly
     const simpleWhereConditions = [
       sql`pt.manager_id = ${managerIdParam}`,
+      sql`COALESCE(pt.metadata->>'platformRecovery', 'false') <> 'true'`,
       sql`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
       sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
     ];
@@ -198,19 +199,19 @@ export async function getRevenueMetricsFromTransactions(
         )::bigint as platform_fee,
         COALESCE(SUM(CASE WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
         -- Payout after closeout: an unreleased kitchen share is "upcoming", never paid earnings.
-        COALESCE(SUM(CASE WHEN pt.status = 'succeeded' AND NOT (pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL)
+        COALESCE(SUM(CASE WHEN (pt.status = 'succeeded' OR pt.metadata->>'kitchenRetainsTransfer' = 'true') AND NOT (pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL)
           THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
         COUNT(DISTINCT CONCAT(pt.booking_id, '-', pt.booking_type)) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as paid_booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
-        COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
+        COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') AND COALESCE(pt.metadata->>'kitchenRetainsTransfer', 'false') <> 'true' THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
         -- ENTERPRISE STANDARD: Stripe does NOT refund processing fees on refunds
         -- Manager pays the FULL original Stripe fee regardless of refunds
         -- This gives managers accurate picture of actual fees paid to Stripe
-        COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as actual_stripe_fee
+        COALESCE(SUM(CASE WHEN pt.metadata->>'platformAbsorbsProcessingFee' = 'true' THEN 0 ELSE pt.stripe_processing_fee::numeric END), 0)::bigint as actual_stripe_fee
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
@@ -253,7 +254,8 @@ export async function getRevenueMetricsFromTransactions(
         -- Manager payout: keep tax; platform keeps service_fee; Stripe fee from manager.
         -- Prefer manager_revenue (Connect transfer). Fallback: amount − service_fee − stripe − refunds.
         COALESCE(SUM(
-          CASE WHEN pt.status IN ('succeeded', 'partially_refunded') THEN
+          CASE WHEN pt.metadata->>'kitchenRetainsTransfer' = 'true' THEN COALESCE(pt.manager_revenue::numeric, 0)
+            WHEN pt.status IN ('succeeded', 'partially_refunded') THEN
             CASE
               WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0
               WHEN pt.payout_timing = 'after_closeout' THEN GREATEST(0, pt.manager_revenue::numeric -
@@ -481,7 +483,7 @@ export async function getRevenueByLocationFromTransactions(
 
     // Prepare filter conditions
     // Include refunded/partially_refunded to show complete transaction history
-    const whereConditions = [sql`pt.manager_id = ${managerId}`];
+    const whereConditions = [sql`pt.manager_id = ${managerId}`, sql`COALESCE(pt.metadata->>'platformRecovery', 'false') <> 'true'`];
     whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
     whereConditions.push(sql`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
 
@@ -599,6 +601,7 @@ export async function getRevenueByDateFromTransactions(
         SELECT pt.* FROM payment_transactions pt
         WHERE pt.manager_id = ${managerId}
           AND pt.status IN ('succeeded', 'partially_refunded', 'refunded')
+          AND COALESCE(pt.metadata->>'platformRecovery', 'false') <> 'true'
           AND NOT (
             pt.booking_type = 'kitchen' AND EXISTS (
               SELECT 1 FROM payment_transactions bundle
@@ -611,7 +614,8 @@ export async function getRevenueByDateFromTransactions(
         SELECT pt.id,
           (entry.value->>'createdAt')::timestamptz AS occurred_at,
           GREATEST(0, COALESCE((entry.value->>'customerReceived')::numeric, 0)) AS customer_amount,
-          CASE WHEN pt.payout_timing = 'after_closeout' AND (pt.transfer_id IS NULL
+          CASE WHEN pt.metadata->>'kitchenRetainsTransfer' = 'true' THEN 0
+            WHEN pt.payout_timing = 'after_closeout' AND (pt.transfer_id IS NULL
             OR (entry.value->>'createdAt')::timestamptz <= pt.payout_released_at) THEN 0 ELSE
             GREATEST(0, COALESCE((entry.value->>'managerDebited')::numeric, (entry.value->>'customerReceived')::numeric, 0)) END AS manager_debit
         FROM scoped pt
@@ -640,7 +644,8 @@ export async function getRevenueByDateFromTransactions(
         SELECT DATE(COALESCE(pt.refunded_at, pt.updated_at) AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}),
           0,
           GREATEST(0, LEAST(pt.amount::numeric, COALESCE(pt.refund_amount::numeric, 0)) - COALESCE(logged.customer_amount, 0)),
-          0, CASE WHEN pt.payout_timing = 'after_closeout' AND (pt.transfer_id IS NULL
+          0, CASE WHEN pt.metadata->>'kitchenRetainsTransfer' = 'true' THEN 0
+            WHEN pt.payout_timing = 'after_closeout' AND (pt.transfer_id IS NULL
             OR COALESCE(pt.refunded_at, pt.updated_at) AT TIME ZONE 'UTC' <= pt.payout_released_at) THEN 0 ELSE LEAST(
             GREATEST(0, pt.manager_revenue::numeric - COALESCE(logged.manager_debit, 0)),
             GREATEST(0, LEAST(pt.amount::numeric, COALESCE(pt.refund_amount::numeric, 0)) - COALESCE(logged.customer_amount, 0))

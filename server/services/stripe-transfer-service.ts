@@ -150,6 +150,11 @@ async function fetchPlatformCommission(): Promise<number> {
 export async function transferToManagerForBooking(
   params: TransferToManagerParams,
 ): Promise<TransferResult> {
+  if (params.existingMetadata?.damage_claim_v2 === 'true') {
+    const result = await (await import('./damage-claim-money')).sendClaimKitchenMoney(Number(params.existingMetadata.damage_claim_id), 'payment');
+    return { transferred: !!result.transferId, transferId: result.transferId, actualStripeFeeCents: params.actualStripeFeeCents,
+      platformCommissionCents: 0, feeWithheldCents: 0, transferredCents: result.transferId ? params.chargeAmountCents : 0 };
+  }
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
@@ -182,8 +187,11 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
   // `after_closeout` is only transferred once releaseKitchenPayout committed a decision and it is still eligible.
   // NULL/at_capture rows (legacy) skip this block entirely.
   const [payout] = await connection.select({ payoutTiming: paymentTransactions.payoutTiming, payoutReleasedAt: paymentTransactions.payoutReleasedAt,
-    payoutHoldReason: paymentTransactions.payoutHoldReason, transferId: paymentTransactions.transferId, bookingId: paymentTransactions.bookingId })
+    payoutHoldReason: paymentTransactions.payoutHoldReason, transferId: paymentTransactions.transferId, bookingId: paymentTransactions.bookingId,
+    metadata: paymentTransactions.metadata })
     .from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
+  if ((payout?.metadata as { damage_claim_v2?: string } | null)?.damage_claim_v2 === 'true')
+    return { ...baseResult, reason: 'Claim payment uses full-amount fulfillment; retry from the claim support case' };
   if (payout?.payoutTiming === 'after_closeout' && !payout.transferId) {
     if (!payout.payoutReleasedAt || payout.payoutHoldReason
       || !await (await import('./kitchen-payout-service')).releasedPayoutStillEligible(payout.bookingId, connection))

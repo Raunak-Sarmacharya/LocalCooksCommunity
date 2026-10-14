@@ -50,3 +50,11 @@
 - Full suites vs baseline.
 
 Output: `.phase0-harness/damage-claims-checkpoint.md`.
+
+## AMENDMENT (owner, Oct 14) — Local Cooks reviews EVERY claim before the chef sees it (Peerspace-style)
+Supersedes decisions 3–4 where they conflict:
+- Kitchen files → status `in_review`; kitchen sees "Local Cooks is reviewing your claim. We'll update you within 2 business days." Admins get email + in-app alert with CTA to the support-desk claim panel.
+- Admin first-review actions: **Send to chef** (full or reduced; reduction note shared with kitchen), **Ask kitchen for more info** (paused; kitchen gets a request + reply/upload; returns to review), **Close** (reason shared with kitchen; chef never notified), **Local Cooks pays the kitchen** (closed, no cost to chef).
+- Only approved claims reach the chef → 72 h to **Pay** (one tap) or **Dispute** → dispute/no response returns to admin for a **final decision**: uphold (full/reduced), reject, or Local Cooks pays. Admin can **withdraw** a claim at any stage at no cost to anyone.
+- Unpaid after final decision → 7-day booking hold (unchanged). Never auto-charged (unchanged).
+- Future-proof: a platform setting `damageClaimsReviewFirst` (default true) so small claims could later go straight to the chef; implement the setting but keep default true.

@@ -2859,7 +2859,7 @@
   "uploadEvidenceDesc": "Téléversez des photos, reçus ou documents comme preuves pour votre réclamation.",
   "hideResolved": "Masquer les résolues",
   "showResolved": "Afficher les résolues",
-  "damageClaimSubmitHowItWorks": "Lorsque vous soumettez, le chef est avisé. S'il accepte, sa carte est débitée automatiquement avec le mode de paiement de sa réservation. S'il conteste ou ne répond pas, Local Cooks examine la réclamation avant tout débit.",
+  "damageClaimSubmitHowItWorks": "Local Cooks examine votre réclamation. Nous vous donnerons des nouvelles dans les 2 jours ouvrables. Votre versement pour cette réservation n’est pas affecté. Les réclamations ne sont jamais débitées automatiquement.",
   "chefBookingSummary": "Chef : {chef} • réservation {type}",
   "storage": "Entreposage",
   "unknown": "Inconnu",

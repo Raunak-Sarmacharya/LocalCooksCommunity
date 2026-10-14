@@ -1,3 +1,4 @@
+import { DamageCleaningPolicy } from './DamageCleaningPolicy';
 import React from "react";
 
 export default function TermsContent_fr_1() {
@@ -275,40 +276,7 @@ export default function TermsContent_fr_1() {
       <p className="mb-4">Les politiques doivent être clairement énoncées dans l'annonce de la Cuisine et la confirmation de Réservation. Local Cooks facilitera les remboursements selon la politique déclarée.</p>
       <p className="mb-4">Les Propriétaires de cuisines qui annulent fréquemment ou ne se présentent pas s'exposent à la suspension de leur annonce ou à la résiliation de leur compte.</p>
 
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.8 Dépôts de garantie et réclamations pour dommages</h3>
-      <p className="mb-4"><strong>Dépôts de garantie.</strong> Les Propriétaires de cuisines peuvent exiger un dépôt de garantie remboursable pour une Réservation. Lorsqu'un dépôt s'applique, il sera divulgué dans l'annonce de la Cuisine ou au moment du paiement. Sauf indication contraire, toute partie inutilisée du dépôt sera débloquée dans un délai raisonnable après la fin de la Réservation, une fois que les évaluations des dommages seront terminées.</p>
-
-      <p className="mb-4"><strong>Examen au départ et effacement automatique.</strong> Après le départ d'un Chef, Local Cooks peut accorder aux Propriétaires de cuisines une période d'examen limitée (par exemple, quelques heures) pour inspecter la Cuisine et les zones de stockage avant que la Réservation ne soit automatiquement effacée dans le système. Une fois cette fenêtre d'examen fermée et la Réservation effacée automatiquement, les nouveaux dommages découverts par la suite peuvent n'être admissibles aux réclamations facilitées par la plateforme que s'ils s'inscrivent encore dans la Fenêtre de réclamation pour dommages distincte décrite ci-dessous.</p>
-
-      <p className="mb-2"><strong>Fenêtre de réclamation pour dommages et limites.</strong> Local Cooks offre aux Propriétaires de cuisines une fenêtre limitée après la fin d'une Réservation pendant laquelle ils peuvent soumettre des réclamations pour dommages via la Plateforme (« Fenêtre de réclamation pour dommages »). Seules les Réservations tombant dans cette fenêtre (par exemple, jusqu'à 14 jours après la fin de la Réservation) apparaîtront comme admissibles lors de la création d'une réclamation. Local Cooks peut également appliquer des limites à l'échelle de la plateforme sur :</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Les montants minimum et maximum pouvant être réclamés par réclamation pour dommages (par exemple, entre un minimum défini comme 10 $ et un maximum défini comme 5 000 $) ; et</li>
-        <li>Le nombre maximum de réclamations pouvant être déposées par Réservation (par exemple, jusqu'à 3 réclamations par Réservation).</li>
-      </ul>
-      <p className="mb-4">La Fenêtre de réclamation pour dommages et les limites de réclamation actuelles seront affichées dans les paramètres de réclamation pour dommages de la Plateforme et peuvent être mises à jour par Local Cooks de temps à autre.</p>
-
-      <p className="mb-2"><strong>Dépôt d'une réclamation.</strong> Pour soumettre une réclamation pour dommages facilitée par la plateforme, un Propriétaire de cuisine doit utiliser les outils de réclamation pour dommages de la Plateforme et fournir :</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>La Réservation concernée ;</li>
-        <li>Un titre clair et une description des dommages allégués ;</li>
-        <li>Le montant réclamé (dans les limites de réclamation applicables) ;</li>
-        <li>La date à laquelle le dommage est survenu ou a été découvert ; et</li>
-        <li>Des preuves à l'appui, pouvant inclure des photos, des vidéos, des factures et/ou des devis de réparation ou de remplacement.</li>
-      </ul>
-      <p className="mb-4">Local Cooks peut rejeter ou retourner les réclamations incomplètes ou non justifiées.</p>
-
-      <p className="mb-4"><strong>Notification et réponse du Chef.</strong> Lorsqu'un Propriétaire de cuisine soumet une réclamation pour dommages, Local Cooks en informera le Chef et lui accordera un délai de réponse fixe (défini par Local Cooks) pour accepter, payer, contester ou fournir des informations supplémentaires. Si le Chef ne répond pas dans le délai imparti, Local Cooks examinera la réclamation avant de faciliter tout paiement, sous réserve de la Loi applicable et des limites de réclamation disponibles.</p>
-
-      <p className="mb-2"><strong>Examen et décision de la Plateforme.</strong> Local Cooks peut examiner les détails de la Réservation, les messages, les preuves et toute réponse et, à sa discrétion, peut :</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Faciliter un paiement du Chef au Propriétaire de la cuisine (y compris en facturant le mode de paiement du Chef et en transférant les fonds jusqu'aux limites applicables) ;</li>
-        <li>Approuver une partie d'une réclamation et faciliter un paiement partiel ;</li>
-        <li>Refuser de traiter une réclamation ; ou</li>
-        <li>Renvoyer les parties à résoudre la question directement ou par l'intermédiaire de leurs assureurs.</li>
-      </ul>
-      <p className="mb-4">La décision de Local Cooks concernant les réclamations facilitées par la plateforme est définitive en ce qui concerne les montants traités via la Plateforme, mais ne limite pas les droits que le Propriétaire de cuisine ou le Chef peuvent avoir l'un contre l'autre en dehors de la Plateforme en vertu de la Loi applicable.</p>
-
-      <p className="mb-4"><strong>Réclamations en dehors de la Plateforme.</strong> Si un Propriétaire de cuisine ne dépose pas de réclamation dans la Fenêtre de réclamation pour dommages, si le montant réclamé dépasse les limites de la plateforme, ou si Local Cooks refuse de traiter une réclamation, le Propriétaire de la cuisine peut exercer tout recours disponible directement contre le Chef, sous réserve des présentes Conditions et de la Loi applicable. Dans de tels cas, Local Cooks n'a aucune obligation d'aider ou de faire appliquer un résultat quelconque.</p>
+      <DamageCleaningPolicy />
 
       <h3 className="text-xl font-semibold mt-6 mb-3">4.9 Paiement et versement</h3>
       <p className="mb-2">Local Cooks va :</p>
@@ -391,12 +359,7 @@ export default function TermsContent_fr_1() {
         <li>Nettoyer immédiatement tout déversement pour éviter les risques de glissade ou l'attraction de parasites</li>
         <li>Remplir une liste de vérification de nettoyage (fournie par le Propriétaire de cuisine ou Local Cooks) confirmant les tâches terminées</li>
       </ul>
-      <p className="mb-2">Le non-respect du nettoyage adéquat peut entraîner :</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>La perte du dépôt de garantie</li>
-        <li>Des frais de nettoyage facturés sur le compte de paiement du Chef (généralement de 100 $ à 300 $)</li>
-        <li>La suspension de la capacité du Chef à réserver à l'avenir</li>
-      </ul>
+      <p className="mb-4">Les frais de nettoyage supplémentaire suivent la section Dommages et nettoyage ci-dessus. Les réclamations ne sont jamais débitées automatiquement.</p>
 
       <h3 className="text-xl font-semibold mt-6 mb-3">5.6 Assurance et responsabilité</h3>
       <p className="mb-4"><strong>Attentes en matière d'assurance pour les Chefs.</strong> Les Chefs sont responsables de s'assurer qu'ils ont une assurance appropriée pour leurs opérations alimentaires. La nécessité d'une assurance comme condition de réservation est déterminée par le Propriétaire de la cuisine et la Loi applicable.</p>

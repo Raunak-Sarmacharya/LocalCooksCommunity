@@ -4,7 +4,7 @@ import { computeManagerGrossAndCommission } from '../server/services/manager-pay
 
 export type PayoutTiming = 'at_capture' | 'after_closeout';
 export type PayoutStatus = 'scheduled' | 'on_hold' | 'sent' | 'not_applicable';
-/** support_flag: an open booking_flags row; reported_issue: an open damage/visit problem report. */
+/** support_flag: an open booking_flags row; reported_issue: an unresolved CHEF-reported kitchen problem. */
 export type PayoutHoldReason = 'support_flag' | 'reported_issue';
 export type KitchenPayout = { timing: PayoutTiming; status: PayoutStatus; holdReason: PayoutHoldReason | null;
   expectedAt: string | null; sentAt: string | null; amountCents: number };
@@ -49,12 +49,11 @@ const closedOutcomes = ['manager_cleared', 'legacy_closed', 'auto_closed_uninspe
 export function payoutEligibility(status: string, closeout: BookingCloseout, facts: PayoutFacts) {
   const expectedAt = status === 'cancelled' || !closeout.visits.length ? closeout.serviceEndedAt
     : new Date(Math.max(...closeout.visits.map(visit => new Date(visit.inspection.deadline).getTime()))).toISOString();
-  const issueFiled = closeout.visits.some(visit => visit.inspection.outcome === 'issue_filed');
   const holdReason: PayoutHoldReason | null = facts.openFlag ? 'support_flag'
-    : !facts.supportReleased && (facts.openIssue || issueFiled && !facts.resolvedIssue) ? 'reported_issue' : null;
+    : !facts.supportReleased && facts.openIssue ? 'reported_issue' : null;
   const ready = !holdReason && (status === 'cancelled' ? new Date(closeout.serverNow) >= new Date(expectedAt)
     : ['confirmed', 'completed'].includes(status) && closeout.visits.length > 0
-      // An issue_filed visit only reaches here once resolved or released by support.
+      // A manager's damage/cleaning claim closes inspection but does not hold the booking payout.
       && closeout.visits.every(visit => closedOutcomes.includes(visit.inspection.outcome) || visit.inspection.outcome === 'issue_filed'));
   return { expectedAt, holdReason, ready };
 }

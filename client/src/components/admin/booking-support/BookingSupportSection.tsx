@@ -12,6 +12,7 @@ import { ActionDialog } from "./ActionDialog";
 import { ActionPanel, CaseHeader, Chronology, DeadlinesCard, FeedbackCard, MoneyCard, PaymentEvidenceCard, VisitCodesCard } from "./CaseView";
 import type { AvailableSupportAction, SearchRow, SupportCase } from "./types";
 import { FrozenCancellationPolicy } from './FrozenCancellationPolicy';
+import { DamageClaimPanel } from './DamageClaimPanel';
 import { CancellationPolicyEditor } from '@/components/manager/settings/CancellationPolicyEditor';
 
 function readBookingParam(): number | null {
@@ -103,6 +104,7 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
     <div className="space-y-4">
       {doneLabel && <p role="status" data-testid="action-done" className="rounded-xl border border-success/40 bg-success/10 p-3 text-sm font-medium">{t("bsToastDone", { action: doneLabel })}</p>}
       <CaseHeader c={c} onBack={back} onRefresh={() => void caseQuery.refetch()} refreshing={caseQuery.isFetching} />
+      <DamageClaimPanel bookingId={c.bookingId} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_20rem] xl:items-start">
         <div className="order-1 md:col-span-2 xl:order-3 xl:col-span-1">
           <ActionPanel actions={c.availableActions} supportActions={c.supportActions} onChoose={(action) => { setDoneLabel(null); setChosen(action); }} />

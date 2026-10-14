@@ -6,6 +6,7 @@ vi.mock('@/hooks/use-chef-sidebar-hidden-items', () => ({ useChefSidebarHiddenIt
 vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/components/chef/ChefSidebar', () => ({ ChefSidebar: () => null }));
 vi.mock('@/components/chef/ChefNotificationCenter', () => ({ default: () => null }));
+vi.mock('@/components/booking/DamageClaimCards', () => ({ DamageClaimBookingHoldBanner: () => null }));
 vi.mock('@/components/command-menu', () => ({ CommandMenu: () => null }));
 vi.mock('@/layouts/chef-shell-context', () => ({ ChefShellUiProvider: ({ children }: any) => children }));
 vi.mock('@/components/ui/sidebar', () => ({ SidebarProvider: ({ children }: any) => children, SidebarInset: ({ children }: any) => <div>{children}</div>, SidebarTrigger: () => null }));

@@ -707,7 +707,7 @@ export async function processKitchenCheckoutClaim(
       .returning({ id: kitchenBookings.id });
     if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Visit concern sent for review',
       `The kitchen started a draft damage claim (#${claimId}). The kitchen needs to add photos and details before submitting it for review. Nothing has been charged for this draft.`,
-      managerId, { damageClaimId: claimId, recipientPolicy: 'participants' });
+      managerId, { damageClaimId: claimId, recipientPolicy: 'manager' });
     return changed;
     });
     if (!updated) return { success: false, error: `Booking changed; claim #${claimId} remains a draft for review` };

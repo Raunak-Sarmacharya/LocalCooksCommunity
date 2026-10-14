@@ -42,11 +42,9 @@ async function payoutContext(bookingId: number, tx: Tx, now: Date, released: boo
   const closeout = reduceClockCloseout(row.booking, visits, saved, now);
   const result = await tx.execute(sql`SELECT
     EXISTS(SELECT 1 FROM booking_flags WHERE booking_id = ${bookingId} AND resolved_at IS NULL) AS flag,
-    (EXISTS(SELECT 1 FROM damage_claims WHERE kitchen_booking_id = ${bookingId} AND resolved_at IS NULL
-      AND status NOT IN ('resolved','rejected','expired')) OR
-     EXISTS(SELECT 1 FROM commitment_problems WHERE booking_id = ${bookingId} AND status <> 'resolved')) AS issue,
-    EXISTS(SELECT 1 FROM damage_claims WHERE kitchen_booking_id = ${bookingId} AND
-      (resolved_at IS NOT NULL OR status IN ('resolved','rejected','expired'))) AS resolved`);
+    EXISTS(SELECT 1 FROM commitment_problems p JOIN kitchen_bookings kb ON kb.id = p.booking_id
+      WHERE p.booking_id = ${bookingId} AND p.reported_by = kb.chef_id AND p.status <> 'resolved') AS issue,
+    false AS resolved`);
   const facts = result.rows[0] as { flag?: boolean; issue?: boolean; resolved?: boolean } | undefined;
   if (!facts) throw Error('Payout issue evidence is unavailable.');
   const payoutFacts: PayoutFacts = { openFlag: facts.flag === true, openIssue: facts.issue === true,
@@ -210,11 +208,9 @@ async function attachWithExtensions<T extends { id: number; status?: string; clo
   const list = (values: number[]) => sql.join(values.map(id => sql`${id}`), sql`, `);
   const facts = pending.length ? (await db.execute(sql`SELECT kb.id AS booking_id,
       EXISTS(SELECT 1 FROM booking_flags f WHERE f.booking_id = kb.id AND f.resolved_at IS NULL) AS flag,
-      (EXISTS(SELECT 1 FROM damage_claims d WHERE d.kitchen_booking_id = kb.id AND d.resolved_at IS NULL
-        AND d.status NOT IN ('resolved','rejected','expired'))
-       OR EXISTS(SELECT 1 FROM commitment_problems p WHERE p.booking_id = kb.id AND p.status <> 'resolved')) AS issue,
-      EXISTS(SELECT 1 FROM damage_claims d WHERE d.kitchen_booking_id = kb.id
-        AND (d.resolved_at IS NOT NULL OR d.status IN ('resolved','rejected','expired'))) AS resolved
+      EXISTS(SELECT 1 FROM commitment_problems p WHERE p.booking_id = kb.id
+        AND p.reported_by = kb.chef_id AND p.status <> 'resolved') AS issue,
+      false AS resolved
     FROM kitchen_bookings kb WHERE kb.id IN (${list(pending)})`)).rows as Array<{ booking_id: number; flag: boolean; issue: boolean; resolved: boolean }> : [];
   const extensions = await extensionSources(Array.from(new Set(sources.map(source => source.bookingId))));
   const combine = (item: T, payout: KitchenPayout) => {

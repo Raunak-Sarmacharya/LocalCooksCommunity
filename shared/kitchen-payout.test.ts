@@ -32,8 +32,8 @@ describe('release rules (Decisions 1-3)', () => {
     expect(payoutEligibility('confirmed', closeout(['manager_cleared', 'due']), facts())).toMatchObject({ holdReason: null, ready: false });
     expect(payoutEligibility('confirmed', closeout(['not_due']), facts())).toMatchObject({ ready: false });
   });
-  it('holds on a filed issue until it is resolved or support releases it', () => {
-    expect(payoutEligibility('completed', closeout(['issue_filed']), facts())).toMatchObject({ holdReason: 'reported_issue', ready: false });
+  it('a manager-filed claim does not hold payout; chef-reported kitchen problems still do', () => {
+    expect(payoutEligibility('completed', closeout(['issue_filed']), facts())).toMatchObject({ holdReason: null, ready: true });
     expect(payoutEligibility('completed', closeout(['manager_cleared']), facts({ openIssue: true }))).toMatchObject({ holdReason: 'reported_issue', ready: false });
     expect(payoutEligibility('completed', closeout(['issue_filed']), facts({ resolvedIssue: true }))).toMatchObject({ holdReason: null, ready: true });
     expect(payoutEligibility('completed', closeout(['issue_filed']), facts({ openIssue: true, supportReleased: true }))).toMatchObject({ holdReason: null, ready: true });

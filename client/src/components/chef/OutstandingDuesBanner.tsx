@@ -47,9 +47,9 @@ export default function OutstandingDuesBanner() {
   const [expanded, setExpanded] = useState(false);
   const [payingItemId, setPayingItemId] = useState<string | null>(null);
 
-  if (isLoading || !data?.hasOutstandingDues) return null;
-
-  const { items, totalOwedCents, totalCount } = data;
+  const items = data?.items.filter(item => item.type === 'overstay_penalty') || [];
+  if (isLoading || !items.length) return null;
+  const totalOwedCents = items.reduce((sum, item) => sum + item.amountCents, 0), totalCount = items.length;
 
   const handlePay = async (item: OutstandingDueItem) => {
     const itemKey = `${item.type}-${item.id}`;

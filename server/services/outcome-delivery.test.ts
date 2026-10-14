@@ -15,7 +15,9 @@ vi.mock('./notification.service', () => ({ notificationService: { create: async 
   if (tx !== state.db || !state.inTransaction) throw Error('Notice must share the outcome transaction');
   state.alerts.push(alert);
 } } }));
-import { submitClaim, chefRespondToClaim } from './damage-claim-service';
+import { chefRespondToClaim } from './damage-claim-service';
+import { decideDamageClaim } from './damage-claims-v2';
+import { attemptOutcomeDelivery } from './outcome-delivery';
 import { processKitchenCheckoutClear } from './kitchen-checkout-service';
 import { deliverOutcomeEmails, queueStorageVisitAction } from './outcome-delivery';
 import { deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
@@ -62,6 +64,7 @@ beforeEach(() => {
     damage_claim_history: [], email_logs: [], booking_lifecycle_events: [], payment_history: [],
   };
   state.db = {
+    execute: async () => ({ rows: [] }),
     transaction: async (run: any) => lockContext.run([], async () => {
       const saved = structuredClone(state.tables), alerts = [...state.alerts], parent = state.inTransaction;
       state.inTransaction = true;
@@ -106,7 +109,25 @@ beforeEach(() => {
   state.send.mockResolvedValue(false);
 });
 
+// Delivery fixtures start at the admin's reviewed decision; filing/evidence validation is covered by the real v2 service suite.
+async function submitClaim(_id: number, _managerId: number) {
+  Object.assign(state.tables.damage_claims[0], { status: 'in_review', claimVersion: 2, chefVisibleAt: null,
+    chefResponseDeadline: new Date(), visitEvidence: { timezone: 'America/St_Johns', kitchenName: 'Harbour Kitchen' } });
+  try {
+    await decideDamageClaim(10, 1, { claimId: 7, type: 'claim_send', reasonCode: 'evidence', note: 'Documents reviewed by Local Cooks.',
+      publicMessage: 'The receipt supports this cleaning cost.', requestSource: 'proactive', operationKey: 'reviewed:claim:fixture' });
+    await attemptOutcomeDelivery();
+    return { success: true };
+  } catch { return { success: false }; }
+}
+
 describe('actual producer → persisted intent → worker → admin replay', () => {
+  it('legacy draft handoffs notify only the kitchen until Local Cooks sends an approved claim', async () => {
+    state.tables.storage_bookings = [{ id: 8, managerId: 2, storage: { id: 8, chefId: 3, updatedAt: new Date() } }];
+    await state.db.transaction((tx: any) => queueStorageVisitAction(tx, 8, 'draft_claim', 2));
+    expect(state.alerts.map(alert => alert.userId)).toEqual([2]);
+    expect(state.tables.email_logs.map(log => log.recipientUserId)).toEqual([2]);
+  });
   it('renders a current problem with category, kitchen, local reported time and its current destination', async () => {
     state.tables.kitchen_bookings = [{ id: 10, booking: state.tables.kitchen_bookings[0], managerId: 2,
       timezone: 'America/St_Johns', kitchenName: 'Harbour Kitchen' }];
@@ -201,12 +222,12 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   });
   it('commits claim state/history/notice intent through SMTP failure without changing its deadline', async () => {
     expect(await submitClaim(7, 2)).toEqual({ success: true });
-    expect(scheduleAdvanceReminders).toHaveBeenCalledWith(state.db, 'claim', 7);
+    expect(state.tables.support_actions[0].actionType).toBe('claim_send');
     expect(state.tables.damage_claims[0].status).toBe('submitted');
     expect(state.tables.damage_claim_history).toHaveLength(1);
     expect(state.tables.email_logs).toHaveLength(2);
     const claim = state.tables.damage_claims[0], deadline = claim.chefResponseDeadline.getTime();
-    expect(deadline - claim.submittedAt.getTime()).toBe(48 * 3600000);
+    expect(deadline - claim.chefVisibleAt.getTime()).toBe(72 * 3600000);
     expect(state.tables.email_logs.map(row => row.status)).toEqual(['failed', 'failed']);
     expect(state.alerts.some(row => row.metadata.recoveryOwnerId === 1)).toBe(true);
     expect(state.tables.email_logs[0].textBody).not.toContain('INTERNAL SECRET');
@@ -215,7 +236,7 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(await retryFailedEmail(1)).toEqual({ success: true });
     expect(state.tables.email_logs[0].status).toBe('sent');
     expect(state.send.mock.calls.at(-1)?.[1].trackingId).toBe('claim-outcome:7:1:3');
-    expect(state.send.mock.calls.at(-1)?.[0].text).toContain('current state and available actions');
+    expect(state.send.mock.calls.at(-1)?.[0].text).toContain('current page for available actions');
     expect(claim.chefResponseDeadline.getTime()).toBe(deadline);
     const count = state.send.mock.calls.length;
     expect(await retryFailedEmail(1)).toEqual({ success: true });
@@ -224,17 +245,20 @@ describe('actual producer → persisted intent → worker → admin replay', () 
   it('rolls back submission and all history/alerts when intent persistence fails', async () => {
     state.failIntent = true;
     expect((await submitClaim(7, 2)).success).toBe(false);
-    expect(state.tables.damage_claims[0].status).toBe('draft');
+    expect(state.tables.damage_claims[0].status).toBe('in_review');
     expect(state.tables.damage_claim_history).toEqual([]); expect(state.alerts).toEqual([]);
     expect(state.send).not.toHaveBeenCalled();
   });
   it('commits the actual chef dispute and one review outcome for each intended recipient', async () => {
     state.tables.damage_claims[0].status = 'submitted';
+    state.tables.damage_claims[0].chefVisibleAt = new Date();
+    state.tables.damage_claims[0].claimVersion = 2;
+    state.tables.damage_claims[0].chefResponseDeadline = new Date();
     expect(await chefRespondToClaim(7, 3, { action: 'dispute', response: 'The photos do not show damage from my visit.' })).toEqual({ success: true });
     expect(state.tables.damage_claims[0].status).toBe('under_review');
-    expect(state.tables.damage_claim_history).toHaveLength(2);
+    expect(state.tables.damage_claim_history).toHaveLength(1);
     expect(state.tables.email_logs).toHaveLength(3); // chef, manager, Local Cooks reviewer
-    expect(state.tables.email_logs.every(row => row.subject.endsWith('under review'))).toBe(true);
+    expect(state.tables.email_logs.every(row => row.textBody.includes('Local Cooks is reviewing both sides'))).toBe(true);
   });
   it('suppresses previously queued admin outcomes when the current preference is disabled', async () => {
     state.tables.users[2].adminEmailNotifications = false;
@@ -335,7 +359,8 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     let release!: () => void;
     state.send.mockImplementationOnce(() => new Promise<boolean>(resolve => { release = () => resolve(true); }));
     const first = deliverOutcomeEmails(1, 20000, 1);
-    while (!release) await Promise.resolve();
+    for (let count = 0; !release && count < 100; count++) await new Promise(resolve => setTimeout(resolve, 0));
+    expect(release).toBeTypeOf('function');
     expect(await deliverOutcomeEmails(1, 20000, 1)).toEqual({ completed: 0 });
     release(); expect(await first).toEqual({ completed: 1 });
     expect(state.send).toHaveBeenCalledTimes(1);

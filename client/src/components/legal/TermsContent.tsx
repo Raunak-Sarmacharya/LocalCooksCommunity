@@ -1,3 +1,4 @@
+import { DamageCleaningPolicy } from './DamageCleaningPolicy';
 import React from "react";
 
 /**
@@ -279,40 +280,7 @@ export default function TermsContent() {
       <p className="mb-4">Policies must be clearly stated in the Kitchen listing and Booking confirmation. Local Cooks will facilitate refunds per the stated policy.</p>
       <p className="mb-4">Kitchen Owners who frequently cancel or no-show may face suspension of listing or account termination.</p>
 
-      <h3 className="text-xl font-semibold mt-6 mb-3">4.8 Damage Deposits &amp; Damage Claims</h3>
-      <p className="mb-4"><strong>Damage Deposits.</strong> Kitchen Owners may require a refundable damage deposit for a Booking. Where a deposit applies, it will be disclosed in the Kitchen listing or at checkout. Unless otherwise stated, any unused portion of the deposit will be released within a reasonable time after the Booking ends, once any damage assessments are complete.</p>
-
-      <p className="mb-4"><strong>Checkout review and auto-clear.</strong> After a Chef checks out, Local Cooks may provide Kitchen Owners with a limited review period (for example, a few hours) to inspect the Kitchen and storage areas before the Booking is auto-cleared in the system. Once this review window closes and the Booking is auto-cleared, new damage discovered afterwards may only be eligible for platform-facilitated claims if still within the separate Damage Claim Window described below.</p>
-
-      <p className="mb-2"><strong>Damage Claim Window and limits.</strong> Local Cooks provides Kitchen Owners with a limited window after a Booking ends during which they can submit damage claims through the Platform (&ldquo;Damage Claim Window&rdquo;). Only Bookings falling within that window (for example, up to 14 days after the Booking end) will appear as eligible when creating a claim. Local Cooks may also apply platform-wide limits on:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The minimum and maximum amounts that can be claimed per damage claim (for example, between a stated minimum such as $10 and a stated maximum such as $5,000); and</li>
-        <li>The maximum number of claims that may be filed per Booking (for example, up to 3 claims per Booking).</li>
-      </ul>
-      <p className="mb-4">The current Damage Claim Window and claim limits will be displayed in the damage claim settings in the Platform and may be updated by Local Cooks from time to time.</p>
-
-      <p className="mb-2"><strong>Filing a claim.</strong> To submit a platform-facilitated damage claim, a Kitchen Owner must use the damage claim tools in the Platform and provide:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>The relevant Booking;</li>
-        <li>A clear title and description of the alleged damage;</li>
-        <li>The claimed amount (within the applicable claim limits);</li>
-        <li>The date the damage occurred or was discovered; and</li>
-        <li>Supporting evidence, which may include photos, videos, invoices, and/or repair or replacement estimates.</li>
-      </ul>
-      <p className="mb-4">Local Cooks may reject or return incomplete or unsupported claims.</p>
-
-      <p className="mb-4"><strong>Chef notification and response.</strong> When a Kitchen Owner submits a damage claim, Local Cooks will notify the Chef and provide a fixed response period (set by Local Cooks) to accept, pay, dispute, or provide additional information. If the Chef does not respond within the stated time, Local Cooks will review the claim before any payment is facilitated, subject to Applicable Law and the available claim limits.</p>
-
-      <p className="mb-2"><strong>Platform review and decision.</strong> Local Cooks may review the Booking details, messages, evidence, and any responses and, in its discretion, may:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Facilitate a payment from Chef to the Kitchen Owner (including by charging Chef&apos;s payment method and transferring funds up to the applicable limits);</li>
-        <li>Approve part of a claim and facilitate a partial payment;</li>
-        <li>Decline to process a claim; or</li>
-        <li>Refer the parties to resolve the matter directly or through their insurers.</li>
-      </ul>
-      <p className="mb-4">Local Cooks&apos; decision regarding platform-facilitated claims is final with respect to any amounts processed through the Platform, but does not limit any rights the Kitchen Owner or Chef may have against each other outside the Platform under Applicable Law.</p>
-
-      <p className="mb-4"><strong>Claims outside the Platform.</strong> If a Kitchen Owner does not file a claim within the Damage Claim Window, if the claimed amount exceeds platform limits, or if Local Cooks declines to process a claim, the Kitchen Owner may pursue any available remedies directly against Chef, subject to these Terms and Applicable Law. In such cases, Local Cooks has no obligation to assist with or enforce any outcome.</p>
+      <DamageCleaningPolicy />
 
       <h3 className="text-xl font-semibold mt-6 mb-3">4.9 Payment &amp; Payout</h3>
       <p className="mb-2">Local Cooks will:</p>
@@ -395,12 +363,7 @@ export default function TermsContent() {
         <li>Clean any spills immediately to prevent slipping hazards or pest attraction</li>
         <li>Complete a Cleaning Checklist (provided by Kitchen Owner or Local Cooks) confirming tasks completed</li>
       </ul>
-      <p className="mb-2">Failure to clean adequately may result in:</p>
-      <ul className="list-disc pl-6 mb-4">
-        <li>Loss of damage deposit</li>
-        <li>Cleaning fee charged to Chef&apos;s payment account (typically $100&ndash;$300)</li>
-        <li>Suspension of Chef&apos;s ability to book in future</li>
-      </ul>
+      <p className="mb-4">Extra cleaning costs follow the Damage and cleaning section above. Claims are never charged automatically.</p>
 
       <h3 className="text-xl font-semibold mt-6 mb-3">5.6 Insurance &amp; Liability</h3>
       <p className="mb-4"><strong>Chef Insurance Expectations.</strong> Chefs are responsible for ensuring they have appropriate insurance for their food operations. Whether insurance is required as a condition of booking is determined by the Kitchen Owner and Applicable Law.</p>

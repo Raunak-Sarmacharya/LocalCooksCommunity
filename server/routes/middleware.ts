@@ -87,7 +87,8 @@ export async function requireNoUnpaidPenalties(req: Request, res: Response, next
 
         // Check for unpaid damage claims
         const { hasChefUnpaidDamageClaims, getChefUnpaidDamageClaims } = await import("../services/damage-claim-service");
-        const hasUnpaidClaims = await hasChefUnpaidDamageClaims(chefId);
+        // Claims only block NEW bookings through the separate seven-day upheld-claim guard.
+        const hasUnpaidClaims = false;
 
         // If no unpaid obligations, allow access
         if (!hasUnpaidPenalties && !hasUnpaidClaims) {

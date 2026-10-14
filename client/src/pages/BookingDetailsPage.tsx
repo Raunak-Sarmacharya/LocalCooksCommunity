@@ -12,6 +12,8 @@ import { BookingRefundPolicyNotice } from '@/components/booking/BookingRefundPol
 import { BookingHistoryPanel } from '@/components/booking/BookingHistoryPanel';
 import { BookingFeedbackCard } from '@/components/booking/BookingFeedbackCard';
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
+import { BookingDamageClaims } from '@/components/booking/DamageClaimCards';
+import { ManagerDamageClaimEntry } from '@/components/booking/ManagerDamageClaimEntry';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
@@ -1570,6 +1572,8 @@ export default function BookingDetailsPage() {
           )}
 
           <BookingFeedbackCard bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} otherPartyName={isManagerView ? chefName : kitchenName} timezone={booking.location?.timezone || 'America/St_Johns'} />
+          {isManagerView && ['confirmed', 'completed'].includes(booking.status) && ['checkout_review', 'completed', 'issue', 'visit_ended', 'time_ended_in_session', 'no_show'].includes(phase) && <ManagerDamageClaimEntry bookingId={booking.id} chefName={chefName} visits={booking.visits || []} />}
+          <BookingDamageClaims bookingId={booking.id} manager={isManagerView} />
 
           {/* ── When & where ── */}
           <section className={sectionClass} aria-labelledby="booking-when-title">

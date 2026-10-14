@@ -24,6 +24,10 @@ import { getBookingResponseDeadline } from './booking-response-deadline';
 import { getUserDisplayName } from '../utils/user-display';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** Claim decisions share the booking desk and support_actions audit, with their own capped money decisions. */
+export async function executeDamageClaimSupportAction(bookingId: number, actorId: number, input: unknown) {
+  return (await import('./damage-claims-v2')).decideDamageClaim(bookingId, actorId, input);
+}
 type Booking = typeof kitchenBookings.$inferSelect;
 type Payment = typeof paymentTransactions.$inferSelect;
 type Visit = typeof kitchenBookingVisits.$inferSelect;

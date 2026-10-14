@@ -9,14 +9,18 @@ export const claimLine = z.object({ type: z.enum(['damage', 'extra_cleaning']), 
   amountCents: z.number().int().positive().max(CLAIM_CAP_CENTS), document: claimUpload }).strict();
 export const fileClaimInput = z.object({ bookingId: z.number().int().positive(), visitId: z.number().int().positive().optional(),
   description: z.string().trim().min(10).max(2000), lines: z.array(claimLine).min(1).max(20),
+  selectedPhotoUrls: z.array(z.string().url()).max(40).default([]),
   photos: z.array(claimUpload).max(20).default([]), requestKey: z.string().min(8).max(128).regex(/^[\w:-]+$/) }).strict();
 export type ClaimLine = z.infer<typeof claimLine>;
 export type FileClaimInput = z.infer<typeof fileClaimInput>;
 export type ClaimVisitEvidence = { before: string[]; after: string[]; checkinNotes: string | null; checkoutNotes: string | null;
+  highlighted?: string[];
   endedAt: string; timezone: string; chefName?: string; kitchenName?: string };
 export type ClaimMoneyOperation = { key: string; state: 'pending' | 'ready' | 'cancel_pending' | 'cancelled' | 'succeeded';
   amountCents: number; startedAt: string; attemptedAt?: string; intentId?: string; transferId?: string;
   customerId?: string; paymentMethodId?: string; destination?: string; sourceCharge?: string; error?: string };
+export type ClaimWithdrawalOperation = { key: string; state: 'pending' | 'succeeded'; intentId?: string; amountCents: number;
+  startedAt: string; attemptedAt?: string; refundId?: string };
 
 export function claimTotal(lines: ClaimLine[]) { return lines.reduce((sum, line) => sum + line.amountCents, 0); }
 export function validateClaimLines(lines: unknown): ClaimLine[] {
@@ -42,7 +46,14 @@ export function approvedClaimAmount(claimed: number, approved = claimed) {
     throw Error('Choose whole cents greater than zero, no more than the claim, up to $250');
   return approved;
 }
-export const claimSupportTypes = ['claim_uphold', 'claim_reduce', 'claim_reject', 'claim_compensate', 'claim_close', 'claim_release_hold'] as const;
+/** Manager statements never debit a platform-funded claim fee/refund or count a repayment to Local Cooks as kitchen income. */
+export function claimKitchenAccounting(metadata: Record<string, unknown>, recordedRevenueCents: number, refundCents: number) {
+  if (metadata.damage_claim_v2 !== 'true') return null;
+  return { managerRevenueCents: metadata.platformRecovery === true ? 0 : recordedRevenueCents,
+    managerRefundCents: metadata.kitchenRetainsTransfer === true ? 0 : refundCents,
+    retainRevenueAfterRefund: metadata.kitchenRetainsTransfer === true };
+}
+export const claimSupportTypes = ['claim_send', 'claim_ask_info', 'claim_uphold', 'claim_reduce', 'claim_reject', 'claim_compensate', 'claim_close', 'claim_withdraw', 'claim_release_hold'] as const;
 export const claimSupportInput = z.object({ type: z.enum(claimSupportTypes), claimId: z.number().int().positive(),
   amountCents: z.number().int().positive().max(CLAIM_CAP_CENTS).optional(), chefStillOwes: z.boolean().optional(),
   reasonCode: z.string().trim().min(1).max(100), note: z.string().trim().min(10).max(2000),

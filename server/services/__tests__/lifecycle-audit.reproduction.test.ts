@@ -27,6 +27,7 @@ vi.mock('../../db', () => ({ db: {
   } }),
 } }));
 vi.mock('../../reference-code', () => ({ generateReferenceCode: async () => 'AUDIT-ONLY' }));
+vi.mock('../outcome-delivery', () => ({ queueClaimOutcome: vi.fn(), attemptOutcomeDelivery: vi.fn() }));
 vi.mock('../../email', () => ({ sendEmail: vi.fn(), getSubdomainUrl: () => 'https://example.invalid' }));
 vi.mock('../damage-claim-limits-service', () => ({
   validateClaimAmount: async (amount: number) => ({ valid: Number.isSafeInteger(amount) && amount >= 1000 && amount <= 500000,
@@ -68,14 +69,13 @@ describe('local lifecycle claim regressions', () => {
     expect(audit.inserts).toHaveLength(0);
   });
 
-  it('resets the response deadline on submission, rather than using draft creation time', async () => {
+  it('requires the new itemized filing flow before a draft can reach the chef', async () => {
     audit.rows.push([{ id: 90, managerId: 999, chefId: 8, status: 'draft', bookingType: 'kitchen',
       kitchenBookingId: 10, claimedAmountCents: 1000, chefResponseDeadline: new Date('2020-01-02') }],
       [{ managerId: 999, status: 'confirmed', bookingDate: new Date(), startTime: '09:00', endTime: '17:00' }],
       [{ evidenceType: 'photo_before' }, { evidenceType: 'photo_after' }, { evidenceType: 'receipt' }]);
-    expect((await submitClaim(90, 999)).success).toBe(true);
-    expect(audit.updates[0]).toMatchObject({ status: 'submitted' });
-    expect(audit.updates[0].chefResponseDeadline.getTime() - audit.updates[0].submittedAt.getTime()).toBe(86400000);
+    expect((await submitClaim(90, 999)).error).toMatch(/itemize costs/);
+    expect(audit.updates).toHaveLength(0);
   });
 
   it('rejects draft amounts outside platform limits', async () => {
@@ -98,11 +98,11 @@ describe('local lifecycle claim regressions', () => {
     expect(audit.updates).toHaveLength(0);
   });
 
-  it('rechecks the filing deadline when an old draft is submitted', async () => {
+  it('an old draft cannot bypass the itemized review-first filing endpoint', async () => {
     audit.rows.push([{ id: 90, managerId: 999, status: 'draft', bookingType: 'kitchen',
       kitchenBookingId: 10, claimedAmountCents: 1000 }],
       [{ managerId: 999, status: 'completed', bookingDate: new Date('2020-01-01'), startTime: '09:00', endTime: '17:00' }]);
-    expect((await submitClaim(90, 999)).error).toMatch(/deadline has passed/);
+    expect((await submitClaim(90, 999)).error).toMatch(/itemize costs/);
     expect(audit.updates).toHaveLength(0);
   });
 });

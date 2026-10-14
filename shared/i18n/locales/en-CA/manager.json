@@ -2857,7 +2857,7 @@
   "uploadEvidenceDesc": "Upload photos, receipts, or documents as evidence for your claim.",
   "hideResolved": "Hide Resolved",
   "showResolved": "Show Resolved",
-  "damageClaimSubmitHowItWorks": "When you submit, the chef is notified. If they accept, their card is charged automatically using the payment method from their booking. If they dispute or don't respond, Local Cooks reviews the claim before anything is charged.",
+  "damageClaimSubmitHowItWorks": "Local Cooks is reviewing your claim. We’ll update you within 2 business days. Your payout for this booking isn’t affected. Claims are never charged automatically.",
   "chefBookingSummary": "Chef: {chef} • {type} booking",
   "storage": "Storage",
   "unknown": "Unknown",

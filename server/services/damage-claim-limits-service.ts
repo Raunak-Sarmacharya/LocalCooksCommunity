@@ -25,11 +25,11 @@ export interface StorageCheckoutSettings {
 
 // Default limits - conservative values to protect chefs
 const DEFAULTS: DamageClaimLimits = {
-  maxClaimAmountCents: 500000, // $5,000 CAD max per claim
-  minClaimAmountCents: 1000,   // $10 CAD minimum
+  maxClaimAmountCents: 25000, // $250 CAD cap fixed by the owner
+  minClaimAmountCents: 1,   // Positive whole cents
   maxClaimsPerBooking: 3,      // Max 3 claims per booking
-  chefResponseDeadlineHours: 24, // 24 hours to respond - matches Airbnb's guest response window
-  claimSubmissionDeadlineDays: 14, // 14 days after booking ends
+  chefResponseDeadlineHours: 72, // 72 hours to pay or dispute after approval
+  claimSubmissionDeadlineDays: 3, // 72 hours after the visit ends
 };
 
 const STORAGE_CHECKOUT_DEFAULTS: StorageCheckoutSettings = {
@@ -42,60 +42,8 @@ const STORAGE_CHECKOUT_DEFAULTS: StorageCheckoutSettings = {
  * Fetches from database or returns hardcoded defaults if not configured
  */
 export async function getDamageClaimLimits(): Promise<DamageClaimLimits> {
-  try {
-    const [maxClaimSetting] = await db
-      .select()
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'damage_claim_max_amount_cents'))
-      .limit(1);
-
-    const [minClaimSetting] = await db
-      .select()
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'damage_claim_min_amount_cents'))
-      .limit(1);
-
-    const [maxClaimsPerBookingSetting] = await db
-      .select()
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'damage_claim_max_per_booking'))
-      .limit(1);
-
-    const [responseDeadlineSetting] = await db
-      .select()
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'damage_claim_response_deadline_hours'))
-      .limit(1);
-
-    const [submissionDeadlineSetting] = await db
-      .select()
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'damage_claim_submission_deadline_days'))
-      .limit(1);
-
-    const limits = {
-      maxClaimAmountCents: maxClaimSetting
-        ? Number(maxClaimSetting.value)
-        : DEFAULTS.maxClaimAmountCents,
-      minClaimAmountCents: minClaimSetting
-        ? Number(minClaimSetting.value)
-        : DEFAULTS.minClaimAmountCents,
-      maxClaimsPerBooking: maxClaimsPerBookingSetting
-        ? Number(maxClaimsPerBookingSetting.value)
-        : DEFAULTS.maxClaimsPerBooking,
-      chefResponseDeadlineHours: responseDeadlineSetting
-        ? Number(responseDeadlineSetting.value)
-        : DEFAULTS.chefResponseDeadlineHours,
-      claimSubmissionDeadlineDays: submissionDeadlineSetting
-        ? Number(submissionDeadlineSetting.value)
-        : DEFAULTS.claimSubmissionDeadlineDays,
-    };
-    if (!Object.values(limits).every(value => Number.isSafeInteger(value) && value > 0) || limits.minClaimAmountCents > limits.maxClaimAmountCents) throw new Error('Invalid damage claim settings');
-    return limits;
-  } catch (error) {
-    logger.error('[DamageClaimLimitsService] Error fetching limits:', error);
-    throw error;
-  }
+  // Owner decisions are fixed for the pilot; legacy configurable settings cannot override them.
+  return { ...DEFAULTS };
 }
 
 /**

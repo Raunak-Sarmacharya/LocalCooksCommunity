@@ -25,7 +25,7 @@ function stripeMock(status = 'requires_confirmation') {
   } } } as any;
 }
 const params = { amount: 1000, currency: 'cad', customer: 'cus_1', payment_method: 'pm_1', confirm: true, off_session: true };
-describe.each(['damage_claim', 'overstay_penalty'] as const)('%s payment coordination', (kind) => {
+describe.each(['overstay_penalty'] as const)('%s payment coordination', (kind) => {
   beforeEach(() => { state.record = { route: null, intentId: null, sessionId: null, attempt: 0 };
     state.writes.length = 0; state.events.length = 0; });
   it('persists a single intent before confirming and omits off_session during creation', async () => {
@@ -71,6 +71,16 @@ describe.each(['damage_claim', 'overstay_penalty'] as const)('%s payment coordin
     expect(state.events.indexOf('cancel')).toBeLessThan(state.events.indexOf('checkout'));
     expect(stripe.checkout.sessions.create.mock.calls[0][0].payment_intent_data.metadata)
       .toEqual({ type: kind, obligation_checkout_attempt: '0' });
+  });
+});
+describe('damage claims never enter legacy automatic payment coordination', () => {
+  it.each([null, 'off_session', 'checkout'])('rejects both legacy money entry points before provider I/O for route %s', async route => {
+    state.record = { route, intentId: 'pi_1', sessionId: 'cs_1', attempt: 0 };
+    const stripe = stripeMock();
+    await expect(chargeObligation(stripe, 'damage_claim', 1, params)).rejects.toThrow(/on-session/);
+    await expect(checkoutObligation(stripe, 'damage_claim', 1, { mode: 'payment' })).rejects.toThrow(/on-session/);
+    expect(stripe.paymentIntents.create).not.toHaveBeenCalled(); expect(stripe.paymentIntents.confirm).not.toHaveBeenCalled();
+    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled(); expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 });
 

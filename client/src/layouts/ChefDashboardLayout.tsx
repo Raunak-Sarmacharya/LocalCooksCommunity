@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
 import { Link } from "wouter"
+import { DamageClaimBookingHoldBanner } from '@/components/booking/DamageClaimCards'
 import { findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
 import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
 import { SCROLL_AREA_FLUID_CONTENT } from "@/lib/scroll-area-classes"
@@ -166,6 +167,7 @@ export default function ChefDashboardLayout({
                 <ScrollArea className={cn("flex-1 min-h-0 min-w-0 bg-muted/30", SCROLL_AREA_FLUID_CONTENT)}>
                 <main className="min-w-0 p-4 md:p-6 lg:p-8">
                     <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6">
+                        <DamageClaimBookingHoldBanner />
                         {children}
                     </div>
                 </main>

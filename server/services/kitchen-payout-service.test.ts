@@ -48,6 +48,12 @@ beforeEach(() => {
 });
 
 describe('releaseKitchenPayout', () => {
+  it('does not look at manager damage claims and holds only chef-reported kitchen problems', async () => {
+    state.closeout.visits = [visit('issue_filed')];
+    expect((await releaseKitchenPayout(7, 'manager_claim', now)).transferred).toBe(true);
+    expect(state.raw.join(' ')).not.toContain('FROM damage_claims');
+    expect(state.raw.join(' ')).toContain('p.reported_by = kb.chef_id');
+  });
   it('releases after a clear inspection: the decision is committed before any provider call', async () => {
     const result = await releaseKitchenPayout(7, 'inspection_clear', now);
     expect(result).toMatchObject({ success: true, transferred: true, transferId: 'tr_7' });

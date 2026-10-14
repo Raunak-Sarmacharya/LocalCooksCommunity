@@ -25,6 +25,8 @@ vi.mock('./outcome-delivery', () => ({ deliverOutcomeEmails: () => task('outcome
 vi.mock('./chat-notices', () => ({ dispatchChatDigests: () => task('chat') }));
 vi.mock('./overstay-penalty-service', () => ({ detectOverstays: () => task('overstays') }));
 vi.mock('./damage-claim-service', () => ({ processExpiredClaims: () => task('claims') }));
+vi.mock('./damage-claim-money', () => ({ recoverDamageClaimMoney: () => task('claimMoney') }));
+vi.mock('./damage-claims-v2', () => ({ notifyDamageClaimBookingHolds: () => task('claimHolds') }));
 vi.mock('./booking-payment-decision', () => ({ recoverPendingBookingDecisions: () => task('paymentRecovery') }));
 vi.mock('./auth-expiry-service', () => ({ processExpiredAuthorizations: () => task('authorizations') }));
 vi.mock('./storage-checkout-service', () => ({ processExpiredCheckoutReviews: () => task('storageCheckout') }));

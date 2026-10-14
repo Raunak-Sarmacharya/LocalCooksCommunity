@@ -206,7 +206,7 @@ export async function updatePaymentTransaction(
 ): Promise<PaymentTransactionRecord | null> {
   // Get current transaction to track status changes
   const currentResult = await db.execute(sql`
-    SELECT status, refund_amount, amount, payout_timing
+    SELECT status, refund_amount, amount, payout_timing, metadata, manager_revenue
     FROM payment_transactions
     WHERE id = ${transactionId}
     ${inTransaction ? sql`FOR UPDATE` : sql``}
@@ -217,6 +217,12 @@ export async function updatePaymentTransaction(
   }
 
   const current: any = currentResult.rows[0];
+  const savedMetadata = typeof current.metadata === 'string' ? JSON.parse(current.metadata) : current.metadata || {};
+  if (savedMetadata.damage_claim_v2 === 'true') {
+    // Claim fulfillment owns the kitchen share. Generic fee sync must never turn a full claim transfer
+    // into a net-of-fee share, or turn a repayment to Local Cooks into kitchen income.
+    params = { ...params, managerRevenue: Number(current.manager_revenue || 0), serviceFee: 0, taxAmount: 0 };
+  }
   const previousStatus = current.status as TransactionStatus;
   if (!inTransaction && (params.refundAmount !== undefined || params.stripeAmount !== undefined || params.stripeNetAmount !== undefined
     || params.status === "failed" && ["succeeded", "partially_refunded"].includes(previousStatus)))

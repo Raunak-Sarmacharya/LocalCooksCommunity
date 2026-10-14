@@ -2178,6 +2178,8 @@ export type OverstayStatus = 'detected' | 'grace_period' | 'pending_review' | 'p
 
 // ===== DAMAGE CLAIM STATUS ENUM =====
 export const damageClaimStatusEnum = pgEnum('damage_claim_status', [
+  'in_review',          // Local Cooks reviews before the chef sees a claim
+  'awaiting_kitchen',   // First review paused for kitchen information
   'draft',              // Manager started claim but hasn't submitted
   'submitted',          // Claim submitted, awaiting chef response
   'chef_accepted',      // Chef accepted responsibility
@@ -2232,11 +2234,16 @@ export const damageClaims = pgTable("damage_claims", {
   claimedAmountCents: integer("claimed_amount_cents").notNull(),
   claimVersion: integer('claim_version').notNull().default(1),
   requestKey: text('request_key'),
+  chefVisibleAt: timestamp('chef_visible_at', { withTimezone: true }),
+  reviewRequest: text('review_request'),
+  kitchenReply: text('kitchen_reply'),
+  withdrawalOperation: jsonb('withdrawal_operation').$type<import('./damage-claims').ClaimWithdrawalOperation>(),
   costLines: jsonb('cost_lines').$type<import('./damage-claims').ClaimLine[]>().notNull().default([]),
   visitEvidence: jsonb('visit_evidence').$type<import('./damage-claims').ClaimVisitEvidence>(),
   upheldAt: timestamp('upheld_at', { withTimezone: true }),
   chefOwes: boolean('chef_owes').notNull().default(true),
   holdReleasedAt: timestamp('hold_released_at', { withTimezone: true }),
+  bookingHoldNotifiedAt: timestamp('booking_hold_notified_at', { withTimezone: true }),
   fundedBy: text('funded_by').notNull().default('chef'),
   paymentOperation: jsonb('payment_operation').$type<import('./damage-claims').ClaimMoneyOperation>(),
   transferOperation: jsonb('transfer_operation').$type<import('./damage-claims').ClaimMoneyOperation>(),
@@ -2329,7 +2336,7 @@ export const damageClaimHistory = pgTable("damage_claim_history", {
 });
 
 // Zod validation schemas for damage claims
-const damageClaimStatusValues = ['draft', 'submitted', 'chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'rejected', 'charge_pending', 'charge_succeeded', 'charge_failed', 'resolved', 'expired', 'escalated'] as const;
+const damageClaimStatusValues = ['in_review', 'awaiting_kitchen', 'draft', 'submitted', 'chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'rejected', 'charge_pending', 'charge_succeeded', 'charge_failed', 'resolved', 'expired', 'escalated'] as const;
 const evidenceTypeValues = ['photo_before', 'photo_after', 'receipt', 'invoice', 'video', 'document', 'third_party_report'] as const;
 
 // Damaged equipment item schema for kitchen booking claims

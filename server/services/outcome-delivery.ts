@@ -197,10 +197,11 @@ export async function queueStorageVisitAction(tx: Transaction, bookingId: number
   const message = `${title}. ${assistance ? `Reported or evidenced time: ${assistance.actualAt}. Reason: ${assistance.reason}. Existing chef evidence is preserved.` : 'Open the current storage booking for evidence and actions.'} ${action === 'departure' ? 'The kitchen manager owns inspection and must confirm physical removal. Storage stays occupied until that confirmation; this is not clearance or a charge.' : action === 'removal' ? 'The manager confirmed physical removal. The previous inspection outcome and financial records are unchanged.' : action === 'draft_claim' ? 'Inspection was handed to a draft claim. Evidence and submission remain required; the chef response window has not started. This is not clearance, physical removal or a charge.' : 'Storage dates and removal duties are independent from the kitchen visit.'}`;
   for (const person of people) {
     const chef = person.id === row.storage.chefId;
+    if (action === 'draft_claim' && chef) continue;
     const path = chef ? '/dashboard?view=bookings' : managerDashboardView(action === 'departure' ? 'storage-checkouts' : 'storage-bookings');
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement', title, message,
       actionUrl: path, actionLabel: 'View storage action', metadata: { storageBookingId: bookingId, actorId, assistance: !!assistance } }, tx);
-    if (action === 'removal' || action === 'draft_claim' ? chef : !chef) await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id, recipientRole: chef ? 'chef' : 'manager',
+    if (action === 'removal' ? chef : !chef) await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id, recipientRole: chef ? 'chef' : 'manager',
       category: 'lifecycle_outcome', status: 'queued', subject: title, previewText: message,
       trackingId: `storage-outcome:${bookingId}:${action}-${row.storage.updatedAt.getTime()}:${person.id}`,
       textBody: `${message}\n\n${getAppBaseUrl(chef ? 'chef' : 'kitchen')}${path}` });

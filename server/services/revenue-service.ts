@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import { resolveKitchenTransactionTaxAndSubtotal } from "./revenue-transaction-tax";
 import { calculateRefundBreakdown } from "./stripe-service";
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown";
+import { claimKitchenAccounting } from '@shared/damage-claims';
 
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents) - gross amount charged to customer
@@ -405,6 +406,7 @@ export async function getRevenueMetrics(
           SELECT COALESCE(SUM(stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
           FROM payment_transactions
           WHERE manager_id = ${managerId} AND status = 'succeeded' AND stripe_processing_fee > 0
+            AND COALESCE(metadata->>'platformAbsorbsProcessingFee', 'false') <> 'true'
         `);
         actualStripeFeeFromDb = parseInt(feeResult.rows[0]?.total_stripe_fee || '0') || 0;
       } catch (feeError) {
@@ -541,6 +543,7 @@ export async function getRevenueMetrics(
         sql`pt.manager_id = ${managerId}`,
         sql`pt.status IN ('succeeded', 'partially_refunded')`, // Include partially refunded but not fully refunded
         sql`pt.stripe_processing_fee IS NOT NULL`,
+        sql`COALESCE(pt.metadata->>'platformAbsorbsProcessingFee', 'false') <> 'true'`,
         sql`pt.stripe_processing_fee > 0`
       ];
       if (locationId) {
@@ -911,6 +914,7 @@ export async function getTransactionHistory(
 
     const kitchenWhereConditions = [
       sql`l.manager_id = ${managerId}`,
+      sql`COALESCE(pt.metadata->>'platformRecovery', 'false') <> 'true'`,
       // Show all non-cancelled bookings, PLUS cancelled bookings that have a payment transaction
       // (i.e., they were paid/refunded and should appear in transaction history)
       sql`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`,
@@ -995,6 +999,7 @@ export async function getTransactionHistory(
       
       // Check if this is a damage claim (via payment transaction metadata)
       const ptMetadata = row.pt_metadata || {};
+      const claimAccounting = claimKitchenAccounting(ptMetadata, ptManagerRevenue, ptRefundAmount);
       const isDamageClaim = ptMetadata.type === 'damage_claim';
       const approvedTaxCents = ptMetadata.approvedTax != null
         ? parseInt(String(ptMetadata.approvedTax)) || 0
@@ -1043,7 +1048,7 @@ export async function getTransactionHistory(
       }
       
       // Manager revenue - prefer Stripe transfer; reconstruct when stale gross remains
-      const managerRevenue = resolveDisplayedKitchenNetPayoutCents({
+      const managerRevenue = claimAccounting?.managerRevenueCents ?? resolveDisplayedKitchenNetPayoutCents({
         kitchenNetPayoutCents: ptManagerRevenue > 0 ? ptManagerRevenue : null,
         kitchenBaseSubtotalCents: totalPriceCents,
         kitchenHstAmountCents: taxCents,
@@ -1054,7 +1059,7 @@ export async function getTransactionHistory(
       
       // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
       // If actual fee is 0, it will be synced via charge.updated webhook
-      const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
+      const stripeFee = claimAccounting ? 0 : actualStripeFee > 0 ? actualStripeFee : 0;
       
       // Net revenue = manager payout (includes tax collected; Stripe fee already deducted)
       const grossNetRevenue = managerRevenue;
@@ -1071,10 +1076,10 @@ export async function getTransactionHistory(
       const bookingId = parseInt(String(row.id));
       const paymentStatus = mapPaymentStatus(row.transaction_status || row.payment_status);
       const bookingStatus = String(row.status || '').toLowerCase();
-      const isRevenueEligible = (paymentStatus === 'paid' || paymentStatus === 'partially_refunded')
-        && !['pending', 'cancelled', 'canceled', 'rejected', 'expired'].includes(bookingStatus);
+      const isRevenueEligible = (paymentStatus === 'paid' || paymentStatus === 'partially_refunded' || claimAccounting?.retainRevenueAfterRefund)
+        && (claimAccounting || !['pending', 'cancelled', 'canceled', 'rejected', 'expired'].includes(bookingStatus));
       const netRevenue = isRevenueEligible
-        ? Math.max(0, grossNetRevenue - ptRefundAmount)
+        ? Math.max(0, grossNetRevenue - (claimAccounting?.managerRefundCents ?? ptRefundAmount))
         : 0;
 
       return {

@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { approvedClaimAmount, claimBookingHeld, claimFilingWindow, claimNeedsEscalation, claimResponseDeadline,
-  claimSupportInput, validateClaimLines } from './damage-claims';
+  claimSupportInput, claimKitchenAccounting, validateClaimLines } from './damage-claims';
 
 const end = new Date('2026-10-10T18:00:00Z');
 const line = { type: 'damage', description: 'Replace cracked tray', amountCents: 25000,
   document: { fileUrl: 'https://example.invalid/quote.pdf', fileName: 'quote.pdf' } };
 describe('damage and cleaning rules', () => {
+  it('reports full kitchen income, no income for a platform repayment, and retains income after a platform-funded withdrawal refund', () => {
+    expect(claimKitchenAccounting({ damage_claim_v2: 'true' }, 2000, 0)).toMatchObject({ managerRevenueCents: 2000, managerRefundCents: 0 });
+    expect(claimKitchenAccounting({ damage_claim_v2: 'true', platformRecovery: true }, 0, 0)?.managerRevenueCents).toBe(0);
+    expect(claimKitchenAccounting({ damage_claim_v2: 'true', kitchenRetainsTransfer: true }, 2000, 2000)).toEqual({ managerRevenueCents: 2000, managerRefundCents: 0, retainRevenueAfterRefund: true });
+    expect(claimKitchenAccounting({ type: 'kitchen_booking' }, 2000, 0)).toBeNull();
+  });
   it('uses actual departure and includes the exact 72-hour deadline', () => {
     const actual = new Date('2026-10-10T17:00:00Z');
     expect(claimFilingWindow(end, actual, new Date('2026-10-13T17:00:00Z')).allowed).toBe(true);

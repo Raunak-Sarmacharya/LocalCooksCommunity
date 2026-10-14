@@ -16,7 +16,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { SmartImage } from '@/components/ui/smart-image';
 import { VisitAssistancePanel } from '@/components/booking/VisitAssistancePanel';
 import { ManagerInSessionBadge, inSessionEnds } from '@/components/manager/bookings/ManagerInSessionBadge';
-import { CommitmentProblems } from '@/components/support/CommitmentProblems';
+import { DamageClaimSheet } from '@/components/booking/DamageClaimSheet';
+import { BookingDamageClaims } from '@/components/booking/DamageClaimCards';
+import { claimFilingWindow } from '@shared/damage-claims';
+import { recordedDepartureAt } from '@shared/clock-closeout';
 import { calendarDateForOperatingTime, calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime } from '@shared/timezone-utils';
 import { formatVisitWhen } from '@/lib/visit-when';
@@ -181,13 +184,13 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   note: string; onNoteChange: (value: string) => void;
 }) {
   const { t, i18n } = useTranslation('chef');
+  const { t: claimT } = useTranslation('booking');
   const chef = booking.chef?.fullName || booking.chef?.username || t('fixChef');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false), [assistanceOpen, setAssistanceOpen] = useState(false);
-  const issueRef = useRef<HTMLElement>(null), assistanceRef = useRef<HTMLElement>(null);
-  useEffect(() => { if (issueOpen) issueRef.current?.focus(); }, [issueOpen]);
+  const assistanceRef = useRef<HTMLElement>(null);
   useEffect(() => { if (assistanceOpen) assistanceRef.current?.focus(); }, [assistanceOpen]);
   const deadline = visitId ? evidence.checkoutReviewDeadline : booking.inspection?.checkoutReviewDeadline;
   const clock = visitId ? evidence.closeout as import('@shared/clock-closeout').VisitCloseout | undefined : booking.closeout?.visits[0];
@@ -195,9 +198,9 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const payoutAmount = payoutNow ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(payoutNow.amountCents / 100) : '';
   const canClear = clock ? clock.inspection.canRespond : booking.status === 'confirmed' && evidence.checkinStatus === 'checkout_requested' && !!deadline && Number.isFinite(Date.parse(deadline));
   const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus);
-  // Done once the manager has cleared it (or this page just did). The report link only stays while the review window is open.
+  // Inspection and the separate 72-hour claim filing window have independent deadlines.
   const finished = saved || (clock ? clock.inspection.outcome === 'manager_cleared' : evidence.checkinStatus === 'checked_out' && !!evidence.checkoutApprovedAt);
-  const canReportLater = !!clock && Number.isFinite(Date.parse(clock.inspection.deadline)) && Date.now() < Date.parse(clock.inspection.deadline);
+  const canReportLater = !!clock && claimFilingWindow(new Date(clock.scheduledEndAt), recordedDepartureAt(evidence)).allowed;
   const finishedAt = (() => {
     const at = evidence.checkoutApprovedAt, zone = booking.location.timezone;
     if (!at || !zone || !Number.isFinite(Date.parse(at))) return null;
@@ -249,7 +252,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-wrap items-center gap-4">
         <Button asChild><Link href={`/manager/booking/${booking.id}`}>{t('inspectCopy26')}</Link></Button>
-        {canReportLater && <button type="button" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={() => { setIssueOpen(true); issueRef.current?.focus(); }}>{t('inspectFoundLater')}</button>}
+        {canReportLater && <button type="button" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={() => setIssueOpen(true)}>{t('inspectFoundLater')}</button>}
       </div>
     </section> : <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectCopy46')}>
       <h2 className="font-semibold">{t('inspectCopy46')}</h2>
@@ -266,7 +269,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{t(blocked ? 'inspectRefreshFirst' : clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome) ? 'inspectWindowClosed' : 'inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
         <Button disabled={!canClear || blocked || saving || saved || !booking.inspection} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>
-        <Button variant="outline" disabled={saving} onClick={() => { setIssueOpen(true); issueRef.current?.focus(); }}>{t('inspectCopy61')}</Button>
+        <Button variant="outline" disabled={saving} onClick={() => setIssueOpen(true)}>{claimT('dcV2Report')}</Button>
         {canAssist && <Button variant="outline" disabled={saving || blocked} onClick={() => { setAssistanceOpen(true); assistanceRef.current?.focus(); }}>{t('inspectCopy62')}</Button>}
       </div>
     </section>}
@@ -286,11 +289,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
         scheduledStart={evidence.checkinStatus === 'checked_in' ? undefined : clock?.scheduledStartAt}
         disabled={blocked || saving || !canAssist} onSaved={async () => { await refresh(); }} />
     </section>}
-    {issueOpen && <section ref={issueRef} tabIndex={-1} className="rounded-2xl border bg-card p-5 space-y-4" aria-label={t('inspectCopy61')}>
-      <h2 className="font-semibold">{t('inspectCopy61')}</h2>
-      <p className="text-sm">{t('inspectCopy67')}</p>
-      <p role="status" className="text-sm">{t('inspectCopy68')}</p>
-      <CommitmentProblems kind="booking" id={booking.id} role="manager" canReport />
-    </section>}
+    {issueOpen && <DamageClaimSheet bookingId={booking.id} visitId={visitId} chefName={chef} open={issueOpen} hideTrigger onOpenChange={setIssueOpen} onFiled={() => void refresh()} />}
+    <BookingDamageClaims bookingId={booking.id} manager />
   </>;
 }

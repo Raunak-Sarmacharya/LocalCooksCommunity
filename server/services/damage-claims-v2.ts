@@ -1,10 +1,11 @@
+import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { damageClaims, damageEvidence, damageClaimHistory, kitchenBookings, kitchenBookingVisits,
-  kitchens, locations, users, supportActions } from '@shared/schema';
+  kitchens, locations, users, supportActions, platformSettings } from '@shared/schema';
 import { approvedClaimAmount, claimFilingWindow, claimResponseDeadline, claimTotal, fileClaimInput,
-  claimSupportInput, validateClaimLines, type ClaimSupportInput } from '@shared/damage-claims';
+  claimSupportInput, claimUpload, claimBookingHeld, validateClaimLines, type ClaimSupportInput } from '@shared/damage-claims';
 import { recordedDepartureAt } from '@shared/clock-closeout';
 import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime } from '@shared/timezone-utils';
@@ -16,6 +17,11 @@ export type ClaimTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Claim = typeof damageClaims.$inferSelect;
 export class DamageClaimError extends Error { constructor(message: string, public status = 409) { super(message); } }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export const chefCanSeeClaim = (claim: Claim) => !!claim.chefVisibleAt || claim.claimVersion === 1 && !!claim.submittedAt;
+export async function damageClaimsReviewFirst(tx: ClaimTx = db as unknown as ClaimTx) {
+  const [setting] = await tx.select({ value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.key, 'damageClaimsReviewFirst')).limit(1);
+  return !['false', '0'].includes(String(setting?.value ?? 'true'));
+}
 
 export async function lockClaim(id: number, tx: ClaimTx): Promise<Claim> {
   const [claim] = await tx.select().from(damageClaims).where(eq(damageClaims.id, id)).limit(1).for('update');
@@ -60,21 +66,25 @@ export async function fileDamageClaim(managerId: number, raw: unknown) {
     const [existing] = await tx.select().from(damageClaims).where(and(eq(damageClaims.managerId, managerId), eq(damageClaims.requestKey, input.requestKey))).limit(1);
     if (existing) {
       if (existing.kitchenBookingId !== input.bookingId || hash(existing.costLines) !== hash(lines) || existing.claimDescription !== input.description
-        || existing.kitchenBookingVisitId !== (input.visitId || null)) throw new DamageClaimError('This filing key belongs to different claim details.');
+        || (input.visitId !== undefined && existing.kitchenBookingVisitId !== input.visitId)) throw new DamageClaimError('This filing key belongs to different claim details.');
       return publicClaim(existing, tx);
     }
     const ctx = await bookingContext(input.bookingId, managerId, input.visitId, tx);
     if (!ctx.window.allowed) throw new DamageClaimError('Report within 72 hours of leaving the kitchen. Contact Local Cooks for help.');
     const now = new Date();
+    const reviewFirst = await damageClaimsReviewFirst(tx);
     const photos = (value: unknown) => Array.isArray(value) ? value.filter((url): url is string => typeof url === 'string') : [];
     const visitEvidence = { before: photos(ctx.visit.checkinPhotoUrls), after: photos(ctx.visit.checkoutPhotoUrls),
       checkinNotes: ctx.visit.checkinNotes, checkoutNotes: ctx.visit.checkoutNotes, endedAt: ctx.window.endedAt.toISOString(),
-      timezone: ctx.timezone, kitchenName: ctx.kitchenName };
+      timezone: ctx.timezone, kitchenName: ctx.kitchenName, highlighted: input.selectedPhotoUrls };
+    if (input.selectedPhotoUrls.some(url => ![...visitEvidence.before, ...visitEvidence.after].includes(url)))
+      throw new DamageClaimError('Choose photos attached to this visit.', 400);
     const [claim] = await tx.insert(damageClaims).values({ referenceCode: await generateReferenceCode('damage_claim'), claimVersion: 2,
       requestKey: input.requestKey, bookingType: 'kitchen', kitchenBookingId: input.bookingId,
       kitchenBookingVisitId: 'bookingId' in ctx.visit ? ctx.visit.id : null, managerId, chefId: ctx.booking.chefId!, locationId: ctx.locationId,
       claimTitle: lines.every(line => line.type === 'extra_cleaning') ? 'Extra cleaning' : 'Damage and cleaning',
-      claimDescription: input.description, damageDate: ctx.window.endedAt.toISOString().slice(0, 10), status: 'submitted',
+      claimDescription: input.description, damageDate: ctx.window.endedAt.toISOString().slice(0, 10), status: reviewFirst ? 'in_review' : 'submitted',
+      chefVisibleAt: reviewFirst ? null : now,
       claimedAmountCents: amount, finalAmountCents: amount, costLines: lines, visitEvidence,
       chefResponseDeadline: claimResponseDeadline(now), submittedAt: now, createdAt: now, updatedAt: now }).returning();
     const evidence = [ ...visitEvidence.before.map(fileUrl => ({ fileUrl, evidenceType: 'photo_before' as const })),
@@ -82,7 +92,7 @@ export async function fileDamageClaim(managerId: number, raw: unknown) {
       ...input.photos.map(photo => ({ ...photo, evidenceType: 'photo_after' as const })),
       ...lines.map(line => ({ ...line.document, description: line.description, amountCents: line.amountCents, evidenceType: 'invoice' as const })) ];
     if (evidence.length) await tx.insert(damageEvidence).values(evidence.map(item => ({ ...item, uploadedBy: managerId, damageClaimId: claim.id })));
-    await claimHistory(tx, claim, 'submitted', 'submitted', 'manager', managerId);
+    await claimHistory(tx, claim, claim.status, 'submitted', 'manager', managerId);
     return publicClaim(claim, tx);
   });
 }
@@ -95,38 +105,62 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
     createdAt: damageClaimHistory.createdAt }).from(damageClaimHistory).where(eq(damageClaimHistory.damageClaimId, claim.id)).orderBy(asc(damageClaimHistory.id));
   return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, visitId: claim.kitchenBookingVisitId,
     chefId: claim.chefId, managerId: claim.managerId, status: claim.status, claimVersion: claim.claimVersion,
+    createdAt: claim.createdAt, claimTitle: claim.claimTitle,
     description: claim.claimDescription, amountCents: claim.finalAmountCents ?? claim.claimedAmountCents, claimedAmountCents: claim.claimedAmountCents,
     lines: claim.costLines, visitEvidence: claim.visitEvidence, chefResponse: claim.chefResponse,
     deadline: claim.chefResponseDeadline, upheldAt: claim.upheldAt, publicMessage: claim.adminDecisionReason,
     kitchenPaid: claim.transferOperation?.state === 'succeeded' || claim.compensationOperation?.state === 'succeeded',
+    kitchenPaymentPending: !!claim.chargeSucceededAt && claim.fundedBy !== 'local_cooks' && claim.transferOperation?.state !== 'succeeded',
     fundedBy: claim.fundedBy, chefOwes: claim.chefOwes, holdReleasedAt: claim.holdReleasedAt,
+    chefVisible: chefCanSeeClaim(claim), reviewRequest: claim.reviewRequest, kitchenReply: claim.kitchenReply,
     paymentBusy: !!claim.paymentOperation && !['cancelled', 'succeeded'].includes(claim.paymentOperation.state),
-    compensationPending: claim.compensationOperation?.state === 'pending', evidence, history };
+    compensationPending: claim.compensationOperation?.state === 'pending', withdrawalPending: claim.withdrawalOperation?.state === 'pending',
+    resolutionType: claim.resolutionType, evidence, history };
 }
-export async function readBookingClaims(bookingId: number, actor: { id: number; role: string }) {
+export async function readManagerClaims(managerId: number) {
+  const claims = await db.select().from(damageClaims).where(eq(damageClaims.managerId, managerId)).orderBy(desc(damageClaims.id)).limit(100);
+  return { claims: await Promise.all(claims.map(claim => publicClaim(claim))) };
+}
+export async function readBookingClaims(bookingId: number, actor: { id: number; role: string | null }) {
+  let kitchenParticipant = actor.role === 'admin';
   if (actor.role !== 'admin') {
     const [row] = await db.select({ chefId: kitchenBookings.chefId, managerId: locations.managerId }).from(kitchenBookings)
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
-    if (!row || (actor.role === 'manager' ? row.managerId : row.chefId) !== actor.id) throw new DamageClaimError('Booking not found.', 404);
+    if (!row || row.managerId !== actor.id && row.chefId !== actor.id) throw new DamageClaimError('Booking not found.', 404);
+    kitchenParticipant = row.managerId === actor.id;
   }
   const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.kitchenBookingId, bookingId), sql`${damageClaims.status} <> 'draft'`))
     .orderBy(desc(damageClaims.id)).limit(50);
-  return { claims: await Promise.all(claims.map(claim => publicClaim(claim))) };
+  return { claims: await Promise.all(claims.filter(claim => kitchenParticipant || chefCanSeeClaim(claim)).map(claim => publicClaim(claim))) };
 }
 export async function readChefClaims(chefId: number) {
   const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.chefId, chefId), sql`${damageClaims.status} <> 'draft'`))
     .orderBy(desc(damageClaims.id)).limit(100);
-  return { claims: await Promise.all(claims.map(claim => publicClaim(claim))) };
+  return { claims: await Promise.all(claims.filter(chefCanSeeClaim).map(claim => publicClaim(claim))) };
+}
+export async function replyToClaimReview(id: number, managerId: number, raw: unknown) {
+  const parsed = z.object({ note: z.string().trim().min(10).max(2000), files: z.array(claimUpload).max(10).default([]) }).strict().safeParse(raw);
+  if (!parsed.success) throw new DamageClaimError('Reply to Local Cooks with a note and any requested documents.', 400);
+  return db.transaction(async tx => {
+    const claim = await lockClaim(id, tx);
+    if (claim.managerId !== managerId) throw new DamageClaimError('Claim not found.', 404);
+    if (claim.status !== 'awaiting_kitchen') throw new DamageClaimError('This claim is not waiting for kitchen information.');
+    await tx.update(damageClaims).set({ status: 'in_review', kitchenReply: parsed.data.note, updatedAt: new Date() }).where(eq(damageClaims.id, id));
+    if (parsed.data.files.length) await tx.insert(damageEvidence).values(parsed.data.files.map(file => ({ ...file, damageClaimId: id, uploadedBy: managerId,
+      evidenceType: file.mimeType?.startsWith('image/') ? 'photo_after' as const : 'document' as const, description: parsed.data.note })));
+    await claimHistory(tx, claim, 'in_review', 'kitchen_reply', 'manager', managerId);
+    return { success: true };
+  });
 }
 export async function disputeDamageClaim(claimId: number, chefId: number, raw: unknown) {
-  const input = (await import('zod')).z.object({ note: (await import('zod')).z.string().trim().min(10).max(2000),
-    photos: (await import('zod')).z.array((await import('@shared/damage-claims')).claimUpload).max(10).default([]) }).strict().safeParse(raw);
+  const input = z.object({ note: z.string().trim().min(10).max(2000), photos: z.array(claimUpload).max(10).default([]) }).strict().safeParse(raw);
   if (!input.success) throw new DamageClaimError('Tell us why you disagree in at least 10 characters.', 400);
   await (await import('./damage-claim-money')).cancelClaimPayment(claimId, chefId);
   return db.transaction(async tx => {
     const claim = await lockClaim(claimId, tx);
     if (claim.chefId !== chefId) throw new DamageClaimError('Claim not found.', 404);
+    if (!chefCanSeeClaim(claim)) throw new DamageClaimError('Claim not found.', 404);
     if (!['submitted', 'under_review'].includes(claim.status) || claim.compensationOperation)
       throw new DamageClaimError('This claim has a saved decision. Contact Local Cooks to review it.');
     await tx.update(damageClaims).set({ status: 'under_review', chefResponse: input.data.note, chefRespondedAt: new Date(), updatedAt: new Date() }).where(eq(damageClaims.id, claimId));
@@ -169,58 +203,105 @@ export async function readClaimBookingHold(chefId: number, now = new Date()) {
       sql`${damageClaims.status} NOT IN ('rejected','resolved','charge_succeeded','expired')`)).orderBy(asc(damageClaims.id)).limit(20);
   return { held: rows.length > 0, claims: rows };
 }
+/** The hold itself is computed live; this bounded sweep only sends the once-per-claim notice to both people. */
+export async function notifyDamageClaimBookingHolds(now = new Date()) {
+  assertWorkerTime();
+  const due = await db.select().from(damageClaims).where(and(workerAfter('claimHolds', damageClaims.id), eq(damageClaims.chefOwes, true),
+    isNull(damageClaims.holdReleasedAt), isNull(damageClaims.resolvedAt), isNull(damageClaims.chargeSucceededAt),
+    isNull(damageClaims.bookingHoldNotifiedAt), lte(damageClaims.upheldAt, new Date(now.getTime() - 7 * 86400000))))
+    .orderBy(asc(damageClaims.id)).limit(3);
+  await workerPageEnd('claimHolds', due.length);
+  if (!due.length) return;
+  for (const row of due) {
+    await workerRecord('claimHolds', row.id);
+    await db.transaction(async tx => {
+      const claim = await lockClaim(row.id, tx);
+      if (claim.bookingHoldNotifiedAt || !claimBookingHeld(claim, now)) return;
+      await tx.update(damageClaims).set({ bookingHoldNotifiedAt: now }).where(eq(damageClaims.id, row.id));
+      await claimHistory(tx, claim, claim.status, 'booking_hold_started', 'system');
+    });
+  }
+}
 export async function decideDamageClaim(bookingId: number, adminId: number, raw: unknown) {
   const parsed = claimSupportInput.safeParse(raw);
   if (!parsed.success) throw new DamageClaimError('Choose the action, reason, internal note and message for both people.', 400);
   const input = parsed.data;
+  if (input.type === 'claim_compensate') await cancelOpenChefPaymentForCompensation(bookingId, adminId, input);
   const reserved = await db.transaction(async tx => {
     // Serialize support/claim money with flag writers using the same parent lock.
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
     const claim = await lockClaim(input.claimId, tx);
     if (claim.kitchenBookingId !== bookingId) throw new DamageClaimError('Claim does not belong to this booking.', 404);
+    // Cancellation may have committed just before its audit acknowledgement was interrupted.
+    if (input.type === 'claim_compensate' && claim.paymentOperation?.state === 'cancelled') await tx.execute(sql`
+      UPDATE support_actions SET status = 'verified', completed_at = NOW(), error = NULL
+      WHERE booking_id = ${bookingId} AND action_type = 'claim_cancel_payment' AND status = 'executing'
+        AND before_state->>'claimId' = ${String(claim.id)}`);
     const [old] = await tx.select().from(supportActions).where(eq(supportActions.operationKey, input.operationKey)).limit(1);
     if (old) {
       if (old.bookingId !== bookingId || old.actorUserId !== adminId || (old.beforeState as { inputHash?: string })?.inputHash !== hash(input))
         throw new DamageClaimError('This action key belongs to different details.');
       return { action: old, claim };
     }
-    if (claim.paymentOperation && !['cancelled', 'succeeded'].includes(claim.paymentOperation.state))
+    if (input.type === 'claim_withdraw' && claim.withdrawalOperation)
+      throw new DamageClaimError('This withdrawal already has a saved decision. Recover its original support action.');
+    if (input.type !== 'claim_withdraw' && claim.paymentOperation && !['cancelled', 'succeeded'].includes(claim.paymentOperation.state))
       throw new DamageClaimError('A chef payment is open. It must finish or be cancelled before changing the decision.');
     if (claim.compensationOperation?.state === 'pending') throw new DamageClaimError('The saved kitchen payment needs recovery before a new decision. Retry its original action.');
-    if (claim.chargeSucceededAt || claim.resolvedAt) throw new DamageClaimError('This claim is already resolved.');
+    if (input.type !== 'claim_withdraw' && (claim.chargeSucceededAt || claim.resolvedAt)) throw new DamageClaimError('This claim is already resolved.');
+    const firstReview = !chefCanSeeClaim(claim);
+    if (['claim_send', 'claim_ask_info'].includes(input.type) && (!firstReview || claim.status !== 'in_review'))
+      throw new DamageClaimError('This action is available during the first Local Cooks review.');
+    if (input.type === 'claim_reject' && firstReview) throw new DamageClaimError('Close this first-review claim with a reason for the kitchen.');
     if (['claim_uphold', 'claim_reduce'].includes(input.type) && claim.status !== 'under_review') throw new DamageClaimError('Review the chef response or wait for the response deadline before upholding.');
-    const amount = ['claim_uphold', 'claim_reduce', 'claim_compensate'].includes(input.type)
-      ? approvedClaimAmount(claim.claimedAmountCents, input.amountCents ?? claim.claimedAmountCents) : 0;
+    const amount = ['claim_send', 'claim_uphold', 'claim_reduce', 'claim_compensate'].includes(input.type)
+      ? approvedClaimAmount(firstReview ? claim.claimedAmountCents : claim.finalAmountCents ?? claim.claimedAmountCents,
+        input.amountCents ?? (firstReview ? claim.claimedAmountCents : claim.finalAmountCents ?? claim.claimedAmountCents)) : 0;
     if (input.type === 'claim_compensate') {
       if (claim.compensationOperation || claim.transferOperation) throw new DamageClaimError('A kitchen payment is already recorded.');
       await assertBookingMoneyWritable({ bookingId, operationKey: input.operationKey }, tx);
     }
     const now = new Date(), update: Partial<typeof damageClaims.$inferInsert> = { adminDecisionReason: input.publicMessage,
       adminNotes: input.note, adminReviewerId: adminId, adminReviewedAt: now, updatedAt: now };
+    if (input.type === 'claim_send') Object.assign(update, { status: 'submitted', approvedAmountCents: amount, finalAmountCents: amount,
+      chefVisibleAt: now, chefResponseDeadline: claimResponseDeadline(now) });
+    if (input.type === 'claim_ask_info') Object.assign(update, { status: 'awaiting_kitchen', reviewRequest: input.publicMessage });
     if (['claim_uphold', 'claim_reduce'].includes(input.type)) Object.assign(update, { status: amount === claim.claimedAmountCents ? 'approved' : 'partially_approved',
       approvedAmountCents: amount, finalAmountCents: amount, upheldAt: claim.upheldAt || now, chefOwes: true });
     if (input.type === 'claim_reject' || input.type === 'claim_close') Object.assign(update, { status: input.type === 'claim_reject' ? 'rejected' : 'resolved',
       resolvedAt: now, resolvedBy: adminId, resolutionType: input.type === 'claim_reject' ? 'rejected' : 'closed', chefOwes: false });
     if (input.type === 'claim_release_hold') update.holdReleasedAt = now;
     if (input.type === 'claim_compensate') {
-      const [manager] = await tx.select({ stripeAccountId: users.stripeAccountId }).from(users).where(eq(users.id, claim.managerId)).limit(1);
+      const [manager] = await tx.select({ stripeAccountId: users.stripeConnectAccountId }).from(users).where(eq(users.id, claim.managerId)).limit(1);
       if (!manager?.stripeAccountId) throw new DamageClaimError('The kitchen must finish payment setup first.');
       Object.assign(update, { approvedAmountCents: amount, finalAmountCents: amount, upheldAt: claim.upheldAt || now,
-        chefOwes: input.chefStillOwes, fundedBy: 'local_cooks', status: input.chefStillOwes ? 'approved' : 'resolved',
-        resolvedAt: input.chefStillOwes ? null : now, resolutionType: input.chefStillOwes ? null : 'write_off',
+        chefOwes: firstReview ? false : input.chefStillOwes, fundedBy: 'local_cooks', status: !firstReview && input.chefStillOwes ? 'approved' : 'resolved',
+        resolvedAt: !firstReview && input.chefStillOwes ? null : now, resolutionType: !firstReview && input.chefStillOwes ? null : 'write_off',
         compensationOperation: { key: `claim:${claim.id}:compensation`, state: 'pending', amountCents: amount,
           destination: manager.stripeAccountId, startedAt: now.toISOString() } });
     }
+    if (input.type === 'claim_withdraw') Object.assign(update, { status: 'resolved', resolvedAt: now, resolvedBy: adminId, chefOwes: false,
+      resolutionType: 'withdrawn', withdrawalOperation: { key: `claim:${claim.id}:withdraw`, state: 'pending',
+        intentId: claim.paymentOperation?.intentId, amountCents: claim.paymentOperation?.amountCents || 0, startedAt: now.toISOString() } });
     const [action] = await tx.insert(supportActions).values({ bookingId, caseRef: claim.referenceCode || `#${claim.id}`,
       actionType: input.type, actorUserId: adminId, actingFor: 'local_cooks', requestSource: input.requestSource,
       reasonCode: input.reasonCode, internalNote: input.note, amountCents: amount || null, currency: 'CAD',
-      fundedBy: input.type === 'claim_compensate' ? 'local_cooks' : 'none', operationKey: input.operationKey,
-      status: input.type === 'claim_compensate' ? 'executing' : 'verified', beforeState: { claimId: claim.id, status: claim.status, inputHash: hash(input) },
-      afterState: { ...update, publicMessage: input.publicMessage }, completedAt: input.type === 'claim_compensate' ? null : now }).returning();
+      fundedBy: ['claim_compensate', 'claim_withdraw'].includes(input.type) ? 'local_cooks' : 'none', operationKey: input.operationKey,
+      status: ['claim_compensate', 'claim_withdraw'].includes(input.type) ? 'executing' : 'verified', beforeState: { claimId: claim.id, status: claim.status, inputHash: hash(input) },
+      afterState: { ...update, publicMessage: input.publicMessage }, completedAt: ['claim_compensate', 'claim_withdraw'].includes(input.type) ? null : now }).returning();
     const [updated] = await tx.update(damageClaims).set(update).where(eq(damageClaims.id, claim.id)).returning();
     await claimHistory(tx, updated, updated.status, input.type, 'admin', adminId, input.publicMessage);
     return { action, claim: updated };
   });
+  if (input.type === 'claim_withdraw' && reserved.action.status !== 'verified') {
+    try {
+      const result = await (await import('./damage-claim-money')).withdrawClaimMoney(input.claimId, input.operationKey);
+      await db.update(supportActions).set({ status: 'verified', providerRefs: result, error: null, completedAt: new Date() }).where(eq(supportActions.id, reserved.action.id));
+    } catch (error) {
+      await db.update(supportActions).set({ status: 'recovery_required', error: error instanceof Error ? error.message : 'Withdrawal needs review' }).where(eq(supportActions.id, reserved.action.id));
+      throw error;
+    }
+  }
   if (input.type === 'claim_compensate' && reserved.action.status !== 'verified') {
     try {
       const transfer = await (await import('./damage-claim-money')).sendClaimKitchenMoney(input.claimId, 'compensation', input.operationKey);
@@ -232,4 +313,37 @@ export async function decideDamageClaim(bookingId: number, adminId: number, raw:
     }
   }
   return { success: true, actionId: reserved.action.id };
+}
+
+/** A kitchen compensation must not race an already opened chef payment. Reserve and audit cancellation first;
+ * a processing/succeeded payment cannot be compensated again and is reconciled through its original intent. */
+async function cancelOpenChefPaymentForCompensation(bookingId: number, adminId: number, input: ClaimSupportInput) {
+  const cancellation = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
+    const claim = await lockClaim(input.claimId, tx);
+    if (claim.kitchenBookingId !== bookingId) throw new DamageClaimError('Claim does not belong to this booking.', 404);
+    if (!claim.paymentOperation || ['cancelled', 'succeeded'].includes(claim.paymentOperation.state) || claim.compensationOperation) return null;
+    approvedClaimAmount(claim.finalAmountCents ?? claim.claimedAmountCents, input.amountCents);
+    await assertBookingMoneyWritable({ bookingId, operationKey: input.operationKey }, tx);
+    const key = `claim_cancel:${hash(input.operationKey)}`;
+    const [existing] = await tx.select().from(supportActions).where(eq(supportActions.operationKey, key)).limit(1);
+    if (existing) {
+      if ((existing.beforeState as { inputHash?: string }).inputHash !== hash(input)) throw new DamageClaimError('This cancellation belongs to another decision.');
+      return { claim, actionId: existing.id };
+    }
+    const [action] = await tx.insert(supportActions).values({ bookingId, caseRef: claim.referenceCode || `#${claim.id}`, actionType: 'claim_cancel_payment',
+      actorUserId: adminId, actingFor: 'local_cooks', requestSource: input.requestSource, reasonCode: input.reasonCode, internalNote: input.note,
+      amountCents: claim.paymentOperation.amountCents, currency: 'CAD', fundedBy: 'none', operationKey: key,
+      beforeState: { claimId: claim.id, inputHash: hash(input) }, status: 'executing' }).returning();
+    return { claim, actionId: action.id };
+  });
+  if (!cancellation) return;
+  try {
+    await (await import('./damage-claim-money')).cancelClaimPayment(cancellation.claim.id, cancellation.claim.chefId);
+    await db.update(supportActions).set({ status: 'verified', completedAt: new Date(), error: null }).where(eq(supportActions.id, cancellation.actionId));
+  } catch (error) {
+    await db.update(supportActions).set({ status: 'failed', completedAt: new Date(), error: error instanceof Error ? error.message : 'Card cancellation needs review' })
+      .where(eq(supportActions.id, cancellation.actionId));
+    throw error;
+  }
 }

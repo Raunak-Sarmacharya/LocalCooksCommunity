@@ -1772,6 +1772,10 @@ async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
 ) {
+  if (paymentIntent.metadata.damage_claim_v2 === 'true') {
+    await (await import('../services/damage-claim-money')).settleClaimPayment(paymentIntent);
+    return;
+  }
   // Let Stripe retry a failed change commit. The generic handler below historically
   // catches errors; this new financial branch must not acknowledge lost fulfillment.
   if (paymentIntent.metadata.type === 'kitchen_booking_change') {
@@ -3353,6 +3357,14 @@ async function handleChargeUpdated(
   previousAttributes: Record<string, unknown> | undefined,
   _webhookEventId: string,
 ) {
+  if (charge.metadata.damage_claim_v2 === 'true') {
+    const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+    if (intentId && process.env.STRIPE_SECRET_KEY) {
+      const intent = await new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' }).paymentIntents.retrieve(intentId);
+      await (await import('../services/damage-claim-money')).settleClaimPayment(intent);
+    }
+    return;
+  }
   if (!pool) {
     logger.error("[Webhook] Database pool not available for charge.updated");
     return;

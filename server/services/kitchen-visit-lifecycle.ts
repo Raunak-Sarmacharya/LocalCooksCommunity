@@ -228,7 +228,7 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
       }).where(eq(kitchenBookingVisits.id, visitId));
       await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Visit concern sent for review',
         `The kitchen started a draft damage claim (#${claimId}) for this visit. The kitchen needs to add photos and details, then submit it before the chef is asked to reply. Nothing has been charged for this draft.`,
-        managerId, { visitId, damageClaimId: claimId, recipientPolicy: 'participants' });
+        managerId, { visitId, damageClaimId: claimId, recipientPolicy: 'manager' });
       return claimId;
     });
     const { damageEvidence } = await import('@shared/schema');

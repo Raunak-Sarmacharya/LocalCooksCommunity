@@ -19,11 +19,12 @@ export function useUnpaidPenaltiesCheck(enabled = true) {
   const query = useOutstandingDues(enabled);
 
   // Derive simplified result from the shared query
-  const data: PenaltyCheckResult | null = query.data?.hasOutstandingDues
+  const penalties = query.data?.items.filter(item => item.type === 'overstay_penalty') || [];
+  const data: PenaltyCheckResult | null = penalties.length
     ? {
         hasUnpaidPenalties: true,
-        totalCount: query.data.totalCount,
-        totalOwedCents: query.data.totalOwedCents,
+        totalCount: penalties.length,
+        totalOwedCents: penalties.reduce((sum, item) => sum + item.amountCents, 0),
       }
     : null;
 

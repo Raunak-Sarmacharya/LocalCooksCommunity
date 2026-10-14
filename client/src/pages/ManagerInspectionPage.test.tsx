@@ -54,6 +54,8 @@ describe('manager inspection with isolated API mocks', () => {
     booking = details(); clients = []; state.role = 'manager'; postError = ''; readError = false; afterPostReadError = false; onRead = undefined;
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes('filing-context')) return new Response(JSON.stringify({ allowed: true, deadline: '2026-10-15T19:07:23Z', endedAt: '2026-10-12T19:07:23Z', timezone: 'America/St_Johns', kitchenName: 'Mock kitchen', before: [], after: [] }));
+      if (url.includes('damage-claims') && options?.method !== 'POST') return new Response(JSON.stringify({ claims: [] }));
       if (url.includes('commitment-problems')) return new Response(JSON.stringify({ problems: [], reportingAvailable: true }));
       if (options?.method === 'POST') {
         if (postError) return new Response(JSON.stringify({ error: postError }), { status: 400 });
@@ -231,7 +233,7 @@ describe('manager inspection with isolated API mocks', () => {
     expect(screen.queryByRole('button', { name: /Found a problem later/ })).not.toBeInTheDocument();
   });
 
-  it('keeps a quiet report link only while the review window is still open', async () => {
+  it('keeps reporting open for 72 hours after departure, independent of the shorter inspection window', async () => {
     const closeout = (deadline: string) => ({ phase: 'ended', timezone: 'America/St_Johns', serviceEndedAt: '2026-10-12T19:00:00Z', status: 'confirmed', serverNow: '2026-10-12T20:00:00Z', nextDueAt: null,
       visits: [{ key: 'v', phase: 'ended', arrivalRecorded: true, scheduledStartAt: '2026-10-12T18:00:00Z', scheduledEndAt: '2026-10-12T19:00:00Z',
         inspection: { outcome: 'manager_cleared', dueAt: '2026-10-12T19:00:00Z', deadline, closedAt: '2026-10-12T19:29:00Z', canRespond: false } }] }) as any;
@@ -241,6 +243,7 @@ describe('manager inspection with isolated API mocks', () => {
     expect(await screen.findByRole('button', { name: 'Found a problem later? Ask Local Cooks to review' })).toBeInTheDocument();
     cleanup(); clients.forEach(value => value.clear());
     booking.closeout = closeout('2020-01-01T00:00:00Z');
+    booking.checkoutRequestedAt = '2020-01-01T00:00:00Z';
     mount();
     await screen.findByTestId('inspection-done');
     expect(screen.queryByRole('button', { name: /Found a problem later/ })).not.toBeInTheDocument();
@@ -292,12 +295,11 @@ describe('manager inspection with isolated API mocks', () => {
     expect(within(departure).getByText('Clean surfaces · Required · No answer yet')).toBeInTheDocument();
   });
 
-  it('keeps claim mutation blocked and exposes the existing booking support report', async () => {
-    mount(); await clearButton(); fireEvent.click(screen.getByRole('button', { name: 'Report a cleaning or damage concern' }));
-    expect(screen.getByText(/Local Cooks can help you review/)).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Report a cleaning or damage concern' })).toHaveFocus();
-    expect(await screen.findByRole('button', { name: 'Report a problem' })).toBeInTheDocument();
-    expect(posts()).toHaveLength(0); expect(fetcher.mock.calls.some(([url]) => url.includes('damage-claims') || url.includes('kitchen-checkout-claim'))).toBe(false);
+  it('opens the itemized claim sheet without filing until its final review step', async () => {
+    mount(); await clearButton(); fireEvent.click(screen.getByRole('button', { name: 'Report damage or extra cleaning' }));
+    expect(await screen.findByLabelText('What happened?')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Report damage or extra cleaning' })).toBeInTheDocument();
+    expect(posts()).toHaveLength(0);
   });
 
   it('reuses assistance with the chosen visit and retains its reason on API failure', async () => {

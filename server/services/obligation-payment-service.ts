@@ -17,6 +17,7 @@ async function getObligation(kind: ObligationKind, id: number) {
 /** Persist the intent before confirming it; retries always retrieve that same intent. */
 export async function chargeObligation(stripe: Stripe, kind: ObligationKind, id: number,
   params: Stripe.PaymentIntentCreateParams): Promise<Stripe.PaymentIntent> {
+  if (kind === 'damage_claim') throw new Error('Damage claims require an explicit on-session chef payment');
   const table = tableFor(kind);
   const record = await getObligation(kind, id);
   if (record.route === 'checkout') throw new Error('A self-service payment is already in progress');
@@ -47,6 +48,7 @@ export async function chargeObligation(stripe: Stripe, kind: ObligationKind, id:
 /** Coordinate checkout with saved-card charging and reuse an existing open session. */
 export async function checkoutObligation(stripe: Stripe, kind: ObligationKind, id: number,
   params: Stripe.Checkout.SessionCreateParams): Promise<Stripe.Checkout.Session> {
+  if (kind === 'damage_claim') throw new Error('Use the damage claim on-session payment screen');
   const table = tableFor(kind);
   const record = await getObligation(kind, id);
   let attempt = record.attempt;
@@ -84,6 +86,10 @@ export async function checkoutObligation(stripe: Stripe, kind: ObligationKind, i
 
 /** Reconcile verified Stripe success events even if the charging request crashed. */
 export async function reconcileObligationPayment(intent: Stripe.PaymentIntent) {
+  if (intent.metadata.damage_claim_v2 === 'true') {
+    await (await import('./damage-claim-money')).settleClaimPayment(intent);
+    return null;
+  }
   const kind=intent.metadata.type;
   if(!['damage_claim','overstay_penalty'].includes(kind)) return null;
   if(intent.status!=='succeeded') throw new Error('Payment has not succeeded');

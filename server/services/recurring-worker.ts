@@ -122,6 +122,8 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
           run: () => reconcileRecurringSource(source, state.cursors[`reconcile:${source}`] || 0) })),
         { name: 'overstays', run: async () => (await import('./overstay-penalty-service')).detectOverstays() },
         { name: 'expiredClaims', run: async () => (await import('./damage-claim-service')).processExpiredClaims() },
+        { name: 'claimMoney', run: async () => (await import('./damage-claim-money')).recoverDamageClaimMoney(3) },
+        { name: 'claimHolds', run: async () => (await import('./damage-claims-v2')).notifyDamageClaimBookingHolds() },
         { name: 'paymentRecovery', run: async () => (await import('./booking-payment-decision')).recoverPendingBookingDecisions(3) },
         { name: 'kitchenChanges', run: async () => (await import('./kitchen-booking-changes')).expireKitchenChanges(3) },
         // Session extensions: expire stale requests/offers, escalate unanswered extra-time charges, finish committed payments.
