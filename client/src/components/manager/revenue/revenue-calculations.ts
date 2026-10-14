@@ -1,4 +1,4 @@
-import { formatCurrency, formatDate } from "@/lib/formatters";
+import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import type { PaymentStatus, Transaction } from "./types";
 import {
     buildKitchenPayoutStatementBreakdown,
@@ -122,7 +122,7 @@ export function transactionsToManagerRevenueCSV(
         const breakdown = getTransactionRevenueBreakdown(transaction);
 
         return [
-            formatDate(transaction.bookingDate),
+            formatBookingDate(transaction.bookingDate),
             transaction.chefName || "Guest",
             transaction.kitchenName,
             transaction.locationName,

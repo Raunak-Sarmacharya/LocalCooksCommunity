@@ -1,6 +1,7 @@
-import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { boolean, date, integer, smallint, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { sql } from 'drizzle-orm';
 import { phoneNumberSchema, optionalPhoneNumberSchema } from './phone-validation';
 
 // Define an enum for kitchen preference
@@ -538,6 +539,8 @@ export const kitchenCheckoutHolds = pgTable("kitchen_checkout_holds", {
 
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
+  feedbackRequestedAt: timestamp('feedback_requested_at', { withTimezone: true }),
+  feedbackRemindedAt: timestamp('feedback_reminded_at', { withTimezone: true }),
   visitDuties: jsonb('visit_duties'), // v1 confirmation snapshot; null legacy captures at first action
   assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
@@ -601,7 +604,8 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   checkoutChecklistItems: jsonb("checkout_checklist_items"), // Array of {id, label, checked: true}
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, table => [index('kitchen_bookings_feedback_due_idx').on(table.feedbackRequestedAt, table.id)
+  .where(sql`${table.status} = 'completed' AND ${table.feedbackRequestedAt} IS NOT NULL AND ${table.feedbackRemindedAt} IS NULL`)]);
 
 // Separate visits for a booking with nonconsecutive hourly blocks. One kitchen
 // booking/payment can have several independent check-in and checkout lifecycles.
@@ -2496,6 +2500,18 @@ export const tourFeedbackResponses = pgTable('tour_feedback_responses', {
 }, table => [uniqueIndex('tour_feedback_respondent_unique').on(table.viewingId, table.appointmentRevision, table.respondentRole, table.respondentId)]);
 export type TourFeedbackResponse = typeof tourFeedbackResponses.$inferSelect;
 
+export const bookingFeedbackResponses = pgTable('booking_feedback_responses', {
+  id: serial('id').primaryKey(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  respondentId: integer('respondent_id').notNull(),
+  respondentRole: text('respondent_role').$type<'chef' | 'manager'>().notNull(),
+  rating: smallint('rating').notNull(),
+  tags: text('tags').array().default([]).notNull(),
+  comment: text('comment'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => [uniqueIndex('booking_feedback_role_unique').on(table.bookingId, table.respondentRole)]);
+export type BookingFeedbackResponse = typeof bookingFeedbackResponses.$inferSelect;
+
 // Owned recovery state is independent of attendance, money and resource occupancy.
 export const commitmentProblems = pgTable('commitment_problems', {
   id: serial('id').primaryKey(),
@@ -2539,6 +2555,31 @@ export const emailLogs = pgTable("email_logs", {
 
 export type EmailLog = typeof emailLogs.$inferSelect;
 export type InsertEmailLog = typeof emailLogs.$inferInsert;
+
+export const supportActions = pgTable('support_actions', {
+  id: serial('id').primaryKey(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  caseRef: text('case_ref').notNull(), actionType: text('action_type').notNull(),
+  actorUserId: integer('actor_user_id').references(() => users.id).notNull(),
+  actingFor: text('acting_for').notNull(), requestSource: text('request_source').notNull(), sourceRef: text('source_ref'),
+  reasonCode: text('reason_code').notNull(), internalNote: text('internal_note').notNull(),
+  amountCents: integer('amount_cents'), currency: text('currency').notNull().default('CAD'),
+  fundedBy: text('funded_by').notNull(), exception: boolean('exception').notNull().default(false),
+  beforeState: jsonb('before_state').notNull(), afterState: jsonb('after_state'),
+  operationKey: text('operation_key').notNull().unique(), providerRefs: jsonb('provider_refs').notNull().default({}),
+  status: text('status').notNull().default('executing'), error: text('error'),
+  notifiedEventIds: jsonb('notified_event_ids').notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, table => [index('support_actions_booking_idx').on(table.bookingId, table.id)]);
+export const bookingFlags = pgTable('booking_flags', {
+  id: serial('id').primaryKey(), bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  kind: text('kind').notNull(), providerRef: text('provider_ref'),
+  openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }), resolvedBy: integer('resolved_by').references(() => users.id),
+  note: text('note'),
+}, table => [index('booking_flags_booking_idx').on(table.bookingId),
+  uniqueIndex('booking_flags_provider_unique').on(table.bookingId, table.kind, table.providerRef).where(sql`${table.providerRef} IS NOT NULL`)]);
 
 export const tourDeliveryEvents = pgTable("tour_delivery_events", {
   id: serial("id").primaryKey(),

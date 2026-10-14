@@ -16,7 +16,7 @@ import { mt } from "@/i18n/manager";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { useManagerOverviewActivity } from "@/hooks/use-manager-overview-activity";
-import { formatCurrency, formatDate, formatRelativeTime } from "@/lib/formatters";
+import { formatBookingDate, formatCurrency, formatDate, formatRelativeTime } from "@/lib/formatters";
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
 import { CheckCircle, ChevronRight, DollarSign } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
@@ -206,7 +206,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   };
   const financialActivityStatus: Record<string,string> = {draft:"overviewDraft",submitted:"overviewAwaitingAdmin",under_review:"overviewAwaitingAdmin",chef_disputed:"overviewAwaitingAdmin",chef_accepted:"chefAccepted",approved:"approved",partially_approved:"partiallyApproved",charge_pending:"overviewPaymentProcessing",charge_failed:"chargeFailed",charge_succeeded:"overviewPaymentCollected",resolved:"overviewResolved",rejected:"rejected",expired:"overviewExpired",escalated:"overviewEscalated",pending_review:"overviewAwaitingReview",penalty_approved:"approved",penalty_waived:"overviewWaived",detected:"overviewOverstayDetected",grace_period:"overviewGracePeriod"};
   const recent = [
-    ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: displayDate(booking.bookingDate), time: [booking.startTime, booking.endTime].filter(Boolean).join(" – "), href: `/manager/booking/${booking.id}` })),
+    ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: formatBookingDate(booking.bookingDate), time: [booking.startTime, booking.endTime].filter(Boolean).join(" – "), href: `/manager/booking/${booking.id}` })),
     // The booking row above already says "Booking requested"; its own "requested" lifecycle event is the same moment.
     ...(activity.bookingEvents || []).filter(event => !(event.kind === "requested" && bookings.some(booking => booking.id === event.bookingId))).map(event => ({ kind: "booking" as const, id: event.bookingId!, activityKey: `event:${event.id}`, date: event.createdAt!,
       title: event.title || mt("activityBooking"), person: chefDisplayName(bookings.find(booking => booking.id === event.bookingId) || {}),
@@ -235,7 +235,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   if (!unreadThreads.length && activity.unreadMessages > 0) addTask("overviewUnreadMessages", { id: "messages", title: mt("overviewUnreadThreadCount", { count: activity.unreadMessages }), view: "messages" });
   for (const booking of bookings) {
     const label = bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone);
-    if (label) addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: `${displayDate(booking.bookingDate)} · ${booking.startTime} – ${booking.endTime}`, view: "bookings", href: `/manager/booking/${booking.id}` });
+    if (label) addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: `${formatBookingDate(booking.bookingDate)} · ${booking.startTime} – ${booking.endTime}`, view: "bookings", href: `/manager/booking/${booking.id}` });
     for (const item of booking.equipmentItems || []) if (booking.status === 'confirmed' && item.status === 'cancellation_requested')
       addTask('overviewEquipmentCancellations', { id: `${booking.id}:equipment:${item.equipmentBookingId ?? item.id}`, title: item.name || recordTitle(booking),
         view: 'bookings', href: `/manager/booking/${booking.id}` });
@@ -282,7 +282,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const futureTours = locationViewings.filter((tour) => tour.viewing.status === "confirmed" && isPendingOrUpcomingTour({ ...tour.viewing, durationMinutes: tour.viewing.durationMinutes ?? null }));
   const scheduledStorage = activity.storageBookings.filter((booking) => booking.status === "confirmed" && !["completed", "checkout_claim_filed"].includes(booking.checkoutStatus ?? "") && !!booking.endDate && Number.isFinite(Date.parse(booking.endDate)) && !storageHasEnded(booking.endDate));
   const scheduleRows = [
-    ...upcoming.map(booking => ({key:`booking-${booking.id}`,id:String(booking.id),title:chefDisplayName(booking),detail:[displayDate(booking.bookingDate),`${booking.startTime} – ${booking.endTime}`,booking.kitchenName].filter(Boolean).join(" · "),time:createBookingDateTime(dayKey(booking.bookingDate),booking.startTime,locations.find(location=>location.id===(booking.locationId ?? booking.location?.id))?.timezone ?? DEFAULT_TIMEZONE).getTime(),href:`/manager/booking/${booking.id}`,view:"bookings",param:undefined,label:mt(booking.status === "cancellation_requested" ? "cancellationRequested" : booking.status)})),
+    ...upcoming.map(booking => ({key:`booking-${booking.id}`,id:String(booking.id),title:chefDisplayName(booking),detail:[formatBookingDate(booking.bookingDate),`${booking.startTime} – ${booking.endTime}`,booking.kitchenName].filter(Boolean).join(" · "),time:createBookingDateTime(dayKey(booking.bookingDate),booking.startTime,locations.find(location=>location.id===(booking.locationId ?? booking.location?.id))?.timezone ?? DEFAULT_TIMEZONE).getTime(),href:`/manager/booking/${booking.id}`,view:"bookings",param:undefined,label:mt(booking.status === "cancellation_requested" ? "cancellationRequested" : booking.status)})),
     ...futureTours.map(tour => ({key:`tour-${tour.viewing.id}`,id:String(tour.viewing.id),title:chefDisplayName(tour),detail:[displayDate(tour.viewing.scheduledAt),tourTime(tour),tour.kitchenName || tour.locationName].filter(Boolean).join(" · "),time:Date.parse(tour.viewing.scheduledAt),href:undefined,view:"viewings",param:"viewing",label:mt("kitchenTours")})),
     ...scheduledStorage.map(storage => ({key:`storage-${storage.id}`,id:String(storage.id),title:recordTitle(storage),detail:[displayDate(storage.startDate ?? ""),displayDate(storage.endDate ?? "")].join(" – "),time:Date.parse(storage.startDate ?? ""),href:undefined,view:"storage-bookings",param:"storageBooking",label:mt("overviewStorageBookingType")})),
   ].sort((a,b)=>(Number.isFinite(a.time)?a.time:Infinity)-(Number.isFinite(b.time)?b.time:Infinity));

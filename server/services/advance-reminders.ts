@@ -23,9 +23,9 @@ import { makeCloseoutSnapshot, savedCloseout } from '@shared/clock-closeout';
 import { getCheckinSettings } from './kitchen-checkout-service';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-export type ReminderSource = 'booking' | 'tour' | 'claim' | 'penalty' | 'storage_review' | 'storage_cancellation_review' | 'booking_review' | 'cancellation_review' | 'storage_arrival';
+export type ReminderSource = 'booking' | 'tour' | 'claim' | 'penalty' | 'storage_review' | 'storage_cancellation_review' | 'booking_review' | 'cancellation_review' | 'storage_arrival' | 'manager_decision';
 export type Reminder = {
-  source: ReminderSource; reservationId: number; resource: string; kind: 'preparation' | 'arrival' | 'departure' | 'deadline' | 'checkin_open' | 'session_ending';
+  source: ReminderSource; reservationId: number; resource: string; kind: 'preparation' | 'arrival' | 'departure' | 'deadline' | 'checkin_open' | 'session_ending' | 'manager_decision';
   recipientId: number; role: 'chef' | 'manager'; email: string; timezone: string;
   start: string; end: string; due: string; revision: string; path: string; title: string; message: string;
   shortVisit: boolean;
@@ -138,6 +138,7 @@ export function visitReminders(input: Omit<Reminder, 'kind' | 'due' | 'revision'
 }
 
 export async function currentReminders(tx: Transaction, source: ReminderSource, id: number, policy?: ReminderPolicy, now = new Date()): Promise<Reminder[]> {
+  if (source === 'manager_decision') return (await import('./manager-decision-reminders')).currentManagerDecisionReminders(tx, id, now);
   const timing = await getLifecycleSettings(tx);
   policy = { ...timing, ...(policy ?? selectedReminderPolicy) };
   if (source === 'storage_arrival') {
@@ -312,6 +313,8 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
       if (pending) await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Preparation information was already delivered.' }).where(eq(emailLogs.id, pending.id));
       continue;
     }
+    // New reminders never catch up a lead that was already missed. Existing due work remains deliverable.
+    if (reminder.kind === 'manager_decision' && !prior && Date.parse(reminder.due) < now.getTime()) continue;
     const eligibility = reminderEligibility(reminder, now, policy);
     const terminal = eligibility === 'expired' || eligibility === 'consolidated' ||
       (reminder.source !== 'tour' && reminder.kind === 'preparation' && now.getTime() >= Date.parse(reminder.start) - (reminder.arrivalLeadHours ?? lifecycleSettings.arrivalReminderHours.defaultValue) * 3600000);
@@ -331,7 +334,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
       continue;
     }
     await tx.insert(emailLogs).values({ recipientEmail: reminder.email, recipientUserId: reminder.recipientId,
-      recipientRole: reminder.role, subject: reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
+      recipientRole: reminder.role, subject: reminder.kind === 'manager_decision' ? reminder.title : reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
       trackingId: key, textBody: JSON.stringify({ reminder, channel }), previewText: reminder.message });
   }
 }
@@ -342,7 +345,7 @@ export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPol
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && !policy?.shortVisit) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && policy?.shortVisit === 'arrival_guidance') return 'consolidated';
   if (now.getTime() < Date.parse(r.due)) return 'future';
-  if (now.getTime() >= Date.parse(r.kind === 'departure' || r.kind === 'deadline' || r.kind === 'checkin_open' || r.kind === 'session_ending' ? r.end : r.start)) return 'expired';
+  if (now.getTime() >= Date.parse(r.kind === 'departure' || r.kind === 'deadline' || r.kind === 'manager_decision' || r.kind === 'checkin_open' || r.kind === 'session_ending' ? r.end : r.start)) return 'expired';
   return 'due';
 }
 
@@ -353,7 +356,7 @@ function bookingReminderSubject(r: Reminder) {
   if (r.kind === 'preparation') return tEmail(r.locale, 'visitPreparationSubject', { kitchen: r.kitchenName || r.title });
   if (r.kind === 'arrival') return tEmail(r.locale, 'visitArrivalSubject', { time, kitchen: r.kitchenName || r.title });
   const titles: Record<Reminder['kind'], string> = { preparation: 'Prepare for your kitchen visit', arrival: 'Your kitchen visit is coming up',
-    checkin_open: 'Check-in is available', session_ending: 'Your booked time ends soon', departure: 'Before you leave the kitchen', deadline: 'Kitchen visit reminder' };
+    checkin_open: 'Check-in is available', session_ending: 'Your booked time ends soon', departure: 'Before you leave the kitchen', deadline: 'Kitchen visit reminder', manager_decision: 'Review request' };
   return `${titles[r.kind]} · ${r.kitchenName || r.title} · ${r.referenceCode || `BOOKING-${r.reservationId}`}`;
 }
 
@@ -510,10 +513,10 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
       if (!sent) try {
         if (channel === 'notification') {
           await notificationService.create({ userId: r.recipientId, target: r.role, type: 'system_announcement',
-            title: intent.subject, message: r.message, actionUrl: r.path, actionLabel: 'View current reservation',
+            title: r.kind === 'manager_decision' ? r.title : intent.subject, message: r.message, actionUrl: r.path, actionLabel: r.kind === 'manager_decision' ? 'Review request' : 'View current reservation',
             metadata: { reminderKey: intent.trackingId, reservationId: r.reservationId } }, tx);
           sent = true;
-        } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : renderTransactionalEmail({ to: r.email, locale: r.locale, subject: intent.subject, recipientName: r.recipientName || 'there', message: r.message, facts: [{ label: tEmail(r.locale, 'bookingReference'), value: `${r.source === 'storage_arrival' ? 'Storage' : 'KB'}-${r.reservationId}` }, { label: 'Respond by', value: emailLocalDateTime(r.due, r.timezone, r.locale || 'en-CA') }], actionLabel: tEmail(r.locale, r.source === 'storage_arrival' ? 'bookingViewStorage' : 'bookingOpen'), actionUrl: url }),
+        } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : renderTransactionalEmail({ to: r.email, locale: r.locale, subject: r.kind === 'manager_decision' ? r.title : intent.subject, recipientName: r.recipientName || 'there', message: r.message, facts: [{ label: tEmail(r.locale, 'bookingReference'), value: `${r.source === 'storage_arrival' ? 'Storage' : 'KB'}-${r.reservationId}` }, { label: 'Respond by', value: emailLocalDateTime(r.kind === 'manager_decision' ? r.end : r.due, r.timezone, r.locale || 'en-CA') }], actionLabel: r.kind === 'manager_decision' ? 'Review request' : tEmail(r.locale, r.source === 'storage_arrival' ? 'bookingViewStorage' : 'bookingOpen'), actionUrl: url }),
           { trackingId: intent.trackingId!, emailType: 'advance_reminder_attempt', durableDelivery: true, retryOfId: intent.id });
       } catch { sent = false; }
       if (!sent && intent.retryCount === 0) {

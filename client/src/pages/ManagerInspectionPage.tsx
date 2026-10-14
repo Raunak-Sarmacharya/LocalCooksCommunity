@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useRoute, useSearch } from 'wouter';
-import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api';
 import ManagerBookingLayout from '@/layouts/ManagerBookingLayout';
@@ -18,6 +18,9 @@ import { ManagerInSessionBadge, inSessionEnds } from '@/components/manager/booki
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { calendarDateForOperatingTime, calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime } from '@shared/timezone-utils';
+import { formatVisitWhen } from '@/lib/visit-when';
+import { sentence } from '@/lib/booking-header-state';
+import { bookingReference } from '@/lib/booking-reference';
 import { readVisitDuties, type DutySection, type VisitDuties } from '@shared/visit-duties';
 
 type Evidence = {
@@ -76,7 +79,7 @@ function EvidenceSummary({ chef, title, section, photos, checklist, notes, times
     <div className="space-y-2 text-sm">
       <h3 className="font-medium">{t('inspectCopy15')}</h3>
       {!section ? <p>{t('inspectCopy16')}</p> : !section.enabled ? <p>{t('inspectCopy17')}</p> : <>
-        <p>{t('inspectRequiredPhotos', { count: requiredPhotos })}</p>
+        {requiredPhotos > 0 ? <p>{t('inspectRequiredPhotos', { count: requiredPhotos })}</p> : <p>{t('inspectNoPhotosRequired')}</p>}
         {section.enabled && section.photos.map(photo => <p key={photo.id}>{photo.label} · {photo.required === false ? t('inspectCopy10') : t('inspectCopy11')}</p>)}
       </>}
       {photos == null ? <p>{t('inspectCopy18')}</p> : photos.length === 0 ? <p>{t('inspectCopy19')}</p> : <>
@@ -98,7 +101,7 @@ export default function ManagerInspectionPage() {
   const manager = user?.role === 'manager';
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: [`/api/manager/bookings/${bookingId}/details`],
-    queryFn: () => readDetails(bookingId), enabled: validId && !loading && manager, retry: false });
+    queryFn: () => readDetails(bookingId), enabled: validId && !loading && manager, retry: false, refetchOnWindowFocus: true });
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
     await queryClient.invalidateQueries({ queryKey: [`/api/manager/bookings/${bookingId}/attendance`] });
@@ -112,9 +115,7 @@ export default function ManagerInspectionPage() {
   ]}>
     <div className="mx-auto max-w-5xl space-y-5">
       <Link className="inline-flex items-center gap-2 text-sm font-medium hover:underline" href={validId ? `/manager/booking/${bookingId}` : '/manager/dashboard?view=bookings'}><ArrowLeft className="h-4 w-4" />{t('inspectCopy26')}</Link>
-      <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-semibold">{t('inspectCopy25')}</h1>
-        {validId && <Button variant="outline" disabled={query.isFetching} onClick={() => void refresh().catch(() => undefined)}><RefreshCw className="mr-2 h-4 w-4" />{t('inspectCopy27')}</Button>}
-      </div>
+      <h1 className="text-2xl font-semibold">{t('inspectCopy25')}</h1>
       {!validId ? <p role="alert">{t('inspectCopy28')}</p> : query.isPending ? <p role="status">{t('inspectCopy29')}</p> : null}
       {query.error && <p role="alert" className="rounded-xl border p-4 text-destructive">{query.error.message} {t('inspectRefreshFirst')}</p>}
       {query.data && <InspectionVisits key={bookingId} booking={query.data} refresh={refresh} stale={query.isError || query.isFetching} />}
@@ -144,15 +145,14 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
       const day = booking.bookingDate.slice(0, 10);
       const startDay = calendarDateForOperatingTime(day, selected.startTime, booking.operatingWindowStartTime || booking.startTime);
       const endDay = calendarDateForBookingTime(day, selected.endTime, booking.operatingWindowStartTime, booking.startTime);
-      schedule = `${formatEvent(createBookingDateTime(startDay, selected.startTime, timezone).toISOString())} – ${formatEvent(createBookingDateTime(endDay, selected.endTime, timezone).toISOString())}`;
+      schedule = formatVisitWhen(createBookingDateTime(startDay, selected.startTime, timezone), createBookingDateTime(endDay, selected.endTime, timezone), timezone, locale);
     }
   } catch (cause) { contextError = cause instanceof Error ? cause.message : t('inspectCopy33'); }
   return <>
     <section className="rounded-2xl border bg-card p-5 space-y-2" aria-label={t('inspectCopy34')}>
       <p className="text-lg font-semibold">{booking.kitchen.name}</p>
-      <p>{booking.referenceCode || t('inspectReference', { id: booking.id })} · {booking.chef?.fullName || booking.chef?.username || t('inspectCopy35')}</p>
+      <p>{bookingReference(booking.referenceCode, booking.id)} · {booking.chef?.fullName || booking.chef?.username || t('inspectCopy35')}</p>
       <p className="text-sm">{booking.location.name} · {timezone ? friendlyTimezoneName(timezone, locale) : t('fixTimeUnavailable')}</p>
-      <p className="text-sm">{t(`inspectStatus_${booking.status}`, { defaultValue: t('inspectStatusUnknown') })}</p>
       {booking.visits.length > 1 && <div className="text-sm"><label htmlFor="inspection-visit">{t('inspectCopy36')}</label>
         <select id="inspection-visit" className="ml-2 max-w-full rounded border bg-background p-2" value={visitId} disabled={stale}
           onChange={event => navigate(`/manager/booking/${booking.id}/inspection${event.target.value ? `?visitId=${event.target.value}` : ''}`)}>
@@ -178,7 +178,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   refresh: () => Promise<ManagerInspectionDetails | undefined>; blocked: boolean;
   note: string; onNoteChange: (value: string) => void;
 }) {
-  const { t } = useTranslation('chef');
+  const { t, i18n } = useTranslation('chef');
   const chef = booking.chef?.fullName || booking.chef?.username || t('fixChef');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState('');
@@ -191,6 +191,16 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const clock = visitId ? evidence.closeout as import('@shared/clock-closeout').VisitCloseout | undefined : booking.closeout?.visits[0];
   const canClear = clock ? clock.inspection.canRespond : booking.status === 'confirmed' && evidence.checkinStatus === 'checkout_requested' && !!deadline && Number.isFinite(Date.parse(deadline));
   const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus);
+  // Done once the manager has cleared it (or this page just did). The report link only stays while the review window is open.
+  const finished = saved || (clock ? clock.inspection.outcome === 'manager_cleared' : evidence.checkinStatus === 'checked_out' && !!evidence.checkoutApprovedAt);
+  const canReportLater = !!clock && Number.isFinite(Date.parse(clock.inspection.deadline)) && Date.now() < Date.parse(clock.inspection.deadline);
+  const finishedAt = (() => {
+    const at = evidence.checkoutApprovedAt, zone = booking.location.timezone;
+    if (!at || !zone || !Number.isFinite(Date.parse(at))) return null;
+    const locale = i18n?.resolvedLanguage || 'en-CA';
+    return { date: new Intl.DateTimeFormat(locale, { timeZone: zone, month: 'short', day: 'numeric' }).format(new Date(at)),
+      time: new Intl.DateTimeFormat(locale, { timeZone: zone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(at)) };
+  })();
   const clear = async () => {
     if (!canClear || blocked || saving || saved) return;
     setSaving(true); setError('');
@@ -224,26 +234,34 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
         <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setConfirmOpen(false)}>{t('fixBack')}</Button><Button disabled={saving || blocked || !canClear} onClick={() => void clear()}>{t(saving ? 'fixSaving' : 'inspectConfirmButton')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectCopy46')}>
+    {finished ? <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectDoneTitle')} data-testid="inspection-done">
+      <h2 className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden />{t('inspectDoneTitle')}</h2>
+      <p role="status">{finishedAt ? sentence(t('inspectDoneBody', { date: finishedAt.date, time: finishedAt.time, chef })) : t('inspectDoneBodyNoTime', { chef })}</p>
+      {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <div className="flex flex-wrap items-center gap-4">
+        <Button asChild><Link href={`/manager/booking/${booking.id}`}>{t('inspectCopy26')}</Link></Button>
+        {canReportLater && <button type="button" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={() => { setIssueOpen(true); issueRef.current?.focus(); }}>{t('inspectFoundLater')}</button>}
+      </div>
+    </section> : <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectCopy46')}>
       <h2 className="font-semibold">{t('inspectCopy46')}</h2>
       <p>{clock?.inspection.outcome === 'auto_closed_uninspected' ? t('clockNoInspection') : clock?.inspection.outcome === 'manager_cleared' ? t('clockManagerInspected') : clock?.inspection.outcome === 'issue_filed' ? t('clockIssueOpen') : evidence.checkinStatus === 'checkout_requested' ? t('inspectCopy47') : evidence.checkinStatus === 'checked_out' ? t('inspectCopy48') : evidence.checkinStatus === 'checkout_claim_filed' ? t('inspectCopy49') : t('inspectCopy50')}</p>
       {evidence.checkoutApprovedAt && <p className="text-sm">{t('inspectClosedAt', { time: formatEvent(evidence.checkoutApprovedAt) })}</p>}
       <p className="font-medium">{t('inspectDeadline')}: {deadline ? `${formatEvent(deadline)} · ${booking.location.timezone ? friendlyTimezoneName(booking.location.timezone, i18n.resolvedLanguage) : ''}` : evidence.checkoutRequestedAt ? t('inspectCopy51') : t('inspectCopy52')}</p>
       <p className="text-sm text-muted-foreground">{t('inspectCopy53')}</p>
-      {!booking.inspection ? <p role="alert">{t('inspectCopy54')}</p> : !booking.inspection.dutiesSaved ? <p>{t('inspectCopy55')}</p> : <p className="text-sm">{t('inspectCopy56')}</p>}
+      {!booking.inspection && <p role="alert">{t('inspectCopy54')}</p>}
+      {booking.inspection && !booking.inspection.dutiesSaved && <p>{t('inspectCopy55')}</p>}
       <label className="block text-sm font-medium" htmlFor="inspection-message">{t('fixNoteOptional', { chef })}</label>
       <Textarea id="inspection-message" value={note} maxLength={2000} disabled={saving} onChange={event => onNoteChange(event.target.value)} />
-      <p className="text-xs text-muted-foreground">{t('inspectCopy57')}</p>
       {error && !confirmOpen && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {saved && <p role="status">{t('inspectCopy58')}</p>}
       {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
-      {(!canClear || blocked || !booking.inspection) && !saved && <p className="text-sm text-muted-foreground">{t(blocked ? 'inspectRefreshFirst' : clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome) ? 'inspectWindowClosed' : 'inspectNotReady')}</p>}
+      {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{t(blocked ? 'inspectRefreshFirst' : clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome) ? 'inspectWindowClosed' : 'inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
         <Button disabled={!canClear || blocked || saving || saved || !booking.inspection} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t('inspectCopy60')}</Button>
         <Button variant="outline" disabled={saving} onClick={() => { setIssueOpen(true); issueRef.current?.focus(); }}>{t('inspectCopy61')}</Button>
         {canAssist && <Button variant="outline" disabled={saving || blocked} onClick={() => { setAssistanceOpen(true); assistanceRef.current?.focus(); }}>{t('inspectCopy62')}</Button>}
       </div>
-    </section>
+    </section>}
     <div className="grid gap-5 md:grid-cols-2">
       <EvidenceSummary chef={chef} title={t('inspectArrival')} section={booking.inspection?.duties.arrival} timestamp={evidence.checkedInAt}
         photos={evidence.checkinPhotoUrls} checklist={evidence.checkinChecklistItems} notes={evidence.checkinNotes} formatEvent={formatEvent} />

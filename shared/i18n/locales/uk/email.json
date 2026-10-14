@@ -198,5 +198,11 @@
   "bookingNewRequestPendingBody": "Перегляньте запит і дайте відповідь кухарю. Бронювання ще не підтверджено; відкрийте його для статусу платежу.",
   "bookingClaimChargedHeading": "Платіж за претензією записано",
   "bookingClaimChargedBody": "Платіж за претензією записано. Відкрийте претензію для перегляду результату та платежу.",
-  "bookingYourNote": "Ваша примітка"
+  "bookingYourNote": "Ваша примітка",
+  "bookingFeedbackTitle": "Як усе пройшло?",
+  "bookingFeedbackReminder": "Як пройшла ваша сесія в {kitchen}? Це займе 30 секунд.",
+  "bookingFeedbackRate": "Оцініть свою сесію",
+  "bookingFeedbackFlagTitle": "Варто переглянути відгук про бронювання",
+  "bookingFeedbackFlagBody": "Хтось поділився занепокоєнням щодо своєї сесії. Відкрийте бронювання, щоб прочитати приватний відгук і дізнатися, як ми можемо допомогти.",
+  "bookingFeedbackSupport": "Відкрити підтримку бронювань"
 }

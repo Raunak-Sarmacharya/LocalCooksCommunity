@@ -2246,6 +2246,7 @@ export async function refundOverstayPenalty(
       reason: refundReason,
     });
 
+    await (await import('./booking-money-guard')).assertBookingMoneyWritable({ paymentIntentId: record.stripePaymentIntentId });
     const refund=await stripe.refunds.create({
       payment_intent: record.stripePaymentIntentId,
       amount: refundAmount,

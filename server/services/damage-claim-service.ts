@@ -2155,6 +2155,8 @@ export async function refundDamageClaim(
       reason: refundReason,
     });
 
+    await (await import('./booking-money-guard')).assertBookingMoneyWritable({ paymentIntentId: claim.stripePaymentIntentId,
+      bookingId: claim.kitchenBookingId ?? undefined });
     const refund=await stripe.refunds.create({
       payment_intent: claim.stripePaymentIntentId,
       amount: refundAmount,

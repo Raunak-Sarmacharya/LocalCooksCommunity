@@ -83,6 +83,26 @@ export function bookingPrimaryAction(phase: BookingHeaderPhase, manager: boolean
   return ['checkin_open', 'in_session', 'time_ended_in_session'].includes(phase) ? 'open_visit' : null;
 }
 
+const BEFORE_ARRIVAL_PHASES: BookingHeaderPhase[] = ['pending', 'confirmed', 'today', 'checkin_open'];
+
+/** An arrival (check-in, check-out, no-show, claim) is already on the record for any visit. */
+export function arrivalRecorded(input: { checkinStatus?: string | null; visits?: Array<{ checkinStatus: string }> | null }): boolean {
+  const recorded = (value?: string | null) => !!value && value !== 'not_checked_in';
+  return recorded(input.checkinStatus) || !!input.visits?.some(visit => recorded(visit.checkinStatus));
+}
+
+/**
+ * Whether "Cancel or change" is offered. Never once an arrival is recorded or the visit is past
+ * the pre-arrival phases (in session, checkout to review, completed, visit ended...). A manager's
+ * pending cancellation request stays reviewable. Display gate only; the server still decides.
+ */
+export function canCancelOrChange(input: { status: string; phase: BookingHeaderPhase; arrivalRecorded: boolean; manager?: boolean }): boolean {
+  if (input.manager && input.status === 'cancellation_requested') return true;
+  if (!['pending', 'confirmed'].includes(input.status)) return false;
+  if (input.arrivalRecorded) return false;
+  return BEFORE_ARRIVAL_PHASES.includes(input.phase);
+}
+
 /** The booking conversation endpoint only opens for these statuses (server rule; see checkpoint gaps). */
 export const MESSAGING_STATUSES = ['pending', 'confirmed', 'cancellation_requested', 'completed'] as const;
 export const canMessage = (status: string) => (MESSAGING_STATUSES as readonly string[]).includes(status);

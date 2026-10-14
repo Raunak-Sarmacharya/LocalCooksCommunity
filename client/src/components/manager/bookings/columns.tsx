@@ -4,12 +4,15 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2, LogIn, LogOut, Camera, FileWarning } from "@/components/ui/manager-icons"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2 } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { BookingOperationsStatus } from '@/components/booking/BookingOperationsStatus';
+import { ct } from '@/i18n/chef-ns';
+import { bookingListPhase, bookingPhasePillKey, PHASE_PILL_CLASS, showArrivalLine } from '@/lib/booking-list-status';
+import { bookingPillTone } from '@/lib/booking-header-state';
+import { formatCalendarDate } from '@/lib/calendar-date';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown"
@@ -105,66 +108,10 @@ interface BookingColumnsProps {
     hasApprovedLicense: boolean;
 }
 
-const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'America/St_Johns',
-    });
-};
+const formatDate = (dateStr: string) =>
+    formatCalendarDate(dateStr, i18n.language, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
 
 const formatTime = (time: string) => formatClockTime(time, i18n.language);
-
-// Check-In / Check-Out badge config (shared with TodaysKitchenBookings semantics)
-function getCheckinBadgeProps(checkinStatus: string | null | undefined):
-    | { label: string; icon: JSX.Element; className: string }
-    | null {
-    if (!checkinStatus || checkinStatus === 'not_checked_in') {
-        return {
-            label: mt("notCheckedIn"),
-            icon: <Clock className="h-2.5 w-2.5 mr-0.5" />,
-            className: 'bg-gray-100 text-gray-700 border-gray-300',
-        };
-    }
-    if (checkinStatus === 'checked_in') {
-        return {
-            label: mt("checkedIn"),
-            icon: <LogIn className="h-2.5 w-2.5 mr-0.5" />,
-            className: 'bg-green-100 text-green-800 border-green-300',
-        };
-    }
-    if (checkinStatus === 'checkout_requested') {
-        return {
-            label: mt("checkoutPending"),
-            icon: <Camera className="h-2.5 w-2.5 mr-0.5" />,
-            className: 'bg-blue-100 text-blue-800 border-blue-300',
-        };
-    }
-    if (checkinStatus === 'checked_out') {
-        return {
-            label: mt("checkedOut"),
-            icon: <LogOut className="h-2.5 w-2.5 mr-0.5" />,
-            className: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-        };
-    }
-    if (checkinStatus === 'no_show') {
-        return {
-            label: mt("noShow"),
-            icon: <XCircle className="h-2.5 w-2.5 mr-0.5" />,
-            className: 'bg-red-100 text-red-800 border-red-300',
-        };
-    }
-    if (checkinStatus === 'checkout_claim_filed') {
-        return {
-            label: mt("claimFiled"),
-            icon: <FileWarning className="h-2.5 w-2.5 mr-0.5" />,
-            className: 'bg-amber-100 text-amber-800 border-amber-300',
-        };
-    }
-    return null;
-}
 
 export const getBookingColumns = ({ onConfirm, onReject, onCancel, onTakeAction, onAcceptCancellation, onDeclineCancellation, onAcceptStorageCancellation, onDeclineStorageCancellation, onManageBooking, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
     {
@@ -738,12 +685,10 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onTakeAction,
             let icon = null;
             let label = status as string;
             let extraClassName = "";
+            let phasePill: { key: string; tone: ReturnType<typeof bookingPillTone> } | null = null;
+            let arrivalLine = false;
 
-            if (status === 'confirmed') {
-                variant = "default"
-                icon = <CheckCircle className="h-3 w-3 mr-1" />
-                label = tt("confirmed")
-            } else if (status === 'cancelled') {
+            if (status === 'cancelled') {
                 // Industry standard: distinguish by cause for intuitive manager labels
                 if (paymentStatus === 'failed' || row.original.isVoidedAuthorization) {
                     // Payment auth expired or voided — never charged
@@ -764,44 +709,34 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onTakeAction,
                 extraClassName = "bg-orange-100 text-orange-800 border-orange-300"
                 label = mt("cancelRequested")
             } else {
-                variant = "secondary"
-                icon = <Clock className="h-3 w-3 mr-1" />
-                label = tt("pending")
+                // Same phase words as the booking's own page: a completed booking is never "Pending".
+                const phase = bookingListPhase(row.original)
+                phasePill = { key: bookingPhasePillKey(phase, true), tone: bookingPillTone(phase) }
+                arrivalLine = showArrivalLine(phase)
             }
 
             const isVoided = row.original.isVoidedAuthorization === true;
             const isAuthHold = row.original.isAuthorizedHold === true;
 
-            // ── Kitchen Check-In/Check-Out lifecycle badge ─────────────────
-            // Show for confirmed/completed bookings where check-in is relevant.
-            // Hide for pending/cancelled (those states pre-empt check-in).
-            const checkinStatus = row.original.checkinStatus;
-            const checkinEnabled = (row.original as any).checkinEnabled === true;
-            const checkoutEnabled = (row.original as any).checkoutEnabled === true;
-            const showCheckinBadge =
-                (status === 'confirmed' || status === 'completed') &&
-                checkinStatus !== undefined &&
-                (checkinEnabled || checkoutEnabled);
-            const checkinBadgeProps = showCheckinBadge
-                ? getCheckinBadgeProps(checkinStatus)
-                : null;
+            // The chef's arrival, only once it is on the record (the pill already says the rest).
+            const checkedInAt = row.original.checkedInAt;
+            const arrivalTime = arrivalLine && checkedInAt
+                ? (() => { try { return new Intl.DateTimeFormat(i18n.language, { timeZone: row.original.locationTimezone || DEFAULT_TIMEZONE, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(checkedInAt)); } catch { return ''; } })()
+                : '';
 
             return (
                 <div className="flex flex-col gap-1">
-                    <Badge variant={variant} className={`items-center flex w-fit ${extraClassName}`}>
-                        {icon}
-                        {label}
-                    </Badge>
-                    {checkinBadgeProps && (
-                        <Badge
-                            variant="outline"
-                            className={`items-center flex w-fit text-[10px] ${checkinBadgeProps.className}`}
-                        >
-                            {checkinBadgeProps.icon}
-                            {checkinBadgeProps.label}
+                    {phasePill ? (
+                        <span className={`inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${PHASE_PILL_CLASS[phasePill.tone]}`} data-testid="booking-status-pill">
+                            {ct(phasePill.key)}
+                        </span>
+                    ) : (
+                        <Badge variant={variant} className={`items-center flex w-fit ${extraClassName}`}>
+                            {icon}
+                            {label}
                         </Badge>
                     )}
-                    <BookingOperationsStatus booking={row.original} />
+                    {arrivalTime && <p className="text-xs text-muted-foreground">{ct('fixArrivalStatus', { time: arrivalTime })}</p>}
                     {isVoided && (
                         <Badge variant="outline" className="text-[10px] text-muted-foreground w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />{mt("authVoided")}</Badge>

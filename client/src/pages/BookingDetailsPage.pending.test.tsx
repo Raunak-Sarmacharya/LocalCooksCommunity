@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unkn
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "token" } } }));
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ loading: false, user: { uid: "u" } }) }));
+vi.mock("@/components/booking/BookingFeedbackCard", () => ({ BookingFeedbackCard: () => null }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));

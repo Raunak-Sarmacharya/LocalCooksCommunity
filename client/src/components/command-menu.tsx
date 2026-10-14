@@ -2,7 +2,7 @@ import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui
 "use client"
 
 import * as React from "react"
-import { Calendar, CreditCard, Settings, User, MapPin, LayoutDashboard, LogOut, Search, DollarSign, FileText, Loader2, Hash, ExternalLink, AlertTriangle, Building2, Shield, BarChart3, Users, Gift, Clock, Bell, ClipboardList, PackageCheck, Mail, ChevronRight } from "lucide-react"
+import { Calendar, CreditCard, Settings, User, MapPin, LayoutDashboard, LogOut, Search, DollarSign, FileText, Loader2, Hash, ExternalLink, AlertTriangle, Building2, Shield, BarChart3, Users, Gift, Clock, Bell, ClipboardList, PackageCheck, Mail, ChevronRight, LifeBuoy } from "lucide-react"
 import { Icon } from "@iconify/react"
 import { findChefNavItem } from "@/lib/chef-nav-sections"
 import { managerNavIcons } from "@/lib/manager-nav-icons"
@@ -13,6 +13,7 @@ import { auth } from "@/lib/firebase"
 import { useLocation } from "wouter"
 import { useTranslation } from "react-i18next"
 import { mt } from "@/i18n/manager"
+import { adminBookingSupportPath } from "@shared/admin-booking-link"
 import type { GlobalSearchResponse, GlobalSearchResult } from "@shared/search"
 
 export type PortalType = 'chef' | 'manager' | 'admin'
@@ -244,7 +245,9 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                             <CommandGroup heading={mt("cmdReferenceCodeMatch")}>
                                 <CommandItem
                                     onSelect={() => runCommand(() => {
-                                        const url = refLookupResult.url
+                                        const url = portalType === 'admin' && refLookupResult.type === 'kitchen_booking'
+                                            ? adminBookingSupportPath(refLookupResult.id)
+                                            : refLookupResult.url
                                         if (portalType === 'admin' && url.startsWith('/admin?')) {
                                             // For admin: push URL with search param, then switch section via callback
                                             window.history.pushState({}, '', url)
@@ -504,6 +507,10 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                             </CommandGroup>
                             <CommandSeparator />
                             <CommandGroup heading="Management">
+                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("booking-support"))}>
+                                    <LifeBuoy className="mr-2 h-4 w-4" />
+                                    <span>Booking support</span>
+                                </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("chef-kitchen-access"))}>
                                     <Users className="mr-2 h-4 w-4" />
                                     <span>Chef Kitchen Access</span>

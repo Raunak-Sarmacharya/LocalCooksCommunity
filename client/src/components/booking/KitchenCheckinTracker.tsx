@@ -31,6 +31,7 @@ import { InSessionPanel } from "./InSessionPanel"
 import { VISIT_CODE_LENGTH } from "@shared/visit-code"
 import { ArrivalModeLine, InstructionsOverview } from "./BookingPreparation"
 import { MessageKitchenButton } from "./MessageKitchenButton"
+import { formatVisitWhen } from "@/lib/visit-when"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -337,12 +338,7 @@ export function KitchenCheckinTracker({
     if (!visitDate) return `${start}–${end}`
     const begins = createBookingDateTime(calendarDateForBookingTime(visitDate, start, data?.operatingWindowStartTime), start, timezone)
     const ends = createBookingDateTime(calendarDateForBookingTime(visitDate, end, data?.operatingWindowStartTime, start), end, timezone)
-    // Same kitchen-local day: show the date once; overnight visits keep both dates.
-    const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" })
-    const endLabel = day.format(begins) === day.format(ends)
-      ? new Intl.DateTimeFormat(locale, { timeZone: timezone, timeStyle: "short" }).format(ends)
-      : formatTime(ends.toISOString())
-    return `${formatTime(begins.toISOString())} – ${endLabel}`
+    return formatVisitWhen(begins, ends, timezone, locale)
   }
   const visitStart = data?.startTime || startTime
   const visitEnd = data?.endTime || endTime

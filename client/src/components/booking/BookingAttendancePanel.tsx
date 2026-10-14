@@ -23,11 +23,13 @@ type Attendance = { bookingId: number; status: string; checkinStatus: string | n
 type Action = 'arrival' | 'departure' | 'report_no_show' | 'report_attended' | 'withdraw_attendance' | 'support';
 type VisitDetails = Parameters<typeof hasBookingAttendanceEvidence>[0] & { id?: number; checkedInAt?: string | null; checkoutRequestedAt?: string | null; checkedOutAt?: string | null };
 
-export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, fixOpen, onFixOpenChange }: {
+export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange }: {
   bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void>; managerVisitHref?: string;
   timezone?: string | null; chefName?: string; closeout?: BookingCloseout; visitDetails?: VisitDetails[];
   /** Inside the booking page's Visit card: no card chrome, heading, zone line or extra Message button (the page header has them). */
   embedded?: boolean;
+  /** Another line already says when they checked in (manager, visit code), so skip the arrival-only status. */
+  hideArrivalStatus?: boolean;
   /** Controls "Fix the visit record" from the page's overflow menu; the in-card trigger is then hidden. */
   fixOpen?: boolean; onFixOpenChange?: (open: boolean) => void;
 }) {
@@ -141,7 +143,7 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     {query.error && <p role="alert">{t('bookingAttendanceUnavailable')} <Button variant="link" onClick={() => void query.refetch()}>{t('fixRetry')}</Button></p>}
     {data && <>
       {visitPicker}
-      {chosen && <p className="text-sm" data-testid="visit-record-status">{noShow ? latest?.action === 'report_no_show' ? t('fixNoShowStatus', { time: when(latest.createdAt) }) : t('bookingAttendanceLegacy')
+      {chosen && !(hideArrivalStatus && arrival && !departure && !noShow && latest?.action !== 'report_attended') && <p className="text-sm" data-testid="visit-record-status">{noShow ? latest?.action === 'report_no_show' ? t('fixNoShowStatus', { time: when(latest.createdAt) }) : t('bookingAttendanceLegacy')
         : latest?.action === 'report_attended' ? t('fixAttendedStatus') : arrival ? departure ? t('fixArrivalDepartureStatus', { arrival: when(arrival, false), departure: when(departure, false) }) : t('fixArrivalStatus', { time: when(arrival, false) })
           : arrived ? t('fixArrivedStatus') : t('fixNoArrival')}</p>}
       {zone && !embedded && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(zone, locale)}</p>}

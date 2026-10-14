@@ -312,7 +312,7 @@ describe("full-page kitchen visit", () => {
     setup();
     await screen.findByRole("region", { name: "Visit status" });
     expect(screen.getByRole("heading", { level: 1, name: "Kitchen visit" })).toBeInTheDocument();
-    expect(screen.getByText(/Oct 12, 2026.*10:00.*Oct 13, 2026.*2:00/)).toBeInTheDocument();
+    expect(screen.getByText(/Mon, Oct 12 · 10:00\s*p\.m\.\s*[–-]\s*Tue, Oct 13 · 2:00\s*a\.m\./)).toBeInTheDocument();
     expect(screen.getByText(/kitchen’s local time \(Eastern Time\)/)).toBeInTheDocument();
   });
 
@@ -339,7 +339,7 @@ describe("full-page kitchen visit", () => {
     expect(within(summary).getByText(/Check-in is open/)).toBeInTheDocument();
     expect(screen.queryByText("Arrival not recorded")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Message kitchen" })).toBeInTheDocument();
-    expect(screen.getByText(/^\w{3} \d{1,2}, \d{4}, 12:00 a\.m\. – 11:59 p\.m\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/^\w{3}, \w{3} \d{1,2} · 12:00\s*a\.m\.\s*[–-]\s*11:59\s*p\.m\.$/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Check in" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Confirm check-in" })).toBeVisible();
   });

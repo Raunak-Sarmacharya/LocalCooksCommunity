@@ -42,6 +42,8 @@ interface VisitCodePanelProps {
    * (the page header shows them), and a sentence instead of an empty block.
    */
   embedded?: boolean
+  /** Tells the page whether this panel already states when the chef checked in, so it is said once. */
+  onArrivalShown?: (shown: boolean) => void
   /** The visit is over: only the arrival method/time is shown, never a code. */
   visitEnded?: boolean
 }
@@ -62,7 +64,7 @@ async function readError(response: Response, fallback: string) {
 }
 
 export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone, bookingDate, operatingWindowStartTime, startTime, endTime,
-  visits = [], bookingStatus, onChanged, embedded = false, visitEnded = false }: VisitCodePanelProps) {
+  visits = [], bookingStatus, onChanged, embedded = false, visitEnded = false, onArrivalShown }: VisitCodePanelProps) {
   const { t, i18n } = useTranslation("manager")
   const locale = i18n?.resolvedLanguage || i18n?.language || "en-CA"
   const queryClient = useQueryClient()
@@ -127,6 +129,9 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
 
   const targets = query.data?.targets ?? []
   const zone = timezone || undefined
+  const shownTargets = targets.filter(target => target.consumed || (!visitEnded && !target.revoked && bookingStatus !== "cancelled"))
+  const arrivalShown = embedded && shownTargets.length > 0 && shownTargets.every(target => target.consumed)
+  useEffect(() => { onArrivalShown?.(arrivalShown) }, [arrivalShown, onArrivalShown])
 
   const whenLabel = (target: ManagerVisitCodeState) => {
     if (!zone) return ""
@@ -145,8 +150,8 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
     const time = target.consumedAt && zone
       ? new Intl.DateTimeFormat(locale, { timeZone: zone, timeStyle: "short", hour12: true }).format(new Date(target.consumedAt)) : ""
     const key = target.consumedMethod === "self" ? "visitCodeArrivedSelf" : target.consumedMethod === "assisted" ? "visitCodeArrivedAssisted" : "visitCodeArrivedCode"
-    const fallback = target.consumedMethod === "self" ? "Arrived {time} with self check-in"
-      : target.consumedMethod === "assisted" ? "Arrived {time}, added by the kitchen" : "Arrived {time} with the visit code"
+    const fallback = target.consumedMethod === "self" ? "Checked in {time} with self check-in"
+      : target.consumedMethod === "assisted" ? "Checked in {time}, added by the kitchen" : "Checked in {time} with the visit code"
     return t(key, { defaultValue: fallback, time })
   }
   const visitName = (target: ManagerVisitCodeState) => {

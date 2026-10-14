@@ -1,6 +1,9 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingVisits, kitchens, locations, users } from '@shared/schema';
+import { bookingFeedbackResponses, kitchenBookings, kitchenBookingVisits, kitchens, locations, users } from '@shared/schema';
+import { feedbackOpen } from '@shared/booking-feedback';
+import { ensureServerI18n } from '../i18n';
+import { tEmail } from '../i18n/outbound';
 import { matchVisitEvidence, reduceClockCloseout, savedCloseout, type ClockEvidence, type VisitCloseout } from '@shared/clock-closeout';
 import { DEFAULT_TIMEZONE, formatInTimezone, friendlyTimezoneName } from '@shared/timezone-utils';
 import { renderTransactionalEmail } from '../email';
@@ -45,7 +48,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   const managerIsRecipient = location.managerId === recipientId;
   // Only the manager is told the inspection window closed; a chef is never emailed about it.
   if (!(kind === 'service_ended' ? chefIsRecipient || managerIsRecipient : managerIsRecipient)) return null;
-  const [recipient] = await reader.select({ username: users.username }).from(users).where(eq(users.id, recipientId)).limit(1);
+  const [recipient] = await reader.select({ username: users.username, locale: users.preferredLocale }).from(users).where(eq(users.id, recipientId)).limit(1);
   if (!recipient || recipient.username.toLowerCase() !== to.toLowerCase()) return null;
   const saved = savedCloseout(booking.visitDuties);
   if (!saved) return null;
@@ -78,6 +81,15 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
       value: saved.visits.map(visit => timeRange(visit.scheduledStartAt, visit.scheduledEndAt, timezone)).join('\n') + ` (${zone})` },
     { label: 'Reference', value: reference }];
   const bookingUrl = `${getAppBaseUrl(chefIsRecipient ? 'chef' : 'kitchen')}${chefIsRecipient ? '' : '/manager'}/booking/${bookingId}`;
+  let feedbackAction: { label: string; url: string } | undefined;
+  if (kind === 'service_ended' && feedbackOpen(booking)) {
+    const [answer] = await reader.select({ id: bookingFeedbackResponses.id }).from(bookingFeedbackResponses).where(and(
+      eq(bookingFeedbackResponses.bookingId, bookingId), eq(bookingFeedbackResponses.respondentRole, chefIsRecipient ? 'chef' : 'manager'))).limit(1);
+    if (!answer) {
+      await ensureServerI18n();
+      feedbackAction = { label: tEmail(recipient.locale, 'bookingFeedbackRate'), url: `${bookingUrl}#feedback` };
+    }
+  }
 
   if (kind === 'inspection_auto_closed') {
     const visitLabel = closeout.visits.length > 1 ? ` (visit on ${formatInTimezone(new Date(settled!.scheduledStartAt), 'MMM d', timezone)})` : '';
@@ -102,7 +114,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
       heading: `Your visit at ${kitchen.name} on ${date} is complete`,
       message: `Thanks for cooking at ${kitchen.name}. Your booked time has ended. Here is a short summary of your visit.`,
       facts: [], sections: [{ title: 'Your visit', facts: place }, { title: 'Summary', facts: recorded }],
-      actionLabel: 'View booking', actionUrl: bookingUrl,
+      actionLabel: feedbackAction?.label || 'View booking', actionUrl: feedbackAction?.url || bookingUrl,
       secondaryLink: { label: 'Need help or want to report a problem with this visit?', url: `${bookingUrl}#booking-support` },
       note: 'This is a visit summary, not a payment receipt.' });
   }
@@ -120,6 +132,6 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
         label: due.length > 1 ? `Inspection due by (visit on ${formatInTimezone(new Date(visit.scheduledStartAt), 'MMM d', timezone)})` : 'Inspection due by',
         value: `${when(visit.inspection.deadline, timezone)} (${zone})` })) }] : [])],
     actionLabel: due.length ? 'Open inspection' : 'View booking', actionUrl: due.length ? inspectionUrl : bookingUrl,
-    secondaryLink: due.length ? { label: 'View booking', url: bookingUrl } : undefined,
+    secondaryLink: feedbackAction || (due.length ? { label: 'View booking', url: bookingUrl } : undefined),
     note: due.length ? 'If no inspection is recorded by then, the window closes without an approval or a finding about damage.' : undefined });
 }

@@ -8,6 +8,11 @@ vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: vi.
 vi.mock('./booking-linked-cancellation', () => ({ cancelLinkedBookingDates: vi.fn() }));
 const expiry = vi.hoisted(() => ({ lazy: vi.fn() }));
 vi.mock('./auth-expiry-service', () => ({ AUTH_EXPIRY_HOURS: 24, lazyExpireKitchenBookingAuth: expiry.lazy }));
+vi.mock('./booking-response-deadline', async () => {
+  const { responseDeadlineForBooking } = await import('@shared/booking-response-deadline');
+  return { getBookingResponseDeadline: async (booking: any) => booking.bookingDate
+    ? responseDeadlineForBooking(booking, 'UTC') : new Date(booking.createdAt.getTime() + 24 * 3_600_000) };
+});
 vi.mock('../db', () => {
   const name = (table: any) => table[Symbol.for('drizzle:Name')];
   const database = (state: Record<string, any[]>) => {
@@ -121,6 +126,16 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     expect(mocks.session).not.toHaveBeenCalled();
     expect(mocks.capture).not.toHaveBeenCalled();
     expect(mocks.state.kitchen_bookings[0].paymentDecision.state).toBe('complete');
+  });
+  it('refuses confirmation at the short-notice deadline, before the 24h window', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-14T19:00:00Z'));
+      Object.assign(mocks.state.kitchen_bookings[0], { createdAt: new Date('2026-10-14T10:00:00Z'),
+        bookingDate: '2026-10-14', startTime: '20:00', endTime: '21:00' });
+      await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toBeInstanceOf(BookingRequestExpired);
+      expect(expiry.lazy).toHaveBeenCalled(); expect(mocks.capture).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
   it('blocks partial capture when original item prices are missing', async () => {
     const session = await mocks.session(); delete session.metadata.addon_prices;

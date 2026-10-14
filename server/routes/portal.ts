@@ -476,7 +476,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
 
         // Send notifications (Manager & Portal User)
         try {
-            const { sendEmail, generateBookingNotificationEmail, generateBookingRequestEmail, bookingResponseDeadline } = await import('../email');
+            const { sendEmail, generateBookingNotificationEmail, generateBookingRequestEmail, getBookingResponseDeadline } = await import('../email');
             const { sendSMS, generatePortalUserBookingConfirmationSMS, generateManagerPortalBookingSMS } = await import('../sms');
 
             // Get location notification email
@@ -500,7 +500,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     locationName,
                     bookingId: booking.id,
                     referenceCode: booking.referenceCode,
-                    responseDeadline: bookingResponseDeadline(booking.createdAt),
+                    responseDeadline: await getBookingResponseDeadline(booking),
                     paymentState: "pending",
                     locale: emailRecipients.find(person => person.id === locationData?.managerId)?.locale,
                     locationAddress: locationData?.address || undefined,
@@ -515,7 +515,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                 const portalUserEmail = generateBookingRequestEmail({
                     bookingId: booking.id,
                     referenceCode: booking.referenceCode,
-                    responseDeadline: bookingResponseDeadline(booking.createdAt),
+                    responseDeadline: await getBookingResponseDeadline(booking),
                     paymentState: "pending",
                     locale: emailRecipients.find(person => person.id === userId)?.locale,
                     locationAddress: locationData?.address || undefined,

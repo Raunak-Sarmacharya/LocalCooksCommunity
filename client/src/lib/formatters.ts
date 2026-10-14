@@ -6,6 +6,7 @@
  * Delegates locale-aware formatting to @shared/i18n (default en-CA).
  */
 
+import { formatCalendarDate } from "./calendar-date";
 import { formatCurrency as sharedFormatCurrency, formatDate as sharedFormatDate, formatNumber as sharedFormatNumber, formatRelativeTime as sharedFormatRelativeTime, DEFAULT_LOCALE, DEFAULT_TIMEZONE } from "@shared/i18n";
 
 /**
@@ -48,6 +49,11 @@ export function formatPrice(amountInCents: number | null | undefined): string {
  * @param format - Format type
  * @param timezone - IANA timezone (defaults to Newfoundland for consistent display)
  */
+/** A booking's calendar day ("Oct 14, 2026"), the same in every browser zone. Never use formatDate() for booking dates. */
+export function formatBookingDate(dateStr: string | Date, locale: string = DEFAULT_LOCALE): string {
+    return formatCalendarDate(dateStr, locale, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function formatDate(
     dateStr: string | Date,
     format: 'short' | 'long' | 'full' = 'short',
@@ -246,7 +252,7 @@ export function transactionsToCSV(
             : 0;
         const correctNet = totalPrice - correctTax - stripeFee;
         return [
-            formatDate(t.bookingDate),
+            formatBookingDate(t.bookingDate),
             t.chefName || 'Guest',
             t.kitchenName,
             t.locationName,

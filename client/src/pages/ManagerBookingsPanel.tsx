@@ -29,6 +29,7 @@ import { getBookingColumns, Booking } from "@/components/manager/bookings/column
 import { auth } from "@/lib/firebase";
 import { calendarDateForOperatingTime, sortTimesInOperatingWindow } from "@shared/operating-hours";
 import i18n from "@/i18n";
+import { formatCalendarDate } from "@/lib/calendar-date";
 import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // Booking type imported from columns.tsx
@@ -463,8 +464,8 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
 
     bookings.forEach((booking: Booking) => {
       if (!booking.bookingDate || !booking.startTime || !booking.endTime) return;
-      if (booking.status === 'cancelled') {
-        past.push(booking); // Cancelled bookings go to past
+      if (booking.status === 'cancelled' || booking.status === 'completed') {
+        past.push(booking); // Finished bookings go to past
         return;
       }
 
@@ -594,14 +595,8 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
     ].map((filter) => ({ ...filter, count: countFor(filter.key) }));
   }, [bookings, upcomingBookings, pastBookings]);
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) =>
+    formatCalendarDate(dateStr, i18n.language, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const formatTime = (time: string) => formatClockTime(time, i18n.language);
 

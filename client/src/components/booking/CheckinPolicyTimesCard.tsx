@@ -60,15 +60,21 @@ export function CheckinPolicyTimesCard({
     noShowGraceMinutes,
   );
 
+  const alreadyOpen = Date.now() >= times.opensAt.getTime();
   const cells = [
-    {
-      label: t("bdCheckinOpens", "Check-in opens"),
-      value: formatPolicyTimestamp(times.opensAt, i18n.language, tz),
-      hint: t("bdMinutesBeforeStart", {
-        count: checkinWindowMinutesBefore,
-        defaultValue: `${checkinWindowMinutesBefore} minutes before start`,
-      }),
-    },
+    alreadyOpen
+      ? {
+        label: t("bdCheckinOpened", "Check-in opened at"),
+        value: new Intl.DateTimeFormat(i18n.language, { hour: "numeric", minute: "2-digit", timeZone: tz }).format(times.opensAt),
+      }
+      : {
+        label: t("bdCheckinOpens", "Check-in opens"),
+        value: formatPolicyTimestamp(times.opensAt, i18n.language, tz),
+        hint: t("bdMinutesBeforeStart", {
+          count: checkinWindowMinutesBefore,
+          defaultValue: `${checkinWindowMinutesBefore} minutes before start`,
+        }),
+      },
     {
       label: t("bdVisitStarts", "Visit starts"),
       value: formatPolicyTimestamp(times.startsAt, i18n.language, tz),

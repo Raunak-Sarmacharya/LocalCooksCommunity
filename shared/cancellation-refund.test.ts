@@ -4,6 +4,16 @@ const base = { captured: 12200, processingCost: 384, serviceFee: 700, refunded: 
 const receipt = (id: string, manager: number, platform: number) => ({ id, status: 'succeeded', amount: manager + platform,
   metadata: { customer_receives: String(manager + platform), manager_debited: String(manager), platform_service_fee_returned: String(platform) } });
 describe('captured cancellation allocation', () => {
+  it('keeps goodwill funded by Local Cooks without consuming the manager share or service fee', () => {
+    const goodwill = { id: 're_goodwill', status: 'succeeded', amount: 1000,
+      metadata: { customer_receives: '1000', manager_debited: '0', platform_service_fee_returned: '0', platform_goodwill_cents: '1000' } };
+    expect(cancellationSourceQuote({ ...base, refunded: 1000, refunds: [goodwill] })).toMatchObject({ managerRefund: 11116, serviceFeeReview: 700, alreadyRefunded: 1000 });
+  });
+  it('records the Local Cooks processing cost for a full kitchen-caused refund', () => {
+    const full = { id: 're_full', status: 'succeeded', amount: 12200,
+      metadata: { customer_receives: '12200', manager_debited: '11116', platform_service_fee_returned: '700', platform_processing_cost_cents: '384' } };
+    expect(cancellationSourceQuote({ ...base, refunded: 12200, refunds: [full] })).toMatchObject({ managerRefund: 0, serviceFeeReview: 0, alreadyRefunded: 12200 });
+  });
   it('retains actual processing cost and separates manager authority from platform fees', () => {
     const quote = cancellationSourceQuote(base);
     expect(quote.managerRefund).toBe(11116); expect(quote.serviceFeeReview).toBe(700);

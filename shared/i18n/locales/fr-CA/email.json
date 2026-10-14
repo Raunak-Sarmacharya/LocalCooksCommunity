@@ -198,5 +198,11 @@
   "bookingNewRequestPendingBody": "Examinez cette demande et répondez au chef. La réservation n’est pas confirmée; consultez l’état du paiement.",
   "bookingClaimChargedHeading": "Paiement de réclamation enregistré",
   "bookingClaimChargedBody": "Le paiement de la réclamation est enregistré. Consultez la réclamation pour voir le résultat et le paiement.",
-  "bookingYourNote": "Votre note"
+  "bookingYourNote": "Votre note",
+  "bookingFeedbackTitle": "Comment ça s’est passé?",
+  "bookingFeedbackReminder": "Comment s’est passée votre séance à {kitchen}? Ça prend 30 secondes.",
+  "bookingFeedbackRate": "Évaluez votre séance",
+  "bookingFeedbackFlagTitle": "Des commentaires sur une réservation méritent votre attention",
+  "bookingFeedbackFlagBody": "Une personne a signalé une préoccupation au sujet de sa séance. Ouvrez la réservation pour lire ses commentaires privés et voir comment nous pouvons l’aider.",
+  "bookingFeedbackSupport": "Ouvrir le soutien aux réservations"
 }

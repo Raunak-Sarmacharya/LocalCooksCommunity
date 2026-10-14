@@ -114,6 +114,8 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
   const { kitchenDuties } = await import('./visit-duties');
   const duties = row.booking.visitDuties || await kitchenDuties(bookingId, tx);
   await tx.update(kitchenBookings).set({ visitDuties: { ...duties as object, clockCloseout: next },
+    ...(row.booking.status !== 'completed' && projection.status === 'completed' && !row.booking.feedbackRequestedAt
+      && projection.visits.some(visit => visit.attendance !== 'no_show') ? { feedbackRequestedAt: now } : {}),
     status: projection.status as typeof row.booking.status, updatedAt: now }).where(eq(kitchenBookings.id, bookingId));
   const announcesEnd = !existing?.serviceEndedAt && !!next.serviceEndedAt;
   const closedInspections = projection.visits.filter(visit => next.inspections?.[visit.key]

@@ -1,4 +1,6 @@
 import { AUTH_EXPIRY_HOURS } from './services/auth-expiry-service';
+import { resolveResponseDeadline } from '@shared/booking-response-deadline';
+export { getBookingResponseDeadline } from './services/booking-response-deadline';
 import { prepareEmailHtml } from "./email-theme";
 import { getShopLoginUrl, getVendorOnboardingUrl } from './shop-urls';
 import { logger } from "./logger.js";
@@ -3601,8 +3603,9 @@ type BookingRequestEmailDetails = BookingCalendarInput & {
   locationName?: string; locationAddress?: string; referenceCode?: string | null;
 };
 
-export function bookingResponseDeadline(createdAt: Date | string) {
-  return new Date(new Date(createdAt).getTime() + AUTH_EXPIRY_HOURS * 3600000);
+export function bookingResponseDeadline(createdAt: Date | string, startAt?: Date | string, bufferHours = 1) {
+  return resolveResponseDeadline({ createdAt, startAt: startAt ?? new Date(new Date(createdAt).getTime() + AUTH_EXPIRY_HOURS * 3600000),
+    windowHours: AUTH_EXPIRY_HOURS, bufferHours: startAt === undefined ? 0 : bufferHours });
 }
 
 export const generateBookingNotificationEmail = (data: BookingRequestEmailDetails & { managerEmail: string; managerName?: string; bookingId: number }): EmailContent => {

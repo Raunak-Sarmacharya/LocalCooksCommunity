@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canMessage, contactVisible, initials, sentence, timeRange } from "./booking-header-state";
+import { arrivalRecorded, canCancelOrChange, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canMessage, contactVisible, initials, sentence, timeRange } from "./booking-header-state";
 
 const startAt = new Date("2030-01-15T13:30:00Z"), endAt = new Date("2030-01-15T15:30:00Z");
 const checkinOpensAt = new Date(startAt.getTime() - 15 * 60_000);
@@ -77,5 +77,33 @@ describe("helpers", () => {
   it("makes initials", () => {
     expect(initials("Ada Lovelace")).toBe("AL");
     expect(initials("")).toBe("?");
+  });
+});
+
+describe("canCancelOrChange", () => {
+  it("is offered before arrival", () => {
+    for (const phase of ["pending", "confirmed", "today", "checkin_open"] as const) {
+      expect(canCancelOrChange({ status: phase === "pending" ? "pending" : "confirmed", phase, arrivalRecorded: false })).toBe(true);
+    }
+  });
+  it("is gone once an arrival is recorded, even for a DB-confirmed checked-out booking", () => {
+    expect(canCancelOrChange({ status: "confirmed", phase: "completed", arrivalRecorded: true })).toBe(false);
+    expect(canCancelOrChange({ status: "confirmed", phase: "today", arrivalRecorded: true })).toBe(false);
+  });
+  it("is gone in every phase past arrival", () => {
+    for (const phase of ["in_session", "time_ended_in_session", "checkout_review", "visit_ended", "completed", "no_show", "issue"] as const) {
+      expect(canCancelOrChange({ status: "confirmed", phase, arrivalRecorded: false })).toBe(false);
+    }
+  });
+  it("is gone for cancelled bookings and keeps the manager's pending cancellation reviewable", () => {
+    expect(canCancelOrChange({ status: "cancelled", phase: "cancelled", arrivalRecorded: false })).toBe(false);
+    expect(canCancelOrChange({ status: "cancellation_requested", phase: "cancellation_requested", arrivalRecorded: false })).toBe(false);
+    expect(canCancelOrChange({ status: "cancellation_requested", phase: "cancellation_requested", arrivalRecorded: false, manager: true })).toBe(true);
+  });
+  it("detects arrivals on the booking or any visit", () => {
+    expect(arrivalRecorded({ checkinStatus: "not_checked_in" })).toBe(false);
+    expect(arrivalRecorded({})).toBe(false);
+    expect(arrivalRecorded({ checkinStatus: "checked_out" })).toBe(true);
+    expect(arrivalRecorded({ visits: [{ checkinStatus: "not_checked_in" }, { checkinStatus: "checked_in" }] })).toBe(true);
   });
 });

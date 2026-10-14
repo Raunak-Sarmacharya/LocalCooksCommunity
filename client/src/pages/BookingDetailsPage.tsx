@@ -7,6 +7,7 @@ import { KitchenBookingChanges } from '@/components/booking/KitchenBookingChange
 import { BookingCancellationChooser } from '@/components/booking/BookingCancellationChooser';
 import { BookingRefundPolicyNotice } from '@/components/booking/BookingRefundPolicyNotice';
 import { BookingHistoryPanel } from '@/components/booking/BookingHistoryPanel';
+import { BookingFeedbackCard } from '@/components/booking/BookingFeedbackCard';
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
@@ -30,7 +31,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
 import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, Info, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
-import { bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
+import { arrivalRecorded, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canCancelOrChange, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
+import { bookingCancelCause } from '@/lib/booking-cancel-cause';
+import { bookingReference } from '@/lib/booking-reference';
+import { calendarDateKey } from '@/lib/calendar-date';
 import { bookingIcs, downloadBookingIcs } from "@/lib/booking-ics";
 import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown } from "@shared/booking-pricing-breakdown";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -67,7 +71,7 @@ interface BookingDetails {
   selectedSlots?: Array<{ startTime: string; endTime: string }>;
   status: string;
   paymentStatus?: string;
-  paymentDecision?: { state?: string; amount?: number } | null;
+  paymentDecision?: { state?: string; amount?: number; target?: string; actorId?: number | null } | null;
   cancellationPolicyHours?: number;
   cancellationRequestDeclinedAt?: string | null;
   specialNotes?: string;
@@ -236,6 +240,7 @@ export default function BookingDetailsPage() {
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [fixOpen, setFixOpen] = useState(false);
+  const [codeShowsArrival, setCodeShowsArrival] = useState(false);
   const queryClient = useQueryClient();
 
   // When the chef clicks a sidebar tab from this booking-detail sub-page, we
@@ -278,6 +283,14 @@ export default function BookingDetailsPage() {
         });
 
         if (!response.ok) {
+          // A manager who opened a chef link (e.g. a shared URL) belongs on the manager page for this booking.
+          if (!isManagerView && (response.status === 403 || response.status === 404)) {
+            const asManager = await fetch(`/api/manager/bookings/${bookingId}/details`, { credentials: "include", headers }).catch(() => null);
+            if (asManager?.ok) {
+              if (!cancelled) navigate(`/manager/booking/${bookingId}`, { replace: true });
+              return;
+            }
+          }
           if (response.status === 401) {
             throw new Error(t("bdErrSessionExpired"));
           }
@@ -369,7 +382,7 @@ export default function BookingDetailsPage() {
       a.href = url;
 
       const bookingDate = booking.bookingDate
-        ? new Date(booking.bookingDate).toISOString().split("T")[0]
+        ? calendarDateKey(booking.bookingDate) ?? "unknown"
         : "unknown";
       a.download = isManagerView
         ? `LocalCooks-Payout-Statement-${booking.id}-${bookingDate}.pdf`
@@ -518,7 +531,7 @@ export default function BookingDetailsPage() {
     if (booking.paymentDecision?.state === 'pending') return { summary: t('bdPaymentRecovery'), detail: t('bdPaymentRecovery') };
     const status = booking.paymentStatus;
     if (status === 'authorized') return { summary: isManagerView ? t('bdPaymentHeldSummaryManager') : t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
-    if (status === 'failed' && booking.status === 'cancelled') return { summary: t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
+    if (status === 'failed' && booking.status === 'cancelled') return { summary: isManagerView ? t('bdAuthVoidedSummaryManager') : t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
     if (status === 'refunded' || status === 'partially_refunded') return {
       summary: status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
       detail: `${booking.paymentTransaction?.refundAmount ? (isManagerView ? t('bdRefundedToChef', { amount: formatCurrency(booking.paymentTransaction.refundAmount) }) : t('bdRefundedYou', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
@@ -1130,6 +1143,9 @@ export default function BookingDetailsPage() {
     inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
   const primary = bookingPrimaryAction(phase, isManagerView, inspectionCanRespond);
+  const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
+  const findAnotherTimeHref = booking && !isManagerView && cancelCause === 'declined' && (booking.location?.id ?? booking.kitchen?.locationId)
+    ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   const chefName = booking?.chef?.fullName || booking?.chef?.username || t('bdhChefFallback');
   const kitchenName = booking?.kitchen?.name || t('bdKitchenBookingFallback');
   const visitActive = !!booking && (['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '') || (booking.visits || []).some(visit => ['checked_in', 'checkout_requested'].includes(visit.checkinStatus)));
@@ -1151,11 +1167,13 @@ export default function BookingDetailsPage() {
   })();
   const cancellationDeadlineText = cancellationCutoff != null ? formatEventTimestamp(new Date(cancellationCutoff).toISOString()) : undefined;
   const paidCancellationAvailable = cancellationCutoff != null && Date.now() < cancellationCutoff;
-  const chefCanCancel = !isManagerView && !!booking && !visitActive && ['pending', 'confirmed'].includes(booking.status);
-  const managerCanManage = isManagerView && !!booking && (booking.status === 'confirmed' || booking.status === 'cancellation_requested'
+  const hasArrival = !!booking && arrivalRecorded(booking);
+  const chefCanCancel = !isManagerView && !!booking && !visitActive
+    && canCancelOrChange({ status: booking.status, phase, arrivalRecorded: hasArrival });
+  const managerCanManage = isManagerView && !!booking && (canCancelOrChange({ status: booking.status, phase, arrivalRecorded: hasArrival, manager: true })
     || (booking.status === 'cancelled' && !!bookingForManagement?.transactionId && ['paid', 'succeeded', 'partially_refunded'].includes(booking.paymentStatus || '')));
   const canDownload = !!booking && booking.paymentDecision?.state !== 'pending' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '');
-  const showRefundReview = !!booking && (['cancelled', 'cancellation_requested'].includes(booking.status)
+  const showRefundReview = !!booking && !(booking.status === 'cancelled' && booking.paymentStatus === 'failed') && (['cancelled', 'cancellation_requested'].includes(booking.status)
     || [...(booking.storageBookings || []), ...(booking.equipmentBookings || [])].some(item => ['cancelled', 'cancellation_requested', 'removal_required'].includes(item.status)));
   const inspectionVisitId = booking?.visits?.length === 1 ? booking.visits[0].id
     : booking?.visits?.find(visit => visit.checkinStatus === 'checkout_requested')?.id;
@@ -1169,7 +1187,11 @@ export default function BookingDetailsPage() {
         if (responseDeadlineText) return isManagerView ? t('bdManagerRespondBy', { deadline: responseDeadlineText }) : t('bdRequestSentBanner', { kitchen: kitchenName, deadline: responseDeadlineText });
         return isManagerView ? t('bdhNextManagerPending') : t('bdhNextChefPending', { kitchen: kitchenName });
       case 'cancellation_requested': return isManagerView ? t('bdhNextManagerCancellationRequested', { chef }) : t('cancelCopy07');
-      case 'cancelled': return isManagerView ? t('bdhNextManagerCancelled') : t('bdhNextChefCancelled');
+      case 'cancelled':
+        if (cancelCause === 'declined' || cancelCause === 'expired' || cancelCause === 'withdrawn') {
+          return t(`bdhNext${isManagerView ? 'Manager' : 'Chef'}_${cancelCause}`, { chef, kitchen: kitchenName });
+        }
+        return isManagerView ? t('bdhNextManagerCancelled') : t('bdhNextChefCancelled');
       case 'confirmed': case 'today': {
         if (isManagerView) return phase === 'today' && visitBounds ? t('bdhNextManagerToday', { chef, time: clockTime(visitBounds.startAt) }) : t('bdhNextManagerUpcoming', { chef });
         const releaseAt = booking.location?.instructionsReleaseAt;
@@ -1195,7 +1217,8 @@ export default function BookingDetailsPage() {
       case 'issue': return isManagerView ? t('bdhNextManagerIssue') : t('bdhNextChefIssue');
     }
   })();
-  const pillKey = phase === 'checkout_review' && !isManagerView ? 'bdhPill_checkout_submitted'
+  const pillKey = phase === 'cancelled' && (cancelCause === 'declined' || cancelCause === 'expired') ? `bdhPill_${cancelCause}`
+    : phase === 'checkout_review' && !isManagerView ? 'bdhPill_checkout_submitted'
     : phase === 'checkin_open' ? 'bdhPill_today' : phase === 'time_ended_in_session' ? 'bdhPill_in_session' : `bdhPill_${phase}`;
   const pillTone = bookingPillTone(phase);
   const pillClass: Record<typeof pillTone, string> = {
@@ -1217,7 +1240,7 @@ export default function BookingDetailsPage() {
   const mapsHref = booking?.location?.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location.address)}` : null;
 
   const primaryLabel = primary === 'review_request' ? t('bdTakeAction') : primary === 'review_cancellation' ? t('bdhReviewCancellation')
-    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? t('bdhOpenVisit') : '';
+    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? (phase === 'in_session' || phase === 'time_ended_in_session' ? t('bdhCheckOut') : t('bdhOpenVisit')) : '';
   const runPrimary = () => {
     if (!booking) return;
     if (primary === 'review_request') openActionDialog();
@@ -1358,7 +1381,7 @@ export default function BookingDetailsPage() {
       {/* ── Header: who, when, one status, one next step, actions ── */}
       <header className={`${sectionClass} mb-6`} aria-label={t('bdhHeaderLabel')} data-testid="booking-header">
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-          <span className="font-mono font-medium text-foreground">{booking.referenceCode || booking.id}</span>
+          <span className="font-mono font-medium text-foreground">{bookingReference(booking.referenceCode, booking.id)}</span>
           <span aria-hidden>·</span>
           <span>{t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}</span>
         </p>
@@ -1407,6 +1430,9 @@ export default function BookingDetailsPage() {
             <span className={`h-1.5 w-1.5 rounded-full ${dotClass[pillTone]}`} aria-hidden />{t(pillKey)}
           </span>
           <p role="status" className="text-sm leading-relaxed text-foreground/80" data-testid="booking-next-step">{sentence(nextStep)}</p>
+          {findAnotherTimeHref && (
+            <a href={findAnotherTimeHref} onClick={(event) => { event.preventDefault(); navigate(findAnotherTimeHref); }} className="text-sm font-medium text-foreground underline underline-offset-4" data-testid="find-another-time">{t('bdhFindAnotherTime')}</a>
+          )}
         </div>
       </header>
 
@@ -1436,11 +1462,11 @@ export default function BookingDetailsPage() {
               {(visitStarted || isManagerView) && (
                 <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
                   chefName={chefName} closeout={booking.closeout} embedded
-                  {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen } : {})}
+                  {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, hideArrivalStatus: codeShowsArrival } : {})}
                   visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />
               )}
               {isManagerView && ['confirmed', 'completed'].includes(booking.status) && (
-                <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded
+                <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded onArrivalShown={setCodeShowsArrival}
                   visitEnded={visitOver || booking.closeout?.phase === 'ended'}
                   customerName={chefName} kitchenName={booking.kitchen?.name}
                   timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
@@ -1462,6 +1488,8 @@ export default function BookingDetailsPage() {
               {visitEvidence}
             </section>
           )}
+
+          <BookingFeedbackCard bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} otherPartyName={isManagerView ? chefName : kitchenName} timezone={booking.location?.timezone || 'America/St_Johns'} />
 
           {/* ── When & where ── */}
           <section className={sectionClass} aria-labelledby="booking-when-title">
@@ -1637,6 +1665,12 @@ export default function BookingDetailsPage() {
                 <span className="group-open:hidden">{t('bdhShowBreakdown')}</span><span className="hidden group-open:inline">{t('bdhHideBreakdown')}</span>
               </summary>
             <div className="mt-3 space-y-2.5">
+              {booking.paymentStatus === 'failed' && booking.status === 'cancelled' ? (
+                <div className="flex justify-between text-sm" data-testid="not-charged-line">
+                  <span className="text-muted-foreground">{cap(t('bdStatusNotCharged'))}</span>
+                  <span className="font-mono tabular-nums text-muted-foreground line-through">{formatCurrency(booking.paymentTransaction?.amount || totals.subtotal)}</span>
+                </div>
+              ) : (<>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{ct('sweepLabel34')}</span>
                 <span className="font-mono tabular-nums">
@@ -1726,6 +1760,8 @@ export default function BookingDetailsPage() {
                 )
               )}
 
+              </>)}
+
               {!isManagerView && refundAmount > 0 && (
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="inline-flex items-center gap-1 text-warning">
@@ -1781,7 +1817,7 @@ export default function BookingDetailsPage() {
               onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
           )}
 
-          <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} version={booking.updatedAt || booking.createdAt} limit={3} />
+          <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} version={booking.updatedAt || booking.createdAt} limit={3} />
 
           <Card id="booking-support" className="scroll-mt-24 rounded-2xl border-border shadow-none">
             <CardContent className="p-5 sm:p-6">

@@ -1,4 +1,5 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
+import { formatCalendarDate } from "@/lib/calendar-date";
 import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -66,15 +67,7 @@ interface BookingApprovalDialogProps {
 
 const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
+const formatDate = (dateStr: string) => formatCalendarDate(dateStr, i18n.language, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
 const formatTime = (time: string) => formatClockTime(time, i18n.language);
 

@@ -104,6 +104,16 @@ Last updated: 2026-10-13.
     1. walk both roles through every booking state, including at 390 px;
     2. the admin Booking support screen (`build-booking-support.md`);
     3. the remaining booking-cycle parts, end to end, to top-platform level: reminders → private reviews → payout after closeout with receipt vs final invoice → cancellation policy engine → invites → extension/early/late offers → multi-day (0078+) → storage; reschedule (simple, Food Corridor style) after the cancellation engine.
+- **Booking page redesign RETURNED** (Opus) → `.phase0-harness/booking-page-redesign-checkpoint.md` (28 mock screenshots: 7 states × 2 roles × 1440/390).
+  - Parent review accepted it, with three copy fixes:
+    - the manager next step "Confirmed. Check-in details… under Visit" → "{chef} is booked. Give them the visit code in person when they arrive.";
+    - the chef "Download invoice" → "Download receipt" (receipt vs invoice decision);
+    - the manager "Your payment was collected" → "Payment collected from the chef".
+  - Closed the messaging gap: `POST /bookings/:id/conversation` now allows `pending` (Airbnb lets both sides message before acceptance); Message is shown while pending.
+  - Accepted the agent's calls: a "Review cancellation" manager primary; "You can cancel until…" instead of "Free cancellation".
+  - Open gaps: "Member since" needs `createdAt` on the payloads; the kitchen contact name.
+  - All targeted tests pass; full tsc clean.
+- **Committed `1f985dbb` and pushed to development** (owner pre-authorized). Includes the UX sweep, the redesign and the requested-email fix.
 - The booking side was already environment-aware (`getAppBaseUrl`). About 15 older storage/auth-expiry stragglers use `VITE_APP_URL || 'https://localcooks.ca'` (wrong subdomain); they are folded into the email cleanup.
 
 ## Step 2 live test (booking KB-132, local, synthetic) + two Codex designs returned
@@ -685,3 +695,43 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 **Updated retention:** keep fixtures 118–124 (122/123 real sandbox authorizations, all others attendance-only) and their own activity/outbox/provider evidence. Local source changes remain uncommitted and undeployed; no migrations or account settings changed. Private login helper and temporary login/Checkout HTML are removed after the walkthrough; transcript, extracted PDFs, shelved patch and guarded diagnostic scripts remain excluded for reproducibility.
 
 **Manager checkpoint now running:** delegated Codex High task `phase0-manager-inspection-checkpoint-r1-20261012`, implementation limited to full-page manager inspection and existing supported contracts, with only necessary read-only deadline enrichment. It must not call DB/providers or change clocks/money/roles/lifecycle policy. Parent review and authenticated fixture tests remain required after its terminal result; see the exact task ID/resume rule in `continuation-handoff.md`. Local listener PID33432/port5001 retained, outbound suppressed and local worker/listener disabled. Agent-owned browser tabs are closed after first-checkpoint tests to stop idle polling.
+
+## Oct14 (session 2) — two-role every-state walkthrough on dev + parallel builds
+
+- **Walkthrough on dev `1f985dbb`** (manager 379 in the default profile, chef 380 in incognito; 1280 px and 390 px). Live path on new booking **152** (seeded $0 confirmed, start 9:30 NDT): today → real code check-in (569 032, staff mode) → in session → real chef checkout → real manager "Finish inspection" → completed. Also 150 (pending, synthetic `payment_status=pending`, so no response deadline, a seed artifact), 123 (declined real sandbox) and both lists.
+- **At par:** the details header (who/when/one pill/next step) in every state; the sticky mobile Message bar; no horizontal overflow at 390 on any details page; in-session screen; checkout toast; in-app inspection confirm dialog.
+- **Bugs found** (→ `build-walkthrough-fixes.md`, Sonnet, client-only):
+  - chef list dates one day early;
+  - "Upcoming" includes finished visits;
+  - the manager list labels completed bookings "Pending";
+  - "Cancel or change" on a finished visit;
+  - declined/expired/withdrawn all shown as "Cancelled";
+  - the manager sees "Your payment hold was released";
+  - "View cancellation and refund details" shows on uncaptured bookings (a 500);
+  - the inspection page keeps the live form after finishing.
+- **Copy/clarity items:** 14 in total, also in that doc. They include removing the inspection "Refresh" button, the draft helper, "0 photos requested", the "Booking Requests" title and Title Case chips. Also: a manager on a chef URL gets "not found" instead of a redirect.
+- Seeded bookings have no `reference_code` (UI fallbacks differ: "152", "#152", "BOOKING-152"); unify to `#id`.
+- **Running in parallel:**
+  - Codex Sol High builds the admin Booking support server (migration 0077, written NOT applied) per `build-booking-support.md`;
+  - Sonnet does the walkthrough fixes;
+  - DeepSeek maps payout-after-closeout, the response deadline (R5 + manager decision reminders) and private feedback → `map-payout-deadline-feedback.md`.
+- **Research (Oct14):**
+  - Turo US initiates payout ~3 h after trip end (3 business days on the first trip; non-US 3 business days) ([Turo](https://help.turo.com/en_us/getting-paid-SyALrVeN9.md));
+  - Airbnb releases ~24 h after scheduled check-in;
+  - Peerspace processes within 7 days after the reservation ends ([Peerspace](https://intercom.help/peerspace-108cf19aff8e/en/articles/10119524));
+  - Peerspace and Airbnb use mutual reviews after completion (Airbnb: a 14-day double-blind window).
+  - Direction for Local Cooks: release the kitchen transfer at closeout (inspection finished, or auto-closed 24 h after end), and keep feedback private to Local Cooks per the owner.
+- **Support server RETURNED (Codex Sol High)** → `.phase0-harness/booking-support-server-checkpoint.md`.
+  - Search/case/actions API at `/api/admin/booking-support`;
+  - append-only `support_actions` (trigger-protected) and `booking_flags`;
+  - flag freeze in every refund/transfer writer, including the legacy claim/overstay paths;
+  - dispute and payout-failure webhooks;
+  - goodwill funded by Local Cooks without reversing the kitchen transfer, with the $25 cap and an exception path;
+  - tsc clean; 244 tests pass across 17 files; only the known pre-existing failures.
+  - Gaps: chef cancellation inside the cutoff still blocked (waits for the policy engine); kitchen-caused refund refuses used/separately charged add-ons; unattributed manual payouts alert the admin without a booking flag; Connect has no `transfer.failed` event; flag emails need the owner's admin operational-email preference ON.
+  - Migration 0077 APPLIED to dev (owner approved; the Supabase MCP apply tool is permission-blocked, so it went through the guarded `.phase0-harness/apply-migration.mjs` dev-only script). RLS verified on both tables.
+- **Next builds launched (parallel, ownership split by file):**
+  - Sonnet: support admin UI → `.phase0-harness/booking-support-client-checkpoint.md`;
+  - Codex Sol Medium: `build-response-deadline.md` (R5 rule `min(created+24h, start−1h)` with a short-notice fallback; manager reminders at −12 h/−2 h; `responseDeadlineAt` on payloads; people-language expiry copy);
+  - Codex Sol Medium: `build-private-feedback.md` (migration 0078, private to Local Cooks, 14-day window, day-3 reminder, low-rating admin flag).
+  - Payout-after-closeout is next, after those land (it touches the same refund/transfer writers).

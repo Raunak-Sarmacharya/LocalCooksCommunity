@@ -7,6 +7,10 @@ describe("booking response deadline", () => {
   it("is 24 hours after the request was created, like the server expiry", () => {
     expect(bookingResponseDeadline(pending)?.toISOString()).toBe("2026-10-14T15:00:00.000Z");
   });
+  it('prefers the server deadline and keeps the fallback for older or malformed payloads', () => {
+    expect(bookingResponseDeadline({ ...pending, responseDeadlineAt: '2026-10-13T22:00:00Z' })?.toISOString()).toBe('2026-10-13T22:00:00.000Z');
+    expect(bookingResponseDeadline({ ...pending, responseDeadlineAt: 'invalid' })?.toISOString()).toBe('2026-10-14T15:00:00.000Z');
+  });
 
   it("is absent when there is no live card hold to time out", () => {
     expect(bookingResponseDeadline({ ...pending, status: "confirmed" })).toBeNull();

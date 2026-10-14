@@ -73,3 +73,23 @@ it('orders events that share a timestamp by lifecycle', async () => {
   expect(items[0].textContent).toMatch(/Booking requested/);
   expect(items[1].textContent).toMatch(/Booking confirmed/); client.clear();
 });
+it.each([['declined', 'Request declined'], ['expired', 'Request expired'], ['withdrawn', 'Request withdrawn']] as const)('labels the ended request as %s', async (cause, label) => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: '2', kind: 'cancelled', recordedAt: '2026-10-02T12:00:00Z' },
+  ] }) })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={152} version="v" role="chef" cancelCause={cause} /></QueryClientProvider>);
+  expect(await screen.findByText(label)).toBeInTheDocument();
+  expect(screen.queryByText('Booking cancelled')).not.toBeInTheDocument();
+  expect(screen.getByText('#152')).toBeInTheDocument();
+});
+it('keeps "Booking cancelled" when the cause is unknown or a post-confirmation cancellation', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: '2', kind: 'cancelled', recordedAt: '2026-10-02T12:00:00Z' },
+  ] }) })));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={152} version="v" role="chef" cancelCause="cancelled_after_confirmation" /></QueryClientProvider>);
+  expect(await screen.findByText('Booking cancelled')).toBeInTheDocument();
+});

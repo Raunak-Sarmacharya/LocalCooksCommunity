@@ -94,6 +94,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
     // Child logger: every log in this webhook automatically includes event context
     const wLog = logger.child({ webhookEventId, eventType: event.type });
 
+    if (['charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed', 'payout.failed', 'transfer.reversed'].includes(event.type)) {
+      const { handleBookingSupportWebhook } = await import('../services/booking-support-flags');
+      await handleBookingSupportWebhook(event, stripe);
+    }
+
     switch (event.type) {
       case 'payment_intent.amount_capturable_updated': {
         const intent = event.data.object as Stripe.PaymentIntent;
@@ -683,6 +688,7 @@ async function handleCheckoutSessionCompleted(
               if (intent.status === 'requires_capture') {
                 await stripe.paymentIntents.cancel(paymentIntentId);
               } else if (intent.status === 'succeeded') {
+                await (await import('../services/booking-money-guard')).assertBookingMoneyWritable({ paymentIntentId });
                 await stripe.refunds.create({ payment_intent: paymentIntentId, reason: 'requested_by_customer' },
                   { idempotencyKey: `kitchen_inventory_conflict_${session.id}` });
               }
@@ -1102,7 +1108,7 @@ async function handleCheckoutSessionCompleted(
 
               // Send manager email notification
               if (managerEmailAddress) {
-                const { sendEmail, generateBookingNotificationEmail, bookingResponseDeadline } = await import("../email");
+                const { sendEmail, generateBookingNotificationEmail, getBookingResponseDeadline } = await import("../email");
                 const managerEmail = generateBookingNotificationEmail({
                   managerEmail: managerEmailAddress,
                   chefName,
@@ -1115,7 +1121,7 @@ async function handleCheckoutSessionCompleted(
                   locationName: location.name,
                   bookingId: booking.id,
                   referenceCode: booking.referenceCode,
-                  responseDeadline: booking.createdAt ? bookingResponseDeadline(booking.createdAt) : undefined,
+                  responseDeadline: booking.createdAt ? await getBookingResponseDeadline({ ...booking, createdAt: booking.createdAt }) : undefined,
                   totalCents: session.amount_total ?? undefined,
                   paymentState: isManualCapture ? "held" : "paid",
                   locationAddress: location?.address || undefined,
@@ -1172,11 +1178,11 @@ async function handleCheckoutSessionCompleted(
               .where(eq(locations.id, kitchen.locationId))
               .limit(1);
 
-            const { sendEmail, generateBookingRequestEmail, bookingResponseDeadline } = await import("../email");
+            const { sendEmail, generateBookingRequestEmail, getBookingResponseDeadline } = await import("../email");
             const chefEmail = generateBookingRequestEmail({
               bookingId: booking.id,
               referenceCode: booking.referenceCode,
-                  responseDeadline: booking.createdAt ? bookingResponseDeadline(booking.createdAt) : undefined,
+                  responseDeadline: booking.createdAt ? await getBookingResponseDeadline({ ...booking, createdAt: booking.createdAt }) : undefined,
                   totalCents: session.amount_total ?? undefined,
                   paymentState: isManualCapture ? "held" : "paid",
                   locationAddress: location?.address || undefined,

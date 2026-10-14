@@ -1,4 +1,5 @@
 import { ct } from '@/i18n/chef-ns';
+import { calendarDateKey, formatCalendarDate } from "@/lib/calendar-date";
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react";
@@ -381,29 +382,7 @@ export default function BookingControlPanel({
 
   const formatTime = (timeString: string) => formatKitchenClock(timeString, i18n.language);
 
-  const formatDate = (dateStr: string) => {
-    try {
-      // Handle ISO timestamp format from database (e.g., "2025-10-31T02:30:00.000Z")
-      // Extract just the date part (YYYY-MM-DD)
-      const dateOnly = dateStr.split('T')[0];
-      const date = new Date(dateOnly);
-      
-      if (isNaN(date.getTime())) {
-        logger.warn('Invalid date string:', dateStr);
-        return t("bkInvalidDate");
-      }
-      
-      return date.toLocaleDateString("en-US", {
-        weekday: "short",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      logger.error('Error formatting date:', dateStr, error);
-      return 'Invalid Date';
-    }
-  };
+  const formatDate = (dateStr: string) => formatCalendarDate(dateStr, i18n.language, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) || t("bkInvalidDate");
 
   const formatDateTime = (dateStr: string, timeStr: string) => {
     try {
@@ -549,7 +528,7 @@ export default function BookingControlPanel({
       a.href = url;
       
       // Generate filename with booking ID and date
-      const dateStr = bookingDate ? new Date(bookingDate).toISOString().split('T')[0] : 'unknown';
+      const dateStr = calendarDateKey(bookingDate) ?? 'unknown';
       a.download = `LocalCooks-Invoice-${bookingId}-${dateStr}.pdf`;
       document.body.appendChild(a);
       a.click();

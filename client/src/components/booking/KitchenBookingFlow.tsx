@@ -38,6 +38,8 @@ import { matchingLocalInstants } from '@shared/booking-dst';
 import { bookingVisitBlocks } from '@shared/booking-visit-blocks';
 import { validateKitchenSlotSelection, CONSECUTIVE_SLOTS_MESSAGE } from '@shared/consecutive-booking-slots';
 import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
+import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
+import { formatResponseDeadline } from '@/lib/booking-response-deadline';
 
 /** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
 const STORAGE_PREVIEW_COUNT = 12;
@@ -435,6 +437,9 @@ export default function KitchenBookingFlow({
     currency: string;
     minimumBookingHours: number;
     platformCommissionRate: number;
+    preparationReminderHours?: number;
+    managerResponseBufferHours?: number;
+    timezone?: string;
   } | null>(null);
   const [bookingRateMode, setBookingRateMode] = useState<BookingRateMode>("hourly");
   const [estimatedPrice, setEstimatedPrice] = useState<{
@@ -936,6 +941,9 @@ export default function KitchenBookingFlow({
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours ?? 0,
           platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
+          preparationReminderHours: pricing.preparationReminderHours ?? 48,
+          managerResponseBufferHours: pricing.managerResponseBufferHours ?? 1,
+          timezone: pricing.timezone || DEFAULT_TIMEZONE,
         });
       } else {
         setLoadError(t("bookingErrorLoadKitchen", "We could not load this kitchen's pricing. Reload the page before booking."));
@@ -1113,6 +1121,15 @@ export default function KitchenBookingFlow({
   };
 
   const orderedSelectedSlots = bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
+  const checkoutResponseDeadline = (() => {
+    if (!selectedDate || !orderedSelectedSlots.length) return null;
+    try {
+      const zone = kitchenPricing?.timezone || DEFAULT_TIMEZONE;
+      return formatResponseDeadline(responseDeadlineForBooking({ createdAt: new Date(), status: 'pending',
+        bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
+        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time }, zone, kitchenPricing?.managerResponseBufferHours), i18n.language, zone);
+    } catch { return null; }
+  })();
   const selectionError = (times = selectedSlots) => validateKitchenSlotSelection(
     times, allSlots, bookingRateMode === 'hourly' ? Math.max(1, kitchenPricing?.minimumBookingHours ?? 0) : 1,
     bookingRateMode === 'hourly' ? maxSlotsPerChef : Infinity,
@@ -1930,9 +1947,9 @@ export default function KitchenBookingFlow({
           <section className="rounded-[1.35rem] border bg-muted/30 p-4" data-testid="what-happens-next">
             <h4 className="text-sm font-semibold text-gray-900">{t("sheetWhatNextTitle", "What happens next")}</h4>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-              <li>{t("sheetWhatNextReview", "The kitchen reviews your request within 24 hours.")}</li>
+              <li>{checkoutResponseDeadline ? t("sheetResponseDeadline", { deadline: checkoutResponseDeadline, defaultValue: "The kitchen has until {deadline} to respond." }) : t("sheetResponseDeadlineOnPage", "Your booking page will show when the kitchen needs to respond.")}</li>
               <li>{t("sheetWhatNextCharge", "You are charged only if they accept. Until then your card is just on hold.")}</li>
-              <li>{t("sheetWhatNextArrival", "Arrival details are sent 48 hours before your visit.")}</li>
+              <li>{t("sheetPreparationLead", { hours: kitchenPricing?.preparationReminderHours ?? 48, defaultValue: "Arrival details are shared {hours} hours before your visit, once the kitchen accepts." })}</li>
             </ol>
             <p className="mt-2 text-sm text-muted-foreground">
               {t("sheetWhatNextCancel", {

@@ -15,6 +15,7 @@ describe('admin lifecycle settings', () => {
   it('supplies editable defaults when no setting has been saved', async () => {
     expect(await getLifecycleSettings()).toEqual({ serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, tourOutcomeReminderMinutes: 0, historicalVisitReviewAfterHours: 48,
       preparationReminderHours: 48, arrivalReminderHours: 2, departureReminderMinutes: 30,
+      managerResponseBufferHours: 1, managerDecisionFirstReminderHours: 12, managerDecisionFinalReminderHours: 2,
       tourPreparationMinuteOfDay: 420, tourArrivalReminderMinutes: 60, tourDepartureReminderMinutes: 10, tourPreparationEnabled: 1, tourArrivalEnabled: 1, tourDepartureEnabled: 1,
       responseWarningHours: 6, cancellationWarningHours: 6, inspectionWarningPercent: 50 });
   });
@@ -36,6 +37,8 @@ describe('admin lifecycle settings', () => {
     expect(state.writes[0]).toMatchObject({ key: 'tour_outcome_reminder_minutes', value: '20', updatedBy: 2 });
   });
   it('validates combined lead times against saved values before any write', async () => {
+    await expect(saveLifecycleSettings({ managerDecisionFirstReminderHours: 2, managerDecisionFinalReminderHours: 3 }, 2)).rejects.toThrow(/earlier/);
+    await expect(saveLifecycleSettings({ managerResponseBufferHours: -1 }, 2)).rejects.toThrow(/whole number/);
     state.rows = [{ key: 'arrival_reminder_hours', value: '4' }];
     await expect(saveLifecycleSettings({ preparationReminderHours: 3 }, 2)).rejects.toThrow(/earlier/);
     expect(state.writes).toEqual([]);

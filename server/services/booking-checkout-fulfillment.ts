@@ -93,8 +93,11 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     if (!(error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError)) throw error;
     // An inventory conflict has a verified financial outcome, with stable retry keys.
     if (intent.status === 'requires_capture') await stripe.paymentIntents.cancel(intent.id);
-    else await stripe.refunds.create({ payment_intent: intent.id, reason: 'requested_by_customer' },
-      { idempotencyKey: `kitchen_inventory_conflict_${session.id}` });
+    else {
+      await (await import('./booking-money-guard')).assertBookingMoneyWritable({ paymentIntentId: intent.id });
+      await stripe.refunds.create({ payment_intent: intent.id, reason: 'requested_by_customer' },
+        { idempotencyKey: `kitchen_inventory_conflict_${session.id}` });
+    }
     return null;
   }
 }

@@ -19,6 +19,7 @@ import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerReven
 import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOverviewSection";
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
 import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
+import { BookingSupportSection } from "@/components/admin/booking-support/BookingSupportSection";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
 import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
@@ -99,7 +100,7 @@ function AdminDashboard() {
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "overstay-penalties-history", "damage-claims-history",
-    "security-settings", "password-reset", "email-log", "live-problems",
+    "security-settings", "password-reset", "email-log", "live-problems", "booking-support",
   ], []);
 
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
@@ -1180,6 +1181,13 @@ function AdminDashboard() {
       case "promos":
         return <PromoCodeSender />;
 
+      case "booking-support":
+        return (
+          <ErrorBoundary>
+            <BookingSupportSection key={sectionMountKey} getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
+
       case "transactions":
         return (
           <ErrorBoundary>
@@ -1279,7 +1287,7 @@ function AdminDashboard() {
           }
           // Check if URL has a search param (set by command menu ref code lookup)
           const urlParams = new URLSearchParams(window.location.search);
-          const hasSearch = urlParams.has('search');
+          const hasSearch = urlParams.has('search') || urlParams.has('booking');
           if (section === activeSection && hasSearch) {
             // Same section but with new search param — force remount
             setSectionMountKey(k => k + 1);

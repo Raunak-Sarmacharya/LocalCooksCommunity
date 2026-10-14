@@ -54,7 +54,10 @@ router.get('/manager/booking-lifecycle', requireFirebaseAuthWithUser, requireMan
       bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime })
       .from(bookingLifecycleEvents).innerJoin(kitchenBookings, eq(kitchenBookings.id, bookingLifecycleEvents.bookingId))
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
-      .where(eq(locations.managerId, req.neonUser!.id)).orderBy(desc(bookingLifecycleEvents.id)).limit(100);
+      .where(and(eq(locations.managerId, req.neonUser!.id),
+        // Private feedback and its operator flags belong to their scoped endpoints/notices.
+        sql`${bookingLifecycleEvents.kind} NOT IN ('feedback_flagged', 'feedback_requested')`))
+      .orderBy(desc(bookingLifecycleEvents.id)).limit(100);
     res.json(events);
   } catch (error) { logger.error('Booking activity unavailable', error); res.status(503).json({ error: 'Booking activity is unavailable' }); }
 });

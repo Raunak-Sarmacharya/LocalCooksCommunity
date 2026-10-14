@@ -31,6 +31,7 @@
  */
 
 import Stripe from 'stripe';
+import { assertBookingMoneyWritable } from './booking-money-guard';
 import { logger } from '../logger';
 import { db } from '../db';
 import { eq, ne, and } from 'drizzle-orm';
@@ -152,6 +153,7 @@ export async function transferToManagerForBooking(
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
+    await assertBookingMoneyWritable({ paymentTransactionId: params.paymentTransactionId, paymentIntentId: params.paymentIntentId }, tx);
     return transferLockedSource(params, tx);
   });
 }
@@ -215,7 +217,8 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
         const id = receipt.refundId || receipt.id;
         if (!id || seen.has(id) || ![receipt.customerReceived, receipt.managerDebited, receipt.platformServiceFeeReturned]
           .every(value => Number.isSafeInteger(value) && value >= 0)
-          || receipt.customerReceived !== receipt.managerDebited + receipt.platformServiceFeeReturned)
+          || ![receipt.platformGoodwillCents ?? 0, receipt.platformProcessingCostCents ?? 0].every(value => Number.isSafeInteger(value) && value >= 0)
+          || receipt.customerReceived !== receipt.managerDebited + receipt.platformServiceFeeReturned + (receipt.platformGoodwillCents || 0) + (receipt.platformProcessingCostCents || 0))
           return { ...baseResult, transferredCents: 0, reason: 'Refund source allocations require financial review before payout' };
         seen.add(id); verifiedCustomerRefunds += receipt.customerReceived; managerRefundedCents += receipt.managerDebited;
       }
@@ -549,6 +552,7 @@ export async function reverseTransferForRefund(
   chargeAmountCents: number,
   transferredAmountCents: number,
 ): Promise<Stripe.TransferReversal | null> {
+  await assertBookingMoneyWritable({ transferId });
   if (!stripe) {
     logger.warn('[StripeTransferService] Stripe not configured — cannot reverse transfer');
     return null;

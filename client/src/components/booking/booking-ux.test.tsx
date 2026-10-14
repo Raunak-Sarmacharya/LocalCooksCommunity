@@ -44,3 +44,16 @@ describe("kitchen-local time label", () => {
     expect(document.body.textContent).not.toContain("America/St_Johns");
   });
 });
+
+describe("check-in time once it has opened", () => {
+  it("says when check-in opened instead of a future-tense date", () => {
+    render(<CheckinPolicyTimesCard bookingDate="2020-01-15" startTime="10:00" timezone="America/St_Johns" checkinWindowMinutesBefore={15} noShowGraceMinutes={30} operatingWindowStartTime="08:00" />);
+    expect(screen.getByText("Check-in opened at")).toBeInTheDocument();
+    expect(screen.queryByText("Check-in opens")).not.toBeInTheDocument();
+    expect(screen.getByText(/9:45/)).toBeInTheDocument();
+  });
+  it("keeps the future-tense label and date before it opens", () => {
+    render(<CheckinPolicyTimesCard bookingDate="2999-01-15" startTime="10:00" timezone="America/St_Johns" checkinWindowMinutesBefore={15} noShowGraceMinutes={30} operatingWindowStartTime="08:00" />);
+    expect(screen.getByText("Check-in opens")).toBeInTheDocument();
+  });
+});

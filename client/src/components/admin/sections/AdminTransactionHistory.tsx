@@ -26,6 +26,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Search, Download, ChevronDown, RefreshCw, CreditCard, Receipt, CheckCircle, DollarSign, ArrowUpDown, Calendar, Building2, Copy, ExternalLink, AlertTriangle, Eye, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { adminBookingSupportPath } from "@shared/admin-booking-link";
+import { formatAdminDateTime, formatAdminDateOnly, formatAdminTimeOnly } from "@/lib/admin-time";
 import { BookingPaymentRecovery } from '../BookingPaymentRecovery';
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime, formatCurrency as sharedFormatCurrency, formatPrice, downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
 
@@ -387,7 +390,7 @@ function TransactionDetailDialog({
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{event.label}</span>
                           <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {new Date(event.timestamp).toLocaleString("en-US", { timeZone: "America/St_Johns", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                            {formatAdminDateTime(event.timestamp)}
                           </span>
                         </div>
                         {event.detail && <p className="text-xs text-muted-foreground mt-0.5">{event.detail}</p>}
@@ -548,7 +551,7 @@ function TransactionDetailDialog({
                     <div className="flex justify-between"><span className="text-muted-foreground">Customer Received</span><span className="font-medium text-purple-700">{formatCurrency(refund.customerReceived || 0)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Manager Debited</span><span>{formatCurrency(refund.managerDebited || 0)}</span></div>
                     {refund.reason && <div className="flex justify-between"><span className="text-muted-foreground">Reason</span><span>{refund.reason}</span></div>}
-                    {refund.createdAt && <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span>{new Date(refund.createdAt).toLocaleString("en-US", { timeZone: "America/St_Johns" })}</span></div>}
+                    {refund.createdAt && <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span>{formatAdminDateTime(refund.createdAt)}</span></div>}
                   </div>
                 ))}
               </div>
@@ -593,11 +596,11 @@ function TransactionDetailDialog({
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Timestamps</h4>
             <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Created</span><span>{new Date(tx.createdAt).toLocaleString("en-US", { timeZone: "America/St_Johns" })}</span></div>
-              {tx.paidAt && <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><span>{new Date(tx.paidAt).toLocaleString("en-US", { timeZone: "America/St_Johns" })}</span></div>}
-              {tx.refundedAt && <div className="flex justify-between"><span className="text-muted-foreground">Refunded</span><span>{new Date(tx.refundedAt).toLocaleString("en-US", { timeZone: "America/St_Johns" })}</span></div>}
-              {tx.lastSyncedAt && <div className="flex justify-between"><span className="text-muted-foreground">Last Synced</span><span>{new Date(tx.lastSyncedAt).toLocaleString("en-US", { timeZone: "America/St_Johns" })}</span></div>}
-              <div className="flex justify-between"><span className="text-muted-foreground">Updated</span><span>{new Date(tx.updatedAt).toLocaleString("en-US", { timeZone: "America/St_Johns" })}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Created</span><span>{formatAdminDateTime(tx.createdAt)}</span></div>
+              {tx.paidAt && <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><span>{formatAdminDateTime(tx.paidAt)}</span></div>}
+              {tx.refundedAt && <div className="flex justify-between"><span className="text-muted-foreground">Refunded</span><span>{formatAdminDateTime(tx.refundedAt)}</span></div>}
+              {tx.lastSyncedAt && <div className="flex justify-between"><span className="text-muted-foreground">Last Synced</span><span>{formatAdminDateTime(tx.lastSyncedAt)}</span></div>}
+              <div className="flex justify-between"><span className="text-muted-foreground">Updated</span><span>{formatAdminDateTime(tx.updatedAt)}</span></div>
             </div>
           </div>
 
@@ -639,6 +642,16 @@ function TransactionDetailDialog({
   );
 }
 
+function OpenBookingSupportLink({ tx }: { tx: AdminTransaction }) {
+  const { t } = useTranslation("admin");
+  if (!tx.bookingId || !["kitchen", "bundle"].includes(tx.bookingType)) return null;
+  return (
+    <Button asChild variant="ghost" size="sm" className="h-8 whitespace-nowrap px-2 text-xs">
+      <a href={adminBookingSupportPath(tx.bookingId)}>{t("bsOpenFromTransactions")}</a>
+    </Button>
+  );
+}
+
 // Column definitions
 function getAdminTransactionColumns(
   onViewDetails: (tx: AdminTransaction) => void
@@ -675,10 +688,10 @@ function getAdminTransactionColumns(
           <div className="space-y-0.5">
             <div className="flex items-center gap-1 text-sm font-medium">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              {new Date(tx.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/St_Johns" })}
+              {formatAdminDateOnly(tx.createdAt)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {new Date(tx.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/St_Johns" })}
+              {formatAdminTimeOnly(tx.createdAt)}
             </div>
           </div>
         );
@@ -805,6 +818,8 @@ function getAdminTransactionColumns(
       id: "actions",
       header: "",
       cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+        <OpenBookingSupportLink tx={row.original} />
         <Button
           variant="ghost"
           size="sm"
@@ -814,6 +829,7 @@ function getAdminTransactionColumns(
           <Eye className="h-4 w-4" />
           {(row.original.metadata as any)?.fullRefundRequest?.status === 'pending' && <span className="ml-1.5">Review</span>}
         </Button>
+        </div>
       ),
     },
   ];
@@ -842,9 +858,9 @@ function transactionsToCSV(transactions: AdminTransaction[]): string {
     tx.stripeCustomerId || "", tx.webhookEventId || "",
     tx.bookingStatus || "", tx.bookingPaymentStatus || "",
     tx.refundReason || "", tx.failureReason || "",
-    tx.createdAt ? new Date(tx.createdAt).toLocaleString("en-US", { timeZone: "America/St_Johns" }) : "",
-    tx.paidAt ? new Date(tx.paidAt).toLocaleString("en-US", { timeZone: "America/St_Johns" }) : "",
-    tx.refundedAt ? new Date(tx.refundedAt).toLocaleString("en-US", { timeZone: "America/St_Johns" }) : "",
+    tx.createdAt ? formatAdminDateTime(tx.createdAt) : "",
+    tx.paidAt ? formatAdminDateTime(tx.paidAt) : "",
+    tx.refundedAt ? formatAdminDateTime(tx.refundedAt) : "",
   ]);
   const escape = (v: unknown) => `"${String(v).replace(/"/g, '""')}"`;
   return [headers.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");

@@ -213,27 +213,39 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       timezone: row.location.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchen.name, locationName: row.location.name,
       locationAddress: row.location.address || undefined, referenceCode: row.booking.referenceCode, bookingId,
       specialNotes: row.booking.specialNotes || undefined, chefName: nameOf(context.chefId) || 'the chef',
-      responseDeadline: bookingResponseDeadline(row.booking.createdAt!), totalCents: payment ? Number(payment.amount) : undefined,
+      responseDeadline: await (await import('./booking-response-deadline')).getBookingResponseDeadline(row.booking, tx, row.location.timezone), totalCents: payment ? Number(payment.amount) : undefined,
       paymentState: payment?.status === 'authorized' ? 'held' : payment?.status === 'succeeded' ? 'paid' : 'pending' };
   }
   const confirmationTime = new Date();
   const arrivalDetails = confirmation ? await confirmationArrivalDetails(bookingId, tx, recipients.find(person => person.id === context.chefId)?.locale, confirmationTime) : undefined;
-  for (const person of recipients.filter(person => arrivalNotice ? person.id === context.chefId : metadata.recipientPolicy === 'manager' ? person.id === context.managerId
+  for (const person of recipients.filter(person => arrivalNotice ? person.id === context.chefId : metadata.recipientPolicy === 'admins' ? person.role === 'admin' : metadata.recipientPolicy === 'manager' ? person.id === context.managerId
     : metadata.recipientPolicy === 'participants'
     ? person.id === context.chefId || person.id === context.managerId
     : metadata.recipientPolicy !== 'chef' || person.id === context.chefId)) {
+    if (Array.isArray(metadata.recipientIds) && !metadata.recipientIds.includes(person.id)) continue;
     const chef = person.id === context.chefId;
     const localCooks = person.role === 'admin';
-    const path = chef ? `/booking/${bookingId}` : localCooks ? adminBookingTransactionsPath(bookingId) : `/manager/booking/${bookingId}`;
+    const path = (chef ? `/booking/${bookingId}` : localCooks ? metadata.supportCase ? `/admin?section=booking-support&booking=${bookingId}` : adminBookingTransactionsPath(bookingId) : `/manager/booking/${bookingId}`)
+      + (kind === 'feedback_requested' ? '#feedback' : '');
+    const feedbackCopy = ['feedback_requested', 'feedback_flagged'].includes(kind)
+      ? (await import('./booking-feedback-service')).bookingFeedbackNoticeCopy(kind, context.kitchenName, person.locale) : undefined;
     // A producer may word the in-app notice per role; email content is rendered separately.
     const roleText = (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     if (!arrivalNotice) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: roleText?.title ?? title, message: chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message, actionUrl: path, actionLabel: 'View booking', metadata: { bookingId, ...metadata } }, tx);
+      title: feedbackCopy?.title ?? roleText?.title ?? title, message: feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
     if ((arrivalNotice || person.email && operationalEmailAllowed(person)) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
+        ...(metadata.requestExpired ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
+          subject: roleText?.title ?? title, heading: roleText?.title ?? title, message: roleText?.message ?? message, facts: [],
+          actionLabel: chef ? 'Find another time' : 'View booking', actionUrl: chef ? `${getAppBaseUrl('chef')}${metadata.kitchenPath}` : url }) } : {}),
+        ...(feedbackCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
+          subject: feedbackCopy.title, heading: feedbackCopy.title, message: feedbackCopy.message, facts: [], actionLabel: feedbackCopy.actionLabel, actionUrl: url }) } : {}),
+        ...(kind === 'support_payout_failed' && !chef && !localCooks ? { content: renderTransactionalEmail({ to: person.email,
+          subject: title, recipientName: nameOf(person.id) || 'there', message, facts: [], actionLabel: 'Update payout details',
+          actionUrl: `${getAppBaseUrl('kitchen')}/manager/stripe-connect/refresh?role=manager` }) } : {}),
         ...(confirmation && chef ? { confirmation: { ...confirmation, arrivalInstructions: undefined, departureInstructions: undefined } } : {}),
         ...(request && !localCooks ? { content: chef
           ? generateBookingRequestEmail({ ...request, chefName: nameOf(person.id) || 'there', chefEmail: person.email, locale: person.locale })
@@ -247,6 +259,10 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   for (const email of emails) if (email.confirmation) Object.assign(email.confirmation, { chefEmail: email.to, chefName: nameOf(Number(email.key)), actionUrl: email.url, receiptUrl: `${getAppBaseUrl('chef')}/api/bookings/${bookingId}/invoice`, locale: recipients.find(person => String(person.id) === email.key)?.locale });
   await tx.insert(bookingLifecycleEvents).values({ bookingId, kind, actorId, title, message, metadata, emails });
   wakeBookingNoticeDelivery(bookingId);
+  if (['requested', 'confirmed', 'cancelled'].includes(kind)) {
+    const { scheduleAdvanceReminders } = await import('./advance-reminders');
+    await scheduleAdvanceReminders(tx, 'manager_decision', bookingId);
+  }
   if (kind === 'confirmed') {
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'booking', bookingId);
@@ -274,6 +290,32 @@ function wakeBookingNoticeDelivery(bookingId: number) {
   void import('../lifecycle-inngest')
     .then(({ inngest, bookingNoticeEvent }) => inngest.send({ name: bookingNoticeEvent, data: { bookingId } }))
     .catch(error => logger.warn('[BookingNotices] Delivery wakeup not sent; backstop tick will deliver', { bookingId, error: error instanceof Error ? error.message : String(error) }));
+}
+
+/** Reserve a single recipient replay in the outbox; never send mail from the command. */
+export async function requeueBookingNotice(bookingId: number, eventId: number, recipientId: number, force: boolean,
+  reason: string, actorId: number, operationKey: string) {
+  return db.transaction(async tx => {
+    const [event] = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.id, eventId), eq(bookingLifecycleEvents.bookingId, bookingId))).for('update');
+    if (!event || event.leaseUntil && event.leaseUntil > new Date()) throw Error('This notice is unavailable or is already being sent.');
+    const key = String(recipientId), email = (event.emails as Email[]).find(email => email.key === key);
+    if (!email) throw Error('This recipient does not belong to the original notice.');
+    const [sent] = await tx.select({ id: emailLogs.id }).from(emailLogs).where(and(eq(emailLogs.recipientEmail, email.to.toLowerCase()),
+      sql`${emailLogs.trackingId} LIKE ${`booking-event:${eventId}:${key}%`}`, eq(emailLogs.status, 'sent'))).limit(1);
+    const accepted = (event.deliveredEmailKeys as string[]).includes(key) || !!sent;
+    if (accepted && (!force || !reason.trim())) throw Error('This notice was already accepted. Choose an explicit resend and include a reason.');
+    const metadata = event.metadata as Record<string, unknown>;
+    if (!accepted && !metadata.deliveryFailures && !(metadata.undeliverableEmailKeys as string[] | undefined)?.includes(key))
+      throw Error('This notice has not failed. Let the original queued notice finish.');
+    await tx.update(bookingLifecycleEvents).set({ metadata: { ...metadata,
+      supersededEmailKeys: Array.from(new Set([...(metadata.supersededEmailKeys as string[] || []), key])) } }).where(eq(bookingLifecycleEvents.id, eventId));
+    const [replay] = await tx.insert(bookingLifecycleEvents).values({ bookingId, kind: event.kind, actorId, title: event.title, message: event.message,
+      emails: [email], metadata: { ...metadata, supersededEmailKeys: [], deliveryFailures: 0, deliveryPaused: false,
+        undeliverableEmailKeys: [], deliveryRecoveryOwnerIds: [actorId], originalEventId: eventId, supportOperationKey: operationKey,
+        forcedResend: force, resendReason: reason }, deliveredEmailKeys: [], nextAttemptAt: new Date() }).returning({ id: bookingLifecycleEvents.id });
+    wakeBookingNoticeDelivery(bookingId);
+    return { success: true, eventId: replay.id };
+  });
 }
 
 export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_000, onlyBookingId?: number, onlyEventId?: number, replay = false) {
@@ -324,6 +366,7 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
       });
     }
     for (const email of event.emails as Email[]) {
+      if ((eventMetadata.supersededEmailKeys as string[] | undefined)?.includes(email.key)) continue;
       if (delivered.includes(email.key)) continue;
       // The worker never retries a refused address; an admin Email Log retry of this event does.
       if (!onlyEventId && undeliverable.includes(email.key)) continue;
@@ -344,6 +387,10 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
           if (!currentInstructions) { delivered.push(email.key); continue; }
         }
         let currentCloseout: Parameters<typeof sendEmail>[0] | null | undefined;
+        if (event.kind === 'feedback_requested') {
+          currentCloseout = await (await import('./booking-feedback-service')).currentBookingFeedbackEmail(event.bookingId, Number(email.key), email.to);
+          if (!currentCloseout) { delivered.push(email.key); continue; }
+        }
         if (closeoutNoticeKinds.includes(event.kind)) {
           // Rendered from current state: a cancelled booking or settled inspection sends nothing.
           currentCloseout = await currentCloseoutEmail(event.bookingId, event.kind as CloseoutNoticeKind,

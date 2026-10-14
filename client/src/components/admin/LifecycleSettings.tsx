@@ -79,6 +79,9 @@ function CloseoutNotificationCutover() {
 }
 
 const timingFields = [
+  { key: 'managerResponseBufferHours', label: 'Requests expire this long before the start', unit: 'hours', min: 0, max: 24, help: 'Default 1. Requests always expire within 24 hours. Very short-notice requests can be answered until the start.' },
+  { key: 'managerDecisionFirstReminderHours', label: 'Remind kitchens before a request expires', unit: 'hours', min: 1, max: 24, help: 'First reminder, default 12. Must be earlier than the final reminder.' },
+  { key: 'managerDecisionFinalReminderHours', label: 'Final reminder before a request expires', unit: 'hours', min: 1, max: 24, help: 'Default 2. No reminder is sent in the first 30 minutes or after the request is answered.' },
   { key: 'serviceEndGraceMinutes', label: 'Kitchen service end grace', unit: 'minutes', min: 0, max: 120, help: 'Default 15. Service ends after the last scheduled visit, even when arrival or departure is missing. This does not extend booked use.' },
   { key: 'inspectionAutoCloseHours', label: 'Kitchen inspection window', unit: 'hours', min: 1, max: 168, help: 'Default 24 after the later of scheduled end and reported departure. An unanswered inspection closes without manager approval. Saved booking clocks retain their values.' },
   { key: 'tourPreparationMinuteOfDay', label: 'Tour preparation clock in Newfoundland', unit: '', min: 0, max: 1439, help: 'Default 7:00 AM on the tour calendar day in Newfoundland. Earlier tours receive preparation before start using the configured reminder lead.' },

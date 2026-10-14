@@ -11,7 +11,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatDate, formatTime } from "@/lib/formatters";
+import { formatBookingDate, formatDate, formatTime } from "@/lib/formatters";
 import { ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { openChefShopHome, useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
@@ -758,7 +758,7 @@ function formatBookingWhen(
   const tomorrow = new Date(Date.now() + 86400000);
   if (today.toDateString() === bookingDateObj.toDateString()) return t("ovToday");
   if (tomorrow.toDateString() === bookingDateObj.toDateString()) return t("ovTomorrow");
-  return formatDate(booking.bookingDate, "short", undefined, locale);
+  return formatBookingDate(booking.bookingDate, locale);
 }
 
 const bookingStatusConfig: Record<

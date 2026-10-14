@@ -17,6 +17,7 @@ interface AdminHeaderProps {
 }
 
 const SECTION_META: Record<AdminSection, { category: string; title: string }> = {
+  'booking-support': { category: 'Management', title: 'Booking support' },
   'live-problems': { category: 'Communications', title: 'Support requests' },
   overview: { category: "Dashboard", title: "Overview" },
   applications: { category: "Applications", title: "Seller Applications" },

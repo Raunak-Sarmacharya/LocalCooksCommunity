@@ -31,7 +31,7 @@ import { RevenueMetricCards } from "@/components/manager/revenue/components/Reve
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
 import { DateRangePicker } from "@/components/manager/revenue/components/DateRangePicker"
 import { RevenueTrendChart } from "@/components/manager/revenue/components/RevenueCharts"
-import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
+import { formatBookingDate, formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import { useToast } from "@/hooks/use-toast"
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup"
 
@@ -247,7 +247,7 @@ function RevenueAnalytics({
                         {generateInvoiceNumber(invoice.bookingId, new Date(invoice.bookingDate))}
                       </p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{formatDate(invoice.bookingDate)}</span>
+                        <span>{formatBookingDate(invoice.bookingDate)}</span>
                         <span>•</span>
                         <span>{invoice.kitchenName}</span>
                         <span>•</span>

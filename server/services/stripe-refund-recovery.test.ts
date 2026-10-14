@@ -1,8 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ source: { transferId: 'tr_one', managerRevenue: '11116', amount: '12200' } as any,
-  lookupFailed: false, noTransfer: false, transfer: { id: 'tr_one', amount: 11116, amount_reversed: 0 }, reversals: [] as any[], refunds: [] as any[],
+  lookupFailed: false, frozen: false, noTransfer: false, transfer: { id: 'tr_one', amount: 11116, amount_reversed: 0 }, reversals: [] as any[], refunds: [] as any[],
   reverse: vi.fn(), refund: vi.fn() }));
-vi.mock('../db', () => { const db: any = { transaction: async (work: any) => work(db), select: () => {
+vi.mock('../db', () => { const db: any = { execute: async () => ({ rows: state.frozen ? [{ id: 9 }] : [] }), transaction: async (work: any) => work(db), select: () => {
   const chain: any = { from: () => chain, where: () => chain, limit: () => chain, for: () => chain,
     then: (resolve: any, reject: any) => state.lookupFailed ? reject(Error('Database unavailable')) : resolve([state.source]) }; return chain;
 } }; return { db }; });
@@ -15,7 +15,7 @@ vi.mock('stripe', () => ({ default: class {
 let reverseTransferAndRefund: typeof import('./stripe-service').reverseTransferAndRefund;
 beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ reverseTransferAndRefund } = await import('./stripe-service')); });
 beforeEach(() => {
-  state.lookupFailed = false; state.noTransfer = false; state.source = { transferId: 'tr_one', managerRevenue: '11116', amount: '12200', serviceFee: '700' };
+  state.lookupFailed = false; state.frozen = false; state.noTransfer = false; state.source = { transferId: 'tr_one', managerRevenue: '11116', amount: '12200', serviceFee: '700' };
   state.transfer = { id: 'tr_one', amount: 11116, amount_reversed: 0 }; state.reversals = []; state.refunds = [];
   state.reverse.mockReset().mockImplementation(async (_id: string, params: any) => {
     const result = { id: 'trr_one', ...params }; state.reversals.push(result); state.transfer.amount_reversed += params.amount; return result;
@@ -26,6 +26,11 @@ beforeEach(() => {
 });
 const options = { idempotencyKey: 'operation_one', reverseTransferAmount: 2300, refundApplicationFee: false };
 describe('source-specific reversal and refund recovery', () => {
+  it('freezes refunds before any provider refund or reversal', async () => {
+    state.frozen = true;
+    await expect(reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', options)).rejects.toThrow('paused');
+    expect(state.reverse).not.toHaveBeenCalled(); expect(state.refund).not.toHaveBeenCalled();
+  });
   it.each(['pending', 'requires_action', 'failed', 'canceled'])('does not certify a recovered %s refund or create another one', async status => {
     state.refunds = [{ id: 're_existing', charge: 'ch_one', amount: 2440, status, metadata: { refund_operation_id: 'operation_one' } }];
     await expect(reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', options)).rejects.toThrow('not verified as complete');

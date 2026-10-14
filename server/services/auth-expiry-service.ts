@@ -29,6 +29,10 @@ import {
 } from "@shared/schema";
 import { eq, and, lt, sql } from "drizzle-orm";
 import { logger } from "../logger";
+import { getBookingResponseDeadline } from './booking-response-deadline';
+import { locations } from '@shared/schema';
+import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
+import { RESPONSE_WINDOW_HOURS } from '@shared/booking-response-deadline';
 
 export interface AuthExpiryResult {
   type: "kitchen_booking" | "storage_extension";
@@ -39,7 +43,7 @@ export interface AuthExpiryResult {
   error?: string;
 }
 
-export const AUTH_EXPIRY_HOURS = 24;
+export const AUTH_EXPIRY_HOURS = RESPONSE_WINDOW_HOURS;
 
 // ============================================================================
 // LAZY EVALUATION — called inline during read operations
@@ -51,13 +55,15 @@ export const AUTH_EXPIRY_HOURS = 24;
  * 
  * Returns true if the authorization was expired and cancelled.
  */
-async function expireKitchenAuthorization(bookingId: number, paymentIntentId: string, cutoffTime: Date) {
+async function expireKitchenAuthorization(bookingId: number, paymentIntentId: string, now: Date) {
   const [current] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if ((current?.paymentDecision as { state?: string } | null)?.state === 'pending') return false;
   if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
-    || current.paymentIntentId !== paymentIntentId || current.createdAt >= cutoffTime) return false;
+    || current.paymentIntentId !== paymentIntentId) return false;
+  const deadline = await getBookingResponseDeadline(current);
+  if (now < deadline) return false;
   const { decideAuthorizedBooking } = await import('./booking-payment-decision');
-  await decideAuthorizedBooking(bookingId, 'cancelled');
+  await decideAuthorizedBooking(bookingId, 'cancelled', [], [], undefined, { responseDeadlineAt: deadline.toISOString() });
   return true;
 }
 
@@ -74,13 +80,10 @@ export async function lazyExpireKitchenBookingAuth(booking: {
   if (booking.paymentStatus !== 'authorized' || booking.status !== 'pending') return false;
   if (!booking.paymentIntentId || !booking.createdAt) return false;
 
-  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1000);
-  if (new Date(booking.createdAt) >= cutoffTime) return false;
+  const now = new Date();
 
   try {
-    logger.info(`[AuthExpiry] Lazy-expiring kitchen booking ${booking.id} — authorization older than ${AUTH_EXPIRY_HOURS}h`);
-
-    if (!(await expireKitchenAuthorization(booking.id, booking.paymentIntentId, cutoffTime))) return false;
+    if (!(await expireKitchenAuthorization(booking.id, booking.paymentIntentId, now))) return false;
 
     // Update payment_transactions
     try {
@@ -213,19 +216,18 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
           eq(kitchenBookings.paymentStatus, "authorized"),
           workerAfter('authBookings', kitchenBookings.id),
           eq(kitchenBookings.status, "pending"),
-          lt(kitchenBookings.createdAt, cutoffTime),
         ),
       ).orderBy(kitchenBookings.id).limit(workerBatch());
     await workerPageEnd('authBookings', expiredBookings.length);
 
-    logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
+    logger.info(`[AuthExpiry] Checking ${expiredBookings.length} pending kitchen booking response deadlines`);
 
     for (const booking of expiredBookings) {
       await workerRecord('authBookings', booking.id);
       if (!booking.paymentIntentId) continue;
 
       try {
-        if (!(await expireKitchenAuthorization(booking.id, booking.paymentIntentId, cutoffTime))) continue;
+        if (!(await expireKitchenAuthorization(booking.id, booking.paymentIntentId, new Date()))) continue;
 
         // Update payment_transactions
         try {
@@ -394,12 +396,33 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
 /**
  * Send email + in-app notification to chef when their authorization expires
  */
-async function sendAuthExpiryNotification(
+export async function sendAuthExpiryNotification(
   chefId: number | null,
   recordId: number,
   type: "kitchen_booking" | "storage_extension",
   kitchenId?: number,
+  tx?: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  responseDeadlineAt?: string,
 ) {
+  if (type === 'kitchen_booking') {
+    if (!tx || !responseDeadlineAt) throw new Error('Request expiry notice requires a verified release transaction');
+    const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, location: locations }).from(kitchenBookings)
+      .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .where(eq(kitchenBookings.id, recordId)).limit(1);
+    if (!row) throw new Error('Expired request was not found');
+    const { getUserDisplayName } = await import('../utils/user-display');
+    const name = chefId ? await getUserDisplayName(chefId, 'chef', tx) : 'The chef';
+    const { emailLocalDateTime } = await import('../email');
+    const zone = row.location.timezone || DEFAULT_TIMEZONE;
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: zone, dateStyle: 'medium' })
+      .format((await import('@shared/booking-response-deadline')).firstBookingVisitStart(row.booking, zone));
+    const chefMessage = `${row.kitchen.name} didn't respond in time, so your request for ${date} expired. Your card wasn't charged.`;
+    const managerMessage = `${name}'s request for ${date} expired because it wasn't answered by ${emailLocalDateTime(responseDeadlineAt, zone)}. Their card hold was released.`;
+    await (await import('./booking-lifecycle-delivery')).queueBookingLifecycleEvent(tx, recordId, 'cancelled', 'Booking request expired', chefMessage,
+      undefined, { requestExpired: true, kitchenId: row.kitchen.id, kitchenPath: `/kitchen-preview/${row.location.id}?kitchenId=${row.kitchen.id}`, responseDeadlineAt,
+        roleText: { chef: { title: 'Booking request expired', message: chefMessage }, manager: { title: 'Booking request expired', message: managerMessage } } });
+    return;
+  }
   if (!chefId) return;
 
   try {
@@ -413,28 +436,15 @@ async function sendAuthExpiryNotification(
 
     if (!chef?.username) return;
 
-    let kitchenName = "Kitchen";
-    if (kitchenId) {
-      const [kitchen] = await db
-        .select({ name: kitchens.name })
-        .from(kitchens)
-        .where(eq(kitchens.id, kitchenId))
-        .limit(1);
-      if (kitchen) kitchenName = kitchen.name;
-    }
-
     // Send in-app notification
     try {
       await notificationService.createForChef({
         chefId,
         type: "booking_cancelled",
         title: "Booking Authorization Expired",
-        message:
-          type === "kitchen_booking"
-            ? `Your kitchen booking #${recordId} at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`
-            : `Your storage extension request #${recordId} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`,
-        metadata: { type, recordId: String(recordId), bookingId: type === "kitchen_booking" ? recordId : undefined },
-        actionUrl: type === "kitchen_booking" ? `/booking/${recordId}` : `/dashboard?view=bookings`,
+        message: `Your storage extension request #${recordId} wasn't answered in time, so it expired. Your card wasn't charged.`,
+        metadata: { type, recordId: String(recordId) },
+        actionUrl: `/dashboard?view=bookings`,
         actionLabel: "View details",
       });
     } catch {
@@ -444,26 +454,12 @@ async function sendAuthExpiryNotification(
     // Send email notification to chef
     try {
       const { sendEmail } = await import("../email");
-      const dashboardUrl = process.env.VITE_APP_URL || 'https://localcooks.ca';
-      const isKitchen = type === "kitchen_booking";
-      await sendEmail({
-        to: chef.username,
-        subject: isKitchen
-          ? `Booking Authorization Expired - ${kitchenName}`
-          : `Storage Extension Request Expired`,
-        html: `
-          <h2>${isKitchen ? 'Booking Authorization Expired' : 'Storage Extension Request Expired'}</h2>
-          <p>${isKitchen
-            ? `Your kitchen booking at <strong>${kitchenName}</strong> was automatically cancelled because the manager did not respond within 24 hours.`
-            : `Your storage extension request was automatically cancelled because the manager did not respond within 24 hours.`}</p>
-          <p><strong>Your card has not been charged.</strong> The payment hold has been released.</p>
-          <p>You can book again at any time from your dashboard.</p>
-          <p><a href="${dashboardUrl}/dashboard" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Dashboard</a></p>
-        `,
-        text: isKitchen
-          ? `Booking Authorization Expired\n\nYour kitchen booking at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours.\n\nYour card has NOT been charged. The payment hold has been released.\n\nYou can book again at any time from your dashboard.`
-          : `Storage Extension Request Expired\n\nYour storage extension request was automatically cancelled because the manager did not respond within 24 hours.\n\nYour card has NOT been charged. The payment hold has been released.`,
-      });
+      const { getAppBaseUrl } = await import('../config');
+      const url = `${getAppBaseUrl('chef')}/dashboard?view=bookings`;
+      const message = "Your storage extension request wasn't answered in time, so it expired. Your card wasn't charged. The payment hold was released.";
+      const { renderTransactionalEmail } = await import('../email');
+      await sendEmail(renderTransactionalEmail({ to: chef.username, recipientName: 'there', subject: 'Storage extension request expired',
+        message, facts: [], actionLabel: 'View bookings', actionUrl: url }));
       logger.info(`[AuthExpiry] Sent expiry email to chef ${chef.username}`);
     } catch (emailErr: any) {
       logger.warn(`[AuthExpiry] Could not send expiry email to chef ${chefId}:`, emailErr);

@@ -135,11 +135,8 @@ export function InSessionPanel({
       </div>
 
       <div className="space-y-2">
-        <p className="text-2xl font-semibold tabular-nums" aria-hidden="true">{countdown}</p>
-        {/* Announced at minute granularity only: the text changes once per minute, not per tick. */}
-        <p className="sr-only" role="status" aria-live="polite">
-          {phase === "ended" ? t("kciIsTimeEnded", { defaultValue: "Your booked time ended" }) : t("kciIsLiveMinutes", { defaultValue: "{minutes} minutes left in your booked time", minutes: minutesLeft })}
-        </p>
+        {/* One countdown, announced politely: its text changes at most once a minute. */}
+        <p className="text-2xl font-semibold tabular-nums" role="status" aria-live="polite">{countdown}</p>
         <div role="progressbar" aria-label={t("kciIsProgressLabel", { defaultValue: "Booked time used" })} aria-valuemin={0} aria-valuemax={100}
           aria-valuenow={Math.round(progress)} className="h-2 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />

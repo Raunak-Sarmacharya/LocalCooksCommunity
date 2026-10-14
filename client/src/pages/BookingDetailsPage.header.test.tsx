@@ -4,17 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chef from "@shared/i18n/locales/en-CA/chef.json";
 import { IntlMessageFormat } from "intl-messageformat";
 
-const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unknown> }));
+const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unknown>, navigate: vi.fn() }));
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "token" } } }));
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ loading: false, user: { uid: "u" } }) }));
+vi.mock("@/components/booking/BookingFeedbackCard", () => ({ BookingFeedbackCard: () => null }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }), useQuery: () => ({ data: undefined, isLoading: false }) }));
 vi.mock("wouter", () => ({
   useRoute: (pattern: string) => (pattern === "/manager/booking/:id" ? (h.manager ? [true, { id: "5" }] : [false, null]) : (!h.manager && pattern === "/booking/:id" ? [true, { id: "5" }] : [false, null])),
-  useLocation: () => ["/", vi.fn()],
+  useLocation: () => ["/", h.navigate],
   Link: ({ children }: any) => children,
 }));
 vi.mock("@/layouts/ChefDashboardLayout", () => ({ default: ({ children }: any) => <main>{children}</main> }));
@@ -84,7 +85,7 @@ const cases: Case[] = [
   { name: "in session", now: START + 30 * 60_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "checked_in", checkedInAt: "2030-01-15T13:32:00Z" },
     pill: { chef: "In session", manager: "In session" },
     next: { chef: /^You’re checked in\. Check out by 12:00 p\.m\.$/, manager: /^Ada Lovelace is in the kitchen until 12:00 p\.m\.$/ },
-    primary: { chef: "Open your visit", manager: null }, message: true },
+    primary: { chef: "Check out", manager: null }, message: true },
   { name: "checkout requested", now: START + 3 * 3_600_000, booking: { status: "confirmed", paymentStatus: "paid", checkinStatus: "checkout_requested",
       checkedInAt: "2030-01-15T13:32:00Z", checkoutRequestedAt: "2030-01-15T15:20:00Z", closeout: closeout("2030-01-16T15:30:00Z") },
     pill: { chef: "Checkout submitted", manager: "Checkout to review" },
@@ -181,5 +182,89 @@ describe("contact details", () => {
     render(<BookingDetailsPage />);
     await screen.findByTestId("booking-header");
     expect(screen.queryByTestId("visit-card")).not.toBeInTheDocument();
+  });
+});
+
+describe("cancel or change on a finished visit", () => {
+  const finished = { status: "confirmed", paymentStatus: "paid", checkinStatus: "checked_out",
+    checkedInAt: "2030-01-15T13:32:00Z", checkoutRequestedAt: "2030-01-15T15:20:00Z" };
+  it.each(["chef", "manager"] as const)("offers no cancellation card or menu item to the %s once the visit is done", async role => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(START + 3 * 3_600_000);
+    h.manager = role === "manager";
+    h.booking = { ...base(), ...finished };
+    render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-header");
+    expect(screen.queryByTestId("cancellation-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cancel or change")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cancel or change booking")).not.toBeInTheDocument();
+  });
+  it("still offers it to the chef before arrival", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(START - 3 * 86_400_000);
+    h.manager = false;
+    h.booking = { ...base(), status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" };
+    render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-header");
+    expect(screen.getByTestId("cancellation-card")).toBeInTheDocument();
+  });
+});
+
+describe("why a request ended", () => {
+  const ended = (actorId?: number) => ({ status: "cancelled", paymentStatus: "failed",
+    paymentDecision: { state: "complete", target: "cancelled", ...(actorId ? { actorId } : {}) } });
+  it.each([
+    ["declined", 9, "Declined", /^Harbour Kitchen couldn’t take this request\. Your card wasn’t charged\.$/, /^You declined this request\. Ada Lovelace’s card wasn’t charged\.$/],
+    ["expired", undefined, "Expired", /^Harbour Kitchen didn’t respond in time, so the request expired\. Your card wasn’t charged\.$/, /^This request expired before it was answered\. Ada Lovelace’s card wasn’t charged\.$/],
+    ["withdrawn", 1, "Cancelled", /^You cancelled this request\. Your card wasn’t charged\.$/, /^Ada Lovelace cancelled this request\.$/],
+  ] as const)("says %s in the pill and next step", async (_cause, actorId, chefPill, chefNext, managerNext) => {
+    for (const role of ["chef", "manager"] as const) {
+      cleanup();
+      h.manager = role === "manager";
+      h.booking = { ...base(), ...ended(actorId) };
+      render(<BookingDetailsPage />);
+      const header = await screen.findByTestId("booking-header");
+      expect(within(header).getByTestId("booking-status-pill")).toHaveTextContent(chefPill);
+      expect(within(header).getByTestId("booking-next-step").textContent).toMatch(role === "chef" ? chefNext : managerNext);
+    }
+  });
+  it("offers the chef a way to find another time after a decline, and not after an expiry", async () => {
+    h.manager = false;
+    h.booking = { ...base(), ...ended(9) };
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("find-another-time")).toHaveAttribute("href", "/book/3?kitchenId=2");
+    cleanup();
+    h.booking = { ...base(), ...ended(undefined) };
+    render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-header");
+    expect(screen.queryByTestId("find-another-time")).not.toBeInTheDocument();
+  });
+  it("shows one Not charged line, a manager-worded hold message and no refund-details link when nothing was captured", async () => {
+    h.manager = true;
+    h.booking = { ...base(), ...ended(9), totalPrice: 2500, paymentTransaction: { amount: 3050, serviceFee: 0, managerRevenue: 0, status: "canceled" } };
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(within(card).getByText("The chef’s card hold was released. Nothing was charged.")).toBeInTheDocument();
+    expect(within(card).getByTestId("not-charged-line")).toHaveTextContent("Not charged$30.50");
+    expect(within(card).queryByText("Original Quote")).not.toBeInTheDocument();
+    expect(within(card).queryByText("View cancellation and refund details")).not.toBeInTheDocument();
+  });
+});
+
+describe("a manager opening a chef link", () => {
+  it("is sent to the manager page for that booking instead of seeing Not found", async () => {
+    h.manager = false; h.navigate.mockClear();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).includes("/api/manager/")
+      ? new Response(JSON.stringify({ ...base() })) : new Response("{}", { status: 403 })));
+    render(<BookingDetailsPage />);
+    await vi.waitFor(() => expect(h.navigate).toHaveBeenCalledWith("/manager/booking/5", { replace: true }));
+    expect(screen.queryByText(/permission/i)).not.toBeInTheDocument();
+  });
+  it("still shows the error to someone who is not that booking's manager", async () => {
+    h.manager = false; h.navigate.mockClear();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 403 })));
+    render(<BookingDetailsPage />);
+    expect(await screen.findByText(/permission/i)).toBeInTheDocument();
+    expect(h.navigate).not.toHaveBeenCalled();
   });
 });

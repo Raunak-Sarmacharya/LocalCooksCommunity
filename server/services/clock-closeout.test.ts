@@ -45,6 +45,7 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     const result = await db.transaction(tx => persistBookingCloseout(10, tx));
     expect(result.projection?.status).toBe('completed');
     expect(result.projection?.visits[0].attendance).toBe('unknown');
+    expect(state.booking.feedbackRequestedAt).toEqual(new Date('2026-10-13T14:00:00Z'));
     expect(state.booking.checkinStatus).toBe('not_checked_in');
     expect(state.booking).not.toHaveProperty('checkoutApprovedAt');
     expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 10, 'service_ended', expect.anything(), expect.anything(), undefined,
@@ -58,6 +59,23 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     expect(state.booking).toEqual(before); expect(state.writes).toHaveLength(writes);
     expect(Object.values(state.booking.visitDuties.clockCloseout.inspections)).toEqual([{ outcome: 'auto_closed_uninspected', closedAt: '2026-10-14T13:30:00.000Z' }]);
     expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(2);
+  });
+  it('requests feedback for attended completion and preserves its original timestamp on later sweeps', async () => {
+    state.booking.checkinStatus = 'checked_in'; state.booking.checkedInAt = new Date('2026-10-13T12:30:00Z');
+    await db.transaction(tx => persistBookingCloseout(10, tx));
+    const requested = state.booking.feedbackRequestedAt;
+    expect(requested).toEqual(new Date('2026-10-13T14:00:00Z'));
+    vi.setSystemTime(new Date('2026-10-20T14:00:00Z')); await sweepClockCloseout();
+    expect(state.booking.feedbackRequestedAt).toEqual(requested);
+  });
+  it('does not request feedback for reported no-shows', async () => {
+    state.booking.checkinStatus = 'no_show'; state.booking.noShowDetectedAt = new Date();
+    await db.transaction(tx => persistBookingCloseout(10, tx));
+    expect(state.booking.feedbackRequestedAt).toBeUndefined();
+  });
+  it.each(['cancelled', 'pending', 'cancellation_requested'])('does not request feedback for %s', async status => {
+    state.booking.status = status; await db.transaction(tx => persistBookingCloseout(10, tx));
+    expect(state.booking.feedbackRequestedAt).toBeUndefined();
   });
   it('closes an old booking silently: state is saved, no notices are queued, and a repeat changes nothing', async () => {
     // Rollout anchored the cutover after this booking finished (service ended 13:45Z, inspection closed 14 Oct 13:30Z).

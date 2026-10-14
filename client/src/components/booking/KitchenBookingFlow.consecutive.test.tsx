@@ -14,7 +14,7 @@ vi.mock('@/hooks/use-unpaid-penalties', () => ({ useUnpaidPenaltiesCheck: () => 
 vi.mock('@/hooks/use-storage-pricing', () => ({ useStoragePricing: () => ({ totalPrice: 0, items: [] }) }));
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'test-token' } } }));
 vi.mock('@/lib/persisted-booking-prefs', () => ({ findPersistedBookingForKitchens: () => null, notifyBookingPrefsChanged: () => {} }));
-vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ i18n: { language: 'en-CA' }, t: (key: string, options: any) => typeof options === 'string' ? options : options?.defaultValue || key }) }));
+vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ i18n: { language: 'en-CA' }, t: (key: string, options: any) => typeof options === 'string' ? options : key.startsWith('sheet') ? (options?.defaultValue || key).replace(/\{(\w+)\}/g, (_: string, name: string) => options[name] ?? `{${name}}`) : options?.defaultValue || key }) }));
 import KitchenBookingFlow from './KitchenBookingFlow';
 
 beforeEach(() => {
@@ -22,7 +22,8 @@ beforeEach(() => {
   fixture.times = ['09:00', '10:00', '11:00', '12:00']; fixture.full = [];
   fixture.rateMode = 'hourly';
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    const data = url.includes('/pricing') ? { hourlyRate: 100, dailyRate: 400, pricingModel: fixture.rateMode, minimumBookingHours: fixture.minimum }
+    const data = url.includes('/pricing') ? { hourlyRate: 100, dailyRate: 400, pricingModel: fixture.rateMode, minimumBookingHours: fixture.minimum,
+      preparationReminderHours: 36, managerResponseBufferHours: 2, timezone: 'America/St_Johns' }
       : url.includes('/policy') ? { maxSlotsPerChef: 4 }
       : url.includes('/slots?') ? fixture.times.map(time => ({ time, available: 1, capacity: 1, isFullyBooked: fixture.full.includes(time) }))
       : url.includes('equipment-listings') ? { included: [], rental: [] } : [];
@@ -43,6 +44,15 @@ const hour = (start: number) => screen.getByRole('button', { name: new RegExp(`$
 const selected = (start: number) => expect(hour(start).className).toContain('bg-[#F51042]');
 
 describe('actual kitchen picker consecutive selection', () => {
+  it('shows the configured preparation lead and a friendly kitchen-zone response deadline', async () => {
+    await open(['09:00']);
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
+    const next = screen.getByTestId('what-happens-next');
+    expect(next.textContent).toContain('36 hours before your visit');
+    expect(next.textContent).toMatch(/The kitchen has until .+Newfoundland Time to respond/);
+    expect(next.textContent).not.toContain('America/St_Johns');
+    expect(next.textContent).not.toContain('48 hours');
+  });
   it('adds adjacent hours, rejects a distant click and middle deselection, allows end removal', async () => {
     await open();
     fireEvent.click(hour(9)); fireEvent.click(hour(11));

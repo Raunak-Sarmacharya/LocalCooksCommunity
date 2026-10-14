@@ -6,8 +6,9 @@ import { logger } from '../logger';
 
 // Fixed source inventory; neither table names nor predicates come from a request.
 export const reminderSources: ReminderSource[] = ['booking', 'tour', 'claim', 'penalty', 'booking_review',
-  'storage_review', 'cancellation_review', 'storage_cancellation_review', 'storage_arrival'];
+  'storage_review', 'cancellation_review', 'storage_cancellation_review', 'storage_arrival', 'manager_decision'];
 const currentSource: Record<ReminderSource, string> = {
+  manager_decision: "SELECT id FROM kitchen_bookings WHERE status = 'pending' AND payment_status = 'authorized'",
   booking: "SELECT id FROM kitchen_bookings WHERE status = 'confirmed'",
   tour: "SELECT id FROM kitchen_viewings WHERE status = 'confirmed' OR (checked_in_at IS NOT NULL AND checked_out_at IS NULL)",
   claim: "SELECT id FROM damage_claims WHERE status = 'submitted'",

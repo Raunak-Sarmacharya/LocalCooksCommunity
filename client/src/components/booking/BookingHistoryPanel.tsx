@@ -5,8 +5,12 @@ import { compareHistoryEvents, type BookingHistoryResponse } from '@shared/booki
 import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { bookingReference } from '@/lib/booking-reference';
+import type { BookingCancelCause } from '@/lib/booking-cancel-cause';
 
-export function BookingHistoryPanel({ id, version, reference, role, timezone, limit }: { id: number; version: string; reference?: string | null; role: 'chef' | 'manager'; timezone?: string | null;
+export function BookingHistoryPanel({ id, version, reference, role, timezone, cancelCause, limit }: { id: number; version: string; reference?: string | null; role: 'chef' | 'manager'; timezone?: string | null;
+  /** Why the request ended, when known: relabels the cancelled entry (declined, expired, withdrawn). */
+  cancelCause?: BookingCancelCause | null;
   /** Show only the latest N events until "Show all" is pressed (booking page sidebar). */
   limit?: number }) {
   const { t, i18n } = useTranslation('booking');
@@ -28,7 +32,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, li
   return <section aria-label={t('historyTitle')} className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-sm font-semibold leading-5">{t('historyTitle')}</h2>
-      <span className="text-muted-foreground">{reference || 'BOOKING-' + id}</span>
+      <span className="text-muted-foreground">{bookingReference(reference, id)}</span>
     </div>
     <p className="text-muted-foreground">{timezone ? friendlyTimezoneName(timezone, i18n.resolvedLanguage) : t('historyTimeUnavailable')}</p>
     <div role="region" aria-label={t('historyActivity')} tabIndex={0} className="max-h-80 min-w-0 overflow-y-auto overscroll-contain pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -45,7 +49,8 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, li
               {index === events.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 top-2 w-3 bg-card" />}
               <span data-testid="booking-history-dot" aria-hidden="true" className="absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full bg-primary" />
               <div className="grid min-w-0 items-start gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
-                <p className="min-w-0 break-words font-medium leading-4">{t(`historyEvents.${event.kind}` as const)}</p>
+                <p className="min-w-0 break-words font-medium leading-4">{event.kind === 'cancelled' && cancelCause && ['declined', 'expired', 'withdrawn'].includes(cancelCause)
+                  ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined') : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>
               </div>
               {event.visitId && <p className="text-muted-foreground">{t('historyVisit', { id: event.visitId })}</p>}

@@ -103,6 +103,61 @@ beforeEach(() => {
 });
 const schedule = (source: any = 'booking', id = 10) => state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, source, id, policy));
 const dispatch = (clock = now, limit = 30) => dispatchAdvanceReminders({ now: clock, policy, limit });
+describe('manager request decision reminders', () => {
+  beforeEach(() => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized', createdAt: now });
+    state.people[0].managerProfileData = { fullName: 'Alex' };
+  });
+  it('schedules both channels at 12h and 2h before R5, then sends once with Review request', async () => {
+    await schedule('manager_decision');
+    expect(state.logs).toHaveLength(4);
+    expect([...new Set(state.logs.map(log => JSON.parse(log.textBody).reminder.due))]).toEqual(['2026-10-04T19:00:00.000Z', '2026-10-05T05:00:00.000Z']);
+    expect(state.logs.every(log => log.recipientUserId === 2 && log.subject.includes("Alex's request"))).toBe(true);
+    await dispatch(new Date('2026-10-04T19:00:00Z'));
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.send.mock.calls[0][0].text).toContain('Review request');
+    expect(state.send.mock.calls[0][0].text).toContain('7:00 a.m.');
+    expect(state.alerts[0]).toMatchObject({ actionLabel: 'Review request', actionUrl: '/manager/booking/10' });
+    await schedule('manager_decision'); await dispatch(new Date('2026-10-04T19:00:00Z'));
+    expect(state.send).toHaveBeenCalledTimes(1);
+    await dispatch(new Date('2026-10-05T05:00:00Z'));
+    expect(state.send).toHaveBeenCalledTimes(2);
+  });
+  it('skips missed leads and leads inside the first 30 minutes', async () => {
+    vi.setSystemTime(new Date('2026-10-04T20:00:00Z')); await schedule('manager_decision');
+    expect(state.logs).toHaveLength(2);
+    state.logs = []; state.booking.createdAt = new Date('2026-10-05T04:45:00Z');
+    vi.setSystemTime(state.booking.createdAt); await schedule('manager_decision');
+    expect(state.logs).toHaveLength(0);
+  });
+  it('keeps the final reminder identity when the early lead is too soon after creation', async () => {
+    state.booking.createdAt = new Date('2026-10-04T22:00:00Z');
+    vi.setSystemTime(state.booking.createdAt); await schedule('manager_decision');
+    expect(state.logs).toHaveLength(2);
+    expect(state.logs.every(log => JSON.parse(log.textBody).reminder.resource.endsWith('-decision-1'))).toBe(true);
+  });
+  it.each(['confirmed', 'cancelled'])('suppresses outstanding reminders after %s', async status => {
+    await schedule('manager_decision'); state.booking.status = status;
+    await schedule('manager_decision'); await dispatch(new Date('2026-10-05T05:00:00Z'));
+    expect(state.logs.every(log => log.status === 'suppressed')).toBe(true); expect(state.send).not.toHaveBeenCalled();
+  });
+  it('suppresses at expiry or when a payment decision is in progress', async () => {
+    await schedule('manager_decision'); state.booking.paymentDecision = { state: 'pending' };
+    await dispatch(new Date('2026-10-04T19:00:00Z'));
+    expect(state.send).not.toHaveBeenCalled();
+    delete state.booking.paymentDecision; await schedule('manager_decision');
+    await dispatch(new Date('2026-10-05T07:00:00Z'));
+    expect(state.send).not.toHaveBeenCalled(); expect(state.logs.every(log => log.status === 'suppressed')).toBe(true);
+  });
+  it('honours edited reminder leads without resending an accepted reminder', async () => {
+    await schedule('manager_decision'); await dispatch(new Date('2026-10-04T19:00:00Z'));
+    state.settings = { manager_decision_first_reminder_hours: '10', manager_decision_final_reminder_hours: '3' };
+    await schedule('manager_decision'); await dispatch(new Date('2026-10-04T21:00:00Z'));
+    expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs.filter(log => log.status === 'scheduled').map(log => JSON.parse(log.textBody).reminder.due))
+      .toEqual(['2026-10-05T04:00:00.000Z', '2026-10-05T04:00:00.000Z']);
+  });
+});
 afterEach(() => vi.useRealTimers());
 
 it('renders the approved mode lines in all three outbound locales', () => {

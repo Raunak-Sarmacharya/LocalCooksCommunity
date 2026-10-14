@@ -10,10 +10,12 @@ import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { ensureChallengesForBooking } from './visit-code-challenge';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
+import { getBookingResponseDeadline } from './booking-response-deadline';
 
 type ItemAction = { action: 'confirmed' | 'cancelled'; storageBookingId?: number; equipmentBookingId?: number };
 type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending' | 'complete'; intentId: string;
   actorId?: number;
+  expiry?: { responseDeadlineAt: string };
   amount: number; subtotal: number; tax: number; commission: number; authorizedAmount: number; taxRate: number;
   storage: { id: number; status: 'confirmed' | 'cancelled' }[];
   equipment: { id: number; status: 'confirmed' | 'cancelled' }[]; startedAt: string; completedAt?: string };
@@ -24,19 +26,19 @@ type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending
 export class BookingRequestExpired extends BookingTermsReviewRequired {
   constructor() {
     super();
-    this.message = 'This request passed its response deadline, so it can no longer be confirmed. The card hold has been released.';
+    this.message = 'This request passed its response deadline, so it can no longer be confirmed. Open the booking for the card hold status.';
   }
 }
 
 /** Persist one immutable decision before Stripe; retries reconcile that same decision. */
 export async function decideAuthorizedBooking(bookingId: number, target: 'confirmed' | 'cancelled',
-  storageActions: ItemAction[] = [], equipmentActions: ItemAction[] = [], actorId?: number) {
+  storageActions: ItemAction[] = [], equipmentActions: ItemAction[] = [], actorId?: number, expiry?: Decision['expiry']) {
   const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!booking?.paymentIntentId) throw new BookingTermsReviewRequired();
   let decision = booking.paymentDecision as Decision | null;
   if (!decision && target === 'confirmed' && booking.status === 'pending' && booking.paymentStatus === 'authorized') {
-    const { AUTH_EXPIRY_HOURS, lazyExpireKitchenBookingAuth } = await import('./auth-expiry-service');
-    if (booking.createdAt && booking.createdAt.getTime() <= Date.now() - AUTH_EXPIRY_HOURS * 3_600_000) {
+    const { lazyExpireKitchenBookingAuth } = await import('./auth-expiry-service');
+    if (booking.createdAt && new Date() >= await getBookingResponseDeadline(booking)) {
       // Release the hold now rather than leaving it for the next worker tick.
       await lazyExpireKitchenBookingAuth(booking);
       throw new BookingRequestExpired();
@@ -74,6 +76,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       if (current?.paymentDecision) return current.paymentDecision as Decision;
       if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
         || current.updatedAt.getTime() !== booking.updatedAt.getTime()) throw new Error('Booking changed; refresh before deciding');
+      if (target === 'confirmed' && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))
+        throw new BookingRequestExpired();
       const storage = await tx.select().from(storageBookings).where(eq(storageBookings.kitchenBookingId, bookingId)).for('update');
       const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, bookingId)).for('update');
       if (target === 'confirmed' && (storage.length !== requestedStorage.length || storage.some(item => !requestedStorage.includes(item.storageListingId))))
@@ -102,7 +106,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       if (target === 'confirmed' && rejectedCents > 0 && !itemPrices) throw new BookingTermsReviewRequired();
       const subtotal = target === 'confirmed' ? terms.subtotal - rejectedCents : 0;
       const capture = target === 'confirmed' ? approvedBookingCapture(terms, subtotal) : { amount: 0, tax: 0, commission: 0 };
-      const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal, actorId,
+      const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal, actorId, expiry,
         ...capture, authorizedAmount: terms.authorizedAmount, taxRate: terms.rate, storage: storagePlan,
         equipment: equipmentPlan, startedAt: new Date().toISOString() };
       // The webhook needs this split before capture to calculate the manager transfer.
@@ -219,7 +223,8 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
       .where(eq(paymentTransactions.paymentIntentId, decision!.intentId));
     // New confirmations only: one staffed arrival challenge per arrival target, same transaction as the status change.
     if (decision!.target === 'confirmed') await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
-    await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
+    if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
+    else await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
       decision!.target === 'confirmed' ? `Your kitchen booking is confirmed and the approved items are paid. Open the booking for arrival details and next steps.`
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,

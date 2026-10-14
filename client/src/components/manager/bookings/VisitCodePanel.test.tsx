@@ -133,9 +133,9 @@ describe("VisitCodePanel", () => {
   });
 
   it.each([
-    ["code", /^Arrived 9:02\s*[ap]\.m\. with the visit code$/],
-    ["self", /^Arrived 9:02\s*[ap]\.m\. with self check-in$/],
-    ["assisted", /^Arrived 9:02\s*[ap]\.m\., added by the kitchen$/],
+    ["code", /^Checked in 9:02\s*[ap]\.m\. with the visit code$/],
+    ["self", /^Checked in 9:02\s*[ap]\.m\. with self check-in$/],
+    ["assisted", /^Checked in 9:02\s*[ap]\.m\., added by the kitchen$/],
   ])("after a %s arrival shows only the method and time, never the code", async (method, pattern) => {
     state.targets = [{ ...base, consumed: true, consumedMethod: method, consumedAt: "2026-10-13T11:32:00Z", code: null }];
     await mount();
@@ -166,8 +166,13 @@ describe("VisitCodePanel", () => {
   it("inside the booking page shows one arrival line after the visit and never a leftover code", async () => {
     state.targets = [{ ...base, visitId: null, consumed: true, consumedMethod: "code", consumedAt: "2026-10-13T11:32:00Z", code: null }];
     await mount({ embedded: true, visitEnded: true });
-    expect((await screen.findByTestId("visit-code-consumed")).textContent?.replace(/[  ]/g, " ")).toMatch(/^Arrived 9:02\s*a\.m\. with the visit code$/);
+    expect((await screen.findByTestId("visit-code-consumed")).textContent?.replace(/[  ]/g, " ")).toMatch(/^Checked in 9:02\s*a\.m\. with the visit code$/);
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    cleanup(); client.clear();
+    // The page is told this panel already states the arrival, so the record line does not repeat it.
+    const shown = vi.fn();
+    await mount({ embedded: true, visitEnded: true, onArrivalShown: shown });
+    await waitFor(() => expect(shown).toHaveBeenLastCalledWith(true));
     cleanup(); client.clear();
     state.targets = [{ ...base }];
     const { container } = await mount({ embedded: true, visitEnded: true });

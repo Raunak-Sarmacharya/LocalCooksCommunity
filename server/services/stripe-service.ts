@@ -10,6 +10,7 @@ import { logger } from "../logger";
  */
 
 import Stripe from 'stripe';
+import { assertBookingMoneyWritable } from './booking-money-guard';
 import { assertWorkerTime, inRecurringWorker, workerRemaining } from './worker-context';
 
 // Initialize Stripe client
@@ -603,11 +604,24 @@ export async function createRefund(
   amount?: number,
   reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer',
   options?: {
+    idempotencyKey?: string;
+    sourceConnection?: Parameters<Parameters<typeof import('../db').db.transaction>[0]>[0];
     reverseTransfer?: boolean;
     refundApplicationFee?: boolean;
     metadata?: Record<string, string>;
   }
 ): Promise<{ id: string; amount: number; status: string; charge: string }> {
+  if (!options?.sourceConnection) {
+    const { db } = await import('../db');
+    const { paymentTransactions } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    return db.transaction(async tx => {
+      await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentIntentId, paymentIntentId)).for('update');
+      return createRefund(paymentIntentId, amount, reason, { ...options, sourceConnection: tx });
+    });
+  }
+  await assertBookingMoneyWritable({ paymentIntentId, operationKey: options.idempotencyKey }, options.sourceConnection);
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -653,7 +667,17 @@ export async function createRefund(
       refundParams.metadata = options.metadata;
     }
 
-    const refund = await stripe.refunds.create(refundParams);
+    let recovered: Stripe.Refund | undefined;
+    if (options.idempotencyKey) {
+      refundParams.metadata = { ...refundParams.metadata, refund_operation_id: options.idempotencyKey };
+      for await (const receipt of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
+        if (receipt.metadata?.refund_operation_id !== options.idempotencyKey) continue;
+        if (recovered || receipt.amount !== amount) throw new Error('The saved refund needs Local Cooks review before another attempt.');
+        recovered = receipt;
+      }
+    }
+    const refund = recovered || await stripe.refunds.create(refundParams,
+      options.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-refund` } : undefined);
 
     if (!refund.charge || typeof refund.charge !== 'string') {
       throw new Error('Refund created but charge ID is missing');
@@ -823,6 +847,7 @@ export async function reverseTransferAndRefund(
     metadata?: Record<string, string>;
     transferMetadata?: Record<string, string>;
     sourceConnection?: Parameters<Parameters<typeof import('../db').db.transaction>[0]>[0];
+    supportOperationKey?: string;
   }
 ): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string | null }> {
   if (!options?.sourceConnection) {
@@ -835,6 +860,7 @@ export async function reverseTransferAndRefund(
       return reverseTransferAndRefund(paymentIntentId, amount, reason, { ...options, sourceConnection: tx });
     });
   }
+  await assertBookingMoneyWritable({ paymentIntentId, operationKey: options.supportOperationKey || options.idempotencyKey }, options.sourceConnection);
   const stripe = decisionStripe();
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -940,7 +966,7 @@ export async function reverseTransferAndRefund(
     // platform service fee, reverseTransferAmount < refund amount — the platform
     // absorbs the fee from its own balance. Fall back to charge-proration only
     // when no explicit manager debit was provided.
-    if (transferId && options?.reverseTransferAmount !== undefined) {
+    if (transferId && options?.reverseTransferAmount !== undefined && options.reverseTransferAmount > 0) {
       const transfer = await stripe.transfers.retrieve(transferId);
       const reversalAmount = Math.max(0, options.reverseTransferAmount);
       const operationId = options.idempotencyKey;
@@ -961,7 +987,7 @@ export async function reverseTransferAndRefund(
         }, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-reversal` } : undefined);
         transferReversalId = reversal.id;
       }
-    } else if (transferId && transferredAmount > 0) {
+    } else if (transferId && transferredAmount > 0 && options?.reverseTransferAmount === undefined) {
       const { reverseTransferForRefund } = await import('./stripe-transfer-service');
       const reversal = await reverseTransferForRefund(
         transferId,

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableName } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ parent: null as any, sources: [] as any[], storage: [] as any[], equipment: [] as any[], extensions: [] as any[],
-  managerId: 2, receipts: {} as Record<string, any[]>, providerStatus: 'succeeded', secondProviderPending: false, failResponse: false, calls: [] as any[], notices: vi.fn(), history: vi.fn() }));
+  managerId: 2, receipts: {} as Record<string, any[]>, providerStatus: 'succeeded', secondProviderPending: false, failResponse: false, calls: [] as any[], notices: vi.fn(), history: vi.fn(), goodwill: vi.fn(), frozen: false }));
 vi.mock('../db', () => ({ db: { transaction: async (work: any) => work(connection) } }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.notices }));
 vi.mock('./payment-transactions-service', () => ({ addPaymentHistory: state.history }));
@@ -10,7 +10,7 @@ vi.mock('./booking-linked-cancellation', () => ({ cancelledStorageStatus: 'cance
   for (const item of state.storage) { item.status = item.checkinStatus === 'checkin_completed' ? 'cancellation_requested' : 'cancelled'; item.cancellationAcceptedAt = new Date(); }
   for (const item of state.equipment) if (item.status !== 'completed') item.status = 'cancelled';
 } }));
-vi.mock('./stripe-service', () => ({ verifyCancellationRefundFunding: async () => ({ transferId: null, available: null }), getCancellationPaymentFacts: async (intent: string) => {
+vi.mock('./stripe-service', () => ({ createRefund: state.goodwill, verifyCancellationRefundFunding: async () => ({ transferId: null, available: null }), getCancellationPaymentFacts: async (intent: string) => {
   const source = state.sources.find(row => row.paymentIntentId === intent);
   const refunds = state.receipts[intent] || [];
   return { captured: Number(source.amount), processingCost: 384, currency: 'cad', chargeId: `ch_${source.id}`,
@@ -19,16 +19,18 @@ vi.mock('./stripe-service', () => ({ verifyCancellationRefundFunding: async () =
 reverseTransferAndRefund: async (intent: string, amount: number, _reason: string, options: any) => {
   // The committed reservation is present before provider I/O.
   const source = state.sources.find(row => row.paymentIntentId === intent);
-  expect(source.metadata.cancellationRefundOperation.id).toBe(options.idempotencyKey);
+  if (source.metadata.cancellationRefundOperation) expect(source.metadata.cancellationRefundOperation.id).toBe(options.idempotencyKey);
+  else expect(options.idempotencyKey).toMatch(/^support-/);
   const existing = (state.receipts[intent] || []).find(row => row.metadata.refund_operation_id === options.idempotencyKey);
   const refund = existing || { id: `re_${source.id}`, amount, status: state.secondProviderPending && source.id === 100 ? 'pending' : state.providerStatus, metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
-  if (!existing) { (state.receipts[intent] ||= []).push(refund); state.calls.push({ intent, amount }); }
+  if (!existing) { (state.receipts[intent] ||= []).push(refund); state.calls.push({ intent, amount, options }); }
   if (state.failResponse) { state.failResponse = false; throw Error('Provider response lost'); }
   if (refund.status !== 'succeeded') throw Error(`Original refund ${refund.status}`);
   return { refundId: refund.id, refundAmount: amount, refundStatus: refund.status };
 } }));
 const params = (value: any) => new PgDialect().sqlToQuery(value).params;
 const connection: any = {
+  execute: async () => ({ rows: state.frozen ? [{ id: 1 }] : [] }),
   select: (fields: any) => {
     let table: any, joined = false, condition: any;
     const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => { joined = true; return chain; },
@@ -55,7 +57,7 @@ const connection: any = {
     return { returning: async () => [target], then: (resolve: any) => resolve() };
   } }) }),
 };
-import { acceptCancellationRefund, readCancellationRefund, retryCancellationRefund } from './booking-cancellation-refund';
+import { acceptCancellationRefund, readCancellationRefund, retryCancellationRefund, refundSupportGoodwill, cancelKitchenCausedBooking, requestChefCancellation } from './booking-cancellation-refund';
 describe('quoted parent cancellation reservation and provider recovery', () => {
   beforeEach(() => {
     vi.clearAllMocks(); vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-01T12:00:00Z'));
@@ -64,9 +66,58 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
       operatingWindowStartTime: '08:00', cancellationPolicyHours: 24, cancellationRequestedAt: new Date('2026-11-01T11:00:00Z'), updatedAt: new Date('2026-11-01T11:00:00Z') };
     state.sources = [{ id: 99, bookingId: 10, bookingType: 'kitchen', chefId: 3, managerId: 2, paymentIntentId: 'pi_original', status: 'succeeded',
       amount: '12200', baseAmount: '11500', managerRevenue: '11116', serviceFee: '700', refundAmount: '0', currency: 'CAD', metadata: {}, updatedAt: new Date('2026-11-01T11:00:00Z') }];
-    state.storage = []; state.equipment = []; state.extensions = []; state.receipts = {}; state.providerStatus = 'succeeded'; state.secondProviderPending = false; state.failResponse = false; state.calls = []; state.managerId = 2;
+    state.storage = []; state.equipment = []; state.extensions = []; state.receipts = {}; state.providerStatus = 'succeeded'; state.secondProviderPending = false; state.failResponse = false; state.calls = []; state.managerId = 2; state.frozen = false;
+    state.goodwill.mockImplementation(async (intent: string, amount: number, _reason: string, options: any) => {
+      const receipt = { id: 're_goodwill', charge: 'ch_99', amount, status: state.providerStatus,
+        metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
+      (state.receipts[intent] ||= []).push(receipt); return receipt;
+    });
   });
   const reviewed = async () => await readCancellationRefund(10, 2, 'manager') as any;
+  it('sends goodwill on the original charge without reversing the kitchen transfer and reconciles its allocation', async () => {
+    state.parent.status = 'confirmed'; state.sources[0].transferId = 'tr_kitchen';
+    const result = await refundSupportGoodwill(10, 2, 77, 1000, 'support-goodwill');
+    expect(result.refundId).toBe('re_goodwill'); expect(state.calls).toHaveLength(0);
+    expect(state.goodwill.mock.calls[0][3]).toMatchObject({ idempotencyKey: 'support-goodwill', metadata: {
+      manager_debited: '0', platform_goodwill_cents: '1000', support_actor_id: '77' } });
+    expect(state.goodwill.mock.calls[0][3].reverseTransfer).toBeUndefined();
+    expect(state.sources[0].managerRevenue).toBe('11116'); expect(state.sources[0].transferId).toBe('tr_kitchen');
+    expect(state.sources[0].refundAmount).toBe('1000');
+  });
+  it('refuses goodwill beyond the remaining captured payment, during an open flag, and for a pending refund', async () => {
+    state.parent.status = 'confirmed';
+    await expect(refundSupportGoodwill(10, 2, 77, 12201, 'support-goodwill')).rejects.toThrow('remaining payment');
+    state.frozen = true;
+    await expect(refundSupportGoodwill(10, 2, 77, 1000, 'support-goodwill')).rejects.toThrow('paused');
+    state.frozen = false; state.providerStatus = 'pending';
+    await expect(refundSupportGoodwill(10, 2, 77, 1000, 'support-goodwill')).rejects.toThrow('still being checked');
+  });
+  it('fully refunds a kitchen failure, records platform processing cost and cancels the linked items', async () => {
+    state.parent.status = 'confirmed'; state.sources[0].transferId = 'tr_kitchen';
+    const result = await cancelKitchenCausedBooking(10, 2, 77, 'support-kitchen-failure');
+    expect(result.amountCents).toBe(12200); expect(state.calls[0]).toMatchObject({ amount: 12200, options: { reverseTransferAmount: 11116,
+      metadata: { platform_processing_cost_cents: '384', platform_service_fee_returned: '700', support_actor_id: '77' } } });
+    expect(state.parent.status).toBe('cancelled'); expect(state.parent.paymentStatus).toBe('refunded');
+    expect(state.sources[0].refundAmount).toBe('12200');
+  });
+  it('refuses a kitchen-caused full refund with already used or separately charged add-ons', async () => {
+    state.parent.status = 'confirmed'; state.storage = [{ id: 20, kitchenBookingId: 10, chefId: 3, paymentIntentId: 'pi_original', status: 'confirmed', checkinStatus: 'checkin_completed' }];
+    await expect(cancelKitchenCausedBooking(10, 2, 77, 'support-kitchen-failure')).rejects.toThrow('linked payments');
+    expect(state.calls).toHaveLength(0);
+  });
+  it('requires allocation review for kitchen cancellation after a goodwill refund', async () => {
+    state.parent.status = 'confirmed';
+    state.receipts.pi_original = [{ id: 're_goodwill', status: 'succeeded', amount: 1000,
+      metadata: { customer_receives: '1000', manager_debited: '0', platform_service_fee_returned: '0', platform_goodwill_cents: '1000' } }];
+    await expect(cancelKitchenCausedBooking(10, 2, 77, 'support-kitchen-failure')).rejects.toThrow('funding review');
+    expect(state.calls).toHaveLength(0);
+  });
+  it('uses the existing chef request/cutoff path and keeps the internal note out of the notice', async () => {
+    state.parent.status = 'confirmed'; await requestChefCancellation(10, 3, 77);
+    expect(state.parent.status).toBe('cancellation_requested'); expect(state.notices.mock.calls[0][5]).toBe(77);
+    state.parent.status = 'confirmed'; state.parent.bookingDate = new Date('2026-11-01');
+    await expect(requestChefCancellation(10, 3, 77)).rejects.toThrow('deadline');
+  });
   it('shows the $122 quote and reserves before refund, then deduplicates acceptance', async () => {
     const quote = await reviewed(); expect(quote.sources[0]).toMatchObject({ managerRefund: 11116, serviceFeeReview: 700, processingCost: 384 });
     const accepted = await acceptCancellationRefund(10, 2, quote.quoteHash) as any;

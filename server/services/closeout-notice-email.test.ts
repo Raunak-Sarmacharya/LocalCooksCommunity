@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], cutover: null as Date | null, users: {} as Record<number, any> }));
+const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], answers: [] as any[], cutover: null as Date | null, users: {} as Record<number, any> }));
 vi.mock('../db', () => ({ db: {} }));
 vi.mock('./lifecycle-settings', () => ({ getSavedCloseoutNotificationsFrom: async () => state.cutover }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async (id: number) => state.users[id]?.name ?? (id === 3 ? 'A chef' : 'Manager') }));
@@ -12,6 +12,7 @@ function withUser(_id: number, username: string) {
   const select = () => {
     let table = '';
     const rows = () => table === 'users' ? [{ username }]
+      : table === 'booking_feedback_responses' ? state.answers
       : table === 'kitchen_booking_visits' ? state.visits
       : [{ booking: state.booking, kitchen: { id: 4, name: 'Harbour Kitchen' },
         location: { id: 1, name: 'Water Street Commissary', address: '1 Water St, St. John’s', timezone: 'America/St_Johns', managerId: 7 } }];
@@ -32,10 +33,21 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     const booking: any = { ...base, visitDuties: null };
     booking.visitDuties = { clockCloseout: { ...makeCloseoutSnapshot(booking, 'America/St_Johns',
       { serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 }), serviceEndedAt: '2026-10-13T13:45:00.000Z' } };
-    state.booking = booking; state.visits = []; state.cutover = null;
+    state.booking = booking; state.visits = []; state.answers = []; state.cutover = null;
     state.users = { 3: { name: 'Maya Chen', username: 'maya@example.test' }, 7: { name: 'Sam Lee', username: 'sam@example.test' } };
   });
   afterEach(() => vi.useRealTimers());
+  it('adds the feedback ask to each existing closeout email only while unanswered and open', async () => {
+    state.booking.feedbackRequestedAt = new Date('2026-10-13T13:45:00Z');
+    for (const [id, address] of [[3, 'maya@example.test'], [7, 'sam@example.test']] as const) {
+      const email = await send('service_ended', id, address);
+      expect(email?.text).toContain('Rate your session'); expect(email?.text).toContain('/booking/128#feedback');
+    }
+    state.answers = [{ id: 1 }];
+    expect((await send('service_ended', 3, 'maya@example.test'))?.text).not.toContain('#feedback');
+    state.answers = []; state.booking.feedbackRequestedAt = new Date('2026-09-01');
+    expect((await send('service_ended', 3, 'maya@example.test'))?.text).not.toContain('#feedback');
+  });
 
   it('tells the chef the visit is complete with a neutral summary, local time and a help link', async () => {
     state.visits = [{ id: 1, blockIndex: 0, startTime: '10:00', endTime: '11:00', checkinStatus: 'checked_out', checkedInAt: new Date('2026-10-13T12:34:00Z'), checkoutRequestedAt: new Date('2026-10-13T13:31:00Z') }];

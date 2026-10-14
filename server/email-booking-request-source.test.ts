@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { bookingResponseDeadline } from './email';
 
 describe('request response deadline', () => {
+  it('uses the visit buffer for a short-notice request email', () => {
+    expect(bookingResponseDeadline('2026-10-18T14:00:00Z', '2026-10-19T00:00:00Z').toISOString()).toBe('2026-10-18T23:00:00.000Z');
+  });
   it('uses stored creation time and the authorization expiry window, never send time', () => {
     vi.useFakeTimers();
     try {

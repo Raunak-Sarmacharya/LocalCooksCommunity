@@ -87,11 +87,11 @@ describe("in-session panel", () => {
   it("announces the countdown at minute granularity only", async () => {
     mount();
     const live = screen.getByRole("status");
-    expect(live).toHaveTextContent("120 minutes left");
+    expect(live).toHaveTextContent("2 h 0 min left");
     await advance(30_000);
-    expect(live).toHaveTextContent("120 minutes left");
+    expect(live).toHaveTextContent("2 h 0 min left");
     await advance(30_000);
-    expect(live).toHaveTextContent("119 minutes left");
+    expect(live).toHaveTextContent("1 h 59 min left");
   });
 
   it("refreshes visit data on window focus, not on a timer", async () => {

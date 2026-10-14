@@ -88,6 +88,8 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
 
         const { getFeeConfig } = await import("../services/stripe-checkout-fee-service");
         const feeConfig = await getFeeConfig();
+        const timing = await (await import('../services/lifecycle-settings')).getLifecycleSettings();
+        const location = await (await import('../domains/locations/location.service')).locationService.getLocationById(kitchen.locationId);
         const taxRatePercent =
             kitchen.taxRatePercent !== null && kitchen.taxRatePercent !== undefined
                 ? Number(kitchen.taxRatePercent)
@@ -102,6 +104,9 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
             minimumBookingHours: kitchen.minimumBookingHours,
             taxRatePercent: Number.isFinite(taxRatePercent) ? taxRatePercent : 0,
             platformCommissionRate: feeConfig.platformCommissionRate,
+            preparationReminderHours: timing.preparationReminderHours,
+            managerResponseBufferHours: timing.managerResponseBufferHours,
+            timezone: location?.timezone,
         };
 
         res.json(pricing);

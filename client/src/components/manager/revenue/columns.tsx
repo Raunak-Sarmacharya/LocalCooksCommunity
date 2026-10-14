@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
+import { formatBookingDate, formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import type { Transaction, Invoice, Payout, PaymentStatus } from "./types"
 import { getTransactionRevenueBreakdown } from "./revenue-calculations"
 
@@ -164,7 +164,7 @@ export function getTransactionColumns({
             ),
             cell: ({ row }) => (
                 <span className="flex items-center gap-2 text-sm font-medium"><CalendarIcon className="size-3 shrink-0 text-muted-foreground" />
-                    {formatDate(row.original.bookingDate, "short", /^\d{4}-\d{2}-\d{2}$/.test(row.original.bookingDate) ? "UTC" : undefined)}
+                    {formatBookingDate(row.original.bookingDate)}
                 </span>
             ),
         },
@@ -437,7 +437,7 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
                 >{mt("date")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
-            cell: ({ row }) => formatDate(row.getValue("bookingDate")),
+            cell: ({ row }) => formatBookingDate(row.getValue("bookingDate")),
         },
         {
             accessorKey: "kitchenName",

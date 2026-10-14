@@ -1,4 +1,5 @@
-export type RefundReceipt = { id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number };
+export type RefundReceipt = { id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number;
+  platformGoodwillCents?: number; platformProcessingCostCents?: number };
 
 export function isCancellationReservationSource(source: { paymentIntentId: string | null; metadata: unknown }, originalIntentIds: Array<string | null>,
   extensionIntentIds: Array<string | null>, parentIntent: string | null) {
@@ -26,10 +27,12 @@ export function cancellationSourceQuote(input: { captured: number; processingCos
     const local = input.localReceipts?.find(item => item.id === refund.id);
     const hasProviderAllocation = refund.metadata?.customer_receives !== undefined;
     const receipt = hasProviderAllocation ? { id: refund.id, customerReceived: cents(refund.metadata?.customer_receives),
-      managerDebited: cents(refund.metadata?.manager_debited), platformServiceFeeReturned: cents(refund.metadata?.platform_service_fee_returned) }
+      managerDebited: cents(refund.metadata?.manager_debited), platformServiceFeeReturned: cents(refund.metadata?.platform_service_fee_returned),
+      ...(refund.metadata?.platform_goodwill_cents !== undefined ? { platformGoodwillCents: cents(refund.metadata.platform_goodwill_cents) } : {}),
+      ...(refund.metadata?.platform_processing_cost_cents !== undefined ? { platformProcessingCostCents: cents(refund.metadata.platform_processing_cost_cents) } : {}) }
       : local;
     if (!receipt || receipt.customerReceived !== cents(refund.amount)
-      || receipt.managerDebited + receipt.platformServiceFeeReturned !== receipt.customerReceived)
+      || receipt.managerDebited + receipt.platformServiceFeeReturned + (receipt.platformGoodwillCents || 0) + (receipt.platformProcessingCostCents || 0) !== receipt.customerReceived)
       throw new Error('Prior refund allocation is unverified; Local Cooks must reconcile the source');
     if (local && hasProviderAllocation && (local.managerDebited !== receipt.managerDebited || local.platformServiceFeeReturned !== receipt.platformServiceFeeReturned))
       throw new Error('Provider and local refund allocations disagree');

@@ -22,7 +22,10 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { DEFAULT_TIMEZONE, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils"
+import { DEFAULT_TIMEZONE, createBookingDateTime } from "@/utils/timezone-utils"
+import { calendarDateKey, formatCalendarDate } from "@/lib/calendar-date"
+import { isBookingListPast } from "@/lib/booking-list-split"
+import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
 import { BookingOperationsStatus } from './BookingOperationsStatus';
 import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from "@shared/operating-hours"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -156,21 +159,8 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return { 'Content-Type': 'application/json' }
 }
 
-const formatDate = (dateStr: string) => {
-  try {
-    const dateOnly = dateStr.split('T')[0]
-    const date = new Date(dateOnly)
-    if (isNaN(date.getTime())) return 'Invalid Date'
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return 'Invalid Date'
-  }
-}
+const formatDate = (dateStr: string) =>
+  formatCalendarDate(dateStr, i18n.language, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) || 'Invalid Date'
 
 const formatTime = (timeString: string) => formatKitchenClock(timeString, i18n.language)
 
@@ -213,14 +203,6 @@ const formatBookingTimeSlots = (booking: Booking): string => {
 }
 
 type LooseTFunction = (key: string, options?: Record<string, unknown>) => string
-
-const getTimeUntilBooking = (bookingDateTime: Date, now: Date, t?: LooseTFunction) => {
-  const hoursUntil = Math.floor((bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60))
-  const daysUntil = Math.floor(hoursUntil / 24)
-  if (daysUntil > 0) return `${daysUntil}d`
-  if (hoursUntil > 0) return `${hoursUntil}h`
-  return t ? (t("bkSoon") as string) : "Soon"
-}
 
 const canCancelBooking = (booking: Booking, now: Date): boolean => {
   if (['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '')) return false
@@ -355,25 +337,16 @@ const getChefBookingColumns = ({
         label = t("bkStatusPendingApproval")
       }
 
+      // Pending requests say when the kitchen has to answer; other rows carry no unexplained age.
       let timeBadge = null
-      try {
-        const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
-        // Resolve booking start in the location's timezone so "time until
-        // booking" is measured against the kitchen's clock, not the chef's.
-        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-        const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
-        if (!isNaN(bookingDateTime.getTime())) {
-          const isUpcoming = bookingDateTime >= now
-          if (isUpcoming && status !== 'cancelled') {
-            timeBadge = (
-              <span className="text-xs text-muted-foreground ml-1">
-                ({getTimeUntilBooking(bookingDateTime, now, t)})
-              </span>
-            )
-          }
-        }
-      } catch {
-        // Ignore
+      const respondBy = bookingResponseDeadline(booking as Parameters<typeof bookingResponseDeadline>[0])
+      const respondByText = respondBy ? formatResponseDeadline(respondBy, i18n.language, booking.locationTimezone || DEFAULT_TIMEZONE, false) : null
+      if (respondByText) {
+        timeBadge = (
+          <span className="text-xs text-muted-foreground ml-1">
+            {t("bkRespondsBy", { deadline: respondByText })}
+          </span>
+        )
       }
 
       // Check for mixed storage statuses
@@ -754,7 +727,7 @@ const getChefBookingColumns = ({
       return (
         <div className="flex flex-wrap items-center gap-2">
         {showCancel && <Button variant="outline" size="sm" onClick={() => onNavigate(`/booking/${booking.id}?cancel=1`)}>
-          {booking.status === 'pending' ? ct('sweepText14') : ct('sweepText15')}
+          {booking.status === 'pending' ? ct('sweepText14') : t('bdhCancelOrChangeShort')}
         </Button>}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1240,23 +1213,19 @@ export default function ChefBookingsView({
     bookings.forEach((booking) => {
       if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return
 
+      // Past = finished (completed, cancelled, checked out) or past the visit's end instant in the kitchen zone.
+      let endAt: Date | null = null
       try {
         const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
         const bookingDateStr = booking.bookingDate.split('T')[0]
-
-        if (isBookingPast(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)) {
-          past.push(booking)
-        } else {
-          upcoming.push(booking)
-        }
+        endAt = createBookingDateTime(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)
       } catch {
-        const dateStr = booking.bookingDate.split('T')[0]
-        const bookingEndDateTime = new Date(`${calendarDateForBookingTime(dateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime)}T${booking.endTime}`)
-        if (bookingEndDateTime < new Date()) {
-          past.push(booking)
-        } else {
-          upcoming.push(booking)
-        }
+        endAt = null
+      }
+      if (isBookingListPast({ status: booking.status, checkinStatus: booking.checkinStatus, endAt })) {
+        past.push(booking)
+      } else {
+        upcoming.push(booking)
       }
     })
 
@@ -1357,7 +1326,7 @@ export default function ChefBookingsView({
       const a = document.createElement('a')
       a.style.display = 'none'
       a.href = url
-      const dateStr = bookingDate ? new Date(bookingDate).toISOString().split('T')[0] : 'unknown'
+      const dateStr = calendarDateKey(bookingDate) ?? 'unknown'
       a.download = `LocalCooks-Invoice-${bookingId}-${dateStr}.pdf`
       document.body.appendChild(a)
       a.click()

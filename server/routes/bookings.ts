@@ -1,4 +1,5 @@
 import { chefBookingInstructions, bookingInstructionRelease, redactInstructionDuties } from '../services/visit-duties';
+import { getBookingResponseDeadlineAt } from '../services/booking-response-deadline';
 import { getLifecycleSettings } from '../services/lifecycle-settings';
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
 import { bookingRefusalBody } from '@shared/location-booking-eligibility';
@@ -1581,6 +1582,7 @@ router.get("/chef/bookings/:id", requireChef, async (req: Request, res: Response
 
         res.json({
             ...await chefBookingInstructions(booking),
+            responseDeadlineAt: await getBookingResponseDeadlineAt(booking),
             kitchen,
             storageBookings,
             equipmentBookings,
@@ -1877,6 +1879,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             departureInstructions: chefBooking.instructionsReleased ? location.departureInstructions : null });
         res.json({
             ...chefBooking,
+            responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location?.timezone),
             checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
             noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
             kitchenContact: kitchenContact ? {
@@ -3588,7 +3591,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
 
             if (chef && kitchen) {
                 // Send booking request email to chef (pending approval)
-                const { sendEmail, generateBookingRequestEmail, bookingResponseDeadline } = await import('../email');
+                const { sendEmail, generateBookingRequestEmail, getBookingResponseDeadline } = await import('../email');
 
                 // Send "Booking Request Received" email to chef (not confirmation - that comes when manager approves)
                 // NOTE: This is sent immediately so chef knows their booking request was received
@@ -3596,7 +3599,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 const chefEmail = generateBookingRequestEmail({
                     bookingId: booking.id,
                     referenceCode: booking.referenceCode,
-                    responseDeadline: bookingResponseDeadline(booking.createdAt),
+                    responseDeadline: await getBookingResponseDeadline(booking),
                     paymentState: booking.paymentStatus === "authorized" ? "held" : booking.paymentStatus === "paid" ? "paid" : "pending",
                     locationAddress: location?.address || undefined,
                     locale: chef.preferredLocale,
@@ -3893,7 +3896,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                         }
                         
                         if (managerEmailAddress) {
-                            const { sendEmail, generateBookingNotificationEmail, bookingResponseDeadline } = await import('../email');
+                            const { sendEmail, generateBookingNotificationEmail, getBookingResponseDeadline } = await import('../email');
                             const managerEmail = generateBookingNotificationEmail({
                                 managerEmail: managerEmailAddress,
                                 chefName,
@@ -3906,7 +3909,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 locationName: location.name,
                                 bookingId: newBooking.id,
                                 referenceCode: newBooking.referenceCode,
-                                responseDeadline: bookingResponseDeadline(newBooking.createdAt),
+                                responseDeadline: await getBookingResponseDeadline(newBooking),
                                 totalCents: session.amount_total ?? undefined,
                                 paymentState: fallbackPaymentStatus === "authorized" ? "held" : "paid",
                                 locationAddress: location.address || undefined,
@@ -3988,7 +3991,9 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
         // Check if firebaseStorage.getBookingsByChef exists, if not use pool
         const bookings = await bookingService.getKitchenBookingsByChef(chefId);
 
-        res.json(await Promise.all((await projectBookingCloseouts(bookings)).map(booking => chefBookingInstructions(booking))));
+        res.json(await Promise.all((await projectBookingCloseouts(bookings)).map(async booking => ({
+            ...await chefBookingInstructions(booking), responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone),
+        }))));
     } catch (error) {
         logger.error("Error fetching bookings:", error);
         res.status(500).json({ error: "Failed to fetch bookings" });

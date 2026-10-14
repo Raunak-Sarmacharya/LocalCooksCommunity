@@ -1,3 +1,4 @@
+import { bookingReference } from '@/lib/booking-reference';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -77,7 +78,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
           {summary && <section className="rounded-xl border p-4">
-            <p className="text-xs text-muted-foreground">{summary.reference || 'BOOKING-' + bookingId}</p>
+            <p className="text-xs text-muted-foreground">{bookingReference(summary.reference, bookingId)}</p>
             <p className="mt-1 font-semibold">{summary.kitchenName}</p>
             <p className="mt-1 text-sm text-muted-foreground whitespace-pre-line">{summary.schedule}</p>
             {summary.amount && <p className="mt-3 flex justify-between gap-3 border-t pt-3 text-sm"><span className="text-muted-foreground">{paymentStatus === 'authorized' ? t('cancelCopy13') : t('cancelCopy14')}</span><span className="font-medium">{summary.amount}</span></p>}

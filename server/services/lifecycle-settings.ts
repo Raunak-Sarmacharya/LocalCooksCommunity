@@ -14,6 +14,9 @@ export const lifecycleSettings = {
   tourOutcomeReminderMinutes: { key: 'tour_outcome_reminder_minutes', defaultValue: 0, min: 0, max: 10080 },
   historicalVisitReviewAfterHours: { key: 'historical_visit_review_after_hours', defaultValue: 48, min: 1, max: 720 },
   preparationReminderHours: { key: 'preparation_reminder_hours', defaultValue: 48, min: 1, max: 168 },
+  managerResponseBufferHours: { key: 'manager_response_buffer_hours', defaultValue: 1, min: 0, max: 24 },
+  managerDecisionFirstReminderHours: { key: 'manager_decision_first_reminder_hours', defaultValue: 12, min: 1, max: 24 },
+  managerDecisionFinalReminderHours: { key: 'manager_decision_final_reminder_hours', defaultValue: 2, min: 1, max: 24 },
   arrivalReminderHours: { key: 'arrival_reminder_hours', defaultValue: 2, min: 1, max: 24 },
   departureReminderMinutes: { key: 'departure_reminder_minutes', defaultValue: 30, min: 1, max: 120 },
   responseWarningHours: { key: 'response_warning_hours', defaultValue: 6, min: 1, max: 168 },
@@ -34,6 +37,8 @@ export async function getLifecycleSettings(reader: SettingsReader = db) {
   }
   if (result.preparationReminderHours <= result.arrivalReminderHours)
     throw new Error('Preparation reminder must be earlier than arrival reminder');
+  if (result.managerDecisionFirstReminderHours <= result.managerDecisionFinalReminderHours)
+    throw new Error('First kitchen decision reminder must be earlier than the final reminder');
   return result;
 }
 export async function saveLifecycleSettings(input: Record<string, unknown>, adminId: number) {
@@ -50,6 +55,8 @@ export async function saveLifecycleSettings(input: Record<string, unknown>, admi
   await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('lifecycle-timing-settings'))`);
     const current = await getLifecycleSettings(tx);
+    if (Number(input.managerDecisionFirstReminderHours ?? current.managerDecisionFirstReminderHours) <= Number(input.managerDecisionFinalReminderHours ?? current.managerDecisionFinalReminderHours))
+      throw new Error('First kitchen decision reminder must be earlier than the final reminder');
     if (Number(input.preparationReminderHours ?? current.preparationReminderHours) <= Number(input.arrivalReminderHours ?? current.arrivalReminderHours))
       throw new Error('Preparation reminder must be earlier than arrival reminder');
     for (const update of updates) await tx.insert(platformSettings).values(update)

@@ -28,6 +28,7 @@ import {
 import { format } from "date-fns";
 import { db } from "../db";
 import { buildKitchenReadiness } from "../services/kitchen-listing-readiness-service";
+import { getBookingResponseDeadlineAt } from '../services/booking-response-deadline';
 import { normalizeTrackingSetup } from '@shared/tracking-setup';
 import { managerWorkspaceVisibility } from "../domains/managers/manager-workspace-visibility";
 import { includeCancelledStorageHistory } from "../domains/managers/storage-booking-history";
@@ -3705,7 +3706,9 @@ router.get(
       const user = req.neonUser!;
       const bookings = await bookingService.getBookingsByManager(user.id);
 
-        res.json(await projectBookingCloseouts(bookings));
+        res.json(await Promise.all((await projectBookingCloseouts(bookings)).map(async booking => ({
+          ...booking, responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone),
+        }))));
     } catch (error: any) {
       logger.error("Error fetching bookings:", error);
       res
@@ -4301,7 +4304,7 @@ router.get(
       // ... get add-ons ...
       // ... get chef ...
 
-      res.json({ ...booking, kitchen, location });
+      res.json({ ...booking, responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone), kitchen, location });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -4619,6 +4622,7 @@ router.get(
       const visitCodeFor = (visitId: number | null) => visitCodes.find(state => state.visitId === visitId) ?? null;
       res.json({
         ...derived,
+        responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone),
         visitCode: visitCodeFor(null),
         inspection: {
           duties: inspectionDuties,

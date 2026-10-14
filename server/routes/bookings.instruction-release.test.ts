@@ -77,6 +77,7 @@ describe('chef instruction HTTP reads with mocked providers', () => {
     const before = await call('/chef/bookings/:id');
     expect(before.arrivalMode).toBe('legacy');
     expect(before.instructionsReleased).toBe(false);
+    expect(before.responseDeadlineAt).toBeNull();
     expect(JSON.stringify(before)).not.toContain('PRIVATE-ACCESS-SENTINEL');
     vi.setSystemTime(new Date('2026-10-19T12:00:00Z'));
     state.codes = [{ mode: 'staffed' }, { mode: 'self' }];
@@ -86,5 +87,9 @@ describe('chef instruction HTTP reads with mocked providers', () => {
     expect(after.visitDuties.arrival.instructions).toBe('PRIVATE-ACCESS-SENTINEL');
     state.booking.status = 'cancelled';
     expect(JSON.stringify(await call('/chef/bookings/:id'))).not.toContain('PRIVATE-ACCESS-SENTINEL');
+  });
+  it('returns the kitchen-zone R5 deadline on a pending chef request', async () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized', createdAt: new Date('2026-10-20T01:00:00Z') });
+    expect((await call('/chef/bookings/:id')).responseDeadlineAt).toBe('2026-10-20T08:00:00.000Z');
   });
 });
