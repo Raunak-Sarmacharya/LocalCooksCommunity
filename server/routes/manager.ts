@@ -977,6 +977,16 @@ router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireManager,
     res.json(await cancelKitchenCausedBooking(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason));
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
 });
+// Kitchen-caused add-on cancellation: the chef is refunded in full (card fee absorbed by Local Cooks); the kitchen's payout drops by the item's kitchen share only.
+router.post('/bookings/:id/addon-refund', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length || items.length > 20 || items.some((item: any) => !['storage', 'equipment'].includes(item?.kind) || !Number.isSafeInteger(item?.id) || item.id <= 0)) return res.status(400).json({ error: 'Choose the add-ons to refund' });
+    if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body.operationKey || '')) return res.status(400).json({ error: 'A refund operation key is required' });
+    const { refundKitchenCausedAddons } = await import('../services/booking-cancellation-refund');
+    res.json(await refundKitchenCausedAddons(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, items.map((item: any) => ({ kind: item.kind, id: item.id }))));
+  } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'The add-on refund needs review' }); }
+});
 router.put('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try { res.json(await (await import('../services/cancellation-policy-settings')).publishCancellationPolicy(Number(req.params.id), req.neonUser!.id, req.body)); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy could not be published' }); }
@@ -2526,7 +2536,9 @@ router.get(
           and(
             eq(kitchenBookings.id, paymentTransactions.bookingId),
             eq(paymentTransactions.bookingType, 'kitchen'),
-            eq(paymentTransactions.status, 'succeeded')
+            eq(paymentTransactions.status, 'succeeded'),
+            // The booking's own charge plus its session-extension charges; the statement sums them once per booking.
+            sql`(${paymentTransactions.paymentIntentId} = ${kitchenBookings.paymentIntentId} OR ${paymentTransactions.metadata} ? 'sessionExtensionId')`,
           )
         )
         .where(
@@ -4342,7 +4354,7 @@ router.get(
       // ... get add-ons ...
       // ... get chef ...
 
-      res.json({ ...booking, payout: await readKitchenPayout(id), responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone), kitchen, location });
+      res.json({ ...booking, payout: await readKitchenPayout(id), runningLate: await (await import('../services/running-late')).readRunningLate(id), responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone), kitchen, location });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -4533,6 +4545,8 @@ router.get(
                 eq(paymentTransactions.bookingType, "kitchen"),
                 eq(paymentTransactions.bookingType, "bundle"),
               ),
+              // The booking's own charge only; session extensions are separate kitchen charges on the same booking.
+              sql`${paymentTransactions.paymentIntentId} = (SELECT payment_intent_id FROM kitchen_bookings WHERE id = ${id})`,
             ),
           )
           .limit(1);

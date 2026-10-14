@@ -7,6 +7,7 @@ import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { VisitDutyValidationError, type VisitDuties } from '@shared/visit-duties';
 import type { ChefVisitCodeState, VisitCodeErrorCode } from '@shared/visit-code';
+import type { RunningLateState } from '@shared/running-late';
 
 /** Arrival rejected by the visit-code gate. Carries the stable server code; never the code itself. */
 export class VisitCodeError extends VisitDutyValidationError {
@@ -85,6 +86,8 @@ export interface CheckinStatusData {
   visitCode?: ChefVisitCodeState | null;
   instructionsReleased?: boolean;
   instructionsReleaseAt?: string;
+  /** The chef's latest "running late" heads-up to the kitchen, if any. */
+  runningLate?: RunningLateState | null;
 }
 
 interface CheckinResult {

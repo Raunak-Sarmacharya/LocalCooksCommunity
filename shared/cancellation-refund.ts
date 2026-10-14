@@ -5,6 +5,8 @@ export function isCancellationReservationSource(source: { paymentIntentId: strin
   extensionIntentIds: Array<string | null>, parentIntent: string | null) {
   const saved = (source.metadata || {}) as Record<string, any>;
   if (['damage_claim', 'overstay_penalty'].includes(saved.type) || saved.damage_claim_id || saved.overstay_record_id) return false;
+  // Paid extra time (session extensions / extra-time charges) is non-refundable by cancellation; support can still refund.
+  if (saved.type === 'session_extension' || saved.sessionExtensionId) return false;
   if (source.paymentIntentId && [...originalIntentIds, ...extensionIntentIds].includes(source.paymentIntentId)) return true;
   if (saved.kitchenChangeId && saved.originalBookingPaymentIntentId === parentIntent && parentIntent) return true;
   throw new Error('Ambiguous legacy payment purpose requires Local Cooks review before cancellation');

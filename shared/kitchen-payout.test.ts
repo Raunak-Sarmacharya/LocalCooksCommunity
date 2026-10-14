@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kitchenPayout, kitchenPayoutTiming, originalKitchenEntitlement, payoutEligibility, unpaidKitchenEntitlement, type PayoutFacts } from './kitchen-payout';
+import { extensionPayoutShares, kitchenPayout, kitchenPayoutTiming, originalKitchenEntitlement, payoutEligibility, unpaidKitchenEntitlement, withExtensionPayouts, type PayoutFacts } from './kitchen-payout';
 import type { BookingCloseout, InspectionOutcome } from './clock-closeout';
 
 const facts = (extra: Partial<PayoutFacts> = {}): PayoutFacts => ({ openIssue: false, openFlag: false, resolvedIssue: false, supportReleased: false, ...extra });
@@ -84,5 +84,25 @@ describe('payload states', () => {
     expect(kitchenPayout(source({ payoutTiming: null, transferId: 'tr_legacy' }))).toMatchObject({ timing: 'at_capture', status: 'sent' });
     expect(kitchenPayout(source({ payoutTiming: null }))).toMatchObject({ timing: 'at_capture', status: 'not_applicable' });
     expect(kitchenPayout(null)).toMatchObject({ status: 'not_applicable', amountCents: 0 });
+  });
+});
+
+describe('session-extension kitchen shares (separate charges on the same booking)', () => {
+  // +30 min: $25 subtotal + $3.25 HST, $1.75 commission; Stripe fee $1.17 -> kitchen share 2708.
+  const extension = (extra: Record<string, unknown> = {}) => source({ amount: '3000', baseAmount: '2825', serviceFee: '175', stripeProcessingFee: '117',
+    metadata: { type: 'session_extension', sessionExtensionId: 5, approvedSubtotal: 2500, approvedTax: 325, platformCommission: 175, capturedAmount: 3000 }, ...extra });
+  it('counts each extension share once and ignores the booking payment itself', () => {
+    expect(extensionPayoutShares([extension(), source()])).toEqual({ pendingCents: 2708, sentCents: 0 });
+    expect(extensionPayoutShares([extension({ transferId: 'tr_x', metadata: { sessionExtensionId: 5, payoutSent: { amountCents: 2708 } } })]))
+      .toEqual({ pendingCents: 0, sentCents: 2708 });
+  });
+  it('a waiting booking payout includes its extension share exactly once', () => {
+    expect(withExtensionPayouts(kitchenPayout(source()), [extension()])).toMatchObject({ status: 'scheduled', amountCents: 10942 + 2708, trailingCents: 0 });
+  });
+  it('after the booking payout was sent, a still-owed extension share is trailing, not added to the sent amount', () => {
+    const sent = kitchenPayout(source({ transferId: 'tr_1', metadata: { payoutSent: { amountCents: 10942 } } }));
+    expect(withExtensionPayouts(sent, [extension()])).toMatchObject({ status: 'sent', amountCents: 10942, trailingCents: 2708 });
+    expect(withExtensionPayouts(sent, [extension({ transferId: 'tr_2', metadata: { sessionExtensionId: 5, payoutSent: { amountCents: 2708 } } })]))
+      .toMatchObject({ status: 'sent', amountCents: 10942 + 2708, trailingCents: 0 });
   });
 });

@@ -31,6 +31,8 @@ import { InSessionPanel } from "./InSessionPanel"
 import { VISIT_CODE_LENGTH } from "@shared/visit-code"
 import { ArrivalModeLine, InstructionsOverview } from "./BookingPreparation"
 import { MessageKitchenButton } from "./MessageKitchenButton"
+import { RunningLateCard } from "./RunningLateCard"
+import { SessionExtensionsCard } from "./SessionExtensionsCard"
 import { formatVisitWhen } from "@/lib/visit-when"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -411,6 +413,13 @@ export function KitchenCheckinTracker({
   const arrivalMode = codeState ? codeState.mode : "legacy"
   const visitStartAt = data && visitDate && visitStart
     ? createBookingDateTime(calendarDateForBookingTime(visitDate, visitStart, data.operatingWindowStartTime), visitStart, timezone) : null
+  const visitEndAt = data && visitDate && visitEnd && visitStart
+    ? createBookingDateTime(calendarDateForBookingTime(visitDate, visitEnd, data.operatingWindowStartTime, visitStart), visitEnd, timezone) : null
+  const bookingEndsText = visitEndAt
+    ? `${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(visitEndAt)} ${friendlyTimezoneName(timezone, locale)}` : ""
+  // Late arrival never moves the end: say so before check-in (once the start has passed) and after it.
+  const startedBeforeCheckin = !!visitStartAt && !!bookingEndsText && data?.status === "confirmed" && checkinStatus === "not_checked_in" && liveBooking && Date.now() >= visitStartAt.getTime()
+  const checkedInLate = !!visitStartAt && !!bookingEndsText && !!data?.checkedInAt && Date.parse(data.checkedInAt) > visitStartAt.getTime()
   const overviewTasks = [...(checklist?.checkinItems || []), ...(checklist?.checkoutItems || [])].filter(item => item.required !== false).map(item => item.label)
     .concat([...checkinPhotoReqs, ...checkoutPhotoReqs].filter(photo => photo.required).map(photo => photo.label))
   const arrivalInstructions = {
@@ -505,6 +514,8 @@ export function KitchenCheckinTracker({
               {arrivedAt && checkinStatus === "checked_in" && <p role="status" className="text-sm font-medium text-emerald-700">
                 {t("kciArrivalConfirmedAt", "Arrival confirmed at {time}", { time: new Intl.DateTimeFormat(locale, { timeZone: timezone, timeStyle: "short" }).format(new Date(data?.checkedInAt || arrivedAt)) })}
               </p>}
+              {startedBeforeCheckin && <p className="text-sm text-muted-foreground" data-testid="booking-still-ends">{t("kciBookingStillEnds", "Your booking still ends at {end}.", { end: bookingEndsText })}</p>}
+              {arrivedAt && checkinStatus === "checked_in" && checkedInLate && <p className="text-sm text-muted-foreground" data-testid="booking-still-ends-success">{t("kciBookingStillEnds", "Your booking still ends at {end}.", { end: bookingEndsText })}</p>}
               {times.length > 0 && (
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                   {times.map(time => (
@@ -514,6 +525,16 @@ export function KitchenCheckinTracker({
                     </div>
                   ))}
                 </dl>
+              )}
+              {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && (
+                <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
+              )}
+              {data.status === "confirmed" && checkinStatus === "not_checked_in" && (
+                <SessionExtensionsCard bookingId={bookingId} manager={false} chefName="" only="early_start" onChanged={() => void refetch()} />
+              )}
+              {data.status === "confirmed" && liveBooking && (
+                <RunningLateCard bookingId={bookingId} visitId={data.visitId} kitchenName={kitchenName} startAt={visitStartAt} endAt={visitEndAt}
+                  timezone={timezone} status={data.status} checkedIn={checkinStatus !== "not_checked_in"} runningLate={data.runningLate} onChanged={() => void refetch()} />
               )}
             </section>
           )}

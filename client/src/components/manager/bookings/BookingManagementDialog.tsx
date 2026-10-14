@@ -17,6 +17,7 @@ import { TruncatedText } from "@/components/common/TruncatedText";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
 import i18n from "@/i18n";
+import { ChangeBookingContent } from './ChangeBookingContent';
 import { formatTime as formatClockTime } from "@/lib/formatters";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -96,6 +97,8 @@ export interface ManagementSubmitParams {
   storageActions?: Array<{ storageBookingId: number; action: string }>;
   equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
   refundAmountCents?: number;
+  /** Optional note to the chef, sent as the refund reason. */
+  note?: string;
   storageCancellationId?: number; // For accept/decline storage cancel
 }
 
@@ -106,6 +109,8 @@ interface BookingManagementDialogProps {
   isProcessing?: boolean;
   onSubmit: (params: ManagementSubmitParams) => void;
   onChanged?: () => Promise<void>;
+  /** change: add-on cancellation or partial refund only (confirmed bookings). No whole-booking cancel. */
+  mode?: 'manage' | 'change';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -133,13 +138,15 @@ export function BookingManagementDialog({
   isProcessing = false,
   onSubmit,
   onChanged,
+  mode = 'manage',
 }: BookingManagementDialogProps) {
   
   const dialogKey = booking ? `mgmt-${booking.id}` : "empty";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {open && booking ? (
+      {open && booking && mode === 'change' ? <ChangeBookingContent key={`chg-${booking.id}`} booking={booking} isProcessing={isProcessing} onSubmit={onSubmit} />
+      : open && booking ? (
         <BookingManagementContent
           key={dialogKey}
           booking={booking}

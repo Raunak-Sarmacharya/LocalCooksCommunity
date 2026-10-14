@@ -12,7 +12,7 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchens, locations, paymentTransactions, bookingLifecycleEvents } from '@shared/schema';
-import { kitchenPayout, payoutEligibility, supportReleased, type KitchenPayout, type PayoutFacts } from '@shared/kitchen-payout';
+import { isSessionExtensionPayment, kitchenPayout, payoutEligibility, supportReleased, withExtensionPayouts, type KitchenPayout, type PayoutFacts } from '@shared/kitchen-payout';
 import { makeCloseoutSnapshot, reduceClockCloseout, savedCloseout, type BookingCloseout } from '@shared/clock-closeout';
 import { closeoutTiming, projectBookingCloseouts } from './clock-closeout';
 import { assertBookingMoneyWritable } from './booking-money-guard';
@@ -139,6 +139,9 @@ export async function releaseKitchenPayout(bookingId: number, reason: string, no
       updated_at = NOW() WHERE id = ${source.id} AND transfer_id IS NULL AND payout_released_at IS NOT NULL`);
     return { success: true, notApplicable: true, reason: result.reason };
   }
+  // Session-extension charges follow this payout: released together once it has gone out.
+  if (result.transferred) await (await import('./session-extension-payout')).releaseSessionExtensionPayoutsForBooking(bookingId, now)
+    .catch(error => logger.error('[Payout] Extra-time payouts will retry from the sweep', { bookingId, error }));
   return { success: result.transferred, transferred: result.transferred, transferId: result.transferId, reason: result.reason };
 }
 
@@ -173,13 +176,31 @@ export async function releasedPayoutStillEligible(bookingId: number, tx: Tx) {
 /** Manager/admin payload. Never throws: a projection problem falls back to the saved columns. */
 export async function readKitchenPayout(bookingId: number, tx: Tx = db as unknown as Tx): Promise<KitchenPayout> {
   const source = await originalSource(bookingId, tx);
-  if (!source || source.payoutTiming !== 'after_closeout' || source.transferId) return kitchenPayout(source);
-  try { return kitchenPayout(source, (await payoutContext(bookingId, tx, new Date(), supportReleased(source))).eligibility); }
-  catch (error) { logger.warn('[Payout] Using saved payout state', { bookingId, error }); return kitchenPayout(source); }
+  // Never throws (manager/admin payload): an unreadable extension list falls back to the booking's own payout.
+  const extensions = source ? await extensionSources([bookingId], tx).catch(error => {
+    logger.warn('[Payout] Extension charges unavailable for the payout payload', { bookingId, error }); return [] as Source[]; }) : [];
+  // Extension kitchen shares are released with the booking payout: counted once, inside this booking's amount.
+  const combine = (payout: KitchenPayout): KitchenPayout => { const { trailingCents: _trailing, ...combined } = withExtensionPayouts(payout, extensions); return combined; };
+  if (!source || source.payoutTiming !== 'after_closeout' || source.transferId) return combine(kitchenPayout(source));
+  try { return combine(kitchenPayout(source, (await payoutContext(bookingId, tx, new Date(), supportReleased(source))).eligibility)); }
+  catch (error) { logger.warn('[Payout] Using saved payout state', { bookingId, error }); return combine(kitchenPayout(source)); }
+}
+
+/** Captured session-extension charges on these bookings (their own PaymentIntents, same booking id). */
+async function extensionSources(bookingIds: number[], tx: Tx = db as unknown as Tx) {
+  if (!bookingIds.length) return [] as Source[];
+  const rows = await tx.select().from(paymentTransactions).where(and(inArray(paymentTransactions.bookingId, bookingIds),
+    inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), inArray(paymentTransactions.status, capturedStatuses as Source['status'][]),
+    sql`${paymentTransactions.metadata} ? 'sessionExtensionId'`)).orderBy(asc(paymentTransactions.id)).limit(bookingIds.length * 20);
+  return (rows as Source[]).filter(isSessionExtensionPayment);
 }
 
 /** Fixed query count for manager lists; issue/flag holds are current even before the next sweep. */
 export async function attachKitchenPayouts<T extends { id: number; status?: string; closeout?: BookingCloseout }>(items: T[]): Promise<Array<T & { payout: KitchenPayout }>> {
+  return (await attachWithExtensions(items)).map(({ trailingCents: _trailing, ...item }) => item as unknown as T & { payout: KitchenPayout });
+}
+
+async function attachWithExtensions<T extends { id: number; status?: string; closeout?: BookingCloseout }>(items: T[]): Promise<Array<T & { payout: KitchenPayout; trailingCents: number }>> {
   if (!items.length) return [];
   const ids = items.map(item => item.id);
   const sources = await db.select().from(paymentTransactions).where(and(inArray(paymentTransactions.bookingId, ids),
@@ -195,13 +216,18 @@ export async function attachKitchenPayouts<T extends { id: number; status?: stri
       EXISTS(SELECT 1 FROM damage_claims d WHERE d.kitchen_booking_id = kb.id
         AND (d.resolved_at IS NOT NULL OR d.status IN ('resolved','rejected','expired'))) AS resolved
     FROM kitchen_bookings kb WHERE kb.id IN (${list(pending)})`)).rows as Array<{ booking_id: number; flag: boolean; issue: boolean; resolved: boolean }> : [];
+  const extensions = await extensionSources(Array.from(new Set(sources.map(source => source.bookingId))));
+  const combine = (item: T, payout: KitchenPayout) => {
+    const { trailingCents, ...combined } = withExtensionPayouts(payout, extensions.filter(row => row.bookingId === item.id));
+    return { ...item, payout: combined, trailingCents };
+  };
   return items.map(item => {
     const source = sources.find(row => row.bookingId === item.id);
     const fact = facts.find(row => Number(row.booking_id) === item.id);
-    if (!source || !fact || !item.closeout) return { ...item, payout: kitchenPayout(source) };
+    if (!source || !fact || !item.closeout) return combine(item, kitchenPayout(source));
     const eligibility = payoutEligibility(item.status || item.closeout.status, item.closeout, { openFlag: fact.flag === true,
       openIssue: fact.issue === true, resolvedIssue: fact.resolved === true, supportReleased: supportReleased(source) });
-    return { ...item, payout: kitchenPayout(source, eligibility) };
+    return combine(item, kitchenPayout(source, eligibility));
   });
 }
 
@@ -215,10 +241,14 @@ export async function upcomingKitchenPayouts(managerId: number) {
   if (!ids.length) return { totalCents: 0, payouts: [] };
   const bookings = await db.select({ id: kitchenBookings.id, referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings)
     .where(inArray(kitchenBookings.id, ids));
-  const items = await attachKitchenPayouts(await projectBookingCloseouts(bookings) as Array<{ id: number; referenceCode: string | null;
+  const items = await attachWithExtensions(await projectBookingCloseouts(bookings) as Array<{ id: number; referenceCode: string | null;
     status?: string; closeout?: BookingCloseout; timezone?: string }>);
-  const payouts = items.filter(item => item.payout.status === 'scheduled' || item.payout.status === 'on_hold')
-    .map(item => ({ bookingId: item.id, referenceCode: reference(item), timezone: item.timezone || null, ...item.payout }))
+  // One entry per booking: a waiting payout already includes its extension shares; extension money still owed after the
+  // booking payout went out is its own scheduled entry. Each kitchen share is counted exactly once.
+  const payouts = items.flatMap(item => item.payout.status === 'scheduled' || item.payout.status === 'on_hold'
+    ? [{ bookingId: item.id, referenceCode: reference(item), timezone: item.timezone || null, ...item.payout }]
+    : item.trailingCents > 0 ? [{ bookingId: item.id, referenceCode: reference(item), timezone: item.timezone || null, timing: 'after_closeout' as const,
+      status: 'scheduled' as const, holdReason: null, expectedAt: null, sentAt: null, amountCents: item.trailingCents }] : [])
     .sort((a, b) => (a.expectedAt || '').localeCompare(b.expectedAt || ''));
   return { totalCents: payouts.reduce((sum, payout) => sum + payout.amountCents, 0), payouts };
 }
@@ -230,7 +260,8 @@ export async function upcomingKitchenPayouts(managerId: number) {
 export async function releaseDuePayouts(limit = 3) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Payout batch must be between one and three.');
   const now = new Date();
-  const rows = await db.select({ id: paymentTransactions.id, bookingId: paymentTransactions.bookingId }).from(paymentTransactions)
+  const rows = await db.select({ id: paymentTransactions.id, bookingId: paymentTransactions.bookingId,
+    extensionId: sql<string | null>`${paymentTransactions.metadata}->>'sessionExtensionId'` }).from(paymentTransactions)
     .where(and(eq(paymentTransactions.payoutTiming, 'after_closeout'), isNull(paymentTransactions.transferId),
       workerAfter('closeoutPayouts', paymentTransactions.id), or(
         and(isNull(paymentTransactions.payoutReleasedAt), or(isNull(paymentTransactions.payoutEligibleAt), lte(paymentTransactions.payoutEligibleAt, now))),
@@ -241,7 +272,12 @@ export async function releaseDuePayouts(limit = 3) {
   let released = 0, errors = 0;
   for (const row of rows) {
     await workerRecord('closeoutPayouts', row.id);
-    try { if ((await releaseKitchenPayout(row.bookingId, 'closeout_sweep', now)).transferred) released++; }
+    try {
+      // A session-extension charge follows its parent's release; it is never released on its own schedule.
+      const result = row.extensionId ? await (await import('./session-extension-payout')).releaseSessionExtensionPayoutForSource(row.id, now)
+        : await releaseKitchenPayout(row.bookingId, 'closeout_sweep', now);
+      if (result.transferred) released++;
+    }
     catch (error) {
       if (isWorkerBudgetError(error)) throw error;
       errors++; logger.error('[Payout] Release needs Local Cooks review; it will retry', { transactionId: row.id, error });

@@ -608,8 +608,10 @@ export async function getRevenueMetrics(
         SELECT COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
           -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
+          -- A session extension is a separate charge on the same booking: its own approved tax, never the booking's again.
           ROUND(
-            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+            (CASE WHEN pt.metadata ? 'sessionExtensionId' THEN COALESCE((pt.metadata->>'approvedTax')::numeric, pt.tax_amount::numeric, 0)
+              ELSE kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100 END) *
             CASE 
               WHEN pt.amount::numeric > 0 THEN 
                 (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
@@ -998,8 +1000,11 @@ export async function getTransactionHistory(
         ? parseInt(String(ptMetadata.approvedTax)) || 0
         : 0;
       
+      // A session extension is its own charge on the same booking: resolve it against its own subtotal.
+      const isSessionExtension = ptMetadata.type === 'session_extension' || ptMetadata.sessionExtensionId != null;
       // Fallback values from kitchen_bookings
-      const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
+      const kbTotalPrice = isSessionExtension ? Number(ptMetadata.approvedSubtotal) || 0
+        : row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
       const kbServiceFee = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
       const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
       
@@ -1059,7 +1064,8 @@ export async function getTransactionHistory(
       const resolvedBookingType = isDamageClaim ? 'damage_claim' : (row.pt_booking_type || 'kitchen');
       
       // Description for damage claims - using industry standard terminology (Vrbo, Airbnb, Turo)
-      const description = isDamageClaim ? `Damage Claim - ${row.kitchen_name || 'Kitchen'}` : undefined;
+      const description = isDamageClaim ? `Damage Claim - ${row.kitchen_name || 'Kitchen'}`
+        : isSessionExtension ? `Extra time - ${row.kitchen_name || 'Kitchen'}` : undefined;
 
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.id));

@@ -819,3 +819,59 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
   - Full suites: server 50 failures in 15 files, all on the baseline list; client 9 pre-existing files (the BookingCancellationChooser, cancellation-policy-dialog and BookingPreparation failures are now fixed).
 - **Migration 0080 applied to dev:** 5 kitchens mapped, all 24 h / 100% (kitchen 54 included).
 - **Check-in code + payout clarity copy DONE (Sonnet)** → `.phase0-harness/checkin-code-payout-copy-checkpoint.md`: "visit code" → "check-in code" everywhere; staffed panel "Check-in code for {chef}"; finish-inspection-to-get-paid-sooner messaging; payout toast/done state; "You've been paid $X · KB-…" email with a breakdown; "Payment confirmed" replaces "Payment Received from <email>"; manager check-in/checkout notices.
+- **Deployed `21f06e85` to dev** (cancellation engine + check-in code wording + payout clarity). Live cancellation tests are next (the first attempt's browser call was interrupted).
+- **Arrival package launched (Sonnet)**, after research (TFC uses PIN sign-in/out to reconcile hours used vs booked; shared kitchens ask renters to tell the manager when late/over; nobody gives early access by default):
+  - chef one-tap "Running late?" (reusing the tour running-late pattern);
+  - a manager alert 15 min after the start when the chef isn't checked in (skipped when running-late covers it);
+  - "Your booking still ends at…" on late check-in;
+  - "Arrived early? Message the kitchen".
+  - → `.phase0-harness/arrival-package-checkpoint.md`
+- **Extensions — owner decisions (Oct 14) after research** (TFC: extend an ongoing booking, instant under auto-approval else the kitchen approves; Turo: in-app only, auto when free; Peerspace: host proposes + guest approves; overtime in 30-min blocks with a dispute window):
+  - (1) the chef asks for more time with one tap; the kitchen approves by DEFAULT (owner leaned off; lead agreed: consistent with request-to-book and TFC manual approval; calendar-free ≠ staff available); kitchens can enable instant auto-approval; requests expire after 15 min; card hold → capture on approval;
+  - (2) the kitchen can "Offer more time" in one tap; the chef accepts and pays in one tap;
+  - (3) overstay: the kitchen sends an extra-time charge after the visit (30-min blocks from the recorded checkout, can only lower); the chef pays in one tap or disputes; unanswered after 48 h → support; NO automatic charges.
+  - Extensions are non-refundable once added; payout follows the parent booking.
+  - Plan: `build-session-extensions.md`; Codex Sol High implementing (migration 0081).
+- **CANCELLATION LIVE TESTS PASSED (dev `21f06e85`, real sandbox 4242, kitchen 54 policy 24 h / 100%):**
+  - **156 (KB-ZH477K, Oct 20) early cancel:** the quote "Your refund is $29.07. The $1.43 card processing fee is kept" came from the charge's `fee_details` type `stripe_fee` (143). Stripe refund 2907 succeeded; 0 transfers; events cancelled + refund_issued.
+  - **157 (KB-XQ8SD2, tonight 9 p.m.) late cancel:** checkout showed the short-notice warning + the required acknowledgement; after approval the cancel quote was $0 ("Amount kept: $30.50"); booking cancelled, payment paid; the kitchen payout is scheduled at the end + grace (10:15 p.m. NDT); 0 transfers yet.
+  - **158 (KB-U3SRZ6, Oct 21) kitchen-caused:** ⋯ → "Cancel as the kitchen" + reason; full refund 3050 succeeded; 0 transfers; cause = kitchen; the chef got an apology notice with the reason.
+- **UX defects found** (→ Sonnet polish `.phase0-harness/cancellation-polish-checkpoint.md`):
+  - a past deadline shown inside the short-notice window;
+  - "under your booking's saved policy" jargon;
+  - "Choose what to cancel" with nothing to choose;
+  - the redundant "Amount kept";
+  - the add-ons sentence shown without add-ons;
+  - the success state doesn't restate the refund;
+  - "Done" observed disabled once;
+  - the kitchen-cancel chef notice title/double punctuation, with no "Find another time";
+  - the manager menu has both "Cancel as the kitchen" and the old "Cancel or change booking";
+  - "there?s" corrupted apostrophes (3 en-CA keys fixed by the lead).
+- **Arrival package DONE (Sonnet)** → `.phase0-harness/arrival-package-checkpoint.md`:
+  - running late (15/30/60 + note, max 3, persisted as `running_late` lifecycle events, no migration);
+  - the `manager_no_checkin` alert (default 15 min, admin setting `managerNoCheckinMinutes`, defers to the running-late ETA);
+  - "Your booking still ends at…";
+  - "Arrived early? Message the kitchen".
+- **Early access — owner decision (Oct 14) after research** (Airbnb: guest asks, host decides, sometimes a fee; Peerspace: setup inside the booked time, longer booking via host update; shared kitchens: the operator controls access times). The chef can never start early on their own. One kitchen control, "Let them start early": ≤30 min earlier = a FREE early check-in grant; >30 min = a PAID earlier-start offer (30-min blocks at the hourly rate, the chef accepts and pays in one tap, only when free). Plus a booking-flow line: "Include setup and cleanup in your booking time." Added to the Opus extensions build.
+- **Session extensions:** Codex hit model capacity after mapping (partial files left) → re-delegated to Claude Opus to inventory and finish.
+- **Cancellation polish DONE + "Change booking" restored for managers on confirmed bookings** (cancel an add-on / send a partial refund out of the payout). The lead corrected the add-on refund: kitchen-caused → full refund including the proportional fee (Local Cooks absorbs; R1). In progress.
+- **Owner correction (Oct 14):** the kitchen manager CHOOSES free vs paid for early starts and for offered extra time; the 30-min rule is only the pre-selected default; nothing is ever sent automatically; the chef is never charged without accepting. Chef-requested extensions stay paid (kitchen approves). Sent to the Opus extensions build.
+- **Add-on refund fix DONE (Sonnet):** new `refundKitchenCausedAddons` + `POST /manager/bookings/:id/addon-refund`. The chef gets the item + its service-fee share (full, incl. the card fee); the kitchen is debited the item minus its fee share; Local Cooks funds the fee share (metadata like cancelKitchenCausedBooking). Guards: no frozen allocation / prior goodwill / unresolved refund / already refunded; idempotent. Lesson recorded: server tests must run with `-c vitest.config.server.ts` (the default config excludes server/**).
+- **Owner (Oct 14), extensions free option:** after research (Peerspace host decides whether/what to charge overtime; Airbnb late checkout at host discretion; TFC kitchens manage/credit billing), the kitchen responding to a CHEF extension request has three choices: Approve + charge / Approve for free / Decline. Chef request copy: 'up to $X; only charged if the kitchen approves with a charge'. Instant mode stays paid. Every extra-time path now has a free and a paid option chosen by the kitchen. Sent to the Opus build.
+- **Session extensions DONE (Claude Opus)** → `.phase0-harness/session-extensions-checkpoint.md`:
+  - Codex partials inventoried; 6 real defects fixed (a missing payout import; rewriting the immutable cancellation snapshot; an escalation opening a flag that froze the whole payout; a lost hold blocking time forever; static retry keys; no decline handling);
+  - all owner choices implemented (chef request with 3 kitchen answers incl. free; kitchen offer/early start with Free/Charge; overstay charge 30-min blocks lower-only, 48 h → support; toggle default off; admin override + kill switch; the "Include setup and cleanup" line);
+  - migration 0081 (RLS added);
+  - tsc 0; new tests pass; full server suite no new failing files.
+  - Gaps: PDFs omit extensions; a chef cancel after an early start goes to support review.
+- **Lead review found a money-correctness risk:** extension charges are extra `payment_transactions` rows with `booking_type='kitchen'` and the same `booking_id`. The lead scoped the chef/manager details lookups to the booking's own `payment_intent_id`. The scan flagged list/revenue joins (possible duplicate rows / double counts) and the cancellation refund source set → a focused Opus audit (`.phase0-harness/extension-join-audit.md`) runs BEFORE the next deploy.
+- **Extension join audit DONE (Opus)** → `.phase0-harness/extension-join-audit.md`. Five money defects fixed:
+  - `findPaymentTransactionByBooking` returned the extension row;
+  - `syncStripeAmountsToBookings` overwrote `kitchen_bookings.service_fee` with the extension's commission;
+  - double-counted tax in revenue-v2/legacy;
+  - extension payouts counted zero times in payout reads/upcoming;
+  - parent amounts shown on extension lines.
+  - Other changes: the invoice list joins the own PI; the payout statement counts the booking + extensions once each (behaviour change: damage-claim rows are no longer in the statement); history labels "Extra time - {kitchen}".
+  - Cancellation refunds already exclude extensions (now tested).
+  - Open: booking-change/damage-claim rows have the same display/tax issue; legacy revenue fallback omits extensions; the client "Extra time" label.
+- Final checks: tsc 0; client 9 pre-existing failing files; server 15 files/50 tests (baseline 16/51), no new failures. **Migration 0081 applied to dev.**

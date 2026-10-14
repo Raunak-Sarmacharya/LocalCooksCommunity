@@ -490,6 +490,8 @@ export const kitchens = pgTable("kitchens", {
   minimumBookingWindowHours: integer("minimum_booking_window_hours"),
   defaultDailyBookingLimit: integer("default_daily_booking_limit"),
   checkinCheckoutEnabled: boolean("checkin_checkout_enabled").default(false).notNull(),
+  autoApproveSessionExtensions: boolean('auto_approve_session_extensions').default(false).notNull(),
+  sessionExtensionsAdminOverride: boolean('session_extensions_admin_override'),
   // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
   hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
   dailyRate: numeric("daily_rate"), // Base daily rate in cents; can coexist with hourlyRate
@@ -668,6 +670,49 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Separate saved-card charges; decisions commit before provider I/O and the parent owns payout timing.
+export const kitchenBookingExtensions = pgTable('kitchen_booking_extensions', {
+  id: serial('id').primaryKey(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: 'cascade' }).notNull(),
+  visitId: integer('visit_id').references(() => kitchenBookingVisits.id),
+  blockIndex: integer('block_index').notNull(),
+  requestKey: text('request_key').notNull(),
+  kind: text('kind').$type<import('./session-extension').ExtensionKind>().notNull(),
+  minutes: integer('minutes').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  free: boolean('free').default(false).notNull(), // Manager chose Free: applied at once, no payment
+  quote: jsonb('quote').$type<import('./session-extension').ExtensionQuote>().notNull(),
+  status: text('status').$type<import('./session-extension').ExtensionStatus>().notNull(),
+  paymentIntentId: text('payment_intent_id').unique(),
+  requestedBy: integer('requested_by').references(() => users.id).notNull(),
+  decidedBy: integer('decided_by').references(() => users.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  note: text('note'),
+  originalEndAt: timestamp('original_end_at', { withTimezone: true }).notNull(),
+  originalEndTime: text('original_end_time').notNull(),
+  endAt: timestamp('end_at', { withTimezone: true }).notNull(),
+  endTime: text('end_time').notNull(),
+  holdId: text('hold_id'),
+  operation: jsonb('operation').$type<import('./session-extension').ExtensionOperation>(),
+  authorizedAt: timestamp('authorized_at', { withTimezone: true }),
+  autoApprove: boolean('auto_approve').default(false).notNull(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  uniqueIndex('kitchen_booking_extensions_request_key').on(table.bookingId, table.requestKey),
+  index('kitchen_booking_extensions_booking_idx').on(table.bookingId, table.id),
+  index('kitchen_booking_extensions_expiry_idx').on(table.expiresAt, table.id)
+    .where(sql`${table.status} IN ('requested','offered') AND ${table.escalatedAt} IS NULL`),
+  index('kitchen_booking_extensions_recovery_idx').on(table.id).where(sql`${table.operation}->>'state' = 'pending'`),
+  uniqueIndex('kitchen_booking_extensions_active_idx').on(table.bookingId, table.blockIndex)
+    .where(sql`${table.kind} <> 'extra_time' AND ${table.status} IN ('requested','offered','approved') AND ${table.appliedAt} IS NULL`),
+  uniqueIndex('kitchen_booking_extensions_extra_time_idx').on(table.bookingId, table.blockIndex)
+    .where(sql`${table.kind} = 'extra_time' AND ${table.status} NOT IN ('declined','cancelled')`),
+]);
 
 // Arrival challenge per arrival target (visit row, else booking). The code itself is never stored.
 const tz = (name: string) => timestamp(name, { withTimezone: true });

@@ -58,7 +58,7 @@ const connection: any = {
     return { returning: async () => [target], then: (resolve: any) => resolve() };
   } }) }),
 };
-import { acceptCancellationRefund, readCancellationRefund, retryCancellationRefund, refundSupportGoodwill, cancelKitchenCausedBooking, requestChefCancellation, cancelChefBooking, readChefCancellationQuote } from './booking-cancellation-refund';
+import { acceptCancellationRefund, readCancellationRefund, retryCancellationRefund, refundSupportGoodwill, cancelKitchenCausedBooking, refundKitchenCausedAddons, requestChefCancellation, cancelChefBooking, readChefCancellationQuote } from './booking-cancellation-refund';
 describe('quoted parent cancellation reservation and provider recovery', () => {
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
@@ -85,6 +85,17 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     expect(state.calls[0]).toMatchObject({ amount: 11816, options: { reverseTransferAmount: 11116, metadata: { platform_service_fee_returned: '700' } } });
     await cancelChefBooking(10, 3, 'chef-operation-one'); expect(state.calls).toHaveLength(1);
     await expect(cancelChefBooking(10, 3, 'chef-operation-two')).rejects.toThrow('another operation');
+  });
+  it('never refunds a paid session extension through the cancellation engine; only the booking payment is refunded', async () => {
+    state.parent.status = 'confirmed';
+    state.sources.push({ id: 101, bookingId: 10, bookingType: 'kitchen', chefId: 3, managerId: 2, paymentIntentId: 'pi_extension', status: 'succeeded',
+      amount: '3000', baseAmount: '2825', managerRevenue: '2708', serviceFee: '175', refundAmount: '0', currency: 'CAD',
+      metadata: { type: 'session_extension', sessionExtensionId: 5, nonRefundable: true }, updatedAt: new Date('2026-11-01T11:00:00Z') });
+    const quote = await readChefCancellationQuote(10, 3) as any;
+    expect(quote.chefRefundCents).toBe(11816); expect(quote.sources.map((row: any) => row.intentId)).toEqual(['pi_original']);
+    await cancelChefBooking(10, 3, 'chef-with-extension', undefined, 3, quote.chefRefundCents);
+    expect(state.calls.map(call => call.intent)).toEqual(['pi_original']); expect(state.calls[0].amount).toBe(11816);
+    expect(state.sources[1].metadata.cancellationRefundOperation).toBeUndefined();
   });
   it('keeps a frozen 50% short-notice policy and returns platform share automatically', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
@@ -285,6 +296,42 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     expect(state.sources[0].metadata.fullRefundRequest).toMatchObject({ status: 'approved', approvedAmount: 700, decidedBy: 1 });
     expect(state.sources[0].metadata.refundRecovery.status).toBe('succeeded');
     expect(state.sources[0].metadata.refunds[0]).toMatchObject({ managerDebited: 0, platformServiceFeeReturned: 700 });
+    expect(state.calls).toHaveLength(0);
+  });
+});
+
+describe('kitchen-caused add-on cancellation refunds the chef in full (policy R1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-01T12:00:00Z'));
+    state.parent = { id: 10, kitchenId: 4, chefId: 3, status: 'confirmed', paymentStatus: 'paid', paymentIntentId: 'pi_original', bookingDate: new Date('2026-11-10T12:00:00Z'), startTime: '09:00', endTime: '11:00', updatedAt: new Date('2026-11-01T11:00:00Z') };
+    state.sources = [{ id: 99, bookingId: 10, bookingType: 'kitchen', chefId: 3, managerId: 2, paymentIntentId: 'pi_original', status: 'succeeded', amount: '12200', baseAmount: '11500', managerRevenue: '11116',
+      serviceFee: '700', refundAmount: '0', currency: 'CAD', transferId: 'tr_kitchen', updatedAt: new Date('2026-11-01T11:00:00Z'),
+      metadata: { capturedComponentAllocations: [{ kind: 'kitchen', bookingId: 10, managerGrossCents: 9500 }, { kind: 'equipment', bookingId: 31, managerGrossCents: 2000 }] } }];
+    state.storage = []; state.equipment = [{ id: 31, kitchenBookingId: 10, chefId: 3, paymentIntentId: 'pi_original', status: 'cancelled' }]; state.extensions = [];
+    state.receipts = {}; state.providerStatus = 'succeeded'; state.calls = []; state.managerId = 2; state.frozen = false; state.failResponse = false;
+  });
+  it('refunds the full captured item amount, debits only the kitchen share and records the absorbed fee as platform-funded', async () => {
+    const result = await refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-1', [{ kind: 'equipment', id: 31 }]);
+    expect(result).toMatchObject({ amountCents: 2122, managerPaysCents: 1933, localCooksPaysCents: 189, processingCostAbsorbedCents: 67 });
+    expect(state.calls).toHaveLength(1);
+    expect(state.calls[0]).toMatchObject({ amount: 2122, options: { reverseTransferAmount: 1933, metadata: { customer_receives: '2122', manager_debited: '1933', platform_service_fee_returned: '122', platform_processing_cost_cents: '67' } } });
+    // The kitchen entitlement drops by the kitchen share only; the card fee is never charged to the kitchen.
+    expect(state.sources[0].metadata.refunds[0]).toMatchObject({ managerDebited: 1933, platformServiceFeeReturned: 122 });
+    expect(state.sources[0].metadata.kitchenAddonRefunds).toEqual([{ kind: 'equipment', id: 31, operationKey: 'support-addon-key-1' }]);
+    expect(state.parent.paymentStatus).toBe('partially_refunded');
+  });
+  it('replays without a second refund and refuses to refund the same add-on again', async () => {
+    await refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-1', [{ kind: 'equipment', id: 31 }]);
+    await refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-1', [{ kind: 'equipment', id: 31 }]);
+    expect(state.calls).toHaveLength(1);
+    await expect(refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-2', [{ kind: 'equipment', id: 31 }])).rejects.toThrow('already refunded');
+    expect(state.calls).toHaveLength(1);
+  });
+  it('needs the add-on cancelled first and refuses shared charges with no frozen allocations', async () => {
+    state.equipment[0].status = 'confirmed';
+    await expect(refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-3', [{ kind: 'equipment', id: 31 }])).rejects.toThrow('Cancel the add-on first');
+    state.equipment[0].status = 'cancelled'; delete state.sources[0].metadata.capturedComponentAllocations;
+    await expect(refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-4', [{ kind: 'equipment', id: 31 }])).rejects.toThrow('frozen');
     expect(state.calls).toHaveLength(0);
   });
 });

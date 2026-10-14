@@ -60,7 +60,7 @@ describe('one parent cancellation chooser', () => {
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="partially_refunded" items={[]} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     expect(await screen.findByText('Refunded: $50.00')).toBeInTheDocument();
-    expect(screen.getByText(/Your refund is.*20.00/)).toBeInTheDocument(); expect(screen.getByText('Amount kept: $30.00')).toBeInTheDocument();
+    expect(screen.getByText(/Your refund is.*20.00/)).toBeInTheDocument(); expect(screen.queryByText(/Amount kept/)).not.toBeInTheDocument(); expect(screen.getByText('Review what happens before you cancel.')).toBeInTheDocument(); expect(screen.queryByText(/Unstarted equipment/)).not.toBeInTheDocument();
   });
   it('uncaptured requests have an explicit confirm action and Escape exits without submitting', async () => {
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" items={items} onChanged={async () => {}} />);

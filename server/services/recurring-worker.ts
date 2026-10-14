@@ -43,6 +43,12 @@ export const workerPool = new Pool({ connectionString, max: 1,
 export type WorkerState = { nextTask: number; cursors: Record<string, number>; startedAt?: string;
   deliveryNext?: number; finishedAt?: string; lastHealthyAt?: string; failures?: string[]; deferred?: boolean };
 type Task = { name: string; run: () => Promise<unknown>; budgetMs?: number; minBudgetMs?: number };
+/** Provider client for session-extension expiry/recovery; those tasks never create a new charge. */
+async function sessionExtensionStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  const { default: Stripe } = await import('stripe');
+  return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
+}
 
 /** All operations are awaited. Budget exhaustion is a checkpoint, never a race
  * against continuing database/financial work. The driver enforces statement and
@@ -118,6 +124,11 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'expiredClaims', run: async () => (await import('./damage-claim-service')).processExpiredClaims() },
         { name: 'paymentRecovery', run: async () => (await import('./booking-payment-decision')).recoverPendingBookingDecisions(3) },
         { name: 'kitchenChanges', run: async () => (await import('./kitchen-booking-changes')).expireKitchenChanges(3) },
+        // Session extensions: expire stale requests/offers, escalate unanswered extra-time charges, finish committed payments.
+        { name: 'sessionExtensionExpiry', run: async () => { const stripe = await sessionExtensionStripe();
+          return stripe ? (await import('./session-extensions')).expireSessionExtensions(stripe, 3) : { skipped: 'stripe_unconfigured' }; } },
+        { name: 'sessionExtensionRecovery', run: async () => { const stripe = await sessionExtensionStripe();
+          return stripe ? (await import('./session-extensions')).recoverSessionExtensions(stripe, 3) : { skipped: 'stripe_unconfigured' }; } },
         { name: 'authorizations', run: async () => (await import('./auth-expiry-service')).processExpiredAuthorizations() },
         { name: 'storageCheckout', run: async () => (await import('./storage-checkout-service')).processExpiredCheckoutReviews() },
         { name: 'cancellations', run: cancellations },

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 /** Opens the booking's chat with the kitchen (same entry as the booking page) and offers a call link when a phone is known. */
-export function MessageKitchenButton({ bookingId, phone }: { bookingId: number; phone?: string | null }) {
+export function MessageKitchenButton({ bookingId, phone, label, link = false }: { bookingId: number; phone?: string | null; label?: string; link?: boolean }) {
   const { t } = useTranslation("chef");
   const [, navigate] = useLocation();
   const [opening, setOpening] = useState(false);
@@ -29,8 +29,8 @@ export function MessageKitchenButton({ bookingId, phone }: { bookingId: number; 
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={() => void open()} disabled={opening}>
-        {opening ? t("kciMessageOpening", "Opening conversation…") : t("kciMessageKitchen", "Message kitchen")}
+      <Button type="button" variant={link ? "link" : "outline"} size="sm" className={link ? "h-auto p-0" : undefined} onClick={() => void open()} disabled={opening}>
+        {opening ? t("kciMessageOpening", "Opening conversation…") : label ?? t("kciMessageKitchen", "Message kitchen")}
       </Button>
       {phone ? <Button asChild variant="outline" size="sm"><a href={`tel:${phone}`}><Phone className="mr-1.5 h-3.5 w-3.5" aria-hidden />{t("kciCallKitchen", "Call kitchen")}</a></Button> : null}
     </div>

@@ -16,14 +16,6 @@ export async function generatePayoutStatementPDF(
   balanceTransactions: Stripe.BalanceTransaction[],
   bookings: any[]
 ): Promise<Buffer> {
-  // Calculate totals
-  let totalEarnings = 0;
-  let totalPlatformFees = 0;
-  let totalStripeProcessingFees = 0;
-  let totalNetEarnings = 0;
-  const totalBookings = bookings.length;
-  const resolvedAmounts = new Map<any, { subtotal: number; tax: number; managerRevenue: number }>();
-
   // Get service fee rate
   let serviceFeeRate = 0.05; // Default
   try {
@@ -33,42 +25,10 @@ export async function generatePayoutStatementPDF(
     logger.error('Error getting service fee rate for payout statement:', error);
   }
 
-  // Calculate from bookings
-  bookings.forEach((booking: any) => {
-    const bookingSubtotalCents = Number(booking.totalPrice || booking.total_price || 0);
-    const transactionAmountCents = Number(booking.transactionAmount || booking.transaction_amount || 0);
-    const transactionServiceFeeCents = Number(booking.transactionServiceFee || booking.transaction_service_fee || booking.serviceFee || booking.service_fee || 0);
-    const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
-    const storedBaseAmount = parseFloat(String(booking.baseAmount || booking.base_amount || 0));
-    const storedTaxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0));
-    const transactionMetadata = booking.transactionMetadata || booking.transaction_metadata || {};
-    const financials = resolveKitchenTransactionTaxAndSubtotal({
-      isDamageClaim: false,
-      ptAmount: transactionAmountCents,
-      ptBaseAmount: storedBaseAmount,
-      ptTaxAmount: storedTaxAmount,
-      approvedTaxCents: Number(transactionMetadata.approvedTax ?? transactionMetadata.approved_tax ?? 0),
-      kbTotalPrice: bookingSubtotalCents,
-      taxRatePercent: Number(booking.taxRatePercent || booking.tax_rate_percent || 0),
-      ptServiceFee: transactionServiceFeeCents,
-      metadata: transactionMetadata,
-    });
-    const totalPrice = financials.totalPriceCents / 100;
-    const serviceFee = financials.serviceFeeCents / 100;
-    const taxAmount = financials.taxCents / 100;
-    const reconciledGross = totalPrice + taxAmount;
-    const storedManagerRevenue = Number(booking.managerRevenue || 0) / 100;
-    const managerRevenue = storedManagerRevenue > 0 && storedManagerRevenue <= reconciledGross
-      ? storedManagerRevenue
-      : reconciledGross - stripeProcessingFee;
-
-    resolvedAmounts.set(booking.id, { subtotal: totalPrice, tax: taxAmount, managerRevenue });
-
-    totalEarnings += totalPrice;
-    totalPlatformFees += serviceFee;
-    totalStripeProcessingFees += stripeProcessingFee;
-    totalNetEarnings += managerRevenue;
-  });
+  // One statement line per booking; a session extension is its own charge on the same booking, counted once inside it.
+  const summary = summarizePayoutStatementBookings(bookings);
+  const { totalEarnings, totalStripeProcessingFees, totalNetEarnings, totalBookings, resolvedAmounts } = summary;
+  bookings = summary.bookings;
 
   // Payout amount from Stripe (in cents, convert to dollars)
   const payoutAmount = payout.amount / 100;
@@ -278,4 +238,55 @@ export async function generatePayoutStatementPDF(
       reject(error);
     }
   });
+}
+
+/**
+ * Per-booking statement amounts. Rows may repeat a booking: its own payment plus session-extension charges
+ * (each a separate payment). Each payment row is resolved against its own subtotal and summed once per booking.
+ */
+export function summarizePayoutStatementBookings(rows: any[]) {
+  let totalEarnings = 0, totalPlatformFees = 0, totalStripeProcessingFees = 0, totalNetEarnings = 0;
+  const resolvedAmounts = new Map<any, { subtotal: number; tax: number; managerRevenue: number }>();
+  const bookings: any[] = [];
+  rows.forEach((booking: any) => {
+    const transactionMetadata = booking.transactionMetadata || booking.transaction_metadata || {};
+    const isExtension = transactionMetadata.type === 'session_extension' || transactionMetadata.sessionExtensionId != null;
+    // An extension row carries the parent booking's columns; its own subtotal is the approved extension subtotal.
+    const bookingSubtotalCents = isExtension ? Number(transactionMetadata.approvedSubtotal || 0) : Number(booking.totalPrice || booking.total_price || 0);
+    const transactionAmountCents = Number(booking.transactionAmount || booking.transaction_amount || 0);
+    const transactionServiceFeeCents = Number(booking.transactionServiceFee || booking.transaction_service_fee || (isExtension ? 0 : booking.serviceFee || booking.service_fee) || 0);
+    const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
+    const storedBaseAmount = parseFloat(String(booking.baseAmount || booking.base_amount || 0));
+    const storedTaxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0));
+    const financials = resolveKitchenTransactionTaxAndSubtotal({
+      isDamageClaim: false,
+      ptAmount: transactionAmountCents,
+      ptBaseAmount: storedBaseAmount,
+      ptTaxAmount: storedTaxAmount,
+      approvedTaxCents: Number(transactionMetadata.approvedTax ?? transactionMetadata.approved_tax ?? 0),
+      kbTotalPrice: bookingSubtotalCents,
+      taxRatePercent: Number(booking.taxRatePercent || booking.tax_rate_percent || 0),
+      ptServiceFee: transactionServiceFeeCents,
+      metadata: transactionMetadata,
+    });
+    const totalPrice = financials.totalPriceCents / 100;
+    const serviceFee = financials.serviceFeeCents / 100;
+    const taxAmount = financials.taxCents / 100;
+    const reconciledGross = totalPrice + taxAmount;
+    const storedManagerRevenue = Number(booking.managerRevenue || 0) / 100;
+    const managerRevenue = storedManagerRevenue > 0 && storedManagerRevenue <= reconciledGross
+      ? storedManagerRevenue
+      : reconciledGross - stripeProcessingFee;
+
+    const previous = resolvedAmounts.get(booking.id);
+    if (!previous) bookings.push(booking);
+    resolvedAmounts.set(booking.id, { subtotal: (previous?.subtotal ?? 0) + totalPrice, tax: (previous?.tax ?? 0) + taxAmount,
+      managerRevenue: (previous?.managerRevenue ?? 0) + managerRevenue });
+
+    totalEarnings += totalPrice;
+    totalPlatformFees += serviceFee;
+    totalStripeProcessingFees += stripeProcessingFee;
+    totalNetEarnings += managerRevenue;
+  });
+  return { totalEarnings, totalPlatformFees, totalStripeProcessingFees, totalNetEarnings, totalBookings: bookings.length, resolvedAmounts, bookings };
 }

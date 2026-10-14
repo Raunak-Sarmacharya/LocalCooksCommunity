@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ refetch: vi.fn(), token: vi.fn(async () => 'test-token'), fetch: vi.fn(), data: {
   serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, tourOutcomeReminderMinutes: 0, historicalVisitReviewAfterHours: 48, preparationReminderHours: 24,
-  arrivalReminderHours: 2, departureReminderMinutes: 30, inspectionWarningPercent: 50,
+  arrivalReminderHours: 2, departureReminderMinutes: 30, managerNoCheckinMinutes: 15, inspectionWarningPercent: 50,
   managerResponseBufferHours: 1, managerDecisionFirstReminderHours: 12, managerDecisionFinalReminderHours: 2,
   responseWarningHours: 6, cancellationWarningHours: 6, tourPreparationMinuteOfDay: 420, tourArrivalReminderMinutes: 60, tourDepartureReminderMinutes: 10, tourPreparationEnabled: 1, tourArrivalEnabled: 1, tourDepartureEnabled: 1,
 } }));

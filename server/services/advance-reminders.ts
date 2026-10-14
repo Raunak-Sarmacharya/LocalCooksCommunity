@@ -21,11 +21,12 @@ import { chefVisitCodes } from './visit-code-challenge';
 import { instructionStateForVisit } from './visit-duties';
 import { makeCloseoutSnapshot, savedCloseout } from '@shared/clock-closeout';
 import { getCheckinSettings } from './kitchen-checkout-service';
+import { managerNoCheckinNotice } from './kitchen-payout-notice';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type ReminderSource = 'booking' | 'tour' | 'claim' | 'penalty' | 'storage_review' | 'storage_cancellation_review' | 'booking_review' | 'cancellation_review' | 'storage_arrival' | 'manager_decision';
 export type Reminder = {
-  source: ReminderSource; reservationId: number; resource: string; kind: 'preparation' | 'arrival' | 'departure' | 'deadline' | 'checkin_open' | 'session_ending' | 'manager_decision';
+  source: ReminderSource; reservationId: number; resource: string; kind: 'preparation' | 'arrival' | 'departure' | 'deadline' | 'checkin_open' | 'session_ending' | 'manager_decision' | 'manager_no_checkin';
   recipientId: number; role: 'chef' | 'manager'; email: string; timezone: string;
   start: string; end: string; due: string; revision: string; path: string; title: string; message: string;
   shortVisit: boolean;
@@ -216,6 +217,8 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     const savedDuties = readVisitDuties(row.booking.visitDuties);
     const settings = savedDuties || await getCheckinSettings(row.location.id, tx);
     const duties = makeVisitDuties(row.checklist, false, settings, savedDuties?.source || 'legacy_first_action');
+    // The chef's own heads-up (kind 'running_late' lifecycle events) moves the manager's no-check-in alert to their stated arrival.
+    const runningLate = await (await import('./running-late')).readRunningLate(id, tx);
     return reminderVisitTimes(row.booking, timezone).flatMap(block => {
       if (now >= block.end) return [];
       const visit = visits.find(visit => visit.blockIndex === block.index);
@@ -255,10 +258,23 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
       if (!manager || !arrival) return chefReminders;
       const managerLocale = manager.preferredLocale;
       const managerMessage = facts + tEmail(managerLocale, mode === 'self' ? 'managerArrivalSelf' : mode === 'staffed' ? 'managerArrivalStaffed' : 'managerArrivalLegacy', { chef: name || 'The chef' });
-      return [...chefReminders, { ...arrival, recipientId: manager.id, email: manager.username || '', role: 'manager' as const,
+      const managerArrival = { ...arrival, recipientId: manager.id, email: manager.username || '', role: 'manager' as const,
         recipientName: undefined, visitorName: name || 'The chef', locale: managerLocale,
         path: `/manager/booking/${id}`, message: managerMessage, arrivalNotes: undefined, departureNotes: undefined,
-        revision: hash([block.start.toISOString(), block.end.toISOString(), timezone, manager.username]) }];
+        revision: hash([block.start.toISOString(), block.end.toISOString(), timezone, manager.username]) };
+      // One notice, some minutes after the booked start, while the chef still has not checked in. The revision leaves out the
+      // running-late ETA so a later heads-up only moves the unsent due time; it never creates a second notice.
+      const covering = runningLate && (runningLate.visitId == null || runningLate.visitId === (visit?.id ?? null)) ? Date.parse(runningLate.expectedAt) : 0;
+      const noCheckinDue = Math.max(block.start.getTime() + timing.managerNoCheckinMinutes * 60000, covering);
+      const noCheckin: Reminder[] = (state || 'not_checked_in') === 'not_checked_in' && noCheckinDue < block.end.getTime() ? [{
+        ...managerArrival, kind: 'manager_no_checkin', path: `/manager/booking/${id}?action=message`, due: new Date(noCheckinDue).toISOString(), shortVisit: false,
+        kitchenName: row.kitchen.name, recipientName: undefined, title: `${row.kitchen.name} · ${row.booking.referenceCode || `#${id}`}`,
+        message: '', revision: hash([block.start.toISOString(), block.end.toISOString(), timezone, manager.username, 'no-checkin']) }] : [];
+      if (noCheckin[0]) {
+        const notice = managerNoCheckinNotice(managerLocale, { chef: name || null, kitchen: row.kitchen.name, start: block.start, timezone });
+        noCheckin[0].message = notice.message;
+      }
+      return [...chefReminders, managerArrival, ...noCheckin];
     });
   }
 
@@ -347,7 +363,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
       continue;
     }
     // New reminders never catch up a lead that was already missed. Existing due work remains deliverable.
-    if (reminder.kind === 'manager_decision' && !prior && Date.parse(reminder.due) < now.getTime()) continue;
+    if ((reminder.kind === 'manager_decision' || reminder.kind === 'manager_no_checkin') && !prior && Date.parse(reminder.due) < now.getTime()) continue;
     const eligibility = reminderEligibility(reminder, now, policy);
     const terminal = eligibility === 'expired' || eligibility === 'consolidated' ||
       (reminder.source !== 'tour' && reminder.kind === 'preparation' && now.getTime() >= Date.parse(reminder.start) - (reminder.arrivalLeadHours ?? lifecycleSettings.arrivalReminderHours.defaultValue) * 3600000);
@@ -378,18 +394,19 @@ export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPol
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && !policy?.shortVisit) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && policy?.shortVisit === 'arrival_guidance') return 'consolidated';
   if (now.getTime() < Date.parse(r.due)) return 'future';
-  if (now.getTime() >= Date.parse(r.kind === 'departure' || r.kind === 'deadline' || r.kind === 'manager_decision' || r.kind === 'checkin_open' || r.kind === 'session_ending' ? r.end : r.start)) return 'expired';
+  if (now.getTime() >= Date.parse(r.kind === 'departure' || r.kind === 'deadline' || r.kind === 'manager_decision' || r.kind === 'manager_no_checkin' || r.kind === 'checkin_open' || r.kind === 'session_ending' ? r.end : r.start)) return 'expired';
   return 'due';
 }
 
 function bookingReminderSubject(r: Reminder) {
   if (r.kind === 'session_ending') return `${tEmail(r.locale, 'sessionEndingSubject')} · ${r.kitchenName || r.title} · ${r.referenceCode || `BOOKING-${r.reservationId}`}`;
   const time = new Intl.DateTimeFormat(r.locale || 'en-CA', { timeZone: r.timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(r.start));
+  if (r.kind === 'manager_no_checkin') return tEmail(r.locale, 'managerNoCheckinSubject', { chef: r.visitorName || tEmail(r.locale, 'payoutChefFallback'), kitchen: r.kitchenName || r.title });
   if (r.role === 'manager' && r.kind === 'arrival') return tEmail(r.locale, 'managerArrivalSubject', { chef: r.visitorName || 'The chef', time, kitchen: r.kitchenName || r.title });
   if (r.kind === 'preparation') return tEmail(r.locale, 'visitPreparationSubject', { kitchen: r.kitchenName || r.title });
   if (r.kind === 'arrival') return tEmail(r.locale, 'visitArrivalSubject', { time, kitchen: r.kitchenName || r.title });
   const titles: Record<Reminder['kind'], string> = { preparation: 'Prepare for your kitchen visit', arrival: 'Your kitchen visit is coming up',
-    checkin_open: 'Check-in is available', session_ending: 'Your booked time ends soon', departure: 'Before you leave the kitchen', deadline: 'Kitchen visit reminder', manager_decision: 'Review request' };
+    checkin_open: 'Check-in is available', session_ending: 'Your booked time ends soon', departure: 'Before you leave the kitchen', deadline: 'Kitchen visit reminder', manager_decision: 'Review request', manager_no_checkin: 'Chef has not checked in' };
   return `${titles[r.kind]} · ${r.kitchenName || r.title} · ${r.referenceCode || `BOOKING-${r.reservationId}`}`;
 }
 
@@ -404,8 +421,19 @@ function renderSessionEndingEmail(r: Reminder, url: string) {
     ] }], actionLabel: tEmail(r.locale, 'sessionEndingAction'), actionUrl: url, note: tEmail(r.locale, 'sessionEndingNote') });
 }
 
+/** One short, warm notice: who has not arrived, when the booking started, and a Message CTA. */
+function renderManagerNoCheckinEmail(r: Reminder, url: string) {
+  const chef = r.visitorName || tEmail(r.locale, 'payoutChefFallback');
+  return renderTransactionalEmail({ to: r.email, locale: r.locale, recipientName: r.recipientName || 'there', subject: bookingReminderSubject(r),
+    heading: tEmail(r.locale, 'managerNoCheckinHeading', { chef }), message: r.message, facts: [
+      { label: tEmail(r.locale, 'sessionEndingKitchen'), value: r.kitchenName || r.title },
+      { label: tEmail(r.locale, 'sessionEndingReference'), value: r.referenceCode || `BOOKING-${r.reservationId}` }],
+    actionLabel: tEmail(r.locale, 'managerMessageChefAction', { chef }), actionUrl: url });
+}
+
 export function renderBookingVisitReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`) {
   if (r.kind === 'session_ending') return renderSessionEndingEmail(r, url);
+  if (r.kind === 'manager_no_checkin') return renderManagerNoCheckinEmail(r, url);
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: r.timezone, year: 'numeric', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'longGeneric' });
   const message = r.role === 'manager' ? r.message : r.kind === 'preparation' ? `${arrivalModeLine(r.arrivalMode, r.locale)} ${tEmail(r.locale, 'instructionsReleased')}` : r.kind === 'arrival' ? `${arrivalModeLine(r.arrivalMode, r.locale, true)} ${tEmail(r.locale, 'visitArrivalInstructionsLink')}` : r.kind === 'departure'
@@ -546,7 +574,7 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
       if (!sent) try {
         if (channel === 'notification') {
           await notificationService.create({ userId: r.recipientId, target: r.role, type: 'system_announcement',
-            title: r.kind === 'manager_decision' ? r.title : intent.subject, message: r.message, actionUrl: r.path, actionLabel: r.kind === 'manager_decision' ? 'Review request' : 'View current reservation',
+            title: r.kind === 'manager_decision' ? r.title : intent.subject, message: r.message, actionUrl: r.path, actionLabel: r.kind === 'manager_decision' ? 'Review request' : r.kind === 'manager_no_checkin' ? tEmail(r.locale, 'managerMessageChefAction', { chef: r.visitorName || tEmail(r.locale, 'payoutChefFallback') }) : 'View current reservation',
             metadata: { reminderKey: intent.trackingId, reservationId: r.reservationId } }, tx);
           sent = true;
         } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : renderTransactionalEmail({ to: r.email, locale: r.locale, subject: r.kind === 'manager_decision' ? r.title : intent.subject, recipientName: r.recipientName || 'there', message: r.message, facts: [{ label: tEmail(r.locale, 'bookingReference'), value: `${r.source === 'storage_arrival' ? 'Storage' : 'KB'}-${r.reservationId}` }, { label: 'Respond by', value: emailLocalDateTime(r.kind === 'manager_decision' ? r.end : r.due, r.timezone, r.locale || 'en-CA') }], actionLabel: r.kind === 'manager_decision' ? 'Review request' : tEmail(r.locale, r.source === 'storage_arrival' ? 'bookingViewStorage' : 'bookingOpen'), actionUrl: url }),

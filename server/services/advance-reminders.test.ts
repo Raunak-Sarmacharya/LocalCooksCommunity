@@ -4,7 +4,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { AsyncLocalStorage } from 'node:async_hooks';
 const state = vi.hoisted(() => ({ db: null as any, booking: null as any, tour: null as any, visits: [] as any[], logs: [] as any[],
   send: vi.fn(), alerts: [] as any[], locks: new Set<number>(), advisory: new Map<string, Promise<void>>(), failAck: false,
-  claim: null as any, penalty: null as any, storage: null as any, settings: {} as Record<string, string>, people: [] as any[], location: null as any, checklist: {} as any, tourSettings: {} as any }));
+  events: [] as any[], claim: null as any, penalty: null as any, storage: null as any, settings: {} as Record<string, string>, people: [] as any[], location: null as any, checklist: {} as any, tourSettings: {} as any }));
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) }));
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
@@ -46,7 +46,7 @@ function filter(table: string, rows: any[], condition: any) {
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(now);
   vi.clearAllMocks(); vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '0'); vi.stubEnv('NODE_ENV', 'development');
-  state.logs = []; state.alerts = []; state.visits = []; state.locks.clear(); state.advisory.clear(); state.failAck = false;
+  state.logs = []; state.alerts = []; state.events = []; state.visits = []; state.locks.clear(); state.advisory.clear(); state.failAck = false;
   state.settings = {}; state.claim = null; state.penalty = null; state.storage = null; state.tourSettings = {};
   state.booking = { id: 10, chefId: 3, kitchenId: 4, bookingDate: new Date('2026-10-05T00:00:00Z'),
     startTime: '08:00', endTime: '12:00', operatingWindowStartTime: '08:00', status: 'confirmed', paymentStatus: 'paid', checkinStatus: 'not_checked_in' };
@@ -72,7 +72,7 @@ beforeEach(() => {
     select: (shape: any) => {
       let table = '', condition: any, limit = Infinity, lock = false;
       const rows = () => {
-        let values: any[] = table === 'email_logs' ? state.logs : table === 'users' ? people : table === 'kitchen_booking_visits' ? state.visits
+        let values: any[] = table === 'email_logs' ? state.logs : table === 'users' ? people : table === 'kitchen_booking_visits' ? state.visits : table === 'booking_lifecycle_events' ? state.events
           : table === 'kitchen_bookings' ? [{ booking: state.booking, kitchen, location, checklist }]
           : table === 'kitchen_viewings' ? [{ tour: state.tour, location }]
           : table === 'damage_claims' ? state.claim ? [state.claim] : []
@@ -229,7 +229,7 @@ it('schedules manager arrival only and sends no full instructions in the routine
   expect(manager.subject).toContain('arrives at');
   expect(manager.text.startsWith(manager.subject)).toBe(true);
   expect(manager.text).toContain('/manager/booking/10');
-  expect(state.logs.filter(log => log.recipientRole === 'manager').every(log => JSON.parse(log.textBody).reminder.kind === 'arrival')).toBe(true);
+  expect(state.logs.filter(log => log.recipientRole === 'manager').every(log => ['arrival', 'manager_no_checkin'].includes(JSON.parse(log.textBody).reminder.kind))).toBe(true);
 });
 
 it('delivers booking preparation with named, escaped instructions through the existing dispatcher', async () => {
@@ -347,9 +347,9 @@ describe('recurring reconciliation against a moving runtime clock', () => {
     state.booking.status = 'cancelled'; await schedule();
     state.booking.status = 'confirmed'; await schedule();
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(6);
-    state.booking.startTime = '09:00'; await schedule(); await schedule();
     expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(8);
+    state.booking.startTime = '09:00'; await schedule(); await schedule();
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(10);
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
   });
 });
@@ -360,7 +360,7 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     const accepted = state.logs.filter(r => r.status === 'sent').map(r => r.id);
     state.settings = { preparation_reminder_hours: '36', arrival_reminder_hours: '4', departure_reminder_minutes: '45' };
     await schedule();
-    expect(state.logs).toHaveLength(8);
+    expect(state.logs).toHaveLength(10);
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
     const arrival = state.logs.find(r => JSON.parse(r.textBody).reminder.kind === 'arrival');
     expect(JSON.parse(arrival.textBody).reminder.due).toBe('2026-10-05T04:00:00.000Z');
@@ -375,16 +375,16 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     expect(state.logs.some(r => JSON.parse(r.textBody).reminder.kind === 'preparation')).toBe(false);
   });
   it('persists future work outside decision queues, sends only due channels and reuses semantic keys', async () => {
-    await schedule(); await schedule(); expect(state.logs).toHaveLength(8);
+    await schedule(); await schedule(); expect(state.logs).toHaveLength(10);
     expect(state.logs.every(r => r.category === 'advance_reminder')).toBe(true);
     expect((await dispatch()).accepted).toBe(2); expect(state.send).toHaveBeenCalledTimes(1);
     expect(state.send.mock.calls[0][0].text).toContain('/booking/10');
     expect(state.send.mock.calls[0][0].text).toContain('Fixture address');
     expect((await dispatch()).accepted).toBe(0);
-    state.booking.updatedAt = new Date(); await schedule(); expect(state.logs).toHaveLength(8);
+    state.booking.updatedAt = new Date(); await schedule(); expect(state.logs).toHaveLength(10);
   });
   it('serializes competing producers and claims across simultaneous workers', async () => {
-    await Promise.all([schedule(), schedule()]); expect(state.logs).toHaveLength(8);
+    await Promise.all([schedule(), schedule()]); expect(state.logs).toHaveLength(10);
     let release!: () => void; const gate = new Promise<void>(resolve => release = resolve);
     state.send.mockImplementation(async () => { await gate; return true; });
     const first = dispatchAdvanceReminders({ now, policy, limit: 1, onlyLogId: 2 }); await vi.waitFor(() => expect(state.send).toHaveBeenCalledTimes(1));
@@ -403,7 +403,7 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     state.db.select = ((original: any) => (shape: any) => {
       const chain = original(shape); const then = chain.then; chain.then = (resolve: any, reject: any) => then((rows: any[]) => resolve(rows.map(r => r.kitchen ? { ...r, kitchen: { ...r.kitchen, checkinCheckoutEnabled: false } } : r)), reject); return chain;
     })(state.db.select);
-    await schedule(); expect(state.logs).toHaveLength(8);
+    await schedule(); expect(state.logs).toHaveLength(10);
     expect(state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'departure')).toHaveLength(2);
     await dispatch();
     expect(state.send.mock.calls[0][0].text).toContain('Meet the manager'); expect(state.send.mock.calls[0][0].text).toContain('host@example.test');
@@ -568,7 +568,7 @@ describe('actual downstream deadline tasks and action owners', () => {
     state.booking.selectedSlots = ['08:00', '11:00'];
     state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '09:00', checkinStatus: 'checked_out' },
       { id: 12, blockIndex: 1, startTime: '11:00', endTime: '12:00', checkinStatus: 'not_checked_in' }];
-    await schedule(); expect(state.logs).toHaveLength(8);
+    await schedule(); expect(state.logs).toHaveLength(10);
     expect(state.logs.every(r => JSON.parse(r.textBody).reminder.resource.endsWith('visit-1'))).toBe(true);
     expect((await dispatch(new Date('2026-10-05T09:00:00Z'))).accepted).toBe(4);
   });
@@ -580,8 +580,8 @@ describe('actual downstream deadline tasks and action owners', () => {
   it('revives unsent restored work without repeating an accepted channel', async () => {
     await schedule(); await dispatch(); state.booking.status = 'cancelled'; await schedule();
     state.booking.status = 'confirmed'; await schedule();
-    expect(state.logs).toHaveLength(8); expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(6); await dispatch(); expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs).toHaveLength(10); expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(8); await dispatch(); expect(state.send).toHaveBeenCalledTimes(1);
   });
   it('warns the storage penalty chef, then suppresses a recorded dispute', async () => {
     state.storage = { id: 30, chefId: 3 };
@@ -951,5 +951,68 @@ describe('session_ending reminder for the chef in-session screen', () => {
     const mail = renderBookingVisitReminder(reminder);
     expect(mail.html).toContain('Open your visit');
     expect(mail.html).toContain('/booking/10/visit');
+  });
+});
+
+describe('manager "chef has not checked in" alert', () => {
+  const start = new Date('2026-10-05T08:00:00Z');
+  const noCheckin = () => state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'manager_no_checkin');
+  const sentNoCheckin = () => state.send.mock.calls.map(([content]) => content).filter(content => content.to === 'host@example.test' && /checked in yet/.test(content.text));
+  beforeEach(() => { state.people[0].managerProfileData = { fullName: 'Alex' }; });
+  it('schedules one in-app and one email notice 15 minutes after the booked start, then sends once', async () => {
+    await schedule();
+    expect(noCheckin()).toHaveLength(2);
+    expect([...new Set(noCheckin().map(row => JSON.parse(row.textBody).reminder.due))]).toEqual(['2026-10-05T08:15:00.000Z']);
+    expect(noCheckin().every(row => row.recipientUserId === 2)).toBe(true);
+    expect((await dispatch(new Date('2026-10-05T08:14:00Z'))).accepted).toBe(0);
+    await dispatch(new Date('2026-10-05T08:15:00Z'), 30);
+    const alert = state.alerts.find(value => /checked in yet/.test(value.message));
+    expect(alert).toMatchObject({ userId: 2, title: expect.stringContaining('Alex hasn’t checked in yet'), actionLabel: 'Message Alex', actionUrl: '/manager/booking/10?action=message' });
+    expect(alert.message).toContain('Alex hasn’t checked in yet. Their booking started at 8:00 a.m.');
+    const [email] = sentNoCheckin();
+    expect(email.text).toContain('Message Alex');
+    expect(email.text).toContain('/manager/booking/10?action=message');
+    await dispatch(new Date('2026-10-05T08:20:00Z'), 30);
+    expect(sentNoCheckin()).toHaveLength(1);
+  });
+  it('is configurable through lifecycle settings', async () => {
+    state.settings = { manager_no_checkin_minutes: '30' };
+    await schedule();
+    expect(JSON.parse(noCheckin()[0].textBody).reminder.due).toBe('2026-10-05T08:30:00.000Z');
+  });
+  it('is not sent once the chef has checked in or the booking is cancelled', async () => {
+    await schedule();
+    state.booking.checkinStatus = 'checked_in';
+    await dispatch(new Date('2026-10-05T08:15:00Z'), 30);
+    expect(sentNoCheckin()).toHaveLength(0);
+    expect(state.alerts.some(value => /checked in yet/.test(value.message))).toBe(false);
+    state.booking.checkinStatus = 'not_checked_in'; state.booking.status = 'cancelled'; state.logs.forEach(row => { if (row.status === 'suppressed') row.status = 'scheduled'; });
+    await dispatch(new Date('2026-10-05T08:16:00Z'), 30);
+    expect(sentNoCheckin()).toHaveLength(0);
+  });
+  it('waits for the chef’s stated arrival when they said they are running late', async () => {
+    await schedule();
+    state.events = [{ createdAt: new Date('2026-10-05T08:05:00Z'), metadata: { minutes: 30, reportedAt: '2026-10-05T08:05:00.000Z', expectedAt: '2026-10-05T08:35:00.000Z', visitId: null } }];
+    await schedule();
+    expect(noCheckin()).toHaveLength(2);
+    expect(JSON.parse(noCheckin()[0].textBody).reminder.due).toBe('2026-10-05T08:35:00.000Z');
+    await dispatch(new Date('2026-10-05T08:20:00Z'), 30);
+    expect(sentNoCheckin()).toHaveLength(0);
+    await dispatch(new Date('2026-10-05T08:35:00Z'), 30);
+    expect(sentNoCheckin()).toHaveLength(1);
+  });
+  it('keeps the normal time when the stated arrival is earlier than it', async () => {
+    state.events = [{ createdAt: new Date('2026-10-05T07:45:00Z'), metadata: { minutes: 15, reportedAt: '2026-10-05T07:45:00.000Z', expectedAt: '2026-10-05T08:00:00.000Z', visitId: null } }];
+    await schedule();
+    expect(JSON.parse(noCheckin()[0].textBody).reminder.due).toBe('2026-10-05T08:15:00.000Z');
+  });
+  it('does not catch up an alert whose time passed before it was first scheduled', async () => {
+    await state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'booking', 10, policy, new Date('2026-10-05T08:20:00Z')));
+    expect(noCheckin()).toHaveLength(0);
+  });
+  it('is never due after the booked end', async () => {
+    state.booking.endTime = '08:10';
+    await schedule();
+    expect(noCheckin()).toHaveLength(0);
   });
 });

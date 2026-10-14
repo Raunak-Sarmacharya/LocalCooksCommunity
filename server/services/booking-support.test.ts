@@ -216,6 +216,15 @@ describe('support operation reservation and notices', () => {
     expect(result.paymentEvidence?.capturedCents).toBe(10000);
     expect(JSON.stringify(result)).not.toMatch(/987654|private-nonce/);
   });
+  it('the case money summary counts the booking payment and a paid extension once each', async () => {
+    state.payments.push({ id: 9, paymentIntentId: 'pi_ext', amount: '3000', refundAmount: '0', serviceFee: '175', stripeProcessingFee: '117', managerRevenue: '2708',
+      transferId: null, status: 'succeeded', metadata: { type: 'session_extension', sessionExtensionId: 5 } });
+    const result = await readBookingSupport(1);
+    expect(result.money).toMatchObject({ capturedCents: 13000, platformFeeCents: 175, processingFeeCents: 437 });
+    expect(result.money.transfers.map(row => row.transactionId)).toEqual([8, 9]);
+    // The kitchen-caused full refund covers one payment only; with a separate extension charge it needs a manual review.
+    expect(result.availableActions.map(action => action.type)).not.toContain('cancel_kitchen_caused');
+  });
   it('resolves both party names like the lifecycle emails and never shows an email or a role word', async () => {
     state.names = { 4: 'Alex Rivera', 5: 'Sam Lee' };
     let result = await readBookingSupport(1);

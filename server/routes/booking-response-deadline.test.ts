@@ -8,6 +8,7 @@ vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.
 vi.mock('../chat-service', () => ({ deleteConversation: vi.fn() }));
 vi.mock('../r2-storage', () => ({ getPresignedUrl: vi.fn(), deleteFromR2: vi.fn() }));
 vi.mock('../services/lifecycle-settings', async original => ({ ...await original<typeof import('../services/lifecycle-settings')>(), getLifecycleSettings: async () => state.timing }));
+vi.mock('../services/running-late', () => ({ readRunningLate: async () => null }));
 vi.mock('../services/stripe-checkout-fee-service', () => ({ getFeeConfig: async () => ({ platformCommissionRate: 0.07 }) }));
 vi.mock('../domains/bookings/booking.service', () => ({ bookingService: { getBookingById: async () => state.booking } }));
 vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: { getKitchenById: async () => ({ id: 4, locationId: 5, hourlyRate: 100, taxRatePercent: 15 }) } }));

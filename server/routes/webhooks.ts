@@ -106,6 +106,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
           const { reconcileKitchenChangeAuthorization } = await import('../services/kitchen-booking-changes');
           await reconcileKitchenChangeAuthorization(intent);
         }
+        await reconcileSessionExtensionEvent(intent);
         break;
       }
       case "checkout.session.completed":
@@ -1760,6 +1761,13 @@ async function handleStorageExtensionPaymentCompleted(
   }
 }
 
+/** Session extensions: provider truth is re-read and verified against the saved decision (never trusts event state). */
+async function reconcileSessionExtensionEvent(intent: Stripe.PaymentIntent) {
+  if (intent.metadata?.type !== 'session_extension' || !process.env.STRIPE_SECRET_KEY) return;
+  const { handleSessionExtensionWebhook } = await import('../services/session-extensions');
+  await handleSessionExtensionWebhook(new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' }), intent);
+}
+
 async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
@@ -1771,6 +1779,8 @@ async function handlePaymentIntentSucceeded(
     const outcome = await reconcileKitchenChangePayment(paymentIntent);
     if (!outcome?.applied) return; // Captured funds have an owned recovery task; no manager transfer yet.
   }
+  // Records the separate extra-time payment first; the shared path below then syncs fees and the gated transfer.
+  await reconcileSessionExtensionEvent(paymentIntent);
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -2153,6 +2163,7 @@ async function handlePaymentIntentFailed(
   webhookEventId: string,
 ) {
   if (paymentIntent.metadata.type === 'kitchen_booking_change') return;
+  if (paymentIntent.metadata.type === 'session_extension') return reconcileSessionExtensionEvent(paymentIntent);
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
@@ -2313,6 +2324,7 @@ async function handlePaymentIntentCanceled(
     await reconcileKitchenChangeCancellation(paymentIntent);
     return;
   }
+  if (paymentIntent.metadata.type === 'session_extension') return reconcileSessionExtensionEvent(paymentIntent);
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;

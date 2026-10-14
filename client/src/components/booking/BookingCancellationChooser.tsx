@@ -33,6 +33,8 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const operationKey = useRef(crypto.randomUUID());
   const [quote, setQuote] = useState<ExactQuote | null>(null);
   const money = (cents = 0) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
+  const [outcomeRefundCents, setOutcomeRefundCents] = useState<number | null>(null);
+  const lateCancel = !!quote?.snapshot?.sessions[0] && Date.now() >= Date.parse(quote.snapshot.sessions[0].startAt) - quote.snapshot.noticeHours * 3600000;
   const beforeConfirmation = status === 'pending';
   const unpaid = beforeConfirmation && ['pending', 'authorized', 'failed'].includes(paymentStatus || '');
   const eligible = !visitActive && ['pending', 'confirmed'].includes(status);
@@ -61,6 +63,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const submit = async () => {
     if (!canSubmit) return;
     setBusy(true); setError('');
+    if (scope === 'entire') setOutcomeRefundCents(quote?.chefRefundCents ?? 0);
     try {
       const token = await auth.currentUser?.getIdToken();
       const targets = scope === 'entire' ? [{ key: 'parent', url: `/api/chef/bookings/${bookingId}/cancel` }]
@@ -75,8 +78,9 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('cancelCopy01')); }
     finally {
-      try { await onChanged(); } catch { setError(t('cancelCopy04')); }
+      // The result is final once the server answers; refreshing the page behind must never keep Done disabled.
       setBusy(false);
+      try { await onChanged(); } catch { setError(t('cancelCopy04')); }
     }
   };
   const reset = () => { setError(''); setResults({}); setSelected([]); setScope('entire'); setReason(''); };
@@ -95,7 +99,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
       <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" onOpenAutoFocus={event => { event.preventDefault(); titleRef.current?.focus(); }}>
         <DialogHeader className="shrink-0 border-b px-5 py-5 text-left sm:px-6">
           <DialogTitle ref={titleRef} tabIndex={-1} className="text-xl outline-none">{complete ? policyT('cpCancelled') : beforeConfirmation ? t('cancelCopy09') : policyT('cpCancel')}</DialogTitle>
-          <DialogDescription className="pt-1">{complete ? t('cancelCopy11') : t('cancelCopy12')}</DialogDescription>
+          <DialogDescription className="pt-1">{complete ? scope === 'entire' && !beforeConfirmation && outcomeRefundCents !== null && quote?.quoteReady ? policyT(outcomeRefundCents > 0 ? 'cpRefundOnWay' : 'cpNoRefundDone', { refund: money(outcomeRefundCents) }) : scope === 'entire' && beforeConfirmation ? policyT('cpHoldReleased') : t('cancelCopy11') : items.length ? t('cancelCopy12') : policyT('cpReviewBeforeCancel')}</DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
           {summary && <section className="rounded-xl border p-4">
@@ -108,12 +112,11 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
             <h3 className="text-sm font-medium">{t('cancelCopy15')}</h3>
             {beforeConfirmation && scope === 'entire' ? <p className="rounded-xl border bg-muted/30 p-3 text-sm">{policyT('cpHold')}</p> : scope === 'entire' ? <div className="space-y-2 rounded-xl border bg-muted/30 p-3 text-sm" aria-live="polite">
               {quote ? quote.quoteReady ? <>
-                <p>{quote.chefRefundCents || quote.alreadyRefundedCents ? policyT('cpExact', { refund: money(quote.chefRefundCents), fee: money(quote.feeRetainedCents) }) : policyT('cpNoRefund')}</p>
+                <p>{lateCancel ? quote.chefRefundCents ? policyT('cpLateExact', { charge: policyT(quote.snapshot?.lateChargePercent === 50 ? 'cpHalf' : 'cpFull'), refund: money(quote.chefRefundCents), kept: money(quote.retainedCents) }) : policyT('cpNoRefundLate') : quote.chefRefundCents || quote.alreadyRefundedCents ? policyT('cpExact', { refund: money(quote.chefRefundCents), fee: money(quote.feeRetainedCents) }) : policyT('cpNoRefund')}</p>
                 {!!quote.alreadyRefundedCents && <p>{t('bdRefundedLine')}: {money(quote.alreadyRefundedCents)}</p>}
-                <p className="font-medium">{policyT('cpKept', { amount: money(quote.retainedCents) })}</p>
-                {quote.snapshot && <><p className="text-xs">{policyT(quote.snapshot.version === 0 ? 'cpOriginal' : 'cpFrozen')}</p><CancellationPolicySummary policy={quote.snapshot} timezone={quote.snapshot.timezone} startAt={quote.snapshot.sessions[0]?.startAt} processingFeeCents={quote.feeRetainedCents} /></>}
+                {quote.snapshot && !lateCancel && <><p className="text-xs">{policyT(quote.snapshot.version === 0 ? 'cpOriginal' : 'cpFrozen')}</p><CancellationPolicySummary policy={quote.snapshot} timezone={quote.snapshot.timezone} startAt={quote.snapshot.sessions[0]?.startAt} processingFeeCents={quote.feeRetainedCents} /></>}
               </> : <p>{policyT('cpFeePending')}</p> : <Loader2 className="h-4 w-4 animate-spin" aria-label={t('cancelCopy40')} />}
-              <p className="text-xs text-muted-foreground">{policyT('cpAddons')}</p>
+              {items.length > 0 && <p className="text-xs text-muted-foreground">{policyT('cpAddons')}</p>}
             </div> : <div className="rounded-xl border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
               {scope === 'items' && unpaid ? t('cancelCopy16') : t('cancelPolicy')}
               {!unpaid && <p className="mt-2">{t('cancelCopy17')}</p>}

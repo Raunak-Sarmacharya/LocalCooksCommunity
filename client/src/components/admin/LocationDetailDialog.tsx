@@ -12,6 +12,7 @@ import { Loader2, MapPin, Calendar, Building2, Users, Clock, Mail, CreditCard, S
 import { SmartImage } from "@/components/ui/smart-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CancellationPolicyEditor } from '@/components/manager/settings/CancellationPolicyEditor';
+import { SessionExtensionSettingsCard } from '@/components/manager/settings/SessionExtensionSettingsCard';
 
 interface LocationDetailDialogProps {
   locationId: number | null;
@@ -497,6 +498,7 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
           )}
 
           <CancellationPolicyEditor kitchenId={kitchen.id} admin />
+          <SessionExtensionSettingsCard kitchenId={kitchen.id} admin />
           {/* Images */}
           {(kitchen.imageUrl || (kitchen.galleryImages && kitchen.galleryImages.length > 0)) && (
             <div>

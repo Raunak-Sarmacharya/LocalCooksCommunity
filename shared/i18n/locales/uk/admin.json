@@ -113,7 +113,7 @@
   "bsAction_release_hold_for_chef": "Зняти блокування коштів на картці",
   "bsAction_replay_payment_decision": "Перевірити збережене рішення щодо платежу",
   "bsAction_cancel_kitchen_caused": "Скасувати, бо кухня не може прийняти",
-  "bsAction_request_cancellation_for_chef": "????????? ?????????? ?? ??????",
+  "bsAction_request_cancellation_for_chef": "Скасувати бронювання для кухаря",
   "bsAction_accept_cancellation_for_manager": "Прийняти скасування за кухню",
   "bsAction_issue_visit_code": "Отримати новий код для відмітки",
   "bsAction_set_arrival_mode": "Змінити спосіб фіксації прибуття",

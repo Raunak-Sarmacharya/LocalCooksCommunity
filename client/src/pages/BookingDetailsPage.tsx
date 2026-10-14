@@ -16,7 +16,7 @@ import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-
 import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { calendarDateForBookingTime, getHourlySlotStarts, sortTimesInOperatingWindow } from '@shared/operating-hours';
-import { useState, useEffect, useMemo, type ComponentType } from "react";
+import { useState, useEffect, useMemo, useRef, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { formatTime as formatKitchenClock } from "@/lib/formatters";
 import { useLocation, useRoute } from "wouter";
@@ -48,6 +48,9 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
 import { BookingManagementDialog, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementDialog";
 import { BookingAttendancePanel } from "@/components/booking/BookingAttendancePanel";
+import { RunningLateCard } from "@/components/booking/RunningLateCard";
+import { SessionExtensionsCard } from "@/components/booking/SessionExtensionsCard";
+import type { RunningLateState } from "@shared/running-late";
 import { VisitCodePanel } from "@/components/manager/bookings/VisitCodePanel";
 import { ManagerInSessionBadge, inSessionEnds } from "@/components/manager/bookings/ManagerInSessionBadge";
 import { bookingResponseDeadline, formatResponseDeadline } from '@/lib/booking-response-deadline';
@@ -187,6 +190,8 @@ interface BookingDetails {
   checkoutEnabled?: boolean;
   checkinWindowMinutesBefore?: number;
   noShowGraceMinutes?: number;
+  /** The chef's latest "running late" heads-up to the kitchen. */
+  runningLate?: RunningLateState | null;
   visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
 }
 
@@ -237,6 +242,14 @@ export default function BookingDetailsPage() {
       toast({ title: t('detailsCopy01'), description: error instanceof Error ? error.message : t('detailsCopy02'), variant: 'destructive' });
     } finally { setOpeningConversation(false); }
   };
+  // "Message {chef}" in the no-check-in alert and running-late notice opens the conversation straight away.
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    if (!isManagerView || !booking || openedFromLink.current || !canMessage(booking.status) || new URLSearchParams(window.location.search).get('action') !== 'message') return;
+    openedFromLink.current = true;
+    void openBookingConversation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManagerView, booking]);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [cancellationRefundScope, setCancellationRefundScope] = useState<{ kind: 'storage' | 'equipment'; id: number } | undefined>();
@@ -963,24 +976,23 @@ export default function BookingDetailsPage() {
             params.refundAmountCents > 0 &&
             bookingForManagement?.transactionId
           ) {
-            const refundRes = await fetch(
-              `/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`,
-              {
-                method: 'POST', headers, credentials: "include",
-                body: JSON.stringify({
-                  amount: params.refundAmountCents,
-                  reason: ct('sweepText34'),
-                }),
-              },
-            );
-            if (!refundRes.ok) {
-              const d = await refundRes.json().catch(() => ({}));
-              throw new Error(d.error || t('detailsCopy12'));
-            }
+            // Kitchen-caused add-on cancellation: the server refunds the chef in full (card fee absorbed by Local Cooks).
+            const refundRes = await fetch(`/api/manager/bookings/${params.bookingId}/addon-refund`, {
+              method: 'POST', headers, credentials: "include",
+              body: JSON.stringify({
+                operationKey: `addon-${params.bookingId}-${crypto.randomUUID()}`,
+                items: [
+                  ...(params.storageActions || []).filter(entry => entry.action === 'cancelled').map(entry => ({ kind: 'storage', id: entry.storageBookingId })),
+                  ...(params.equipmentActions || []).filter(entry => entry.action === 'cancelled').map(entry => ({ kind: 'equipment', id: entry.equipmentBookingId })),
+                ],
+              }),
+            });
+            const refundResult = await refundRes.json().catch(() => ({}));
+            if (!refundRes.ok) throw new Error(refundResult.error || t('detailsCopy12'));
             toast({
               title: t("bdItemsCancelledToast"),
               description: t("bdRefundProcessedDesc", {
-                amount: `$${(params.refundAmountCents / 100).toFixed(2)}`,
+                amount: `$${((refundResult.amountCents ?? params.refundAmountCents) / 100).toFixed(2)}`,
               }),
             });
           } else {
@@ -999,7 +1011,7 @@ export default function BookingDetailsPage() {
               method: 'POST', headers, credentials: "include",
               body: JSON.stringify({
                 amount: params.refundAmountCents,
-                reason: ct('sweepText35'),
+                reason: params.note || ct('sweepText35'),
               }),
             },
           );
@@ -1143,6 +1155,9 @@ export default function BookingDetailsPage() {
         timezone={booking.location?.timezone}
         checkinWindowMinutesBefore={booking.checkinWindowMinutesBefore}
         noShowGraceMinutes={booking.noShowGraceMinutes}
+        earlyAction={canMessage(booking.status) ? (
+          <Button type="button" variant="link" size="sm" className="h-auto p-0" disabled={openingConversation} onClick={() => void openBookingConversation()}>{t('rlArrivedEarly')}</Button>
+        ) : undefined}
       />
     );
   };
@@ -1226,7 +1241,9 @@ export default function BookingDetailsPage() {
         return visitBounds ? t('bdhNextChefDetailsReady', { time: shortWhen(visitBounds.opensAt) }) : t('bdhNextChefConfirmed');
       }
       case 'checkin_open':
-        if (!isManagerView) return t('bdhNextChefCheckinOpen');
+        if (!isManagerView) return visitBounds && Date.now() >= visitBounds.startAt.getTime()
+          ? `${t('bdhNextChefCheckinOpen')} ${t('kciBookingStillEnds', { end: `${clockTime(visitBounds.endAt)} ${friendlyTimezoneName(tz, lang)}` })}`
+          : t('bdhNextChefCheckinOpen');
         return visitBounds && Date.now() < visitBounds.startAt.getTime() ? t('bdhNextManagerToday', { chef, time: clockTime(visitBounds.startAt) }) : t('bdhNextManagerNotArrived', { chef });
       case 'in_session':
         return isManagerView ? t('bdhNextManagerInSession', { chef, time: visitBounds ? clockTime(visitBounds.endAt) : '' })
@@ -1295,7 +1312,8 @@ export default function BookingDetailsPage() {
   const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
   if (isManagerView && booking?.status === 'confirmed') menuItems.push({ key: 'kitchen-cancel', label: policyT('cpKitchenCancel'), icon: CalendarX, onSelect: () => setKitchenCancelOpen(true) });
   if (chefCanCancel) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
-  if (managerCanManage) menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : t('bdhCancelOrChange'), icon: CalendarX, onSelect: openManagementDialog });
+  // Whole-booking cancellation is "Cancel as the kitchen" only; "Change booking" is add-on cancellation and partial refunds.
+  if (managerCanManage) menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : booking?.status === 'confirmed' ? t('bdhChangeBooking') : t('bdhReviewCancellation'), icon: CalendarX, onSelect: openManagementDialog });
   if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
     if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
     menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => setFixOpen(true) });
@@ -1461,6 +1479,12 @@ export default function BookingDetailsPage() {
             <span className={`h-1.5 w-1.5 rounded-full ${dotClass[pillTone]}`} aria-hidden />{t(pillKey)}
           </span>
           <p role="status" className="text-sm leading-relaxed text-foreground/80" data-testid="booking-next-step">{sentence(nextStep)}</p>
+          {isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && !visitOver && visitBounds && Date.now() < visitBounds.endAt.getTime() && (
+            <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
+              {t('rlManagerLine', { chef: chefName, duration: t(`rlDurationShort${booking.runningLate.minutes}`), time: clockTime(booking.runningLate.reportedAt) })}
+              {booking.runningLate.note && <span className="block text-xs font-normal text-muted-foreground">{t('rlManagerNote', { note: booking.runningLate.note })}</span>}
+            </p>
+          )}
           {findAnotherTimeHref && (
             <a href={findAnotherTimeHref} onClick={(event) => { event.preventDefault(); navigate(findAnotherTimeHref); }} className="text-sm font-medium text-foreground underline underline-offset-4" data-testid="find-another-time">{t('bdhFindAnotherTime')}</a>
           )}
@@ -1471,6 +1495,9 @@ export default function BookingDetailsPage() {
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
           <KitchenBookingChanges timezone={booking.location?.timezone} key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+          {['confirmed', 'completed'].includes(booking.status) && (
+            <SessionExtensionsCard key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails} />
+          )}
 
           {/* ── Visit ── */}
           {showVisitCard && (
@@ -1514,6 +1541,11 @@ export default function BookingDetailsPage() {
                   instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt} />
               )}
               {chefBeforeArrival && !hasMultipleVisits && renderChefCheckinPolicy(booking.startTime)}
+              {chefBeforeArrival && (
+                <RunningLateCard bookingId={booking.id} kitchenName={kitchenName} startAt={visitBounds?.startAt ?? null} endAt={visitBounds?.endAt ?? null}
+                  timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} checkedIn={visitStarted} runningLate={booking.runningLate}
+                  onChanged={reloadBookingDetails} />
+              )}
               {visitStarted && <ClockCloseoutSummary closeout={booking.closeout} manager={isManagerView} embedded hideInspectionDeadline hideFinished={chefInSession} />}
               {renderVisitRows()}
               {visitEvidence}
@@ -1927,6 +1959,7 @@ export default function BookingDetailsPage() {
             setManagementDialogOpen(open);
           }}
           booking={bookingForManagement}
+          mode={booking?.status === 'confirmed' ? 'change' : 'manage'}
           isProcessing={isManagementProcessing}
           onSubmit={handleManagementSubmit}
           onChanged={reloadBookingDetails}

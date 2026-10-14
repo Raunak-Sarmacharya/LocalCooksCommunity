@@ -19,7 +19,7 @@ import { deliveryReserve, deliveryLeaseMs } from './worker-context';
 import { isPermanentRecipientRejection } from './bounded-smtp';
 import { closeoutNoticeKinds, currentCloseoutEmail, type CloseoutNoticeKind } from './closeout-notice-email';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
-import { kitchenPayoutNotice, kitchenCheckoutPayoutNotice, managerVisitNotice } from './kitchen-payout-notice';
+import { kitchenPayoutNotice, kitchenCheckoutPayoutNotice, managerVisitNotice, managerRunningLateNotice } from './kitchen-payout-notice';
 import { cancellationNotice, type CancellationNotice } from './cancellation-notice';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -145,7 +145,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   }
   if (['checkin_recorded', 'checkout_requested', 'visit_assisted', 'checkout_claim_filed'].includes(kind))
     await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
-  const [context] = await tx.select({ chefId: kitchenBookings.chefId, managerId: locations.managerId, kitchenName: kitchens.name, locationAddress: locations.address, timezone: locations.timezone, bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime, referenceCode: kitchenBookings.referenceCode })
+  const [context] = await tx.select({ locationId: locations.id, kitchenId: kitchens.id, chefId: kitchenBookings.chefId, managerId: locations.managerId, kitchenName: kitchens.name, locationAddress: locations.address, timezone: locations.timezone, bookingDate: kitchenBookings.bookingDate, startTime: kitchenBookings.startTime, endTime: kitchenBookings.endTime, referenceCode: kitchenBookings.referenceCode })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!context) throw new Error('Booking delivery context not found');
@@ -249,7 +249,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const chef = person.id === context.chefId;
     const localCooks = person.role === 'admin';
     const path = (chef ? `/booking/${bookingId}` : localCooks ? metadata.supportCase ? `/admin?section=booking-support&booking=${bookingId}` : adminBookingTransactionsPath(bookingId) : `/manager/booking/${bookingId}`)
-      + (kind === 'feedback_requested' ? '#feedback' : '');
+      + (kind === 'feedback_requested' ? '#feedback' : kind === 'running_late' && !chef && !localCooks ? '?action=message' : '');
     const feedbackCopy = ['feedback_requested', 'feedback_flagged'].includes(kind)
       ? (await import('./booking-feedback-service')).bookingFeedbackNoticeCopy(kind, context.kitchenName, person.locale) : undefined;
     // Manager-only payout notices (payout after closeout); the operating date is a calendar date, read in UTC.
@@ -264,13 +264,20 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         timezone: context.timezone || DEFAULT_TIMEZONE })
       : (kind === 'checkout_requested' || kind === 'checkin_recorded') && !chef && !localCooks && (kind === 'checkin_recorded' || reviewBy)
         ? await managerVisitNotice(kind === 'checkin_recorded' ? 'checkin' : 'review', person.locale, { chef: nameOf(context.chefId) || null,
-          at: kind === 'checkin_recorded' ? new Date() : reviewBy!, timezone: context.timezone || DEFAULT_TIMEZONE }) : undefined;
+          at: kind === 'checkin_recorded' ? new Date() : reviewBy!, timezone: context.timezone || DEFAULT_TIMEZONE })
+        : kind === 'running_late' && !chef && !localCooks ? await managerRunningLateNotice(person.locale, { chef: nameOf(context.chefId) || null,
+          minutes: Number(metadata.minutes), end: new Date(String(metadata.endsAt)), timezone: context.timezone || DEFAULT_TIMEZONE,
+          note: typeof metadata.note === 'string' ? metadata.note : null }) : undefined;
     // A producer may word the in-app notice per role; email content is rendered separately.
-    const roleText = metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, metadata.cancellationNotice as CancellationNotice)
+    const kitchenCaused = metadata.kitchenCaused === true && chef;
+    const kitchenPath = kitchenCaused ? `/kitchen-preview/${context.locationId}?kitchenId=${context.kitchenId}` : undefined;
+    const roleText = metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.cancellationNotice as CancellationNotice),
+        kitchenName: context.kitchenName, date: new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(context.bookingDate) })
       : (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
+    const roleActionLabel = (roleText as { actionLabel?: string } | undefined)?.actionLabel;
     if (!arrivalNotice) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
+      title: payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
     if ((arrivalNotice || person.email && operationalEmailAllowed(person)) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
@@ -280,6 +287,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
           facts: payoutCopy.facts ?? [], actions: payoutCopy.actions, actionLabel: payoutCopy.actionLabel,
           // The booking page holds the per-booking payout statement download (the API route needs an app session).
           actionUrl: kind === 'payout_released' ? `${url}#booking-payment-title` : kind === 'checkout_requested' && !chef ? `${url}/inspection${typeof metadata.visitId === 'number' ? `?visitId=${metadata.visitId}` : ''}` : url }) } : {}),
+        ...(kitchenPath && roleText && roleActionLabel ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
+          subject: roleText.title, heading: roleText.title, message: roleText.message, facts: [],
+          actionLabel: roleActionLabel, actionUrl: `${getAppBaseUrl('chef')}${kitchenPath}` }) } : {}),
         ...(metadata.requestExpired ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
           subject: roleText?.title ?? title, heading: roleText?.title ?? title, message: roleText?.message ?? message, facts: [],
           actionLabel: chef ? 'Find another time' : 'View booking', actionUrl: chef ? `${getAppBaseUrl('chef')}${metadata.kitchenPath}` : url }) } : {}),
@@ -309,8 +319,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'booking', bookingId);
   }
+  // 'running_late' moves the manager's "has not checked in" reminder to the chef's stated arrival.
   if (['checkin_recorded', 'checkout_requested', 'visit_assisted', 'checkout_cleared', 'checkout_claim_filed',
-    'report_no_show', 'report_attended', 'withdraw_attendance'].includes(kind)) {
+    'report_no_show', 'report_attended', 'withdraw_attendance', 'running_late'].includes(kind)) {
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'booking', bookingId);
     await scheduleAdvanceReminders(tx, 'booking_review', bookingId);

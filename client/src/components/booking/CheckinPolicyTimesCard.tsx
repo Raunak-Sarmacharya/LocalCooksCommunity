@@ -29,6 +29,8 @@ type CheckinPolicyTimesCardProps = {
   description?: string;
   /** When false, skip the title/body block (details page already has one above). */
   showIntro?: boolean;
+  /** Shown under the times while check-in has not opened yet, e.g. "Arrived early? Message the kitchen". */
+  earlyAction?: ReactNode;
 };
 
 /**
@@ -48,6 +50,7 @@ export function CheckinPolicyTimesCard({
   title,
   description,
   showIntro = true,
+  earlyAction,
 }: CheckinPolicyTimesCardProps) {
   const { t, i18n } = useTranslation("chef");
   const tz = timezone || DEFAULT_TIMEZONE;
@@ -96,6 +99,7 @@ export function CheckinPolicyTimesCard({
       }
     >
       <PolicyTimeGrid layout={layout} cells={[...cells]} />
+      {!alreadyOpen && earlyAction ? <div className="mt-2 text-xs">{earlyAction}</div> : null}
       <p className="mt-3 text-xs text-muted-foreground">
         {t(
           "bdKitchenLocalTime",

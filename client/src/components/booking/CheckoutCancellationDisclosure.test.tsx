@@ -6,10 +6,14 @@ const policy = { policy: { id: 1, version: 2, noticeHours: 48, lateChargePercent
 it('discloses local deadline, short notice and required explicit acceptance before payment', () => {
   const accepted = vi.fn();
   render(<CheckoutCancellationDisclosure policy={policy} startAt={new Date(Date.now() + 3600000).toISOString()} acknowledged={false} onAcknowledged={accepted} />);
-  expect(screen.getByText(/Cancel by.*Newfoundland/)).toBeInTheDocument();
+  expect(screen.queryByText(/Cancel by/)).not.toBeInTheDocument();
   expect(screen.getByText(/Once the kitchen confirms, you pay 50%/)).toBeInTheDocument();
   const checkbox = screen.getByRole('checkbox'); expect(checkbox).not.toBeChecked(); expect(checkbox).toBeRequired();
   fireEvent.click(checkbox); expect(accepted).toHaveBeenCalledWith(true);
+});
+it('shows the deadline only while it is still ahead', () => {
+  render(<CheckoutCancellationDisclosure policy={policy} startAt={new Date(Date.now() + 5 * 86400000).toISOString()} acknowledged={false} onAcknowledged={vi.fn()} />);
+  expect(screen.getByText(/Cancel by.*Newfoundland/)).toBeInTheDocument(); expect(screen.queryByText(/Once the kitchen confirms/)).not.toBeInTheDocument();
 });
 it('does not accept payment terms before a published policy loads', () => {
   render(<CheckoutCancellationDisclosure acknowledged={false} onAcknowledged={vi.fn()} />);

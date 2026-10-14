@@ -329,3 +329,36 @@ describe("a manager opening a chef link", () => {
     expect(h.navigate).not.toHaveBeenCalled();
   });
 });
+
+describe("arrival package on the booking page", () => {
+  const confirmed = { status: "confirmed", paymentStatus: "paid", checkinStatus: "not_checked_in" };
+  const lateNote = { minutes: 15, reportedAt: "2030-01-15T13:52:00.000Z", expectedAt: "2030-01-15T14:07:00.000Z", note: "Traffic is slow", visitId: null, count: 1 };
+  it("tells the manager the chef is running late and when they said so", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 25 * 60_000);
+    h.manager = true; h.booking = { ...base(), ...confirmed, runningLate: lateNote };
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-running-late")).toHaveTextContent("Ada Lovelace is running about 15 min late (told you at 10:22 a.m.).");
+    expect(screen.getByTestId("booking-running-late")).toHaveTextContent("Their note: Traffic is slow");
+  });
+  it("does not show the line once the chef has checked in", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 25 * 60_000);
+    h.manager = true; h.booking = { ...base(), ...confirmed, checkinStatus: "checked_in", checkedInAt: "2030-01-15T14:00:00Z", runningLate: lateNote };
+    render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-header");
+    expect(screen.queryByTestId("booking-running-late")).not.toBeInTheDocument();
+  });
+  it("gives the chef Running late? before check-in, and says the booking still ends on time after the start", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 10 * 60_000);
+    h.manager = false; h.booking = { ...base(), ...confirmed };
+    render(<BookingDetailsPage />);
+    expect(await screen.findByRole("button", { name: "Running late?" })).toBeInTheDocument();
+    expect(screen.getByTestId("booking-next-step")).toHaveTextContent("Your booking still ends at 12:00 p.m. Newfoundland Time.");
+    expect(screen.queryByTestId("booking-running-late")).not.toBeInTheDocument();
+  });
+  it("keeps the chef's confirmation banner after a reload", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 25 * 60_000);
+    h.manager = false; h.booking = { ...base(), ...confirmed, runningLate: lateNote };
+    render(<BookingDetailsPage />);
+    expect(await screen.findByText("You told the kitchen you’re running late")).toBeInTheDocument();
+  });
+});

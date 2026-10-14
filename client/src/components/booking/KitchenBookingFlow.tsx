@@ -1467,6 +1467,7 @@ export default function KitchenBookingFlow({
                   : ""}
                 {` · ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
               </p>
+              <p className="text-xs text-muted-foreground mt-1" data-testid="setup-cleanup-hint">{t("sxbSetupCleanupHint", "Include setup and cleanup in your booking time.")}</p>
             </div>
             <button
               type="button"

@@ -1,6 +1,6 @@
 export type CancellationTier = { minHoursBeforeStart: number; refundPercent: number };
 export type CancellationPolicySnapshot = { policyId: number | null; version: number; noticeHours: number; lateChargePercent: number;
-  tiers: CancellationTier[]; timezone: string; sessions: Array<{ startAt: string }>; disclosureVersion: string; acceptedAt: string | null };
+  tiers: CancellationTier[]; timezone: string; sessions: Array<{ startAt: string; endAt?: string; nonRefundable?: boolean; amountCents?: number }>; disclosureVersion: string; acceptedAt: string | null };
 export const CANCELLATION_DISCLOSURE_VERSION = 'food-corridor-v1';
 export const NOTICE_OPTIONS = [24, 48, 72] as const;
 export const CHARGE_OPTIONS = [50, 100] as const;
@@ -73,7 +73,7 @@ export function quoteCancellation(snapshot: CancellationPolicySnapshot, input: C
     if (!startAt) throw Error('Component session is missing');
     const started = input.startedComponents?.includes(item.id) || cancelAt >= instant(startAt);
     const tier = snapshot.tiers.find(tier => instant(startAt) - cancelAt >= tier.minHoursBeforeStart * 3600000) ?? snapshot.tiers.at(-1)!;
-    const percent = remedy ? 100 : input.cause === 'no_show' || started ? 0 : tier.refundPercent;
+    const percent = remedy ? 100 : input.cause === 'no_show' || started || snapshot.sessions[item.sessionIndex]?.nonRefundable ? 0 : tier.refundPercent;
     const pool = item.kitchenCents - fees[index] + item.platformCents;
     return { ...item, tier, refundPercent: percent, pool,
       feeCents: fees[index], reasonCode: started && !remedy ? item.kind === 'storage' ? 'used_storage' : 'session_started' : 'policy_tier' };

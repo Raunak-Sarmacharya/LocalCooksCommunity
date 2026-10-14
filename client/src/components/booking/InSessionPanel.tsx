@@ -7,13 +7,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Clock, LifeBuoy, LogOut, MessageSquare, ShieldAlert, Mail, Phone } from "lucide-react"
+import { LifeBuoy, LogOut, MessageSquare, ShieldAlert, Mail, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getAuthHeaders } from "@/lib/api"
 import { friendlyTimezoneName } from "@shared/timezone-utils"
 import UnifiedChatView from "@/components/chat/UnifiedChatView"
+import { SessionExtensionRequest } from "./SessionExtensionRequest"
 
 export const SESSION_ENDING_WINDOW_MINUTES = 15
 const TICK_MS = 30_000
@@ -145,10 +146,10 @@ export function InSessionPanel({
 
       {phase === "active" && (
         <div className="space-y-2">
-          <Button type="button" className={tap} disabled={chatBusy} onClick={() => void openChat(moreTimeDraft)}>
-            <Clock className="h-4 w-4 mr-2 shrink-0" />{t("kciIsNeedMoreTime", { defaultValue: "Need more time?" })}
-          </Button>
-          <p className="text-xs text-muted-foreground">{t("kciIsNeedMoreTimeHint", { defaultValue: "This opens a message to the kitchen. Send it to ask; they will reply with what is possible." })}</p>
+          {/* In the last hour this lists bookable extra time; otherwise it opens the conversation as before. */}
+          <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
+            moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />
+          <p className="text-xs text-muted-foreground">{t("sxNeedMoreTimeHint", { defaultValue: "In the last hour of your booking you can add time here in one tap. Before that, this opens a message to the kitchen." })}</p>
         </div>
       )}
       {phase !== "active" && (
@@ -159,6 +160,8 @@ export function InSessionPanel({
           {canCheckout && <Button type="button" className={tap} onClick={onStartCheckout}>
             <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsStartCheckout", { defaultValue: "Start check-out" })}
           </Button>}
+          {phase === "ending" && <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
+            moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />}
         </div>
       )}
 

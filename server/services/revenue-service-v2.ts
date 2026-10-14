@@ -226,8 +226,9 @@ export async function getRevenueMetricsFromTransactions(
       SELECT 
         COALESCE(SUM(
           CASE
-            -- PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth)
-            WHEN (pt.metadata->>'partialCapture')::boolean = true 
+            -- PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth).
+            -- SESSION EXTENSION: a separate charge on the same booking; its own approved tax, never the booking's again.
+            WHEN ((pt.metadata->>'partialCapture')::boolean = true OR pt.metadata ? 'sessionExtensionId')
               AND (pt.metadata->>'approvedTax') IS NOT NULL THEN
               ROUND(
                 (pt.metadata->>'approvedTax')::numeric *

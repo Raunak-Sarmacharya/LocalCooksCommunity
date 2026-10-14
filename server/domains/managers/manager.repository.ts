@@ -66,9 +66,11 @@ export class ManagerRepository implements IManagerRepository {
             INNER JOIN locations l ON k.location_id = l.id
             LEFT JOIN users u ON kb.chef_id = u.id
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = kb.chef_id AND cka.location_id = l.id
-            LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id 
-                AND pt.booking_type = 'kitchen' 
+            LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id
+                AND pt.booking_type = 'kitchen'
                 AND pt.status = 'succeeded'
+                -- The booking's own charge only: session extensions are separate payments on the same booking id.
+                AND (pt.payment_intent_id = kb.payment_intent_id OR kb.payment_intent_id IS NULL)
             WHERE l.manager_id = ${managerId}
               AND kb.status != 'cancelled'
               AND kb.payment_status = 'paid'

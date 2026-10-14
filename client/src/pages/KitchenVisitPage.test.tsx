@@ -411,4 +411,44 @@ describe("full-page kitchen visit", () => {
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(posts()[0][1].body).visitId).toBe(911);
   });
+
+  it("says the booking still ends on time when the start has passed, and again after a late check-in", async () => {
+    fetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === "POST") { status = { ...status, checkinStatus: "checked_in", checkedInAt: new Date().toISOString() }; return new Response(JSON.stringify({ success: true })); }
+      return new Response(JSON.stringify(status));
+    });
+    setup(true);
+    expect(await screen.findByTestId("booking-still-ends")).toHaveTextContent("Your booking still ends at 11:59 p.m. GMT.");
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm check-in" }));
+    expect(await screen.findByTestId("booking-still-ends-success")).toHaveTextContent("Your booking still ends at 11:59 p.m. GMT.");
+    expect(screen.queryByTestId("booking-still-ends")).not.toBeInTheDocument();
+  });
+
+  it("offers Message the kitchen next to the check-in time when you arrive early, and no late line", async () => {
+    const tomorrow = new Date(Date.now() + 36 * 3600_000).toISOString().split("T")[0];
+    status = visit({ bookingDate: tomorrow, startTime: "10:00", endTime: "14:00" });
+    setup(true);
+    expect(await screen.findByText("Check-in opens")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Arrived early? Message the kitchen" })).toBeInTheDocument();
+    expect(screen.queryByTestId("booking-still-ends")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Running late?" })).not.toBeInTheDocument();
+  });
+
+  it("shows Running late? before check-in and keeps the confirmation after the chef told the kitchen", async () => {
+    setup(true);
+    expect(await screen.findByRole("button", { name: "Running late?" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Arrived early? Message the kitchen" })).not.toBeInTheDocument();
+    cleanup();
+    status = visit({ runningLate: { minutes: 15, reportedAt: new Date().toISOString(), expectedAt: new Date(Date.now() + 15 * 60_000).toISOString(), note: null, visitId: null, count: 1 } });
+    setup(true);
+    expect(await screen.findByText("You told the kitchen you’re running late")).toBeInTheDocument();
+    expect(screen.getByText(/We told Test kitchen you’re running about 15 minutes late\. Your booking still ends at 11:59 p\.m\./)).toBeInTheDocument();
+  });
+
+  it("hides Running late? once checked in", async () => {
+    status = visit({ checkinStatus: "checked_in", checkedInAt: new Date().toISOString() });
+    setup(true);
+    await screen.findByRole("region", { name: "Visit status" });
+    expect(screen.queryByRole("button", { name: "Running late?" })).not.toBeInTheDocument();
+  });
 });

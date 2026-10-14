@@ -14,7 +14,7 @@ describe('admin lifecycle settings', () => {
   beforeEach(() => { state.rows = []; state.writes = []; state.transactionCalls = 0; });
   it('supplies editable defaults when no setting has been saved', async () => {
     expect(await getLifecycleSettings()).toEqual({ serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, tourOutcomeReminderMinutes: 0, historicalVisitReviewAfterHours: 48,
-      preparationReminderHours: 48, arrivalReminderHours: 2, departureReminderMinutes: 30,
+      preparationReminderHours: 48, arrivalReminderHours: 2, departureReminderMinutes: 30, managerNoCheckinMinutes: 15,
       managerResponseBufferHours: 1, managerDecisionFirstReminderHours: 12, managerDecisionFinalReminderHours: 2,
       tourPreparationMinuteOfDay: 420, tourArrivalReminderMinutes: 60, tourDepartureReminderMinutes: 10, tourPreparationEnabled: 1, tourArrivalEnabled: 1, tourDepartureEnabled: 1,
       responseWarningHours: 6, cancellationWarningHours: 6, inspectionWarningPercent: 50 });

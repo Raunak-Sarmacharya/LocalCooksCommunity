@@ -37,7 +37,8 @@ function mount() {
 describe("kitchen policy write scope", () => {
   it("has no kitchen arrival/departure switch or checklist fetch", () => {
     const { client } = mount();
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    // The only switch here is the extra-time auto-approval (build-session-extensions.md); never an arrival/departure one.
+    expect(screen.queryAllByRole('switch').filter(element => !element.id.startsWith('auto-extend-'))).toHaveLength(0);
     expect(api.get).not.toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings');
     expect(api.put).not.toHaveBeenCalled(); client.clear();
   });

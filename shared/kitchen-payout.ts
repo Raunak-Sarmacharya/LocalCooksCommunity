@@ -74,3 +74,31 @@ export function kitchenPayout(source?: PayoutSource | null, eligibility?: { expe
   return { timing, status: holdReason ? 'on_hold' : 'scheduled', holdReason,
     expectedAt: eligibility?.expectedAt ?? iso(source.payoutEligibleAt), sentAt: null, amountCents };
 }
+
+/** A separately charged session extension / extra-time payment (same booking id, its own PaymentIntent). */
+export const isSessionExtensionPayment = (source: Pick<PayoutSource, 'metadata'>) => {
+  const saved = (source.metadata || {}) as { type?: unknown; sessionExtensionId?: unknown };
+  return saved.type === 'session_extension' || saved.sessionExtensionId != null;
+};
+/** Kitchen shares of a booking's extension charges, each counted once: still owed vs already transferred. */
+export function extensionPayoutShares(extensions: PayoutSource[]) {
+  let pendingCents = 0, sentCents = 0;
+  for (const source of extensions) {
+    if (!isSessionExtensionPayment(source)) continue;
+    const saved = meta(source);
+    if (source.transferId) sentCents += saved.payoutSent?.amountCents ?? saved.transfer?.transferredCents ?? unpaidKitchenEntitlement(source);
+    else if (!saved.payoutNoEntitlement) pendingCents += unpaidKitchenEntitlement(source);
+  }
+  return { pendingCents, sentCents };
+}
+/**
+ * The booking's payout including its extension charges, which are released with (or right after) the booking payout.
+ * `trailingCents` is extension money still owed after the booking payout itself was sent (shown separately as upcoming).
+ */
+export function withExtensionPayouts(payout: KitchenPayout, extensions: PayoutSource[]): KitchenPayout & { trailingCents: number } {
+  const { pendingCents, sentCents } = extensionPayoutShares(extensions);
+  if (payout.status === 'scheduled' || payout.status === 'on_hold') return { ...payout, amountCents: payout.amountCents + pendingCents + sentCents, trailingCents: 0 };
+  if (payout.status === 'sent') return { ...payout, amountCents: payout.amountCents + sentCents, trailingCents: pendingCents };
+  // at_capture: the amount is the booking's kitchen share; after_closeout with nothing owed stays at zero.
+  return { ...payout, amountCents: payout.timing === 'at_capture' ? payout.amountCents + pendingCents + sentCents : payout.amountCents, trailingCents: 0 };
+}

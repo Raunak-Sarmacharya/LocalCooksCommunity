@@ -12,6 +12,7 @@ import { AlertCircle, Clock, DollarSign, RefreshCw, Save, TrendingUp } from "luc
 import { Switch } from "@/components/ui/switch";
 import { LifecycleSettings } from '../LifecycleSettings';
 import { CancellationSettings } from '../CancellationSettings';
+import { SessionExtensionsPlatformSwitch } from '@/components/manager/settings/SessionExtensionSettingsCard';
 
 export function PlatformSettingsSection() {
   const { toast } = useToast();
@@ -585,6 +586,7 @@ export function PlatformSettingsSection() {
       {/* Info Card */}
       <LifecycleSettings />
       <CancellationSettings />
+      <SessionExtensionsPlatformSwitch />
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>How Fees Work</AlertTitle>

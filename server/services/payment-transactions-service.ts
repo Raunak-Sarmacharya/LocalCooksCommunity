@@ -545,6 +545,11 @@ export async function syncStripeAmountsToBookings(
       logger.info(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
       return;
     }
+    // A separate charge on the booking (session extension / extra time) must never overwrite the booking's own fee columns.
+    if (ptMetadata.type === 'session_extension' || ptMetadata.sessionExtensionId != null) {
+      logger.info(`[Stripe Sync] Skipping booking table sync for session-extension PaymentIntent ${paymentIntentId}`);
+      return;
+    }
     const canonicalSplit = computeManagerGrossAndCommission({
       chargeAmountCents: stripeAmounts.stripeAmount,
       platformCommissionRate: 0,
@@ -667,12 +672,13 @@ export async function syncStripeAmountsToBookings(
         : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
 
       if (bookingType === 'kitchen') {
+        // Only the booking whose own payment this is; other charges on the same booking id keep their own rows.
         await db.execute(sql`
           UPDATE kitchen_bookings
           SET 
             service_fee = ${serviceFee.toString()},
             updated_at = NOW()
-          WHERE id = ${bookingId}
+          WHERE id = ${bookingId} AND payment_intent_id = ${paymentIntentId}
         `);
       } else if (bookingType === 'storage') {
         await db.execute(sql`
@@ -945,10 +951,16 @@ export async function findPaymentTransactionByBooking(
   bookingType: BookingType,
   db: any
 ): Promise<PaymentTransactionRecord | null> {
+  // The booking's own payment: never a separate charge recorded on the same booking id (session extension,
+  // kitchen change, damage claim, overstay). For kitchen/bundle, the row on the booking's PaymentIntent wins.
   const result = await db.execute(sql`
     SELECT * FROM payment_transactions
     WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
-    ORDER BY created_at DESC
+      AND NOT (COALESCE(metadata, '{}'::jsonb) ?| ARRAY['sessionExtensionId', 'kitchenChangeId', 'damage_claim_id', 'overstay_record_id'])
+      AND COALESCE(metadata->>'type', '') NOT IN ('session_extension', 'damage_claim', 'overstay_penalty')
+    ORDER BY ${bookingType === 'kitchen' || bookingType === 'bundle'
+      ? sql`(payment_intent_id IS NOT DISTINCT FROM (SELECT payment_intent_id FROM kitchen_bookings WHERE id = ${bookingId})) DESC,`
+      : sql``} created_at DESC
     LIMIT 1
   `);
 
@@ -1193,8 +1205,9 @@ export async function getChefPaymentTransactions(
         WHEN pt.booking_type = 'storage' THEN sb.reference_code
         ELSE NULL
       END as reference_code,
-      kb.total_price as kb_total_price,
-      kb.service_fee as kb_service_fee
+      -- Booking columns describe the booking's own payment only, not a separate charge on the same booking id.
+      CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.total_price END as kb_total_price,
+      CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.service_fee END as kb_service_fee
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
     LEFT JOIN kitchens k ON kb.kitchen_id = k.id

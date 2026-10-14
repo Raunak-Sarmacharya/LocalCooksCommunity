@@ -66,7 +66,8 @@ describe("in-session panel", () => {
     mount();
     await advance(105 * MIN);
     expect(screen.getByText("15 min left")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Need more time?" })).not.toBeInTheDocument();
+    // Extra time stays available until the booked end (build-session-extensions.md); it loads only when tapped.
+    expect(screen.getByRole("button", { name: "Need more time?" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Start check-out" }));
     expect(onStartCheckout).toHaveBeenCalledTimes(1);
     await advance(10 * MIN);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { kitchenPayoutNotice } from './kitchen-payout-notice';
+import { ensureServerI18n } from '../i18n';
+import { kitchenPayoutNotice, managerNoCheckinNotice, managerRunningLateNotice } from './kitchen-payout-notice';
 
 const input = { reference: 'KB-A7K9MX', amountCents: 2732, chef: 'Maya Chen', date: new Date('2026-10-14T00:00:00Z'), timezone: 'UTC' };
 describe('kitchen payout notices (manager only, people language)', () => {
@@ -20,6 +21,33 @@ describe('kitchen payout notices (manager only, people language)', () => {
       expect(released.message).not.toMatch(/payout[A-Z]|\{|Maya/);
       expect(released.message).toContain('27,32');
       expect((await kitchenPayoutNotice('payout_on_hold', locale, input)).message).toContain('KB-A7K9MX');
+    }
+  });
+});
+
+describe('arrival package manager notices', () => {
+  const end = new Date('2026-10-14T17:00:00Z'), start = new Date('2026-10-14T13:00:00Z');
+  it('says the chef is running late, names the end time and offers Message', async () => {
+    const notice = await managerRunningLateNotice('en-CA', { chef: 'Maya Chen', minutes: 15, end, timezone: 'America/Toronto' });
+    expect(notice.title).toBe('Maya Chen is running late');
+    expect(notice.message).toMatch(/^Maya Chen is running about 15 minutes late\. Their booking still ends at 1:00 p\.m\. Eastern Time\.$/);
+    expect(notice.actionLabel).toBe('Message Maya Chen');
+    expect((await managerRunningLateNotice('en-CA', { chef: 'Maya Chen', minutes: 60, end, timezone: 'UTC', note: 'Traffic' })).message).toContain('about an hour late');
+  });
+  it('says the chef has not checked in with the booked start', async () => {
+    await ensureServerI18n();
+    const notice = managerNoCheckinNotice('en-CA', { chef: 'Maya Chen', kitchen: 'Harbour', start, timezone: 'America/Toronto' });
+    expect(notice.message).toBe('Maya Chen hasn’t checked in yet. Their booking started at 9:00 a.m. Eastern Time.');
+    expect(notice.title).toBe('Maya Chen hasn’t checked in yet · Harbour');
+    expect(notice.actionLabel).toBe('Message Maya Chen');
+  });
+  it('is translated and never shows a raw key', async () => {
+    await ensureServerI18n();
+    for (const locale of ['fr-CA', 'uk']) {
+      const late = await managerRunningLateNotice(locale, { chef: 'Maya', minutes: 30, end, timezone: 'UTC', note: 'x' });
+      const none = managerNoCheckinNotice(locale, { chef: null, kitchen: 'Harbour', start, timezone: 'UTC' });
+      for (const text of [late.title, late.message, late.actionLabel, none.title, none.message, none.actionLabel]) expect(text).not.toMatch(/manager[A-Z]|\{\{|\{chef\}/);
+      expect(late.message).toContain('30');
     }
   });
 });

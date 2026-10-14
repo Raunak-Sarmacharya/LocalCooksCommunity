@@ -3524,8 +3524,9 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
                     WHEN pt.booking_type = 'storage' THEN sb.reference_code
                     ELSE NULL
                 END as reference_code,
-                kb.total_price as kb_total_price,
-                kb.service_fee as kb_service_fee
+                -- Booking columns describe the booking's own payment only, not a separate charge on the same booking id.
+                CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.total_price END as kb_total_price,
+                CASE WHEN pt.payment_intent_id <> kb.payment_intent_id THEN NULL ELSE kb.service_fee END as kb_service_fee
             ${joinBlock}
             ${whereClause}
             ORDER BY pt.created_at DESC

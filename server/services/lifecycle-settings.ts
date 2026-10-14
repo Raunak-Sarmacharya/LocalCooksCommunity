@@ -19,6 +19,7 @@ export const lifecycleSettings = {
   managerDecisionFinalReminderHours: { key: 'manager_decision_final_reminder_hours', defaultValue: 2, min: 1, max: 24 },
   arrivalReminderHours: { key: 'arrival_reminder_hours', defaultValue: 2, min: 1, max: 24 },
   departureReminderMinutes: { key: 'departure_reminder_minutes', defaultValue: 30, min: 1, max: 120 },
+  managerNoCheckinMinutes: { key: 'manager_no_checkin_minutes', defaultValue: 15, min: 5, max: 120 },
   responseWarningHours: { key: 'response_warning_hours', defaultValue: 6, min: 1, max: 168 },
   cancellationWarningHours: { key: 'cancellation_warning_hours', defaultValue: 6, min: 1, max: 168 },
   inspectionWarningPercent: { key: 'inspection_warning_percent', defaultValue: 50, min: 1, max: 99 },

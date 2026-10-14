@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableName } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ source: null as any, booking: {} as any, visits: [] as any[], notices: [] as any[], facts: {} as any,
-  closeout: {} as any, log: [] as string[], raw: [] as string[], due: [] as any[],
+  closeout: {} as any, log: [] as string[], raw: [] as string[], due: [] as any[], extensions: [] as any[],
   queue: vi.fn(), guard: vi.fn(), amounts: vi.fn(), transfer: vi.fn() }));
 vi.mock('../db', () => {
   const db: any = {
@@ -11,9 +11,10 @@ vi.mock('../db', () => {
     select: (fields?: any) => { let table: any; const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain,
       where: () => chain, orderBy: () => chain, limit: () => chain, for: () => chain,
       then: (resolve: any) => { const name = getTableName(table);
-        resolve(name === 'kitchen_bookings' ? [{ booking: state.booking, timezone: 'America/St_Johns', locationId: 3 }]
+        resolve(name === 'kitchen_bookings' ? fields && 'referenceCode' in fields ? [{ id: state.booking.id, referenceCode: state.booking.referenceCode }]
+            : [{ booking: state.booking, timezone: 'America/St_Johns', locationId: 3 }]
           : name === 'kitchen_booking_visits' ? state.visits : name === 'booking_lifecycle_events' ? state.notices
-          : name === 'payment_transactions' ? fields?.bookingId && Object.keys(fields).length === 2 ? state.due : state.source ? [state.source] : [] : []); } };
+          : name === 'payment_transactions' ? fields?.bookingId && 'extensionId' in fields ? state.due : state.source ? [state.source, ...state.extensions] : [] : []); } };
       return chain; },
     update: () => ({ set: (values: any) => { if (values.payoutReleasedAt) state.log.push('decision');
       const apply = () => { state.source = { ...state.source, ...values }; return [state.source]; };
@@ -30,12 +31,12 @@ vi.mock('./stripe-transfer-service', () => ({ transferToManagerForBooking: state
 vi.mock('./worker-context', () => ({ workerAfter: () => undefined, workerRecord: async () => {}, workerPageEnd: async () => {}, isWorkerBudgetError: () => false }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 import { db } from '../db';
-import { releaseDuePayouts, releaseKitchenPayout, recordReleasedPayout, scheduleKitchenPayout, readKitchenPayout } from './kitchen-payout-service';
+import { releaseDuePayouts, releaseKitchenPayout, recordReleasedPayout, scheduleKitchenPayout, readKitchenPayout, upcomingKitchenPayouts } from './kitchen-payout-service';
 
 const visit = (outcome: string, deadline = '2026-10-15T10:30:00.000Z') => ({ attendance: 'recorded', inspection: { outcome, deadline } });
 const now = new Date('2026-10-15T11:00:00Z');
 beforeEach(() => {
-  vi.clearAllMocks(); state.log = []; state.raw = []; state.notices = []; state.due = []; state.visits = [];
+  vi.clearAllMocks(); state.log = []; state.raw = []; state.notices = []; state.due = []; state.visits = []; state.extensions = [];
   state.booking = { id: 7, referenceCode: 'KB-7', status: 'completed', visitDuties: {} };
   state.closeout = { serviceEndedAt: '2026-10-14T13:15:00.000Z', serverNow: now.toISOString(), status: 'completed', visits: [visit('manager_cleared')] };
   state.facts = { flag: false, issue: false, resolved: false };
@@ -161,5 +162,31 @@ describe('closeout scheduling, notice and sweep', () => {
     state.closeout.visits = [visit('due', '2026-10-16T10:30:00.000Z')];
     expect(await readKitchenPayout(7)).toEqual({ timing: 'after_closeout', status: 'scheduled', holdReason: null,
       expectedAt: '2026-10-16T10:30:00.000Z', sentAt: null, amountCents: 10942 });
+  });
+});
+
+describe('session-extension charges in payout totals', () => {
+  // A paid +30 min extension: its own PaymentIntent on the same booking; kitchen share 2825 - 117 = 2708.
+  const extension = (extra: Record<string, unknown> = {}) => ({ id: 12, bookingId: 7, bookingType: 'kitchen', status: 'succeeded', paymentIntentId: 'pi_ext',
+    payoutTiming: 'after_closeout', transferId: null, payoutReleasedAt: null, payoutHoldReason: null, payoutEligibleAt: null,
+    amount: '3000', baseAmount: '2825', serviceFee: '175', stripeProcessingFee: '117',
+    metadata: { type: 'session_extension', sessionExtensionId: 5, approvedSubtotal: 2500, approvedTax: 325, platformCommission: 175, capturedAmount: 3000 }, ...extra });
+  it('the booking payout and upcoming payouts count the parent and the extension once each', async () => {
+    state.extensions = [extension()];
+    state.closeout.visits = [visit('due', '2026-10-16T10:30:00.000Z')];
+    expect(await readKitchenPayout(7)).toMatchObject({ status: 'scheduled', amountCents: 10942 + 2708 });
+    const upcoming = await upcomingKitchenPayouts(2);
+    expect(upcoming.payouts).toHaveLength(1);
+    expect(upcoming.payouts[0]).toMatchObject({ bookingId: 7, amountCents: 10942 + 2708 });
+    expect(upcoming.totalCents).toBe(10942 + 2708);
+  });
+  it('an extension still owed after the booking payout was sent is upcoming on its own; once sent, nothing is upcoming', async () => {
+    state.source = { ...state.source, transferId: 'tr_7', metadata: { ...state.source.metadata, payoutSent: { sentAt: '2026-10-15T11:00:00.000Z', amountCents: 10942 } } };
+    state.extensions = [extension()];
+    expect(await readKitchenPayout(7)).toMatchObject({ status: 'sent', amountCents: 10942 });
+    expect(await upcomingKitchenPayouts(2)).toMatchObject({ totalCents: 2708, payouts: [{ bookingId: 7, status: 'scheduled', amountCents: 2708 }] });
+    state.extensions = [extension({ transferId: 'tr_ext', metadata: { ...extension().metadata, payoutSent: { amountCents: 2708 } } })];
+    expect(await readKitchenPayout(7)).toMatchObject({ status: 'sent', amountCents: 10942 + 2708 });
+    expect(await upcomingKitchenPayouts(2)).toEqual({ totalCents: 0, payouts: [] });
   });
 });

@@ -1811,7 +1811,9 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                         or(
                             eq(paymentTransactions.bookingType, 'kitchen'),
                             eq(paymentTransactions.bookingType, 'bundle')
-                        )
+                        ),
+                        // The booking's own charge only; session extensions are separate kitchen charges on the same booking.
+                        sql`${paymentTransactions.paymentIntentId} = (SELECT payment_intent_id FROM kitchen_bookings WHERE id = ${id})`,
                     )
                 )
                 .limit(1);
@@ -1901,6 +1903,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         res.json({
             ...chefBooking,
             responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location?.timezone),
+            runningLate: await (await import('../services/running-late')).readRunningLate(booking.id),
             checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
             noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
             kitchenContact: kitchenContact ? {
@@ -2350,6 +2353,27 @@ router.post("/chef/bookings/:id/checkin", requireChef, async (req: Request, res:
     }
 });
 
+// Chef tells the kitchen they are running late. Coordination only: never records arrival or moves the booked end.
+router.post("/chef/bookings/:id/running-late", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid booking ID" });
+        const { reportRunningLate, RunningLateError } = await import('../services/running-late');
+        const { cleanRunningLateNote } = await import('@shared/running-late');
+        try {
+            const result = await reportRunningLate({ bookingId: id, chefId: req.neonUser!.id, minutes: req.body?.minutes,
+                note: cleanRunningLateNote(req.body?.note), visitId: Number.isSafeInteger(req.body?.visitId) ? req.body.visitId : undefined });
+            return res.status(result.created ? 201 : 200).json({ success: true, created: result.created, runningLate: result.runningLate, endsAt: result.endsAt.toISOString() });
+        } catch (error) {
+            if (error instanceof RunningLateError) return res.status(error.status).json({ error: error.message, code: error.code });
+            throw error;
+        }
+    } catch (error) {
+        logger.error("Error recording running-late heads-up:", error);
+        res.status(500).json({ error: "Could not tell the kitchen. Please try again." });
+    }
+});
+
 // Chef requests checkout from kitchen booking
 router.post("/chef/bookings/:id/checkout", requireChef, async (req: Request, res: Response) => {
     try {
@@ -2476,6 +2500,7 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
                     currentVisitDuties: redactInstructionDuties(currentVisitDuties, state.instructionsReleased) };
             }),
             visitCode: visitCodeFor(null),
+            runningLate: await (await import('../services/running-late')).readRunningLate(id),
             visitDuties: redactInstructionDuties(visitDuties, release.instructionsReleased),
             currentVisitDuties: redactInstructionDuties(currentVisitDuties, release.instructionsReleased),
             checkoutReviewWindowMinutes: settings.checkoutReviewWindowMinutes,

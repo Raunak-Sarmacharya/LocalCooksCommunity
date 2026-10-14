@@ -1,5 +1,6 @@
 import { ensureServerI18n } from '../i18n';
 import { tEmail } from '../i18n/outbound';
+import { friendlyTimezoneName } from '@shared/timezone-utils';
 
 export type KitchenPayoutNoticeKind = 'payout_released' | 'payout_on_hold';
 export const kitchenPayoutNoticeKinds: string[] = ['payout_released', 'payout_on_hold'];
@@ -61,4 +62,33 @@ export async function managerVisitNotice(kind: 'checkin' | 'review', locale: str
       actionLabel: tEmail(language, 'payoutViewBooking') }
     : { title: tEmail(language, 'managerCheckoutReviewTitle', { chef }), message: tEmail(language, 'managerCheckoutReviewBody', { chef, date: when }),
       actionLabel: tEmail(language, 'managerCheckoutPayoutAction') };
+}
+
+/** "12:00 p.m. Newfoundland Time": kitchen-local 12-hour clock with the friendly zone name. */
+export function kitchenClockWithZone(at: Date | string, timezone: string, locale = 'en-CA') {
+  const clock = new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(at));
+  return `${clock} ${friendlyTimezoneName(timezone, locale)}`;
+}
+
+/** Manager-only copy when the chef says they are running late. Never changes the booked end. */
+export async function managerRunningLateNotice(locale: string | null | undefined,
+  input: { chef: string | null; minutes: number; end: Date; timezone: string; note?: string | null }) {
+  await ensureServerI18n();
+  const language = locale || 'en-CA';
+  const chef = input.chef || tEmail(language, 'payoutChefFallback');
+  const duration = tEmail(language, `managerRunningLateDuration${input.minutes}`);
+  const body = tEmail(language, 'managerRunningLateBody', { chef, duration, end: kitchenClockWithZone(input.end, input.timezone, language) });
+  return { title: tEmail(language, 'managerRunningLateTitle', { chef }),
+    message: input.note ? `${body}\n${tEmail(language, 'managerRunningLateNote', { note: input.note })}` : body,
+    actionLabel: tEmail(language, 'managerMessageChefAction', { chef }) };
+}
+
+/** Manager-only copy when the chef has not checked in some minutes after the booked start. Call after ensureServerI18n(). */
+export function managerNoCheckinNotice(locale: string | null | undefined,
+  input: { chef: string | null; kitchen: string; start: Date; timezone: string }) {
+  const language = locale || 'en-CA';
+  const chef = input.chef || tEmail(language, 'payoutChefFallback');
+  return { title: tEmail(language, 'managerNoCheckinSubject', { chef, kitchen: input.kitchen }),
+    message: tEmail(language, 'managerNoCheckinBody', { chef, start: kitchenClockWithZone(input.start, input.timezone, language) }),
+    actionLabel: tEmail(language, 'managerMessageChefAction', { chef }) };
 }

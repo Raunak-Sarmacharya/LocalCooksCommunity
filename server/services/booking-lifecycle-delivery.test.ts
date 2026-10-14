@@ -104,6 +104,24 @@ describe('closeout notice delivery and recipients', () => {
     expect(state.notify.mock.calls[0][0].actionUrl).toBe('/admin?section=booking-support&booking=10');
     expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
   });
+  it('tells only the manager the chef is running late, in their language, linking straight to messaging', async () => {
+    state.people = [{ id: 3, profile: { fullName: 'Maya Chen' } }];
+    state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', timezone: 'America/St_Johns' }], [
+      { id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' },
+      { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' },
+      { id: 1, email: 'admin@example.test', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
+    await queueBookingLifecycleEvent(tx, 10, 'running_late', 'Maya Chen is running late', 'fallback', 3,
+      { recipientPolicy: 'manager', minutes: 15, reportedAt: '2026-10-14T12:52:00.000Z', endsAt: '2026-10-14T17:30:00.000Z', note: 'Traffic is slow' });
+    expect(state.notify).toHaveBeenCalledTimes(1);
+    expect(state.notify.mock.calls[0][0]).toMatchObject({ userId: 2, title: 'Maya Chen is running late', actionLabel: 'Message Maya Chen', actionUrl: '/manager/booking/10?action=message' });
+    expect(state.notify.mock.calls[0][0].message).toContain('Maya Chen is running about 15 minutes late. Their booking still ends at 3:00 p.m.');
+    expect(state.notify.mock.calls[0][0].message).toContain('Their note: Traffic is slow');
+    const emails = state.insert.mock.calls[0][0].emails;
+    expect(emails).toHaveLength(1);
+    expect(emails[0].url).toContain('/manager/booking/10?action=message');
+    expect(emails[0].content.text).toContain('Message Maya Chen');
+    expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking', 10);
+  });
   it('drops an answered or expired feedback reminder at delivery time', async () => {
     state.event = { id: 95, bookingId: 10, kind: 'feedback_requested', title: 'Feedback', message: 'Queued', metadata: {},
       emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.localcooks.test/booking/10#feedback' }], deliveredEmailKeys: [], completedAt: null };

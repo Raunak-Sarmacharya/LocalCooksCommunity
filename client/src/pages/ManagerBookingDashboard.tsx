@@ -62,6 +62,7 @@ import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import { DateField } from "@/components/ui/date-field";
+import { SessionExtensionRequests } from "@/components/manager/SessionExtensionRequests";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -1248,6 +1249,7 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'overview' && (
         <div className="space-y-6 animate-fade-in">
+          <SessionExtensionRequests />
           {isLoadingLocations || (locations.length > 0 && isLoadingKitchens) ? (
             <div className="space-y-5" role="status" aria-label="Loading dashboard"><div className="grid gap-4 sm:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}</div><Skeleton className="h-72 w-full rounded-xl" /></div>
           ) : isErrorLocations || isErrorKitchens ? (
