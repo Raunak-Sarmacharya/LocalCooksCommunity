@@ -60,7 +60,8 @@ describe('kitchen booking calendar invite', () => {
     expect(ics).toContain('UID:booking-41@localcooks.com-1');
     const other = generateBookingConfirmationEmail({ ...base, bookingId: 42, selectedSlots: ['09:00', '14:00'] });
     expect(String(other.attachments?.[0]?.content)).not.toContain('UID:booking-41@localcooks.com-1');
-    expect(email.text).toContain('Arrival tracking is off');
+    // Arrival/departure is always on (tracking switch removed Oct13); no opt-out wording remains.
+    expect(email.text).not.toContain('Arrival tracking is off');
   });
 
   it('describes the effective check-in lead and no-show grace without calling grace a closing time', () => {

@@ -12,7 +12,7 @@ const currentSource: Record<ReminderSource, string> = {
   tour: "SELECT id FROM kitchen_viewings WHERE status = 'confirmed' OR (checked_in_at IS NOT NULL AND checked_out_at IS NULL)",
   claim: "SELECT id FROM damage_claims WHERE status = 'submitted'",
   penalty: "SELECT id FROM storage_overstay_records WHERE status = 'penalty_approved'",
-  booking_review: "SELECT id FROM kitchen_bookings WHERE status = 'confirmed'",
+  booking_review: "SELECT id FROM kitchen_bookings WHERE status IN ('confirmed', 'completed')",
   storage_review: "SELECT id FROM storage_bookings WHERE checkout_status = 'checkout_requested'",
   cancellation_review: "SELECT id FROM kitchen_bookings WHERE status = 'cancellation_requested'",
   storage_cancellation_review: "SELECT id FROM storage_bookings WHERE status = 'cancellation_requested'",

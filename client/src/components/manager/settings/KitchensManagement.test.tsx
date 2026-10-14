@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -21,12 +21,14 @@ const h = vi.hoisted(() => ({
   shareableKitchen: null as Record<string, unknown> | null,
   isLoading: false,
   detailsDirty: false,
+  arrivalDirty: false,
+  saveArrival: vi.fn(async () => true),
   policiesDirty: false,
   savePolicies: vi.fn(async (_scope: string) => true),
   tourEnabled: {} as Record<number, boolean>,
   tourHours: {} as Record<number, boolean>,
   bookingHours: [] as Array<{ dayOfWeek: number; startTime: string; endTime: string; isAvailable: boolean }>,
-  trackingEnabled: false,
+  trackingEnabled: false, checklistRevision: "",
   checklistConfigured: false,
   toggleTours: vi.fn(),
 }));
@@ -38,7 +40,7 @@ vi.mock("@tanstack/react-query", () => ({
     if (queryKey[0] === "publicKitchenShare") return { data: h.shareableKitchen };
     if (queryKey[0] === "managerKitchens") return { data: h.kitchens, isLoading: h.isLoading };
     if (queryKey[0] === "checkin-checkout-settings") return { data: { checkinEnabled: h.checklistConfigured, checkoutEnabled: h.checklistConfigured,
-      checkinItems: [], checkoutItems: [], checkinInstructions: h.checklistConfigured ? 'Use the main door.' : null,
+      checkinItems: [], checkoutItems: [], checkinInstructions: h.checklistRevision || (h.checklistConfigured ? 'Use the main door.' : null),
       checkoutInstructions: h.checklistConfigured ? 'Close the door.' : null } };
     if (queryKey[0] === "managerKitchenWorkspace") return { data: { kitchen: { checkinCheckoutEnabled: h.trackingEnabled } } };
     if (queryKey[0] === "/api/manager/availability") return { data: h.bookingHours, isLoading: false };
@@ -86,6 +88,14 @@ vi.mock("./KitchenDetailsPricing", () => ({
     return <div data-testid="details"><div id="tracking-settings" tabIndex={-1} data-highlight={highlightTracking} /></div>;
   },
 }));
+vi.mock("./CheckinCheckoutSettings", async () => {
+  const { useEffect, useImperativeHandle } = await import("react");
+  return { default: ({ mode, onDirtyChange, saveRef, onOpenTasks }: any) => {
+    useEffect(() => onDirtyChange(h.arrivalDirty), [onDirtyChange]);
+    useImperativeHandle(saveRef, () => ({ save: h.saveArrival }));
+    return <div data-testid="arrival-instructions" data-mode={mode}><button onClick={onOpenTasks}>Add customer tasks</button></div>;
+  } };
+});
 vi.mock("./KitchenPhotos", () => ({ default: () => <div data-testid="photos" /> }));
 vi.mock("./KitchenWorkspaceControls", async () => {
   const { useImperativeHandle } = await import("react");
@@ -104,8 +114,8 @@ vi.mock("@/components/manager/ViewingSettingsPanel", async () => {
 vi.mock("@/pages/EquipmentListingManagement", () => ({ EquipmentListingContent: () => <div /> }));
 vi.mock("@/pages/StorageListingManagement", () => ({ StorageListingContent: () => <div /> }));
 vi.mock("@/components/manager/UnsavedChangesDialog", () => ({
-  UnsavedChangesDialog: ({ open, description }: any) =>
-    open ? <div role="dialog">{description}</div> : null,
+  UnsavedChangesDialog: ({ open, description, onDiscard, onSave, onClose, onOpenChange }: any) =>
+    open ? <div role="dialog">{description}<button onClick={onDiscard}>Discard</button><button onClick={onSave}>Save and leave</button><button onClick={() => { onClose?.(); onOpenChange?.(false); }}>Stay</button></div> : null,
 }));
 
 import KitchensManagement from "./KitchensManagement";
@@ -159,12 +169,15 @@ beforeEach(() => {
   h.kitchens = [];
   h.isLoading = false;
   h.detailsDirty = false;
+  h.arrivalDirty = false;
+  h.saveArrival.mockReset().mockResolvedValue(true);
   h.policiesDirty = false;
   h.savePolicies.mockClear();
   h.tourEnabled = {};
   h.tourHours = {};
   h.bookingHours = [];
   h.trackingEnabled = false;
+  h.checklistRevision = '';
   h.checklistConfigured = false;
   h.toggleTours.mockClear();
 });
@@ -194,15 +207,13 @@ describe("My Kitchens — creating a kitchen", () => {
     h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
     render(<KitchensManagement {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "setUpChecklist" }));
-    expect(document.getElementById("tracking-settings")).toHaveAttribute("data-highlight", "true");
-    expect(document.activeElement).toBe(document.getElementById("tracking-settings"));
+    expect(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" })).toHaveAttribute("aria-selected", "true");
   });
   it('uses the same scroll, focus and highlight for listing-review navigation', () => {
     h.kitchens = [{ id: 1, name: 'Harbour Kitchen' }, { id: 2, name: 'Market Kitchen' }];
     window.history.replaceState({}, '', '/manager/dashboard?view=kitchens&section=details&kit=2&focus=tracking');
     render(<KitchensManagement {...props} initialKitchenId={2} />);
-    expect(document.getElementById('tracking-settings')).toHaveAttribute('data-highlight', 'true');
-    expect(document.activeElement).toBe(document.getElementById('tracking-settings'));
+    expect(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" })).toHaveAttribute("aria-selected", "true");
     expect(new URL(window.location.href).searchParams.get('kit')).toBe('2');
     expect(new URL(window.location.href).searchParams.has('focus')).toBe(false);
   });
@@ -261,16 +272,11 @@ describe("My Kitchens — creating a kitchen", () => {
 
     const { rerender } = render(<KitchensManagement {...props} />);
     expect(screen.queryByRole("button", { name: "setUpChecklist" })).not.toBeInTheDocument();
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(1);
-    h.trackingEnabled = true;
+    expect(window.localStorage.length).toBe(1);
+    expect(window.sessionStorage.length).toBe(0);
+    h.checklistRevision = 'changed';
     rerender(<KitchensManagement {...props} />);
     expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
-    h.trackingEnabled = false;
-    rerender(<KitchensManagement {...props} />);
-    expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
-    h.trackingEnabled = true;
-    rerender(<KitchensManagement {...props} />);
 
     fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
     h.checklistConfigured = true;
@@ -288,7 +294,7 @@ describe("My Kitchens — creating a kitchen", () => {
     const first = render(<KitchensManagement {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "dismiss" }));
     first.unmount();
-    window.sessionStorage.clear(); // New browser session.
+    window.localStorage.clear(); // Cleared dismissal.
     render(<KitchensManagement {...props} />);
     expect(screen.getByRole("button", { name: "setUpChecklist" })).toBeInTheDocument();
   });
@@ -499,6 +505,8 @@ describe("My Kitchens — creating a kitchen", () => {
   it("opens straight away when there is nothing to lose", () => {
     h.kitchens = [{ id: 1, name: "Harbour Kitchen" }];
     h.detailsDirty = false;
+  h.arrivalDirty = false;
+  h.saveArrival.mockReset().mockResolvedValue(true);
     render(<KitchensManagement {...props} />);
 
     addKitchenFromSwitcher();
@@ -509,3 +517,141 @@ describe("My Kitchens — creating a kitchen", () => {
 });
 
 it("hides sharing while creating a kitchen or viewing an unlisted kitchen even with cached share data",()=>{h.kitchens=[{id:10,name:"Kitchen East",listingStatus:"active",isActive:true}];h.shareableKitchen={locationSlug:"downtown",kitchen:h.kitchens[0]};const page=render(<KitchensManagement {...props} />);expect(screen.getByRole("button",{name:"shareKitchen"})).toBeVisible();addKitchenFromSwitcher();expect(screen.queryByRole("button",{name:"shareKitchen"})).toBeNull();page.unmount();h.kitchens=[{id:10,name:"Kitchen East",listingStatus:"draft",isActive:true}];render(<KitchensManagement {...props} />);expect(screen.queryByRole("button",{name:"shareKitchen"})).toBeNull();});
+
+
+describe("selected kitchen arrival and departure entry", () => {
+  it("opens existing setup with the selected kitchen ID from the real section tab", () => {
+    h.kitchens = [{ id: 1, name: "First kitchen" }, { id: 2, name: "Second kitchen" }];
+    render(<KitchensManagement {...props} initialKitchenId={2} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" }), { button: 0, ctrlKey: false });
+    expect(new URLSearchParams(window.location.search).get("section")).toBe("arrival-departure");
+    fireEvent.click(screen.getByRole("button", { name: "Add customer tasks" }));
+    expect(props.onNavigate).toHaveBeenCalledExactlyOnceWith("settings-checkin-checkout", 2);
+  });
+
+  it("guards unsaved kitchen edits before revealing the arrival and departure section", () => {
+    h.kitchens = [{ id: 1, name: "First kitchen" }]; h.detailsDirty = true;
+    render(<KitchensManagement {...props} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add customer tasks" })).not.toBeInTheDocument();
+    expect(props.onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("reloads the selected kitchen section with its embedded instructions editor", () => {
+    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
+    h.kitchens = [{ id: 1, name: "First kitchen" }, { id: 2, name: "Second kitchen" }];
+    render(<KitchensManagement {...props} initialKitchenId={2} />);
+    expect(screen.getByRole("tab", { name: "navKitchenArrivalDeparture" })).toHaveAttribute("data-state", "active");
+    fireEvent.click(screen.getByRole("button", { name: "Add customer tasks" }));
+    expect(props.onNavigate).toHaveBeenCalledWith("settings-checkin-checkout", 2);
+  });
+
+  it("scrolls a restored selected tab into the tab bar without scrolling the page", async () => {
+    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
+    h.kitchens = [{ id: 2, name: "Second kitchen" }];
+    const rectangles = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.getAttribute('role') === 'tablist') return { left: 20, right: 370 } as DOMRect;
+      if (this.getAttribute('role') === 'tab' && this.getAttribute('data-state') === 'active') return { left: 540, right: 680 } as DOMRect;
+      return { left: 0, right: 0 } as DOMRect;
+    });
+    try {
+      render(<KitchensManagement {...props} initialKitchenId={2} />);
+      await waitFor(() => expect(screen.getByRole('tablist').scrollLeft).toBe(342));
+      expect(screen.getByRole('tablist').scrollTop).toBe(0);
+    } finally { rectangles.mockRestore(); }
+  });
+
+  it("realigns the selected tab after narrowing the viewport and cleans up its resize listener", async () => {
+    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
+    h.kitchens = [{ id: 2, name: "Second kitchen" }];
+    let width = 900;
+    let tabs: HTMLElement;
+    const rectangles = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.getAttribute('role') === 'tablist') return { left: 20, right: width } as DOMRect;
+      if (this.getAttribute('role') === 'tab' && this.getAttribute('data-state') === 'active')
+        return { left: 540 - (tabs?.scrollLeft ?? 0), right: 680 - (tabs?.scrollLeft ?? 0) } as DOMRect;
+      return { left: 0, right: 0 } as DOMRect;
+    });
+    try {
+      const page = render(<KitchensManagement {...props} initialKitchenId={2} />);
+      tabs = screen.getByRole('tablist');
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(tabs.scrollLeft).toBe(0);
+      width = 370;
+      fireEvent(window, new Event('resize'));
+      await waitFor(() => expect(tabs.scrollLeft).toBe(342));
+      fireEvent(window, new Event('resize'));
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(tabs.scrollLeft).toBe(342);
+      expect(tabs.scrollTop).toBe(0);
+      page.unmount();
+      tabs.scrollLeft = 0;
+      fireEvent(window, new Event('resize'));
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(tabs.scrollLeft).toBe(0);
+    } finally { rectangles.mockRestore(); }
+  });
+
+  it("propagates instruction dirty state and guards section switches through validation, failure and pending Save", async () => {
+    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
+    h.kitchens = [{ id: 2, name: "Second kitchen" }]; h.arrivalDirty = true;
+    const dirty = vi.fn();
+    render(<KitchensManagement {...props} initialKitchenId={2} onDirtyChange={dirty} />);
+    expect(screen.getByTestId('arrival-instructions')).toHaveAttribute('data-mode', 'instructions');
+    expect(screen.getByText('kitchenArrivalDepartureScope')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'kitchenCheckinManage' })).not.toBeInTheDocument();
+    expect(dirty).toHaveBeenLastCalledWith(true);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'photos' }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Stay'));
+    expect(screen.getByTestId('arrival-instructions')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'photos' }), { button: 0, ctrlKey: false });
+    h.saveArrival.mockResolvedValueOnce(false);
+    await act(async () => fireEvent.click(screen.getByText('Save and leave')));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('arrival-instructions')).toBeInTheDocument();
+    let finish!: (saved: boolean) => void;
+    h.saveArrival.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    fireEvent.click(screen.getByText('Save and leave'));
+    expect(screen.getByTestId('arrival-instructions')).toBeInTheDocument();
+    await act(async () => finish(true));
+    expect(screen.getByTestId('photos')).toBeInTheDocument();
+    expect(dirty).toHaveBeenLastCalledWith(false);
+  });
+
+  it("holds the selected kitchen identity until its dirty instructions guard permits switching", () => {
+    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure");
+    h.kitchens = [{ id: 1, name: 'First kitchen' }, { id: 2, name: 'Second kitchen' }]; h.arrivalDirty = true;
+    render(<KitchensManagement {...props} initialKitchenId={2} />);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Second kitchen' }), { key: 'ArrowDown' });
+    fireEvent.click(screen.getByRole('menuitem', { name: /First kitchen/ }));
+    expect(new URLSearchParams(window.location.search).get('kit')).toBe('2');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Discard'));
+    expect(new URLSearchParams(window.location.search).get('kit')).toBe('1');
+  });
+
+  it("holds instruction drafts on section history changes and browser unload", () => {
+    window.history.replaceState({}, "", "/?view=kitchens&kit=2&section=arrival-departure&locationId=7");
+    h.kitchens = [{ id: 2, name: 'Second kitchen' }]; h.arrivalDirty = true;
+    render(<KitchensManagement {...props} initialKitchenId={2} />);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload); expect(unload.defaultPrevented).toBe(true);
+    act(() => {
+      window.history.replaceState({}, '', '/?view=kitchens&kit=2&section=photos&locationId=7');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(screen.getByTestId('arrival-instructions')).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get('section')).toBe('arrival-departure');
+    fireEvent.click(screen.getByText('Stay'));
+    expect(screen.getByTestId('arrival-instructions')).toBeInTheDocument();
+    // After the shell's own confirmation, the child must not ask a second time.
+    act(() => {
+      window.history.replaceState({}, '', '/?view=kitchens&kit=2&section=photos&locationId=7');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { managerKitchenNavigationApproved: true } }));
+    });
+    expect(screen.getByTestId('photos')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});

@@ -42,7 +42,7 @@ describe("handleViewChange notifies URL-backed children", () => {
     const body = source.slice(start, end);
 
     const pushStateAt = body.indexOf("window.history.pushState({}, '', nextUrl)");
-    const dispatchAt = body.indexOf('window.dispatchEvent(new PopStateEvent("popstate"))');
+    const dispatchAt = body.indexOf('window.dispatchEvent(new PopStateEvent("popstate"');
 
     expect(pushStateAt, "handleViewChange no longer writes the URL with pushState").toBeGreaterThan(-1);
     expect(

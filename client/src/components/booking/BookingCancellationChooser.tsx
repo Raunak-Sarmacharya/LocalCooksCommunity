@@ -8,9 +8,10 @@ import { CONFIRMED_BOOKING_REFUND_POLICY } from '@shared/kitchen-booking-policie
 import { auth } from '@/lib/firebase';
 
 type Item = { id: number; kind: 'storage' | 'equipment'; name: string; status: string; dates?: string };
-export function BookingCancellationChooser({ bookingId, status, paymentStatus, items, onChanged, paidCancellationAvailable = true, decisionPending = false, declined = false, summary, cancellationDeadline }: {
+export function BookingCancellationChooser({ bookingId, status, paymentStatus, items, onChanged, paidCancellationAvailable = true, decisionPending = false, declined = false, summary, cancellationDeadline, visitActive = false }: {
   bookingId: number; status: string; paymentStatus?: string; items: Item[]; onChanged: () => Promise<void>;
   summary?: { kitchenName: string; reference?: string; schedule: string; amount?: string }; cancellationDeadline?: string;
+  visitActive?: boolean;
   paidCancellationAvailable?: boolean; decisionPending?: boolean; declined?: boolean;
 }) {
   const [open, setOpen] = useState(() => new URLSearchParams(window.location.search).get('cancel') === '1');
@@ -20,7 +21,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const titleRef = useRef<HTMLHeadingElement>(null);
   const beforeConfirmation = status === 'pending';
   const unpaid = beforeConfirmation && ['pending', 'authorized', 'failed'].includes(paymentStatus || '');
-  const eligible = ['pending', 'confirmed'].includes(status);
+  const eligible = !visitActive && ['pending', 'confirmed'].includes(status);
   const entireAvailable = eligible && !decisionPending && (beforeConfirmation || paidCancellationAvailable);
   const key = (item: Item) => `${item.kind}:${item.id}`;
   const itemEligible = (item: Item) => ['pending', 'confirmed'].includes(item.status);
@@ -49,6 +50,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
       setBusy(false);
     }
   };
+  if (visitActive) return null;
   return <>
     {eligible ? <Button variant="outline" className="shrink-0" onClick={() => { setError(''); setResults({}); setSelected([]); setScope('entire'); setReason(''); setOpen(true); }}>{beforeConfirmation ? 'Cancel request' : 'Request cancellation'}</Button>
       : status === 'cancellation_requested' ? <span className="max-w-xs text-sm text-muted-foreground">Cancellation requested. Your booking remains reserved until the request is accepted.</span> : null}

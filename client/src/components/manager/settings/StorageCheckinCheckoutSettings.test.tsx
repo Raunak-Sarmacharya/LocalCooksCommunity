@@ -62,7 +62,7 @@ it('keeps incomplete notes as a draft while storage tracking is off', async () =
   render(<QueryClientProvider client={client}><StorageCheckinCheckoutSettings location={{ id: 33, name: 'Sunlight' }} saveRef={saveRef} /></QueryClientProvider>);
   const arrival = await screen.findByRole('textbox', { name: 'arrivalInstructionsTitle' });
   expect(arrival).not.toBeRequired();
-  expect(screen.getByText('trackingDisabledHint')).toBeInTheDocument();
+  expect(screen.getByText('storageTrackingDisabledHint')).toBeInTheDocument();
   fireEvent.change(arrival, { target: { value: 'Draft arrival instructions.' } });
   await act(async () => { expect(await saveRef.current!.saveAllChanges()).toBe(true); });
   expect(state.put).toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings', expect.objectContaining({

@@ -1,9 +1,19 @@
+import type { BookingCloseout, VisitCloseout } from '@shared/clock-closeout';
 import { logger } from "@/lib/logger";
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { calendarDateForBookingTime } from '@shared/operating-hours';
-import type { VisitDuties } from '@shared/visit-duties';
+import { VisitDutyValidationError, type VisitDuties } from '@shared/visit-duties';
+import type { ChefVisitCodeState, VisitCodeErrorCode } from '@shared/visit-code';
+
+/** Arrival rejected by the visit-code gate. Carries the stable server code; never the code itself. */
+export class VisitCodeError extends VisitDutyValidationError {
+  constructor(message: string, public code: VisitCodeErrorCode, public attemptsLeft?: number) {
+    super(message, {});
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +26,10 @@ export type KitchenCheckinStatus =
   | "checkout_claim_filed";
 
 export interface CheckinStatusData {
+  closeout?: BookingCloseout;
+  visitCloseout?: VisitCloseout;
   visitDuties?: VisitDuties;
+  currentVisitDuties?: VisitDuties;
   checkoutReviewDeadline?: string | null;
   checkinEnabled?: boolean;
   checkoutEnabled?: boolean;
@@ -50,6 +63,7 @@ export interface CheckinStatusData {
   visits?: Array<{
     id: number;
     blockIndex: number;
+    closeout?: VisitCloseout;
     startTime: string;
     endTime: string;
     checkinStatus: KitchenCheckinStatus;
@@ -61,8 +75,16 @@ export interface CheckinStatusData {
     checkoutReviewDeadline?: string | null;
     checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
     checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
+    visitCode?: ChefVisitCodeState | null;
+    /** Missing = released (older server). Instruction text is null before release. */
+    instructionsReleased?: boolean;
+    instructionsReleaseAt?: string;
   }>;
   visitId?: number;
+  /** Visit-code projection for the booking-level target. Null/absent for legacy bookings. */
+  visitCode?: ChefVisitCodeState | null;
+  instructionsReleased?: boolean;
+  instructionsReleaseAt?: string;
 }
 
 interface CheckinResult {
@@ -119,29 +141,38 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
       return response.json();
     },
     refetchInterval: (query) => {
-      const d = query.state.data;
-      if (!d) return 10000;
-      // Poll aggressively when waiting for manager action
-      if (
-        d.checkinStatus === "checked_in" ||
-        d.checkinStatus === "checkout_requested" ||
-        d.visits?.some(visit => visit.checkinStatus === 'checked_in' || visit.checkinStatus === 'checkout_requested')
-      ) {
-        return 5000;
-      }
-      return 15000;
+      if (!bookingId || bookingId <= 0) return false;
+      const data = query.state.data;
+      if (!data) return false;
+      if (data.closeout?.nextDueAt) return 30_000;
+      if (data.status !== "confirmed") return false;
+      const visits = data.visits?.length ? data.visits : [data];
+      return visits.some(visit => !["checked_out", "no_show", "checkout_claim_filed"].includes(visit.checkinStatus || "not_checked_in"))
+        ? 30_000 : false;
     },
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
+
+  // A chef waiting at the door (locked, or code reissued by the manager) must see the new state when
+  // the tab comes back, without waiting for the next 30 s poll.
+  const refetchStatus = statusQuery.refetch;
+  useEffect(() => {
+    if (!bookingId || bookingId <= 0) return;
+    const onVisible = () => { if (document.visibilityState === "visible") void refetchStatus(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [bookingId, refetchStatus]);
 
   // Chef check-in mutation
   const checkinMutation = useMutation<
     CheckinResult,
     Error,
-    { checkinNotes?: string; checkinPhotoUrls?: string[]; checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }> }
+    { checkinNotes?: string; checkinPhotoUrls?: string[]; checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }>;
+      visitCode?: string; requestKey?: string }
   >({
-    mutationFn: async ({ checkinNotes, checkinPhotoUrls, checkinChecklistItems }) => {
+    mutationFn: async ({ checkinNotes, checkinPhotoUrls, checkinChecklistItems, visitCode, requestKey }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(
         `/api/chef/bookings/${bookingId}/checkin`,
@@ -149,20 +180,27 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
           method: "POST",
           credentials: "include",
           headers,
-          body: JSON.stringify({ checkinNotes, checkinPhotoUrls, checkinChecklistItems, visitId: status?.visitId }),
+          body: JSON.stringify({ checkinNotes, checkinPhotoUrls, checkinChecklistItems, visitId: status?.visitId,
+            ...(visitCode ? { visitCode, requestKey } : {}) }),
         }
       );
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to check in");
+        if (typeof errorData.code === "string" && errorData.code.startsWith("VISIT_CODE_")) {
+          throw new VisitCodeError(errorData.error || "Failed to check in", errorData.code,
+            typeof errorData.attemptsLeft === "number" ? errorData.attemptsLeft : undefined);
+        }
+        throw new VisitDutyValidationError(errorData.error || "Failed to check in", errorData.fieldErrors || {});
       }
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["kitchen-checkin-status", bookingId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/chef/bookings"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["kitchen-checkin-status", bookingId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/chef/bookings"] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/chef/bookings/${bookingId}/details`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/chef/bookings/${bookingId}/attendance`] }),
+      ]);
     },
   });
 
@@ -185,15 +223,17 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
       );
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to request checkout");
+        throw new VisitDutyValidationError(errorData.error || "Failed to request checkout", errorData.fieldErrors || {});
       }
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["kitchen-checkin-status", bookingId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/chef/bookings"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["kitchen-checkin-status", bookingId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/chef/bookings"] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/chef/bookings/${bookingId}/details`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/chef/bookings/${bookingId}/attendance`] }),
+      ]);
     },
   });
 
@@ -205,18 +245,18 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
       if (['checked_out', 'no_show', 'checkout_claim_filed'].includes(visit.checkinStatus)) return false;
       const date = rawStatus!.bookingDate.split('T')[0];
       const endDate = calendarDateForBookingTime(date, visit.endTime, rawStatus!.operatingWindowStartTime, visit.startTime);
-      return createBookingDateTime(endDate, visit.endTime, DEFAULT_TIMEZONE) >= new Date();
+      return createBookingDateTime(endDate, visit.endTime, rawStatus!.timezone || DEFAULT_TIMEZONE) >= new Date();
     }) || visits[visits.length - 1];
   const status = rawStatus && currentVisit ? {
-    ...rawStatus, ...currentVisit, visitId: currentVisit.id,
+    ...rawStatus, ...currentVisit, closeout: rawStatus.closeout, visitCloseout: currentVisit.closeout, visitId: currentVisit.id,
   } : rawStatus;
 
   // Helpers
   const canCheckin = (): boolean => {
     const s = status;
     if (!s) return false;
-    if (s.checkinEnabled !== true) return false;
     if (s.status !== "confirmed") return false;
+    if (["booked_time_ended", "ended"].includes((s.visitCloseout || s.closeout?.visits[0])?.phase || "")) return false;
     if (
       s.checkinStatus &&
       s.checkinStatus !== "not_checked_in"
@@ -245,8 +285,13 @@ export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: nu
     const s = status;
     if (!s) return false;
     if (s.status !== 'confirmed') return false;
-    if (s.checkinStatus === 'checked_in') return s.checkoutEnabled === true || s.checkinEnabled === true;
-    if (s.checkinEnabled === true || s.checkoutEnabled !== true || ![null, 'not_checked_in'].includes(s.checkinStatus)) return false;
+    const phase = (s.visitCloseout || s.closeout?.visits[0])?.phase || "";
+    // A chef still on site when booked time ends can check out until the service-end grace closes.
+    if (s.checkinStatus === 'checked_in' && phase === 'booked_time_ended') return true;
+    if (["booked_time_ended", "ended"].includes(phase)) return false;
+    if (s.checkinStatus === 'checked_in') return true;
+    const legacyDepartureOnly = s.visitDuties?.version === 1 && !s.visitDuties.arrival.enabled && s.visitDuties.departure.enabled;
+    if (!legacyDepartureOnly || ![null, 'not_checked_in'].includes(s.checkinStatus)) return false;
     const start = createBookingDateTime(calendarDateForBookingTime(s.bookingDate.split('T')[0], s.startTime, s.operatingWindowStartTime), s.startTime, s.timezone || DEFAULT_TIMEZONE);
     return new Date() >= start;
   };

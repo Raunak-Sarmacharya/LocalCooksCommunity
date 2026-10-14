@@ -1,3 +1,4 @@
+import { accessDocumentStage } from "@shared/location-booking-eligibility";
 "use client"
 import { mt } from "@/i18n/manager";
 
@@ -15,6 +16,7 @@ import {
     type DocumentVerificationField,
     type DocumentVerificationStatus,
 } from "./DocumentViewerDialog"
+import { DocumentRenewalReview } from "./DocumentRenewalReview"
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo"
 import { Mail, Phone, Building2, Calendar, FileText, Check, X, Clock, MessageCircle, CheckCircle, Eye } from "@/components/ui/manager-icons"
 import { cn } from "@/lib/utils"
@@ -48,6 +50,7 @@ interface ApplicationDetailPanelProps {
     onApprove: () => void;
     onApproveTier2: () => void;
     onVerifyDocument: (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', status: 'approved' | 'rejected') => void;
+    onReviewRenewal?: (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', decision: 'approved' | 'rejected', reason?: string) => void | Promise<void>;
     onReject: () => void;
     onRevokeAccess: () => void;
     onOpenChat: () => void;
@@ -73,6 +76,7 @@ export function ApplicationDetailPanel({
     onApprove,
     onApproveTier2,
     onVerifyDocument,
+    onReviewRenewal,
     onReject,
     onRevokeAccess,
     onOpenChat,
@@ -118,16 +122,22 @@ export function ApplicationDetailPanel({
     // the request phase is always shown so the manager can review it.
     const licenseRequired = locationRequirements?.requireFoodSafetyUpload;
 
-    const isExpired = (value?: string | null) => {
-        if (!value) return false;
-        const ts = Date.parse(value);
-        return Number.isFinite(ts) && ts < Date.now() - 86_400_000;
+    // The renewal is reviewed on its own; the current document is untouched until it is approved.
+    const renewalReview = (key: 'foodSafetyLicense' | 'foodEstablishmentCert', title: string, field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus') => {
+        const renewal = (application.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
+        if (!renewal || !onReviewRenewal) return null;
+        return <DocumentRenewalReview renewal={renewal} document={title} busy={isUpdating}
+            onView={() => setOpenDocument({ title, subtitle: mt("renewalSubmittedTitle", { document: title }), url: renewal.url, status: 'pending', expiry: renewal.expiry })}
+            onReview={(decision, reason) => onReviewRenewal(field, decision, reason)} />;
     };
+
+    const isExpired = (value?: string | null) => accessDocumentStage(value) === 'expired';
 
     // Human copy for the current verification state of a document.
     const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null, verifiedBy?: string): string | null => {
         if (!status) return null;
         if (isExpired(expiry)) return mt("documentExpiredNeedsReplacement");
+        if (status === 'approved' && accessDocumentStage(expiry)) return mt('accessDocumentExpiringSoon');
         if (status === 'approved') return verifiedBy === 'local_cooks' ? mt("documentVerifiedByLocalCooks") : verifiedBy === 'manager' ? mt("documentVerifiedNote") : mt("documentVerifiedGeneric");
         if (status === 'rejected') return mt("documentRejectedNote");
         return mt("documentPendingNote");
@@ -348,9 +358,10 @@ export function ApplicationDetailPanel({
                                         status: application.foodSafetyLicenseStatus,
                                         expiry: application.foodSafetyLicenseExpiry,
                                         reviewNote: reviewNoteFor(application.foodSafetyLicenseStatus, application.foodSafetyLicenseExpiry, tierData.documentVerification?.foodSafetyLicense),
-                                        reviewField: isStep2NeedsReview ? 'foodSafetyLicenseStatus' : undefined,
+                                        reviewField: isStep2NeedsReview || isFullyApproved ? 'foodSafetyLicenseStatus' : undefined,
                                     })}
                                 />
+                                {renewalReview('foodSafetyLicense', mt("foodSafetyLicense"), 'foodSafetyLicenseStatus')}
                             </div>
 
                             {/* Stage 1 Custom Fields */}
@@ -436,9 +447,10 @@ export function ApplicationDetailPanel({
                                                 status: application.foodEstablishmentCertStatus,
                                                 expiry: application.foodEstablishmentCertExpiry,
                                                 reviewNote: reviewNoteFor(application.foodEstablishmentCertStatus, application.foodEstablishmentCertExpiry, tierData.documentVerification?.foodEstablishmentCert),
-                                                reviewField: isStep2NeedsReview ? 'foodEstablishmentCertStatus' : undefined,
+                                                reviewField: isStep2NeedsReview || isFullyApproved ? 'foodEstablishmentCertStatus' : undefined,
                                             })}
                                         />
+                                        {renewalReview('foodEstablishmentCert', mt("foodEstablishmentCertificate"), 'foodEstablishmentCertStatus')}
                                     </div>
 
                                     {/* Stage 2 Custom Fields */}

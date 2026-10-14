@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { commitmentProblems, kitchenBookings, kitchenViewings, kitchens, locations, users, emailLogs, bookingLifecycleEvents } from '@shared/schema';
-import { problemDestination, problemStatusLabel, problemTransition, type ProblemStatus, type ProblemHistory } from '@shared/commitment-problems';
+import { problemCategoryLabel, parseProblemCategory, problemDestination, problemStatusLabel, problemTransition, type ProblemCategory, type ProblemStatus, type ProblemHistory } from '@shared/commitment-problems';
 import { notificationService } from './notification.service';
 import { getAppBaseUrl } from '../config';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
@@ -19,7 +19,7 @@ const reject = (message: string, status = 409): never => { throw new DomainError
 
 export async function problemContext(tx: Tx, kind: 'booking' | 'tour', id: number) {
   if (kind === 'booking') {
-    const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone })
+    const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, id)).limit(1);
     if (!row) return undefined;
@@ -38,12 +38,12 @@ export async function problemContext(tx: Tx, kind: 'booking' | 'tour', id: numbe
       if (starts.length && starts.every(Number.isFinite)) scheduledStart = new Date(Math.min(...starts));
     } catch { /* Invalid legacy schedules use general support rather than inventing a start. */ }
     return { chefId: row.booking.chefId, managerId: row.managerId, kitchenId: row.booking.kitchenId,
-      status: row.booking.status, wasConfirmed, scheduledStart };
+      status: row.booking.status, wasConfirmed, scheduledStart, timezone: row.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchenName };
   }
   const [row] = await tx.select({ tour: kitchenViewings, managerId: locations.managerId }).from(kitchenViewings)
     .innerJoin(locations, eq(locations.id, kitchenViewings.locationId)).where(eq(kitchenViewings.id, id)).limit(1);
   return row && { chefId: row.tour.chefId, managerId: row.managerId,
-    kitchenId: row.tour.targetedKitchenId, status: row.tour.status, wasConfirmed: hasTourConfirmation(row.tour), scheduledStart: row.tour.scheduledAt };
+    kitchenId: row.tour.targetedKitchenId, status: row.tour.status, wasConfirmed: hasTourConfirmation(row.tour), scheduledStart: row.tour.scheduledAt, timezone: DEFAULT_TIMEZONE, kitchenName: null };
 }
 
 export function authorizeProblem(context: { chefId: number | null; managerId: number | null } | undefined, actor: Actor) {
@@ -61,9 +61,13 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   if (!context) throw Error('Problem commitment context missing');
   const people = await tx.select().from(users).where(or(context.chefId ? eq(users.id, context.chefId) : undefined,
     context.managerId ? eq(users.id, context.managerId) : undefined, eq(users.role, 'admin')));
-  const title = `${kind === 'booking' ? 'Booking' : 'Tour'} #${id}: support request ${problemStatusLabel(problem.status).toLowerCase()}`;
+  const categoryLabel = problemCategoryLabel(problem.category);
+  const title = action === 'report' ? problem.category === 'safety' ? `Safety issue reported — urgent · ${kind === 'booking' ? 'Booking' : 'Tour'} #${id}`
+    : `${categoryLabel || 'Other'} problem reported · ${kind === 'booking' ? 'Booking' : 'Tour'} #${id}`
+    : `${kind === 'booking' ? 'Booking' : 'Tour'} #${id}: ${categoryLabel || 'Support'} problem ${problemStatusLabel(problem.status).toLowerCase()}`;
   const last = (problem.history as ProblemHistory[]).at(-1);
-  const message = `${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow your support request for updates and replies.'}`;
+  const time = new Intl.DateTimeFormat('en-CA', { timeZone: context.timezone, dateStyle: 'medium', timeStyle: 'short' }).format(problem.createdAt || new Date());
+  const message = `Kitchen: ${context.kitchenName || 'See commitment details'}\nReported: ${time} (${context.timezone})\n${categoryLabel ? `Category: ${categoryLabel}\n` : ''}${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow your support request for updates and replies.'}`;
   const assignmentOnly = ['claim', 'reassign'].includes(action);
   for (const person of people) {
     const role = person.role === 'admin' ? 'admin' : person.id === context.chefId ? 'chef' : 'manager';
@@ -82,11 +86,11 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   }
 }
 
-export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour'; id: number; actor: Actor; description: string; sourceKey: string }) {
+export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; commitment: 'booking' | 'tour'; id: number; actor: Actor; description: string; sourceKey: string; category?: ProblemCategory | null }) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.sourceKey}, 0))`);
   const [prior] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.sourceKey, input.sourceKey)).limit(1);
   if (prior) {
-    if (prior.description !== input.description || prior.reportedBy !== input.actor.id) reject('This report key already belongs to another submission');
+    if (prior.description !== input.description || prior.reportedBy !== input.actor.id || (prior.category ?? null) !== (input.category ?? null)) reject('This report key already belongs to another submission');
     return prior;
   }
   const context = await problemContext(tx, input.commitment, input.id);
@@ -96,18 +100,20 @@ export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; 
   const history: ProblemHistory[] = [{ revision: 1, actorId: input.actor.id, actorRole: input.actor.role || undefined, at: new Date().toISOString(), action: 'report', note: 'Report received' }];
   const [problem] = await tx.insert(commitmentProblems).values({ sourceKey: input.sourceKey, kind: input.kind,
     bookingId: input.commitment === 'booking' ? input.id : null, viewingId: input.commitment === 'tour' ? input.id : null,
-    kitchenId: context!.kitchenId, reportedBy: input.actor.id, description: input.description, history }).returning();
+    kitchenId: context!.kitchenId, reportedBy: input.actor.id, description: input.description, category: input.category ?? null, history }).returning();
   await queueProblemNotice(tx, problem, 'report');
   return problem;
 }
 
-export async function reportProblem(commitment: 'booking' | 'tour', id: number, actor: Actor, description: string, requestKey: string) {
+export async function reportProblem(commitment: 'booking' | 'tour', id: number, actor: Actor, description: string, requestKey: string, rawCategory?: unknown) {
+  const category = parseProblemCategory(rawCategory);
+  if (category === undefined) reject('Choose safety, access, equipment, cleanliness or other as the problem category', 400);
   if (!Number.isSafeInteger(id) || id <= 0 || typeof description !== 'string' || description.trim().length < 10 || description.length > 2000 ||
     typeof requestKey !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(requestKey)) reject('Describe the problem in 10–2000 characters and supply a valid retry key', 400);
   return db.transaction(async tx => {
     await tx.execute(commitment === 'booking' ? sql`SELECT id FROM kitchen_bookings WHERE id = ${id} FOR UPDATE` : sql`SELECT id FROM kitchen_viewings WHERE id = ${id} FOR UPDATE`);
     authorizeProblem(await problemContext(tx, commitment, id), actor);
-    return createProblem(tx, { kind: 'live', commitment, id, actor, description: description.trim(), sourceKey: `live:${commitment}:${id}:${actor.id}:${requestKey}` });
+    return createProblem(tx, { kind: 'live', commitment, id, actor, description: description.trim(), category, sourceKey: `live:${commitment}:${id}:${actor.id}:${requestKey}` });
   });
 }
 

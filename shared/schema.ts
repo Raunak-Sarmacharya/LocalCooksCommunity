@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { phoneNumberSchema, optionalPhoneNumberSchema } from './phone-validation';
@@ -661,6 +661,34 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Arrival challenge per arrival target (visit row, else booking). The code itself is never stored.
+const tz = (name: string) => timestamp(name, { withTimezone: true });
+export const kitchenVisitArrivalChallenges = pgTable("kitchen_visit_arrival_challenges", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(),
+  visitId: integer("visit_id").references(() => kitchenBookingVisits.id, { onDelete: "cascade" }),
+  targetKey: text("target_key").notNull().unique(),
+  mode: text("mode").$type<'staffed' | 'self'>().default("staffed").notNull(),
+  revision: integer("revision").default(1).notNull(),
+  keyVersion: integer("key_version").notNull(),
+  nonce: text("nonce").notNull(),
+  failedAttempts: integer("failed_attempts").default(0).notNull(),
+  lockedAt: tz("locked_at"),
+  issuedByUserId: integer("issued_by_user_id"),
+  issuedAt: tz("issued_at").defaultNow().notNull(),
+  modeChangedByUserId: integer("mode_changed_by_user_id"),
+  modeChangedAt: tz("mode_changed_at"),
+  modeReason: text("mode_reason"),
+  consumedAt: tz("consumed_at"),
+  consumedMethod: text("consumed_method").$type<'code' | 'self' | 'assisted'>(),
+  consumedByUserId: integer("consumed_by_user_id"),
+  consumedRequestKey: text("consumed_request_key"),
+  revokedAt: tz("revoked_at"),
+  revokedReason: text("revoked_reason"),
+  createdAt: tz("created_at").defaultNow().notNull(),
+  updatedAt: tz("updated_at").defaultNow().notNull(),
+}, (table) => [index("kitchen_visit_arrival_challenges_booking_idx").on(table.bookingId)]);
+
 // Attendance evidence is separate from reservation validity and checkout approval.
 export const kitchenBookingAttendanceEvents = pgTable("kitchen_booking_attendance_events", {
   id: serial("id").primaryKey(),
@@ -709,6 +737,23 @@ export const checkinCheckoutChecklists = pgTable("checkin_checkout_checklists", 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Migration 0072: NULL fields inherit; the location table's unique key is unchanged.
+export const kitchenCheckinCheckoutOverrides = pgTable("kitchen_checkin_checkout_overrides", {
+  id: serial("id").primaryKey(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull().unique(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  checkinInstructions: text("checkin_instructions"),
+  checkoutInstructions: text("checkout_instructions"),
+  checkinItems: jsonb("checkin_items"),
+  checkinPhotoRequirements: jsonb("checkin_photo_requirements"),
+  checkoutItems: jsonb("checkout_items"),
+  checkoutPhotoRequirements: jsonb("checkout_photo_requirements"),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({ locationIdx: index("kitchen_checkin_checkout_overrides_location_idx").on(table.locationId) }));
+export type KitchenCheckinCheckoutOverride = typeof kitchenCheckinCheckoutOverrides.$inferSelect;
 
 // Zod schemas for checklist items and photo requirements
 export const checklistItemSchema = z.object({
@@ -1713,6 +1758,23 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// A renewed access document waits here while the current approved document stays valid.
+// Approval replaces the current document; rejection leaves it untouched. Migration 0074.
+export const chefDocumentRenewals = pgTable("chef_document_renewals", {
+  id: serial("id").primaryKey(),
+  applicationId: integer("application_id").references(() => chefKitchenApplications.id, { onDelete: "cascade" }).notNull(),
+  documentKey: text("document_key").notNull(), // 'foodSafetyLicense' | 'foodEstablishmentCert'
+  url: text("url").notNull(),
+  expiry: date("expiry").notNull(),
+  status: text("status").default("pending").notNull(), // 'pending' | 'approved' | 'rejected'
+  rejectionReason: text("rejection_reason"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  reviewedBy: text("reviewed_by"), // 'manager' | 'local_cooks'
+  reviewedAt: timestamp("reviewed_at"),
+}, (table) => ({
+  applicationDocumentIdx: uniqueIndex("chef_document_renewals_application_document_idx").on(table.applicationId, table.documentKey),
+}));
+
 // Zod validation schemas for chef kitchen applications
 // Base schema - field requirements are validated in API based on location requirements
 // This schema accepts the data structure, but individual field requirements are checked in the API endpoint
@@ -2447,6 +2509,7 @@ export const commitmentProblems = pgTable('commitment_problems', {
   claimedBy: integer('claimed_by').references(() => users.id, { onDelete: "set null" }),
   status: text('status').notNull().default('reported'),
   description: text('description').notNull(),
+  category: text('category'), // safety | access | equipment | cleanliness | other (null for older reports)
   revision: integer('revision').notNull().default(1),
   history: jsonb('history').notNull().default([]),
   createdAt: timestamp('created_at').notNull().defaultNow(),

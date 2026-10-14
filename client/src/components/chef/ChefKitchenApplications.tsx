@@ -1,3 +1,4 @@
+import { RenewAccessDocuments } from "./applications/RenewAccessDocuments";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -24,7 +25,8 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
   const { applications, isLoading, error, refetch } = useChefKitchenApplications();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("all");
-  const selected = applications.find(app => app.id === applicationId);
+  const renewLocation = Number(new URLSearchParams(search).get('renewLocation'));
+  const selected = applications.find(app => app.id === applicationId || app.locationId === renewLocation);
   const definitions = useQuery<ApplicationFieldDefinitions>({
     queryKey: [`/api/public/locations/${selected?.locationId}/requirements`],
     queryFn: async () => {
@@ -55,7 +57,7 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
     const display = displayFor(selected);
     const submittedDocuments = hasStep2BeenSubmitted(selected);
     const book = () => navigate(kitchenPreviewPath(selected.locationId));
-    const nextCopy = display.listingPaused ? t("applicationPausedHelp", "Your kitchen access is approved. Booking will be available when this kitchen opens for reservations again.")
+    const nextCopy = selected.bookingEligibility?.canBook === false && (selected.current_tier ?? 1) >= 3 ? t(selected.bookingEligibility.status === "access_ended" ? "locationAccessEndedHelp" : selected.bookingEligibility.status === "renewal_under_review" ? "renewalUnderReviewHelp" : "renewDocumentsReviewHelp") : display.listingPaused ? t("applicationPausedHelp", "Your kitchen access is approved. Booking will be available when this kitchen opens for reservations again.")
       : display.actionKind === "book" ? t("applicationBookHelp", "Your kitchen access is approved. Choose available dates and hours to book your kitchen time.")
       : display.actionKind === "complete-step" ? t("applicationDocumentsHelp", "Upload the required kitchen documents to continue your application.")
       : display.actionKind === "discover" ? t("applicationClosedHelp", "Review the feedback below. You can start a new request when you’re ready.")
@@ -65,6 +67,7 @@ export default function ChefKitchenApplications({ onOpenChat }: { onOpenChat?: (
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-5"><h2 className="text-sm font-semibold">{t("applicationWhatNext", "What to do next")}</h2><p className="text-sm leading-6">{nextCopy}</p><div className="flex flex-wrap gap-2">{display.actionKind === "book" && <Button size="sm" onClick={book}>{t("apptabBookKitchen", "Book kitchen")}</Button>}{display.actionKind === "complete-step" && <Button size="sm" asChild><Link href={`/apply-kitchen/${selected.locationId}`}>{t("continueKitchenApplication", "Continue application")}</Link></Button>}{display.actionKind === "discover" && <Button variant="outline" size="sm" asChild><Link href={`/apply-kitchen/${selected.locationId}`}>{t("kdApplyAgain", "Apply again")}</Link></Button>}{selected.chat_conversation_id && onOpenChat && <Button variant="outline" size="sm" onClick={() => onOpenChat(selected)}><MessageCircle className="mr-1.5 size-4" />{t("openChat", "Open chat")}</Button>}</div></section>
+          {selected.status === "approved" && (selected.current_tier ?? 1) >= 3 && <RenewAccessDocuments applicationId={selected.id} renewals={selected.bookingEligibility?.renewals} onRenewed={() => void refetch()} />}
           {definitions.isLoading ? <Skeleton className="h-96 rounded-xl" /> : definitions.error ? <div role="alert" className="space-y-3 rounded-xl border bg-card p-5"><p className="text-sm">{t("applicationFieldsFailed", "We couldn’t load your submitted answer labels.")}</p><Button variant="outline" size="sm" onClick={() => void definitions.refetch()}>{t("applicationRetry", "Try again")}</Button><KitchenApplicationDetails app={selected} display={display} onBookKitchen={book} compact showActions={false} /></div> : <KitchenApplicationDetails app={selected} display={display} onBookKitchen={book} compact requirements={definitions.data} showActions={false} />}
         </div>
         <aside className="space-y-4 lg:sticky lg:top-4">

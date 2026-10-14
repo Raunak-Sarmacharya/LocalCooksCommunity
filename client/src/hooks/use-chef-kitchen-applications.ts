@@ -24,6 +24,7 @@ export interface KitchenApplicationWithLocation extends ChefKitchenApplication {
   } | null;
   /** The server's `locationListed` flag. `undefined` means it did not say — test `=== false`. */
   locationListed?: boolean;
+  bookingEligibility?: { canBook: boolean; status: string; message: string; actionUrl?: string; renewals?: Array<{ key: string; status: string; expiry?: string | null; rejectionReason?: string | null }> };
 }
 
 interface KitchenAccessStatus {
@@ -118,7 +119,7 @@ function normalizeLocationApplicationResponse(data: Record<string, unknown> | nu
     current_tier: currentTier,
     hasApplication,
     canBook: Boolean(
-      data?.canBook ?? (status === "approved" && currentTier >= 3)
+      data?.canBook ?? (data?.bookingEligibility as { canBook?: boolean } | undefined)?.canBook ?? false
     ),
     location: data?.location ?? record.location ?? null,
   };

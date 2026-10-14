@@ -100,6 +100,8 @@ export default function KitchenRequirementsPage() {
   const requestSubmitted = !!application && display?.actionKind !== "discover";
   const documentsSubmitted = !!application && hasStep2BeenSubmitted(application);
   const approved = application?.status === "approved" && (application.current_tier ?? 1) >= 3;
+  const needsRenewal = approved && application?.bookingEligibility?.canBook === false && ["document_expired", "document_review_required"].includes(application.bookingEligibility.status);
+  const accessEnded = approved && application?.bookingEligibility?.status === "access_ended";
   const canBook = display?.actionKind === "book" && location?.canAcceptApplications !== false && !!kitchen;
   const needsDocuments = display?.actionKind === "complete-step";
   const canCoordinate = requestSubmitted && (needsDocuments || documentsSubmitted || approved);
@@ -134,7 +136,7 @@ export default function KitchenRequirementsPage() {
     : needsDocuments ? t("submitKitchenDocuments", "Submit kitchen documents")
     : display?.actionKind === "discover" ? t("requirementsApplyAgainAction", "Apply again")
     : t("requestToApply", "Request to apply");
-  const actionHref = closed ? chefDashboardHref("discover-kitchens") : canBook ? `/book/${locationId}?kitchenId=${kitchen!.id}`
+  const actionHref = needsRenewal ? application!.bookingEligibility!.actionUrl ?? "" : closed ? chefDashboardHref("discover-kitchens") : canBook ? `/book/${locationId}?kitchenId=${kitchen!.id}`
     : approved || waiting ? `/dashboard?view=kitchen-requests${application?.id ? `&application=${application.id}` : ""}` : applyHref;
 
   const step1Items = requirements ? [
@@ -216,8 +218,8 @@ export default function KitchenRequirementsPage() {
           <section className="overflow-hidden rounded-2xl border border-border/70 bg-white">
             <div className="border-b bg-[#faf7f5] p-6"><p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{t("requirementsNextStep", "Your next step")}</p><h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">{title}</h2>{requestSubmitted && <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">{waiting ? <Clock className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{display?.label}</p>}</div>
             <div className="space-y-5 p-6">
-              <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-              <Button className="h-11 w-full justify-between rounded-xl shadow-none" data-testid={needsDocuments ? "kitchen-requirements-submit-documents" : "kitchen-requirements-start-apply"} onClick={() => navigate(actionHref)}>{actionLabel}<ArrowRight className="h-4 w-4" /></Button>
+              <p className="text-sm leading-6 text-muted-foreground">{needsRenewal ? tChef("renewDocumentsReviewHelp") : accessEnded ? tChef("locationAccessEndedHelp") : description}</p>
+              <Button className="h-11 w-full justify-between rounded-xl shadow-none" data-testid={needsDocuments ? "kitchen-requirements-submit-documents" : "kitchen-requirements-start-apply"} onClick={() => navigate(actionHref)}>{needsRenewal ? tChef("renewDocumentsTitle") : actionLabel}<ArrowRight className="h-4 w-4" /></Button>
               {!requestSubmitted && !closed && <p className="text-xs leading-5 text-muted-foreground">{t("requirementsNoPayment", "No payment is due with your request. Booking becomes available after approval.")}</p>}
               {savedDates && <div className="border-t pt-4"><p className="flex items-center gap-2 text-xs font-medium"><CalendarDays className="h-4 w-4 text-muted-foreground" />{t("requirementsSavedPreferences", "Saved booking preferences")}</p><p className="mt-2 text-sm">{savedDates}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("requirementsDatesNotReserved", "These dates are preferences. Your kitchen time is reserved only when you complete a booking.")}</p></div>}
               {user && location.kitchenTermsUrl && <div className="border-t pt-4"><SecureDocumentLink url={location.kitchenTermsUrl} label={t("viewKitchenTerms", "View kitchen terms and policies")} showExternalIcon={false} /></div>}

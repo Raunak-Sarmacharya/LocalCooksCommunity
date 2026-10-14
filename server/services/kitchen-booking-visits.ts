@@ -35,3 +35,9 @@ export async function ensureKitchenBookingVisits(bookingId: number) {
     .where(eq(kitchenBookingVisits.bookingId, bookingId))
     .orderBy(asc(kitchenBookingVisits.blockIndex));
 }
+
+/** HTTP reads must never initialize visit rows. */
+export async function readKitchenBookingVisits(bookingId: number) {
+  return db.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId))
+    .orderBy(asc(kitchenBookingVisits.blockIndex));
+}

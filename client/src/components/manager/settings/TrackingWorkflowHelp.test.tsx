@@ -7,12 +7,13 @@ vi.mock('@/i18n/manager', async () => {
     ((words as Record<string, string>)[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(options[name] ?? `{${name}}`)) };
 });
 afterEach(cleanup);
-it('uses the manager override and actual admin review window, including zero', () => {
+it('uses the manager arrival override, including zero, and never advertises an inspection auto-clear', () => {
   render(<TrackingWorkflowHelp settings={{ timeWindowSettings: { checkinWindowMinutesBefore: 0 },
     platformDefaults: { checkinWindowMinutesBefore: 20, checkoutReviewWindowMinutes: 90 } }} />);
-  expect(screen.getByText(/Check-in opens 0 min.*review: 90 min/)).toBeInTheDocument();
+  expect(screen.getByText(/Arrival opens 0 min before the visit/)).toBeInTheDocument();
   expect(screen.getByText(/Managers set arrival timing/)).toBeInTheDocument();
-  expect(screen.getByText(/Both notes are required; duties and photos are optional/)).toBeInTheDocument();
+  expect(screen.getByText(/never as approval/)).toBeInTheDocument();
+  expect(screen.queryByText(/auto-clear|review: 90/)).not.toBeInTheDocument();
 });
 it('uses the independent storage review window and explains removal responsibility', () => {
   render(<TrackingWorkflowHelp storage settings={{ storageDefaults: { checkoutReviewWindowMinutes: 180 },
@@ -23,6 +24,6 @@ it('uses the independent storage review window and explains removal responsibili
 });
 it('shows role guidance without inventing numerical windows before settings arrive', () => {
   render(<TrackingWorkflowHelp />);
-  expect(screen.getByText(/The chef checks in/)).toBeInTheDocument();
+  expect(screen.getByText(/Customers record arrival/)).toBeInTheDocument();
   expect(screen.queryByText(/min before/)).not.toBeInTheDocument();
 });

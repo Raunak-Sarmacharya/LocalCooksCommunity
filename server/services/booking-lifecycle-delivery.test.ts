@@ -1,21 +1,38 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('./visit-duties', () => ({ kitchenDuties: vi.fn(async () => {
-  const row = state.rows[0]?.[0];
-  return { arrival: { enabled: row?.kitchen?.checkinCheckoutEnabled === true && row?.checklist?.checkinEnabled === true, instructions: row?.checklist?.checkinInstructions },
-    departure: { enabled: row?.kitchen?.checkinCheckoutEnabled === true && row?.checklist?.checkoutEnabled === true, instructions: row?.checklist?.checkoutInstructions } };
-}), storageDuties: vi.fn() }));
-vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
-import { scheduleAdvanceReminders } from './advance-reminders';
-const state = vi.hoisted(() => ({ notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, event: null as any, database: null as any, rows: [] as any[][] }));
+import { createBookingDateTime } from '@shared/timezone-utils';
+vi.mock('./clock-closeout', () => ({ persistBookingCloseout: vi.fn(async () => ({ changed: false })) }));
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('./visit-duties', async original => ({ ...await original<typeof import('./visit-duties')>(), kitchenDuties: vi.fn(async () => ({
+  arrival: { enabled: true, instructions: 'Meet at side entrance', items: [], photos: [] },
+  departure: { enabled: true, instructions: 'Clean up', items: [], photos: [] }, checkinWindowMinutesBefore: 15 })),
+  currentKitchenDuties: vi.fn(async () => ({
+    arrival: { enabled: true, instructions: 'Meet at side entrance', items: [], photos: [] },
+    departure: { enabled: true, instructions: 'Clean up', items: [], photos: [] }, checkinWindowMinutesBefore: 15 })), storageDuties: vi.fn() }));
+vi.mock('./visit-code-challenge', () => ({ chefVisitCodes: async () => [], currentArrivalNoticeTargets: async () => state.activeTargets, arrivalModeFor: (states: any[]) => !states.length ? 'legacy' : states.every(state => state.mode === states[0].mode) ? states[0].mode : 'mixed' }));
+vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn(), acknowledgeConfirmationReminders: vi.fn(),
+  reminderVisitTimes: (booking: any, timezone: string) => (booking.selectedSlots || [{ startTime: booking.startTime, endTime: booking.endTime }]).map((slot: any, index: number) => ({ index,
+    start: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.startTime, timezone),
+    end: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.endTime, timezone) })) }));
+import { scheduleAdvanceReminders, acknowledgeConfirmationReminders } from './advance-reminders';
+const state = vi.hoisted(() => ({ closeoutEmail: vi.fn(), instructionEmail: vi.fn(), notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, activeTargets: [] as any[], noticeRow: null as any, event: null as any, database: null as any, rows: [] as any[][] }));
+vi.mock('./closeout-notice-email', () => ({ closeoutNoticeKinds: ['service_ended', 'inspection_auto_closed'], currentCloseoutEmail: state.closeoutEmail }));
+vi.mock('./kitchen-instructions-updated', () => ({ currentKitchenInstructionEmail: state.instructionEmail }));
 vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.select(...args), update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
 vi.mock('./email-log-service', () => ({ logOutgoingEmail: state.log }));
 vi.mock('./notification.service', () => ({ notificationService: { create: state.notify } }));
 vi.mock('../email', async importOriginal => ({ ...await importOriginal<typeof import('../email')>(), sendEmail: state.send }));
-import { deliverBookingLifecycleEvents, queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+import { currentArrivalNotice, deliverBookingLifecycleEvents, queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+import { generateBookingConfirmationEmail } from '../email';
 const tx: any = { select: (fields?: any) => {
   if (fields?.adminEmailNotifications && !fields.id) return { from: () => ({ where: () => ({ limit: async () => [{ role: 'admin', adminEmailNotifications: state.adminEmailEnabled }] }) }) };
  const chain: any = { from: () => chain, innerJoin: () => chain, leftJoin: () => chain, where: () => chain,
-  limit: () => chain, orderBy: () => chain, for: () => chain, then: (resolve: any) => resolve(state.rows.shift()) }; return chain; },
+  limit: () => chain, orderBy: () => chain, for: () => chain, then: (resolve: any) => resolve(fields?.chef ? [state.noticeRow] : fields?.booking && fields?.timezone ? [{ booking: confirmed().booking, timezone: 'America/St_Johns' }] : state.rows.shift()) };
+  const from = chain.from;
+  chain.from = (table: any) => {
+    const name = table[Symbol.for('drizzle:Name')];
+    if (['platform_settings', 'kitchen_booking_visits'].includes(name)) chain.then = (resolve: any) => resolve([]);
+    return from(table);
+  };
+  return chain; },
   insert: () => ({ values: state.insert }),
   update: () => ({ set: (values: any) => ({ where: () => {
     Object.assign(state.event, values);
@@ -23,6 +40,65 @@ const tx: any = { select: (fields?: any) => {
     return chain;
   } }) }),
 };
+describe('instruction update outbox delivery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); vi.stubEnv('INNGEST_EVENT_KEY', ''); state.database = tx;
+    state.event = { id: 88, bookingId: 10, kind: 'instructions_updated', title: 'Update', message: 'Stale queued notes',
+      metadata: { revision: 2, sections: ['departureInstructions'], recipientPolicy: 'chef' },
+      emails: [{ key: '3', to: 'alex@test.ca', url: 'https://chef.localcooks.test/booking/10' }], deliveredEmailKeys: [], completedAt: null };
+    state.rows = [[{ ...state.event }], []]; state.send.mockResolvedValue(true);
+  });
+  it('renders delivery-time content with revision-aware SMTP evidence', async () => {
+    state.instructionEmail.mockResolvedValue({ to: 'alex@test.ca', subject: 'Current update', text: 'Current departure', html: '<p>Current departure</p>' });
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.instructionEmail).toHaveBeenCalledWith(10, expect.objectContaining({ revision: 2 }), 3, 'alex@test.ca');
+    expect(state.send.mock.calls[0][0].text).toBe('Current departure');
+    expect(state.send.mock.calls[0][1].trackingId).toBe('booking-event:88:3:r2');
+  });
+  it('completes an ineligible/reverted update without sending queued stale content', async () => {
+    state.instructionEmail.mockResolvedValue(null);
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.send).not.toHaveBeenCalled(); expect(state.event.completedAt).toBeInstanceOf(Date);
+  });
+});
+describe('closeout notice delivery and recipients', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); vi.stubEnv('INNGEST_EVENT_KEY', ''); vi.stubEnv('NODE_ENV', 'development'); state.database = tx; state.adminEmailEnabled = true;
+    state.send.mockResolvedValue(true);
+  });
+  it.each(['service_ended', 'inspection_auto_closed'])('renders %s from current state at delivery, not from the queued generic text', async kind => {
+    state.event = { id: 90, bookingId: 10, kind, title: 'Visit finished', message: 'Queued generic text', metadata: { visitKey: '5' },
+      emails: [{ key: '2', to: 'manager@example.test', url: 'https://kitchen.localcooks.test/manager/booking/10' }], deliveredEmailKeys: [], completedAt: null };
+    state.rows = [[{ ...state.event }], []];
+    state.closeoutEmail.mockResolvedValue({ to: 'manager@example.test', subject: 'Rich closeout', text: 'Rich text', html: '<p>Rich</p>' });
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.closeoutEmail).toHaveBeenCalledWith(10, kind, { visitKey: '5' }, 2, 'manager@example.test');
+    expect(state.send.mock.calls[0][0]).toMatchObject({ subject: 'Rich closeout', text: 'Rich text' });
+    expect(state.send.mock.calls[0][0].html).not.toContain('Queued generic text');
+  });
+  it('sends nothing when the booking was cancelled or the notice is no longer relevant', async () => {
+    state.event = { id: 91, bookingId: 10, kind: 'service_ended', title: 'Visit finished', message: 'Queued', metadata: {},
+      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.localcooks.test/booking/10' }], deliveredEmailKeys: [], completedAt: null };
+    state.rows = [[{ ...state.event }], []];
+    state.closeoutEmail.mockResolvedValue(null);
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(state.send).not.toHaveBeenCalled(); expect(state.event.completedAt).toBeInstanceOf(Date);
+  });
+  it('queues the inspection-closed notice for the manager only, in-app and email, and words visit-finished notices per role', async () => {
+    const people = () => [[{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' },
+      { id: 2, email: 'manager@example.test', role: 'manager' }, { id: 1, email: 'support@example.test', role: 'admin', adminEmailNotifications: true }]];
+    state.rows = people();
+    await queueBookingLifecycleEvent(tx, 10, 'inspection_auto_closed', 'Inspection window closed', 'Closed', undefined, { recipientPolicy: 'manager', visitKey: '5' });
+    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['manager@example.test']);
+    state.notify.mockClear(); state.insert.mockClear(); state.rows = people();
+    await queueBookingLifecycleEvent(tx, 10, 'service_ended', 'Visit finished', 'Generic', undefined, { recipientPolicy: 'participants',
+      roleText: { chef: { title: 'Your visit is complete', message: 'Chef text' }, manager: { title: 'A visit has ended', message: 'Manager text' } } });
+    expect(state.notify.mock.calls.map(call => [call[0].userId, call[0].title, call[0].message])).toEqual([
+      [3, 'Your visit is complete', 'Chef text'], [2, 'A visit has ended', 'Manager text']]);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test']);
+  });
+});
 describe('booking lifecycle recipients and durable email evidence', () => {
   beforeEach(() => { vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
     [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' },
@@ -72,20 +148,51 @@ const confirmed = () => ({ booking: { id: 10, chefId: 3, kitchenId: 4, status: '
   kitchen: { name: 'Fixture Kitchen', checkinCheckoutEnabled: false }, location: { name: 'Harbour', address: '1 Harbour Road' },
   checklist: { checkinEnabled: true, checkoutEnabled: true, checkinInstructions: 'Meet at side entrance' } });
 
+describe('current arrival notices', () => {
+  const target = { targetKey: 'booking:10', visitId: null, revision: 2, mode: 'staffed' as const };
+  beforeEach(() => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    state.noticeRow = { ...confirmed(), location: { timezone: 'UTC' }, chef: { username: 'chef@example.test' } };
+    state.activeTargets = [target]; state.rows = [];
+  });
+  afterEach(() => vi.useRealTimers());
+  it('mode changes always qualify for chef email; reissue emails only qualify near arrival or after failed attempts', async () => {
+    expect((await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx))?.emailEligible).toBe(true);
+    const early = await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.test', false, tx);
+    expect(early?.emailEligible).toBe(false);
+    expect(early?.message).toContain('ask for the current one');
+    expect((await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.test', true, tx))?.emailEligible).toBe(true);
+    vi.setSystemTime(new Date('2026-10-07T07:00:00Z'));
+    expect((await currentArrivalNotice(10, 'arrival_code_reissued', [target], 3, 'chef@example.test', false, tx))?.emailEligible).toBe(true);
+  });
+  it('skips cancelled, superseded, consumed, revoked and expired targets rather than sending queued content', async () => {
+    state.noticeRow.booking.status = 'cancelled';
+    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx)).toBeNull();
+    state.noticeRow.booking.status = 'confirmed'; state.activeTargets = [];
+    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx)).toBeNull();
+    state.activeTargets = [target]; vi.setSystemTime(new Date('2026-10-08T12:00:00Z'));
+    expect(await currentArrivalNotice(10, 'arrival_mode_changed', [target], 3, 'chef@example.test', false, tx)).toBeNull();
+  });
+});
+
 describe('real rich renderer at the persisted confirmation boundary', () => {
-  beforeEach(() => { vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
+  afterEach(() => vi.useRealTimers());
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-06T12:00:00Z')); vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
     [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' }],
     [confirmed()], [{ amount: '1220', tax: '150', fee: '70' }],
     [{ name: 'Approved cold storage', item: { totalPrice: '500', startDate: new Date('2026-10-07'), endDate: new Date('2026-10-10') } }],
     [{ name: 'Approved oven', item: { totalPrice: '200' } }],
   ]; });
   it('persists actual captured money, approved linked items, separate visits and role-specific destinations', async () => {
+    state.rows[1][0].profile = { fullName: 'Sam Taylor' };
     await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking', 10);
     const emails = state.insert.mock.calls[0][0].emails;
     expect(emails[0].content.text).toContain('Payment captured: CAD $12.20 (tax CAD $1.50, service fee CAD $0.70)');
     expect(emails[0].content.text).toContain('2026-10-07–2026-10-10');
-    expect(emails[0].content.text).toContain('Arrival tracking is off');
+    expect(emails[0].content.text).toContain('Check in for each visit');
+    expect(emails[0].content.text).toContain('Hi Sam,');
+    expect(emails[0].content.text).not.toContain('Hi Chef,');
     expect(emails[0].content.text).toContain('Meet at side entrance');
     expect(emails[0].content.text).toContain('manager@example.test');
     expect(emails[0].content.text).toContain('/booking/10');
@@ -120,6 +227,47 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     state.rows[2][0].booking.paymentStatus = 'authorized';
     await expect(queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured')).rejects.toThrow('verified paid');
     expect(state.insert).not.toHaveBeenCalled();
+  });
+  it.each(['2026-10-01T12:00:00Z', '2026-10-06T12:00:00Z'])('refreshes older queued confirmations without structured inputs at %s', async instant => {
+    vi.setSystemTime(new Date(instant));
+    const old = generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Alex', kitchenName: 'Fixture Kitchen',
+      ...confirmed().booking, bookingId: 10, timezone: 'America/St_Johns', isStaff: true,
+      paymentSummary: 'Payment captured: CAD $12.20', arrivalInstructions: 'PRIVATE-LEGACY-SENTINEL' });
+    state.event = { id: 99, bookingId: 10, kind: 'confirmed', title: 'Confirmed', message: 'Captured', metadata: {},
+      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10', content: old }], deliveredEmailKeys: [] };
+    state.database = tx; state.rows = [[state.event], []]; state.send.mockResolvedValue(true);
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    const content = state.send.mock.calls[0][0];
+    expect(JSON.stringify(content)).not.toContain('PRIVATE-LEGACY-SENTINEL');
+    expect(content.text).toContain('Payment captured: CAD $12.20');
+    expect(content.attachments).toEqual(old.attachments);
+    expect(content.text.includes('Arrival instructions:')).toBe(instant.includes('10-06'));
+  });
+  it('replaces unrecognized legacy content with a safe body and a working booking button', async () => {
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    state.event = { id: 99, bookingId: 10, kind: 'confirmed', title: 'Confirmed', message: 'Captured', metadata: {},
+      emails: [{ key: '3', to: 'chef@example.test', url: 'https://chef.example.test/booking/10',
+        content: { to: 'chef@example.test', subject: 'Confirmed', text: 'PRIVATE-LEGACY-SENTINEL', html: '<p>PRIVATE-LEGACY-SENTINEL</p>' } }], deliveredEmailKeys: [] };
+    state.database = tx; state.rows = [[state.event], []]; state.send.mockResolvedValue(true);
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    const content = state.send.mock.calls[0][0];
+    expect(JSON.stringify(content)).not.toContain('PRIVATE-LEGACY-SENTINEL');
+    expect(content.text).toContain('Open booking: https://chef.example.test/booking/10');
+    expect(content.html).toContain('href="https://chef.example.test/booking/10"');
+  });
+  it('does not acknowledge newly released details from an earlier accepted overview after a worker interruption', async () => {
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');
+    state.event = { ...state.insert.mock.calls[0][0], id: 99, deliveredEmailKeys: ['2'], completedAt: null };
+    state.database = tx;
+    const overview = state.event.emails.find((email: any) => email.key === '3').content.text;
+    expect(overview).not.toContain('Arrival instructions:');
+    vi.setSystemTime(new Date('2026-10-06T12:00:00Z'));
+    vi.mocked(acknowledgeConfirmationReminders).mockClear();
+    state.rows = [[state.event], [{ id: 1, textBody: overview, createdAt: new Date('2026-10-01T12:00:00Z') }]];
+    expect(await deliverBookingLifecycleEvents(1)).toEqual({ completed: 1 });
+    expect(acknowledgeConfirmationReminders).not.toHaveBeenCalled();
+    expect(state.send).not.toHaveBeenCalled();
   });
   it('suppresses queued emails after an admin opts out without claiming SMTP acceptance', async () => {
     state.event = { id: 99, bookingId: 10, kind: 'report_attended', title: 'Review attendance', message: 'Review record',

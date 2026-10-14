@@ -159,6 +159,8 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
+type KitchenNavigationDestination = { view: ViewType; kitchenId?: number; section?: KitchenSection; focus?: "tracking" | "tour-notes"; returnTourId?: number; historyUrl?: string };
+
 type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
 
 
@@ -227,12 +229,12 @@ export default function ManagerBookingDashboard() {
   const kitchensSaveRef = useRef<KitchensHandle>(null);
   const bypassKitchensGuard = useRef(false);
   const [kitchensDirty, setKitchensDirty] = useState(false);
-  const [pendingKitchensView, setPendingKitchensView] = useState<ViewType | null>(null);
+  const [pendingKitchensView, setPendingKitchensView] = useState<KitchenNavigationDestination | null>(null);
   const checkinCheckoutRef = useRef<CheckinCheckoutHandle>(null);
   const storageChecklistRef = useRef<{ saveAllChanges: () => Promise<boolean> }>(null);
   const bypassCheckinCheckoutGuard = useRef(false);
   const [checkinCheckoutDirty, setCheckinCheckoutDirty] = useState(false);
-  const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<ViewType | null>(null);
+  const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<KitchenNavigationDestination | null>(null);
   const requirementsRef = useRef<ApplicationRequirementsWizardHandle>(null);
   const bypassRequirementsGuard = useRef(false);
   const [requirementsDirty, setRequirementsDirty] = useState(false);
@@ -248,6 +250,7 @@ export default function ManagerBookingDashboard() {
       if (foundLocation) {
         setSelectedLocation(foundLocation);
       }
+      if (params.get('view') === 'kitchens' || params.get('view') === 'settings-checkin-checkout') return;
       // Clean up URL param after use — it's a one-time signal, not persistent state
       params.delete('locationId');
       const remaining = params.toString();
@@ -354,12 +357,31 @@ export default function ManagerBookingDashboard() {
   const [deepLinkConversationId, setDeepLinkConversationId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("conversation")
   );
+  const acceptedHistoryUrl = useRef(window.location.href);
+  const historyGuard = useRef<() => boolean>(() => true);
+  historyGuard.current = () => {
+    if (window.location.href === acceptedHistoryUrl.current) return true;
+    const destination = { view: activeView, historyUrl: window.location.href };
+    if (activeView === 'kitchens' && kitchensDirty && !bypassKitchensGuard.current) {
+      setPendingKitchensView(destination);
+    } else if (activeView === 'settings-checkin-checkout' && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
+      setPendingCheckinCheckoutView(destination);
+    } else return true;
+    // Keep the draft's URL/context while the existing leave confirmation is open.
+    window.history.replaceState(window.history.state, '', acceptedHistoryUrl.current);
+    return false;
+  };
 
   useEffect(() => {
     const handleLocationChange = () => {
+      if (!historyGuard.current()) return;
       if (/^\/manager\/tours\/[^/]+$/.test(window.location.pathname)) { setActiveView('viewings'); return; }
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
+      const kitchenId = Number(params.get('kit'));
+      setReviewKitchenId(Number.isSafeInteger(kitchenId) && kitchenId > 0 ? kitchenId : null);
+      const location = locations.find(location => location.id === Number(params.get('locationId')));
+      if (location) setSelectedLocation(location);
       setDeepLinkConversationId(params.get("conversation"));
       setDeepLinkTourId(params.get("tour"));
       const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
@@ -397,7 +419,10 @@ export default function ManagerBookingDashboard() {
     handleLocationChange();
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
-  }, [currentPath]);
+  }, [currentPath, locations]);
+
+  // Section changes within My Kitchens use replaceState; remember those too.
+  useEffect(() => { acceptedHistoryUrl.current = window.location.href; });
 
   // Centralised tab-change handler. Pushes the new view into browser history
   // so the back button walks through the user's tab journey instead of always
@@ -407,7 +432,6 @@ export default function ManagerBookingDashboard() {
     void queryClient.invalidateQueries({ queryKey: ["managerWorkspaceNavigation"] });
     // Remember which kitchen a task view belongs to. Held in state rather than the URL so opening
     // the publish review never depends on the URL shape, which differs between environments.
-    if (kitchenId) setReviewKitchenId(kitchenId);
     /*
      * `resolveDestination` turns both spellings of a Kitchens-tab destination — an explicit
      * `section`, and a legacy view alias — into the one shape `KitchensManagement` reads. A request
@@ -442,11 +466,11 @@ export default function ManagerBookingDashboard() {
       return;
     }
     if (activeView === 'kitchens' && kitchensDirty && !bypassKitchensGuard.current) {
-      setPendingKitchensView(view);
+      setPendingKitchensView({ view, kitchenId, section, focus, returnTourId });
       return;
     }
     if ((activeView === 'settings-checkin-checkout' || activeView === 'settings-storage-checkin-checkout') && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
-      setPendingCheckinCheckoutView(view);
+      setPendingCheckinCheckoutView({ view, kitchenId, section, focus, returnTourId });
       return;
     }
     if (activeView === 'application-requirements' && requirementsDirty && !bypassRequirementsGuard.current) {
@@ -465,6 +489,8 @@ export default function ManagerBookingDashboard() {
     // to, and returning to a page does not remount the widget that shows them.
     invalidateGettingStarted(queryClient);
 
+    if (kitchenId) setReviewKitchenId(kitchenId);
+    else if (activeView === 'settings-checkin-checkout' && nextView === 'kitchens') setReviewKitchenId(null);
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (/^\/manager\/tours\//.test(url.pathname)) url.pathname = '/manager/dashboard';
@@ -473,11 +499,14 @@ export default function ManagerBookingDashboard() {
     else url.searchParams.delete('focus');
     if (focus === 'tour-notes' && returnTourId) url.searchParams.set('returnTour', String(returnTourId));
     else url.searchParams.delete('returnTour');
-    if (kitchenId && (nextView === "kitchens" || nextView === "listing-review" || nextView === "settings-storage-checkin-checkout")) {
+    if (kitchenId && (nextView === "kitchens" || nextView === "listing-review" || nextView === "settings-storage-checkin-checkout" || nextView === "settings-checkin-checkout")) {
       url.searchParams.set("kit", String(kitchenId));
-    } else if (nextView !== "kitchens" && nextView !== "listing-review" && nextView !== "settings-storage-checkin-checkout") {
+    } else if (activeView === 'settings-checkin-checkout' && nextView === 'kitchens') {
+      url.searchParams.delete('kit');
+    } else if (nextView !== "kitchens" && nextView !== "listing-review" && nextView !== "settings-storage-checkin-checkout" && nextView !== "settings-checkin-checkout") {
       url.searchParams.delete("kit");
     }
+    if (selectedLocation && (nextView === 'kitchens' || nextView === 'settings-checkin-checkout')) url.searchParams.set('locationId', String(selectedLocation.id));
     if (nextView !== 'applications') url.searchParams.delete('application');
     url.searchParams.delete('viewing');
     if (nextView !== 'damage-claims') url.searchParams.delete('claim');
@@ -518,7 +547,33 @@ export default function ManagerBookingDashboard() {
      * Safe to fire unconditionally: listeners only re-read the URL, and the URL is already the one
      * we just wrote, so a listener cannot loop back into a navigation.
      */
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    acceptedHistoryUrl.current = window.location.href;
+    window.dispatchEvent(new PopStateEvent("popstate", { state: { managerKitchenNavigationApproved: true } }));
+  };
+
+  const continueToDestination = (destination: KitchenNavigationDestination) => {
+    if (!destination.historyUrl) {
+      handleViewChange(destination.view, destination.kitchenId, destination.section, destination.focus, destination.returnTourId);
+      return;
+    }
+    acceptedHistoryUrl.current = destination.historyUrl;
+    window.history.replaceState(window.history.state, '', destination.historyUrl);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { managerKitchenNavigationApproved: true } }));
+  };
+
+  const handleManagerLocationChange = (location: Location) => {
+    if (location.id === selectedLocation?.id) return;
+    if (activeView !== 'kitchens' && activeView !== 'settings-checkin-checkout') {
+      setSelectedLocation(location);
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('locationId', String(location.id));
+    url.searchParams.delete('kit');
+    const destination = { view: activeView, historyUrl: url.toString() };
+    if (activeView === 'kitchens' && kitchensDirty) setPendingKitchensView(destination);
+    else if (activeView === 'settings-checkin-checkout' && checkinCheckoutDirty) setPendingCheckinCheckoutView(destination);
+    else continueToDestination(destination);
   };
 
   const continueFromAvailability = (view: ViewType) => {
@@ -553,11 +608,11 @@ export default function ManagerBookingDashboard() {
     if (saved) continueFromBookingPolicies(pendingBookingPoliciesView);
   };
 
-  const continueFromKitchens = (view: ViewType) => {
+  const continueFromKitchens = (destination: KitchenNavigationDestination) => {
     bypassKitchensGuard.current = true;
     setKitchensDirty(false);
     setPendingKitchensView(null);
-    handleViewChange(view);
+    continueToDestination(destination);
     bypassKitchensGuard.current = false;
   };
 
@@ -571,13 +626,14 @@ export default function ManagerBookingDashboard() {
     const saved = await kitchensSaveRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
     if (saved) continueFromKitchens(destination);
+    else setPendingKitchensView(destination);
   };
 
-  const continueFromCheckinCheckout = (view: ViewType) => {
+  const continueFromCheckinCheckout = (destination: KitchenNavigationDestination) => {
     bypassCheckinCheckoutGuard.current = true;
     setCheckinCheckoutDirty(false);
     setPendingCheckinCheckoutView(null);
-    handleViewChange(view);
+    continueToDestination(destination);
     bypassCheckinCheckoutGuard.current = false;
   };
 
@@ -590,9 +646,9 @@ export default function ManagerBookingDashboard() {
       if (saved) continueFromCheckinCheckout(pendingCheckinCheckoutView);
       return;
     }
-    checkinCheckoutRef.current?.save();
+    const saved = (await checkinCheckoutRef.current?.save()) ?? false;
     setIsSavingBeforeLeave(false);
-    continueFromCheckinCheckout(pendingCheckinCheckoutView);
+    if (saved) continueFromCheckinCheckout(pendingCheckinCheckoutView);
   };
 
   const continueFromRequirements = (view: ViewType) => {
@@ -623,11 +679,21 @@ export default function ManagerBookingDashboard() {
     if (saved) continueFromRequirements(pendingRequirementsView);
   };
 
+  /*
+   * The kitchen the Customer tasks page was opened from. Only one of the selected location's
+   * kitchens counts: a stale or foreign `kit` is reported on the page instead of quietly
+   * returning the manager to some other kitchen.
+   */
+  const setupKitchen = selectedLocation
+    ? managerKitchens.find(kitchen => kitchen.id === kitchenForReview && kitchen.locationId === selectedLocation.id)
+    : undefined;
+  const setupKitchenMissing = kitchenForReview != null && !setupKitchen && !isLoadingKitchens && !isErrorKitchens;
+
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
     "tour-availability": mt("kitchenTours"),
     availability: mt("navAvailability"),
     "settings-booking-rules": mt("navBookingRules"),
-    "settings-checkin-checkout": mt("navCheckinCheckout"),
+    "settings-checkin-checkout": mt("setupUx.tasksStep"),
     // The publish review is a task reached from a kitchen, not a sidebar destination — the
     // breadcrumb is what tells the manager it belongs under My Kitchens.
     "listing-review": mt("listingReviewPageTitle"),
@@ -657,7 +723,7 @@ export default function ManagerBookingDashboard() {
     security: 'navAccount', revenue: 'navRevenue', messages: 'navMessages', profile: 'shellProfile',
     kitchens: 'navSpaces', 'listing-review': 'listingReviewPageTitle', 'settings-license': 'kitchenLicense',
     'settings-booking-rules': 'navBookingRules', 'settings-facility-docs': 'facilityDocuments',
-    'settings-location': 'navPropertySettings', 'settings-checkin-checkout': 'navCheckinCheckout',
+    'settings-location': 'navPropertySettings', 'settings-checkin-checkout': 'setupUx.tasksStep',
     'settings-storage-checkin-checkout': 'navStorageCheckinCheckout', 'application-requirements': 'navApplicationRequirements',
     notifications: 'navNotifications', 'notification-settings': 'navNotificationSettings',
     overstays: 'navOverstayPenalties', 'damage-claims': 'navDamageClaims', 'storage-checkouts': 'navStorageInspections', support: 'navSupport',
@@ -678,7 +744,8 @@ export default function ManagerBookingDashboard() {
         ]
     : isKitchenChild
       ? [
-          { label: mt("navSpaces"), navId: "kitchens", onClick: () => handleViewChange('kitchens') },
+          { label: mt("navSpaces"), navId: "kitchens", onClick: () => handleViewChange('kitchens', activeView === 'settings-checkin-checkout' ? setupKitchen?.id : kitchenForReview ?? undefined, activeView === 'settings-checkin-checkout' ? (setupKitchen ? 'arrival-departure' : 'details') : undefined) },
+          ...(activeView === 'settings-checkin-checkout' && setupKitchen ? [{ label: mt("navKitchenArrivalDeparture"), onClick: () => handleViewChange('kitchens', setupKitchen.id, 'arrival-departure') }] : []),
           ...(activeView === 'settings-storage-checkin-checkout' ? [{ label: mt("navStorage"), onClick: () => handleViewChange('kitchens', kitchenForReview ?? undefined, 'storage') }] : []),
           ...(activeView === 'tour-availability' ? [{ label: mt("navAvailability"), navId: "availability", onClick: () => handleViewChange('kitchens', kitchenForReview ?? undefined, 'availability') }] : []),
           { label: kitchenChildLabel[activeView]!, navId: activeView },
@@ -788,7 +855,8 @@ export default function ManagerBookingDashboard() {
    */
   useEffect(() => {
     if (!isLoadingLocations && locations.length > 0 && !selectedLocation) {
-      setSelectedLocation(locations[0]);
+      const locationId = Number(new URLSearchParams(window.location.search).get('locationId'));
+      setSelectedLocation(locations.find(location => location.id === locationId) ?? locations[0]);
     }
   }, [locations, isLoadingLocations, selectedLocation]);
 
@@ -1131,7 +1199,7 @@ export default function ManagerBookingDashboard() {
       onViewChange={(view) => handleViewChange(view as ViewType)}
       locations={locations}
       selectedLocation={selectedLocation}
-      onLocationChange={(loc) => setSelectedLocation(loc as Location)}
+      onLocationChange={(loc) => handleManagerLocationChange(loc as Location)}
       onCreateLocation={startNewLocation}
       breadcrumbs={breadcrumbs}
       // The widget gates itself: it renders nothing once every row is done, and nothing while the
@@ -1462,10 +1530,17 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'settings-checkin-checkout' && selectedLocation && (
         <CheckinCheckoutSettings
+          key={`${selectedLocation.id}-${setupKitchen?.id ?? 'shared'}`}
+          mode="tasks"
           location={locationDetails || selectedLocation}
           saveRef={checkinCheckoutRef}
           onDirtyChange={setCheckinCheckoutDirty}
           onNavigate={handleViewChange}
+          kitchenContext={setupKitchen}
+          kitchenMissing={setupKitchenMissing}
+          onReturnToKitchen={kitchenForReview != null && !setupKitchen ? undefined : () => setupKitchen
+            ? handleViewChange('kitchens', setupKitchen.id, 'arrival-departure')
+            : handleViewChange('kitchens')}
         />
       )}
 

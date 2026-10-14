@@ -149,7 +149,7 @@ export default function StorageCheckinCheckoutSettings({
   const validationErrors = useMemo(
     () => [...validateStorageInspectionItems(items),
       ...((checkinEnabled || checkoutEnabled) && (!checkinInstructions?.trim() || !checkoutInstructions?.trim())
-        ? [mt('trackingRequiredNotes')] : [])],
+        ? [mt('storageTrackingRequiredNotes')] : [])],
     [items, checkinEnabled, checkoutEnabled, checkinInstructions, checkoutInstructions],
   );
   const dormantCheckin = checkinEnabled ? 0 : items.filter((item) => item.label.trim() && item.requiredOnCheckin).length;
@@ -244,7 +244,7 @@ export default function StorageCheckinCheckoutSettings({
         {dormantCheckin > 0 && <p>{mt("checklistDormantCheckin", { count: dormantCheckin })}</p>}
         {dormantCheckout > 0 && <p>{mt("checklistDormantCheckout", { count: dormantCheckout })}</p>}
       </div></div>}
-      <SettingsRow id="storage-tracking-enabled" label={mt('navStorageCheckinCheckout')} hint={mt('trackingBothStages')} help={<TrackingWorkflowHelp storage settings={data} />}>
+      <SettingsRow id="storage-tracking-enabled" label={mt('navStorageCheckinCheckout')} hint={mt('storageTrackingBothStages')} help={<TrackingWorkflowHelp storage settings={data} />}>
         <Switch id="storage-tracking-enabled" checked={checkinEnabled || checkoutEnabled}
           onCheckedChange={enabled => { setCheckinEnabled(enabled); setCheckoutEnabled(enabled); }} />
       </SettingsRow>

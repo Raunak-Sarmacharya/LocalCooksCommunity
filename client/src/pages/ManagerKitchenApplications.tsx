@@ -43,6 +43,7 @@ import { getConversationForApplication, createConversation } from "@/services/ch
 
 
 import { useLocation } from "wouter";
+import { RevokeLocationAccessDialog } from "@/components/manager/applications/components/RevokeLocationAccessDialog";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo";
 import { tt } from "@/i18n/common-ns";
@@ -397,36 +398,14 @@ function ManagerKitchenApplicationsContentLegacy({
     }
   };
 
-  const handleRevokeAccess = async (application: any) => {
-    if (!window.confirm(`Are you sure you want to revoke ${application.fullName}'s access to ${application.location?.name || 'this location'}? They will no longer be able to complete their application tiers.`)) {
-      return;
-    }
-
-    try {
-      // Update the application status to rejected
-      await updateApplicationStatus.mutateAsync({
-        applicationId: application.id,
-        status: 'rejected',
-        feedback: 'Access revoked by manager',
-      });
-
-      // Also revoke the location access
-      await revokeAccess.mutateAsync({
-        chefId: application.chefId,
-        locationId: application.locationId,
-      });
-
-      toast({ title: mt("accessRevoked"),
-        description: mt("chefAccessHasBeenRevokedSuccessfully"),
-      });
-      setShowReviewDialog(false);
-      setSelectedApplication(null);
-    } catch (error: any) {
-      toast({ title: mt("error"),
-        description: error.message || "Failed to revoke access",
-        variant: "destructive",
-      });
-    }
+  const [revokeTarget, setRevokeTarget] = useState<any>(null);
+  const handleRevokeAccess = async (application: any) => { setRevokeTarget(application); };
+  const confirmRevokeAccess = async (reason: string) => {
+    await revokeAccess.mutateAsync({ chefId: revokeTarget.chefId, locationId: revokeTarget.locationId, reason });
+    toast({ title: mt("accessRevoked"), description: mt("accessEndedSuccessfully") });
+    setRevokeTarget(null);
+    setShowReviewDialog(false);
+    setSelectedApplication(null);
   };
 
   const openReviewDialog = (application: any) => {
@@ -1024,6 +1003,7 @@ function ManagerKitchenApplicationsContentLegacy({
           )}
         </DialogContent>
       </Dialog>
+      {revokeTarget && <RevokeLocationAccessDialog customer={revokeTarget} pending={revokeAccess.isPending} onClose={() => setRevokeTarget(null)} onConfirm={confirmRevokeAccess} />}
     </>
   );
 

@@ -11,13 +11,24 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const record = { bookingId:10,status:'confirmed',checkinStatus:'not_checked_in',updatedAt:'2026-10-04T12:00:00Z',
   scheduledEnd:'2026-10-03T12:00:00Z',operationsComplete:true,assistanceHistory:[],
   visits:[{id:5,startTime:'09:00',endTime:'11:00',checkinStatus:'not_checked_in',updatedAt:'2026-10-04T12:00:00Z',scheduledEnd:'2026-10-03T12:00:00Z',operationsComplete:true}],history:[] };
-function mount(manager:boolean, data:any=record) {
+function mount(manager:boolean, data:any=record, managerVisitHref?: string) {
   const fetcher=vi.fn(async()=>({ok:true,json:async()=>data})); vi.stubGlobal('fetch',fetcher);
   const onSaved=vi.fn(async()=>{});
   const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
-  render(<QueryClientProvider client={client}><BookingAttendancePanel bookingId={10} manager={manager} onSaved={onSaved}/></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><BookingAttendancePanel bookingId={10} manager={manager} onSaved={onSaved} managerVisitHref={managerVisitHref}/></QueryClientProvider>);
   return {client,fetcher,onSaved};
 }
+it('links manager visit tasks to the full page while preserving focused attendance correction', async () => {
+  vi.spyOn(Date,'now').mockReturnValue(Date.parse('2026-10-04T12:00:00Z'));
+  const {client,fetcher}=mount(true,record,'/manager/booking/10/inspection');
+  expect(await screen.findByRole('link',{name:'Manage visit'})).toHaveAttribute('href','/manager/booking/10/inspection');
+  fireEvent.click(screen.getByRole('button',{name:'Attendance correction'}));
+  expect(screen.getByRole('dialog',{name:'Attendance correction'})).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Record missed check-in or checkout'})).not.toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Report chef no-show'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  expect(fetcher.mock.calls.some(([,options]:any)=>options.method==='POST')).toBe(false); client.clear();
+});
 it('shows a compact read-only visit record to the chef with no routine forms', async()=>{
   const {client}=mount(false,{...record,history:[{id:1,visitId:5,action:'report_no_show',actorRole:'manager',sharedMessage:'Chef confirmed they could not attend',createdAt:'2026-10-04T12:00:00Z'}]});
   expect(await screen.findByText('Chef confirmed they could not attend',{exact:false})).toBeInTheDocument();

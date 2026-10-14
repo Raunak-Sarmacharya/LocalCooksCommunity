@@ -1,8 +1,10 @@
-import { inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { platformSettings } from '@shared/schema';
 
 export const lifecycleSettings = {
+  serviceEndGraceMinutes: { key: 'kitchen_service_end_grace_minutes', defaultValue: 15, min: 0, max: 120 },
+  inspectionAutoCloseHours: { key: 'kitchen_inspection_auto_close_hours', defaultValue: 24, min: 1, max: 168 },
   tourPreparationMinuteOfDay: { key: 'tour_preparation_minute_of_day', defaultValue: 420, min: 0, max: 1439 },
   tourArrivalReminderMinutes: { key: 'tour_arrival_reminder_minutes', defaultValue: 60, min: 1, max: 1440 },
   tourDepartureReminderMinutes: { key: 'tour_departure_reminder_minutes', defaultValue: 10, min: 1, max: 120 },
@@ -11,7 +13,7 @@ export const lifecycleSettings = {
   tourDepartureEnabled: { key: 'tour_departure_enabled', defaultValue: 1, min: 0, max: 1 },
   tourOutcomeReminderMinutes: { key: 'tour_outcome_reminder_minutes', defaultValue: 0, min: 0, max: 10080 },
   historicalVisitReviewAfterHours: { key: 'historical_visit_review_after_hours', defaultValue: 48, min: 1, max: 720 },
-  preparationReminderHours: { key: 'preparation_reminder_hours', defaultValue: 24, min: 1, max: 168 },
+  preparationReminderHours: { key: 'preparation_reminder_hours', defaultValue: 48, min: 1, max: 168 },
   arrivalReminderHours: { key: 'arrival_reminder_hours', defaultValue: 2, min: 1, max: 24 },
   departureReminderMinutes: { key: 'departure_reminder_minutes', defaultValue: 30, min: 1, max: 120 },
   responseWarningHours: { key: 'response_warning_hours', defaultValue: 6, min: 1, max: 168 },
@@ -54,4 +56,36 @@ export async function saveLifecycleSettings(input: Record<string, unknown>, admi
       .onConflictDoUpdate({ target: platformSettings.key, set: update });
   });
   return getLifecycleSettings();
+}
+
+/** Finished bookings whose service ended before this instant close silently: state is saved, nobody is emailed.
+ * It stops the first closeout sweep announcing every historic booking. When no value has been saved the first
+ * closeout run anchors it to that moment, so only bookings finishing after the rollout notify. */
+export const closeoutNotificationsFromKey = 'closeout_notifications_from';
+type CutoverReader = Pick<typeof db, 'select'>;
+async function readCutover(reader: CutoverReader) {
+  const [row] = await reader.select({ value: platformSettings.value }).from(platformSettings)
+    .where(eq(platformSettings.key, closeoutNotificationsFromKey)).limit(1);
+  if (!row) return null;
+  const at = new Date(row.value);
+  if (!Number.isFinite(at.getTime())) throw new Error('Invalid lifecycle setting: closeoutNotificationsFrom');
+  return at;
+}
+/** Read only (admin screens): null until an admin saves one or the first closeout run anchors it. */
+export const getSavedCloseoutNotificationsFrom = (reader: CutoverReader = db) => readCutover(reader);
+/** Closeout path: returns the cutover, storing `now` once if it has never been set. Safe under concurrent first reads. */
+export async function getCloseoutNotificationsFrom(reader: Pick<typeof db, 'select' | 'insert'> = db, now = new Date()) {
+  const saved = await readCutover(reader);
+  if (saved) return saved;
+  await reader.insert(platformSettings).values({ key: closeoutNotificationsFromKey, value: now.toISOString(),
+    description: 'Bookings that finished before this instant close silently (no Visit finished or Inspection window closed emails).' })
+    .onConflictDoNothing({ target: platformSettings.key });
+  return (await readCutover(reader)) ?? now;
+}
+export async function saveCloseoutNotificationsFrom(input: unknown, adminId: number) {
+  if (typeof input !== 'string' || !Number.isFinite(new Date(input).getTime())) throw new Error('closeoutNotificationsFrom must be a date and time');
+  const value = new Date(input).toISOString();
+  const update = { key: closeoutNotificationsFromKey, value, updatedBy: adminId, updatedAt: new Date() };
+  await db.insert(platformSettings).values(update).onConflictDoUpdate({ target: platformSettings.key, set: update });
+  return new Date(value);
 }

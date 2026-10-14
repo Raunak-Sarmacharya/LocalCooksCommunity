@@ -3079,6 +3079,14 @@ router.put('/lifecycle-settings', requireFirebaseAuthWithUser, requireAdmin, asy
     try { const { saveLifecycleSettings } = await import('../services/lifecycle-settings'); res.json(await saveLifecycleSettings(req.body, req.neonUser!.id)); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save lifecycle settings' }); }
 });
+router.get('/closeout-notifications-from', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { const { getSavedCloseoutNotificationsFrom } = await import('../services/lifecycle-settings'); res.json({ closeoutNotificationsFrom: (await getSavedCloseoutNotificationsFrom())?.toISOString() ?? null }); }
+    catch (error) { logger.error('Failed to read closeout notification cutover', error); res.status(500).json({ error: 'Failed to read closeout notification cutover' }); }
+});
+router.put('/closeout-notifications-from', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try { const { saveCloseoutNotificationsFrom } = await import('../services/lifecycle-settings'); res.json({ closeoutNotificationsFrom: (await saveCloseoutNotificationsFrom(req.body?.closeoutNotificationsFrom, req.neonUser!.id)).toISOString() }); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to save closeout notification cutover' }); }
+});
 router.get('/historical-visit-reviews', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
     try { const { getHistoricalVisitReviewQueue } = await import('../services/kitchen-visit-lifecycle'); res.json(await getHistoricalVisitReviewQueue()); }
     catch (error) { logger.error('Failed to read historical visits', error); res.status(500).json({ error: 'Failed to read historical visits' }); }

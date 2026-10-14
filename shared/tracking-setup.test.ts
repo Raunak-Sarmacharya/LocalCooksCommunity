@@ -7,7 +7,7 @@ describe('one tracking choice and required notes', () => {
   it('accepts enabled empty checklists with both saved notes', () => {
     const result = normalizeTrackingSetup({ checkinEnabled: true, checkinItems: [], checkoutItems: [] }, kitchen);
     expect(result.error).toBeUndefined();
-    expect(result.patch).toMatchObject({ checkinEnabled: true, checkoutEnabled: true, checkinItems: [], checkoutItems: [] });
+    expect(result.patch).toEqual({ checkinItems: [], checkoutItems: [] });
   });
   it('enables both storage actions together and leaves kitchen configuration untouched', () => {
     const result = normalizeTrackingSetup({ storageCheckoutEnabled: true }, storage);
@@ -27,11 +27,11 @@ describe('one tracking choice and required notes', () => {
       .toEqual({ storageCheckinEnabled: false, storageCheckoutEnabled: false });
   });
   it('rejects conflicting or non-boolean stage choices', () => {
-    expect(normalizeTrackingSetup({ checkinEnabled: true, checkoutEnabled: false }, kitchen).error).toBeTruthy();
-    expect(normalizeTrackingSetup({ checkinEnabled: 'true' }, kitchen).error).toBeTruthy();
+    expect(normalizeTrackingSetup({ storageCheckinEnabled: true, storageCheckoutEnabled: false }, storage).error).toBeTruthy();
+    expect(normalizeTrackingSetup({ storageCheckinEnabled: 'true' }, storage).error).toBeTruthy();
   });
   it('prevents clearing notes for an enabled workflow but permits disabled drafts', () => {
-    expect(normalizeTrackingSetup({ checkoutInstructions: '' }, { ...kitchen, checkinEnabled: true, checkoutEnabled: true }).error).toBeTruthy();
+    expect(normalizeTrackingSetup({ checkoutInstructions: '' }, { ...kitchen, checkinEnabled: true, checkoutEnabled: true }).error).toBeUndefined();
     expect(normalizeTrackingSetup({ checkoutInstructions: '' }, kitchen).error).toBeUndefined();
   });
   it('does not conflate kitchen and storage notes or validate untouched legacy groups', () => {

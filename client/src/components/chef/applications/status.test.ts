@@ -115,3 +115,30 @@ describe("getKitchenDisplayStatus — the manager's listing flag", () => {
     expect(display.listingPaused).toBeUndefined();
   });
 });
+
+describe("getKitchenDisplayStatus booking eligibility", () => {
+  const approved = { status: "approved", current_tier: 3 };
+  it("keeps the booking action for an eligible approved application", () => {
+    expect(getKitchenDisplayStatus({ ...approved, bookingEligibility: { canBook: true, status: "approved", message: "" } }).actionKind).toBe("book");
+  });
+  it.each(["document_expired", "document_review_required"])("asks for a renewed document when %s", (status) => {
+    const display = getKitchenDisplayStatus({ ...approved, bookingEligibility: { canBook: false, status, message: "", actionUrl: "/dashboard?view=kitchen-requests&renewLocation=47" } });
+    expect(display.actionKind).toBe("complete-step");
+    expect(display.label).toBe("Documents need renewal or review");
+    expect(display.actionLabel).toBe("Renew documents");
+  });
+  it("says the renewal is under review, with no action to take, and marks booking as blocked", () => {
+    const display = getKitchenDisplayStatus({ ...approved, bookingEligibility: { canBook: false, status: "renewal_under_review", message: "" } });
+    expect(display).toMatchObject({ actionKind: "wait", label: "Renewal under review", bookingBlocked: true });
+  });
+  it("keeps tier 2 on its own waiting state, never a booking action", () => {
+    const display = getKitchenDisplayStatus({ status: "approved", current_tier: 2, tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status: "awaiting_final_approval", message: "" } });
+    expect(display.actionKind).not.toBe("book");
+    expect(display.bookingBlocked).toBeUndefined();
+  });
+  it("shows access ended without a booking action", () => {
+    const display = getKitchenDisplayStatus({ ...approved, bookingEligibility: { canBook: false, status: "access_ended", message: "" } });
+    expect(display.actionKind).toBe("wait");
+    expect(display.label).toBe("Access ended");
+  });
+});

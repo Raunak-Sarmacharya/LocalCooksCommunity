@@ -25,7 +25,6 @@ import {
 import { KitchenPricingContent, type KitchenPricingHandle } from "@/pages/KitchenPricingManagement";
 import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 import { SettingsRow } from "./SettingsRow";
-import KitchenWorkspaceControls from "./KitchenWorkspaceControls";
 import { useListingImpactConfirm } from "@/components/manager/ListingImpactConfirm";
 
 /**
@@ -48,8 +47,6 @@ interface KitchenDetailsPricingProps {
   locationId: number;
   locationName: string;
   kitchen: KitchenDetailsTarget;
-  onConfigureTracking: () => void;
-  highlightTracking?: boolean;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -62,7 +59,7 @@ const DESTRUCTIVE_ACTION =
 const KitchenDetailsPricing = forwardRef<
   KitchenDetailsPricingHandle,
   KitchenDetailsPricingProps
->(function KitchenDetailsPricing({ locationId, locationName, kitchen, onConfigureTracking, highlightTracking, onDirtyChange }, ref) {
+>(function KitchenDetailsPricing({ locationId, locationName, kitchen, onDirtyChange }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const listingImpact = useListingImpactConfirm();
@@ -281,8 +278,6 @@ const KitchenDetailsPricing = forwardRef<
         onDirtyChange={setPricingDirty}
       />
 
-      <KitchenWorkspaceControls kitchenId={kitchen.id} location={{ id: locationId, name: locationName }} mode="tracking"
-        onConfigure={onConfigureTracking} highlight={highlightTracking} />
 
       <Card className="border-destructive/25">
         <CardHeader className="p-4 pb-3">

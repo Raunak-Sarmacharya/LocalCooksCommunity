@@ -1725,7 +1725,7 @@
   "requirementsMessageManager": "Écrire au gestionnaire",
   "requirementsOpeningChat": "Ouverture des messages…",
   "requirementsChatError": "Impossible d’ouvrir les messages. Veuillez réessayer.",
-  "preConfirmationRefundTitle": "Remboursement de 100 % avant la confirmation",
+  "preConfirmationRefundTitle": "Annulation gratuite tant que la cuisine n’a pas confirmé votre demande — votre carte est seulement retenue.",
   "preConfirmationRefundPolicy": "Annulez avant la confirmation de votre réservation pour obtenir un remboursement de 100 % de toute somme payée, y compris les taxes et les frais. Si votre paiement fait seulement l’objet d’une retenue, celle-ci sera levée.",
   "confirmedBookingRefundPolicy": "Après la confirmation, la date limite d’annulation enregistrée s’applique. L’annulation et tout remboursement sont examinés séparément; les frais de traitement et les frais de service de la plateforme peuvent être retenus. Consultez le résultat de votre annulation et de votre remboursement pour connaître le montant exact."
 }

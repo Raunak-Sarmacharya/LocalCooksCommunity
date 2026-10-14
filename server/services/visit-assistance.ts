@@ -5,18 +5,27 @@ import { kitchenDuties, storageDuties } from './visit-duties';
 import { queueStorageVisitAction, attemptOutcomeDelivery } from './outcome-delivery';
 import { queueBookingLifecycleEvent, deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
-const wallTime = (date: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: DEFAULT_TIMEZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date);
+import { consumeForAssistedArrival } from './visit-code-challenge';
+import { matchingLocalInstants } from '@shared/booking-dst';
+const wallTime = (date: Date, timezone: string) => new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date);
 
 export type AssistanceInput = {
   action: 'arrival' | 'departure'; visitId?: number; reason: string; actualAt: string;
   expectedUpdatedAt: string; expectedBookingUpdatedAt: string;
 };
-export function validateAttendanceAssistance(input: { action: unknown; reason: unknown; actualAt: unknown }, now = new Date()) {
+export function validateAttendanceAssistance(input: { action: unknown; reason: unknown; actualAt: unknown }, now = new Date(), timezone?: string) {
   if (!['arrival', 'departure'].includes(input.action as string) || typeof input.reason !== 'string' ||
     input.reason.trim().length < 10 || input.reason.length > 2000)
     throw Error('Choose arrival or departure and explain the evidence or upload problem in 10–2000 characters');
-  const actual = new Date(input.actualAt as string);
-  const parts = typeof input.actualAt === 'string' ? /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.exec(input.actualAt) : null;
+  let actualAt = input.actualAt;
+  const local = typeof actualAt === 'string' ? /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(actualAt) : null;
+  if (local && timezone) {
+    const matches = matchingLocalInstants(local[1], local[2], timezone);
+    if (matches.length !== 1) throw Error('Enter a valid kitchen-local time; if clocks repeat, include its UTC offset');
+    actualAt = new Date(matches[0]).toISOString();
+  }
+  const actual = new Date(actualAt as string);
+  const parts = typeof actualAt === 'string' ? /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.exec(actualAt) : null;
   const calendarValid = !!parts && Number(parts[2]) >= 1 && Number(parts[2]) <= 12 && Number(parts[3]) >= 1
     && Number(parts[3]) <= new Date(Date.UTC(Number(parts[1]), Number(parts[2]), 0)).getUTCDate();
   if (!calendarValid || !Number.isFinite(actual.getTime()) || actual > now)
@@ -25,13 +34,14 @@ export function validateAttendanceAssistance(input: { action: unknown; reason: u
 }
 /** Manager statement, never chef submission or inspection clearance. */
 export async function assistKitchenVisit(bookingId: number, managerId: number, input: AssistanceInput) {
-  const { actual } = validateAttendanceAssistance(input);
   await db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId })
+    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
     if (!context || context.managerId !== managerId) throw Error('Booking not found');
+    const timezone = context.timezone || DEFAULT_TIMEZONE;
+    const { actual } = validateAttendanceAssistance(input, new Date(), timezone);
     if (context.booking.status !== 'confirmed') throw Error('Only a confirmed visit may receive assistance');
     if (new Date(input.expectedBookingUpdatedAt).getTime() !== context.booking.updatedAt.getTime())
       throw Error('Booking changed; refresh before assisting');
@@ -55,11 +65,13 @@ export async function assistKitchenVisit(bookingId: number, managerId: number, i
     }];
     const values = { assistanceHistory: history, updatedAt: now,
       ...(input.action === 'arrival' ? { checkinStatus: 'checked_in' as const, checkedInAt: actual, checkedInMethod: 'manager',
-        actualStartTime: wallTime(actual) }
+        actualStartTime: wallTime(actual, timezone) }
         : { checkinStatus: 'checkout_requested' as const, checkoutRequestedAt: now,
-          actualEndTime: wallTime(actual) }) };
+          actualEndTime: wallTime(actual, timezone) }) };
     if (visit) await tx.update(kitchenBookingVisits).set(values).where(and(eq(kitchenBookingVisits.id, visit.id), eq(kitchenBookingVisits.bookingId, bookingId)));
     else await tx.update(kitchenBookings).set(values).where(eq(kitchenBookings.id, bookingId));
+    // Manager-assisted arrival needs no code; it consumes the challenge (booking -> visit -> challenge lock order).
+    if (input.action === 'arrival') await consumeForAssistedArrival(tx, { bookingId, visitId: visit?.id ?? null }, managerId);
     await queueBookingLifecycleEvent(tx, bookingId, 'visit_assisted', `Manager-assisted ${input.action} recorded`,
       `The kitchen manager recorded ${input.action} using reported or evidenced time ${actual.toISOString()}. Reason: ${input.reason.trim()}. Existing chef photos and checklists are preserved. ${input.action === 'departure' ? 'Inspection remains pending; this is not clearance or a charge.' : 'This is a manager statement, separate from chef submission.'}`,
       managerId, { visitId: visit?.id, action: input.action, actualAt: actual.toISOString(), recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });

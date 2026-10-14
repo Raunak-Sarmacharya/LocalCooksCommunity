@@ -73,16 +73,15 @@ export async function currentDeadlineReminders(tx: Transaction, source: Reminder
       tasks.push({ ...base, resource: `booking-${id}-cancellation`, opened: row.booking.cancellationRequestedAt,
         deadline: new Date(row.booking.cancellationRequestedAt.getTime() + hours * 3600000), title: `Booking #${id}: cancellation decision due`, inspection: false });
     } else {
-      if (row.booking.status !== 'confirmed') return [];
-      const minutes = readVisitDuties(row.booking.visitDuties)?.checkoutReviewWindowMinutes ?? await setting('kitchen_checkout_review_window_minutes', 60);
-      // Zero is supported by the existing checkout settings. There is no
-      // advance-warning opportunity, and scheduling must not reject checkout.
-      if (minutes === 0) return [];
+      if (!['confirmed', 'completed'].includes(row.booking.status)) return [];
       const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, id));
-      const reviews = visits.length ? visits : [row.booking];
-      for (const review of reviews) if (review.checkinStatus === 'checkout_requested' && review.checkoutRequestedAt)
-        tasks.push({ ...base, resource: `booking-${id}-visit-${visits.length ? review.id : 'legacy'}`, opened: review.checkoutRequestedAt,
-          deadline: new Date(review.checkoutRequestedAt.getTime() + minutes * 60000), title: `Booking #${id}: inspection response due`, inspection: true });
+      const { projectBookingCloseout } = await import('./clock-closeout');
+      const projected = await projectBookingCloseout(row.booking, row.location.timezone!, visits, undefined, tx);
+      for (const clock of projected.closeout.visits) if (clock.inspection.canRespond)
+        tasks.push({ ...base, timezone: projected.timezone, resource: `booking-${id}-visit-${clock.key}`,
+          opened: new Date(clock.inspection.dueAt), deadline: new Date(clock.inspection.deadline),
+          title: `Booking #${id}: inspection response due`, inspection: true });
+
     }
   }
   const reminders: Reminder[] = [];

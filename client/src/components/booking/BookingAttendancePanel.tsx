@@ -18,7 +18,7 @@ const formatEvent = (value: string) => new Intl.DateTimeFormat(undefined, {
   timeZone: 'America/St_Johns', dateStyle: 'medium', timeStyle: 'short',
 }).format(new Date(value));
 
-export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved }: { bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void> }) {
+export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, managerVisitHref, timezone }: { bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void>; managerVisitHref?: string; timezone?: string | null }) {
   const { t } = useTranslation('chef');
   const actionLabel = (action: string) => t(action === 'report_no_show' ? 'bookingAttendanceReportedAbsent' : action === 'report_attended' ? 'bookingAttendanceReportedAttended' : 'bookingAttendanceWithdrawn');
   const [message, setMessage] = useState(''), [confirmedAbsent, setConfirmedAbsent] = useState(false);
@@ -64,18 +64,19 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   if (data && !activeRecord && !hasRecordedVisit) return null;
   return <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-3" aria-label={t('bookingAttendanceTitle')}>
     <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">{t('bookingAttendanceTitle')}</h2>
+      {manager && !localCooks && managerVisitHref && data && (activeRecord || hasRecordedVisit) && <Button variant="outline" size="sm" asChild><a href={managerVisitHref}>Manage visit</a></Button>}
       {(manager || localCooks) && data && (activeRecord || hasRecordedVisit) && <Dialog open={manageOpen} onOpenChange={open => { setManageOpen(open); if (!open) setManageAction(null); }}>
-        <DialogTrigger asChild><Button variant="outline" size="sm">Manage visit</Button></DialogTrigger>
+        <DialogTrigger asChild><Button variant="outline" size="sm">{managerVisitHref && !localCooks ? 'Attendance correction' : 'Manage visit'}</Button></DialogTrigger>
         <DialogContent showCloseButton>
-          <DialogHeader><DialogTitle>Manage visit</DialogTitle><DialogDescription>Booking #{bookingId} · Record a missed check-in or checkout, or correct the visit record. Shared updates are visible to the chef.</DialogDescription></DialogHeader>
-          {!manageAction ? <div className="space-y-3">
+          <DialogHeader><DialogTitle>{managerVisitHref && !localCooks ? 'Attendance correction' : 'Manage visit'}</DialogTitle><DialogDescription>Booking #{bookingId} · Record a missed check-in or checkout, or correct the visit record. Shared updates are visible to the chef.</DialogDescription></DialogHeader>
+          {!manageAction && (!managerVisitHref || localCooks) ? <div className="space-y-3">
             {manager && !localCooks && data.status === 'confirmed' && <Button className="w-full" variant="outline" onClick={() => setManageAction('checkinout')}>Record missed check-in or checkout</Button>}
             <Button className="w-full" variant="outline" onClick={() => setManageAction('outcome')}>Report a no-show or correct a visit</Button>
             <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose></DialogFooter>
           </div> : <>
             <Button variant="ghost" className="justify-self-start" disabled={saving} onClick={() => setManageAction(null)}>Back</Button>
             {manageAction === 'checkinout' ? <VisitAssistancePanel bookingId={bookingId} updatedAt={data.updatedAt}
-              visits={data.visits} onSaved={async () => { await query.refetch(); await onSaved(); setManageOpen(false); setManageAction(null); }} /> : <div className="space-y-3">
+              visits={data.visits} timezone={timezone} onSaved={async () => { await query.refetch(); await onSaved(); setManageOpen(false); setManageAction(null); }} /> : <div className="space-y-3">
               {data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
                 <select className="ml-2 rounded border bg-background p-2" value={visitId ?? ''} disabled={saving} onChange={event => { setVisitId(event.target.value ? Number(event.target.value) : undefined); setMessage(''); setConfirmedAbsent(false); }}>
                   <option value="">{t('bookingAttendanceChooseVisit')}</option>{data.visits.map((visit, index) => <option key={visit.id} value={visit.id}>{t('bookingAttendanceVisit')} {index + 1}: {visit.startTime}–{visit.endTime}</option>)}
@@ -101,7 +102,7 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     {query.isPending && <p role="status">{t('bookingAttendanceLoading')}</p>}
     {query.error && <p role="alert">{query.error.message}</p>}
     {data && <>
-      <p className="text-sm text-muted-foreground">{!activeRecord ? 'This booking is not active. Its recorded visit history is available below.' : (selected ? selected.operationsComplete : data.operationsComplete) ? t('bookingAttendanceEnded') : t('bookingAttendanceNotEnded')}</p>
+      <p className="text-sm text-muted-foreground">{!activeRecord ? 'This booking is not active. Its recorded visit history is available below.' : (selected ? selected.operationsComplete : data.operationsComplete) ? t('bookingAttendanceEnded') : t(manager ? 'bookingAttendanceNotEndedManager' : 'bookingAttendanceNotEnded')}</p>
       {data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
         <select className="ml-2 rounded border bg-background p-2" value={visitId ?? ''} onChange={event => { setVisitId(event.target.value ? Number(event.target.value) : undefined); setMessage(''); setConfirmedAbsent(false); }}>
           <option value="">{t('bookingAttendanceChooseVisit')}</option>

@@ -1,3 +1,4 @@
+import { RevokeLocationAccessDialog } from "@/components/manager/applications/components/RevokeLocationAccessDialog";
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 "use client"
@@ -74,6 +75,7 @@ export function ManagerKitchenApplicationsContent({
     const [approvalIssues, setApprovalIssues] = useState<string[]>([]);
     const [approvalDocuments, setApprovalDocuments] = useState<{ field: KitchenDocumentField; label: string }[]>([]);
     const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+    const [revokeTarget, setRevokeTarget] = useState<typeof selectedApplication>(null);
     const [isCombinedApproving, setIsCombinedApproving] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [searchQuery, setSearchQuery] = useState("");
@@ -431,6 +433,26 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
+    const handleReviewRenewal = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', decision: 'approved' | 'rejected', reason?: string) => {
+        if (!selectedApplication) return;
+        const key = field === 'foodSafetyLicenseStatus' ? 'foodSafetyLicense' : 'foodEstablishmentCert';
+        const renewal = (selectedApplication.documentRenewals || []).find(item => item.key === key && item.status === 'pending');
+        try {
+            await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, [field]: decision, rejectionReason: reason });
+            const remaining = (selectedApplication.documentRenewals || []).filter(item => item !== renewal);
+            // Approving replaces the current document; rejecting leaves it exactly as it was.
+            const replaced = decision === 'approved' && renewal
+                ? key === 'foodSafetyLicense'
+                    ? { foodSafetyLicenseUrl: renewal.url, foodSafetyLicenseExpiry: renewal.expiry, foodSafetyLicenseStatus: 'approved' as const }
+                    : { foodEstablishmentCertUrl: renewal.url, foodEstablishmentCertExpiry: renewal.expiry, foodEstablishmentCertStatus: 'approved' as const }
+                : {};
+            setSelectedApplication({ ...selectedApplication, ...replaced, documentRenewals: remaining });
+            toast({ title: decision === 'approved' ? mt('renewalApproved') : mt('renewalDeclined') });
+        } catch (error: any) {
+            toast({ title: mt('error'), description: error.message || mt('renewalReviewFailed'), variant: 'destructive' });
+        }
+    };
+
     const handleReject = async () => {
         if (!selectedApplication) return;
         if (!reviewFeedback.trim()) {
@@ -459,34 +481,13 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
-    const handleRevokeAccess = async () => {
-        if (!selectedApplication) return;
-        if (!window.confirm(`Are you sure you want to revoke ${selectedApplication.fullName}'s access?`)) {
-            return;
-        }
-
-        try {
-            await updateApplicationStatus.mutateAsync({
-                applicationId: selectedApplication.id,
-                status: 'rejected',
-                feedback: 'Access revoked by manager',
-            });
-
-            await revokeAccess.mutateAsync({
-                chefId: selectedApplication.chefId,
-                locationId: selectedApplication.locationId,
-            });
-
-            toast({ title: mt("accessRevoked"),
-                description: mt("chefAccessHasBeenRevokedSuccessfully"),
-            });
-            closeDetailSheet();
-        } catch (error: any) {
-            toast({ title: mt("error"),
-                description: error.message || "Failed to revoke access",
-                variant: "destructive",
-            });
-        }
+    const handleRevokeAccess = async () => { if (selectedApplication) setRevokeTarget(selectedApplication); };
+    const confirmRevokeAccess = async (reason: string) => {
+        if (!revokeTarget) return;
+        await revokeAccess.mutateAsync({ chefId: revokeTarget.chefId, locationId: revokeTarget.locationId, reason });
+        toast({ title: mt("accessRevoked"), description: mt("accessEndedSuccessfully") });
+        setRevokeTarget(null);
+        if (selectedApplication?.id === revokeTarget.id) closeDetailSheet();
     };
 
     // Table columns
@@ -499,9 +500,8 @@ export function ManagerKitchenApplicationsContent({
             openDetailSheet(app);
         },
         onChat: openChat,
-        onRevoke: (app) => {
-            openDetailSheet(app);
-        },
+        // Straight to the confirmation dialog: the table menu must not detour through the details sheet.
+        onRevoke: (app) => setRevokeTarget(app),
         unreadCounts
     }), [unreadCounts]);
 
@@ -531,6 +531,7 @@ export function ManagerKitchenApplicationsContent({
 
     return (
         <div className="space-y-6">
+            {revokeTarget && <RevokeLocationAccessDialog customer={revokeTarget} pending={revokeAccess.isPending} onClose={() => setRevokeTarget(null)} onConfirm={confirmRevokeAccess} />}
             {selectedApplication ? (
                 <div className="mx-auto max-w-5xl space-y-6">
                     {!onApplicationChange && (
@@ -549,6 +550,7 @@ export function ManagerKitchenApplicationsContent({
                             onApprove={handleApprove}
                             onApproveTier2={handleApproveTier2}
                             onVerifyDocument={handleVerifyDocument}
+                            onReviewRenewal={handleReviewRenewal}
                             onReject={handleReject}
                             onRevokeAccess={handleRevokeAccess}
                             onOpenChat={() => openChat(selectedApplication)}

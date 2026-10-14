@@ -7,6 +7,7 @@ import { db } from '../db';
 import { capturePaymentIntent, cancelPaymentIntent, getBookingCheckoutSession, getBookingPaymentIntent } from './stripe-service';
 import { cancelLinkedBookingDates } from './booking-linked-cancellation';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
+import { ensureChallengesForBooking } from './visit-code-challenge';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 
@@ -17,12 +18,30 @@ type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending
   storage: { id: number; status: 'confirmed' | 'cancelled' }[];
   equipment: { id: number; status: 'confirmed' | 'cancelled' }[]; startedAt: string; completedAt?: string };
 
+/** A request past its manager response deadline can no longer be confirmed. Reads no longer
+ * expire requests lazily, so the decision command enforces the deadline itself instead of
+ * relying on the recurring worker having run. Reuses the 409 shape the manager route handles. */
+export class BookingRequestExpired extends BookingTermsReviewRequired {
+  constructor() {
+    super();
+    this.message = 'This request passed its response deadline, so it can no longer be confirmed. The card hold has been released.';
+  }
+}
+
 /** Persist one immutable decision before Stripe; retries reconcile that same decision. */
 export async function decideAuthorizedBooking(bookingId: number, target: 'confirmed' | 'cancelled',
   storageActions: ItemAction[] = [], equipmentActions: ItemAction[] = [], actorId?: number) {
   const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!booking?.paymentIntentId) throw new BookingTermsReviewRequired();
   let decision = booking.paymentDecision as Decision | null;
+  if (!decision && target === 'confirmed' && booking.status === 'pending' && booking.paymentStatus === 'authorized') {
+    const { AUTH_EXPIRY_HOURS, lazyExpireKitchenBookingAuth } = await import('./auth-expiry-service');
+    if (booking.createdAt && booking.createdAt.getTime() <= Date.now() - AUTH_EXPIRY_HOURS * 3_600_000) {
+      // Release the hold now rather than leaving it for the next worker tick.
+      await lazyExpireKitchenBookingAuth(booking);
+      throw new BookingRequestExpired();
+    }
+  }
   if (decision && decision.target !== target) throw new Error('A different payment decision already exists. Local Cooks must review this booking.');
   if (decision) {
     for (const [actions, key, items] of [[storageActions, 'storageBookingId', decision.storage],
@@ -130,7 +149,8 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     decision = booking?.decision as Decision | undefined;
   }
   if (!decision) throw new Error('No recorded payment decision');
-  if (decision.state === 'complete') return { success: true, status: decision.target, recovered: true };
+  if (decision.state === 'complete') return { success: true, status: decision.target,
+    authorizationVoided: decision.target === 'cancelled', recovered: true };
   let intent = await getBookingPaymentIntent(decision.intentId);
   if (intent.status === 'requires_capture') {
     if (decision.target === 'confirmed') await capturePaymentIntent(decision.intentId, decision.amount, undefined, `booking-decision:${decision.id}`);
@@ -197,13 +217,16 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     await tx.update(paymentTransactions).set({ status: decision!.target === 'confirmed' ? 'succeeded' : 'canceled',
       stripeStatus: intent.status, ...(decision!.target === 'confirmed' ? { paidAt: new Date() } : {}), updatedAt: new Date() })
       .where(eq(paymentTransactions.paymentIntentId, decision!.intentId));
+    // New confirmations only: one staffed arrival challenge per arrival target, same transaction as the status change.
+    if (decision!.target === 'confirmed') await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
     await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
       decision!.target === 'confirmed' ? `Booking #${bookingId} is confirmed. Payment was captured for the approved items. Follow the applicable check-in and checkout requirements.`
         : `Booking #${bookingId} is cancelled. Stripe confirmed that the payment authorization was cancelled. Occupied storage remains reserved until removal is confirmed.`,
       decision!.actorId, { decisionId: decision!.id });
   });
-  return { success: true, status: decision.target, recovered: false };
+  return { success: true, status: decision.target,
+    authorizationVoided: decision.target === 'cancelled', recovered: false };
 }
 
 export async function recoverPendingBookingDecisions(limit = 10) {

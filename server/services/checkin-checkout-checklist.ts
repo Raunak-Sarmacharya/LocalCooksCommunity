@@ -6,30 +6,18 @@
  * chef/booking callers treated `!== false` as enabled.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import {
   checkinCheckoutChecklists,
-  kitchens,
-  kitchenBookingVisits,
   type CheckinCheckoutChecklist,
 } from "@shared/schema";
 import { resolveKitchenTracking } from "@shared/kitchen-tracking";
 import { activeChecklist } from "@shared/active-checklist";
+import { resolveKitchenChecklist } from "@shared/kitchen-checklist";
 
 export async function getKitchenTrackingState(kitchenId: number, checkinStatus?: string | null, bookingId?: number) {
-  if (bookingId) {
-    const { kitchenDuties } = await import('./visit-duties');
-    const duties = await kitchenDuties(bookingId);
-    return { checkinEnabled: duties.arrival.enabled, checkoutEnabled: duties.departure.enabled };
-  }
-  const [row] = await db.select({ enabled: kitchens.checkinCheckoutEnabled,
-    trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${bookingId ?? -1} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
-    checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
-    checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled }).from(kitchens)
-    .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, kitchens.locationId))
-    .where(eq(kitchens.id, kitchenId)).limit(1);
-  return resolveKitchenTracking(row?.enabled, row, row?.trackingStarted ? "checked_in" : checkinStatus);
+  return resolveKitchenTracking();
 }
 
 /** Schema default: sections are off until a manager explicitly enables them. */
@@ -71,7 +59,7 @@ export async function ensureDefaultCheckinCheckoutChecklist(
     .where(eq(checkinCheckoutChecklists.locationId, locationId))
     .limit(1);
 
-  if (existing) return activeChecklist(existing);
+  if (existing) return activeChecklist(resolveKitchenChecklist(null, existing)!);
 
   const [created] = await db
     .insert(checkinCheckoutChecklists)
@@ -82,7 +70,7 @@ export async function ensureDefaultCheckinCheckoutChecklist(
     .onConflictDoNothing({ target: checkinCheckoutChecklists.locationId })
     .returning();
 
-  if (created) return activeChecklist(created);
+  if (created) return activeChecklist(resolveKitchenChecklist(null, created)!);
 
   const [raced] = await db
     .select()
@@ -95,5 +83,5 @@ export async function ensureDefaultCheckinCheckoutChecklist(
       `Failed to ensure checkin_checkout_checklists row for location ${locationId}`,
     );
   }
-  return activeChecklist(raced);
+  return activeChecklist(resolveKitchenChecklist(null, raced)!);
 }

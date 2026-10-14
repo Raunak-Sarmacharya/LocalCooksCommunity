@@ -1,15 +1,18 @@
 import { calendarDateForBookingTime } from './operating-hours';
 import { DEFAULT_TIMEZONE } from './timezone-utils';
 import { matchingLocalInstants } from './booking-dst';
+import { savedClockForVisit, type CloseoutSnapshot } from './clock-closeout';
 
 export function bookingAttendanceEnd(booking: {
-  bookingDate: Date | string; startTime: string; endTime: string; operatingWindowStartTime?: string | null;
+  bookingDate: Date | string; startTime: string; endTime: string; operatingWindowStartTime?: string | null; timezone?: string | null; visitDuties?: unknown;
 }) {
+  const saved = (booking.visitDuties as { clockCloseout?: CloseoutSnapshot } | null)?.clockCloseout;
+  if (saved) return new Date(Math.max(...saved.visits.map(visit => Date.parse(visit.scheduledEndAt))));
   const date = typeof booking.bookingDate === 'string' ? booking.bookingDate.slice(0, 10)
     : booking.bookingDate.toISOString().slice(0, 10);
   const calendarDate = calendarDateForBookingTime(date, booking.endTime, booking.operatingWindowStartTime, booking.startTime);
-  const matches = matchingLocalInstants(calendarDate, booking.endTime, DEFAULT_TIMEZONE);
-  if (!matches.length) throw new Error('The scheduled booking end is not a valid Newfoundland wall time; review the reservation');
+  const matches = matchingLocalInstants(calendarDate, booking.endTime, booking.timezone || DEFAULT_TIMEZONE);
+  if (!matches.length) throw new Error('The scheduled booking end is not a valid location wall time; review the reservation');
   // Reuse booking-dst's existing first-occurrence convention at an autumn end boundary.
   return new Date(matches[0]);
 }
@@ -20,8 +23,11 @@ export function bookingOperationsComplete(booking: Parameters<typeof bookingAtte
 }
 
 /** A separated visit ends independently, using the reservation's operating day. */
-export function visitAttendanceEnd(booking: Parameters<typeof bookingAttendanceEnd>[0], visit: { startTime: string; endTime: string }) {
-  return bookingAttendanceEnd({ ...booking, endTime: visit.endTime });
+export function visitAttendanceEnd(booking: Parameters<typeof bookingAttendanceEnd>[0], visit: { startTime: string; endTime: string; blockIndex?: number | null }) {
+  const saved = (booking.visitDuties as { clockCloseout?: CloseoutSnapshot } | null)?.clockCloseout;
+  // Saved instants are matched by block index, never by hours: two dates may share the same hours.
+  const clock = saved ? savedClockForVisit(saved, visit) : undefined;
+  return clock ? new Date(clock.scheduledEndAt) : bookingAttendanceEnd({ ...booking, visitDuties: undefined, endTime: visit.endTime });
 }
 
 /** Missing tracking is unknown attendance, including when tracking is optional. */
@@ -30,9 +36,9 @@ export function hasBookingAttendanceEvidence(row: {
   checkedOutAt?: unknown; checkoutApprovedAt?: unknown; actualStartTime?: unknown; actualEndTime?: unknown;
   checkinPhotoUrls?: unknown; checkoutPhotoUrls?: unknown; checkinChecklistItems?: unknown; checkoutChecklistItems?: unknown;
   checkinNotes?: unknown; checkoutNotes?: unknown;
-}) {
-  return ![null, undefined, 'not_checked_in', 'no_show'].includes(row.checkinStatus)
-    || !!(row.checkedInAt || row.checkoutRequestedAt || row.checkedOutAt || row.checkoutApprovedAt
+}, inspectionIsSeparate = false) {
+  return ![null, undefined, 'not_checked_in', 'no_show', ...(inspectionIsSeparate ? ['checked_out'] : [])].includes(row.checkinStatus)
+    || !!(row.checkedInAt || row.checkoutRequestedAt || (inspectionIsSeparate ? false : row.checkedOutAt || row.checkoutApprovedAt)
       || row.actualStartTime || row.actualEndTime || row.checkinNotes || row.checkoutNotes)
     || [row.checkinPhotoUrls, row.checkoutPhotoUrls, row.checkinChecklistItems, row.checkoutChecklistItems]
       .some(value => Array.isArray(value) && value.length > 0);

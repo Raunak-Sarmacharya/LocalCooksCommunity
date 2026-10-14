@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   storage: [] as any[],
   tours: [] as any[],
   tourHours: [] as any[],
+  location: {} as any,
 }));
 vi.mock('../db', () => ({ db: { select: mocks.select } }));
 vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: {
@@ -15,7 +16,7 @@ vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: {
   getKitchenAvailability: vi.fn(async () => []),
 } }));
 vi.mock('../domains/locations/location.service', () => ({ locationService: {
-  getLocationById: vi.fn(async () => ({ id: 12, name: 'Test Location' })),
+  getLocationById: vi.fn(async () => ({ id: 12, name: 'Test Location', ...mocks.location })),
   getLocationRequirementsWithDefaults: vi.fn(async () => ({ requireFoodHandlerCert: true })),
 } }));
 vi.mock('./stripe-connect-service', () => ({ getAccountStatus: vi.fn() }));
@@ -30,12 +31,25 @@ beforeEach(() => {
   mocks.storage = [];
   mocks.tours = [];
   mocks.tourHours = [];
+  mocks.location = {};
   mocks.select.mockImplementation(() => ({ from: (table: unknown) => {
     const rows = table === checkinCheckoutChecklists && mocks.checklist ? [mocks.checklist] : table === storageListings ? mocks.storage : table === kitchenViewingSettings ? mocks.tours : table === kitchenViewingAvailability ? mocks.tourHours : [];
     const query = { where: () => query, limit: async () => rows,
       then: (resolve: (value: any[]) => unknown) => Promise.resolve(rows).then(resolve) };
     return query;
   } }));
+});
+
+it('keeps terms and their upload date location-owned even if obsolete kitchen columns contain data', async () => {
+  Object.assign(mocks.kitchen, { kitchenTermsUrl: '/unused-kitchen.pdf', kitchenTermsUploadedAt: new Date('2026-10-12') });
+  mocks.location = { kitchenTermsUrl: '/location.pdf', kitchenTermsUploadedAt: new Date('2026-10-01') };
+  let review = await buildKitchenReadiness(7);
+  expect(review?.details.termsUploadedAt).toBe('2026-10-01T00:00:00.000Z');
+  expect(review?.checklist.openRecommendationIds).not.toContain('terms');
+  mocks.location = {};
+  review = await buildKitchenReadiness(7);
+  expect(review?.details.termsUploadedAt).toBeNull();
+  expect(review?.checklist.openRecommendationIds).toContain('terms');
 });
 
 it('keeps missing, incomplete and paused tours out of the publishing requirements', async () => {
@@ -83,17 +97,20 @@ describe('listing visit setup from saved configuration', () => {
       checkinItems: [], checkoutItems: [], checkinPhotoRequirements: [], checkoutPhotoRequirements: [] };
     const review = await buildKitchenReadiness(7);
     expect(review?.checklist.missingRequirementIds).not.toContain('visitSetup');
-    expect(review?.details.visitSetup).toMatchObject({ trackingEnabled: true, checkinEnabled: true,
+    expect(review?.details.visitSetup).toMatchObject({ checkinEnabled: true,
       checkoutEnabled: true, arrivalRequirementCount: 0, departureRequirementCount: 0,
       checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 60 });
   });
 
-  it('requires the kitchen tracking switch even with both shared sections enabled', async () => {
+  it('accepts both instructions and zero tasks with every legacy kitchen flag off', async () => {
     mocks.kitchen.checkinCheckoutEnabled = false;
-    mocks.checklist = { checkinEnabled: true, checkoutEnabled: true };
+    mocks.checklist = { checkinEnabled: false, checkoutEnabled: false,
+      checkinInstructions: 'Arrive here.', checkoutInstructions: 'Leave here.', checkinItems: [], checkoutItems: [] };
     const review = await buildKitchenReadiness(7);
-    expect(review?.checklist.missingRequirementIds).toContain('visitSetup');
-    expect(review?.details.visitSetup?.trackingEnabled).toBe(false);
+    expect(review?.checklist.missingRequirementIds).not.toContain('visitSetup');
+    expect(review?.details.visitSetup).toMatchObject({ checkinEnabled: true, checkoutEnabled: true,
+      arrivalRequirementCount: 0, departureRequirementCount: 0 });
+    expect(review?.details.visitSetup).not.toHaveProperty('trackingEnabled');
   });
 
   it('requires saved arrival and departure notes even when duties are present', async () => {

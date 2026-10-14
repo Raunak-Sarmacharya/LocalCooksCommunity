@@ -120,4 +120,15 @@ describe("resolvePreviewPrimaryCta", () => {
       })
     ).toMatchObject({ kind: "loading" });
   });
+
+  it("names the blocked state instead of showing 'Application in progress'", () => {
+    const display = { label: "Renewal under review", tone: "progress" as const, step: 3, stepCaption: "", actionLabel: "Renewal under review", actionKind: "wait" as const, bookingBlocked: true };
+    expect(
+      resolvePreviewPrimaryCta({ t, applicationLoading: false, canBook: false, alreadyApplied: true, canAcceptApplications: true, display })
+    ).toMatchObject({ label: "Renewal under review", kind: "wait", variant: "outline" });
+    expect(
+      resolvePreviewPrimaryCta({ t, applicationLoading: false, canBook: false, alreadyApplied: true, canAcceptApplications: true,
+        display: { ...display, label: "Documents need renewal or review", actionLabel: "Renew documents", actionKind: "complete-step" as const } })
+    ).toMatchObject({ label: "Renew documents", kind: "complete-step", variant: "default" });
+  });
 });

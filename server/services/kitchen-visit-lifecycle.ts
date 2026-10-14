@@ -1,10 +1,10 @@
 import { workerAfter, workerBatch, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, lt, sql, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { damageClaims, kitchenBookingVisits, kitchenBookings, kitchens, locations } from '@shared/schema';
 import { calendarDateForOperatingTime } from '@shared/operating-hours';
-import { createBookingDateTime, formatInTimezone } from '@shared/timezone-utils';
+import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone } from '@shared/timezone-utils';
 import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
 import { getCheckinSettings, validateRequiredChecklistItems, validateRequiredPhotos } from './kitchen-checkout-service';
 import { sendCheckinNotification, sendCheckoutRequestNotification, sendCheckoutClearedNotification } from './kitchen-checkout-service';
@@ -12,11 +12,13 @@ import { logger } from '../logger';
 import { getKitchenTrackingState } from './checkin-checkout-checklist';
 import { getLifecycleSettings } from './lifecycle-settings';
 import { bookingAttendanceEnd, visitAttendanceEnd } from '@shared/booking-attendance';
-import { kitchenDuties, captureKitchenDuties } from './visit-duties';
-import { validateDutySection, type VisitDuties } from '@shared/visit-duties';
+import { savedCloseout, savedClockForVisit } from '@shared/clock-closeout';
+import { kitchenDuties, currentKitchenDuties, validateCurrentKitchenSubmission, captureKitchenDuties } from './visit-duties';
+import { arrivalAlreadyRecordedForRequest, consumeForArrival, gateArrivalInTx, verifyArrivalCode, VisitCodeError, VisitCodeReplay, type ArrivalGate, type ArrivalInput } from './visit-code-challenge';
+import { VisitDutyValidationError, type DutyFieldErrors, validateDutySection, type VisitDuties } from '@shared/visit-duties';
 
 type ChecklistItems = Array<{ id: string; label: string; checked: boolean }>;
-type VisitResult = { success: boolean; error?: string; bookingId?: number; visitId?: number; checkinStatus?: string; bookingCompleted?: boolean };
+type VisitResult = { success: boolean; error?: string; fieldErrors?: DutyFieldErrors; bookingId?: number; visitId?: number; checkinStatus?: string; bookingCompleted?: boolean; code?: string; attemptsLeft?: number };
 
 async function visitContext(bookingId: number, visitId: number) {
   const [row] = await db.select({
@@ -33,31 +35,44 @@ async function visitContext(bookingId: number, visitId: number) {
   return row;
 }
 
-async function finishBookingIfAllVisitsDone(bookingId: number, transaction?: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<boolean> {
-  if (!transaction) return db.transaction(tx => finishBookingIfAllVisitsDone(bookingId, tx));
-  const tx = transaction;
-    await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const visits = await tx.select({ checkinStatus: kitchenBookingVisits.checkinStatus })
-      .from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
-    if (!visits.length || !visits.every(visit => ['checked_out', 'checkout_claim_filed'].includes(visit.checkinStatus))) return false;
-    const [completed] = await tx.update(kitchenBookings).set({ status: 'completed', updatedAt: new Date() })
-      .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.status, 'confirmed')))
-      .returning({ id: kitchenBookings.id });
-    return !!completed;
+/** Scheduled instants for one stored visit: the saved closeout clock when present, else the legacy single-date derivation. */
+function visitWindow(context: NonNullable<Awaited<ReturnType<typeof visitContext>>>, timezone: string) {
+  const saved = savedCloseout(context.booking.visitDuties);
+  const clock = saved ? savedClockForVisit(saved, context.visit) : undefined;
+  if (clock) return { start: new Date(clock.scheduledStartAt), end: new Date(clock.scheduledEndAt) };
+  const operatingDate = context.booking.bookingDate.toISOString().slice(0, 10);
+  const windowStart = context.booking.operatingWindowStartTime || context.booking.startTime;
+  return { start: createBookingDateTime(calendarDateForOperatingTime(operatingDate, context.visit.startTime, windowStart), context.visit.startTime, timezone),
+    end: createBookingDateTime(calendarDateForOperatingTime(operatingDate, context.visit.endTime, windowStart), context.visit.endTime, timezone) };
 }
 
-async function updateConfirmedVisit(bookingId: number,visitId: number,expectedStatus: typeof kitchenBookingVisits.$inferSelect.checkinStatus,values: Partial<typeof kitchenBookingVisits.$inferInsert>,expectedParentUpdatedAt?: Date, duties?: VisitDuties) {
+async function finishBookingIfAllVisitsDone(bookingId: number, transaction?: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<boolean> {
+  const persist = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) =>
+    (await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx)).projection?.status === 'completed';
+  return transaction ? persist(transaction) : db.transaction(persist);
+}
+
+async function updateConfirmedVisit(bookingId: number,visitId: number,expectedStatus: typeof kitchenBookingVisits.$inferSelect.checkinStatus,values: Partial<typeof kitchenBookingVisits.$inferInsert>,expectedParentUpdatedAt?: Date, duties?: VisitDuties, arrival?: ArrivalInput) {
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
     const [parent]=await tx.select({ status: kitchenBookings.status,updatedAt: kitchenBookings.updatedAt }).from(kitchenBookings).where(eq(kitchenBookings.id,bookingId)).limit(1);
     if(parent?.status!=='confirmed'||(expectedParentUpdatedAt&&parent.updatedAt.getTime()!==expectedParentUpdatedAt.getTime())) return [];
+    if (values.checkinStatus === 'checked_in') await validateCurrentKitchenSubmission(tx, bookingId, 'arrival', values.checkinPhotoUrls as string[] | undefined, values.checkinChecklistItems as ChecklistItems | undefined);
+    if (values.checkinStatus === 'checkout_requested') await validateCurrentKitchenSubmission(tx, bookingId, 'departure', values.checkoutPhotoUrls as string[] | undefined, values.checkoutChecklistItems as ChecklistItems | undefined);
+    // Lock order: booking (above) -> visit -> challenge. The code is a gate here, not another writer of check-in state.
+    let gate: ArrivalGate = { kind: 'legacy' };
+    if (arrival && values.checkinStatus === 'checked_in') {
+      await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${visitId} FOR UPDATE`);
+      gate = await gateArrivalInTx(tx, arrival);
+    }
     const changed=await tx.update(kitchenBookingVisits).set(values).where(and(eq(kitchenBookingVisits.id,visitId),eq(kitchenBookingVisits.bookingId,bookingId),eq(kitchenBookingVisits.checkinStatus,expectedStatus))).returning({ id: kitchenBookingVisits.id });
     if (changed.length && duties) await captureKitchenDuties(tx, bookingId, duties);
+    if (changed.length && arrival && values.checkinStatus === 'checked_in') await consumeForArrival(tx, gate, arrival);
     if (changed.length && values.checkinStatus === 'checked_in') await queueBookingLifecycleEvent(tx, bookingId,
-      'checkin_recorded', 'Kitchen visit check-in recorded', 'The chef recorded check-in for this visit. Open the booking for the submitted checklist and photos.',
+      'checkin_recorded', 'Kitchen visit check-in recorded', 'Arrival was recorded for this visit. Open the booking for the submitted checklist and photos.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     if (changed.length && values.checkinStatus === 'checkout_requested') await queueBookingLifecycleEvent(tx, bookingId,
-      'checkout_requested', 'Kitchen visit needs inspection', 'The chef requested checkout for this visit. The kitchen manager owns inspection; open the booking for evidence and the review deadline. A request is not inspection clearance or a charge.',
+      'checkout_requested', 'Kitchen visit needs inspection', 'Checkout was requested for this visit. The kitchen manager owns inspection; open the booking for evidence and the review deadline. A request is not inspection clearance or a charge.',
       undefined, { visitId, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     if(changed.length&&values.checkinStatus==='checked_out') await queueBookingLifecycleEvent(tx,bookingId,'checkout_cleared','Kitchen visit checkout cleared','This visit checkout has been cleared. Open the booking for the current visit and any remaining visits.',values.checkoutApprovedBy||undefined,{ visitId,recipientPolicy: 'chef' });
     if (changed.length && values.checkinStatus === 'checked_out' && inRecurringWorker()) await finishBookingIfAllVisitsDone(bookingId, tx);
@@ -67,34 +82,45 @@ async function updateConfirmedVisit(bookingId: number,visitId: number,expectedSt
 
 export async function checkinKitchenVisit(
   bookingId: number, visitId: number, chefId: number,
-  notes?: string, photos?: string[], checklist?: ChecklistItems,
+  notes?: string, photos?: string[], checklist?: ChecklistItems, visitCode?: unknown, requestKey?: unknown,
 ): Promise<VisitResult> {
   const context = await visitContext(bookingId, visitId);
   if (!context || context.booking.chefId !== chefId) return { success: false, error: 'Visit not found' };
+  const arrival: ArrivalInput = { bookingId, visitId, chefId, visitCode, requestKey, evidence: { notes, photos, checklist } };
+  // A lost-response retry of the request that already won returns the original success and writes nothing.
+  if (await arrivalAlreadyRecordedForRequest(arrival)) return { success: true, bookingId, visitId, checkinStatus: 'checked_in' };
   const duties = await kitchenDuties(bookingId);
-  if (!duties.arrival.enabled) return { success: false, error: 'Check-in is not required for this reservation' };
   if (context.booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
   if (context.visit.checkinStatus !== 'not_checked_in') return { success: false, error: 'This visit has already been checked in or closed' };
   const settings = duties;
-  const operatingDate = context.booking.bookingDate.toISOString().slice(0, 10);
-  const windowStart = context.booking.operatingWindowStartTime || context.booking.startTime;
-  const timezone = 'America/St_Johns';
-  const start = createBookingDateTime(calendarDateForOperatingTime(operatingDate, context.visit.startTime, windowStart), context.visit.startTime, timezone);
-  const end = createBookingDateTime(calendarDateForOperatingTime(operatingDate, context.visit.endTime, windowStart), context.visit.endTime, timezone);
+  const timezone = context.timezone || DEFAULT_TIMEZONE;
+  const { start, end } = visitWindow(context, timezone);
   const now = new Date();
   if (now.getTime() < start.getTime() - settings.checkinWindowMinutesBefore * 60_000 || now > end) {
     return { success: false, error: 'Check-in is outside this visit’s time window' };
   }
-  const photoCheck = validateDutySection(duties.arrival, photos, checklist);
-  if (!photoCheck.valid) return { success: false, error: photoCheck.error };
+  const photoCheck = validateDutySection((await currentKitchenDuties(bookingId)).arrival, photos, checklist);
+  if (!photoCheck.valid) return { success: false, error: photoCheck.error, fieldErrors: photoCheck.fieldErrors };
   const checklistCheck = { valid: true, error: undefined };
   if (!checklistCheck.valid) return { success: false, error: checklistCheck.error };
-  const [updated] = await updateConfirmedVisit(bookingId, visitId, 'not_checked_in', {
+  try { await verifyArrivalCode(arrival); }
+  catch (error) {
+    if (error instanceof VisitCodeError) return { success: false, error: error.message, code: error.code, attemptsLeft: error.attemptsLeft };
+    throw error;
+  }
+  let updated;
+  try {
+    [updated] = await updateConfirmedVisit(bookingId, visitId, 'not_checked_in', {
     checkinStatus: 'checked_in', checkedInAt: now, checkedInMethod: 'self',
     checkinNotes: notes || null, checkinPhotoUrls: photos || [], checkinChecklistItems: checklist || [],
     actualStartTime: new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now),
     updatedAt: now,
-  }, context.booking.updatedAt, duties);
+    }, context.booking.updatedAt, duties, arrival);
+  } catch (error) {
+    if (error instanceof VisitCodeReplay) return { success: true, bookingId, visitId, checkinStatus: 'checked_in' };
+    if (error instanceof VisitCodeError) return { success: false, error: error.message, code: error.code, attemptsLeft: error.attemptsLeft };
+    throw error;
+  }
   if (!updated) return { success: false, error: 'Visit status changed; refresh and try again' };
   await sendCheckinNotification(bookingId, chefId, visitId);
   return { success: true, bookingId, visitId, checkinStatus: 'checked_in' };
@@ -109,22 +135,21 @@ export async function checkoutKitchenVisit(
   if (context.booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
   const duties = await kitchenDuties(bookingId);
   const departureOnly = !duties.arrival.enabled && duties.departure.enabled && context.visit.checkinStatus === 'not_checked_in';
+  const timezone = context.timezone || DEFAULT_TIMEZONE;
   if (departureOnly) {
-    const day = context.booking.bookingDate.toISOString().slice(0, 10);
-    const startDay = calendarDateForOperatingTime(day, context.visit.startTime, context.booking.operatingWindowStartTime || context.booking.startTime);
-    if (new Date() < createBookingDateTime(startDay, context.visit.startTime, 'America/St_Johns'))
+    if (new Date() < visitWindow(context, timezone).start)
       return { success: false, error: 'Departure inspection is available after this visit starts; contact the manager for assistance' };
   }
   if (context.visit.checkinStatus !== 'checked_in' && !departureOnly) return { success: false, error: 'Check in to this visit or obtain manager assistance before requesting checkout' };
-  const photoCheck = validateDutySection(duties.departure, photos, checklist);
-  if (!photoCheck.valid) return { success: false, error: photoCheck.error };
+  const photoCheck = validateDutySection((await currentKitchenDuties(bookingId)).departure, photos, checklist);
+  if (!photoCheck.valid) return { success: false, error: photoCheck.error, fieldErrors: photoCheck.fieldErrors };
   const checklistCheck = { valid: true, error: undefined };
   if (!checklistCheck.valid) return { success: false, error: checklistCheck.error };
   const now = new Date();
   const [updated] = await updateConfirmedVisit(bookingId, visitId, departureOnly ? 'not_checked_in' : 'checked_in', {
     checkinStatus: 'checkout_requested', checkoutRequestedAt: now,
     checkoutNotes: notes || null, checkoutPhotoUrls: photos || [], checkoutChecklistItems: checklist || [],
-    actualEndTime: new Intl.DateTimeFormat('en-GB', { timeZone: 'America/St_Johns', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now),
+    actualEndTime: new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now),
     updatedAt: now,
   }, context.booking.updatedAt, duties);
   if (!updated) return { success: false, error: 'Visit status changed; refresh and try again' };
@@ -133,18 +158,7 @@ export async function checkoutKitchenVisit(
 }
 
 export async function clearKitchenVisit(bookingId: number, visitId: number, managerId: number, notes?: string): Promise<VisitResult> {
-  const context = await visitContext(bookingId, visitId);
-  if (!context || context.managerId !== managerId) return { success: false, error: 'Visit not found' };
-  if (context.booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
-  const now = new Date();
-  const [updated] = await updateConfirmedVisit(bookingId, visitId, 'checkout_requested', {
-    checkinStatus: 'checked_out', checkedOutAt: now, checkoutApprovedAt: now, checkoutApprovedBy: managerId,
-    checkoutManagerMessage: notes ? `Message from kitchen manager: ${notes}` : '', updatedAt: now,
-  }, context.booking.updatedAt);
-  if (!updated) return { success: false, error: 'This visit is not awaiting checkout review' };
-  const bookingCompleted = await finishBookingIfAllVisitsDone(bookingId);
-  await sendCheckoutClearedNotification(bookingId, context.booking.chefId, false, visitId);
-  return { success: true, bookingId, visitId, checkinStatus: 'checked_out', bookingCompleted };
+  return (await import('./clock-closeout')).recordKitchenInspection(bookingId, managerId, visitId, notes);
 }
 
 export async function claimKitchenVisit(bookingId: number, visitId: number, managerId: number, claimData: {
@@ -152,8 +166,7 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
 }): Promise<VisitResult & { damageClaimId?: number }> {
   const context = await visitContext(bookingId, visitId);
   if (!context || context.managerId !== managerId) return { success: false, error: 'Visit not found' };
-  if (context.booking.status !== 'confirmed' &&
-      !(context.booking.status === 'completed' && context.visit.checkinStatus === 'checkout_claim_filed'))
+  if (!['confirmed', 'completed'].includes(context.booking.status))
     return { success: false, error: 'Booking is not confirmed' };
   if (!claimData.claimTitle?.trim() || claimData.claimTitle.trim().length < 5)
     return { success: false, error: 'Claim title must be at least 5 characters' };
@@ -162,6 +175,8 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
   if (!Number.isSafeInteger(claimData.claimedAmountCents) || claimData.claimedAmountCents <= 0)
     return { success: false, error: 'Claimed amount must be greater than zero' };
   try {
+    if (context.visit.checkinStatus !== 'checkout_claim_filed')
+      await db.transaction(tx => import('./clock-closeout').then(module => module.inspectionContext(bookingId, managerId, visitId, tx)));
     const damageClaimId = await db.transaction(async tx => {
       // Create/reuse the draft before taking lifecycle locks: the claim engine locks the parent on its own connection.
       const [current] = await tx.select({ checkinStatus: kitchenBookingVisits.checkinStatus })
@@ -171,7 +186,7 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
       const [existing] = await tx.select({ id: damageClaims.id }).from(damageClaims)
         .where(eq(damageClaims.kitchenBookingVisitId, visitId)).limit(1);
       if (current?.checkinStatus === 'checkout_claim_filed' && existing) return existing.id;
-      if (current?.checkinStatus !== 'checkout_requested') throw new Error('This visit is not awaiting checkout review');
+
       let claimId = existing?.id;
       if (!claimId) {
         const { createDamageClaim } = await import('./damage-claim-service');
@@ -189,10 +204,11 @@ export async function claimKitchenVisit(bookingId: number, visitId: number, mana
       }
       await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
       const [parent] = await tx.select({ status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
-      if (parent?.status !== 'confirmed') throw new Error(`Booking changed; claim #${claimId} remains a draft for review`);
+      if (!parent || !['confirmed', 'completed'].includes(parent.status)) throw new Error(`Booking changed; claim #${claimId} remains a draft for review`);
       await tx.execute(sql`SELECT id FROM kitchen_booking_visits WHERE id = ${visitId} AND booking_id = ${bookingId} FOR UPDATE`);
       const [lockedVisit] = await tx.select({ checkinStatus: kitchenBookingVisits.checkinStatus }).from(kitchenBookingVisits).where(eq(kitchenBookingVisits.id, visitId)).limit(1);
-      if (lockedVisit?.checkinStatus !== 'checkout_requested') throw new Error(`Visit changed; claim #${claimId} remains a draft for review`);
+      if (lockedVisit?.checkinStatus !== context.visit.checkinStatus) throw new Error(`Visit changed; claim #${claimId} remains a draft for review`);
+      await (await import('./clock-closeout')).inspectionContext(bookingId, managerId, visitId, tx);
       await tx.update(kitchenBookingVisits).set({
         checkinStatus: 'checkout_claim_filed', checkoutApprovedAt: new Date(), checkoutApprovedBy: managerId,
         checkoutManagerMessage: claimData.managerNotes
@@ -240,29 +256,7 @@ export async function managerConfirmVisitCheckin(bookingId: number, visitId: num
 }
 
 export async function autoClearKitchenVisits(reviewWindowMinutes: number, bookingId?: number) {
-  const cutoff = new Date(Date.now() - reviewWindowMinutes * 60_000);
-  const pending = await db.select({ id: kitchenBookingVisits.id, bookingId: kitchenBookingVisits.bookingId })
-    .from(kitchenBookingVisits)
-    .innerJoin(kitchenBookings, eq(kitchenBookings.id, kitchenBookingVisits.bookingId))
-    .where(and(eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookingVisits.checkinStatus, 'checkout_requested'),
-      workerAfter('visitCheckout', kitchenBookingVisits.id),
-      sql`${kitchenBookingVisits.checkoutRequestedAt} + COALESCE((${kitchenBookings.visitDuties}->>'checkoutReviewWindowMinutes')::integer, ${reviewWindowMinutes}) * interval '1 minute' <= CURRENT_TIMESTAMP`,
-      ...(bookingId ? [eq(kitchenBookingVisits.bookingId, bookingId)] : []))).orderBy(kitchenBookingVisits.id).limit(workerBatch());
-  await workerPageEnd('visitCheckout', pending.length);
-  let cleared = 0;
-  for (const visit of pending) {
-    await workerRecord('visitCheckout', visit.id);
-    const [updated] = await updateConfirmedVisit(visit.bookingId, visit.id, 'checkout_requested', {
-      checkinStatus: 'checked_out', checkedOutAt: new Date(), checkoutApprovedAt: new Date(),
-      checkoutManagerMessage: '',
-      updatedAt: new Date(),
-    });
-    if (updated) {
-      cleared++;
-      if (!inRecurringWorker()) await finishBookingIfAllVisitsDone(visit.bookingId);
-    }
-  }
-  return cleared;
+  return (await (await import('./clock-closeout')).sweepClockCloseout()).changed;
 }
 
 /** Compatibility entry point: attendance must be explicitly reported. */
@@ -276,7 +270,7 @@ export async function getHistoricalVisitReviewQueue() {
   const legacy = await db.select({ booking: kitchenBookings, kitchenName: kitchens.name, timezone: locations.timezone })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
     .innerJoin(locations, eq(kitchens.locationId, locations.id))
-    .where(and(eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.checkinStatus, 'not_checked_in'),
+    .where(and(inArray(kitchenBookings.status, ['confirmed', 'completed']), eq(kitchenBookings.checkinStatus, 'not_checked_in'),
       lt(kitchenBookings.bookingDate, new Date()),
       sql`NOT EXISTS (SELECT 1 FROM kitchen_booking_attendance_events e WHERE e.booking_id = ${kitchenBookings.id}
         AND e.visit_id IS NULL AND e.action = 'report_attended'
@@ -285,14 +279,14 @@ export async function getHistoricalVisitReviewQueue() {
       sql`NOT EXISTS (SELECT 1 FROM kitchen_booking_visits WHERE booking_id = ${kitchenBookings.id})`));
   const legacyRows = [];
   for (const row of legacy) {
-    if ((await ensureKitchenBookingVisits(row.booking.id)).length) continue;
+
     legacyRows.push({ ...row, visit: { id: 0, startTime: row.booking.startTime, endTime: row.booking.endTime } });
   }
   const rows = await db.select({ visit: kitchenBookingVisits, booking: kitchenBookings,
     kitchenName: kitchens.name, timezone: locations.timezone })
     .from(kitchenBookingVisits).innerJoin(kitchenBookings, eq(kitchenBookingVisits.bookingId, kitchenBookings.id))
     .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq(kitchens.locationId, locations.id))
-    .where(and(eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookingVisits.checkinStatus, 'not_checked_in'),
+    .where(and(inArray(kitchenBookings.status, ['confirmed', 'completed']), eq(kitchenBookingVisits.checkinStatus, 'not_checked_in'),
       sql`NOT EXISTS (SELECT 1 FROM kitchen_booking_attendance_events e WHERE e.visit_id = ${kitchenBookingVisits.id}
         AND e.action = 'report_attended' AND NOT EXISTS (SELECT 1 FROM kitchen_booking_attendance_events newer
           WHERE newer.visit_id = e.visit_id AND newer.id > e.id))`,

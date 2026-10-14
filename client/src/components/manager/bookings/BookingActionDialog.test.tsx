@@ -31,6 +31,12 @@ function choose(item: string, decision: 'Approve' | 'Decline') {
 }
 
 describe('manager booking request review', () => {
+  it.each(['2026-10-16', '2026-10-16T00:00:00.000Z'])('keeps the agreed calendar day for %s', (bookingDate) => {
+    setup({ bookingDate });
+    expect(screen.getByText('Fri, Oct 16, 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Thu, Oct 15, 2026')).not.toBeInTheDocument();
+  });
+
   it('submits the existing approval payload and keeps an already-selected choice unchanged', () => {
     const { submit } = setup();
     choose('Kitchen Session', 'Approve');

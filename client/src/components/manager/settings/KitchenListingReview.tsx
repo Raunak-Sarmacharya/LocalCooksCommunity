@@ -308,7 +308,7 @@ export default function KitchenListingReview({
               <RowAction
                 label={row.met ? mt("listingReviewChange") : mt("listingReviewFix")}
                 onClick={() => row.id === 'visitSetup'
-                  ? onNavigate?.('kitchens', kitchenId, 'details', 'tracking')
+                  ? onNavigate?.('kitchens', kitchenId, 'arrival-departure')
                   : go(REQUIREMENT_TARGET[row.id])}
               />
             </SettingsRow>
@@ -411,9 +411,6 @@ function requirementValue(
   if (id === "visitSetup" && d.visitSetup) {
     const setup = d.visitSetup;
     return [
-      mt(setup.trackingEnabled ? "listingVisitTrackingOn" : "listingVisitTrackingOff"),
-      mt(setup.checkinEnabled ? "listingVisitArrivalOn" : "listingVisitArrivalOff"),
-      mt(setup.checkoutEnabled ? "listingVisitDepartureOn" : "listingVisitDepartureOff"),
       mt(setup.arrivalNotesSaved && setup.departureNotesSaved ? 'listingVisitNotesReady' : 'listingVisitNotesMissing'),
       mt("listingVisitRequirements", { arrival: setup.arrivalRequirementCount, departure: setup.departureRequirementCount }),
     ].join(" · ");

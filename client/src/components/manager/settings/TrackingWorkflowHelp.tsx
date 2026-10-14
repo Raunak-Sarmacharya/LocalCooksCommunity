@@ -13,7 +13,7 @@ export function TrackingWorkflowHelp({ storage = false, settings }: { storage?: 
   return <div className="space-y-2">
     <p>{mt(storage ? 'storageTrackingRolesHelp' : 'kitchenTrackingRolesHelp')}</p>
     <p>{mt(storage ? 'storageTrackingSetupHelp' : 'kitchenTrackingSetupHelp')}</p>
-    {Number.isSafeInteger(review) && (storage || Number.isSafeInteger(arrival)) &&
+    {(storage ? Number.isSafeInteger(review) : Number.isSafeInteger(arrival)) &&
       <p>{mt(storage ? 'storageTrackingWindowsHelp' : 'kitchenTrackingWindowsHelp', { arrival, review })}</p>}
     <p>{mt(storage ? 'storageTrackingTimingOwnerHelp' : 'kitchenTrackingTimingOwnerHelp')}</p>
   </div>;

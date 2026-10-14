@@ -31,7 +31,6 @@ import { CheckinStatusTracker } from "./CheckinStatusTracker"
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
 import { CancellationRequestDialog, type CancellationTarget } from "./CancellationRequestDialog"
-import { KitchenCheckinTracker } from "./KitchenCheckinTracker"
 import { STRIPE_PROCESSING_FEE_REFUND_DOCS, stripeLinkClassName } from "@/lib/stripe-brand"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
@@ -226,6 +225,7 @@ const getTimeUntilBooking = (bookingDateTime: Date, now: Date, t?: LooseTFunctio
 }
 
 const canCancelBooking = (booking: Booking, now: Date): boolean => {
+  if (['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '')) return false
   if (booking.status === 'cancelled' || booking.status === 'completed' || booking.status === 'cancellation_requested') return false
   if (booking.status === 'pending' && ['authorized', 'pending', 'failed'].includes(booking.paymentStatus || '')) return true
 
@@ -1185,7 +1185,6 @@ export default function ChefBookingsView({
   const [checkoutStatusBookingId, setCheckoutStatusBookingId] = useState<number | null>(null)
   const [checkinStatusBookingId, setCheckinStatusBookingId] = useState<number | null>(null)
   const [cancellationTarget, setCancellationTarget] = useState<CancellationTarget | null>(null)
-  const [checkinTrackerBookingId, setCheckinTrackerBookingId] = useState<number | null>(null)
 
   // TanStack Table state
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
@@ -1540,7 +1539,7 @@ export default function ChefBookingsView({
       onCancelBooking: handleCancel,
       onDownloadInvoice: handleDownloadInvoice,
       onNavigate: navigate,
-      onCheckinTracker: (id) => setCheckinTrackerBookingId(id),
+      onCheckinTracker: (id) => navigate(`/booking/${id}/visit`),
       downloadingInvoiceId,
       now,
       kitchens,
@@ -1690,7 +1689,7 @@ export default function ChefBookingsView({
                       key={b.id}
                       size="sm"
                       className="max-w-full whitespace-normal text-left"
-                      onClick={() => setCheckinTrackerBookingId(b.id)}
+                      onClick={() => navigate(`/booking/${b.id}/visit`)}
                     >
                       <LogIn className="h-3.5 w-3.5 mr-1.5" />
                       {t("bkCheckinAction", { name: kitchenName })}
@@ -1727,7 +1726,7 @@ export default function ChefBookingsView({
                       size="sm"
                       variant="outline"
                       className="max-w-full whitespace-normal text-left"
-                      onClick={() => setCheckinTrackerBookingId(b.id)}
+                      onClick={() => navigate(`/booking/${b.id}/visit`)}
                     >
                       <LogOut className="h-3.5 w-3.5 mr-1.5" />
                       {t("bkCheckoutAction", { name: kitchenName })}
@@ -2151,23 +2150,6 @@ export default function ChefBookingsView({
           storageBookingId={checkinStatusBookingId}
           storageName={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkinStatusBookingId)?.storageName}
           checkinStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkinStatusBookingId)?.checkinStatus}
-        />
-      )}
-
-      {/* Kitchen Check-In / Checkout Tracker */}
-      {checkinTrackerBookingId && (
-        <KitchenCheckinTracker
-          open={checkinTrackerBookingId !== null}
-          onOpenChange={(open) => !open && setCheckinTrackerBookingId(null)}
-          bookingId={checkinTrackerBookingId}
-          kitchenName={(() => {
-            const b = bookings.find(bk => bk.id === checkinTrackerBookingId)
-            if (!b) return undefined
-            return b.kitchenName || kitchens.find(k => k.id === b.kitchenId)?.name
-          })()}
-          bookingDate={bookings.find(bk => bk.id === checkinTrackerBookingId)?.bookingDate?.split('T')[0]}
-          startTime={bookings.find(bk => bk.id === checkinTrackerBookingId)?.startTime}
-          endTime={bookings.find(bk => bk.id === checkinTrackerBookingId)?.endTime}
         />
       )}
 

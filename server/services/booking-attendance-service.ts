@@ -11,7 +11,7 @@ export class AttendanceError extends Error {
 }
 
 async function readBookingContext(bookingId: number, actor: AttendanceActor) {
-  const [context] = await db.select({ booking: kitchenBookings, managerId: locations.managerId })
+  const [context] = await db.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId))
     .where(eq(kitchenBookings.id, bookingId)).limit(1);
@@ -43,7 +43,7 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
   const history = actor.role === 'admin'
     ? await db.select().from(kitchenBookingAttendanceEvents).where(eq(kitchenBookingAttendanceEvents.bookingId, bookingId)).orderBy(asc(kitchenBookingAttendanceEvents.id))
     : await db.select(publicFields).from(kitchenBookingAttendanceEvents).where(eq(kitchenBookingAttendanceEvents.bookingId, bookingId)).orderBy(asc(kitchenBookingAttendanceEvents.id));
-  const visits = await db.select({ id: kitchenBookingVisits.id, startTime: kitchenBookingVisits.startTime,
+  const visits = await db.select({ id: kitchenBookingVisits.id, blockIndex: kitchenBookingVisits.blockIndex, startTime: kitchenBookingVisits.startTime,
     endTime: kitchenBookingVisits.endTime, checkinStatus: kitchenBookingVisits.checkinStatus,
     assistanceHistory: kitchenBookingVisits.assistanceHistory,
     updatedAt: kitchenBookingVisits.updatedAt }).from(kitchenBookingVisits)
@@ -53,11 +53,11 @@ export async function readBookingAttendance(bookingId: number, actor: Attendance
     sharedMessage: event.sharedMessage, createdAt: event.createdAt,
   }));
   return { bookingId, status: context.booking.status, checkinStatus: context.booking.checkinStatus,
-    updatedAt: context.booking.updatedAt, scheduledEnd: bookingAttendanceEnd(context.booking),
+    updatedAt: context.booking.updatedAt, scheduledEnd: bookingAttendanceEnd({ ...context.booking, timezone: context.timezone }),
     assistanceHistory: context.booking.assistanceHistory,
-    operationsComplete: bookingOperationsComplete(context.booking), visits: visits.map(visit => ({ ...visit,
-      scheduledEnd: visitAttendanceEnd(context.booking, visit),
-      operationsComplete: ['confirmed', 'completed'].includes(context.booking.status) && Date.now() >= visitAttendanceEnd(context.booking, visit).getTime(),
+    operationsComplete: bookingOperationsComplete({ ...context.booking, timezone: context.timezone }), visits: visits.map(visit => ({ ...visit,
+      scheduledEnd: visitAttendanceEnd({ ...context.booking, timezone: context.timezone }, visit),
+      operationsComplete: ['confirmed', 'completed'].includes(context.booking.status) && Date.now() >= visitAttendanceEnd({ ...context.booking, timezone: context.timezone }, visit).getTime(),
     })), history: visibleHistory };
 }
 
@@ -77,7 +77,7 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
   await db.transaction(async tx => {
     // Parent then visit: serialize reports/corrections with reservation changes.
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId })
+    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
@@ -98,13 +98,13 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
     if (input.action !== 'withdraw_attendance') {
       if (!context.booking.chefId) throw new AttendanceError('Chef visit reports require a chef reservation');
       if (!['confirmed', 'completed'].includes(context.booking.status)) throw new AttendanceError('Only confirmed reservations may be reported');
-      if (Date.now() < (visit ? visitAttendanceEnd(context.booking, visit) : bookingAttendanceEnd(context.booking)).getTime())
+      if (Date.now() < (visit ? visitAttendanceEnd({ ...context.booking, timezone: context.timezone }, visit) : bookingAttendanceEnd({ ...context.booking, timezone: context.timezone })).getTime())
         throw new AttendanceError('Report only after the scheduled visit or booking end');
     }
     if (input.action === 'report_no_show') {
       if (current.checkinStatus === 'no_show') throw new AttendanceError('A no-show is already recorded', 409);
       if (latest?.action === 'report_attended') throw new AttendanceError('Withdraw the attended statement before reporting a no-show', 409);
-      if (hasBookingAttendanceEvidence(current)) throw new AttendanceError('Recorded arrival, departure or inspection evidence contradicts a no-show', 409);
+      if (hasBookingAttendanceEvidence(current, !!(context.booking.visitDuties as { clockCloseout?: unknown } | null)?.clockCloseout)) throw new AttendanceError('Recorded arrival, departure or inspection evidence contradicts a no-show', 409);
     } else if (input.action === 'withdraw_attendance' && current.checkinStatus !== 'no_show' && latest?.action !== 'report_attended')
       throw new AttendanceError('No visit report is recorded', 409);
     else if (input.action === 'report_attended' && latest?.action === 'report_attended') throw new AttendanceError('The visit is already reported', 409);
@@ -118,11 +118,11 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
     if (visit) await tx.update(kitchenBookingVisits).set(values).where(and(eq(kitchenBookingVisits.id, visit.id), eq(kitchenBookingVisits.bookingId, bookingId)));
     else await tx.update(kitchenBookings).set(values).where(eq(kitchenBookings.id, bookingId));
     // No status/completion/checkout/financial/inventory mutation here.
-    const title = input.action === 'report_no_show' ? 'Chef no-show reported' : input.action === 'report_attended' ? 'Chef visit reported' : 'Visit report withdrawn';
+    const title = input.action === 'report_no_show' ? 'No-show reported' : input.action === 'report_attended' ? 'Attendance reported' : 'Visit report withdrawn';
     const shared = message ? ` Message from ${actor.role === 'manager' ? 'kitchen manager' : 'Local Cooks'}: ${message}` : '';
     await queueBookingLifecycleEvent(tx, bookingId, input.action, title,
       `${title} for booking #${bookingId}${visit ? `, visit ${visit.blockIndex + 1}` : ''}.${shared} Contact Local Cooks Support if this is incorrect. This visit report does not change payment, cancellation, or inventory.`,
-      actor.id, { ...(visit ? { visitId: visit.id } : {}) });
+      actor.id, { ...(visit ? { visitId: visit.id } : {}), ...(input.action === 'report_no_show' ? { policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false } : {}) });
   });
   return readBookingAttendance(bookingId, actor);
 }

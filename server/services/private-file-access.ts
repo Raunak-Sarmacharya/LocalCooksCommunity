@@ -3,6 +3,7 @@ import { chefKitchenApplications, locations, locationRequirements, kitchens } fr
 import { db } from '../db';
 import { storedFileUrl } from './chat-file-access';
 import type { ChatActor } from './participant-chat';
+import { readDocumentRenewals } from './document-renewals';
 
 /** Generic file proxies must not turn knowledge of a private URL into a grant. */
 export async function canReadPrivateFile(actor: ChatActor | undefined, url: string): Promise<boolean> {
@@ -34,13 +35,16 @@ export async function canReadPrivateFile(actor: ChatActor | undefined, url: stri
   const apps = await db.select({ application: chefKitchenApplications, managerId: locations.managerId }).from(chefKitchenApplications)
     .innerJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
     .where(or(eq(chefKitchenApplications.chefId, actor.id), eq(locations.managerId, actor.id)));
+  // A renewed document waiting for review is as private as the current one, and the manager must be able to open it.
+  const renewals = await readDocumentRenewals(apps.map(row => row.application.id));
   for (const { application, managerId } of apps) {
     const participant = actor.role === 'manager' && managerId === actor.id || actor.role === 'chef' && application.chefId === actor.id;
     if (!participant) continue;
     const urls = [application.foodSafetyLicenseUrl, application.foodEstablishmentCertUrl,
       ...Object.values((application.tier_data as any)?.tierFiles || {}),
       ...Object.values((application.customFieldsData as Record<string, unknown>) || {}),
-      ...Object.values((application.tier_data as any)?.tier2_custom_fields_data || {})];
+      ...Object.values((application.tier_data as any)?.tier2_custom_fields_data || {}),
+      ...renewals.filter(renewal => renewal.applicationId === application.id).map(renewal => renewal.url)];
     if (urls.includes(url)) return true;
   }
   const owned = actor.role === 'manager'

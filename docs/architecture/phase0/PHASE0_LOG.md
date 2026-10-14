@@ -1,7 +1,444 @@
 # Phase 0 master log (kitchen booking redesign)
 
 Single source of truth for everything done, decided and pending in Phase 0. Read this first when resuming.
-Last updated: 2026-10-12.
+Last updated: 2026-10-13.
+
+## Step 2 live test (booking KB-132, local, synthetic) + two Codex designs returned
+- **Live-verified:**
+  - manager panel shows the code beside customer, kitchen and local time; "Issue new code" asks for confirmation, then rotates (old code rejected);
+  - chef wrong code → "4…1 attempts left", 5th → locked screen with "Message kitchen"; the manager sees "5 of 5 · Locked", and issuing a new code unlocks;
+  - correct code → arrival recorded once (`consumed_method=code`, staffed);
+  - chef in-session panel: countdown, "Need more time?", leave early, report a problem;
+  - manager header badge "In session · 49 min left · ends 10:15 p.m.";
+  - a problem report saves `category=equipment`, with inline "Report sent";
+  - no code appears in any captured email (all 17 scanned).
+- **Fixed in place:** the check-in record said "via self check-in" for a staffed code arrival. Old copy: `checkedInMethod='self'` means the chef recorded it, which now collides with the new mode name. It now reads "Recorded by you" (chef) / "Recorded by the chef" (manager); key `bdViaSelfManager` added in en-CA, fr-CA and uk. Locale suite: only the 9 known `booking.json` failures.
+- **Gaps found (go to the arrival-communication build):**
+  - the chef's locked screen does not refresh itself after the manager issues a new code; it needed a reload;
+  - the manager panel does not refresh attempts or lock until a reload (design D adds a bounded refresh);
+  - problem-report emails are bare ("Support request #10: Awaiting response.") and omit the category;
+  - the manager page shows the chef line "Check in when you arrive and check out when you leave."
+- **Designs returned (Codex Sol High):** `design-reschedule.md` and `design-arrival-communication.md`. The owner questions are in §8 and §5 of each; answers are pending.
+  - Reschedule recommendation: amend the same booking (no cancel + rebook). A same-price move involves no Stripe operation; a price rise is a new PaymentIntent for the difference only; a price drop is a partial refund. Manager approval is required in the pilot; the cancellation anchor is the earliest accepted start.
+  - Reschedule prerequisites: the cancellation engine, post-closeout settlement and multi-day. **Reschedule is therefore sequenced after those**, not next.
+  - Arrival communication: mode lines at confirmation, explanation in preparation (T−24h), one action line at T−2h; the visit code stays with staff. No code ever goes in email. Instruction free-text also leaves email (a door code typed by a manager could leak), replaced by a link to the authenticated visit page. Manager reminders are added.
+
+## Oct13 night owner decisions — reschedule + arrival communication
+- **Reschedule = amend the same booking** (CONFIRMED). The owner wants any processing fee shown when it applies. Parent rule, consistent with the locked cancellation rule (chef-caused refunds are minus the Stripe fee):
+  - price up: the chef pays only the difference; the new charge's Stripe fee is the kitchen's normal processing cost, as on every booking;
+  - price down: the refund is the difference minus the non-returned Stripe fee on that difference, shown as its own line before the chef submits;
+  - same price: no money moves and no fee.
+- **Arrival instructions in email** (owner): follow Airbnb.
+  - Confirmation carries a "what to expect" overview only.
+  - The timed preparation email carries the full arrival and departure instructions in the email body, because many chefs never sign in.
+  - This overrides design §3's "link, not text" recommendation.
+- **Self check-in:** no extra block. Listings cannot save without arrival and departure instructions (verified: `KitchenCheckinCheckoutEditor` marks them "Required before you can save"), registration requires a phone, and Local Cooks meets every kitchen in person. The existing confirmation dialog stays.
+- **Reschedule kept simple, Food Corridor style** (owner): no complex engine.
+  - The chef can move a confirmed booking themselves only while the full-refund window is open, with manager approval.
+  - After that, there is no chef self-service; Local Cooks admin/support controls handle exceptions.
+  - The money rules above stay. In-session extra time stays the linked extension offer.
+  - `design-reschedule.md` remains research background; its v3 engine, two-move cap, anchors and late-move tiers are NOT adopted.
+  - Sequenced after the cancellation engine.
+- **Instruction release = preparation time, page and email in sync** (owner, security):
+  - Detailed arrival and departure instructions are released at T−48h on both the platform and email; before that, only the overview.
+  - Late bookings must still work without bombarding the chef: confirmed inside 48 h → instructions are released immediately and folded into the confirmation (no separate preparation email); inside 2 h → one consolidated message.
+- Dev `platform_settings` reminder values set to product values: preparation 48 h, arrival 2 h, departure 30 min (they were a teammate's test values 2/1/5; the owner says the parent is now the only person working on this).
+- **Arrival-communication build launched** from the parent plan `build-arrival-communication.md`:
+  - Package S (server) on Codex GPT-6.1 Sol high; checkpoint at `.phase0-harness/arrival-comms-server-checkpoint.md`;
+  - Package C (client) on Sonnet; checkpoint at `.phase0-harness/arrival-comms-client-checkpoint.md`;
+  - no shared files between the two.
+- **Client package RETURNED** → `.phase0-harness/arrival-comms-client-checkpoint.md`.
+  - tsc clean; no new failures; 12 new tests; 15 chef keys added.
+  - Accepted the one-line edit outside its list (`BookingAttendancePanel.tsx`, needed for the manager sentence).
+  - **Gap for parent review:** `GET /chef/locations/:id/checklist` (fallback in `use-location-checklist.ts`) returns location instructions to any approved chef at any time, so it bypasses the release gate. Fix: chef-facing instruction text is removed from that endpoint, and the client uses booking-scoped duties only.
+- **Server package RETURNED** (Codex) → `.phase0-harness/arrival-comms-server-checkpoint.md`.
+  - 193 tests across 10 files pass; tsc clean.
+  - Every chef instruction path is gated, including the location checklist (its text is now always null for chefs).
+- **Parent live test (local, mail sink, synthetic KB-140/141/142).** New harness `seed-confirmed.mjs <hours>` runs the real confirmation side effects with a local-only $0 payment row; the `pi_phase0_synthetic_*` id is not a Stripe object.
+  - KB-140 (72 h out): the confirmation carries only the overview and "instructions arrive Oct 14, 10:00 p.m. (Newfoundland Time)". The page shows "What to expect". Its API endpoints return no instruction text (checked with the chef's own token), and its entry in `/api/chef/bookings` doesn't either.
+  - KB-141 (30 h out): the confirmation includes the full instructions; the preparation reminder is acknowledged, so it won't be resent.
+  - KB-142 (1.5 h out): one consolidated confirmation; preparation and arrival reminders are both acknowledged. Manager arrival reminders are scheduled.
+  - The manager switched KB-140 to self → the chef email "Self check-in is now enabled · {kitchen}" contains no code and says "booked time has not changed".
+- **Parent fixes during the test:**
+  - the mode line was printed twice in confirmations;
+  - single-visit confirmations had a bare time line;
+  - time zones showed the IANA id; they now use friendly names ("Newfoundland Time"), and visit ranges are compact.
+  - Files: `booking-lifecycle-delivery.ts`, `email.ts`. Lifecycle, reminder, calendar and visit-code tests pass; tsc clean.
+- **Polish backlog:**
+  - the confirmation still has two robotic generic lines ("Check in for each visit when the action opens…", "Request checkout… Manager inspection remains pending");
+  - the manager confirmation lacks the staffed "give the code in person" line;
+  - the generic notice footer uses `getSupportEmail()` (locally support@localcook.shop) while confirmations hard-code support@localcooks.ca;
+  - the chef visit-time note says "(America/St_Johns)";
+  - for overnight operating windows, the itinerary header date (booking date) differs from the calendar and visit instant (operating day). This is pre-existing.
+
+## Checkpoint — closeout + access fixes re-tested locally (synthetic data)
+- Passed: deadline guard (a manager cannot confirm after 24 h; the hold is released); closeout cutover (KB-129 before the cutover closes silently, KB-130 queues `service_ended`); role-specific closeout emails for chef and manager, tour-quality, UTF-8 verified at the byte level (the earlier "�" was an extraction artifact); expired-document banner and renew link; early renewal does not block booking; manager renewal approve updates the expiry; the revoke menu opens the "End access" dialog directly (lists KB-127, reason required); "before the kitchen confirms" refund copy.
+- Not re-run: the access-ended banner on `/book/47` after a revoke. Revoke (403, no re-grant) was verified earlier. Re-running needs a SQL restore of `chef_location_access` for chef 380 / location 47.
+- Left in place: `platform_settings.closeout_notifications_from = 2026-10-13T19:30:53Z` (test row; the owner declined the delete). Effect on deploy: bookings ending after that instant get closeout emails, nearly the same as the auto-anchor. An admin can change it in Lifecycle settings.
+- New polish backlog: document dates show one day early (UTC parse of date-only values, old A1/C4 item); no success toast on renewal approve.
+- Tests: combined tsc exit 0; booking-payment-decision 10/10; full server suite has about 49 pre-existing failures in untouched files; 1 known BookingCancellationChooser copy failure.
+- Next: step 2, visit code + in-session screen (`map-visitcode-insession.md`).
+
+## Step 2 started — visit code + in-session screen
+- Map re-verified (DeepSeek) → `map-visitcode-insession-v2.md` (line drift fixed; overlap risks §2). Every open question in it was already decided above.
+- Code design (parent): there is no plaintext at rest. Code = HMAC(key[version], target|revision|nonce) → 6 digits, derived on demand for the owning manager only. Each row stores the key version, revision, nonce, attempts, mode, consumption method, request key and revocation. Enrollment is new confirmations only: challenge rows are created at confirmation, and bookings without rows keep tap arrival. Lock order: booking → visit → challenge.
+- Running in parallel (Sonnet), with no shared files:
+  - **Server visit code:** migration 0075, `visit-code-challenge.ts`, arrival-writer gates, manager endpoints, redacted projections. Report goes to `.phase0-harness/visitcode-server-checkpoint.md`.
+  - **In-session screen:** chef panel, `session_ending` reminder at 15 min, and a problem category. Migration **0076** (`commitment_problems.category`), so multi-day now starts at 0077. Report goes to `.phase0-harness/insession-checkpoint.md`.
+- **In-session RETURNED** → `.phase0-harness/insession-checkpoint.md`.
+  - Built: `InSessionPanel.tsx` in `KitchenCheckinTracker`; the `session_ending` reminder (end − 15 min, checked-in only, no backfill, skips visits ≤30 min); problem `category` (Safety flagged); fr-CA/uk strings.
+  - Tests: 24 new tests pass; tsc clean.
+  - Parent check: the client `canCheckout` now allows checkout during the end+15 grace. The server checkout has no end-time gate, and closeout flips the status at end+15, so client and server agree.
+  - Gaps: the manager "In session · N min left" is not built (goes to the visit-code UI package); no equipment/storage summary (not in the status data).
+  - **0076 must be applied before any deploy:** Drizzle selects all columns, so `commitment_problems` queries fail without it.
+- **Visit-code server RETURNED** → `.phase0-harness/visitcode-server-checkpoint.md`.
+  - Tests: tsc clean; 23 new tests (mocked database).
+  - Parent review OK:
+    - unbiased HMAC derivation and a timing-safe compare;
+    - the failed-attempt count is committed in its own short transaction that locks only the challenge row, then the arrival transaction re-checks booking → visit → challenge (no lock cycle);
+    - assisted arrival consumes the challenge with method `assisted`;
+    - cancellation revokes via `cancelLinkedBookingDates`.
+  - Degrades safely: if `VISIT_CODE_HMAC_SECRET` is missing, enrollment is skipped (logged) and tap arrival continues; if the table is missing, everything is treated as legacy.
+  - **The deployed dev needs `VISIT_CODE_HMAC_SECRET` on Vercel (ASK the owner first)** plus migrations 0075 and 0076.
+  - Known gaps: there is no reschedule path to revoke on; a second request key on an already checked-in visit gets the generic "already checked in" message.
+- Client visit-code UI agent (Sonnet) launched: chef code field, manager `VisitCodePanel`, manager "In session · N min left". Report goes to `.phase0-harness/visitcode-client-checkpoint.md`.
+- **Owner (Oct13 late):**
+  - Codex is back; use it as before, plus DeepSeek where useful.
+  - BIG tasks for cheaper models must be planned by a higher-grade model first.
+  - The owner authorized Supabase dev migrations as needed; ask before a Vercel deploy and before adding the secret.
+  - Reschedule must be researched to top-platform level, keeping in mind that capture happens at confirmation, so a reschedule is roughly a new booking.
+  - The chef must be told about the code intuitively, perhaps in the preparation email; research how top platforms do it.
+- A resumed, superseded Codex access-integrity task was cancelled; it had made no file changes.
+- **APPLIED to dev Supabase:**
+  - 0073 (closeout due indexes);
+  - 0075 (visit-code challenges, RLS on, revoked from PUBLIC; also RLS for 0074's `chef_document_renewals`, which shipped without it);
+  - 0076 (problem category).
+- Launched on Codex Sol High (research + design, docs only):
+  - `design-reschedule.md`
+  - `design-arrival-communication.md`
+- After both land: a client agent builds the visit-code UI (manager code panel; chef code field), then the parent reviews and does a live test. Migrations 0075/0076 are applied only after review.
+
+## Oct14 owner decisions — policy money rules, documents, deploy rule, model routing
+
+- **Kitchen cancels (policy R1, CONFIRMED, owner's fairness rule):**
+  - Before confirmation, a decline releases the hold and nobody loses money.
+  - After confirmation, the chef gets a 100% refund INCLUDING the Stripe fee, because the chef is not responsible for a kitchen cancellation. The kitchen bears the fee: it is withheld from the kitchen's settlement for that booking. Under deferred settlement the kitchen was never paid for it; otherwise the fee is debited from its next earnings or its Express balance via [Stripe account debits](https://docs.stripe.com/docs/connect/account-debits) (platform-liable accounts can be debited).
+  - Local Cooks absorbs the fee only when recovery is impossible (no balance or future earnings), and records it as a loss.
+  - Local Cooks support may waive the kitchen's fee with a reason.
+- **Owner follow-up (Oct14):** "if the Stripe fee is too complicated, consider it gone after confirmation". Parent's response:
+  - For CHEF cancellations this already IS the policy (fee non-refundable after confirmation, disclosed).
+  - For KITCHEN cancellations, keeping the fee from the chef is non-standard: Airbnb, Peerspace (refunds including its own fees), Turo and Vrbo all fully refund on host cancellation. It is also chargeback-exposed (a merchant-cancelled service is a winnable dispute, so we would lose the full amount plus a ~$15 dispute fee).
+  - Recommended simplification: in the pilot the chef gets 100%, the kitchen gets $0 for that booking, Local Cooks absorbs the rare fee, and kitchen cancellations are tracked. Fee recovery from the kitchen's next settlement can be switched on later, once deferred settlement exists. AWAITING owner confirmation of this pilot version.
+- **No-show (R3, CONFIRMED):** the chef is responsible. It is treated as a cancellation at start time (the policy's in-window outcome); no extra penalty; disputed attendance goes to Local Cooks review; a missing tap alone is not a no-show.
+- **Delegated to parent ("make those choices"), adopted as recommended:**
+  - R2: a kitchen unusable on arrival (locked out, unsafe, no access) is treated like a kitchen cancellation once evidenced: full refund including the fee, kitchen-funded under the R1 rule; partial use is reviewed by Local Cooks.
+  - R4: exceptional circumstances get a Local Cooks-funded full refund during the pilot.
+  - R5: the manager response deadline is the earlier of 24 h or a buffer before start.
+  - Operating clocks proposed in `local-cooks-booking-policy.md` §C, adopted as admin-configurable defaults: service ends at scheduled end + 15 min grace, and inspection auto-closes 24 h after the later of scheduled end or departure.
+- **Chef documents:** when a chef's required document is expiring or has expired, notify them intuitively (reminders before expiry, and on expiry, with a link to upload), then BLOCK NEW bookings at that location on expiry; existing bookings are untouched (customers design §H Q5 = yes).
+- **Account deletion:** handled manually for now; no change (customers design §H Q6 deferred).
+- **Commit/deploy rule:** dev environment, but ASK the owner first, and deploy only when a test genuinely cannot or should not run locally (for example real Inngest event wakeups, Stripe webhooks, real SMTP delivery, Vercel runtime behaviour).
+- **Model routing (updated):**
+  - Main thread on Opus.
+  - DeepSeek (Code Buddy) is unlimited: use it freely for heavy reading and mapping.
+  - Sonnet and Haiku for most delegated Claude work.
+  - Fable only for a truly critical feature or a thorough at-par check that nothing else can do.
+  - Codex GPT-6.1 Sol Medium/High for implementation.
+  - Do NOT cancel a rate-limited task; let it resume.
+- **Active builds (Oct14, Codex Sol High, local only, parallel, non-overlapping files):**
+  - `phase0-access-integrity-docexpiry-sol-r1-20261014` (CU0 + document expiry). Revocation must stick (remove self-healing re-grants), no booking before final manager approval (single shared eligibility check), an atomic revoke with a reason and a truthful notice (paid future bookings kept by default), and chef document expiry reminders at 30/7/0 days with new bookings blocked on expiry. Report: `.phase0-harness/access-integrity-checkpoint.md`.
+  - `phase0-clock-closeout-sol-r1-20261014`. A pure closeout reducer driven by saved instants and the location zone; service ends at the last visit end + 15 min (configurable); inspection auto-closes 24 h after the later of scheduled end and departure, as "no inspection recorded"; bookings complete without taps (attendance unknown); one bounded worker sweep task; no GET mutation. Any migration is written as 0073 but NOT applied (needs approval). Report: `.phase0-harness/clock-closeout-checkpoint.md`.
+- **Owner decisions (Oct14, later):**
+  - Kitchen cancel pilot CONFIRMED: the chef gets 100% and Local Cooks absorbs the rare Stripe fee; kitchen cancellations are tracked.
+  - Weekly standing bookings OUT for now.
+  - Multi-day consecutive ranges WANTED: refuse a range if any day conflicts (hourly booking, hold, blackout); the manager sets max (and min) consecutive days, like max hours.
+  - Invites: the standard discount on the listed kitchen price, then the customer books normally.
+  - Extension: whatever keeps booking frictionless when easy (to be recommended).
+  - Storage must be redesigned decoupled from kitchen sessions (owner research: monthly subscriptions per unit, daily holdover, a "Manage my storage" module) — to be verified, not assumed.
+- **Stripe sandbox verified read-only (Oct14):**
+  - Platform `acct_1SmNI9CvcNYAkDXN` balance: CA$318.96 available, CA$18.20 pending.
+  - Express `acct_1UPWdbCf9PlKmwqd`: controller.losses.payments = application, fees.payer = application_express, transfers active, debit_negative_balances true, payouts daily with a 7-day delay.
+  - Separate charges and transfers means refunds come from the platform balance, so a full refund on kitchen cancel needs nothing special, and a deferred transfer fits.
+  - The LIVE platform/Connect configuration is NOT verified; do a read-only check before enabling payout-after-closeout.
+- **Model routing (Oct14):** Codex is near its cap, so new work goes to Code Buddy (DeepSeek, unlimited) and Claude (Sonnet/Haiku; Opus main; Fable only if critical). The two Sol builds already running continue. The Sol multi-day design task was cancelled immediately.
+- **Closeout fixes RETURNED (Sonnet, Oct14)** → `.phase0-harness/closeout-fixes-checkpoint.md`.
+  - `closeout_notifications_from` cutover (auto-set on the first sweep if unset; admin routes + a LifecycleSettings field): pre-cutover bookings close silently, and already-queued flood rows are dropped at send.
+  - New `server/services/closeout-notice-email.ts` with role-specific, tour-quality emails; inspection-auto-closed is manager-only.
+  - outcome-delivery fixture fixed; status badge localized.
+  - Tests: 167/167 server/shared, 16/16 client; full-suite 49 failures, all in untouched files (was 53). tsc errors only in the access agent's in-flight `status.ts`.
+  - LIVE re-test pending (with the access fixes). NOTE: the cutover auto-sets on first use and `platform_settings` is the SHARED dev table, so set it explicitly during local testing rather than letting a local run choose it.
+- **Visit-code build map COMPLETE (DeepSeek)** → `map-visitcode-insession.md`. Parent verified: single/contiguous bookings have no visit rows (`kitchen-booking-visits.ts:30`); there is no HMAC helper in server/shared.
+  - **Parent decisions on the map's open questions (Oct14):**
+    - Migration numbers: 0073 closeout indexes, 0074 renewal slot, **0075 visit codes**, multi-day 0076+.
+    - "Report a problem" reuses commitment-problems with new categories (safety, access, equipment, cleanliness); no new incident table yet.
+    - Manager-assisted arrival needs no code (a recorded manager assertion with a reason).
+    - "Need more time?" (interim) opens the existing booking conversation (`POST /api/bookings/:id/conversation`) with a prefilled message.
+    - A NEW `session_ending` reminder kind at 15 min (the existing 30-min departure reminder is unchanged).
+    - Manager "In session · N min left" on the booking detail and inspection pages now; the Today board comes with Customers CU1.
+    - HMAC with versioned keys (`VISIT_CODE_HMAC_SECRET`, key version stored per row) for future rotation.
+    - Codes redacted everywhere after issuance; after consumption show only method and time.
+    - One code per day.
+  - START the visit-code + in-session build only AFTER the two fix agents land (overlap: BookingDetailsPage/status badge, advance-reminders), and re-verify the map's insertion points first.
+- **COMBINED REVIEW + LIVE TEST of closeout + access (Oct14, local harness, parent).**
+  - Combined tree: tsc 0.
+  - Parent wired the cross-file requests: `chefDocumentExpiry` sweep in the background tasks and `access` (dispatchAccessNotices) in the delivery list of `recurring-worker.ts`. Worker tests were updated with mocks and expected names (15/15 pass with email-booking-calendar).
+  - The stale "Arrival tracking is off" assertion was flipped.
+  - Access agent result: Codex partial + Sonnet completion, 57/57 server, 96/96 client in its files. It noted the old 293/7 baseline is stale (a pristine HEAD fails 49 of the same tests).
+  - **LIVE PASS:**
+    - Fixture 128 (no taps, ended 2 h ago): the chef page derives "Visit finished · Arrival not recorded · Inspection due by Oct 14 3:45 p.m." and the GET wrote NOTHING (DB still confirmed, no clock state).
+    - Single-booking persist (`.phase0-harness/sweep-closeout-one.mjs 128`; NEVER run the global sweep locally on the shared DB): status completed, attendance unknown, serviceEnded = end + 15 min, inspection deadline = end + 24 h, `service_ended` queued.
+    - Simulated time past the deadline: `auto_closed_uninspected`, nextDueAt null, `inspection_auto_closed` queued.
+    - Expired chef doc (synthetic app 67, restored): checkout 403.
+    - Manager revoke via the new dialog (lists the upcoming KB-127, reason required): access row deleted, application stays approved, "Your access to … has ended" sent; a chef checkout afterwards gets 403 and NO re-grant. Access restored afterwards (row 31).
+  - **LIVE FAILURES → fix agents (Sonnet High, parallel, separate ownership):**
+    1. Silent 403s: no banner, no error, after five steps.
+    2. Closeout rollout would email every old booking.
+    3. Closeout emails are bare generic text, the same for both roles, and the chef gets "inspection closed".
+    4. Early renewal blocks booking (needs a renewal slot; migration 0074 drafted only).
+    5. The "Revoke Access" menu opens details instead of the dialog; the dialog shows raw "America/St_Johns".
+    6. Owner note: "100% refund before confirmation" is vague; use kitchen-confirmation wording.
+    7. Raw lowercase "completed" badge.
+    8. Stale outcome-delivery fixture.
+    - Tasks: `phase0-closeout-fixes-sonnet-r1-20261014` (items 2, 3, 7, 8) → `.phase0-harness/closeout-fixes-checkpoint.md`; `phase0-access-ux-fixes-sonnet-r1-20261014` (items 1, 4, 5, 6 + a tier-2 test) → `.phase0-harness/access-ux-fixes-checkpoint.md`.
+  - Not tested live: tier 2 (unit tests only); real worker/Inngest delivery (local worker endpoint 503s on the pooler URL).
+- **Clock closeout build RETURNED (Sonnet, Oct14)** → `.phase0-harness/clock-closeout-checkpoint.md`.
+  - Results: tsc 0; i18n lint pass; 28 server/shared test files, 471 pass; 23 client files, 213 pass / 1 known BookingCancellationChooser copy failure; manager-confirmed-receipt has the same 7 baseline failures.
+  - Visits are keyed by kitchen_booking_visits id, else `date|start-end|blockIndex` (steer applied, with tests).
+  - Repaired Codex's literal-"?" fr-CA/uk clock strings; replaced "auto-clears if no issues" copy with "no inspection recorded".
+  - Migration 0073 still NOT applied (approval pending).
+  - Cross-file requests for the access agent: `endLocationAccessTitle` fr-CA/uk has "?" encoding damage.
+  - **REVIEW ITEM:** GETs no longer lazily expire stale authorizations (correct, no writes on read), so expiry now depends on the `authorizations` worker task. VERIFY that the manager decision command itself refuses capture after the 24 h response deadline, so a worker delay can't allow a late confirm.
+  - Not live-tested yet; awaiting the access build for a combined review and live test.
+  - **REVIEW ITEM RESOLVED by the parent:** confirmed the gap (`decideAuthorizedBooking` had no deadline check; no request path called the kitchen lazy expiry any more). Fixed in `server/services/booking-payment-decision.ts`: a new decision to CONFIRM a pending/authorized request older than `AUTH_EXPIRY_HOURS` releases the hold immediately (via `lazyExpireKitchenBookingAuth`, a command not a read) and throws `BookingRequestExpired` (a subclass of BookingTermsReviewRequired, so the manager route's existing 409 handler returns a clear message). Recovery of an already-recorded decision is unaffected. Tests: 2 added to `booking-payment-decision.test.ts`; 10/10 pass. The R5 rule (deadline capped before start) is still to come with the policy engine/reminders.
+- **Handover draft parked** at `HANDOVER-2026-10-14.md`. The owner will ask for an updated version when ready; continue as planned until then.
+- Active (read-only, free): `phase0-visitcode-map-deepseek-r1-20261014` → `map-visitcode-insession.md`. It prepares the visit-code + in-session build (target resolution, atomic insertion points, surfaces, migration draft, 2–3 non-overlapping work packages). Re-verify against source after the closeout/access builds land.
+- **ROADMAP (authoritative order, Oct14; the parent owns sequencing):**
+  1. Clock closeout + access integrity (Sonnet, running).
+  2. **Visit code checkpoint**: staffed code and deliberately enabled self check-in, per `visit-code-checkpoint-proposal.md` (owner-selected; new confirmations only).
+  3. Timed reminders.
+  4. Private two-sided reviews.
+  5. Payout after closeout (live Stripe config check first).
+  6. Cancellation policy engine (presets, versioning, automatic refunds).
+  - Parallel design tracks: multi-day ranges + invites + extension (Sonnet); storage decoupling (DeepSeek); manager Customers area (`design-manager-customers.md`).
+  - Visit code needs owner approvals: (a) an additive dev table for per-visit challenges (keyed hash, mode, revision, attempts, replay id); (b) a new server secret env var (local first; ask before setting it on Vercel); (c) a 6-digit code, 5 wrong attempts, then the manager rotates it.
+  - The owner noted it had dropped out of recent status updates; the parent must keep it visible.
+- **DECISIONS LOCKED (Oct14; the owner delegated to the parent "as a top developer at a startup: simple where it costs users nothing"):**
+  - **Multi-day:**
+    - Per-day cancellation cutoffs (owner liked).
+    - Manager-controlled, location default + kitchen override; **default ON for kitchens with a daily rate, min 1 / max 7 consecutive days** (max 1 = off).
+    - Tasks every day, kept low-friction: from day 2, instructions collapse to "Same as yesterday · View" and required tasks are one tap.
+    - One visit code per day, plus manager "self check-in for all days" in one action.
+  - **Invites:**
+    - Kitchen price floor $1; default expiry 48 h (manager can choose 24 h–7 days); only the location manager sends.
+    - **Local Cooks support controls:** view all, withdraw, extend expiry, create on behalf (reason + audit + both notified).
+    - Standing rule restated: every feature ships with support actions for every state, so no DB fixes are ever needed.
+  - **Storage (parent's recommendations adopted):**
+    - Platform-as-merchant monthly charge in advance on the saved card; transfer after the month closes (at charge until payout-after-closeout exists).
+    - Monthly price per unit + a daily holdover rate.
+    - The manager approves the first rental only; auto-renew.
+    - Cancel anytime, effective at the end of the paid month; 5-day payment grace.
+    - Abandoned goods handled manually by support; legacy rows keep their contract.
+    - DB migrations only once the build plan is final (owner).
+  - **Owner APPROVED (Oct14):**
+    - The extension design below.
+    - Visit-code approvals: (a) the additive dev table for per-visit codes (keyed hash, mode, revision, attempts, replay id); (b) a new server secret env var, local first, asking before setting it on Vercel; (c) a 6-digit code, 5 wrong attempts, then the manager rotates it.
+    - The owner was NOT previously shown the storage questions properly; storage decisions above are provisional until the owner answers them.
+  - **In-session screen (owner idea, researched and ADOPTED Oct14)**, built INTO the visit-code checkpoint (same chef visit page).
+    - Evidence: Turo in-trip "Manage trip" (extend in progress, end early, app messaging); Getaround "Need more time? extend instantly"; ParkMobile live countdown + extend + 15-min expiry alert; Airbnb reservation-as-hub during the stay.
+    - Spec, mobile-first, opens after check-in:
+      - kitchen + "In session · ends {time} {zone}" + a client-side countdown/progress bar (no polling; refresh on focus);
+      - a time-aware primary button: "Need more time?" (extension request; until extensions ship it opens a message to the kitchen) → in the last 15 min "Start check-out" (departure instructions/tasks) → after the end, "Your booked time ended" with check-out still open;
+      - always available: leave early / check out now (states no refund for unused booked time), message kitchen, report a problem (safety first, then access/equipment/cleanliness), get help from Local Cooks, departure instructions/tasks preview, booked equipment/storage;
+      - an alert 15 min before the end, in-app + email (no SMS; native push later);
+      - the manager Today board mirrors "In session · N min left".
+  - **STORAGE — owner answers (Oct14, via AskUserQuestion), FINAL:**
+    - Billing: monthly in advance; the kitchen is paid after the month closes (at charge until payout-after-closeout exists).
+    - Pricing: monthly price per unit + a daily holdover rate.
+    - Approval: first rental only, auto-renew.
+    - Ending: cancel ANYTIME (owner). Parent's design for this: anniversary billing (the rental starts any day and renews on that date; no partial first month); cancel stops the renewal; move out early anytime via the move-out inspection; no partial refund of the paid month (industry norm; the owner may override); 5-day payment grace, then new access is paused and holdover starts; never auto-dispose.
+    - Legacy storage rows keep their contract; abandoned goods are handled manually by support.
+    - DB changes only once the build plan is final.
+  - **Extension — owner's intent confirmed:** a manager-sent custom "extend your booking" offer, either chef-initiated ("Need more time?" → manager sees availability → offer) or manager-initiated ("Offer more time"). One-tap accept + pay; implemented as a linked booking but SHOWN as one longer visit; departure and closeout follow the new end.
+  - The same mechanism covers **early arrival / late departure** offers for adjacent free time. Never offers occupied time; never mutates the original payment; support can withdraw or extend any offer.
+  - **Extension (APPROVED):** "Need more time?" (chef, in session) → manager sees the request plus next-slot availability → one-tap approve sends an extension offer (a pre-approved linked booking for the adjacent slots, same rate, reusing invites) → the chef pays in one tap → the visit's departure/closeout extend. No mutation of the original booking's money. Build right after invites.
+- **Storage decoupling design COMPLETE (DeepSeek)** → `design-storage-decoupling.md`. Parent spot-checked: the schema comment says storage is kitchen-only (`shared/schema.ts:1392`) while `kitchenBookingId` is nullable; the overstay engine accepts only frozen daily terms (`overstay-penalty-service.ts:206`); approval runs through the kitchen decision (`booking-payment-decision.ts:185-187`).
+  - Research: monthly per-unit pricing CONFIRMED; members-only CONFIRMED; daily holdover PARTLY (as an overstay charge); two-module dashboard not documented but adopted.
+  - Design: storage as its own monthly per-unit product; the manager approves the first rental only; auto-renew on the saved card; move-in/out reuses arrival/departure; daily holdover after grace; never auto-dispose; "Manage my storage" plus a manager occupancy view; legacy rows keep their contract.
+  - **Parent correction:** the doc's Option B uses `on_behalf_of` (kitchen as merchant of record). Recommend instead platform-as-merchant monthly charges plus a transfer after period close, consistent with kitchen bookings.
+  - Owner questions pending: billing path, pricing + holdover rate, first-rental approval, cancel-anytime-ends-at-period-end + 5-day payment grace (the parent simplified the doc's 15-day notice), manual abandoned-goods handling, legacy contracts kept.
+- **Multi-day/invites/extension design COMPLETE (Sonnet)** → `design-multiday-invites-extension.md`.
+  - Multi-day: one booking with N daily visits, each a full operating day at the daily rate.
+  - All or nothing: one hold group, one decision, one capture.
+  - Per-day check-in/out (and a per-day visit code).
+  - Per-day cancellation allocation.
+  - Max/min consecutive days, default off (location default + kitchen override).
+  - Invitations: a discount on the kitchen price only; the invitation is the manager's pre-approval; normal checkout; nothing reserved by sending.
+  - Defer the paid "add an hour"; ship only a no-money "Need more time? Ask the manager" entry.
+  - Order: invites → multi-day → extension. Migrations 0074/0075 are drafted in the doc only.
+  - Code risks verified by the parent: closeout/attendance match visits by start/end time (`clock-closeout.ts:29,62`, `shared/clock-closeout.ts:68`, `shared/booking-attendance.ts:27`). The parent STEERED the in-flight closeout agent to key visits by visit id or date+time+block. Still pending: `resolveCapturedKitchenRate` (`shared/kitchen-booking-rate.ts:83-86`) shows one day's price for a multi-day booking — fix in the multi-day checkpoint.
+  - Six owner questions in its §F.
+- **Moved to Claude (owner, Oct14).** Both Codex tasks were cancelled to prevent an auto-resume collision. Codex had already edited about 60 files (16:51–17:02 NDT), including a baseline snapshot at `.phase0-harness/access-integrity-before/` and `migrations/0073_clock_closeout_due_indexes.sql` (two additive indexes, NOT applied, code works without them).
+  - Resumed on Claude Sonnet High with explicit file ownership and shared-file rules (manager.ts, bookings.ts and the i18n JSONs get targeted edits only):
+    - `phase0-access-integrity-sonnet-resume-r2-20261014` → `.phase0-harness/access-integrity-checkpoint.md`
+    - `phase0-clock-closeout-sonnet-resume-r2-20261014` → `.phase0-harness/clock-closeout-checkpoint.md`
+  - The owner will say when Codex is available again.
+- (historical) **Both Codex builds hit the usage limit (Oct14)** — `phase0-access-integrity-docexpiry-sol-r1-20261014` and `phase0-clock-closeout-sol-r1-20261014` are terminal "failed" with partial source on disk; Codex resets at 7:22 PM. Do NOT cancel them; they should auto-resume after the reset. If they don't, relaunch each with its original brief plus "continue from partial edits on disk", either on Codex or on Claude Sonnet. Do not edit their files meanwhile. Awaiting the owner's choice: wait or move them to Claude.
+- Active design (read-only):
+  - `phase0-multiday-invites-design-sonnet-r1-20261014` (Claude Sonnet High) → `design-multiday-invites-extension.md`.
+  - `phase0-storage-decoupling-deepseek-r1-20261014` (Code Buddy DeepSeek) → `design-storage-decoupling.md`.
+- Research complete: `local-cooks-booking-policy.md` (citations corrected by Fable after the stop) and `research-booking-model-gaps.md`. The gap research's ranked recommendation is to finish the current checkpoints, then add P0 duration/notice rules, turnover buffers, blackouts and a support exit, then before-confirmation invites, then bounded weekly bookings, then a paid "one more hour". Six owner questions are in its §E.
+
+## Oct13 owner decisions — arrival/departure scope (supersede older wording)
+
+- **Per-kitchen tracking switch removed.** Every kitchen always has arrival & departure. Only the customer task list (checklist items and photos) is optional.
+- **One scope pattern everywhere:** location default + optional kitchen override, for arrival/departure instructions, customer tasks, the booking/cancellation policy (already location→kitchen) and terms (add an optional kitchen-specific version). Show the end user "Using {location} default · Customize for this kitchen", with a preview.
+- **No per-booking lock on instructions.** Managers edit freely. When a kitchen's effective arrival/departure instructions or tasks change, chefs with upcoming confirmed bookings at that kitchen get an "instructions updated" email (tour pattern). Booking-level evidence still records what was shown at arrival/departure.
+- **No commit, push or deploy without asking the owner first.** Finish check-in/check-out locally before testing on the deployed server.
+- **Model routing:** Code Buddy DeepSeek v4.1 Flash (free) for token-heavy reading/mapping; Codex GPT-6.1 Sol Medium/High for implementation; Claude Haiku Medium/High for routine work; Claude Opus High only for very important tasks or heavy UI/UX changes.
+- DeepSeek map completed → `map-arrival-scope-and-updates.md`. Parent verified its key claims against source (location-only unique key, `resolveKitchenTracking` flag gate, check-in refusal on `arrival.enabled`, visit page preferring the snapshot).
+- Active (no migration needed): `phase0-remove-tracking-switch-sol-r1-20261013` (Codex GPT-6.1 Sol High) for map PRs 1–3 and 7: resolver, workflow-vs-tasks split, switch removal (column kept, not dropped), and the chef visit page showing current instructions/tasks with current-task validation. Local only.
+- **Owner answers (Oct13):**
+  - Money rules live only in structured tiers in Booking rules, with limited preset options like top platforms, displayed clearly to customers.
+  - Manager discretion inside the window is upward only, never below the tier.
+  - Terms are accepted when applying to the kitchen, not at checkout (no checkout checkbox).
+  - Policy/terms must not affect people with active or upcoming bookings, and are not handled with the tour-style update email. The parent recommended versioning (edits apply only to new bookings) over blocking edits; awaiting confirmation.
+  - Migration approved.
+  - Update email also fires on task changes.
+  - In-progress (checked-in) bookings get the email when departure notes change.
+  - Managers get no copy.
+- **Migration `0072_kitchen_arrival_overrides_and_terms` APPLIED to dev Supabase (Oct13)**, file in `migrations/`. It adds a new table `kitchen_checkin_checkout_overrides` (unique kitchen_id; NULL field = inherit the location default) and nullable `kitchens.kitchen_terms_url` / `kitchen_terms_uploaded_at`. It deliberately does NOT alter `checkin_checkout_checklists` (deployed dev upserts on its unique location_id at `manager.ts:3032`). Verified: table present with 0 rows, 2 columns present.
+- **Owner confirmed (Oct13, later):**
+  - Versioning (edits apply to new bookings only).
+  - Presets Flexible/Moderate/Strict, no custom.
+  - The inside-window notice is shown before payment.
+  - Before the window, cancellation is automatic: refund minus the Stripe fee, no manager action, and the manager cannot cut it.
+  - "Automatic refund" means the system issues the policy amount on cancel; it is not a manager setting.
+  - Every situation must be handled end to end, with support controls, and nothing may get stuck.
+- Active: `phase0-company-booking-policy-sol-r1-20261013` (Codex Sol High, read-only) → `local-cooks-booking-policy.md` (public policy, manager responsibilities, full situation matrix, disclosure map, no-stuck checklist). Its open recommendations: kitchen-cancel fee charged to the manager; unusable kitchen; no-show = cancellation at start; exceptional circumstances; response deadline capped before start.
+- **Checkpoint PASSED — arrival-scope r1 (Oct13, local live).** Sol r1 completed: 54 files changed; server 253 pass / 7 fail (the same 7 pre-existing receipt failures; baseline 237/7); client 119/119; tsc, i18n and whitespace checks clean. Report: `.phase0-harness/arrival-scope-implementation-checkpoint.md`. Harness restarted on the new code.
+  - Live, with kitchen 54's old flags temporarily OFF (kitchen flag plus location checkin/checkout_enabled), on new $0 fixture **126** (seeded by `.phase0-harness/arrival-scope-fixture.cjs`, no Stripe object):
+    - Arrival page open; instructions shown; photos marked Optional.
+    - Check-in with no photo succeeded; toast shown; the page refreshed to "Checked In 10:37".
+    - The departure note was edited live: the departure page showed the current text plus "Updated by the kitchen since you booked".
+    - A required task was added after booking: it showed as Required, Submit stayed disabled until ticked, and checkout then succeeded.
+    - DB: the submitted checklist recorded the current task; the snapshot kept the booking-time departure note and empty task list as history.
+    - Manager kitchen page: no switch and no tracking copy; the Arrival & departure tab is clear, with a live preview.
+  - All test edits restored and verified (notes, empty tasks, both location flags and the kitchen flag back to true).
+  - New polish items:
+    - Raw "(America/St_Johns)" in visit times; it should read "Newfoundland time".
+    - "Message from chef to kitchen manager" and "When chefs may check in" use "chef" as a noun.
+    - Instruction headings read "Required arrival instructions".
+    - Vague "Check-in or checkout has been recorded".
+    - A disabled Submit doesn't say why ("Complete 1 required task").
+    - Checklist checkbox has no accessible label.
+    - "No-show grace period" copy implies automatic no-show marking, which is off.
+    - Cancel is still offered while checked in.
+  - Fixture 126 is retained (checkout_requested).
+- **Checkpoint PASSED — kitchen overrides + instructions-updated email, Sol r3 (Oct13, local live).** Report: `.phase0-harness/kitchen-overrides-email-checkpoint.md`. r2's kitchen-terms edits reverted (8 terms files byte-identical to baseline; only the LOCATION `kitchenTermsUrl` remains in the schema). Server 293 pass / same 7 baseline failures; client 134/0; tsc, i18n, whitespace clean. One unrelated pre-existing failure noted: `BookingCancellationChooser.test.tsx` "hold will be released" copy assertion.
+  - Live on the restarted harness (CAPTURE_MAIL=1, sink on :2525; worker off; no Stripe listener), kitchen 54 / location 47, new $0 fixture **127** (upcoming, 3 h ahead):
+    - Manager tab shows per section "Using {location} default · Customize for this kitchen"; the location defaults have their own entry; the preview is per kitchen.
+    - Customizing departure and saving (via the page-header Save) wrote ONLY the override row (`kitchen_checkin_checkout_overrides` k=54: departure set, arrival NULL = inherit); the location row was untouched.
+    - The chef's visit page for 127 showed the kitchen-specific departure note and "Newfoundland Time" (friendly zone label, polish item done).
+    - An `instructions_updated` outbox row was queued for 127 only (chef-only, sections=[departureInstructions], revision 1). Delivered through the real delivery path to the sink (`.phase0-harness/deliver-one.mjs 127`): mail 0007, subject "Booking instructions updated at PHASE0 Main Kitchen", name greeting, kitchen/location, visit time with zone label, reference KB-127, booking link, current departure text, no "Chef"-as-noun, no "admin"; viewport meta + lang attr present; text/plain part present.
+    - Coalescing verified: after row 48 was delivered, the next three saves (EDIT-A, EDIT-B, then the reset) all merged into ONE pending row (49), now at revision 3 — one pending email per booking, updated in place, as designed.
+    - "Use {location} default" reset deleted the override row; the section returned to "Using … default".
+  - Harness limitation found (not a product bug): the local worker endpoint returns 503 because the harness DATABASE_URL is the transaction pooler (:6543) and `assertWorkerSessionConnection` requires a session connection; delivery was exercised via the direct function instead. Email greeting still uses the account display name ("TestSprite chef") because that is the synthetic user's name.
+  - State left: fixture 127 retained (confirmed, not started); override row for kitchen 54 deleted; location 47 row at baseline; outbox row 49 pending (will deliver only through the real worker/Inngest on dev).
+  - **STOPPED here at the owner's request (model change).** Nothing committed, pushed, deployed or migrated beyond 0072 (already recorded).
+- Opus Customers design `phase0-manager-customers-design-opus-r1-20261013`: task status "failed" (rate limit on its final message) but the document is COMPLETE at `design-manager-customers.md` (536 lines, sections 0–H + sources). Parent cancelled the task to avoid an auto-resume spending credits; owner noted the limit had refreshed and it should not have been stopped — nothing was lost. Lesson recorded: do not cancel a rate-limited task; let it resume. Key findings for the owner: (1) revoking access doesn't stick (self-healing re-grant in `chef.service.ts:186-200`, `booking.service.ts:112-144`); (2) booking may be possible at application tier 2 before the manager's final review; (3) revoke is two non-atomic requests with no handling of paid future bookings; (4) heavy manager polling on Hobby; (5) customer document expiry is never re-checked after approval; (6) account deletion purges booking/payment history. Six owner questions in §H.
+- Still running (read-only): `phase0-company-booking-policy-sol-r1-20261013` and `phase0-booking-model-gaps-sol-r1-20261013`.
+- Historical (superseded) note:
+  - `phase0-kitchen-overrides-email-sol-r2-20261013` (Sol High, local): kitchen overrides, kitchen terms PDF, the `instructions_updated` email and the r1 polish items. Report goes to `.phase0-harness/kitchen-overrides-email-checkpoint.md`.
+  - `phase0-booking-model-gaps-sol-r1-20261013` (Sol High, read-only) → `research-booking-model-gaps.md`. Owner concern: the booking time model (hourly fixed slots, single-day daily), invites with custom price, check-in/out (early arrival / late departure) requests, in-session extension, and anything else needed to feel end to end at par. Ranked P0/P1/P2 with a short owner-question list.
+  - `phase0-company-booking-policy-sol-r1-20261013` is still running.
+  - `phase0-manager-customers-design-opus-r1-20261013` (Opus High, read-only) → `design-manager-customers.md`: the manager Customers list/detail, the Today board, privacy, edge cases, phased plan and wireframes.
+- **Owner decision (Oct13):**
+  - Access stays approved per LOCATION (verified: `chef_location_access`, `shared/schema.ts:790-798`; the per-kitchen table is legacy and unused). This matches The Food Corridor's facility onboarding.
+  - **Terms are location-level only (option 1).** Kitchen differences go in per-kitchen rules and instructions.
+  - Sol r2 was CANCELLED mid-run (owner: stop spending on the unwanted scope) and replaced by `phase0-kitchen-overrides-email-sol-r3-20261013` (Sol High). r3 first reverts r2's partial kitchen-terms edits, keeping location terms exactly as before, then builds overrides, the update email and the polish items. The `kitchens.kitchen_terms_url` / `kitchen_terms_uploaded_at` columns from 0072 stay unused; dropping them later needs owner approval.
+- **Owner confirms a manager Customers area is needed:** manage each customer individually, with their status and upcoming activity. Restricting a customer to specific kitchens is to be decided in that design.
+- Next (after the r1 terminal result): Sol High r2 to wire the overrides into the resolver, write route and setup UI ("Using {location} default · Customize for this kitchen"), kitchen terms override, and the `instructions_updated` booking email (chef-only, one coalesced pending row per booking, delivery-time revalidation, upcoming confirmed bookings plus checked-in visits for departure changes, triggered by instruction AND task changes). Opus High to review the setup UX.
+
+## Oct13 final checkpoint / stop
+
+Opus r6 completed the manager instruction-tab/task-page split: 94 focused tests, i18n lint, scoped whitespace check, and final whole-project typecheck exit 0. Report: `.phase0-harness/arrival-tab-instructions-checkpoint.md`. Instructions render directly in Arrival & departure; Customer tasks is a separate full page with selected kitchen/location and matching breadcrumb. Each surface submits only its own fields. The tab's imperative save bypasses an invisible status-button cooldown, allowing immediate save/retry through the leave guard.
+
+Parent's authenticated local walkthrough used manager379, kitchen54/location47 only. Edited arrival note; opening Customer tasks showed the unsaved-change guard. Keep editing retained the draft with zero PUTs. Reopening and choosing Save Changes made exactly one PUT containing only `checkinInstructions`, persisted the note, preserved all four task/photo arrays, and opened Customer tasks with kit54/location47. Back to kitchen returned to the same Arrival & departure tab. A second UI save restored the original note. GET corroborated exact baseline restoration of both notes, all arrays, both enable flags and timeWindowSettings. No task, activation, timing, booking or financial mutation was made. At live 390px width, document width was390, fields stacked at x33/w324, selected tab right341.91 within scroller right374 and clear of32px fade/chevron. Snapshot was duplicated by the preview renderer; this is responsive behavior evidence, not comprehensive aesthetic approval.
+
+Orchestration correction: failed Codex r5 automatically resumed when its limit reset, briefly overlapping Opus r6. Parent discovered pending work while answering the owner, cancelled r5 including its resumed turn, and read its interrupted result. Opus retained matching current-source mobile alignment changes and completed final verification. Both tasks are terminal; no active implementation agent remains. Earlier claim that Codex had not resumed was incorrect.
+
+Remaining limitation: Customer tasks Save and leave within2.5s of a failed pinned save can require a second click; draft is retained. One task-mode test flaked once under load, then passed repeated runs. Native browser Back/unload prompts were not exercised live. Broader pending work remains visit-code persistence/new-confirmation enrollment, shared scheduled-end/history/report eligibility timezone contracts, automatic no-tap closeout/exception proof, private feedback, durable timed reminders, cancellation/remedies and deferred settlement. This checkpoint does not complete the full booking redesign.
+
+Owner-requested stop point reached. No new feature/delegate, commit/push/deploy, schema migration or production action. Resume from this section and the handoff when owner returns.
+
+## Oct13 harness restart / final checkpoint recovery
+
+T3 restart cancelled the old local launcher. Owner asked to continue and noted Claude is available again. The Sol instruction-tab resume r5 was terminal FAILED (usage limit), with partial source and no `arrival-tab-instructions-checkpoint.md`. Started one completion round, not a new feature: `phase0-arrival-tab-final-opus-resume-r6-20261013` (Opus5.5 High), full task ID `node:delegated-task:command%3Amcp%3A9c88b28d-e1ac-4960-bc30-406261a78708%3Adelegate-task%3Aphase0-arrival-tab-final-opus-resume-r6-20261013`. It owns only interrupted manager UI/nav/locales and final focused tests/typecheck; parent owns live review. Read its terminal report before editing those files.
+
+Guarded launcher restarted successfully with dev Supabase/Stripe-sandbox guards, outbound suppression, local worker disabled, no Stripe listener and credential blanking intact. Local authenticated manager379 GET fixture125/details returned200: completed/checked_out, saved arrival `22:49:01.169Z`, checkout request `23:54:01.169Z`, approval `23:55:31.144Z`, saved shared manager message and deadline `2026-10-13T00:54:01.169Z`, America/St_Johns. Page corroborated that closed inspection record. No new clear/assistance/claim action, DB fixture or financial operation was created for this reread. Backend196-case evidence is reused because source is unchanged; no additive unique test count claim.
+
+Owner's requested finish point remains: close existing instruction-tab checkpoint, focused local walkthrough/current-state report, then stop. Codes, shared historical/closeout clocks, feedback, timed-reminder scheduling and settlement are not newly started. No commit/push/deploy/migration. Final revised UI live checks await r6 completion.
+
+**Owner checkpoint/stop request:** after the current instruction-tab and ordinary timezone tasks finish, run one focused local walkthrough using existing evidence where sufficient, report achievements and remaining work, then stop until owner resumes. Do not start visit-code implementation or another feature after those handbacks.
+
+Ordinary timezone handback `phase0-single-visit-timezone-sol-r2-20261013` completed: owned location zone now controls single/contiguous arrival bounds, departure-only opening and actual HH:mm fields; UTC instants, saved windows and lifecycle policies preserved.196 mocked tests across9 files passed, including81 single-service cases and the prior84-case group (not additive unique counts), whitespace pass. Whole-project typecheck/live API remain with parent after UI terminal. Shared attendance scheduled-end, report-after-end, historical-review and manager Today filtering still use default-zone contracts; exact caller map in ignored `single-visit-timezone-checkpoint.md`. Those are deferred clock/closeout follow-ups, not repaired or a reason to expand work beyond the owner's requested stop point. Instruction-tab resume remains the current pending task.
+
+## Timezone prerequisite handback and interrupted UI recovery
+
+Sol split/assistance backend pass `phase0-visit-timezone-prerequisite-sol-r1-20261013` completed:84 mocked tests across5 files, whitespace pass. Split arrival bounds, departure-only opening and actual wall times now use owned location timezone with the existing legacy fallback. Assistance resolves raw minute-local input only after manager ownership, rejects missing/repeated DST wall times unless explicitly disambiguated, preserves UTC/offset instants and separates reported departure from recording time. Configured windows/statuses/locks/CAS/duties/notices remain unchanged. Typecheck encountered3 errors in unfinished Opus-owned settings UI; no whole-project green claim.
+
+Parent closed the client assistance gap: VisitAssistancePanel receives the kitchen zone from manager inspection/detail callers; unambiguous kitchen input is submitted as raw datetime-local for server-owned conversion, repeated times send the selected ISO occurrence. Storage keeps its existing explicit ISO conversion/default behavior. Labels/history use the displayed kitchen zone.35 focused assistance/attendance/inspection UI tests passed, including Tokyo without false DST ambiguity and Toronto's second autumn occurrence `06:30Z`. No live assistance API/DB trial yet; the running server needs restart after backend handback before using new raw-time payloads.
+
+Ordinary single/contiguous booking lifecycle still has fixed-zone behavior; Sol High follow-up `phase0-single-visit-timezone-sol-r2-20261013` now owns that existing service/tests. Shared scheduled-end/attendance and historical review readers also have default-zone uses; these remain a traced separate clock contract and are not claimed fixed. Code/retry/financial semantics are outside this pass.
+
+Opus instruction-tab split `phase0-arrival-tab-instructions-opus-r4-20261013` FAILED with Claude API rate limit; no active child remains. Its source is partial, not rolled back or treated complete. Resumed as new Sol High task `phase0-arrival-tab-instructions-sol-resume-r5-20261013`, retaining original brief, prior results, mobile-resize objection, partial-save/dirty-guard requirements and3 current owned compiler errors. It owns manager UI/nav/locales only; parent assistance changes and the other Sol's backend files do not overlap. Parent will review and do authenticated instruction/task split checks after terminal result. No fake code UI or migration was added.
+
+**Visit-code rollout decision (owner follow-up):** new confirmations only. Owner reports no current production bookings; avoid a separate retrospective customer conversion/consent experience. This is owner-provided context, not a verified production query. Preserve accepted development fixtures and test old/new confirmation behavior without rewriting historical records. The optional rollout question is answered; it does not itself authorize the proposed persistent credential migration/key provisioning or deferred settlement.
+
+## Resume after owner pause — navigation and instruction-tab checkpoint
+
+Owner resumed local work, requiring digestible browser/API/data checkpoints, UX observations logged or repaired in scope, three-provider routing with Medium/High effort, and development-only pushes if specifically needed for testing. No push is needed yet. Pause is revoked; historical pending visual tasks are completed, not restarted.
+
+Live manager379, location47/kitchen54: My Kitchens → Arrival & departure → shared setup → Back to kitchen preserved `kit=54`, `locationId=47` and selected section. Dirty instructions opened the existing focused leave confirmation. Keep editing retained the draft and sent zero PUT. Save and leave sent one settings PUT, waited for persistence, and returned to the same kitchen/section; GET confirmed the labelled note. A second explicit save restored the exact original notes, stage flags, four arrays and timing fields. No other fixture records were modified. Haiku independently reran60 mocked navigation tests and checked268 literal manager keys across EN/FR/UK. It flagged native Back/unload gaps in the old full-page settings flow; these are now acceptance cases for the revised split, not verified fixes.
+
+Mobile issue: selected restored Arrival & departure tab can sit beyond the scroller. Parent added horizontal-only selected-tab visibility and a mocked geometry regression;51 focused kitchen/setup/editor tests passed. A subsequent live viewport resize still left the tab partly clipped, so mobile resize/return visibility is NOT yet closed. No document horizontal overflow was seen. Shared-scope copy was repeated in header/body; parent reduced the body to the publication/zero-task rule, keeping scope in the header. Customer-task tag now says Optional to add, preserving customer requiredness.
+
+**Owner supersession:** instructions should appear directly inside the kitchen’s Arrival & departure tab; the optional-added substantial task list should open separately. New Opus High implementation `phase0-arrival-tab-instructions-opus-r4-20261013` replaces the interim tab→landing→all-settings design. It must keep one save owner per surface, guard drafts, expose shared-location scope in the tab, and write only its own fields (instruction changes cannot overwrite unseen tasks; task changes cannot overwrite newer notes/timing). Existing server endpoint merges supplied fields; no backend/schema change is needed for this UI split. User preference for full pages applies to the larger task editor; it does not require a redundant page for two instruction fields.
+
+Read-only DeepSeek and Opus code research completed. Their claims were checked against current source: ordinary/contiguous bookings do not have kitchenBookingVisits rows, so code credentials only on that table would omit most bookings. Split-visit functions select location timezone but use fixed Newfoundland bounds; assistance uses default-zone wall time. Sol High `phase0-visit-timezone-prerequisite-sol-r1-20261013` owns that bounded backend repair and mocked tests, with no new clocks/retry/code/money semantics or DB calls. Existing UTC instants must not be reinterpreted. Lost-response replay needs identity/payload provenance, not blanket success for any already-checked-in row.
+
+Concrete next code proposal is `visit-code-checkpoint-proposal.md`: staff-issued attendance challenge, deliberately shared authenticated self-service, assisted/offline recovery, single/split targeting, durable guess counters, current window/status/revision validation, same-operation replay, participant privacy and no financial coupling. No credential schema/key/migration exists yet. Optional owner question is pending about new-confirmation-only rollout versus existing-booking opt-in with customer agreement; silence is not implementation approval. One challenge table/canonical target, key provisioning and trial enrollment remain a review gate. Competitor sources distinguish personal PINs/door credentials from attendance evidence and do not establish universal mandatory app taps.
+
+Current active scopes: Opus manager tab/task split; Sol visit timezone prerequisite. Do not edit their owned source until terminal results. DeepSeek/Haiku routine tasks have completed. Parent will perform real local acceptance and record limits; no financial cohort, real messages, migration, production settings, commit/push/deploy occurred.
+
+## Latest visual checkpoint review — 2026-10-13 00:25 UTC
+
+- Both pending Opus High visual rounds completed. Chef narrow Visit status disclosure removed; current status, kitchen-local schedule/timestamps and next step are always visible, with neutral Kitchen visit title on finished visits. Original task passed39 related mocked tests/typecheck. Parent corrected automatic-closure copy (does not claim personal manager inspection) in EN/FR/UK and a cancelled-with-recorded-arrival title edge. Final focused27 tests pass, whitespace clean. Real signed-in chef fixture125 shows closed status/times without disclosure, no live instructions/submissions, 390px document width390. No DB/provider writes in this follow-up. Screenshot was inspected but compositor blur means no comprehensive visual sign-off.
+- Manager visual cleanup completed: one card with instruction/tasks/timing/preview sections, desktop paired instruction fields/mobile stacking, concise help/examples, one pinned Save after edits (hidden bar inert), timing before preview, touch-visible task row actions.26 mocked settings tests/typecheck/i18n lint pass. Current manager setup locale block has43 keys; earlier41-key count is historical. Source serialization, legacy optional flags, storage flows and existing activation policy are unchanged. Exact report/screenshots: `.phase0-harness/manager-setup-visual-checkpoint.md` and `setup-visual/shots/`; static mocks are not live final-layout proof.
+- Owner-required discoverability is now delegated separately: `phase0-kitchen-visit-navigation-r1-20261012`, GPT-6.1 Sol Medium, full task ID `node:delegated-task:command%3Amcp%3A9a35aa08-042a-46bf-905b-5a8014c149e9%3Adelegate-task%3Aphase0-kitchen-visit-navigation-r1-20261012`. It owns kitchen entry/return/context and focused guard tests, not activation or code semantics. Read result before editing its owned navigation/setup-header files. Visit-specific code remains unimplemented; next code proposal still precedes schema authorization.
+- Remaining chef rough edges recorded by Opus: cancellation summary hard-coded Newfoundland zone, early Open check-in CTA, inconsistent status casing, photo uploader keyboard/screen-reader focus, secondary history disclosures. None is claimed repaired by the status pass. Claims/settlement clocks, actual uploads and feedback remain separate.
+
+## Restart continuation — 2026-10-12, 23:55 UTC checkpoint
+
+- Recovered this thread's durable activity, prior decisions and ignored reports. Inspection and setup tasks were terminal usage-limit failures with no pending child runs; their source survived. Resumed as new T3 tasks: `phase0-inspection-resume-r2-20261012` (GPT-6.1 Sol High), `phase0-setup-resume-opus-r2-20261012` (Opus 5.5 High for UX quality). DeepSeek v4.1 Flash Medium recovered Customers/Today evidence. Haiku 5.5 Medium verified preparation regressions and is integrating setup translations. Only Medium/High is selected. Pricing is owner-reported, not verified by the model catalog.
+- Guarded local launcher restarted: sandbox key/dev Supabase checked, outbound suppressed, local recurring worker disabled, R2/Twilio/Inngest/Sentry blank, `NO_STRIPE_LISTEN=1`; no duplicate webhook consumer. Authentication reused synthetic manager379/chef380 through password sign-in; no login-helper/credential file was created or exposed. Correct role hosts are `kitchen.localhost:5001` and `chef.localhost:5001`; plain localhost's main-domain routing does not render manager routes.
+- **Manager inspection review completed locally:** fresh pre-clear context must retain the saved requirements, valid unchanged deadline and kitchen timezone as well as selected-visit/booking revision. Lost or changed context blocks POST and keeps the note. Resumed task passed 57 frontend tests, 21 server tests and TypeScript. Parent simplified architecture-heavy inspection copy into the actual review/clear/report task; all 24 inspection tests passed afterward.
+- **Authenticated inspection proof:** new fixture125, chef380/kitchen54/location47, explicitly seeded attendance, $0, no PaymentIntent or ledger. Earlier fixtures118–124 retained. Native confirmation dismissal sent zero clear POST and kept the draft. Temporarily setting only125 to `checked_in` made pre-clear refresh block the stale action with “Visit changed”; zero POST, note retained. Restored `checkout_requested`, refreshed, retried and accepted confirmation: exactly one clear POST with the shared message, HTTP success, refreshed completed/checked-out UI. SQL corroborated checkout approval `2026-10-12 23:55:31.144` and the saved message; ledger empty. This does not verify paid service, transfers or bank payout. The first seed used JavaScript Date parameters with timezone-sensitive pg formatting; corrected only this owned fixture to explicit UTC ISO strings, and fixed the diagnostic script before further tests.
+- Fixture125's chef detail page shows the shared manager message and historical attendance, without the live preparation panel. Manager issue entry opens support reporting without making a claim/charge mutation. Actual uploads, two-sided private feedback, staffed/self-service visit codes, exact reminder timers and deferred settlement remain separate unfinished checkpoints. Fixture124 was already completed when revisited (closure recorded20:30UTC); no pending-inspection claim is based on that row.
+- **Preparation regression:** Haiku independently passed63 reminder tests and20 preparation/visit tests. Both arrival/departure eligibility helpers explicitly require confirmed status; its tentative concern about completed live action buttons was checked against those helpers and is not a reproduced bug. Reminder timing remains recurring-worker delivery, not minute-exact due-time scheduling. UI retaining guidance during `cancellation_requested` while reminders pause is not by itself a contradiction requiring a policy change.
+- **Access ownership repair:** parent verified DeepSeek's report: DELETE `/api/manager/chef-location-access` had role/email middleware but no location ownership check; repository deletion used only body IDs. Local repair validates positive safe-integer IDs and verifies `location.managerId` before revoking.13 actual-route mocked regressions passed (foreign/missing locations, invalid IDs, failed lookup, owned success). No live cross-manager revocation was attempted; admin route/service behavior preserved. Not deployed.
+- Customers/Today evidence is recovered: no customer aggregate or navigation exists; reuse `manager-overview-lifecycle` next-action rules, current application/tour/access relationships and existing Today component. Owner-selected visit code supports staffed/unattended arrival; private offers are before-confirmation first. Neither feature was silently enabled. Claims escalation/charge provenance remains a consequential unresolved boundary; inspection claim mutation remains unavailable on the new page.
+- Browser DOM check at390px gave document width390. Screenshot transport produced stale/duplicated compositor images despite correct DOM state, so no new screenshot visual sign-off is claimed. Source, tests and retained fixtures remain local/uncommitted/undeployed; no migration, production change, SMS, real email or payment execution was performed.
+
+Setup handback completed: Opus passed25 focused settings tests and TypeScript; Haiku integrated41 source-matching setup keys in en-CA/fr-CA/uk and verified ICU substitution. Targeted locale tests passed1633 with9 failures in untouched booking-history ICU entries; no full green claim. Old18-key report map is superseded. Native-speaker translation review/ESLint toolchain remain open. Parent live location47 smoke: whitespace arrival shows error/disables all visible Saves/no PUT; changed note updates preview/no autosave; one explicit save persisted both stages, both notes, four empty task/photo arrays and unchanged null timings. A second save restored the baseline; GET compared all ten fields and matched exactly. T3 typing reported success without changing controlled values; native textarea setter/input events in the owned browser produced the actual form test. Hidden aria-hidden pinned content is not a visible unsaved-change error.
+
+**New owner visual observations:** narrow chef “Visit status” disclosure hides essential context; manager kitchen setup instructions are intuitive but presentation is cluttered. Separate bounded Opus High visual rounds now run: `phase0-chef-status-ux-opus-r1-20261012` owns chef status/actions/preparation sections; `phase0-setup-visual-opus-r3-20261012` owns manager setup layout/tests. Essential status/next action should be visible; repeated Save controls, nested panels, typography/spacing and timing placement need visual review. Source clocks, backend, financial behavior and fixtures are outside both tasks. Read terminal results before editing their files. These visual checkpoints are pending, not completed by the earlier copy pass. Full task IDs are in durable T3 activity. Port5001 was restarted to load the local server guard, with suppression/worker-off/no-listener unchanged.
+
+Owner follow-up: setup must be discoverable from the selected kitchen, alongside existing kitchen sections, without needing the agent’s direct URL. Current entry is My Kitchens → selected kitchen → Details & Pricing → tracking configuration, which navigates to shared location setup; there is no dedicated arrival/departure kitchen section. Add clear kitchen-context entry/return and shared-location scope to navigation acceptance; preserve dirty-navigation guard and kitchen identity. Visit-specific attendance codes remain NOT implemented: staffed kitchen handover, deliberately shared self-service mode, wrong/expired/unavailable recovery, per-visit authorization/revision/replay protection and no payout coupling are recorded proposals. No unanswered question blocks current UX repairs. A concrete code implementation proposal must identify schema/rollout and unattended disclosure before migration authorization; do not silently enable the deferred code/settlement architecture. Next order: review both visual rounds and kitchen navigation, then code checkpoint, then scheduled-end/missing-tap/inspection-remedy closeout; feedback, timed reminders and before-confirmation offers/customer context remain in the existing roadmap.
+
+Final guard follow-up: authenticated DELETE using chef380 and a nonexistent location was denied without revocation, but returned500 because the real location service throws a404 DomainError rather than returning null. Switched the route catch to the existing `errorResponse` helper and added the real-service-shaped regression:14 route tests now pass. The corrected404 response has mocked verification; another server reload is required before claiming its live HTTP status. Foreign-location denial is mocked only; no other manager's real records were touched. Direct completed chef visit route125 also hides instructions and live submit controls. Agent-owned browser tab closed after tests to stop idle polling; guarded listener remains running for follow-up.
+
+**Continuation precedence:** read [continuation-handoff.md](continuation-handoff.md) for the recovered earlier thread, latest owner directions and qualifications to older proposals. The existing eight phases in `../booking-target-phases.md` remain the roadmap. Latest instruction is to keep harness testing, fix bounded issues and verify each checkpoint; it is not blanket approval of numerical policies, migrations, settlement enrollment or production rollout.
 
 Companion docs (same folder):
 - `phase0-evidence-pack.md`: environment map, walkthrough, ranked defects (C1–C2, H1–H6, M1–M10).
@@ -40,7 +477,7 @@ Companion docs (same folder):
 ## 3. Synthetic test data we own (clean up at the end)
 - Users 379 (manager), 380 (chef), 381 (admin via dev bypass). All `@localcooks.test` except the admin login.
 - Location 47, kitchen 54 (oven $25 rental, fridge $12/day), Stripe Express account `acct_1UPWdbCf9PlKmwqd`.
-- Bookings 114 (paid → cancelled → refunded), 115 (voided by the C1 race), 116 (pending → cancelled by the chef).
+- Bookings 114 (paid → cancelled → refunded), 115 (voided by the C1 race), 116 (pending → cancelled by the chef), 117 (lifecycle run, paid, transfer `tr_3UPnFICvcNYAkDXN0OXnf8xG`).
 - Outbox events 20–25 (these bookings; undeliverable `.test` recipients), two R2 objects, APPLICATION-67.
 - Local harness files.
 
@@ -48,10 +485,10 @@ Companion docs (same folder):
 | # | Topic | Decision | Date |
 |---|---|---|---|
 | D1 | Klarna/BNPL | Off for kitchen bookings (`payment_method_types: ['card']`, both checkout paths). Stripe also bars Klarna for B2B. **Done.** | 10-11 |
-| D2 | Service fee | Admin-configurable; **0% in pilots and must not surface anywhere when 0**. Local Cooks is GST/HST-registered, so HST on the fee applies when > 0. | 10-11 |
-| D3 | Kitchen tax | Set by the manager and passed to the manager. Local Cooks doesn't collect kitchen tax on its own account. | 10-11 |
+| D2 | Service fee | Admin-configurable, including zero; **must not surface when that transaction's recorded fee is 0**. Owner permits refunding the platform fee where appropriate. Universal pilot-zero and GST/HST registration were earlier lead assertions, not verified by recovered owner messages; verify registration/basis before changing fee tax. | 10-11; qualified 10-12 |
+| D3 | Kitchen tax | Location tax settings are manager-controlled; kitchen-tax proceeds are intended for the manager. The Stripe charge lands on the platform balance; legal supplier/agency, registration, collection and remittance responsibilities remain separate verification gates. | 10-11; qualified 10-12 |
 | D4 | Before confirmation | Card hold only; chef cancel releases it, 100% back, nothing charged. | 10-11 |
-| D5 | After confirmation, before the window | **Self-serve**, instant cancellation with an automatic refund. No manager approval. The **actual Stripe processing fee is non-refundable** and must be disclosed before payment and shown as an exact amount on the cancel screen. Research supports this: Peerspace retains fees "in all cancellations". | 10-12 |
+| D5 | After confirmation, before the window | **Self-serve**, instant cancellation with an automatic refund. No manager approval. Owner chooses to exclude the **actual Stripe processing cost**, disclosed before payment and itemized on cancellation. This is Local Cooks' proposed implementation of owner policy, not a Stripe prohibition on full customer refunds. The earlier Peerspace "all cancellations" claim is overbroad: its current Very Flexible early tier includes fees. Specialist validation/clear wording still required. | 10-12 |
 | D6 | Inside the window | The chef can still cancel. The default refund follows the kitchen's disclosed policy. **The manager decides any discretionary refund**, any amount up to total minus the Stripe fee, and can never refund the Stripe fee. | 10-12 |
 | D7 | Policy modularity | Managers may keep money only if their terms disclosed it before booking. The policy is structured (tiers and presets), generates the text everywhere, and is snapshotted on each booking. Design delegated to Codex. | 10-12 |
 | D8 | Damage deposit | **Removed for now.** **Done** (see §6). A claims flow may come later. | 10-12 |
@@ -84,13 +521,59 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - **Chef can't cancel inside the window:** `bookings.ts` ~2229 returns 400 ("cannot be cancelled within {hours} hours"), which contradicts D6.
 - Terms (`TermsContent.tsx` §4.8) still describe damage deposits conditionally; to be revised along with the policy work.
 
+### Vercel Hobby budget (2026-10-12)
+- The Hobby team gets **4 h Active CPU/month, a hard cap shared by dev and production**. Usage hit 75% on Oct 6 and 100% on Oct 7. The cause was the dev Inngest tick every 2 min: ~720 runs/day × ~1.3 s CPU ≈ 7.8 h/month. Production (`main`, 56 commits behind `development`) has no outbox, worker or `LIFECYCLE_*` env yet.
+- **Vercel's terms restrict Hobby to non-commercial use.** Taking payments counts as commercial, so production should be on Pro regardless of CPU.
+- Fix shipped (`a6d500a9`): booking notices are **event-driven** (each new outbox row sends `localcooks/booking.notice.queued`; the debounced per-booking function `booking-notice-delivery` delivers within ~10 s). The tick is only a backstop: production every 15 min, staging every 30 min (`LIFECYCLE_CRON` overrides). Estimated staging cost: ~48 runs/day ≈ 0.5 h/month.
+- Remaining ideas: a one-query "anything due?" early exit; per-reminder `step.sleepUntil` in place of polling; fewer checkpoint writes; `sslmode=verify-full`.
+
+### Live lifecycle run, booking 117 (2026-10-12) → `lifecycle-walkthrough.md`
+- Event-driven notices verified live (manager request email 17 s after booking; `.test` addresses parked as undeliverable). Klarna absent and deposit absent, verified on dev.
+- **Manager is paid at confirmation**: $55.43 transferred 1 h 46 m before the session. Express payout schedule daily, 7-day delay; `losses.payments = application`. Recommend deferred settlement (pay after the session + closeout), matching Airbnb, Peerspace and Turo.
+- A booking made inside the window was never warned; the deadline shown predates the booking.
+- Bookings only complete via checkout; otherwise "Confirmed" forever. No reviews.
+- Synthetic users 379/380 have `password_set_by_user = true` (set by me for dev login). Test password is in `.phase0-harness/.synthetic-pw` (git-ignored).
+- Commits: `f06f736c` (5xx at DATA = permanent).
+
 ## 8. Open questions for the owner
 1. Short-notice requests: make the manager's deadline the earlier of 24 h or a fixed lead before start (structural; recommended), versus raising the default minimum notice.
 2. Platform service fee inside the window when > 0: refund it proportionally to the manager's discretionary refund? (Moot while it's 0%.)
 3. Deliverable mock inboxes for dev testing (e.g. plus-addresses on a Local Cooks mailbox), or keep the local SMTP sink plus `test_admin`?
 
-## 9. Next steps
-1. Commit and push the worker, email-retry, deposit and Klarna changes to `development`; measure worker timings on Inngest.
-2. Continue the scenarios in §5 ("not yet exercised") with the local harness (`NO_STRIPE_LISTEN=1`).
-3. Review the Codex policy design; turn it into the Phase 1 plan.
-4. Fold §7 into the evidence pack and backlog.
+## 9. Next checkpoints (updated continuation)
+1. The earlier worker/email/deposit/Klarna work is already in commits `771c0f47`, `a6d500a9`, and `f06f736c`; do not recommit it. The five-minute cadence in §6 is intermediate history; §7 records current staging 30-minute / production-default 15-minute backstop behavior.
+2. Continue scoped harness scenarios; record browser, API, DB and provider separately. No local Stripe listener. Distinguish simulated attendance fixtures from real sandbox authorizations.
+3. Complete the first bounded visit UX checkpoint: a full-page chef arrival/departure task; prominent instructions separate from saved checklist/photo requirements; meaningful errors/draft retention and refreshed successful outcomes. Then test manager inspection and missing-tap exit paths. Do not label the entire redesign complete from a happy-path pass.
+4. Reconcile the cancellation/support/check-in reports into the existing eight-phase plan. Older gross convenience-refund recommendations are superseded by D5; kitchen/platform-fault remedies and exact windows still require their own decision.
+5. Introduce private booking feedback as part of the redesign, using tours' participant-own/operator-private precedent. Do not make reviews public or let a conflict flag automatically decide attendance, liability or payment.
+6. Preserve separate service-end, inspection, customer-remedy, damage filing/response, transfer and bank-payout states. No early manager clear may silently erase customer protection; no forgotten tap may be the sole indefinite settlement gate. Exact target clocks remain proposed.
+
+## 10. Continuation on 2026-10-12
+
+- Recovered the full original thread messages and independently reconciled its decisions. Earlier "Phase 0 done" meant the first diagnostic walkthrough, not complete exception coverage. See `continuation-handoff.md` for scope and decision provenance.
+- Owner prefers substantial booking tasks as full pages. Reserve modal dialogs for focused confirmations/alerts and short actions. Arrival/departure instructions must be distinct from configurable actionable checklist/photo evidence. Tours are the UX reference, not a complete business-rule template.
+- Owner requests private two-sided booking feedback and operator flags, with public exposure deferred. Owner routing preference: Codex for consequential work, Haiku for routine Claude work, Opus only when justified; delegated effort never above High. Code Buddy `deepseek-v4.1-flash` is available and executed a bounded read-only PDF index at Medium. Owner reports free pricing; pricing was not independently verified.
+- Both new PDFs were extracted and treated as hypotheses. Full amendments and multi-day storage redesign remain deferred; their existing coupling and original-contract/cancellation-clock invariants must be preserved.
+- Harness verified sandbox test key/dev Supabase, no listener, outbound suppressed, recurring worker disabled, R2/Twilio/Inngest/Sentry blank. Authenticated only existing synthetic users 379/380. No shared settings, real-user data, production or live Stripe changes.
+- **New attendance-only fixtures:** 118 no taps, 119 missed departure, 120 expired submitted inspection, 121 zero required evidence. They have no PaymentIntent, no charge and no financial ledger; their manually staged states are not a paid end-to-end test. 118/119 remain confirmed after end; 120 auto-completed after its saved 60-minute review window via GET `checkin-status`. 121 accepted real check-in and checkout POSTs without photos/items; UI still incorrectly labels generic photos required and keeps the dialog open. Details in `lifecycle-walkthrough.md`.
+- **Real sandbox booking 122 (KB-4JE5RW):** October 16, 10–11 a.m., $30.50, PI `pi_3UPny1CvcNYAkDXN19XFq3ug`. Authorized through real hosted Checkout; manager declined through the UI. Stripe status `canceled`, received 0, capturable 0; SQL booking cancelled/payment failed and completed release decision. No capture/transfer/refund. Immediately after success the manager UI wrongly retained Payment Held/estimated payout; reload corrected money but called the manager decline Expired. Review dialog also displayed October 15 while detail correctly showed October 16.
+- **Bounded response fix:** `booking-payment-decision.ts` now returns the existing frontend's `authorizationVoided` contract after verified cancellation and on completed-decision replay. Eight focused payment-decision tests passed before and after, including the strengthened retry assertion. Combined check has the same two already-recorded `decision-ordering` failures (9 pass/2 fail across both files); no all-green-suite claim.
+- **Read-only Stripe settings verified now:** test platform country CA, manual payout schedule / delay 3; own test manager country CA, daily / delay 7, transfers active, losses responsibility application. This supports delayed-transfer feasibility in sandbox. It does not prove production settings, permissible holding horizon, protection of retained liabilities or contract/legal approval.
+- Application changes from this continuation are local until validated; no commit/push/deploy or schema migration performed. The initial premature frontend draft was safely shelved before scope recovery. Current full-page implementation is a new bounded Codex task under the owner's newer testing/fixing instruction.
+
+**Retention:** fixtures 118–121, real booking 122, their own new activity/outbox rows and sandbox objects are retained for reproducibility. Never reuse their IDs for a different scenario. Diagnostic scripts/transcript/PDF extracts/private login helper are git-excluded in `.phase0-harness/`; remove the secret-bearing login helper after the walkthrough. Do not annotate or delete unrelated shared email-log rows.
+
+### Checkpoint: local full-page arrival/departure repair
+
+- **Implemented and reviewed:** chef booking-list/detail actions open `/booking/:id/visit`, with optional selected-visit targeting. The page separates required operational instructions from configured checklist/photo actions, identifies optional generic photos, uses kitchen-local dates/timezone, exposes submission/load errors, retains in-memory drafts, and refreshes status/list/details/attendance before returning to booking details. Primary visit dialogs are removed from the two callers. Unopened dialogs no longer mount a status poll; unfinished visible visits still poll every 30 seconds. Other attendance/list polling remains; no blanket CPU-cost reduction claim.
+- **Real authenticated fixture 124:** labelled zero-price/no-payment/no-Stripe attendance diagnostic, Oct 12 16:21–17:21. A temporarily staged pending state caused HTTP 400 on arrival. The inline error and note survived; status revalidation hid the unavailable form, revealing a recovery gap. Parent moved the error outside the action form and added manual status refresh, with a focused regression. After restoring the fixture to confirmed, refresh retained the note and real retry succeeded without photos/items at 19:05:13 UTC (16:35 local). The page returned to fresh Checked In details. Departure from the real detail button opened Kitchen departure; empty-evidence POST succeeded at 19:07:23 UTC (16:37 local), returned to fresh Checkout Pending details, and saved its note. Manager page and SQL corroborated both timestamps/messages. No financial proof is claimed for this synthetic attendance fixture.
+- **Real sandbox fixture 123, decline replay:** $30.50 hosted Checkout authorization for Oct 16, PI `pi_3UPoHFCvcNYAkDXN01FaWVJz`. Manager UI response HTTP 200, `status: cancelled`, `authorizationVoided: true`; held-payment/payout estimate disappears immediately. Stripe canceled/received 0/capturable 0/live false; ledger canceled/transfer null. No capture/refund/transfer. 122 remains the before-fix comparison.
+- **Additional display corrections:** manager review preserves its agreed calendar day instead of converting UTC midnight into the previous browser-local day (date-only and ISO regression cases). Cancelled bookings now say Cancelled rather than treating any failed payment as proof of expiry. Cause/actor-specific copy is still future work.
+- **Current verification:** 30 frontend tests across six files pass; eight payment-decision tests pass; TypeScript and scoped whitespace checks pass. Existing two decision-ordering failures remain documented. Configured task/photo payloads, both mocked 400 paths, unavailable-form retry, overnight/selected visits and refresh ordering are covered. R2 credentials stayed blank: actual upload/object access is not verified. Authenticated desktop DOM width 1280 had no horizontal overflow; mobile T3 width 390 did not overflow, and the delegated isolated layout passed at 375. Screenshot-based visual QA could not finish: T3 snapshots timed out twice and Chrome `Page.captureScreenshot` timed out. Do not substitute DOM checks for visual approval.
+- **Baseline qualifications:** 119 initially proved missing departure; later a labelled other-device checkout diagnostic changed it to checkout requested. That later test did not observe the intended stale-form 400; the actual 400/retry proof is fixture 124. 121 was cleared at 18:47:24 UTC, before its scheduled end. Current source already asks native confirmation before clear; older deployed observations require version-aware retesting.
+- **Next checkpoint:** manager inspection/assistance, visible authoritative deadline, clear/issue choices, photo comparison and shared notes, focused confirmations and support exits. Then separately prove no-tap/missed-departure endings, private feedback, timed communications and deferred-transfer eligibility. Exact new clocks and payout cohort remain unapproved.
+- **New cancellation/outcome finding:** a manager-declined uncaptured booking offers View cancellation and refund outcomes; it opens a quote with `500: No cancellation request awaits a decision`. No refund was attempted. Keep this for the cancellation/outcome checkpoint rather than changing financial policy in the visit repair.
+
+**Updated retention:** keep fixtures 118–124 (122/123 real sandbox authorizations, all others attendance-only) and their own activity/outbox/provider evidence. Local source changes remain uncommitted and undeployed; no migrations or account settings changed. Private login helper and temporary login/Checkout HTML are removed after the walkthrough; transcript, extracted PDFs, shelved patch and guarded diagnostic scripts remain excluded for reproducibility.
+
+**Manager checkpoint now running:** delegated Codex High task `phase0-manager-inspection-checkpoint-r1-20261012`, implementation limited to full-page manager inspection and existing supported contracts, with only necessary read-only deadline enrichment. It must not call DB/providers or change clocks/money/roles/lifecycle policy. Parent review and authenticated fixture tests remain required after its terminal result; see the exact task ID/resume rule in `continuation-handoff.md`. Local listener PID33432/port5001 retained, outbound suppressed and local worker/listener disabled. Agent-owned browser tabs are closed after first-checkpoint tests to stop idle polling.

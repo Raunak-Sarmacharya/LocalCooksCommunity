@@ -121,11 +121,9 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'authorizations', run: async () => (await import('./auth-expiry-service')).processExpiredAuthorizations() },
         { name: 'storageCheckout', run: async () => (await import('./storage-checkout-service')).processExpiredCheckoutReviews() },
         { name: 'cancellations', run: cancellations },
-        { name: 'kitchenCheckout', run: async () => (await import('./kitchen-checkout-service')).processExpiredKitchenCheckoutReviews() },
-        { name: 'visitCheckout', run: async () => {
-          const { getCheckinSettings } = await import('./kitchen-checkout-service');
-          return (await import('./kitchen-visit-lifecycle')).autoClearKitchenVisits((await getCheckinSettings()).checkoutReviewWindowMinutes);
-        } },
+        { name: 'clockCloseout', run: async () => (await import('./clock-closeout')).sweepClockCloseout(3) },
+        // Expiry reminders (30/7/0 days); the new-booking block itself is enforced at read time.
+        { name: 'chefDocumentExpiry', run: async () => (await import('./chef-document-expiry')).sweepChefDocumentExpiry() },
         { name: 'tourOutcomes', run: async () => (await import('./tour-outcome-service')).remindUnrecordedTourOutcomes({ budgetMs: 5_000, maxTours: 3 }) },
       ];
       // Every tick reserves delivery opportunities. Background reconciliation and
@@ -137,6 +135,8 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'tour', budgetMs: deliveryTaskMs, run: () => deliverTourEvents(undefined, 1, deliveryTaskMs) },
         { name: 'outcome', budgetMs: deliveryTaskMs, run: () => deliverOutcomeEmails(1, deliveryTaskMs) },
         { name: 'chat', budgetMs: deliveryTaskMs, run: () => dispatchChatDigests(1, deliveryTaskMs) },
+        // Retries access-ended and document-expiry notices that were not accepted inline.
+        { name: 'access', budgetMs: deliveryTaskMs, run: async () => (await import('./location-access-notices')).dispatchAccessNotices() },
       ].map(task => ({ ...task, minBudgetMs: deliveryReserve() })), deliveryState, async () => { state.deliveryNext = deliveryState.nextTask; await save(); }, deadline - 8_000);
       const background = await runFairTasks(tasks, state, save);
       state.failures = [...delivery.failures, ...background.failures];

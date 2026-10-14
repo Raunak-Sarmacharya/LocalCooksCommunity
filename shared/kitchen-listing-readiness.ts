@@ -304,7 +304,6 @@ export interface KitchenReadinessDetails {
   };
   /** Optional for older cached responses; absence is never evidence of setup. */
   visitSetup?: {
-    trackingEnabled: boolean;
     checkinEnabled: boolean;
     checkoutEnabled: boolean;
     arrivalNotesSaved?: boolean;

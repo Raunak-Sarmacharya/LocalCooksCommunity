@@ -4,11 +4,11 @@ import { getAuthHeaders } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { problemDestination, problemStatusLabel, type ProblemHistory } from '@shared/commitment-problems';
+import { problemCategoryLabel, problemDestination, problemStatusLabel, type ProblemHistory } from '@shared/commitment-problems';
 
 type Problem = {
   id: number; bookingId: number | null; viewingId: number | null; kind: string; status: string; claimedBy: number | null;
-  revision: number; description: string; history: ProblemHistory[]
+  revision: number; description: string; history: ProblemHistory[]; category?: string | null
 };
 async function problemRequest(path: string, method = 'GET', body?: unknown) {
   const response = await fetch(path, { method, headers: await getAuthHeaders(), cache: 'no-store', ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -30,6 +30,7 @@ function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staf
   const latestUpdate = history.filter(entry => entry.action !== 'report').at(-1);
   return <article className="space-y-3 rounded-lg border p-4" aria-label={`Problem ${problem.id}`}>
     <p className="font-medium">{kind === 'booking' ? 'Booking' : 'Tour'} #{id} · Request #{problem.id} · {problemStatusLabel(problem.status)}</p>
+    {problem.category && <p className={problem.category === 'safety' ? 'text-sm font-semibold text-destructive' : 'text-sm'}>{problem.category === 'safety' ? 'SAFETY REPORT' : `Category: ${problemCategoryLabel(problem.category)}`}</p>}
     {staff && <p className="text-sm">{problem.claimedBy ? `Assigned to staff #${problem.claimedBy}` : 'Unassigned'}</p>}
     <p className="whitespace-pre-wrap text-sm">{problem.description}</p>
     {latestUpdate && <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">Latest update: {latestUpdate.note}</p>}

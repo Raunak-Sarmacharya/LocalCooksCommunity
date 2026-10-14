@@ -9,6 +9,12 @@ import { format, parse, isValid, addHours, isBefore, isAfter, isWithinInterval, 
 // Default timezone for the booking system (Newfoundland, Canada)
 export const DEFAULT_TIMEZONE = 'America/St_Johns';
 
+/** Long generic names stay friendly through daylight-saving changes. */
+export function friendlyTimezoneName(timezone = DEFAULT_TIMEZONE, locale = 'en-CA'): string {
+  return new Intl.DateTimeFormat(locale, { timeZone: timezone, timeZoneName: 'longGeneric' })
+    .formatToParts(new Date()).find(part => part.type === 'timeZoneName')?.value || timezone;
+}
+
 /**
  * Get current time in Newfoundland timezone
  */

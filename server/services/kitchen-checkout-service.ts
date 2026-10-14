@@ -1,3 +1,5 @@
+import { kitchenCheckinCheckoutOverrides } from '@shared/schema';
+import { resolveKitchenChecklist } from '@shared/kitchen-checklist';
 import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 import { queueBookingLifecycleEvent, deliverBookingLifecycleEvents } from './booking-lifecycle-delivery';
 
@@ -14,9 +16,10 @@ import {
   checkinCheckoutChecklists,
   type KitchenCheckinStatus,
 } from "@shared/schema";
-import { eq, and, lt, or, isNull, sql } from "drizzle-orm";
-import { kitchenDuties, captureKitchenDuties } from './visit-duties';
-import { validateDutySection } from '@shared/visit-duties';
+import { eq, and, lt, or, isNull, sql, inArray } from "drizzle-orm";
+import { kitchenDuties, currentKitchenDuties, validateCurrentKitchenSubmission, captureKitchenDuties } from './visit-duties';
+import { arrivalAlreadyRecordedForRequest, consumeForArrival, gateArrivalInTx, verifyArrivalCode, VisitCodeError, VisitCodeReplay, type ArrivalGate, type ArrivalInput } from './visit-code-challenge';
+import { VisitDutyValidationError, type DutyFieldErrors, validateDutySection } from '@shared/visit-duties';
 import { logger } from "../logger";
 import { isChecklistSectionEnabled, getKitchenTrackingState } from "./checkin-checkout-checklist";
 import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone } from "@shared/timezone-utils";
@@ -28,7 +31,9 @@ import { calendarDateForOperatingTime } from "@shared/operating-hours";
 
 export interface CheckinResult {
   success: boolean;
-  error?: string;
+  error?: string; fieldErrors?: DutyFieldErrors;
+  /** Stable visit-code failure code (see shared/visit-code.ts) and remaining wrong-code attempts. */
+  code?: string; attemptsLeft?: number;
   bookingId?: number;
   checkinStatus?: KitchenCheckinStatus;
 }
@@ -129,6 +134,7 @@ export async function validateRequiredPhotos(
   locationId: number,
   type: 'checkin' | 'checkout' | 'storage_checkout' | 'storage_checkin',
   uploadedPhotoUrls: string[] | undefined | null,
+  kitchenId?: number,
 ): Promise<PhotoValidationResult> {
   const photos = Array.isArray(uploadedPhotoUrls) ? uploadedPhotoUrls.filter(Boolean) : [];
 
@@ -138,7 +144,10 @@ export async function validateRequiredPhotos(
     .where(eq(checkinCheckoutChecklists.locationId, locationId))
     .limit(1);
 
-  const checklist = storedChecklist && activeChecklist(storedChecklist);
+  const [override] = kitchenId && !type.startsWith('storage') ? await db.select().from(kitchenCheckinCheckoutOverrides)
+    .where(eq(kitchenCheckinCheckoutOverrides.kitchenId, kitchenId)).limit(1) : [];
+  const effectiveChecklist = resolveKitchenChecklist(override, storedChecklist);
+  const checklist = effectiveChecklist && activeChecklist(effectiveChecklist);
   // No checklist configured → photos are optional
   if (!checklist) return { valid: true };
 
@@ -146,10 +155,10 @@ export async function validateRequiredPhotos(
   let sectionEnabled = false;
   if (type === 'checkin') {
     requirementsRaw = checklist.checkinPhotoRequirements;
-    sectionEnabled = isChecklistSectionEnabled(checklist.checkinEnabled);
+    sectionEnabled = true;
   } else if (type === 'checkout') {
     requirementsRaw = checklist.checkoutPhotoRequirements;
-    sectionEnabled = isChecklistSectionEnabled(checklist.checkoutEnabled);
+    sectionEnabled = true;
   } else if (type === 'storage_checkin') {
     requirementsRaw = (checklist as any).storageCheckinPhotoRequirements;
     sectionEnabled = isChecklistSectionEnabled((checklist as any).storageCheckinEnabled);
@@ -198,6 +207,7 @@ export async function validateRequiredChecklistItems(
   locationId: number,
   type: 'checkin' | 'checkout' | 'storage_checkout' | 'storage_checkin',
   checkedItems: Array<{ id: string; label: string; checked: boolean }> | undefined | null,
+  kitchenId?: number,
 ): Promise<ChecklistValidationResult> {
   const items = Array.isArray(checkedItems) ? checkedItems : [];
 
@@ -207,7 +217,10 @@ export async function validateRequiredChecklistItems(
     .where(eq(checkinCheckoutChecklists.locationId, locationId))
     .limit(1);
 
-  const checklist = storedChecklist && activeChecklist(storedChecklist);
+  const [override] = kitchenId && !type.startsWith('storage') ? await db.select().from(kitchenCheckinCheckoutOverrides)
+    .where(eq(kitchenCheckinCheckoutOverrides.kitchenId, kitchenId)).limit(1) : [];
+  const effectiveChecklist = resolveKitchenChecklist(override, storedChecklist);
+  const checklist = effectiveChecklist && activeChecklist(effectiveChecklist);
   // No checklist configured → skip validation
   if (!checklist) return { valid: true };
 
@@ -215,10 +228,10 @@ export async function validateRequiredChecklistItems(
   let sectionEnabled = false;
   if (type === 'checkin') {
     requiredItemsRaw = checklist.checkinItems;
-    sectionEnabled = isChecklistSectionEnabled(checklist.checkinEnabled);
+    sectionEnabled = true;
   } else if (type === 'checkout') {
     requiredItemsRaw = checklist.checkoutItems;
-    sectionEnabled = isChecklistSectionEnabled(checklist.checkoutEnabled);
+    sectionEnabled = true;
   } else if (type === 'storage_checkin') {
     requiredItemsRaw = (checklist as any).storageCheckinItems;
     sectionEnabled = isChecklistSectionEnabled((checklist as any).storageCheckinEnabled);
@@ -296,6 +309,8 @@ export async function requestKitchenCheckin(
   checkinNotes?: string,
   checkinPhotoUrls?: string[],
   checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }>,
+  visitCode?: unknown,
+  requestKey?: unknown,
 ): Promise<CheckinResult> {
   try {
     if (!bookingId || bookingId <= 0) return { success: false, error: 'Invalid booking ID' };
@@ -324,8 +339,11 @@ export async function requestKitchenCheckin(
 
     if (!booking) return { success: false, error: 'Booking not found' };
     if (booking.chefId !== chefId) return { success: false, error: 'You do not have permission to check in to this booking' };
+    const arrival: ArrivalInput = { bookingId, visitId: null, chefId, visitCode, requestKey,
+      evidence: { checkinNotes, checkinPhotoUrls, checkinChecklistItems } };
+    // A lost-response retry of the request that already won returns the original success and writes nothing.
+    if (await arrivalAlreadyRecordedForRequest(arrival)) return { success: true, bookingId, checkinStatus: 'checked_in' };
     const duties = await kitchenDuties(bookingId);
-    if (!duties.arrival.enabled) return { success: false, error: 'Check-in is not required for this reservation. Open departure instructions or contact the kitchen manager for help.' };
 
     // Must be confirmed
     if (booking.status !== 'confirmed') {
@@ -347,7 +365,7 @@ export async function requestKitchenCheckin(
     const settings = duties;
     const now = new Date();
     const dateStr = booking.bookingDate.toISOString().split('T')[0];
-    const timezone = DEFAULT_TIMEZONE;
+    const timezone = booking.timezone || DEFAULT_TIMEZONE;
 
     const bookingStart = createBookingDateTime(booking.operatingWindowStartTime
       ? calendarDateForOperatingTime(dateStr, booking.startTime, booking.operatingWindowStartTime) : dateStr, booking.startTime, timezone);
@@ -366,16 +384,24 @@ export async function requestKitchenCheckin(
     }
 
     // Enforce photo requirements against the manager-configured checklist.
-    const photoValidation = validateDutySection(duties.arrival, checkinPhotoUrls, checkinChecklistItems);
+    const photoValidation = validateDutySection((await currentKitchenDuties(bookingId)).arrival, checkinPhotoUrls, checkinChecklistItems);
     if (!photoValidation.valid) {
-      return { success: false, error: photoValidation.error };
+      return { success: false, error: photoValidation.error, fieldErrors: photoValidation.fieldErrors };
     }
 
+    try { await verifyArrivalCode(arrival); }
+    catch (error) {
+      if (error instanceof VisitCodeError) return { success: false, error: error.message, code: error.code, attemptsLeft: error.attemptsLeft };
+      throw error;
+    }
 
     // Perform check-in
-    const actualStartTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/St_Johns', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+    const actualStartTime = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
     const [checkedIn] = await db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
+    await validateCurrentKitchenSubmission(tx, bookingId, 'arrival', checkinPhotoUrls, checkinChecklistItems);
+    // Gate only: the code never writes check-in state. Lock order booking (above) -> challenge.
+    const gate: ArrivalGate = await gateArrivalInTx(tx, arrival);
     const changed = await tx
       .update(kitchenBookings)
       .set({
@@ -396,8 +422,9 @@ export async function requestKitchenCheckin(
         )
       ).returning({ id: kitchenBookings.id });
     if (changed.length) await captureKitchenDuties(tx, bookingId, duties);
+    if (changed.length) await consumeForArrival(tx, gate, arrival);
     if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkin_recorded', 'Kitchen check-in recorded',
-      'The chef recorded arrival. Open the booking for the submitted checklist and photos.', chefId,
+      'Arrival was recorded. Open the booking for the submitted checklist and photos.', chefId,
       { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     return changed;
     });
@@ -416,6 +443,9 @@ export async function requestKitchenCheckin(
       checkinStatus: 'checked_in',
     };
   } catch (error) {
+    if (error instanceof VisitDutyValidationError) return { success: false, error: error.message, fieldErrors: error.fieldErrors };
+    if (error instanceof VisitCodeReplay) return { success: true, bookingId, checkinStatus: 'checked_in' };
+    if (error instanceof VisitCodeError) return { success: false, error: error.message, code: error.code, attemptsLeft: error.attemptsLeft };
     logger.error(`[KitchenCheckout] Error during check-in:`, error);
     return { success: false, error: 'Failed to check in' };
   }
@@ -459,9 +489,11 @@ export async function requestKitchenCheckout(
         startTime: kitchenBookings.startTime,
         operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
         locationId: kitchens.locationId,
+        timezone: locations.timezone,
       })
       .from(kitchenBookings)
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId))
       .limit(1);
 
@@ -471,6 +503,7 @@ export async function requestKitchenCheckout(
     if (booking.status !== 'confirmed') return { success: false, error: 'Booking is not confirmed' };
     const duties = await kitchenDuties(bookingId);
     const status = booking.checkinStatus as KitchenCheckinStatus | null;
+    const timezone = booking.timezone || DEFAULT_TIMEZONE;
     const departureOnly = !duties.arrival.enabled && duties.departure.enabled && (!status || status === 'not_checked_in');
     if (status !== 'checked_in' && !departureOnly) {
       return { success: false, error: `Cannot checkout — current status is ${status || 'not_checked_in'}. You must be checked in first.` };
@@ -478,22 +511,23 @@ export async function requestKitchenCheckout(
     if (departureOnly) {
       const day = booking.bookingDate.toISOString().slice(0, 10);
       const startDay = booking.operatingWindowStartTime ? calendarDateForOperatingTime(day, booking.startTime, booking.operatingWindowStartTime) : day;
-      if (new Date() < createBookingDateTime(startDay, booking.startTime, DEFAULT_TIMEZONE))
+      if (new Date() < createBookingDateTime(startDay, booking.startTime, timezone))
         return { success: false, error: 'Departure inspection is available after this visit starts; contact the manager for assistance' };
     }
 
     // Enforce photo requirements against the manager-configured checklist.
-    const photoValidation = validateDutySection(duties.departure, checkoutPhotoUrls, checkoutChecklistItems);
+    const photoValidation = validateDutySection((await currentKitchenDuties(bookingId)).departure, checkoutPhotoUrls, checkoutChecklistItems);
     if (!photoValidation.valid) {
-      return { success: false, error: photoValidation.error };
+      return { success: false, error: photoValidation.error, fieldErrors: photoValidation.fieldErrors };
     }
 
 
     const now = new Date();
-    const actualEndTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/St_Johns', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+    const actualEndTime = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
 
     const [updated] = await db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
+    await validateCurrentKitchenSubmission(tx, bookingId, 'departure', checkoutPhotoUrls, checkoutChecklistItems);
     const changed = await tx
       .update(kitchenBookings)
       .set({
@@ -515,7 +549,7 @@ export async function requestKitchenCheckout(
     if (changed.length) {
       await captureKitchenDuties(tx, bookingId, duties);
       await queueBookingLifecycleEvent(tx, bookingId, 'checkout_requested', 'Kitchen checkout needs inspection',
-        'The chef requested checkout. The kitchen manager owns inspection; open the booking for evidence and the review deadline. A request is not clearance or a charge.', chefId,
+        'Checkout was requested. The kitchen manager owns inspection; open the booking for evidence and the review deadline. A request is not clearance or a charge.', chefId,
         { recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
     }
     return changed;
@@ -531,6 +565,7 @@ export async function requestKitchenCheckout(
 
     return { success: true, bookingId, checkinStatus: 'checkout_requested' };
   } catch (error) {
+    if (error instanceof VisitDutyValidationError) return { success: false, error: error.message, fieldErrors: error.fieldErrors };
     logger.error(`[KitchenCheckout] Error during checkout request:`, error);
     return { success: false, error: 'Failed to request checkout' };
   }
@@ -542,73 +577,16 @@ export async function requestKitchenCheckout(
 
 /**
  * Manager clears kitchen checkout — no issues found.
- * Marks booking as completed.
+ * Inspection is independent of scheduled service completion.
  */
 export async function processKitchenCheckoutClear(
   bookingId: number,
   managerId: number,
   managerNotes?: string,
 ): Promise<CheckoutReviewResult> {
-  try {
-    const [booking]=await db
-      .select({
-        id: kitchenBookings.id,
-        updatedAt: kitchenBookings.updatedAt,
-        chefId: kitchenBookings.chefId,
-        checkinStatus: kitchenBookings.checkinStatus,
-      })
-      .from(kitchenBookings)
-      .where(eq(kitchenBookings.id,bookingId))
-      .limit(1);
-
-    if(!booking) return { success: false,error: 'Booking not found' };
-
-    const hasPermission=await verifyManagerPermission(bookingId,managerId);
-    if(!hasPermission) return { success: false,error: 'You do not have permission to review this checkout' };
-
-    const status=booking.checkinStatus as KitchenCheckinStatus|null;
-    if(status!=='checkout_requested') {
-      return { success: false,error: `Cannot process checkout in status: ${status||'not_checked_in'}` };
-    }
-
-    const updated=await db.transaction(async tx => {
-      const [changed]=await tx
-        .update(kitchenBookings)
-        .set({
-          checkinStatus: 'checked_out',
-          checkoutApprovedAt: new Date(),
-          checkedOutAt: new Date(),
-          checkoutApprovedBy: managerId,
-          checkoutManagerMessage: managerNotes
-            ? `Message from kitchen manager: ${managerNotes}`
-            :'',
-          status: 'completed',
-          updatedAt: new Date(),
-        })
-        .where(and(eq(kitchenBookings.id,bookingId),eq(kitchenBookings.updatedAt,booking.updatedAt),eq(kitchenBookings.status,'confirmed'),eq(kitchenBookings.checkinStatus,'checkout_requested')))
-        .returning({ id: kitchenBookings.id });
-      if(!changed) return undefined;
-
-
-      if(changed) await queueBookingLifecycleEvent(tx,bookingId,'checkout_cleared','Kitchen checkout cleared','The kitchen manager cleared this checkout. Open the booking for current status and any later visits.',managerId,{ autoClear: false,recipientPolicy: 'chef' });
-      return changed;
-    });
-    if(!updated) return { success: false,error: 'Booking changed; refresh before reviewing checkout' };
-    logger.info(`[KitchenCheckout] Manager ${managerId} cleared checkout for booking ${bookingId}`);
-    await sendCheckoutClearedNotification(bookingId,booking.chefId);
-
-
-    return { success: true,bookingId,checkinStatus: 'checked_out',bookingCompleted: true };
-  } catch(error) {
-    logger.error(`[KitchenCheckout] Error clearing checkout:`,error);
-    return { success: false,error: 'Failed to clear checkout' };
-  }
+  return (await import('./clock-closeout')).recordKitchenInspection(bookingId, managerId, undefined, managerNotes);
 }
 
-/**
- * Manager files a damage claim during kitchen checkout review.
- * Uses existing damage claim engine (bookingType: 'kitchen').
- */
 export async function processKitchenCheckoutClaim(
   bookingId: number,
   managerId: number,
@@ -641,9 +619,7 @@ export async function processKitchenCheckoutClaim(
     if (!hasPermission) return { success: false, error: 'You do not have permission to review this checkout' };
 
     const status = booking.checkinStatus as KitchenCheckinStatus | null;
-    if (status !== 'checkout_requested') {
-      return { success: false, error: `Cannot start claim from status: ${status || 'not_checked_in'}` };
-    }
+    await db.transaction(tx => import('./clock-closeout').then(module => module.inspectionContext(bookingId, managerId, undefined, tx)));
 
     // Validate claim data
     if (!claimData.claimTitle || claimData.claimTitle.trim().length < 5) {
@@ -705,6 +681,7 @@ export async function processKitchenCheckoutClaim(
 
     // Update booking
     const [updated] = await db.transaction(async tx => {
+    await (await import('./clock-closeout')).inspectionContext(bookingId, managerId, undefined, tx);
     const changed = await tx
       .update(kitchenBookings)
       .set({
@@ -714,10 +691,9 @@ export async function processKitchenCheckoutClaim(
         checkoutManagerMessage: claimData.managerNotes
           ? `Message from kitchen manager: ${claimData.managerNotes} | Claim #${claimId} filed`
           : `Damage claim #${claimId} filed during kitchen checkout`,
-        status: 'completed',
         updatedAt: new Date(),
       })
-      .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.status, 'confirmed'), eq(kitchenBookings.checkinStatus, 'checkout_requested')))
+      .where(and(eq(kitchenBookings.id, bookingId), inArray(kitchenBookings.status, ['confirmed', 'completed']), eq(kitchenBookings.checkinStatus, booking.checkinStatus ?? 'not_checked_in')))
       .returning({ id: kitchenBookings.id });
     if (changed.length) await queueBookingLifecycleEvent(tx, bookingId, 'checkout_claim_filed', 'Inspection handed to a draft claim',
       `Kitchen inspection was handed to draft damage claim #${claimId}. The manager must attach evidence and submit the claim. A draft is not clearance, claim approval or a charge.`,
@@ -728,7 +704,7 @@ export async function processKitchenCheckoutClaim(
 
     logger.info(`[KitchenCheckout] Manager ${managerId} filed claim #${claimId} for booking ${bookingId}`);
 
-    return { success: true, bookingId, checkinStatus: 'checkout_claim_filed', bookingCompleted: true, damageClaimId: claimId };
+    return { success: true, bookingId, checkinStatus: 'checkout_claim_filed', bookingCompleted: false, damageClaimId: claimId };
   } catch (error) {
     logger.error(`[KitchenCheckout] Error filing checkout claim:`, error);
     return { success: false, error: 'Failed to file claim' };
@@ -749,117 +725,14 @@ export async function autoCleanExpiredKitchenCheckout(
   checkoutRequestedAt: Date|null,
   reviewWindowMinutes: number,
 ): Promise<boolean> {
-  if(!checkoutRequestedAt) return false;
-
-  const deadline=new Date(checkoutRequestedAt.getTime()+reviewWindowMinutes*60*1000);
-  if(new Date()<=deadline) return false;
-
-  try {
-    const updated=await db.transaction(async tx => {
-      const [changed]=await tx
-        .update(kitchenBookings)
-        .set({
-          checkinStatus: 'checked_out',
-          checkoutApprovedAt: new Date(),
-          checkedOutAt: new Date(),
-          checkoutManagerMessage: '',
-          status: 'completed',
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(kitchenBookings.id,bookingId),
-            eq(kitchenBookings.checkinStatus,'checkout_requested'),
-            eq(kitchenBookings.status,'confirmed'),
-            eq(kitchenBookings.checkoutRequestedAt,checkoutRequestedAt),
-          )
-        ).returning({ id: kitchenBookings.id });
-      if(!changed) return undefined;
-
-
-      if(changed) await queueBookingLifecycleEvent(tx,bookingId,'checkout_cleared','Kitchen checkout cleared','The inspection response window elapsed with no issues reported. Open the booking for current status and any later visits.',undefined,{ autoClear: true,recipientPolicy: 'chef' });
-      return changed;
-    });
-    if(!updated) return false;
-    logger.info(`[KitchenCheckout] Lazy auto-cleared booking ${bookingId}`);
-
-
-    return true;
-  } catch(error) {
-    logger.error(`[KitchenCheckout] Error lazy auto-clearing booking ${bookingId}:`,error);
-    return false;
-  }
+  // Retired read-side mutator. All closeout now runs through the bounded clock sweep.
+  return false;
 }
 
-/**
- * Cron sweep: Auto-clear kitchen checkouts past review window.
- * Safety net — lazy evaluation handles most cases inline.
- */
+/** Compatibility entry point for older callers; never uses a checkout-request-relative timer. */
 export async function processExpiredKitchenCheckoutReviews(): Promise<AutoClearResult> {
-  const result: AutoClearResult={ processed: 0,cleared: 0,errors: 0 };
-
-  try {
-    const settings=await getCheckinSettings();
-    const cutoffTime=new Date(Date.now()-settings.checkoutReviewWindowMinutes*60*1000);
-
-    const expired=await db
-      .select({
-        id: kitchenBookings.id,
-        chefId: kitchenBookings.chefId,
-        checkoutRequestedAt: kitchenBookings.checkoutRequestedAt,
-      })
-      .from(kitchenBookings)
-      .where(
-        and(
-          eq(kitchenBookings.checkinStatus,'checkout_requested'),
-          workerAfter('kitchenCheckout', kitchenBookings.id),
-          eq(kitchenBookings.status,'confirmed'),
-          sql`${kitchenBookings.checkoutRequestedAt} + COALESCE((${kitchenBookings.visitDuties}->>'checkoutReviewWindowMinutes')::integer, ${settings.checkoutReviewWindowMinutes}) * interval '1 minute' <= CURRENT_TIMESTAMP`,
-        )
-      ).orderBy(kitchenBookings.id).limit(workerBatch());
-    await workerPageEnd('kitchenCheckout', expired.length);
-
-    result.processed=expired.length;
-    if(expired.length===0) return result;
-
-    logger.info(`[KitchenCheckout] Processing ${expired.length} expired kitchen checkout reviews`);
-
-    for(const booking of expired) {
-      await workerRecord('kitchenCheckout', booking.id);
-      try {
-        const updated=await db.transaction(async tx => {
-          const [changed]=await tx
-            .update(kitchenBookings)
-            .set({
-              checkinStatus: 'checked_out',
-              checkoutApprovedAt: new Date(),
-              checkedOutAt: new Date(),
-              checkoutManagerMessage: '',
-              status: 'completed',
-              updatedAt: new Date(),
-            })
-            .where(and(eq(kitchenBookings.id,booking.id),eq(kitchenBookings.status,'confirmed'),eq(kitchenBookings.checkinStatus,'checkout_requested'),sql`${kitchenBookings.checkoutRequestedAt} + COALESCE((${kitchenBookings.visitDuties}->>'checkoutReviewWindowMinutes')::integer, ${settings.checkoutReviewWindowMinutes}) * interval '1 minute' <= CURRENT_TIMESTAMP`))
-            .returning({ id: kitchenBookings.id });
-          if(!changed) return undefined;
-
-
-          if(changed) await queueBookingLifecycleEvent(tx,booking.id,'checkout_cleared','Kitchen checkout cleared','The inspection response window elapsed with no issues reported. Open the booking for current status and any later visits.',undefined,{ autoClear: true });
-          return changed;
-        });
-        if(!updated) continue;
-        result.cleared++;
-
-      } catch(err) {
-        result.errors++;
-        logger.error(`[KitchenCheckout] Error auto-clearing booking ${booking.id}:`,err);
-      }
-    }
-  } catch(err) {
-    logger.error(`[KitchenCheckout] Error in processExpiredKitchenCheckoutReviews:`,err);
-    result.errors++;
-  }
-
-  return result;
+  const result = await (await import('./clock-closeout')).sweepClockCloseout();
+  return { processed: result.processed, cleared: result.changed, errors: result.errors };
 }
 
 // ============================================================================

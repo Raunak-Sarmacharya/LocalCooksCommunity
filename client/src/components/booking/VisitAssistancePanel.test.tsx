@@ -19,7 +19,7 @@ describe('manager assistance consumer', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     fireEvent.click(screen.getByRole('button', { name: 'Record assistance' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ visitId: 5, actualAt: '2026-10-02T19:30:00.000Z', expectedUpdatedAt: '2026-10-02T18:01:00Z', expectedBookingUpdatedAt: updatedAt });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ visitId: 5, actualAt: '2026-10-02T17:00', expectedUpdatedAt: '2026-10-02T18:01:00Z', expectedBookingUpdatedAt: updatedAt });
   });
   it('retains input after a stale response and retries through the real storage endpoint', async () => {
     const onSaved = vi.fn(async () => {});
@@ -45,5 +45,27 @@ describe('manager assistance consumer', () => {
     fireEvent.change(screen.getByLabelText(/Actual reported/), { target: { value: '2026-03-08T02:30' } });
     expect(screen.getByRole('button', { name: 'Record assistance' })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a repeated time for a kitchen without daylight saving time', async () => {
+    render(<VisitAssistancePanel bookingId={10} updatedAt={updatedAt} timezone="Asia/Tokyo" onSaved={async () => {}} />);
+    enterEvidence('2026-11-01T01:30');
+    expect(screen.getByLabelText(/Actual reported/)).toHaveAccessibleName(/Asia\/Tokyo/);
+    expect(screen.queryByLabelText(/This time occurs twice/)).not.toBeInTheDocument();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Record assistance' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).actualAt).toBe('2026-11-01T01:30');
+  });
+
+  it('disambiguates a repeated kitchen time using its actual zone', async () => {
+    render(<VisitAssistancePanel bookingId={10} updatedAt={updatedAt} timezone="America/Toronto" onSaved={async () => {}} />);
+    enterEvidence('2026-11-01T01:30');
+    expect(screen.getByRole('button', { name: 'Record assistance' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/This time occurs twice/), { target: { value: '1' } });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Record assistance' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).actualAt).toBe('2026-11-01T06:30:00.000Z');
   });
 });

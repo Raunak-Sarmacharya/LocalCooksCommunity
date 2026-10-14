@@ -5,11 +5,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { matchingLocalInstants } from '@shared/booking-dst';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 
-/** Actual reported time is explicit, including its UTC offset; never default to click time. */
-export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSaved, storage = false, history = [] }: {
+/** Kitchen wall time resolves on the owned server context; never default to click time. */
+export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSaved, storage = false, history = [], disabled = false, timezone }: {
   bookingId: number; updatedAt: string; visits?: Array<{ id: number; startTime: string; endTime: string; updatedAt: string }>;
   onSaved: () => Promise<void>;
   storage?: boolean;
+  disabled?: boolean;
+  timezone?: string | null;
   history?: Array<{ actorId: number; action: string; reason: string; actualAt?: string; recordedAt: string }>;
 }) {
   const [visitId, setVisitId] = useState(''), [action, setAction] = useState('departure');
@@ -17,16 +19,18 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
   const [occurrence, setOccurrence] = useState('');
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [saved, setSaved] = useState(false);
   const selected = visits.find(visit => String(visit.id) === visitId) || (visits.length === 1 ? visits[0] : undefined);
+  const displayedZone = storage ? DEFAULT_TIMEZONE : timezone || DEFAULT_TIMEZONE;
   const [actualDate, actualTime] = actualAt.split('T');
-  const instants = actualDate && actualTime ? matchingLocalInstants(actualDate, actualTime, DEFAULT_TIMEZONE) : [];
+  const instants = actualDate && actualTime ? matchingLocalInstants(actualDate, actualTime, displayedZone) : [];
   const submit = async () => {
+    if (disabled || saving) return;
     setSaving(true); setError(''); setSaved(false);
     try {
-      if (!instants.length || instants.length > 1 && occurrence === '') throw Error('Choose a valid Newfoundland time and its occurrence if clocks repeat.');
+      if (!instants.length || instants.length > 1 && occurrence === '') throw Error(`Choose a valid time in ${displayedZone} and its occurrence if clocks repeat.`);
       const token = await auth.currentUser?.getIdToken();
       const response = await fetch(`/api/manager/${storage ? 'storage-bookings' : 'bookings'}/${bookingId}/assist-visit`, { method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reason, actualAt: new Date(instants[Number(occurrence || 0)]).toISOString(), visitId: selected?.id,
+        body: JSON.stringify({ action, reason, actualAt: storage || instants.length > 1 ? new Date(instants[Number(occurrence || 0)]).toISOString() : actualAt, visitId: selected?.id,
           expectedUpdatedAt: selected?.updatedAt || updatedAt, expectedBookingUpdatedAt: updatedAt }) });
       const result = await response.json();
       if (!response.ok) throw Error(result.error || 'Could not save assistance');
@@ -40,7 +44,7 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
     <p className="text-sm text-muted-foreground">Enter the actual arrival or departure time and explain what happened. Existing photos and checklists stay attached. Recording departure starts checkout review.</p>
     {storage && <p className="text-sm">Storage follows its own dates. After an automatic inspection review, confirm physical removal using evidence; elapsed time does not prove removal.</p>}
     {history.length > 0 && <div className="text-sm space-y-2" aria-label="Assistance history">{history.map((entry, index) => <p key={index}>
-      The kitchen manager recorded {entry.action === 'arrival' ? 'check-in' : entry.action === 'departure' ? 'checkout' : 'storage removal'}. {entry.reason} {entry.actualAt && `Reported time: ${new Intl.DateTimeFormat(undefined, { timeZone: DEFAULT_TIMEZONE, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.actualAt))}. `}Updated {new Intl.DateTimeFormat(undefined, { timeZone: DEFAULT_TIMEZONE, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.recordedAt))}.
+      The kitchen manager recorded {entry.action === 'arrival' ? 'check-in' : entry.action === 'departure' ? 'checkout' : 'storage removal'}. {entry.reason} {entry.actualAt && `Reported time: ${new Intl.DateTimeFormat(undefined, { timeZone: displayedZone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.actualAt))}. `}Updated {new Intl.DateTimeFormat(undefined, { timeZone: displayedZone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.recordedAt))}.
     </p>)}</div>}
     {visits.length > 1 && <label className="block text-sm">Visit <select className="rounded border bg-background p-2" value={visitId} onChange={event => setVisitId(event.target.value)} disabled={saving}>
       <option value="">Choose visit</option>{visits.map(visit => <option key={visit.id} value={visit.id}>{visit.startTime}–{visit.endTime}</option>)}
@@ -49,7 +53,7 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
       <option value="arrival">Record assisted arrival</option><option value="departure">Request assisted departure inspection</option>
       {storage && <option value="confirm_removal">Confirm removal after automatic inspection review</option>}
     </select></label>
-    <label className="block text-sm" htmlFor={`${prefix}-time`}>Actual reported or evidenced time (Newfoundland time)</label>
+    <label className="block text-sm" htmlFor={`${prefix}-time`}>Actual reported or evidenced time ({displayedZone})</label>
     <input id={`${prefix}-time`} type="datetime-local" className="w-full rounded border bg-background p-2" value={actualAt} onChange={event => { setActualAt(event.target.value); setOccurrence(''); }} disabled={saving} />
     {instants.length > 1 && <label className="block text-sm">This time occurs twice when clocks change. <select className="rounded border bg-background p-2" value={occurrence} onChange={event => setOccurrence(event.target.value)}>
       <option value="">Choose occurrence</option>{instants.map((instant, index) => <option key={instant} value={index}>{index === 0 ? 'First' : 'Second'} occurrence ({new Date(instant).toISOString()})</option>)}
@@ -58,6 +62,6 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
     <Textarea id={`${prefix}-reason`} value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} disabled={saving} />
     {error && <p role="alert" className="text-sm text-destructive">{error} Your input is retained.</p>}
     {saved && <p role="status">Assistance recorded. Review the updated visit and pending inspection.</p>}
-    <Button disabled={saving || reason.trim().length < 10 || !instants.length || instants.length > 1 && occurrence === '' || visits.length > 0 && !selected} onClick={() => void submit()}>{saving ? 'Saving…' : 'Record assistance'}</Button>
+    <Button disabled={disabled || saving || reason.trim().length < 10 || !instants.length || instants.length > 1 && occurrence === '' || visits.length > 0 && !selected} onClick={() => void submit()}>{saving ? 'Saving…' : 'Record assistance'}</Button>
   </section>;
 }

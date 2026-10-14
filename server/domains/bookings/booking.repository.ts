@@ -111,15 +111,10 @@ export class BookingRepository {
                 transactionAmount: paymentTransactions.amount,
                 transactionBaseAmount: paymentTransactions.baseAmount,
                 transactionRefundAmount: paymentTransactions.refundAmount,
-                // Check-in enabled status
-                checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
-                checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
-                trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${kitchenBookings.id} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .leftJoin(paymentTransactions, and(
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
                 eq(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
@@ -167,7 +162,7 @@ export class BookingRepository {
                 // ── Tax-inclusive amount from PT (what chef actually paid/authorized) ──
                 // kb.total_price is pre-tax subtotal; PT.amount is the tax-inclusive charge
                 chargedAmount: rawTransactionAmount, // null if no PT record
-                ...resolveKitchenTracking(row.kitchen.checkinCheckoutEnabled, row, row.trackingStarted ? "checked_in" : mappedBooking.checkinStatus),
+                ...resolveKitchenTracking(),
             };
         });
     }
@@ -201,14 +196,10 @@ export class BookingRepository {
                 transactionStatus: paymentTransactions.status,
                 transactionRefundAmount: paymentTransactions.refundAmount,
                 transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee,
-                checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
-                checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
-                trackingStarted: sql<boolean>`exists (select 1 from ${kitchenBookingVisits} where ${kitchenBookingVisits.bookingId} = ${kitchenBookings.id} and ${kitchenBookingVisits.checkinStatus} in ('checked_in', 'checkout_requested'))`,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .leftJoin(users, eq(kitchenBookings.chefId, users.id))
             .leftJoin(chefKitchenApplications, and(
                 eq(chefKitchenApplications.chefId, kitchenBookings.chefId),
@@ -397,7 +388,7 @@ export class BookingRepository {
                     .map((item: any) => item.status === 'cancelled' && !item.rejected ? { ...item, rejected: true } : item),
                 // Kitchen's tax rate for revenue calculations (consistent with transaction history)
                 taxRatePercent,
-                ...resolveKitchenTracking(row.kitchen.checkinCheckoutEnabled, row, row.trackingStarted ? "checked_in" : mappedBooking.checkinStatus),
+                ...resolveKitchenTracking(),
                 // Use actual Stripe transaction data for accurate payment display
                 transactionId,     // Payment transaction ID (for refunds)
                 transactionAmount, // Actual amount charged (0 for voided auths, captured amount otherwise)

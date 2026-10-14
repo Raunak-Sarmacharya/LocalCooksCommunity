@@ -68,6 +68,16 @@ export function resolvePreviewPrimaryCta(args: {
     };
   }
 
+  // Approved but blocked from new bookings: say what to do instead of "Application in progress".
+  if (!canBook && display?.bookingBlocked) {
+    return {
+      label: display.actionLabel || display.label,
+      kind: display.actionKind,
+      requireDates: false,
+      variant: display.actionKind === "wait" ? "outline" : "default",
+    };
+  }
+
   if (canBook || display?.actionKind === "book") {
     return {
       label: t("bookThisKitchen", "Book"),

@@ -4,6 +4,8 @@ Every rough edge found while walking the product, including small ones. Bar: it 
 Severity: **P1** blocks trust or correctness · **P2** clearly unprofessional · **P3** polish.
 Status: open unless marked. "Seen" = where it was observed during Phase 0 testing (2026-10-11/12, local harness on the dev DB).
 
+Continuation precedence: [continuation-handoff.md](continuation-handoff.md) qualifies historical owner decisions and deployed-version observations below. Universal pilot 0% and tax-registration/agency assertions are not established by the recovered owner messages. Full pages are preferred for substantial booking tasks; dialogs are reserved for focused confirmations, alerts and short actions.
+
 ## Decisions already made by the owner (apply everywhere)
 - Refer to the person booking by **name** ("Hi Priya", "Priya requested…"), never "Chef" as a greeting or generic noun in user-facing copy.
 - The company is **Local Cooks** ("we") in user-facing copy, never "admin".
@@ -26,6 +28,9 @@ Status: open unless marked. "Seen" = where it was observed during Phase 0 testin
 | O7 | P2 | Two separate controls for one requirement: arrival/departure notes live on one page, the per-kitchen "tracking" switch on another. The listing checklist says "Fix" but doesn't lead to a single place. | listing review |
 | O8 | P3 | Name shown is the auth display name ("Welcome back, TestSprite"), not the person's name captured in onboarding. | dashboard |
 | O9 | P2 | Payout explainer: "your payout is your rate plus the HST you charge, minus that fee". Needs to match the actual model and say when money arrives. | payment step |
+
+| O10 | P2 | Login defaults to a passwordless email link; when it can't be sent the only message is "Sign In Failed — Unable to sign in at this time. Please try again later." Say what failed and offer the other method. Password lives under "Try another way". | chef + kitchen login |
+| O11 | P2 | Login showcase panels show fabricated figures and claims ("12 nearby", "$4,286.40 revenue", "5.0 · 124 reviews", "Chef support 24/7", "Every kitchen certified"). Use real or clearly illustrative content; don't promise 24/7 support unless staffed. | /auth, /manager/login |
 
 ## Admin
 | # | Sev | Issue | Seen |
@@ -61,6 +66,8 @@ Status: open unless marked. "Seen" = where it was observed during Phase 0 testin
 |---|---|---|---|
 | M1 | P1 | Cancel sheet shows the deadline but not the refund amount; chef can only "request" even outside the window. | cancel sheet |
 | M6 | P1 | Inside the window the chef can't cancel at all (`bookings.ts` ~2229 returns 400 "cannot be cancelled within {hours} hours"). Owner decision: they can cancel, and the manager decides any refund. | API |
+| M8 | P1 | A booking made inside the penalty window shows "Cancellation deadline: Oct 11, 5:00 p.m." (before it existed); the cancel button is disabled with "deadline has passed". Nothing at checkout warned. (Booking 117.) | booking page |
+| M9 | P2 | Confirmed page says "Your reservation remains valid when arrival tracking is off" while also saying "Check In Required". | booking page |
 | M7 | P1 | A request can still be pending after its start time: auth expiry is `created_at + 24 h` (`auth-expiry-service.ts:77`) and ignores start; minimum notice defaults to 1 h. | manager window |
 | M2 | P2 | Status badge shows raw enum `cancellation_requested`. | chef + manager booking page |
 | M3 | P2 | Header date "KB-SUASYC · Oct 11, 2026" is the created date, easily mistaken for the booking date. | booking page |
@@ -76,6 +83,9 @@ Status: open unless marked. "Seen" = where it was observed during Phase 0 testin
 | G4 | P2 | Fee-bearer copy contradicts itself: "The customer absorbs the Stripe processing fee" vs payout copy saying the manager does. | Manage Booking dialog |
 | G5 | P2 | Activity feed says "Access request · Approved" while the request still awaits the manager's own review. | manager dashboard |
 | G6 | P2 | "Delete Kitchen" permanently removes the kitchen's bookings (financial records). Should archive/unlist instead. | Details & Pricing |
+| G8 | P1 | Manager sees "Your payout $55.43" and "Download payout statement" right after confirming, hours/weeks before the session (money is transferred at capture). | manager booking page |
+| G9 | P1 | No "respond by" deadline on a pending request; short-notice requests can expire after start. | manager booking page |
+| G10 | P2 | Approval dialog: "Approving charges the chef…" (use the person's name). | review dialog |
 | G7 | P3 | Processing-fee estimate ($2.95) vs actual ($3.69, US card) with no explanation of why. | approval dialog |
 
 ## Emails and notifications
@@ -95,6 +105,33 @@ Status: open unless marked. "Seen" = where it was observed during Phase 0 testin
 | H4 | P2 | Dev and local harness share one Stripe sandbox and DB; local listeners double-process events. |
 | H5 | P1 | **Fixed locally:** a permanent SMTP rejection (554) was retried every 60 s forever; a later event was blocked only until recovery was raised. Now: a refused address stops worker retries, other failures back off (1 min doubling to 6 h) and park after 8 attempts, and the admin Email Log Retry still re-attempts. Inline delivery inside user requests was also draining other bookings' backlog; now scoped to the booking. |
 | H6 | P1 | Worker ticks took 7.5–12.8 s even when idle (about 75 sequential DB round trips: per-task checkpoint saves plus queries). Now: cadence configurable via `LIFECYCLE_CRON`, default 5 min; per-task timings in run output. Next: fewer checkpoint writes, skip idle tasks cheaply. |
+| H10 | P1 | Check-in/out time maths hard-code `America/St_Johns` (`kitchen-visit-lifecycle.ts:81,115,127`) despite the location zone being loaded. |
+| H11 | P1 | A booking never reaches `completed` unless the chef checks out; otherwise it stays "Confirmed · Not Checked In" indefinitely (no-show detection off; staff historical review records attendance only). |
 | H9 | P2 | 23 server tests already fail on `development` (21 tour copy assertions, 2 decision-ordering) plus 1 checkout-cancel fixture. The suite isn't green, so regressions hide. |
 | H7 | P1 | Terms say Local Cooks does not collect HST on owners' behalf (`TermsContent.tsx:736,740`), but checkout charges kitchen HST and passes it to the manager. Legal text and money flow disagree. A code comment also says Local Cooks isn't GST/HST-registered (`shared/booking-pricing-breakdown.ts:11`), which is wrong. |
 | H8 | P2 | Fee fallbacks default to 5% in places (`pricing-service.ts:157,167`, `payout-statement-service.ts:28`); the configured rate default is 0. A pilot could show an accidental 5% estimate. |
+
+## Continuation: visit tasks and manager decision feedback (2026-10-12)
+
+Owner direction: use full pages for substantial booking tasks; reserve dialogs for focused confirmations/alerts and short actions. Show arrival/departure instructions prominently and separately from configurable actionable evidence. Test both participant roles and support exits before declaring a checkpoint complete.
+
+| # | Sev | Issue / current evidence | Checkpoint |
+|---|---|---|---|
+| V1 | P1 | **Fixed locally:** both chef callers open `/booking/:id/visit`, with kitchen/date/zone/back navigation. Real authenticated fixture 124 verifies arrival/departure and returned detail states. | First visit UX repair |
+| V2 | P1 | **Locally separated:** arrival and departure instruction headings are distinct from evidence/actions; generic Before your visit wording removed. Completed/historical summary still needs its own state-aware polish. | Instructions and state-specific summary |
+| V3 | P1 | **Fixed locally:** generic photos say Optional; saved Required items/photos still gate submission. Fixture 124 submitted arrival and departure without evidence; configured task/photo payloads have mocked coverage. Live R2 uploads/deployed bundle still require their own check. | Configured evidence contract |
+| V4 | P1 | **Fixed locally:** phase-specific page title, status details collapsed, success refreshes before returning, inline error with retained drafts and manual refresh. Real pending-state HTTP 400/retry on 124; 13 visit tests. Drafts do not survive route departure/reload or visit switch. | Success/error feedback |
+| G11 | P1 | **Fixed locally:** review parses the agreed calendar day instead of shifting midnight UTC into the browser's previous day. Two manager-review regressions (date-only/ISO); all 10 review tests pass. | Shared booking date/zone rendering |
+| G12 | P1 | **Fixed and replayed locally:** verified decision/replay response includes `authorizationVoided`. Real sandbox 123 immediately showed released hold/no estimate; Stripe canceled/received 0/capturable 0, canceled ledger/no transfer. Eight decision tests pass. | Manager decline completion |
+| G13 | P2 | **Misleading expiry inference removed locally:** cancelled state now says Cancelled, with its separate Authorization Voided chip. Actor/cause-specific labels remain open; failed payment alone is not expiry proof. | Cancellation outcome labels |
+| G14 | P2 | A manager-declined uncaptured booking still offers View cancellation and refund outcomes; its quote returns `500: No cancellation request awaits a decision`. Distinguish released authorization from captured cancellation/refund review. No refund attempted. | Cancellation outcome/recovery checkpoint |
+
+Updated H11 evidence: attendance-only fixtures 118 (no taps) and 119 (no departure) remain confirmed past their end; fixture 120 completes only because checkout was already submitted. GET `checkin-status` performs auto-clear, so a read changes state. These are staged, no-payment fixtures, not proof of a paid settlement fallback. Current 60-minute review window is an observed setting, not an approved target clock.
+
+Baseline retention: 119 later moved to checkout requested during a labelled other-device diagnostic; its initial missing-departure result above remains valid. Fixture 124 currently verifies the repaired arrival/departure flow and manager view. 121 was cleared before scheduled end at 18:47:24 UTC; current HEAD already uses native clear confirmation. Older no-confirmation observations require deployed-version comparison. Next inspection checkpoint must expose the saved deadline, direct clear/issue choices, comparison evidence and shared notes, preserving service-end/customer-remedy/settlement separation. Screenshot-based visual QA remains incomplete because capture tools timed out.
+
+Owner visual review, Oct12 continuation:
+
+- Chef booking/visit “Visit status” is too narrow and resembles an unclear dropdown. Show essential state and next action at a glance; retain secondary/history disclosure only where useful. Opus High visual checkpoint `phase0-chef-status-ux-opus-r1-20261012` is active; not complete yet.
+- Manager kitchen check-in/out setup instructions are clearer but page remains cluttered. Simplify Save duplication, nested panels, repeated explanation, spacing/typography and timing/review order. Opus High checkpoint `phase0-setup-visual-opus-r3-20261012` is active with a bounded primary-source research/visual QA brief. Preserve required instructions, optional-added required tasks, saved legacy flags and explicit save behavior.
+- Manager inspection functionality now has real synthetic fixture125 confirmation-dismissal/stale-preflight/success-clear/SQL/chef-view proof. Claim creation remains unavailable pending consequential claim-boundary review. Product architecture-heavy deadline/confirmation/success copy was shortened locally;24 inspection tests pass. Screenshot compositor still gives stale/duplicated frames; DOM dimensions do not complete aesthetic sign-off.

@@ -13,6 +13,7 @@ import { CheckCircle2, XCircle, Loader2, Calendar, Clock, MapPin, DollarSign, Al
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
+import { parseLocalDateInput } from "@/lib/kitchen-typed-date";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,10 @@ const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  // A booking day is a calendar date, not a UTC instant to shift into the browser's zone.
+  const day = parseLocalDateInput(dateStr.split("T")[0]);
+  if (!day) return "";
+  return day.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",

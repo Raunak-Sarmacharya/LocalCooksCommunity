@@ -1,3 +1,4 @@
+import { readLocationBookingEligibility } from "../../services/location-booking-eligibility";
 import { logger } from "../../logger";
 /**
  * Chef Application Service
@@ -131,7 +132,8 @@ export class ChefApplicationService {
                 location: app.location // Ensure full location object is passed
             }));
 
-            return this.withListingState(shaped, await this.listedLocationIds());
+            const annotated = await Promise.all(shaped.map(async app => ({ ...app, bookingEligibility: await readLocationBookingEligibility(chefId, app.locationId) })));
+            return this.withListingState(annotated, await this.listedLocationIds());
         } catch (error) {
             logger.error("[ChefApplicationService] Error fetching chef applications:", error);
             throw error;
@@ -232,7 +234,7 @@ export class ChefApplicationService {
             // Same annotation as the list getter: this one feeds the requirements page and the kitchen
             // preview, so they read the listing from the application instead of re-deriving it.
             const [annotated] = this.withListingState([application], await this.listedLocationIds());
-            return annotated;
+            return { ...annotated, bookingEligibility: await readLocationBookingEligibility(chefId, locationId) };
         } catch (error) {
             logger.error("[ChefApplicationService] Error fetching chef application:", error);
             throw error;
@@ -349,8 +351,9 @@ export class ChefApplicationService {
                 ));
 
             // Transform to flat structure matching frontend expectations
+            const eligible = await Promise.all(approvedApps.map(app => readLocationBookingEligibility(chefId, app.locationId)));
             return approvedApps
-                .filter(app => app.location)
+                .filter((app, index) => app.location && eligible[index].canBook)
                 .map(app => ({
                     id: app.location!.id,
                     name: app.location!.name,
@@ -373,60 +376,7 @@ export class ChefApplicationService {
      */
     async getApplicationStatus(chefId: number, locationId: number) {
         try {
-            const application = await this.getChefApplication(chefId, locationId);
-
-            if (!application) {
-                return {
-                    hasApplication: false,
-                    status: null,
-                    canBook: false,
-                    message: 'You must apply to this kitchen before booking. Please submit an application first.',
-                };
-            }
-
-            // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
-            const currentTier = (application as any).current_tier ?? 1;
-            const isFullyApproved = currentTier >= 3;
-
-            switch (application.status) {
-                case 'approved':
-                    return {
-                        hasApplication: true,
-                        status: isFullyApproved ? 'approved' : 'inReview',
-                        canBook: isFullyApproved,
-                        message: isFullyApproved
-                            ? 'Application completed. You can book kitchens at this location.'
-                            : 'Application approved but not fully complete. Please complete all steps to book.',
-                    };
-                case 'inReview':
-                    return {
-                        hasApplication: true,
-                        status: 'inReview',
-                        canBook: false,
-                        message: 'Your application is pending manager review. Please wait for approval before booking.',
-                    };
-                case 'rejected':
-                    return {
-                        hasApplication: true,
-                        status: 'rejected',
-                        canBook: false,
-                        message: 'Your application was rejected. You can re-apply with updated documents.',
-                    };
-                case 'cancelled':
-                    return {
-                        hasApplication: true,
-                        status: 'cancelled',
-                        canBook: false,
-                        message: 'Your application was cancelled. You can submit a new application.',
-                    };
-                default:
-                    return {
-                        hasApplication: true,
-                        status: application.status,
-                        canBook: false,
-                        message: 'Unknown application status. Please contact support.',
-                    };
-            }
+            return await readLocationBookingEligibility(chefId, locationId);
         } catch (error) {
             logger.error("[ChefApplicationService] Error checking application status:", error);
             return {
@@ -591,6 +541,7 @@ export class ChefApplicationService {
         foodSafetyLicenseUrl?: string;
         foodSafetyLicenseExpiry?: string;
         foodEstablishmentCertUrl?: string;
+        foodEstablishmentCertExpiry?: string;
         foodSafetyLicenseStatus?: "pending" | "approved" | "rejected";
         foodEstablishmentCertStatus?: "pending" | "approved" | "rejected";
         verifiedBy?: "local_cooks" | "manager";
@@ -607,6 +558,7 @@ export class ChefApplicationService {
                     ...((data.foodSafetyLicenseUrl) && { foodSafetyLicenseUrl: data.foodSafetyLicenseUrl }),
                     ...((data.foodSafetyLicenseExpiry) && { foodSafetyLicenseExpiry: data.foodSafetyLicenseExpiry }),
                     ...((data.foodEstablishmentCertUrl) && { foodEstablishmentCertUrl: data.foodEstablishmentCertUrl }),
+                    ...((data.foodEstablishmentCertExpiry) && { foodEstablishmentCertExpiry: data.foodEstablishmentCertExpiry }),
                     ...(data.foodSafetyLicenseStatus && { foodSafetyLicenseStatus: data.foodSafetyLicenseStatus }),
                     ...(data.foodEstablishmentCertStatus && { foodEstablishmentCertStatus: data.foodEstablishmentCertStatus }),
                     ...(data.verifiedBy && { tier_data: { ...tierData, documentVerification } }),

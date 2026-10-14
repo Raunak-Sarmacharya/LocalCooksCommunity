@@ -1,3 +1,4 @@
+import { resolveKitchenChecklist } from '@shared/kitchen-checklist';
 import { tourReadiness } from '@shared/tour-readiness';
 /**
  * Gathers everything a kitchen's publish review needs, from real data.
@@ -21,9 +22,9 @@ import {
   storageListings,
   users,
   checkinCheckoutChecklists,
+  kitchenCheckinCheckoutOverrides,
 } from "@shared/schema";
 import { activeChecklist } from "@shared/active-checklist";
-import { resolveKitchenTracking } from "@shared/kitchen-tracking";
 import { getCheckinSettings } from "./kitchen-checkout-service";
 import { hasTrackingNotes } from '@shared/tracking-setup';
 import { licenseAllowsBookings } from "@shared/kitchen-license";
@@ -70,7 +71,7 @@ export async function buildKitchenReadiness(
     ? await locationService.getLocationById(kitchen.locationId).catch(() => null)
     : null;
 
-  const [availability, requirements, viewingSettings, equipmentRows, storageRows, checklistRows, visitWindows, tourHours] =
+  const [availability, requirements, viewingSettings, equipmentRows, storageRows, checklistRows, visitWindows, tourHours, overrideRows] =
     await Promise.all([
     kitchenService.getKitchenAvailability(kitchenId).catch(() => []),
     /*
@@ -105,6 +106,7 @@ export async function buildKitchenReadiness(
         .where(eq(checkinCheckoutChecklists.locationId, kitchen.locationId)).limit(1),
       getCheckinSettings(kitchen.locationId),
       db.select().from(kitchenViewingAvailability).where(eq(kitchenViewingAvailability.kitchenId, kitchenId)),
+      db.select().from(kitchenCheckinCheckoutOverrides).where(eq(kitchenCheckinCheckoutOverrides.kitchenId, kitchenId)).limit(1),
     ]);
 
   const availabilityDayCount = (availability ?? []).filter(
@@ -141,8 +143,8 @@ export async function buildKitchenReadiness(
   const galleryImages = Array.isArray(kitchen.galleryImages) ? kitchen.galleryImages : [];
   const hourlyRateCents = positiveNumber(kitchen.hourlyRate);
   const dailyRateCents = positiveNumber(kitchen.dailyRate);
-  const visitChecklist = checklistRows[0] ? activeChecklist(checklistRows[0]) : null;
-  const tracking = resolveKitchenTracking(kitchen.checkinCheckoutEnabled, visitChecklist);
+  const effectiveChecklist = resolveKitchenChecklist(overrideRows[0], checklistRows[0]);
+  const visitChecklist = effectiveChecklist ? activeChecklist(effectiveChecklist) : null;
   const requiredCount = (items: unknown, photos: unknown) =>
     [items, photos].flatMap(value => Array.isArray(value) ? value : [])
       .filter(item => item?.required !== false).length;
@@ -163,7 +165,7 @@ export async function buildKitchenReadiness(
      * off fails.
      */
     hasApplicationRequirements: hasAnyApplicationRequirement(requirements),
-    hasVisitSetup: tracking.checkinEnabled && tracking.checkoutEnabled && hasTrackingNotes(visitChecklist),
+    hasVisitSetup: hasTrackingNotes(visitChecklist),
     hasStorageVisitSetup: visitChecklist?.storageCheckinEnabled === true
       && visitChecklist?.storageCheckoutEnabled === true && hasTrackingNotes(visitChecklist, true),
     hasGalleryImages: galleryImages.length > 0,
@@ -191,15 +193,12 @@ export async function buildKitchenReadiness(
         departureNotesSaved: typeof visitChecklist?.storageCheckoutInstructions === 'string' && visitChecklist.storageCheckoutInstructions.trim().length > 0,
       },
       visitSetup: {
-        trackingEnabled: kitchen.checkinCheckoutEnabled === true,
-        checkinEnabled: visitChecklist?.checkinEnabled === true,
-        checkoutEnabled: visitChecklist?.checkoutEnabled === true,
+        checkinEnabled: true,
+        checkoutEnabled: true,
         arrivalNotesSaved: typeof visitChecklist?.checkinInstructions === 'string' && visitChecklist.checkinInstructions.trim().length > 0,
         departureNotesSaved: typeof visitChecklist?.checkoutInstructions === 'string' && visitChecklist.checkoutInstructions.trim().length > 0,
-        arrivalRequirementCount: tracking.checkinEnabled
-          ? requiredCount(visitChecklist?.checkinItems, visitChecklist?.checkinPhotoRequirements) : 0,
-        departureRequirementCount: tracking.checkoutEnabled
-          ? requiredCount(visitChecklist?.checkoutItems, visitChecklist?.checkoutPhotoRequirements) : 0,
+        arrivalRequirementCount: requiredCount(visitChecklist?.checkinItems, visitChecklist?.checkinPhotoRequirements),
+        departureRequirementCount: requiredCount(visitChecklist?.checkoutItems, visitChecklist?.checkoutPhotoRequirements),
         ...visitWindows,
       },
       kitchenName: kitchen.name,

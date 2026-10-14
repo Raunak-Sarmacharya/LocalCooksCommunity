@@ -20,6 +20,8 @@ describe('photo evidence recovery', () => {
     expect(areAllRequiredPhotosUploaded([], {})).toBe(true);
     expect(areAllRequiredPhotosUploaded([{ id: 'optional', label: 'Optional', required: false }], {})).toBe(true);
     expect(areAllRequiredPhotosUploaded(requirements, { floor: ['prior'] })).toBe(false);
+    expect(areAllRequiredPhotosUploaded(requirements, { floor: ['same'], sink: ['same'] })).toBe(false);
+    expect(areAllRequiredPhotosUploaded(requirements, { floor: ['one'], sink: ['two'] })).toBe(true);
   });
   it('retains successful evidence on upload failure and exposes a focusable retry input', () => {
     const { container } = render(<Harness />);

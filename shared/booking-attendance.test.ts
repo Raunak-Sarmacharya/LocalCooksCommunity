@@ -20,7 +20,7 @@ describe('Newfoundland booking attendance', () => {
     expect(bookingAttendanceEnd({ bookingDate, startTime, endTime, operatingWindowStartTime }).toISOString()).toBe(expected);
   });
   it('does not normalize a nonexistent spring end into another scheduled time', () => {
-    expect(() => bookingAttendanceEnd({ bookingDate: '2026-03-08', startTime: '00:00', endTime: '02:00' })).toThrow(/not a valid Newfoundland/);
+    expect(() => bookingAttendanceEnd({ bookingDate: '2026-03-08', startTime: '00:00', endTime: '02:00' })).toThrow(/not a valid location wall time/);
   });
   it('ends each separated overnight visit on its own operating-day boundary', () => {
     const parent = { bookingDate: '2026-10-31', startTime: '20:00', endTime: '04:00', operatingWindowStartTime: '20:00' };

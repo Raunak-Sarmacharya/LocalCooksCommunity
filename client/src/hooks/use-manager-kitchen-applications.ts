@@ -32,6 +32,9 @@ export interface KitchenApplicationForManager {
   // Expiry dates
   foodSafetyLicenseExpiry?: string | null;
 
+  /** Renewed documents waiting for review; the current document stays valid until it expires. */
+  documentRenewals?: Array<{ id: number; key: "foodSafetyLicense" | "foodEstablishmentCert"; url: string; expiry: string; status: string; submittedAt?: string | null }>;
+
   // Status
   status: "inReview" | "approved" | "rejected" | "cancelled";
   feedback?: string | null;
@@ -176,10 +179,13 @@ export function useManagerKitchenApplications() {
       applicationId,
       foodSafetyLicenseStatus,
       foodEstablishmentCertStatus,
+      rejectionReason,
     }: {
       applicationId: number;
       foodSafetyLicenseStatus?: "approved" | "rejected";
       foodEstablishmentCertStatus?: "approved" | "rejected";
+      /** Required by the server when rejecting a renewal: the chef is told why. */
+      rejectionReason?: string;
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -191,6 +197,7 @@ export function useManagerKitchenApplications() {
           body: JSON.stringify({
             foodSafetyLicenseStatus,
             foodEstablishmentCertStatus,
+            rejectionReason,
           }),
         }
       );
@@ -214,16 +221,18 @@ export function useManagerKitchenApplications() {
     mutationFn: async ({
       chefId,
       locationId,
+      reason,
     }: {
       chefId: number;
       locationId: number;
+      reason: string;
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/chef-location-access`, {
         method: "DELETE",
         headers,
         credentials: "include",
-        body: JSON.stringify({ chefId, locationId }),
+        body: JSON.stringify({ chefId, locationId, reason }),
       });
 
       if (!response.ok) {

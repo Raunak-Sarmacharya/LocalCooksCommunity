@@ -1,31 +1,41 @@
+import { resolveKitchenChecklist } from '@shared/kitchen-checklist';
 import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { emailLogs, kitchenBookings, kitchenBookingVisits, kitchenViewings, kitchenViewingSettings, kitchens, locations, users, checkinCheckoutChecklists, storageBookings, storageListings } from '@shared/schema';
-import { bookingVisitBlocks } from '@shared/booking-visit-blocks';
-import { addHour, occupiedIntervals, sortTimesInOperatingWindow, calendarDateForBookingTime } from '@shared/operating-hours';
-import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone } from '@shared/timezone-utils';
-import { resolveKitchenTracking } from '@shared/kitchen-tracking';
-import { readVisitDuties } from '@shared/visit-duties';
+import { emailLogs, kitchenBookings, kitchenBookingVisits, kitchenViewings, kitchenViewingSettings, kitchens, locations, users, checkinCheckoutChecklists, kitchenCheckinCheckoutOverrides, storageBookings, storageListings } from '@shared/schema';
+import { bookingLifecycleEvents } from '@shared/schema';
+import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone, friendlyTimezoneName } from '@shared/timezone-utils';
+import { makeVisitDuties, readVisitDuties } from '@shared/visit-duties';
 import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { getAppBaseUrl } from '../config';
-import { sendEmail, renderTransactionalEmail } from '../email';
+import { sendEmail, renderTransactionalEmail, arrivalModeLine, type ArrivalMode } from '../email';
 import { operationalEmailAllowedForUser } from './admin-email-preferences';
 import { getUserDisplayName } from '../utils/user-display';
 import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 import { notificationService } from './notification.service';
 import { deliveryReserve } from './worker-context';
 import { getLifecycleSettings, lifecycleSettings } from './lifecycle-settings';
+import { ensureServerI18n } from '../i18n';
+import { tEmail } from '../i18n/outbound';
+import { chefVisitCodes } from './visit-code-challenge';
+import { instructionStateForVisit } from './visit-duties';
+import { makeCloseoutSnapshot, savedCloseout } from '@shared/clock-closeout';
+import { getCheckinSettings } from './kitchen-checkout-service';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type ReminderSource = 'booking' | 'tour' | 'claim' | 'penalty' | 'storage_review' | 'storage_cancellation_review' | 'booking_review' | 'cancellation_review' | 'storage_arrival';
 export type Reminder = {
-  source: ReminderSource; reservationId: number; resource: string; kind: 'preparation' | 'arrival' | 'departure' | 'deadline' | 'checkin_open';
+  source: ReminderSource; reservationId: number; resource: string; kind: 'preparation' | 'arrival' | 'departure' | 'deadline' | 'checkin_open' | 'session_ending';
   recipientId: number; role: 'chef' | 'manager'; email: string; timezone: string;
   start: string; end: string; due: string; revision: string; path: string; title: string; message: string;
   shortVisit: boolean;
+  /** Recipient's preferred outbound locale (session_ending copy only). */
+  locale?: string | null;
   arrivalLeadHours?: number;
   combined?: boolean;
+  arrivalMode?: ArrivalMode;
+  tasksSummary?: string;
+  instructionsReleased?: boolean;
   managerEmail?: string;
   arrivalNotes?: string;
   departureNotes?: string;
@@ -36,6 +46,7 @@ export type Reminder = {
   locationName?: string;
   address?: string;
   contactEmail?: string;
+  referenceCode?: string;
   checkinOpensAt?: string;
   meetingNotes?: string;
 };
@@ -49,6 +60,8 @@ export const selectedReminderPolicy: ReminderPolicy = {
 };
 const category = 'advance_reminder';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** In-session screen alert: minutes before the booked end. The 30-minute `departure` reminder is separate. */
+export const SESSION_ENDING_MINUTES = 15;
 export const reminderKey = (r: Reminder, channel: 'email' | 'notification') =>
   `advance:${r.source}:${r.reservationId}:${r.resource}:${r.kind}:${r.recipientId}:${channel}:${r.revision}`;
 
@@ -63,40 +76,63 @@ function tourReminderAcknowledges(row: { textBody: string | null }, reminder: Re
   } catch { return false; }
 }
 
+function bookingReminderAcknowledges(row: { textBody: string | null }, reminder: Reminder, channel: string) {
+  try {
+    const saved = JSON.parse(row.textBody || 'null');
+    return saved?.channel === channel && saved.reminder?.recipientId === reminder.recipientId
+      && saved.reminder?.kind === reminder.kind && saved.reminder?.resource === reminder.resource
+      && saved.reminder?.start === reminder.start && saved.reminder?.end === reminder.end;
+  } catch { return false; }
+}
+
+/** Record equivalent confirmation content only after that channel was accepted. */
+export async function acknowledgeConfirmationReminders(tx: Transaction, bookingId: number, recipientId: number,
+  channel: 'email' | 'notification', now = new Date()) {
+  const reminders = await currentReminders(tx, 'booking', bookingId, selectedReminderPolicy, now);
+  for (const reminder of reminders.filter(reminder => reminder.role === 'chef' && reminder.recipientId === recipientId
+    && reminder.instructionsReleased && (reminder.kind === 'preparation' || reminder.kind === 'arrival' && Date.parse(reminder.due) <= now.getTime()))) {
+    const trackingId = reminderKey(reminder, channel);
+    const [prior] = await tx.select().from(emailLogs).where(eq(emailLogs.trackingId, trackingId)).limit(1);
+    const values = { recipientEmail: reminder.email, recipientUserId: recipientId, recipientRole: 'chef',
+      subject: bookingReminderSubject(reminder), category, status: 'sent', trackingId,
+      textBody: JSON.stringify({ reminder: { ...reminder, arrivalNotes: undefined, departureNotes: undefined }, channel, acknowledgedBy: 'confirmation' }),
+      previewText: 'Equivalent visit guidance delivered in the confirmation.' };
+    if (prior) await tx.update(emailLogs).set(values).where(eq(emailLogs.id, prior.id));
+    else await tx.insert(emailLogs).values(values);
+  }
+}
+
 /** Uses the same operating-day interpretation as the visit lifecycle, never host timezone. */
 export function reminderVisitTimes(booking: typeof kitchenBookings.$inferSelect, timezone: string) {
-  const slots = Array.isArray(booking.selectedSlots) ? booking.selectedSlots.map((slot: any) =>
-    typeof slot === 'string' ? { startTime: slot, endTime: addHour(slot) } : slot) : [];
-  const intervals = occupiedIntervals({ ...booking, selectedSlots: slots });
-  const window = booking.operatingWindowStartTime || booking.startTime;
-  const ordered = sortTimesInOperatingWindow(intervals.map(slot => slot.startTime), window)
-    .map(start => intervals.find(slot => slot.startTime === start)!);
-  const date = new Date(booking.bookingDate).toISOString().slice(0, 10);
-  return bookingVisitBlocks(ordered).map((block, index) => {
-    const startDate = calendarDateForBookingTime(date, block.startTime, booking.operatingWindowStartTime,
-      block.startTime === booking.startTime ? undefined : booking.startTime);
-    const endDate = calendarDateForBookingTime(date, block.endTime, booking.operatingWindowStartTime, booking.startTime);
-    return { ...block, index, start: createBookingDateTime(startDate, block.startTime, timezone),
-      end: createBookingDateTime(endDate, block.endTime, timezone) };
-  });
+  const clock = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone,
+    { checkinWindowMinutesBefore: 0, serviceEndGraceMinutes: 0, inspectionAutoCloseHours: 0 });
+  return clock.visits.map((visit, index) => ({ ...visit, index: visit.blockIndex ?? index,
+    start: new Date(visit.scheduledStartAt), end: new Date(visit.scheduledEndAt) }));
 }
 
 export function visitReminders(input: Omit<Reminder, 'kind' | 'due' | 'revision' | 'shortVisit'> & {
-  departure: boolean; requirement: unknown; state: string; checkinWindowMinutesBefore?: number;
+  departure: boolean; requirement: unknown; state: string; checkinWindowMinutesBefore?: number; sessionEndingMessage?: string;
 }, timing: Pick<ReminderPolicy, 'preparationReminderHours' | 'arrivalReminderHours' | 'departureReminderMinutes'> = {}): Reminder[] {
   const start = Date.parse(input.start), end = Date.parse(input.end);
   if (!Number.isFinite(start) || end <= start) throw new Error('Invalid reminder visit');
+  const { sessionEndingMessage, ...base } = input;
   const closed = ['checked_out', 'checkout_requested', 'checkout_claim_filed', 'no_show'].includes(input.state);
+  // The in-session alert exists only while arrival is recorded and departure is not; it is created by the
+  // check-in lifecycle event (or the reconciliation sweep), and expired visits yield no reminders, so nothing is backfilled.
+  const sessionEnding = input.source === 'booking' && input.state === 'checked_in' && end - start > 30 * 60000;
   const kinds = closed ? [] : ['preparation', ...(input.state === 'checked_in' ? [] : ['arrival', ...(input.checkinWindowMinutesBefore !== undefined ? ['checkin_open'] : [])]),
-    ...(input.departure && input.source === 'booking' ? ['departure'] : [])] as Reminder['kind'][];
+    ...(input.departure && input.source === 'booking' ? ['departure'] : []), ...(sessionEnding ? ['session_ending'] : [])] as Reminder['kind'][];
   return kinds.map(kind => {
     const arrivalLeadHours = timing.arrivalReminderHours ?? lifecycleSettings.arrivalReminderHours.defaultValue;
     const due = kind === 'preparation' ? start - (timing.preparationReminderHours ?? lifecycleSettings.preparationReminderHours.defaultValue) * 3600000
       : kind === 'arrival' ? start - arrivalLeadHours * 3600000
-      : kind === 'checkin_open' ? start - input.checkinWindowMinutesBefore! * 60000 : Math.max(start, end - (timing.departureReminderMinutes ?? lifecycleSettings.departureReminderMinutes.defaultValue) * 60000);
+      : kind === 'checkin_open' ? start - input.checkinWindowMinutesBefore! * 60000
+      : kind === 'session_ending' ? Math.max(start, end - SESSION_ENDING_MINUTES * 60000) : Math.max(start, end - (timing.departureReminderMinutes ?? lifecycleSettings.departureReminderMinutes.defaultValue) * 60000);
     // updatedAt and unrelated financial metadata deliberately do not revise an action schedule.
     const revision = hash([input.start, input.end, input.timezone, input.email, input.requirement]);
-    return { ...input, kind, message: kind === 'checkin_open' ? `Check-in is now available for this visit. ${input.message}` : input.message,
+    return { ...base, kind, path: input.source === 'booking' && input.role === 'chef' ? input.path : kind === 'session_ending' ? `${input.path}/visit` : input.path,
+      message: kind === 'checkin_open' ? `Check-in is now available for this visit. ${input.message}`
+        : kind === 'session_ending' ? sessionEndingMessage ?? 'Your booked time is ending soon. Open your visit to check out or message the kitchen.' : input.message,
       due: new Date(due).toISOString(), revision, arrivalLeadHours, shortVisit: end - start <= 30 * 60000 };
   });
 }
@@ -129,37 +165,69 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     return currentDeadlineReminders(tx, source, id, policy);
   }
   if (source === 'booking') {
-    const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, location: locations, checklist: checkinCheckoutChecklists })
+    const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, location: locations, checklist: checkinCheckoutChecklists, override: kitchenCheckinCheckoutOverrides })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
+      .leftJoin(kitchenCheckinCheckoutOverrides, eq(kitchenCheckinCheckoutOverrides.kitchenId, kitchens.id))
       .where(eq(kitchenBookings.id, id)).limit(1);
     if (!row || row.booking.status !== 'confirmed' || !['paid', 'partially_refunded'].includes(row.booking.paymentStatus || '') || !row.booking.chefId) return [];
+    row.checklist = resolveKitchenChecklist(row.override, row.checklist);
     const [chef] = await tx.select().from(users).where(eq(users.id, row.booking.chefId)).limit(1);
     const [manager] = row.location.managerId ? await tx.select().from(users).where(eq(users.id, row.location.managerId)).limit(1) : [];
+    const profile = chef?.managerProfileData as { fullName?: string; displayName?: string } | null;
+    const name = profile?.fullName || profile?.displayName || await getUserDisplayName(row.booking.chefId, 'chef', tx);
     const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, id));
     const timezone = row.location.timezone || DEFAULT_TIMEZONE;
+    const locale = (chef as { preferredLocale?: string | null } | undefined)?.preferredLocale ?? null;
+    await ensureServerI18n();
+    const codes = await chefVisitCodes(id, tx);
+    const savedDuties = readVisitDuties(row.booking.visitDuties);
+    const settings = savedDuties || await getCheckinSettings(row.location.id, tx);
+    const duties = makeVisitDuties(row.checklist, false, settings, savedDuties?.source || 'legacy_first_action');
     return reminderVisitTimes(row.booking, timezone).flatMap(block => {
-      // Match by semantic block, not a possibly stale saved blockIndex after a change.
-      const visit = visits.find(visit => visit.startTime === block.startTime && visit.endTime === block.endTime);
+      if (now >= block.end) return [];
+      const visit = visits.find(visit => visit.blockIndex === block.index);
       const state = visit?.checkinStatus || (visits.length ? 'not_checked_in' : row.booking.checkinStatus);
-      const duties = readVisitDuties(row.booking.visitDuties);
-      const tracking = duties ? { checkinEnabled: duties.arrival.enabled, checkoutEnabled: duties.departure.enabled }
-        : resolveKitchenTracking(row.kitchen.checkinCheckoutEnabled, row.checklist, state);
-      const message = `${row.kitchen.name} at ${row.location.name}. Address: ${row.location.address || 'See booking details'}. ` +
-        `Visit: ${formatInTimezone(block.start, 'yyyy-MM-dd HH:mm', timezone)}–${formatInTimezone(block.end, 'yyyy-MM-dd HH:mm', timezone)} (${timezone}). ` +
-        `Arrival guidance: ${(duties ? duties.arrival.instructions : row.checklist?.checkinInstructions) || 'Review your booking and contact the kitchen manager before arrival if you need help.'} ` +
-        `Contact: ${manager?.username || 'Use Support in your dashboard'}. Open your current booking for instructions and available actions. ` +
-        (tracking.checkoutEnabled ? `Departure guidance: ${(duties ? duties.departure.instructions : row.checklist?.checkoutInstructions) || 'Review the departure checklist in your booking.'} Storage removal follows its own booking dates.` : '');
-      return visitReminders({ source, reservationId: id, resource: `kitchen-${row.kitchen.id}-visit-${block.index}`,
+      const mode = codes.find(code => code.visitId === (visit?.id ?? null))?.mode || 'legacy';
+      const release = instructionStateForVisit(block.start, policy!.preparationReminderHours!, settings.checkinWindowMinutesBefore, true, now);
+      const visitPath = `/booking/${id}/visit${visit ? `?visitId=${visit.id}` : ''}`;
+      const facts = `${row.kitchen.name} at ${row.location.name}. Address: ${row.location.address || 'See booking details'}. ` +
+        `Visit: ${formatInTimezone(block.start, 'yyyy-MM-dd HH:mm', timezone)}–${formatInTimezone(block.end, 'yyyy-MM-dd HH:mm', timezone)} (${friendlyTimezoneName(timezone)}). `;
+      const tasks = [duties.arrival, duties.departure].flatMap(section => [
+        ...section.items.filter(item => item.required !== false).map(item => item.label),
+        ...section.photos.filter(photo => photo.required !== false).map(photo => `${photo.label} (required photo)`)]).join('; ');
+      const chefReminders = visitReminders({ source, reservationId: id, resource: `kitchen-${row.kitchen.id}-visit-${block.index}`,
         recipientId: row.booking.chefId!, role: 'chef', email: chef?.username || '', timezone,
-        start: block.start.toISOString(), end: block.end.toISOString(), path: `/booking/${id}`, title: `Kitchen booking #${id}`,
-        message, departure: tracking.checkoutEnabled, state: state || 'not_checked_in',
-        checkinWindowMinutesBefore: duties?.arrival.enabled ? duties.checkinWindowMinutesBefore : undefined,
-        requirement: duties ? [row.location.address, manager?.id, manager?.username, duties] : [row.location.address, manager?.id, manager?.username, row.checklist?.checkinInstructions,
-          row.checklist?.checkoutInstructions, row.checklist?.checkoutItems, row.checklist?.checkoutPhotoRequirements, tracking.checkoutEnabled] }, policy);
+        start: block.start.toISOString(), end: block.end.toISOString(), path: visitPath, title: `Kitchen booking #${id}`,
+        message: facts + arrivalModeLine(mode, locale), referenceCode: row.booking.referenceCode || undefined,
+        recipientName: typeof name === 'string' && name.trim() ? name.trim() : undefined,
+        kitchenName: row.kitchen.name, locationName: row.location.name, address: row.location.address || undefined,
+        contactEmail: manager?.username || undefined, arrivalMode: mode, instructionsReleased: release.instructionsReleased,
+        arrivalNotes: release.instructionsReleased ? duties.arrival.instructions || undefined : undefined,
+        departureNotes: release.instructionsReleased ? duties.departure.instructions || undefined : undefined, tasksSummary: tasks,
+        departure: true, state: state || 'not_checked_in', locale,
+        sessionEndingMessage: tEmail(locale, 'sessionEndingBody', { kitchen: row.kitchen.name,
+          time: new Intl.DateTimeFormat(locale || 'en-CA', { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(block.end),
+          zone: friendlyTimezoneName(timezone, locale || 'en-CA') }),
+        checkinWindowMinutesBefore: savedDuties?.checkinWindowMinutesBefore,
+        requirement: [block.start.toISOString(), block.end.toISOString(), timezone, chef?.username] }, policy).map(reminder => ({ ...reminder,
+          message: reminder.kind === 'preparation' ? facts + (release.instructionsReleased
+            ? `${arrivalModeLine(mode, locale)} ${tEmail(locale, 'instructionsReleased')} Arrival instructions: ${duties.arrival.instructions || ''} Departure instructions: ${duties.departure.instructions || ''}. Required tasks/photos: ${tasks || 'None requested'}. Contact: ${manager?.username || 'Support'}.`
+            : arrivalModeLine(mode, locale))
+            : ['arrival', 'checkin_open'].includes(reminder.kind) ? facts + `${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}` : reminder.message,
+          ...(reminder.kind !== 'preparation' && reminder.kind !== 'departure' ? { arrivalNotes: undefined, departureNotes: undefined } : {}) }));
+      const arrival = chefReminders.find(reminder => reminder.kind === 'arrival');
+      if (!manager || !arrival) return chefReminders;
+      const managerLocale = manager.preferredLocale;
+      const managerMessage = facts + tEmail(managerLocale, mode === 'self' ? 'managerArrivalSelf' : mode === 'staffed' ? 'managerArrivalStaffed' : 'managerArrivalLegacy', { chef: name || 'The chef' });
+      return [...chefReminders, { ...arrival, recipientId: manager.id, email: manager.username || '', role: 'manager' as const,
+        recipientName: undefined, visitorName: name || 'The chef', locale: managerLocale,
+        path: `/manager/booking/${id}`, message: managerMessage, arrivalNotes: undefined, departureNotes: undefined,
+        revision: hash([block.start.toISOString(), block.end.toISOString(), timezone, manager.username]) }];
     });
   }
+
   const [row] = await tx.select({ tour: kitchenViewings, location: locations }).from(kitchenViewings)
     .innerJoin(locations, eq(locations.id, kitchenViewings.locationId)).where(eq(kitchenViewings.id, id)).limit(1);
   if (!row || !Number.isFinite(new Date(row.tour.scheduledAt).getTime()) || !Number.isFinite(new Date(row.tour.updatedAt).getTime()) || !Number.isSafeInteger(row.tour.durationMinutes) || row.tour.durationMinutes <= 0) return [];
@@ -236,7 +304,8 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
     if (reminder.kind === 'checkin_open' && channel === 'email') continue;
     const key = reminderKey(reminder, channel);
     // Accepted legacy chef arrival guidance also acknowledges preparation for that appointment.
-    const prior = (source === 'tour' ? existing.find(row => row.status === 'sent' && tourReminderAcknowledges(row, reminder, channel)) : undefined)
+    const prior = existing.find(row => row.status === 'sent' && (source === 'tour'
+      ? tourReminderAcknowledges(row, reminder, channel) : bookingReminderAcknowledges(row, reminder, channel)))
       || existing.find(row => row.trackingId === key);
     if (prior?.status === 'sent') {
       const pending = existing.find(row => row.trackingId === key && ['scheduled', 'failed'].includes(row.status));
@@ -262,7 +331,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
       continue;
     }
     await tx.insert(emailLogs).values({ recipientEmail: reminder.email, recipientUserId: reminder.recipientId,
-      recipientRole: reminder.role, subject: `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
+      recipientRole: reminder.role, subject: reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
       trackingId: key, textBody: JSON.stringify({ reminder, channel }), previewText: reminder.message });
   }
 }
@@ -273,8 +342,60 @@ export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPol
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && !policy?.shortVisit) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && policy?.shortVisit === 'arrival_guidance') return 'consolidated';
   if (now.getTime() < Date.parse(r.due)) return 'future';
-  if (now.getTime() >= Date.parse(r.kind === 'departure' || r.kind === 'deadline' || r.kind === 'checkin_open' ? r.end : r.start)) return 'expired';
+  if (now.getTime() >= Date.parse(r.kind === 'departure' || r.kind === 'deadline' || r.kind === 'checkin_open' || r.kind === 'session_ending' ? r.end : r.start)) return 'expired';
   return 'due';
+}
+
+function bookingReminderSubject(r: Reminder) {
+  if (r.kind === 'session_ending') return `${tEmail(r.locale, 'sessionEndingSubject')} · ${r.kitchenName || r.title} · ${r.referenceCode || `BOOKING-${r.reservationId}`}`;
+  const time = new Intl.DateTimeFormat(r.locale || 'en-CA', { timeZone: r.timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(r.start));
+  if (r.role === 'manager' && r.kind === 'arrival') return tEmail(r.locale, 'managerArrivalSubject', { chef: r.visitorName || 'The chef', time, kitchen: r.kitchenName || r.title });
+  if (r.kind === 'preparation') return tEmail(r.locale, 'visitPreparationSubject', { kitchen: r.kitchenName || r.title });
+  if (r.kind === 'arrival') return tEmail(r.locale, 'visitArrivalSubject', { time, kitchen: r.kitchenName || r.title });
+  const titles: Record<Reminder['kind'], string> = { preparation: 'Prepare for your kitchen visit', arrival: 'Your kitchen visit is coming up',
+    checkin_open: 'Check-in is available', session_ending: 'Your booked time ends soon', departure: 'Before you leave the kitchen', deadline: 'Kitchen visit reminder' };
+  return `${titles[r.kind]} · ${r.kitchenName || r.title} · ${r.referenceCode || `BOOKING-${r.reservationId}`}`;
+}
+
+/** Short, code-free notice that links to the in-session visit page. */
+function renderSessionEndingEmail(r: Reminder, url: string) {
+  const formatter = new Intl.DateTimeFormat(r.locale || 'en-CA', { timeZone: r.timezone, dateStyle: 'medium', timeStyle: 'short' });
+  return renderTransactionalEmail({ to: r.email, recipientName: r.recipientName || 'there', subject: bookingReminderSubject(r),
+    heading: tEmail(r.locale, 'sessionEndingHeading'), message: r.message, facts: [], sections: [{ title: tEmail(r.locale, 'sessionEndingSection'), facts: [
+      { label: tEmail(r.locale, 'sessionEndingKitchen'), value: r.kitchenName || r.title },
+      { label: tEmail(r.locale, 'sessionEndingEnds'), value: `${formatter.format(new Date(r.end))} (${friendlyTimezoneName(r.timezone, r.locale || 'en-CA')})` },
+      { label: tEmail(r.locale, 'sessionEndingReference'), value: r.referenceCode || `BOOKING-${r.reservationId}` },
+    ] }], actionLabel: tEmail(r.locale, 'sessionEndingAction'), actionUrl: url, note: tEmail(r.locale, 'sessionEndingNote') });
+}
+
+export function renderBookingVisitReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`) {
+  if (r.kind === 'session_ending') return renderSessionEndingEmail(r, url);
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: r.timezone, year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const message = r.role === 'manager' ? r.message : r.kind === 'preparation' ? `${arrivalModeLine(r.arrivalMode, r.locale)} ${tEmail(r.locale, 'instructionsReleased')}` : r.kind === 'arrival' ? `${arrivalModeLine(r.arrivalMode, r.locale, true)} ${tEmail(r.locale, 'visitArrivalInstructionsLink')}` : r.kind === 'departure'
+    ? 'Your kitchen visit is ending soon. Follow the departure instructions and complete any tasks marked Required before submitting checkout.'
+    : r.kind === 'checkin_open'
+      ? 'Check-in is now available for this visit. Record your arrival after you reach the kitchen, following its instructions and any tasks marked Required.'
+      : 'Your kitchen visit is coming up. Review the arrival and departure instructions before you travel. Your booking shows any tasks marked Required.';
+  return renderTransactionalEmail({ to: r.email, recipientName: r.recipientName || 'there', subject: bookingReminderSubject(r),
+    heading: r.role === 'manager' ? bookingReminderSubject(r) : r.kind === 'departure' ? 'Before you leave' : r.kind === 'checkin_open' ? 'Ready to check in' : 'Prepare for your kitchen visit',
+    message, facts: [], sections: [
+      { title: 'Your visit', facts: [
+        { label: 'Kitchen', value: r.kitchenName || r.title },
+        ...(r.locationName ? [{ label: 'Location', value: r.locationName }] : []),
+        { label: 'Starts', value: formatter.format(new Date(r.start)) },
+        { label: 'Ends', value: formatter.format(new Date(r.end)) },
+        { label: 'Reference', value: r.referenceCode || `BOOKING-${r.reservationId}` },
+      ] },
+      { title: r.kind === 'preparation' || r.kind === 'departure' ? 'Arrival and departure instructions' : 'Kitchen contact', facts: [
+        ...(r.address ? [{ label: 'Address', value: r.address }] : []),
+        ...(r.instructionsReleased && (r.kind === 'preparation' || r.combined) ? [{ label: 'Arrival instructions', value: r.arrivalNotes || 'Open your booking for arrival details. Contact the kitchen manager if you need help getting in.' }] : []),
+        ...(r.instructionsReleased && (r.kind === 'preparation' || r.kind === 'departure' || r.combined) ? [{ label: 'Departure instructions', value: r.departureNotes || 'Open your booking for departure details. Contact the kitchen manager if you need help leaving the kitchen ready.' }] : []),
+        ...(r.kind === 'preparation' || r.combined ? [{ label: 'Required tasks and photos', value: r.tasksSummary || 'None requested' }] : []),
+        ...(r.contactEmail ? [{ label: 'Kitchen contact', value: r.contactEmail }] : []),
+      ] },
+    ], actionLabel: r.role === 'manager' ? 'Prepare for arrival' : tEmail(r.locale, 'visitOpen'), actionUrl: url,
+    note: 'Instructions and required tasks are separate. You do not need to add photos unless a photo is marked Required. If you cannot get in or submit an action, contact the kitchen manager or Local Cooks through your booking.' });
 }
 
 export function renderTourReminder(r: Reminder, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`, _now = Date.now()) {
@@ -356,6 +477,24 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
         return { id: intent.id, state: 'suppressed' };
       }
       const r = fresh!, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`;
+      if (r.source === 'booking' && r.role === 'chef' && ['preparation', 'arrival'].includes(r.kind)) {
+        const previous = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, category), eq(emailLogs.status, 'sent'),
+          sql`${emailLogs.trackingId} LIKE ${`advance:booking:${r.reservationId}:%`}`));
+        if (previous.some(row => bookingReminderAcknowledges(row, r, channel))) {
+          await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Equivalent guidance already delivered.' }).where(eq(emailLogs.id, intent.id));
+          return { id: intent.id, state: 'suppressed' };
+        }
+        const pending = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, r.reservationId),
+          eq(bookingLifecycleEvents.kind, 'confirmed'), sql`${bookingLifecycleEvents.completedAt} IS NULL`));
+        if (channel === 'email' && pending.some(event => (event.emails as Array<{ key: string }>).some(email => email.key === String(r.recipientId))
+          && !(event.deliveredEmailKeys as string[]).includes(String(r.recipientId)))) return { id: intent.id, state: 'pending' };
+        if (r.kind === 'arrival' && !previous.some(row => bookingReminderAcknowledges(row, { ...r, kind: 'preparation' }, channel))) {
+          const preparation = (await currentReminders(tx, 'booking', r.reservationId, policy, deliveryNow))
+            .find(reminder => reminder.kind === 'preparation' && reminder.resource === r.resource && reminder.recipientId === r.recipientId);
+          if (preparation?.instructionsReleased) Object.assign(r, { combined: true, arrivalNotes: preparation.arrivalNotes,
+            departureNotes: preparation.departureNotes, message: preparation.message });
+        }
+      }
       if (deadline - Date.now() < deliveryReserve()) return { id: intent.id, state: 'pending' };
       if (r.source === 'tour' && r.role === 'chef' && r.kind === 'preparation') {
         const previous = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, category), eq(emailLogs.status, 'sent'),
@@ -374,7 +513,7 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
             title: intent.subject, message: r.message, actionUrl: r.path, actionLabel: 'View current reservation',
             metadata: { reminderKey: intent.trackingId, reservationId: r.reservationId } }, tx);
           sent = true;
-        } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : { to: r.email, subject: intent.subject, text: `${r.message}\n\n${url}` },
+        } else sent = !!r.email && await sendEmail(r.source === 'tour' ? renderTourReminder(r, url, deliveryNow.getTime()) : r.source === 'booking' ? renderBookingVisitReminder(r, url) : { to: r.email, subject: intent.subject, text: `${r.message}\n\n${url}` },
           { trackingId: intent.trackingId!, emailType: 'advance_reminder_attempt', durableDelivery: true, retryOfId: intent.id });
       } catch { sent = false; }
       if (!sent && intent.retryCount === 0) {
@@ -384,7 +523,8 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
           title: 'Reservation reminder needs recovery', message: `Reminder #${intent.id} was not accepted. Verify contact, current reservation and missed action opportunity.`,
           actionUrl: '/admin?section=email-log', actionLabel: 'Review delivery', metadata: { emailLogId: intent.id, recoveryOwnerId: owner.id } }, tx);
       }
-      await tx.update(emailLogs).set({ status: sent ? 'sent' : 'failed', recipientEmail: r.email, retriedAt: now, retryCount: intent.retryCount + 1,
+      await tx.update(emailLogs).set({ status: sent ? 'sent' : 'failed', recipientEmail: r.email,
+        ...(r.source === 'booking' ? { subject: bookingReminderSubject(r) } : {}), retriedAt: now, retryCount: intent.retryCount + 1,
         errorMessage: sent ? null : 'Not accepted; Local Cooks owns contact verification and current-action recovery.' }).where(eq(emailLogs.id, intent.id));
       return { id: intent.id, state: sent ? 'accepted' : 'failed' };
     });

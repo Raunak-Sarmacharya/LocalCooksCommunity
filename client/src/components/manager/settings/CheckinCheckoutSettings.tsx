@@ -1,17 +1,19 @@
 /**
- * Kitchen Check-In / Check-Out Settings
+ * Kitchen arrival & departure setup: location defaults and per-field kitchen overrides.
  *
- * Manager-controlled check-in and check-out checklists for kitchens, including
- * optional duties/photos and required arrival and departure instructions.
+ * Two surfaces, each with its own single Save:
  *
- * Deliberately scoped to *the checklist itself*. Everything that describes
- * *when* a booking happens — the check-in window and the no-show grace period —
- * lives on the Booking Policies page, and the arrival-timing card there links
- * back to this page. Storage check-out lives on its own page.
+ *  - `instructions` — embedded in the selected kitchen's Arrival & departure
+ *    tab: the two required instructions and arrival timing. The kitchen page's
+ *    header Save is its Save.
+ *  - `tasks` — the full Customer tasks page: optional tasks and photos, saved
+ *    from the pinned bar that appears with the first change.
  *
- * Save model: one page-level Save covering every field on this page. Nothing
- * here autosaves, and the exit guard is wired to the same dirty flag, so the
- * two can never disagree about whether work is at risk.
+ * Each surface writes only its own fields. The PUT merges whatever is provided,
+ * so an instructions save never resubmits a stale checklist, and a tasks save
+ * never overwrites instructions or timing saved from the other surface.
+ * Neither sends the location's legacy check-in/out flags.
+ * Nothing autosaves, and the exit guards read the same dirty flag.
  */
 
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
@@ -20,27 +22,25 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MutableRefObject, Ref } from "react";
 import {
   AlertTriangle,
+  ChevronLeft,
   ChevronRight,
-  Calendar,
-  Clock,
-  Info,
-  Loader2,
+  RotateCcw,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPut } from "@/lib/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { NumericInput } from "@/components/ui/numeric-input";
-import { Label } from "@/components/ui/label";
 import { SettingsRow } from "./SettingsRow";
 import { SettingsContentSkeleton } from "@/components/manager/SettingsContentSkeleton";
-import type { ChecklistItem, PhotoRequirement } from "./shared/ChecklistEditor";
-import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
+import { arrivalTimingsLocked, type ChecklistItem, type PhotoRequirement } from "./shared/ChecklistEditor";
+import { hasTrackingNotes } from "@shared/tracking-setup";
+import { kitchenChecklistSections, resolveKitchenChecklist, type KitchenChecklistSection, type KitchenChecklistOverride } from "@shared/kitchen-checklist";
 import {
   KitchenCheckinCheckoutEditor,
+  SetupSection,
   findUnifiedItemProblems,
   itemsToStorage,
   unifyStorageToItems,
@@ -51,6 +51,9 @@ import { ChefPageHeader } from "@/components/chef/ui";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CheckinCheckoutSettingsData {
+  defaults?: KitchenChecklistOverride;
+  override?: KitchenChecklistOverride | null;
+  overridingKitchens?: Array<{ kitchenId: number; name: string; override: KitchenChecklistOverride }>;
   id: number | null;
   locationId: number;
   checkinEnabled: boolean;
@@ -81,7 +84,7 @@ interface PlatformTimeWindowDefaults {
 
 /** Imperative handle so the dashboard shell can trigger Save from its header. */
 export interface CheckinCheckoutHandle {
-  save: () => void;
+  save: () => Promise<boolean>;
 }
 
 interface CheckinCheckoutSettingsProps {
@@ -89,8 +92,10 @@ interface CheckinCheckoutSettingsProps {
     id: number;
     name: string;
   };
+  /** Which surface to render. See the file note. Defaults to the tasks page. */
+  mode?: "instructions" | "tasks";
   /**
-   * Receives the page's dirty state so the dashboard can show the shared save
+   * Receives the surface's dirty state so its owner can show the shared save
    * action and guard navigation. Called on every transition only.
    */
   onDirtyChange?: (dirty: boolean) => void;
@@ -101,6 +106,55 @@ interface CheckinCheckoutSettingsProps {
    * passes `handleViewChange`, which accepts a wider union.
    */
   onNavigate?: (view: "settings-booking-rules") => void;
+  /** Instructions surface: opens the Customer tasks page. */
+  onOpenTasks?: () => void;
+  kitchenContext?: { id: number; name: string };
+  previewKitchenContext?: { id: number; name: string };
+  /** A kitchen was named but is not one of this location's kitchens. */
+  kitchenMissing?: boolean;
+  onReturnToKitchen?: () => void;
+}
+
+type SavedSettings = CheckinCheckoutSettingsData;
+interface InstructionDraft {
+  checkinInstructions: string | null;
+  checkoutInstructions: string | null;
+  checkinWindowMinutesBefore: number | null;
+  noShowGraceMinutes: number | null;
+}
+
+const savedItems = (data: SavedSettings) => unifyStorageToItems({
+  checkinItems: (Array.isArray(data.checkinItems) ? data.checkinItems : []) as ChecklistItem[],
+  checkoutItems: (Array.isArray(data.checkoutItems) ? data.checkoutItems : []) as ChecklistItem[],
+  checkinPhotoRequirements: (Array.isArray(data.checkinPhotoRequirements) ? data.checkinPhotoRequirements : []) as PhotoRequirement[],
+  checkoutPhotoRequirements: (Array.isArray(data.checkoutPhotoRequirements) ? data.checkoutPhotoRequirements : []) as PhotoRequirement[],
+});
+
+function sameTasks(left: UnifiedChecklistItem[], right: UnifiedChecklistItem[]) {
+  const problems = findUnifiedItemProblems(left);
+  if (problems.empty.length || problems.unassigned.length || problems.ambiguous.length || right.some(item => item.saved?.ambiguous))
+    return JSON.stringify(left) === JSON.stringify(right);
+  return JSON.stringify(itemsToStorage(left)) === JSON.stringify(itemsToStorage(right));
+}
+
+const savedInstructions = (data: SavedSettings): InstructionDraft => ({
+  checkinInstructions: data.checkinInstructions || null,
+  checkoutInstructions: data.checkoutInstructions || null,
+  checkinWindowMinutesBefore: data.timeWindowSettings?.checkinWindowMinutesBefore ?? null,
+  noShowGraceMinutes: data.timeWindowSettings?.noShowGraceMinutes ?? null,
+});
+
+/** The fields of an instructions draft that differ from what is saved — and nothing else. */
+function changedInstructions(draft: InstructionDraft, data: SavedSettings) {
+  const saved = savedInstructions(data);
+  const patch: Record<string, unknown> = {};
+  if ((draft.checkinInstructions || null) !== saved.checkinInstructions) patch.checkinInstructions = draft.checkinInstructions || null;
+  if ((draft.checkoutInstructions || null) !== saved.checkoutInstructions) patch.checkoutInstructions = draft.checkoutInstructions || null;
+  const timing: Record<string, number | null> = {};
+  if (draft.checkinWindowMinutesBefore !== saved.checkinWindowMinutesBefore) timing.checkinWindowMinutesBefore = draft.checkinWindowMinutesBefore;
+  if (draft.noShowGraceMinutes !== saved.noShowGraceMinutes) timing.noShowGraceMinutes = draft.noShowGraceMinutes;
+  if (Object.keys(timing).length) patch.timeWindowSettings = timing;
+  return patch;
 }
 
 /**
@@ -124,6 +178,8 @@ function usePinchOnHide(
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // A collapsed bar must not keep its buttons in the tab order.
+    el.toggleAttribute("inert", hidden);
     if (!hidden) {
       el.style.maxHeight = "";
       return;
@@ -138,32 +194,60 @@ function usePinchOnHide(
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function CheckinCheckoutSettings({
+export default function CheckinCheckoutSettings(props: CheckinCheckoutSettingsProps) {
+  const [locationMode, setLocationMode] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  return <div className="space-y-4">
+    {props.kitchenContext && <div className="space-y-1">
+      <Button type="button" variant="outline" size="sm" disabled={dirty} onClick={() => setLocationMode(current => !current)}>
+        {mt(locationMode ? 'kitchenScope.editKitchen' : 'kitchenScope.editLocation', { location: props.location.name, kitchen: props.kitchenContext.name })}
+      </Button>
+      {dirty && <p className="text-xs text-muted-foreground">{mt('kitchenScope.saveBeforeScopeChange')}</p>}
+    </div>}
+    <CheckinCheckoutSettingsSurface key={`${locationMode}-${props.kitchenContext?.id ?? 'location'}`} {...props}
+      kitchenContext={locationMode ? undefined : props.kitchenContext}
+      previewKitchenContext={locationMode ? props.kitchenContext : undefined}
+      onDirtyChange={value => { setDirty(value); props.onDirtyChange?.(value); }} />
+  </div>;
+}
+
+function CheckinCheckoutSettingsSurface({
   location,
+  mode = "tasks",
   onDirtyChange,
   saveRef,
   onNavigate,
+  onOpenTasks,
+  kitchenContext,
+  previewKitchenContext,
+  kitchenMissing,
+  onReturnToKitchen,
 }: CheckinCheckoutSettingsProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const embedded = mode === "instructions";
+  const settingsKey = kitchenContext ? ["kitchen-checkin-checkout-settings", kitchenContext.id] : ["checkin-checkout-settings", location.id];
+  const settingsUrl = kitchenContext ? `/manager/kitchens/${kitchenContext.id}/checkin-checkout-settings` : `/manager/locations/${location.id}/checkin-checkout-settings`;
+  const [scopeDraft, setScopeDraft] = useState<KitchenChecklistOverride>({});
+  const scopeRef = useRef(scopeDraft);
+  scopeRef.current = scopeDraft;
 
   // Fetch existing settings
   const { data, isLoading } = useQuery<CheckinCheckoutSettingsData>({
-    queryKey: ["checkin-checkout-settings", location.id],
+    queryKey: settingsKey,
     queryFn: () =>
-      apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
+      apiGet(settingsUrl),
     enabled: !!location.id,
   });
+  const { data: previewKitchen, isLoading: previewLoading } = useQuery<CheckinCheckoutSettingsData>({
+    queryKey: ["kitchen-checkin-checkout-settings", previewKitchenContext?.id],
+    queryFn: () => apiGet(`/manager/kitchens/${previewKitchenContext!.id}/checkin-checkout-settings`),
+    enabled: !!previewKitchenContext,
+  });
 
-  // Fetch kitchens to determine if ANY kitchen at this location has the
-  // lock instructions textarea and all related UI is hidden from the manager.
-
-  // Kitchen check-in/out local state.
-  // Items are held in a single unified list; split into server-side
-  // checkinItems / checkoutItems arrays on save.
-  const [checkinEnabled, setCheckinEnabled] = useState(true);
   const stickyBarRef = useRef<HTMLDivElement>(null);
-  const [checkoutEnabled, setCheckoutEnabled] = useState(true);
+  // Tasks are held in a single unified list; split into server-side
+  // checkinItems / checkoutItems arrays on save.
   const [items, setItems] = useState<UnifiedChecklistItem[]>([]);
   const [checkinInstructions, setCheckinInstructions] = useState<string | null>(null);
   const [checkoutInstructions, setCheckoutInstructions] = useState<string | null>(null);
@@ -172,173 +256,221 @@ export default function CheckinCheckoutSettings({
   const [twCheckinWindow, setTwCheckinWindow] = useState<number | null>(null);
   const [twNoShowGrace, setTwNoShowGrace] = useState<number | null>(null);
 
-  // Memoized initial unified list derived from server data. Kept in a memo so
-  // we can reuse it for the "isDirty" comparison below without re-running the
-  // merge repeatedly.
-  const initialUnifiedItems = useMemo<UnifiedChecklistItem[]>(() => {
-    if (!data) return [];
-    return unifyStorageToItems({
-      checkinItems: (Array.isArray(data.checkinItems) ? data.checkinItems : []) as ChecklistItem[],
-      checkoutItems: (Array.isArray(data.checkoutItems) ? data.checkoutItems : []) as ChecklistItem[],
-      checkinPhotoRequirements: (Array.isArray(data.checkinPhotoRequirements)
-        ? data.checkinPhotoRequirements
-        : []) as PhotoRequirement[],
-      checkoutPhotoRequirements: (Array.isArray(data.checkoutPhotoRequirements)
-        ? data.checkoutPhotoRequirements
-        : []) as PhotoRequirement[],
-    });
-  }, [data]);
+  // Memoized so the dirty comparison does not re-run the merge on every keystroke.
+  const initialUnifiedItems = useMemo<UnifiedChecklistItem[]>(() => data ? savedItems(data) : [], [data]);
 
-  // Sync from server data
-  useEffect(() => {
-    if (data) {
-      // Kitchen tracking owns activation. Shared setup configures both stages.
-      setCheckinEnabled(true);
-      setCheckoutEnabled(true);
-      setCheckinInstructions(data.checkinInstructions);
-      setCheckoutInstructions(data.checkoutInstructions);
-      setItems(initialUnifiedItems);
-      if (data.timeWindowSettings) {
-        setTwCheckinWindow(data.timeWindowSettings.checkinWindowMinutesBefore);
-        setTwNoShowGrace(data.timeWindowSettings.noShowGraceMinutes);
-      }
-    }
-  }, [data, initialUnifiedItems]);
-
-  const isDirty = useMemo(() => {
-    if (!data) return false;
-    return (
-      checkinEnabled !== data.checkinEnabled ||
-      checkoutEnabled !== data.checkoutEnabled ||
-      JSON.stringify(items) !== JSON.stringify(initialUnifiedItems) ||
-      (checkinInstructions || null) !== (data.checkinInstructions || null) ||
-      (checkoutInstructions || null) !== (data.checkoutInstructions || null) ||
-      twCheckinWindow !== (data.timeWindowSettings?.checkinWindowMinutesBefore ?? null) ||
-      twNoShowGrace !== (data.timeWindowSettings?.noShowGraceMinutes ?? null)
-    );
-  }, [
-    data,
-    initialUnifiedItems,
-    checkinEnabled,
-    checkoutEnabled,
-    items,
+  const instructionDraft = useMemo<InstructionDraft>(() => ({
     checkinInstructions,
     checkoutInstructions,
-    twCheckinWindow,
-    twNoShowGrace,
-  ]);
+    checkinWindowMinutesBefore: twCheckinWindow,
+    noShowGraceMinutes: twNoShowGrace,
+  }), [checkinInstructions, checkoutInstructions, twCheckinWindow, twNoShowGrace]);
+  const draftRef = useRef({ items, instructions: instructionDraft });
+  draftRef.current = { items, instructions: instructionDraft };
+
+  /**
+   * Adopt fresh server data only where it cannot cost the manager a draft.
+   *
+   * The other surface (or another browser tab) can save this row while this one
+   * is open, and that refetch must not wipe what is being typed here. The draft
+   * follows the server when it is untouched since the last sync, or already
+   * matches the new data (which is what a successful save of this surface looks
+   * like); otherwise it is kept and stays dirty.
+   */
+  const syncedRef = useRef<SavedSettings | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const previous = syncedRef.current;
+    const draft = draftRef.current;
+    const saved = savedInstructions(data);
+    const before = previous && savedInstructions(previous);
+    // Refresh untouched instruction fields even while another field has a local draft.
+    const adopt = (key: keyof InstructionDraft) => !embedded || !before
+      || draft.instructions[key] === before[key] || draft.instructions[key] === saved[key];
+    const adoptItems = embedded || !previous || sameTasks(draft.items, savedItems(previous))
+      || sameTasks(draft.items, initialUnifiedItems);
+    if (adopt("checkinInstructions")) setCheckinInstructions(saved.checkinInstructions);
+    if (adopt("checkoutInstructions")) setCheckoutInstructions(saved.checkoutInstructions);
+    if (adopt("checkinWindowMinutesBefore")) setTwCheckinWindow(saved.checkinWindowMinutesBefore);
+    if (adopt("noShowGraceMinutes")) setTwNoShowGrace(saved.noShowGraceMinutes);
+    if (adoptItems) setItems(initialUnifiedItems);
+    // Keep the baseline for edited fields until they have been saved.
+    syncedRef.current = { ...data,
+      checkinInstructions: adopt("checkinInstructions") ? saved.checkinInstructions : before!.checkinInstructions,
+      checkoutInstructions: adopt("checkoutInstructions") ? saved.checkoutInstructions : before!.checkoutInstructions,
+      timeWindowSettings: {
+        checkinWindowMinutesBefore: adopt("checkinWindowMinutesBefore") ? saved.checkinWindowMinutesBefore : before!.checkinWindowMinutesBefore,
+        noShowGraceMinutes: adopt("noShowGraceMinutes") ? saved.noShowGraceMinutes : before!.noShowGraceMinutes,
+      },
+      ...(!adoptItems && previous
+        ? { checkinItems: previous.checkinItems, checkoutItems: previous.checkoutItems,
+            checkinPhotoRequirements: previous.checkinPhotoRequirements, checkoutPhotoRequirements: previous.checkoutPhotoRequirements } : {}),
+    };
+  }, [data, initialUnifiedItems, embedded]);
+
+  const instructionPatch = useMemo(() => data ? changedInstructions(instructionDraft, data) : {}, [data, instructionDraft]);
+  const isDirty = !!data && (Object.keys(scopeDraft).length > 0 || (embedded
+    ? Object.keys(instructionPatch).length > 0
+    : !sameTasks(items, initialUnifiedItems)));
+
+  const customized = (section: KitchenChecklistSection) => kitchenChecklistSections[section].some(field =>
+    (Object.hasOwn(scopeDraft, field) ? scopeDraft[field] : data?.override?.[field]) != null);
+  const scopeControl = (section: KitchenChecklistSection) => kitchenContext ? <div className="space-y-1 text-xs">
+    <p className="font-medium">{mt(`kitchenScope.${section}`)}</p>
+    <p className="text-muted-foreground">{mt(customized(section) ? "kitchenScope.customized" : "kitchenScope.usingDefault", { location: location.name })}</p>
+    <Button type="button" variant="outline" size="sm" onClick={() => {
+      const reset = customized(section);
+      const patch = Object.fromEntries(kitchenChecklistSections[section].map(field => [field, reset ? null : data?.[field as keyof CheckinCheckoutSettingsData] ?? (field.endsWith('Instructions') ? '' : [])]));
+      setScopeDraft(current => ({ ...current, ...patch }));
+      if (reset) {
+        if (section === 'arrivalInstructions') setCheckinInstructions(String(data?.defaults?.checkinInstructions ?? '') || null);
+        if (section === 'departureInstructions') setCheckoutInstructions(String(data?.defaults?.checkoutInstructions ?? '') || null);
+        if (section.endsWith('Tasks') && data) setItems(savedItems({ ...data, ...itemsToStorage(previewTaskItems), ...Object.fromEntries(kitchenChecklistSections[section].map(field => [field, data.defaults?.[field] ?? []])) }));
+      } else if (section.endsWith('Tasks') && data) {
+        setItems(previewTaskItems);
+      }
+    }}>{mt(customized(section) ? "kitchenScope.useDefault" : "kitchenScope.customize", { location: location.name })}</Button>
+  </div> : null;
+
+  // Inherited stages stay in the customer preview even when only the other stage is editable.
+  const previewTaskItems = useMemo(() => {
+    if (embedded) return initialUnifiedItems;
+    if (items.some(item => item.saved?.ambiguous)) return items;
+    if (!kitchenContext) return previewKitchenContext
+      ? savedItems({ ...data!, ...resolveKitchenChecklist(previewKitchen?.override, itemsToStorage(items))! }) : items;
+    const arrays = itemsToStorage(items);
+    for (const section of ['arrivalTasks', 'departureTasks'] as const) {
+      if (!customized(section)) for (const field of kitchenChecklistSections[section])
+        Object.assign(arrays, { [field]: data?.defaults?.[field] ?? data?.[field] ?? [] });
+    }
+    return savedItems({ ...data!, ...arrays });
+  }, [embedded, initialUnifiedItems, kitchenContext, items, data, scopeDraft, previewKitchenContext, previewKitchen]);
+  const previewNotes = resolveKitchenChecklist(previewKitchenContext ? previewKitchen?.override : null, {
+    checkinInstructions: embedded ? checkinInstructions : data?.checkinInstructions ?? null,
+    checkoutInstructions: embedded ? checkoutInstructions : data?.checkoutInstructions ?? null,
+  })!;
 
   /**
    * Problems that would silently truncate the configuration on save. Reported
    * per-row rather than as a count, so the message can name the offending item.
+   * Only the tasks page writes tasks, so only it is blocked by them.
    */
-  const problems = useMemo(() => findUnifiedItemProblems(items), [items]);
+  const problems = useMemo(
+    () => embedded ? { empty: [], unassigned: [], ambiguous: [] } : findUnifiedItemProblems(items),
+    [embedded, items],
+  );
 
-  const missingNotes = !checkinInstructions?.trim() || !checkoutInstructions?.trim();
-  const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0 || missingNotes;
-
-  /**
-   * Items assigned to a flow the manager has switched off.
-   *
-   * This is not an error — the items are saved, and the manager can turn the
-   * flow on at any time — so it must not block Save or dress itself up as one.
-   * It is, however, the one state where "saved successfully" and "the chef
-   * sees nothing" are both true, and the manager has no way to notice from
-   * this page. Warning is therefore worth the pixels; a modal is not. A
-   * confirmation dialog is reserved for destructive, irreversible actions,
-   * and the industry guidance is explicit that confirming routine saves
-   * trains people to dismiss reflexively, which costs the warnings that
-   * matter. An inline advisory says the same thing without that tax.
-   *
-   * Counted against the live toggles rather than the saved ones, so the
-   * message describes what the next Save will actually produce.
+  const missingNotes = !kitchenContext && embedded && (!checkinInstructions?.trim() || !checkoutInstructions?.trim());
+  const notesMissingMessage = mt("setupUx.notesMissing", { defaultValue: "Write both arrival and departure instructions before saving." });
+  /*
+   * The server merges a partial save into the row and, where check-in/out is on,
+   * requires both saved instructions. A tasks save cannot write them, so it says
+   * where to write them instead of failing on the server.
    */
-  const dormantFlows = useMemo(() => {
-    const dormant = (on: boolean, scope: "checkin" | "checkout") =>
-      on
-        ? 0
-        : items.filter(
-            (i) =>
-              i.label.trim() &&
-              (scope === "checkin" ? i.requiredOnCheckin : i.requiredOnCheckout),
-          ).length;
-
-    return {
-      checkin: dormant(checkinEnabled, "checkin"),
-      checkout: dormant(checkoutEnabled, "checkout"),
-    };
-  }, [items, checkinEnabled, checkoutEnabled]);
-
-  const hasDormantFlows = dormantFlows.checkin > 0 || dormantFlows.checkout > 0;
-
-  // Arrival timings are meaningless without at least one flow to be on time for.
-  const timingsLocked = arrivalTimingsLocked(data ?? undefined);
-
-  /**
-   * The timings rule is evaluated against the *live* toggles, not the saved
-   * ones — so a manager who has switched check-in on but not yet saved should
-   * be editing, not looking at a locked field wondering why last save's state
-   * is still in charge. The fields stay writable, and the card says plainly
-   * that nothing takes effect until Save, which is what the exit guard is for.
+  const notesNeeded = !kitchenContext && !embedded && !!data && (data.checkinEnabled || data.checkoutEnabled)
+    && !hasTrackingNotes(data as unknown as Record<string, unknown>);
+  const notesNeededMessage = mt("setupUx.notesFirst", { defaultValue: "Write the arrival and departure instructions under Arrival & departure first." });
+  /*
+   * An old row with only one of check-in/check-out on would be switched fully on
+   * by the server's merge. Saving is held rather than change it behind the
+   * manager's back.
    */
-  const timingsPendingSave =
-    timingsLocked && !arrivalTimingsLocked({ checkinEnabled, checkoutEnabled });
+  const flagsMismatch = !kitchenContext && !!data && data.checkinEnabled !== data.checkoutEnabled;
+  const flagsMismatchMessage = mt("setupUx.flagsMismatch", { defaultValue: "Check-in and check-out are set up differently at this location. Ask Local Cooks to review it before saving." });
+  const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0 || problems.ambiguous.length > 0
+    || missingNotes || notesNeeded || flagsMismatch;
+  const blockingMessage = flagsMismatch ? flagsMismatchMessage
+    : missingNotes ? notesMissingMessage
+    : notesNeeded ? notesNeededMessage
+    : mt("setupUx.saveBlocked", { defaultValue: "Fix the problems listed at the top of this page to save." });
 
-  const saveAction = useStatusButton(
-    useCallback(async () => {
-      if (hasProblems) {
-        throw new Error(mt(missingNotes ? 'trackingRequiredNotes' : "fixChecklistItemsBeforeSaving"));
+  const saveSucceededRef = useRef(false);
+  const saveSettings = useCallback(async () => {
+    if (!data) throw new Error(blockingMessage);
+    if (hasProblems) throw new Error(blockingMessage);
+    const submittedScope = scopeRef.current;
+    const submittedDraft = JSON.stringify([embedded ? instructionDraft : items, submittedScope]);
+
+    // Only this surface's fields; see the file note.
+    let patch: Record<string, unknown> = embedded ? { ...instructionPatch } : (() => {
+      const { checkinItems, checkoutItems, checkinPhotoRequirements, checkoutPhotoRequirements } = itemsToStorage(items);
+      return { checkinItems, checkoutItems, checkinPhotoRequirements, checkoutPhotoRequirements };
+    })();
+
+    if (kitchenContext) {
+      const timing = patch.timeWindowSettings;
+      delete patch.timeWindowSettings;
+      patch = { ...patch, ...submittedScope };
+      for (const section of (embedded ? ['arrivalInstructions', 'departureInstructions'] : ['arrivalTasks', 'departureTasks']) as KitchenChecklistSection[]) {
+        for (const field of kitchenChecklistSections[section]) {
+          if (!customized(section) && !Object.hasOwn(submittedScope, field)) delete patch[field];
+          // Creating an instruction override uses the typed draft, even when inherited text was unchanged.
+          if (customized(section) && embedded && Object.hasOwn(patch, field))
+            patch[field] = field === 'checkinInstructions' ? checkinInstructions ?? '' : checkoutInstructions ?? '';
+          if (customized(section) && !embedded) {
+            const arrays = itemsToStorage(items);
+            const current = arrays[field as keyof typeof arrays];
+            if (Object.hasOwn(submittedScope, field) || JSON.stringify(current) !== JSON.stringify(data[field as keyof SavedSettings]))
+              patch[field] = current;
+            else delete patch[field];
+          }
+        }
       }
+      if (timing) {
+        await apiPut(`/manager/locations/${location.id}/checkin-checkout-settings`, { timeWindowSettings: timing });
+        queryClient.setQueryData<CheckinCheckoutSettingsData>(settingsKey, current => current && ({ ...current,
+          timeWindowSettings: { ...current.timeWindowSettings!, ...(timing as Partial<TimeWindowSettings>) } }));
+        void queryClient.invalidateQueries({ queryKey: ['checkin-checkout-settings', location.id] });
+      }
+    }
 
-      const {
-        checkinItems: outCheckinItems,
-        checkoutItems: outCheckoutItems,
-        checkinPhotoRequirements: outCheckinPhotos,
-        checkoutPhotoRequirements: outCheckoutPhotos,
-      } = itemsToStorage(items);
-
-      await apiPut(`/manager/locations/${location.id}/checkin-checkout-settings`, {
-        checkinEnabled,
-        checkinItems: outCheckinItems,
-        checkinPhotoRequirements: outCheckinPhotos,
-        checkinInstructions: checkinInstructions || null,
-        checkoutEnabled,
-        checkoutItems: outCheckoutItems,
-        checkoutPhotoRequirements: outCheckoutPhotos,
-        checkoutInstructions: checkoutInstructions || null,
+    if (Object.keys(patch).length) {
+      const updated = await apiPut(settingsUrl, patch);
+      // Acknowledged fields are clean immediately; edits made during the request remain dirty.
+      queryClient.setQueryData<CheckinCheckoutSettingsData>(settingsKey, current => current && ({
+        ...current, ...(kitchenContext && updated ? updated : patch),
         timeWindowSettings: {
-          checkinWindowMinutesBefore: twCheckinWindow,
-          noShowGraceMinutes: twNoShowGrace,
+          checkinWindowMinutesBefore: current.timeWindowSettings?.checkinWindowMinutesBefore ?? null,
+          noShowGraceMinutes: current.timeWindowSettings?.noShowGraceMinutes ?? null,
+          ...(patch.timeWindowSettings as Partial<TimeWindowSettings> | undefined),
         },
-      });
+      }));
 
       queryClient.invalidateQueries({
-        queryKey: ["checkin-checkout-settings", location.id],
+        queryKey: settingsKey,
       });
       // The shared checklist affects the publish review of every kitchen at this location.
       queryClient.invalidateQueries({ queryKey: ["kitchen-listing-readiness"] });
+      queryClient.invalidateQueries({ queryKey: ["kitchen-checkin-checkout-settings"] });
 
       toast({
         title: mt("checklistsSaved"),
         description: mt("kitchenCheckInCheckOutChecklistsUpdatedSuccessfully"),
       });
-    }, [
-      location.id,
-      items,
-      checkinEnabled,
-      checkoutEnabled,
-      checkinInstructions,
-      checkoutInstructions,
-      twCheckinWindow,
-      twNoShowGrace,
-      hasProblems,
-      missingNotes,
-      queryClient,
-      toast,
-    ]),
-  );
+    }
+    // A successful write must not authorize leaving with edits typed during that write.
+    saveSucceededRef.current = submittedDraft === JSON.stringify([embedded ? draftRef.current.instructions : draftRef.current.items, scopeRef.current]);
+    if (saveSucceededRef.current && !embedded) {
+      const acknowledged = queryClient.getQueryData<CheckinCheckoutSettingsData>(settingsKey);
+      if (acknowledged) setItems(savedItems(acknowledged));
+    }
+    setScopeDraft(current => Object.fromEntries(Object.entries(current).filter(([field, value]) => value !== submittedScope[field as keyof KitchenChecklistOverride])));
+  }, [
+    data,
+    embedded,
+    instructionPatch,
+    instructionDraft,
+    location.id,
+    items,
+    hasProblems,
+    blockingMessage,
+    queryClient,
+    toast,
+    kitchenContext, settingsUrl, scopeDraft, checkinInstructions, checkoutInstructions,
+  ]);
+  const saveAction = useStatusButton(saveSettings);
 
-  // Report dirty state upward, but only on transitions — the shell re-renders
+  // Report dirty state upward, but only on transitions — the owner re-renders
   // on every keystroke otherwise.
   const lastDirtyRef = useRef<boolean | null>(null);
   useEffect(() => {
@@ -347,115 +479,158 @@ export default function CheckinCheckoutSettings({
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  // Expose save() to the shell's header action.
+  // Expose save() to the owner's exit guard and header action.
   useEffect(() => {
     if (!saveRef) return;
-    const handle: CheckinCheckoutHandle = { save: () => void saveAction.execute() };
+    const handle: CheckinCheckoutHandle = { save: async () => {
+      saveSucceededRef.current = false;
+      /*
+       * The tab renders no status button of its own — the kitchen header owns
+       * that — so it calls the save directly. Going through `execute` would
+       * no-op while its unseen status still reads success/error, reporting a
+       * fresh Save as failed.
+       */
+      if (saveAction.status === "loading") return false;
+      if (embedded || saveAction.status === "success" || saveAction.status === "error") {
+        saveAction.reset();
+        try { await saveSettings(); } catch { return false; }
+        return saveSucceededRef.current;
+      }
+      await saveAction.execute();
+      return saveSucceededRef.current;
+    } };
     if (typeof saveRef === "function") saveRef(handle);
     else (saveRef as MutableRefObject<CheckinCheckoutHandle | null>).current = handle;
-  }, [saveRef, saveAction.execute]);
+    return () => {
+      if (typeof saveRef === "function") saveRef(null);
+      else (saveRef as MutableRefObject<CheckinCheckoutHandle | null>).current = null;
+    };
+  }, [saveRef, saveAction.execute, saveAction.status, saveAction.reset, embedded, saveSettings]);
 
-  /**
-   * Toggling a flow is done through a `<Switch>`, and clicking it focuses it.
-   * When that switch is above the visible part of the scroll container — which
-   * it is as soon as the manager has scrolled down past the two flow panels —
-   * the browser scrolls the newly focused element into view. Measured with the
-   * container at scrollTop 600 and the switch off-screen above: a plain
-   * `element.click()` leaves the scroll position alone, but `element.focus()`
-   * drives scrollTop to 0, a 600px jump. So focus, not the content change, is
-   * the whole cause — the toggle re-renders *after* focus has already moved,
-   * which is why it looks like the toggle did it.
-   *
-   * `preventDefault()` on mousedown stops the browser taking focus on press.
-   * The event is still allowed to become a click, so `onCheckedChange` fires
-   * normally. Blocking the default here rather than repairing the scroll
-   * afterwards matters: once scrollTop has been clamped to 0 there is nothing
-   * left for scroll anchoring to compensate with.
-   *
-   * Focus is then handed to the panel the manager just acted on, so the
-   * focused element is a real container rather than `<body>` (a focused element
-   * that unmounts would silently drop focus, which is worse for assistive
-   * tech). `preventScroll` keeps that handoff from nudging the container again.
-   */
-  const focusAfterToggle = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      const panel = event.currentTarget.closest("[data-stage-panel]");
-      if (!(panel instanceof HTMLElement)) return;
-      panel.focus({ preventScroll: true });
-    },
-    [],
-  );
-
-  /**
-   * Stops the browser focusing the switch on press. See the note above — this is
-   * the line that actually prevents the scroll jump. It must run on mousedown
-   * and must not call `stopPropagation`, so the press still becomes a click and
-   * the switch still toggles.
-   */
-  const preventToggleFocusScroll = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+  // Reload / tab close on the full page. The kitchen page already covers its tabs.
+  useEffect(() => {
+    if (embedded || !isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
-    },
-    [],
-  );
-
-  /**
-   * Keyboard activation never focused the switch through a pointer press, so it
-   * has no scroll to suppress — it only needs the same focus handoff that the
-   * pointer path performs, keeping both routes identical.
-   */
-  const onFlowKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (event.target !== event.currentTarget) return;
-      if (event.key === " " || event.key === "Enter") focusAfterToggle(event as unknown as React.MouseEvent<HTMLButtonElement>);
-    },
-    [focusAfterToggle],
-  );
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [embedded, isDirty]);
 
   // The pinned bar is never unmounted — it is collapsed in place so the scroll
   // container cannot resize while the manager is scrolling.
   usePinchOnHide(stickyBarRef, !isDirty);
 
-  if (isLoading) {
+  const pageHeader = !embedded && <>
+    <ChefPageHeader
+      title={mt("setupUx.tasksStep", { defaultValue: "Customer tasks" })}
+      description={mt("setupUx.tasksPageHelp", { defaultValue: "Add tasks customers complete at arrival or departure. You can leave the list empty. Nothing changes until you save." })}
+    />
+    <div className="space-y-1">
+      {onReturnToKitchen && <Button variant="ghost" size="sm" onClick={onReturnToKitchen}
+        className="-ml-2 h-8 rounded-lg px-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+        <ChevronLeft className="mr-1 size-4" />
+        {kitchenContext ? mt("kitchenArrivalDepartureBack") : mt("navSpaces")}
+      </Button>}
+      {kitchenContext && <p className="text-sm font-medium">{kitchenContext.name} · {location.name}</p>}
+      <p className="text-sm text-muted-foreground">
+        {kitchenMissing
+          ? mt("setupUx.kitchenMissing", { defaultValue: "That kitchen isn't at {location}. These tasks are shared by every kitchen there.", location: location.name })
+          : mt(kitchenContext ? "kitchenScope.pageHelp" : "kitchenArrivalDepartureScope", { location: location.name })}
+      </p>
+    </div>
+  </>;
+
+  if (isLoading || (previewKitchenContext && previewLoading)) {
     return (
       <div className="space-y-6">
-        <ChefPageHeader
-          title={mt("kitchenCheckInCheckOut")}
-          description={mt("configureChecklistsAndPhotoRequirementsForYourKitchens")}
-        />
+        {pageHeader}
         <SettingsContentSkeleton rows={6} />
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <ChefPageHeader
-        title={mt("kitchenCheckInCheckOut")}
-        description={mt("checkinCheckoutPageDescription")}
-        actions={
-          isDirty ? (
-            <StatusButton
-              status={saveAction.status}
-              onClick={saveAction.execute}
-              disabled={hasProblems}
-              labels={{
-                idle: mt("saveChanges"),
-                loading: mt("savingShort"),
-                success: mt("saved"),
-              }}
-            />
-          ) : undefined
-        }
+  const timingRow = (
+    id: string,
+    label: string,
+    help: string,
+    value: number | null,
+    platformDefault: number | undefined,
+    fallback: string,
+    onChange: (value: number | null) => void,
+  ) => (
+    <SettingsRow
+      id={id}
+      label={label}
+      hint={platformDefault !== undefined
+        ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: platformDefault }) })
+        : undefined}
+      help={help}
+      disabledReason={arrivalTimingsLocked(data) ? mt("enableStageToEditTimings") : undefined}
+    >
+      <NumericInput
+        id={id}
+        disabled={arrivalTimingsLocked(data)}
+        suffix={mt("minutesUnit")}
+        value={value === null ? "" : String(value)}
+        placeholder={platformDefault !== undefined ? String(platformDefault) : fallback}
+        onValueChange={(val) => {
+          const parsed = parseInt(val, 10);
+          onChange(val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)));
+        }}
+        className="h-9 w-28"
       />
+    </SettingsRow>
+  );
 
-      {/* Items that cannot be saved as-is — surfaced before the rows so the
-          manager sees the reason, not just a disabled button. */}
+  /* Arrival timings sit before the preview so the tab reads in the order a
+     manager decides things; they are the same query-cached fields as Booking
+     Policies and save with the instructions. */
+  const timing = embedded ? (
+    <SetupSection id="setup-timing" title={mt("arrivalTiming")} description={mt(arrivalTimingsLocked(data) ? "arrivalTimingLockedDescription" : "arrivalTimingDescription")}>
+      <div className="divide-y rounded-lg border">
+        {timingRow("checkin-window", mt("checkinOpensLabel"), mt("checkinWindowHelp"), twCheckinWindow,
+          data?.platformDefaults?.checkinWindowMinutesBefore, "15", setTwCheckinWindow)}
+        {timingRow("no-show-grace", mt("noShowGraceLabel"), mt("noShowGraceHelp"), twNoShowGrace,
+          data?.platformDefaults?.noShowGraceMinutes, "30", setTwNoShowGrace)}
+      </div>
+
+      {/* Soft cross-link to the rest of the booking rules, for managers
+          who came here looking for something else. */}
+      {onNavigate && <p className="text-xs text-muted-foreground">
+        {mt("bookingRulesCrossLinkHint")}{" "}
+        <button
+          type="button"
+          onClick={() => onNavigate("settings-booking-rules")}
+          className="!min-h-0 inline-flex items-center gap-0.5 rounded font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {mt("navBookingRules")}
+          <ChevronRight className="size-3.5" />
+        </button>
+      </p>}
+    </SetupSection>
+  ) : undefined;
+
+  return (
+    <div className={embedded ? "space-y-4" : "space-y-6"}>
+      {pageHeader}
+      {!kitchenContext && !!data?.overridingKitchens?.length && <div className="text-xs text-muted-foreground space-y-1">{
+        (embedded ? ['arrivalInstructions', 'departureInstructions'] : ['arrivalTasks', 'departureTasks']).map(section => {
+          const names = data.overridingKitchens!.filter(row => kitchenChecklistSections[section as KitchenChecklistSection].some(field => row.override[field] != null)).map(row => row.name);
+          return names.length ? <p key={section}>{mt(`kitchenScope.${section}`)} · {mt("kitchenScope.overridingKitchens", { kitchens: names.join(', ') })}</p> : null;
+        })}</div>}
+
+      {/* Anything that blocks Save is surfaced before the fields, so the manager
+          sees the reason, not just a Save that will not go through. */}
       {hasProblems && (
         <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="space-y-0.5 text-xs text-destructive">
-            {missingNotes && <p>{mt('trackingRequiredNotes')}</p>}
+            {flagsMismatch && <p>{flagsMismatchMessage}</p>}
+            {missingNotes && <p>{notesMissingMessage}</p>}
+            {notesNeeded && <p>{notesNeededMessage}</p>}
+            {problems.ambiguous.length > 0 && <p>{mt("setupUx.ambiguous", { defaultValue: "Saved duties contain duplicate IDs within a stage. Saving is blocked to avoid losing data. Ask Local Cooks to review this configuration." })}</p>}
             {problems.empty.length > 0 && (
               <p>{mt("checklistEmptyLabels", { count: problems.empty.length })}</p>
             )}
@@ -466,233 +641,91 @@ export default function CheckinCheckoutSettings({
         </div>
       )}
 
-      {/* Advisory, not an error: the configuration is valid and Save works.
-          Amber rather than red so it never reads as a failure, and it names
-          the flow and the count instead of asking "are you sure?" — the
-          manager's next move is clear from the sentence itself. Hidden while
-          a real problem is blocking Save, because two stacked banners turn
-          into a wall of warnings and the blocking one is the one that matters. */}
-      {!hasProblems && hasDormantFlows && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
-          <Info className="mt-0.5 size-4 shrink-0 text-amber-600" />
-          <div className="space-y-0.5 text-xs text-amber-900">
-            {dormantFlows.checkin > 0 && (
-              <p>
-                {mt("checklistDormantCheckin", {
-                  count: dormantFlows.checkin,
-                })}
-              </p>
-            )}
-            {dormantFlows.checkout > 0 && (
-              <p>
-                {mt("checklistDormantCheckout", {
-                  count: dormantFlows.checkout,
-                })}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Checklist editor */}
       <KitchenCheckinCheckoutEditor
+        instructionControls={{ checkin: scopeControl('arrivalInstructions'), checkout: scopeControl('departureInstructions') }}
+        instructionReadOnly={kitchenContext ? { checkin: !customized('arrivalInstructions'), checkout: !customized('departureInstructions') } : undefined}
+        taskControls={!embedded && kitchenContext ? <div className="grid gap-3 sm:grid-cols-2 mb-3">{scopeControl('arrivalTasks')}{scopeControl('departureTasks')}</div> : undefined}
+        previewItems={embedded && previewKitchenContext
+          ? savedItems({ ...data!, ...resolveKitchenChecklist(previewKitchen?.override, { ...data! })! }) : previewTaskItems}
+        previewInstructions={previewNotes}
+        previewKitchenName={(kitchenContext ?? previewKitchenContext)?.name}
+        setupLocationName={location.name}
+        setupMode={mode}
+        onOpenTasks={onOpenTasks}
+        beforeReview={timing}
         coupledStages
-        items={items}
+        // The instructions tab previews the saved tasks; only the tasks page edits them.
+        items={embedded ? initialUnifiedItems : kitchenContext ? items.map(item => ({ ...item, requiredOnCheckin: item.requiredOnCheckin && customized('arrivalTasks'), requiredOnCheckout: item.requiredOnCheckout && customized('departureTasks') })).filter(item => item.requiredOnCheckin || item.requiredOnCheckout) : items}
         onItemsChange={setItems}
-        checkinEnabled={checkinEnabled}
-        onCheckinEnabledChange={setCheckinEnabled}
-        checkoutEnabled={checkoutEnabled}
-        onCheckoutEnabledChange={setCheckoutEnabled}
-        onFlowToggleClick={focusAfterToggle}
-        onFlowToggleMouseDown={preventToggleFocusScroll}
-        onFlowToggleKeyDown={onFlowKeyDown}
-        checkinInstructions={checkinInstructions}
+        // Kitchen workflows are always available; inherited task stages are read-only.
+        checkinEnabled={embedded || !kitchenContext || customized('arrivalTasks')}
+        onCheckinEnabledChange={() => {}}
+        checkoutEnabled={embedded || !kitchenContext || customized('departureTasks')}
+        onCheckoutEnabledChange={() => {}}
+        onFlowToggleClick={() => {}}
+        onFlowToggleMouseDown={() => {}}
+        onFlowToggleKeyDown={() => {}}
+        // The tasks page previews the saved instructions; only the tab edits them.
+        checkinInstructions={embedded ? checkinInstructions : data?.checkinInstructions ?? null}
         onCheckinInstructionsChange={setCheckinInstructions}
-        checkoutInstructions={checkoutInstructions}
+        checkoutInstructions={embedded ? checkoutInstructions : data?.checkoutInstructions ?? null}
         onCheckoutInstructionsChange={setCheckoutInstructions}
       />
 
-      {/* Arrival timings. Shown here as well as on Booking Policies — both read
-          and write the same query-cached field, so a manager setting up the
-          arrival experience never has to leave this page. Locked entirely while
-          neither flow is on, because a check-in window with no check-in is
-          meaningless. */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
-              <Clock className="size-5 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
-                {timingsPendingSave && (
-                  <Badge
-                    variant="outline"
-                    className="h-5 border-amber-300 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-800"
-                  >
-                    {mt("saveToApply")}
-                  </Badge>
-                )}
-              </div>
-              <CardDescription>
-                {timingsLocked
-                  ? mt("arrivalTimingLockedDescription")
-                  : mt("arrivalTimingDescription")}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="divide-y p-0">
-          <SettingsRow
-            id="checkin-window"
-            label={mt("checkinOpensLabel")}
-            disabledReason={
-              timingsLocked
-                ? timingsPendingSave
-                  ? mt("arrivalTimingsPendingSave")
-                  : mt("enableStageToEditTimings")
-                : undefined
-            }
-            hint={
-              data?.platformDefaults
-                ? mt("platformDefaultIs", {
-                    minutes: mt("minutesShort", {
-                      count: data.platformDefaults.checkinWindowMinutesBefore,
-                    }),
-                  })
-                : undefined
-            }
-            help={mt("checkinWindowHelp")}
-          >
-            <NumericInput
-              id="checkin-window"
-              disabled={timingsLocked && !timingsPendingSave}
-              suffix={mt("minutesUnit")}
-              value={twCheckinWindow === null ? "" : String(twCheckinWindow)}
-              placeholder={
-                data?.platformDefaults
-                  ? String(data.platformDefaults.checkinWindowMinutesBefore)
-                  : "15"
-              }
-              onValueChange={(val) => {
-                const parsed = parseInt(val, 10);
-                setTwCheckinWindow(
-                  val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
-                );
-              }}
-              className="h-9 w-28"
-            />
-          </SettingsRow>
-
-          <SettingsRow
-            id="no-show-grace"
-            label={mt("noShowGraceLabel")}
-            disabledReason={
-              timingsLocked
-                ? timingsPendingSave
-                  ? mt("arrivalTimingsPendingSave")
-                  : mt("enableStageToEditTimings")
-                : undefined
-            }
-            hint={
-              data?.platformDefaults
-                ? mt("platformDefaultIs", {
-                    minutes: mt("minutesShort", {
-                      count: data.platformDefaults.noShowGraceMinutes,
-                    }),
-                  })
-                : undefined
-            }
-            help={mt("noShowGraceHelp")}
-          >
-            <NumericInput
-              id="no-show-grace"
-              disabled={timingsLocked && !timingsPendingSave}
-              suffix={mt("minutesUnit")}
-              value={twNoShowGrace === null ? "" : String(twNoShowGrace)}
-              placeholder={
-                data?.platformDefaults
-                  ? String(data.platformDefaults.noShowGraceMinutes)
-                  : "30"
-              }
-              onValueChange={(val) => {
-                const parsed = parseInt(val, 10);
-                setTwNoShowGrace(
-                  val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
-                );
-              }}
-              className="h-9 w-28"
-            />
-          </SettingsRow>
-        </CardContent>
-      </Card>
-
-      {/* Soft cross-link to the rest of the booking rules, for managers who came
-          here looking for something else rather than to duplicate the fields. */}
-      <button
-        type="button"
-        onClick={() => onNavigate?.("settings-booking-rules")}
-        className="!min-h-0 flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50"
-      >
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
-          <Calendar className="size-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{mt("navBookingRules")}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {mt("bookingRulesCrossLinkHint")}
-          </p>
-        </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-      </button>
-
-      {/* Pinned action bar.
+      {/* Pinned action bar — the Customer tasks page's only Save.
        *
        * This is the page's scroll "pincher": it is always in the layout, at a
        * fixed 58px, and only the content inside it changes. Mounting it only
-       * while dirty would resize the scroll container at the exact moment a
-       * toggle fires, which moves content relative to the scrollbar and is the
-       * second half of the jump this page used to have. A constant-height slot
-       * means no content change on this page can ever resize the container.
+       * while dirty would resize the scroll container at the exact moment an
+       * edit lands, which moves content relative to the scrollbar. A
+       * constant-height slot means no content change on this page can ever
+       * resize the container.
        *
        * The collapse itself is a one-frame layout effect rather than a sibling
        * component, so the cause and effect are visible in one place: the height
        * is read from the DOM before the paint that reveals it, and locked to 0
        * for that frame. Both branches go through this effect, so a resize can
-       * never land between them. */}
-      <div
+       * never land between them.
+       *
+       * It appears with the first change and says why Save is blocked, so there
+       * is no second, disabled button to reconcile with it. The instructions
+       * tab uses the kitchen page's header Save instead, like every other tab. */}
+      {!embedded && <div
         ref={stickyBarRef}
         aria-hidden={!isDirty}
         className="sticky bottom-0 z-10 -mx-1 h-[58px] overflow-hidden"
       >
-        <div className="flex h-[58px] flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <AlertTriangle className="size-3.5 text-amber-500" />
-            {mt("unsavedChanges")}
+        <div className="flex h-[58px] items-center justify-between gap-3 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
+          <span
+            id="setup-save-status"
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-xs",
+              hasProblems ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            <AlertTriangle className={cn("size-3.5 shrink-0", !hasProblems && "text-amber-500")} />
+            <span className="line-clamp-2">
+              {hasProblems ? blockingMessage : mt("unsavedChanges")}
+            </span>
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-8 rounded-lg px-2 text-xs hover:bg-muted"
-              onClick={() => {
-                setCheckinEnabled(true);
-                setCheckoutEnabled(true);
-                setCheckinInstructions(data?.checkinInstructions ?? null);
-                setCheckoutInstructions(data?.checkoutInstructions ?? null);
-                setTwCheckinWindow(data?.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
-                setTwNoShowGrace(data?.timeWindowSettings?.noShowGraceMinutes ?? null);
-                setItems(initialUnifiedItems);
-              }}
+              onClick={() => { setItems(initialUnifiedItems); setScopeDraft({}); }}
+              title={mt("discardChanges")}
             >
-              {mt("discardChanges")}
+              {/* Icon-only on phones so the status message keeps room to be read. */}
+              <RotateCcw className="size-3.5 sm:hidden" aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">{mt("discardChanges")}</span>
             </Button>
             <StatusButton
               status={saveAction.status}
               onClick={saveAction.execute}
               disabled={hasProblems}
+              aria-describedby={hasProblems ? "setup-save-status" : undefined}
               labels={{
                 idle: mt("saveChanges"),
                 loading: mt("savingShort"),
@@ -701,7 +734,7 @@ export default function CheckinCheckoutSettings({
             />
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

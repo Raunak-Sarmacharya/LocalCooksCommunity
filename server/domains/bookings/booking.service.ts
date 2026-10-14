@@ -15,7 +15,7 @@ import {
     calculateTotalWithFees,
     calculateDurationHours
 } from "../../services/pricing-service";
-import { bookingStatusEnum, kitchenBookings, kitchenCheckoutHolds, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
+import { bookingStatusEnum, kitchenBookings, kitchenCheckoutHolds, kitchens, users, locations, equipmentListings, storageListings } from "@shared/schema";
 import { logger } from "../../logger";
 import { db } from "../../db";
 import { eq, and, ne, gt } from "drizzle-orm";
@@ -25,6 +25,8 @@ import { addHour, calendarDateForOperatingTime, getHourlySlotStarts, intervalsOv
 import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
 import { getActiveKitchenHolds } from "../../services/kitchen-checkout-holds";
 import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking-dst';
+
+import { chefService } from "../users/chef.service";
 
 type BookingInterval = { startTime: string; endTime: string };
 
@@ -64,7 +66,7 @@ export class BookingService {
     async createKitchenBooking(
         data: CreateKitchenBookingDTO
     ): Promise<KitchenBooking> {
-        // 1.1 Validate Chef Access (Tier 2 Requirement)
+        // Final approval and current access are required for every new booking.
         const kitchen = await kitchenService.getKitchenById(data.kitchenId);
         if (!kitchen) throw new Error("Kitchen not found");
         const selectedStorageIds = data.selectedStorage?.map(item => item.storageListingId) || data.selectedStorageIds || [];
@@ -102,47 +104,8 @@ export class BookingService {
             throw new Error("Chef ID is required for booking");
         }
 
-        const hasAccess = await db.query.chefLocationAccess.findFirst({
-            where: and(
-                eq(chefLocationAccess.chefId, data.chefId),
-                eq(chefLocationAccess.locationId, kitchen.locationId)
-            )
-        });
-
-        if (!hasAccess) {
-            // Fallback: Check chef_kitchen_applications for approved Tier 2+ applications
-            const [kitchenApplication] = await db
-                .select()
-                .from(chefKitchenApplications)
-                .where(
-                    and(
-                        eq(chefKitchenApplications.chefId, data.chefId),
-                        eq(chefKitchenApplications.locationId, kitchen.locationId)
-                    )
-                );
-
-            const currentTier = (kitchenApplication as any)?.currentTier ?? (kitchenApplication as any)?.current_tier ?? 0;
-            const isApprovedTier2Plus = kitchenApplication && 
-                kitchenApplication.status === 'approved' && 
-                currentTier >= 2;
-
-            if (!isApprovedTier2Plus) {
-                throw new Error("You do not have approved access to this kitchen location. Submit your kitchen documents and wait for manager approval before booking.");
-            }
-
-            // Auto-create access record for future checks (self-healing)
-            try {
-                await db.insert(chefLocationAccess).values({
-                    chefId: data.chefId,
-                    locationId: kitchen.locationId,
-                    grantedBy: kitchenApplication.reviewedBy || data.chefId,
-                    grantedAt: new Date(),
-                }).onConflictDoNothing();
-                logger.info(`✅ [BookingService] Auto-created chef_location_access for chef ${data.chefId} at location ${kitchen.locationId}`);
-            } catch (err) {
-                logger.error('[BookingService] Error auto-creating chef_location_access:', err);
-            }
-        }
+        const eligibility = await chefService.getApplicationStatusForBooking(data.chefId, kitchen.locationId, kitchen.id);
+        if (!eligibility.canBook) throw new Error(eligibility.message);
 
         // 2. Calculate service fee
         const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);

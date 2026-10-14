@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { kitchenCheckinPolicyTimes } from "@/lib/kitchen-checkin-policy";
 import { calendarDateForBookingTime } from "@shared/operating-hours";
-import { createBookingDateTime } from "@shared/timezone-utils";
+import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
 function formatPolicyTimestamp(iso: Date | string, locale: string, timezone: string) {
   return new Intl.DateTimeFormat(locale, {
@@ -50,7 +50,7 @@ export function CheckinPolicyTimesCard({
   showIntro = true,
 }: CheckinPolicyTimesCardProps) {
   const { t, i18n } = useTranslation("chef");
-  const tz = "America/St_Johns";
+  const tz = timezone || DEFAULT_TIMEZONE;
   const times = kitchenCheckinPolicyTimes(
     bookingDate.split("T")[0],
     startTime,
@@ -85,7 +85,7 @@ export function CheckinPolicyTimesCard({
         description ??
         t(
           "bdCheckInBody",
-          "You must check in when you arrive at the kitchen. Complete the checklist and snap photos to document the condition — this protects you if any issues arise.",
+          "Check in when you arrive. Follow the kitchen instructions and complete any tasks marked Required.",
         )
       }
     >
@@ -93,7 +93,7 @@ export function CheckinPolicyTimesCard({
       <p className="mt-3 text-xs text-muted-foreground">
         {t(
           "bdKitchenLocalTime",
-          "Times are shown in the kitchen’s local time (St. John’s).",
+          { timezone: tz, defaultValue: `Times are shown in the kitchen’s local time (${tz}).` },
         )}
       </p>
     </PolicyHeroShell>
@@ -128,7 +128,7 @@ export function CheckoutReadyCard({
   className,
 }: CheckoutReadyCardProps) {
   const { t, i18n } = useTranslation("chef");
-  const tz = "America/St_Johns";
+  const tz = timezone || DEFAULT_TIMEZONE;
   const dateOnly = bookingDate.split("T")[0];
   const endsAt = createBookingDateTime(
     calendarDateForBookingTime(dateOnly, endTime, operatingWindowStartTime, startTime),
@@ -156,8 +156,8 @@ export function CheckoutReadyCard({
 
   const nextSteps = [
     t("kciNextStep1", "Manager will review your photos and inspect the kitchen"),
-    t("kciNextStep2", "If clear, your session is completed"),
-    t("kciNextStep3", "Auto-clears if no issues within the review window"),
+    t("kciNextStep2", "The kitchen manager can record an inspection or report an issue"),
+    t("kciNextStep3", "With no response in the inspection window, it closes as “no inspection recorded”"),
   ];
 
   return (
@@ -174,11 +174,11 @@ export function CheckoutReadyCard({
         mode === "pending"
           ? t(
               "kciCheckoutPendingBody",
-              "Your checkout is with the kitchen manager. You’ll be cleared automatically if no issues are filed in the review window.",
+              "Your departure is recorded. The kitchen manager can inspect it or report an issue within the inspection window; your booked time ends on its own schedule.",
             )
           : t(
               "bdCheckOutBody",
-              "Submit your check-out photos when you're done. The manager will review and clear your session.",
+              "Follow the departure instructions and complete any tasks marked Required, then submit checkout for the kitchen manager to review.",
             )
       }
     >
@@ -191,7 +191,7 @@ export function CheckoutReadyCard({
       <p className="mt-3 text-xs text-muted-foreground">
         {t(
           "bdKitchenLocalTime",
-          "Times are shown in the kitchen’s local time (St. John’s).",
+          { timezone: tz, defaultValue: `Times are shown in the kitchen’s local time (${tz}).` },
         )}
       </p>
     </PolicyHeroShell>

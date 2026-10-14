@@ -3853,11 +3853,17 @@ export const generateBookingRequestEmail = (data: BookingRequestEmailDetails & {
     note: PRE_CONFIRMATION_REFUND_POLICY + '\n\n' + LOCAL_COOKS_COMMUNICATION_NOTE });
 };
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string }): EmailContent => {
-  const timezone = DEFAULT_TIMEZONE;
+export type ArrivalMode = 'staffed' | 'self' | 'mixed' | 'legacy';
+export function arrivalModeLine(mode: ArrivalMode = 'legacy', locale?: string | null, short = false) {
+  return tEmail(locale, `${short ? 'arrivalAction' : 'arrivalMode'}${mode[0].toUpperCase()}${mode.slice(1)}`);
+}
+
+export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown; bookingId?: number; actionUrl?: string; isStaff?: boolean; checkinEnabled?: boolean; checkoutEnabled?: boolean; arrivalInstructions?: string; departureInstructions?: string; contactEmail?: string; paymentSummary?: string; locale?: string | null; arrivalMode?: ArrivalMode; instructionsReleased?: boolean; instructionsReleaseAt?: string; preparationHours?: number; visitGuidance?: string }): EmailContent => {
+  const timezone = bookingData.timezone || DEFAULT_TIMEZONE;
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const dashboardUrl = bookingData.actionUrl || getDashboardUrl();
-  const firstName = bookingData.chefName.split(' ')[0];
+  const firstName = bookingData.chefName.trim().split(' ')[0];
+  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : 'Hello,';
 
   // Convert bookingDate to Date object for display
   const bookingDateObj = bookingData.bookingDate instanceof Date
@@ -3885,26 +3891,30 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   const icsContent = calendar.ics;
 
   const changeGuidance = bookingData.isStaff
-    ? 'Open the booking to review its current status and any cancellation request. Coordinate date/time change requests with the chef and Local Cooks at support@localcooks.ca.'
+    ? 'Open the booking to review its current status and any cancellation request. Coordinate date/time change requests with the booking contact and Local Cooks at support@localcooks.ca.'
     : `Open the booking for current actions or to request cancellation. To request a date/time change, contact ${bookingData.contactEmail || 'support@localcooks.ca'}. Your confirmed dates remain in place until a change is agreed.`;
+  const released = bookingData.instructionsReleased === true;
+  const overview = bookingData.instructionsReleaseAt ? tEmail(bookingData.locale, 'instructionsReleaseOverview', {
+    releaseAt: `${new Intl.DateTimeFormat(bookingData.locale || 'en-CA', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(bookingData.instructionsReleaseAt))} (${new Intl.DateTimeFormat(bookingData.locale || 'en-CA', { timeZone: timezone, timeZoneName: 'longGeneric' }).formatToParts(new Date()).find(part => part.type === 'timeZoneName')?.value || timezone})`,
+    hours: bookingData.preparationHours ?? 48 }) : 'Open your booking for the instruction release time.';
   const guidance = bookingData.isStaff ? [
     `Reference: Booking #${bookingData.bookingId}`,
     bookingData.paymentSummary,
     'Review the confirmed itinerary and any current tasks from the booking link.',
-    bookingData.arrivalInstructions ? `Arrival instructions shared with the chef: ${bookingData.arrivalInstructions}` : '',
-    bookingData.departureInstructions ? `Departure instructions shared with the chef: ${bookingData.departureInstructions}` : '',
+    bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : '',
+    bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : '',
     'Saved calendar events do not update automatically. Open the booking for the current schedule and actions.',
   ].filter(Boolean).join('\n') : [
     `Reference: ${bookingData.bookingId ? `Booking #${bookingData.bookingId}` : 'Kitchen booking'}`,
     bookingData.paymentSummary,
-    bookingData.checkinEnabled === true
-      ? (bookingData.checkInWindowMinutesBefore != null && bookingData.noShowGraceMinutes != null
+    bookingData.checkInWindowMinutesBefore != null && bookingData.noShowGraceMinutes != null
         ? `Check-in opens ${bookingData.checkInWindowMinutesBefore} minutes before your session. If you have not checked in, you may be marked a no-show ${bookingData.noShowGraceMinutes} minutes after it begins.`
-        : 'Check in for each visit when the action opens. View the booking for the current check-in window and requirements.')
-      : 'Arrival tracking is off. Your confirmed reservation remains valid; follow the arrival instructions.',
-    bookingData.checkoutEnabled === true ? 'Request checkout for each visit. Manager inspection remains pending until reviewed.' : 'Departure tracking is off. Follow the departure instructions.',
-    bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : 'Open the booking for current arrival guidance. Contact the manager if instructions are missing.',
-    bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : '',
+        : 'Check in for each visit when the action opens. View the booking for the current check-in window and requirements.',
+    'Request checkout for each visit. Manager inspection remains pending until reviewed.',
+    bookingData.visitGuidance ? '' : arrivalModeLine(bookingData.arrivalMode, bookingData.locale),
+    bookingData.visitGuidance || (released ? [tEmail(bookingData.locale, 'instructionsReleased'),
+      bookingData.arrivalInstructions ? `Arrival instructions: ${bookingData.arrivalInstructions}` : '',
+      bookingData.departureInstructions ? `Departure instructions: ${bookingData.departureInstructions}` : ''].filter(Boolean).join('\n') : overview),
     bookingData.contactEmail ? `Kitchen contact: ${bookingData.contactEmail}` : 'For help contact support@localcooks.ca.',
     'Saved calendar events do not update automatically. Open the booking for the current schedule and actions.',
   ].filter(Boolean).join('\n');
@@ -3923,7 +3933,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader-brand-red.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${greeting}</h2>
       <p class="message" style="margin-bottom: 24px;">The booking at ${bookingData.kitchenName} has been confirmed!</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Booking Details:</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
@@ -3946,7 +3956,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Need to Make Changes?</p>
       <p class="message" style="margin-bottom: 20px;">${escapeHtml(changeGuidance)}</p>
       <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View booking and current actions</a>
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Open booking</a>
       </div>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">Contact us anytime at <a href="mailto:support@localcooks.ca" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcooks.ca</a> or reply to this email.</p>
       <p class="message" style="margin-top: 20px; font-style: italic; color: #64748b;">Open the current booking whenever you need the latest status and available actions.</p>
@@ -3964,7 +3974,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
 </html>`;
 
   const text = `
-Hi ${firstName},
+${greeting}
 
 The booking at ${bookingData.kitchenName} has been confirmed!
 

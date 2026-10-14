@@ -5,6 +5,10 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () =
 const items = [{ id: 22, kind: 'storage' as const, name: 'Cold storage', status: 'confirmed', dates: 'Nov 10 – Nov 12' },
   { id: 31, kind: 'equipment' as const, name: 'Mixer', status: 'confirmed' }];
 describe('one parent cancellation chooser', () => {
+  it('hides cancellation while a visit is checked in or awaiting checkout review', () => {
+    render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" visitActive items={items} onChanged={async () => {}} />);
+    expect(screen.queryByRole('button', { name: 'Request cancellation' })).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     window.history.replaceState({}, '', '/booking/10');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ action: 'cancellation_requested', message: 'Manager review pending. Refund is separate.' }) })));

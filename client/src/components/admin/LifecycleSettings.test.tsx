@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ refetch: vi.fn(), token: vi.fn(async () => 'test-token'), fetch: vi.fn(), data: {
-  tourOutcomeReminderMinutes: 0, historicalVisitReviewAfterHours: 48, preparationReminderHours: 24,
+  serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, tourOutcomeReminderMinutes: 0, historicalVisitReviewAfterHours: 48, preparationReminderHours: 24,
   arrivalReminderHours: 2, departureReminderMinutes: 30, inspectionWarningPercent: 50,
   responseWarningHours: 6, cancellationWarningHours: 6, tourPreparationMinuteOfDay: 420, tourArrivalReminderMinutes: 60, tourDepartureReminderMinutes: 10, tourPreparationEnabled: 1, tourArrivalEnabled: 1, tourDepartureEnabled: 1,
 } }));
@@ -35,4 +35,17 @@ it('saves the native Newfoundland clock, independent tour leads and disabled con
   fireEvent.click(screen.getByRole('button', { name: 'Save lifecycle timing' }));
   await waitFor(() => expect(mocks.fetch).toHaveBeenCalled());
   expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ tourPreparationMinuteOfDay: 495, tourArrivalReminderMinutes: 90, tourDepartureEnabled: 0, arrivalReminderHours: 2 });
+});
+
+it('saves the closeout notification start as an exact instant through its own endpoint', async () => {
+  mocks.fetch.mockClear(); mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({}) }); vi.stubGlobal('fetch', mocks.fetch);
+  render(<LifecycleSettings />);
+  expect(screen.getByRole('button', { name: 'Save notification start' })).toHaveProperty('disabled', true);
+  fireEvent.change(screen.getByLabelText('Visit finished and inspection closed notices start'), { target: { value: '2026-10-14T09:30' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save notification start' }));
+  await waitFor(() => expect(mocks.fetch).toHaveBeenCalled());
+  const [url, request] = mocks.fetch.mock.calls[0];
+  expect(url).toBe('/api/admin/closeout-notifications-from');
+  expect(request.method).toBe('PUT');
+  expect(JSON.parse(request.body)).toEqual({ closeoutNotificationsFrom: new Date('2026-10-14T09:30').toISOString() });
 });

@@ -23,7 +23,7 @@ describe("cancellation-policy-dialog", () => {
     };
 
     const first = cancellationPolicyFirstLine(48, null, t);
-    assert.equal(first, "100% refund before confirmation");
+    assert.equal(first, "Free to cancel until the kitchen confirms your request — your card is only on hold.");
     assert.equal(first.includes("full release"), false);
 
     const full = buildCancellationPolicyText(48, null, t);

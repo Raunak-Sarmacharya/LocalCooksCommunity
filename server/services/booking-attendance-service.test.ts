@@ -49,7 +49,7 @@ describe('explicit booking attendance statements (mocked database only)', () => 
     expect(Object.keys(state.updates[0]).sort()).toEqual(['checkinStatus', 'noShowDetectedAt', 'updatedAt']);
     expect(state.events[0]).toMatchObject({ action: 'report_no_show', previousStatus: 'not_checked_in', actorId: 2 });
     expect(state.notify).toHaveBeenCalledTimes(1);
-    expect(state.notify.mock.calls[0].slice(1, 4)).toEqual([10, 'report_no_show', 'Chef no-show reported']);
+    expect(state.notify.mock.calls[0].slice(1, 4)).toEqual([10, 'report_no_show', 'No-show reported']);
   });
   it('does not require optional tracking to be enabled', async () => {
     prepare({ checkinStatus: null }); response(); await recordBookingAttendance(10, actor, input);

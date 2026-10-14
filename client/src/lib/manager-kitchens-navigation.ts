@@ -6,6 +6,7 @@ export type KitchenSection =
   | "availability"
   | "tours"
   | "policies"
+  | "arrival-departure"
   | "equipment"
   | "storage";
 
@@ -46,6 +47,7 @@ export function kitchenSectionFromParams(params: URLSearchParams): KitchenSectio
   const section = params.get("section");
   const view = params.get("view");
   if (section === "tours" || view === "tour-availability" || (view === "availability" && params.get("tab") === "tours")) return "tours";
+  if (section === "arrival-departure") return "arrival-departure";
   if (section === "photos") return "photos";
   if (section === "availability" || view === "availability") return "availability";
   if (section === "policies" || view === "settings-booking-rules") return "policies";

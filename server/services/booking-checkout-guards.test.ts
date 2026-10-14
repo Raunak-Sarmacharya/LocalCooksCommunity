@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: vi.fn() }));
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
-vi.mock('./visit-duties', () => ({ kitchenDuties: async () => ({ arrival: { enabled: true, items: [], photos: [] }, departure: { enabled: true, items: [], photos: [] } }), captureKitchenDuties: vi.fn(async () => {}) }));
+vi.mock('./visit-duties', () => ({ kitchenDuties: async () => ({ arrival: { enabled: true, items: [], photos: [] }, departure: { enabled: true, items: [], photos: [] } }), currentKitchenDuties: async () => ({ arrival: { enabled: true, items: [], photos: [] }, departure: { enabled: true, items: [], photos: [] } }), validateCurrentKitchenSubmission: vi.fn(async () => {}), captureKitchenDuties: vi.fn(async () => {}) }));
 import { captureKitchenDuties } from './visit-duties';
 import { scheduleAdvanceReminders } from './advance-reminders';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
@@ -11,7 +11,7 @@ const stripe = vi.hoisted(() => ({ cancel: vi.fn() }));
 vi.mock('./stripe-service', () => ({ cancelPaymentIntent: stripe.cancel }));
 vi.mock('../db', () => {
   const db: any = {
-    select: () => { const q: any = { from: () => q, innerJoin: () => q, where: () => q,
+    select: () => { const q: any = { from: () => q, innerJoin: () => q, where: () => q, orderBy: () => q,
       limit: async () => state.rows.shift() || [], then: (resolve: any) => resolve(state.rows.shift() || []) }; return q; },
     update: () => ({ set: (value: any) => { state.writes.push(value); return { where: (condition: any) => {
       state.conditions.push(condition); return { returning: async () => state.won ? [{ id: 10 }] : [] };
@@ -44,17 +44,23 @@ describe('checkout guards (mocked database, no Stripe calls)', () => {
     expect(captureKitchenDuties).not.toHaveBeenCalled();
   });
   it('preserves chef notes and records manager communication separately', async () => {
-    state.rows.push([{ id: 10, chefId: 3, checkinStatus: 'checkout_requested', updatedAt: new Date('2026-01-01') }], [{ managerId: 7 }]);
-    expect((await processKitchenCheckoutClear(10, 7, 'All clear')).success).toBe(true);
+    const now = Date.now();
+    const saved = { version: 1, timezone: 'UTC', serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24,
+      checkinWindowMinutesBefore: 15, visits: [{ key: '2026-01-01|10:00-11:00|0', blockIndex: 0, localDate: '2026-01-01', startTime: '10:00', endTime: '11:00',
+        scheduledStartAt: new Date(now - 3600000).toISOString(), scheduledEndAt: new Date(now + 3600000).toISOString() }] };
+    const booking = { id: 10, chefId: 3, status: 'confirmed', startTime: '10:00', endTime: '11:00',
+      checkinStatus: 'checkout_requested', checkoutRequestedAt: new Date(now - 60000),
+      visitDuties: { clockCloseout: saved }, updatedAt: new Date('2026-01-01') };
+    state.rows.push([{ booking, managerId: 7, timezone: 'UTC' }], [],
+      [{ booking: { ...booking, checkinStatus: 'checked_out', checkoutApprovedBy: 7 }, timezone: 'UTC' }], []);
+    expect(await processKitchenCheckoutClear(10, 7, 'All clear')).toMatchObject({ success: true });
     expect(state.writes[0]).not.toHaveProperty('checkoutNotes');
     expect(state.writes[0]).toMatchObject({ checkoutManagerMessage: 'Message from kitchen manager: All clear' });
-    expect(where().params).toEqual(expect.arrayContaining(['confirmed', 'checkout_requested']));
+    expect(state.writes[0]).not.toHaveProperty('status');
   });
-  it('does not announce lazy auto-clear when its guarded update loses', async () => {
-    state.won = false;
+  it('retired lazy auto-clear never writes or announces a transition', async () => {
     expect(await autoCleanExpiredKitchenCheckout(10, 3, new Date('2020-01-01'), 30)).toBe(false);
-    expect(state.writes[0]).not.toHaveProperty('checkoutNotes');
-    expect(where().params).toEqual(expect.arrayContaining(['confirmed', 'checkout_requested']));
+    expect(state.writes).toEqual([]); expect(state.conditions).toEqual([]);
   });
   it('rechecks multi-visit parent after taking its lock', async () => {
     state.rows.push([{ booking: { id: 10, chefId: 3, status: 'confirmed' }, visit: { id: 5, checkinStatus: 'checked_in' }, locationId: 4 }], [{ status: 'cancelled' }]);

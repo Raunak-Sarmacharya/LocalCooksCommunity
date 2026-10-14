@@ -376,8 +376,9 @@ export default function BookingConfirmationPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create checkout session');
+        // An unreadable body must still produce a visible message, never a silent no-op.
+        const errorData = await response.json().catch(() => ({} as { error?: string; message?: string }));
+        throw new Error(errorData.error || errorData.message || t("toastCheckoutFailedDefaultDesc"));
       }
 
       const data = await response.json();

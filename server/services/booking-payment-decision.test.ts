@@ -6,6 +6,8 @@ vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: mocks.intent, getB
   capturePaymentIntent: mocks.capture, cancelPaymentIntent: mocks.cancel }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: vi.fn() }));
 vi.mock('./booking-linked-cancellation', () => ({ cancelLinkedBookingDates: vi.fn() }));
+const expiry = vi.hoisted(() => ({ lazy: vi.fn() }));
+vi.mock('./auth-expiry-service', () => ({ AUTH_EXPIRY_HOURS: 24, lazyExpireKitchenBookingAuth: expiry.lazy }));
 vi.mock('../db', () => {
   const name = (table: any) => table[Symbol.for('drizzle:Name')];
   const database = (state: Record<string, any[]>) => {
@@ -31,7 +33,7 @@ vi.mock('../db', () => {
   };
   return { db: database(mocks.state) };
 });
-import { decideAuthorizedBooking } from './booking-payment-decision';
+import { decideAuthorizedBooking, BookingRequestExpired } from './booking-payment-decision';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 describe('durable booking capture recovery (isolated Stripe and transaction model)', () => {
   beforeEach(() => {
@@ -114,7 +116,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
       .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
       .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
-    await expect(decideAuthorizedBooking(1, 'cancelled')).resolves.toMatchObject({ success: true, status: 'cancelled' });
+    await expect(decideAuthorizedBooking(1, 'cancelled')).resolves.toMatchObject({ success: true, status: 'cancelled', authorizationVoided: true });
+    await expect(decideAuthorizedBooking(1, 'cancelled')).resolves.toMatchObject({ success: true, status: 'cancelled', authorizationVoided: true, recovered: true });
     expect(mocks.session).not.toHaveBeenCalled();
     expect(mocks.capture).not.toHaveBeenCalled();
     expect(mocks.state.kitchen_bookings[0].paymentDecision.state).toBe('complete');
@@ -124,5 +127,18 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     mocks.session.mockResolvedValue(session);
     await expect(decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }])).rejects.toThrow('original checkout terms');
     expect(mocks.capture).not.toHaveBeenCalled();
+  });
+  it('refuses to confirm a request past its 24-hour response deadline and releases the hold', async () => {
+    mocks.state.kitchen_bookings[0].createdAt = new Date(Date.now() - 25 * 3_600_000);
+    await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toBeInstanceOf(BookingRequestExpired);
+    expect(expiry.lazy).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+    expect(mocks.capture).not.toHaveBeenCalled();
+    expect(mocks.state.kitchen_bookings[0].paymentDecision).toBeUndefined();
+  });
+  it('still confirms a request inside its response deadline', async () => {
+    mocks.state.kitchen_bookings[0].createdAt = new Date(Date.now() - 23 * 3_600_000);
+    mocks.capture.mockRejectedValue(new Error('timeout'));
+    await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow('timeout');
+    expect(expiry.lazy).not.toHaveBeenCalled();
   });
 });

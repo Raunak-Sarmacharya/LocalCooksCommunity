@@ -24,6 +24,8 @@ export interface KitchenDisplayStatus {
    * differently without re-deriving WHY it is in it.
    */
   listingPaused?: boolean;
+  /** Approved, but new bookings are blocked (documents, renewal under review, or ended access). */
+  bookingBlocked?: boolean;
 }
 
 export interface KitchenStatusInput {
@@ -38,6 +40,7 @@ export interface KitchenStatusInput {
    * `=== false`, never falsiness.
    */
   locationListed?: boolean | null;
+  bookingEligibility?: { canBook: boolean; status: string; message: string; actionUrl?: string; renewals?: Array<{ key: string; status: string; expiry?: string | null; rejectionReason?: string | null }> };
 }
 
 const TONE_TO_BADGE: Record<StatusTone, StatusVariant> = {
@@ -122,6 +125,16 @@ export function getKitchenDisplayStatus(
   t?: StatusTranslator
 ): KitchenDisplayStatus {
   const display = resolveApplicationDisplay(app, t);
+  if (display.actionKind === 'book' && app.bookingEligibility?.canBook === false) {
+    const eligibility = app.bookingEligibility.status;
+    if (eligibility === 'renewal_under_review') {
+      const label = t ? t('renewalUnderReview') : 'Renewal under review';
+      return { ...display, label, tone: 'progress', actionKind: 'wait', actionLabel: label, bookingBlocked: true };
+    }
+    const renewal = ['document_expired', 'document_review_required'].includes(eligibility);
+    const label = t ? t(renewal ? 'accessDocumentsNeedReview' : 'locationAccessEnded') : renewal ? 'Documents need renewal or review' : 'Access ended';
+    return { ...display, label, tone: 'warning', actionKind: renewal ? 'complete-step' : 'wait', actionLabel: renewal ? (t ? t('renewDocumentsTitle') : 'Renew documents') : null, bookingBlocked: true };
+  }
 
   if (display.actionKind !== "book" || app.locationListed !== false) {
     return display;

@@ -24,6 +24,8 @@ it('allows a chef to read exact listed kitchen terms before submitting a request
   const query = new PgDialect().sqlToQuery(state.termsConditions[0]);
   expect(query.params).toEqual([url, true, true, 'active']);
   expect(query.sql).toContain('"locations"."kitchen_terms_url"');
+  expect(query.sql).not.toContain('"kitchens"."kitchen_terms_url"');
+  expect(query.sql).not.toContain('coalesce');
   expect(query.sql).toContain('"kitchens"."listing_status"');
   expect(await canReadPrivateFile(undefined, url)).toBe(false);
   expect(await canReadPrivateFile({ id: 22, role: 'chef' }, url.replace('invoice', 'license'))).toBe(false);

@@ -1,6 +1,7 @@
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { equipmentBookings, storageBookings, kitchenBookings } from '@shared/schema';
 import { db } from '../db';
+import { revokeForBooking } from './visit-code-challenge';
 
 // Keep a removal task and inventory reservation until the manager confirms checkout.
 export const cancelledStorageStatus = sql`CASE WHEN
@@ -19,6 +20,8 @@ export const storageListingAwaitingRemoval = sql<boolean>`EXISTS (SELECT 1 FROM 
           OR occupied_storage.checkout_status IN ('checkout_requested', 'completed', 'checkout_claim_filed')))))`;
 
 export async function cancelLinkedBookingDates(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], bookingId: number) {
+  // Every cancellation path passes through here; an unconsumed arrival code must stop working.
+  await revokeForBooking(tx, bookingId, 'booking_cancelled');
   const storage = await tx.update(storageBookings).set({ status: cancelledStorageStatus, cancellationAcceptedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(storageBookings.kitchenBookingId, bookingId), ne(storageBookings.status, 'completed'))).returning();
   await tx.update(equipmentBookings).set({ status: 'cancelled', updatedAt: new Date() })

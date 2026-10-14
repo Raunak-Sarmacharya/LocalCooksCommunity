@@ -90,7 +90,6 @@ export interface KitchenDTO {
   cancellationPolicyHours?: number | null;
   minimumBookingWindowHours?: number | null;
   defaultDailyBookingLimit?: number | null;
-  checkinCheckoutEnabled?: boolean;
   hourlyRate: number | null;
   dailyRate: number | null;
   currency: string;

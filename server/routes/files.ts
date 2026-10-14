@@ -102,7 +102,9 @@ router.get('/kitchen-application/:applicationId/preview', requireFirebaseAuthWit
             return res.status(403).json({ error: 'Access denied' });
         }
         const tierFiles = (application.tierData as { tierFiles?: Record<string, string> } | null)?.tierFiles || {};
-        const allowedUrls = [application.foodSafetyLicenseUrl, application.foodEstablishmentCertUrl, ...Object.values(tierFiles)];
+        const { readDocumentRenewals } = await import('../services/document-renewals');
+        const renewalUrls = (await readDocumentRenewals(applicationId)).map(renewal => renewal.url);
+        const allowedUrls = [application.foodSafetyLicenseUrl, application.foodEstablishmentCertUrl, ...Object.values(tierFiles), ...renewalUrls];
         if (!allowedUrls.includes(fileUrl)) return res.status(404).json({ error: 'Document not found' });
 
         let bytes: Buffer;

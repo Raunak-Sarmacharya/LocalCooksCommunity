@@ -16,7 +16,7 @@ import { TRACKING_PROMPT_DISMISS_MS, isTrackingPromptDismissed, saveTrackingProm
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvailabilitySkeleton } from "@/components/manager/AvailabilitySkeleton";
-import { Plus, Loader2, Image as Images, Clock, ClipboardCheck, KitchenTour, CalendarClock, Building, CheckCircle, Copy } from "@/components/ui/manager-icons";
+import { Plus, Loader2, Image as Images, Clock, ClipboardCheck, KitchenTour, CalendarClock, Building, CheckCircle, Copy, ChevronRight } from "@/components/ui/manager-icons";
 import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -37,6 +37,7 @@ import { DEFAULT_KITCHEN_SECTION, kitchenSectionFromParams, type KitchenSection,
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import KitchenAvailabilityManagement, { type KitchenAvailabilityManagementHandle } from "@/pages/KitchenAvailabilityManagement";
 import KitchenWorkspaceControls from "./KitchenWorkspaceControls";
+import CheckinCheckoutSettings, { type CheckinCheckoutHandle } from "./CheckinCheckoutSettings";
 import type { KitchenWorkspaceSettings } from "./KitchenWorkspaceControls";
 import type { KitchenPoliciesHandle, PolicySaveScope } from "./KitchenWorkspaceControls";
 import ViewingSettingsPanel, { type ViewingSettingsPanelHandle, type ViewingSettingsResponse } from "@/components/manager/ViewingSettingsPanel";
@@ -146,22 +147,11 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     document.addEventListener("visibilitychange", refresh);
     return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, []);
-  const [highlightTracking, setHighlightTracking] = useState(false);
-  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
-  const highlightTrackingSection = useCallback(() => {
-    const target = document.getElementById('tracking-settings');
-    if (!target) return false;
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    target.focus({ preventScroll: true });
-    setHighlightTracking(true);
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => setHighlightTracking(false), 3000);
-    return true;
-  }, []);
   const [policiesDirty, setPoliciesDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
   const [storagePenaltyDirty, setStoragePenaltyDirty] = useState(false);
+  const arrivalRef = useRef<CheckinCheckoutHandle>(null);
+  const [arrivalDirty, setArrivalDirty] = useState(false);
   const storagePenaltyRef = useRef<{ saveAllChanges: () => Promise<boolean> }>(null);
   /** In-page navigation held back until the unsaved-changes question is answered. */
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
@@ -211,11 +201,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     enabled: activeKitchenId != null && activeKitchen?.listingStatus === 'active' && activeKitchen.isActive,
     staleTime: 30_000,
   });
-  const { data: workspaceSettings } = useQuery<KitchenWorkspaceSettings>({
-    queryKey: kitchenWorkspaceSettingsKey(activeKitchenId ?? 0),
-    queryFn: () => apiGet(`/manager/kitchens/${activeKitchenId}/workspace-settings`),
-    enabled: activeKitchenId != null,
-  });
   const { data: checklistSettings } = useQuery<{
     checkinEnabled: boolean; checkoutEnabled: boolean;
     checkinItems: unknown[]; checkoutItems: unknown[];
@@ -226,26 +211,22 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     queryFn: () => apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
     enabled: activeKitchenId != null,
   });
-  const trackingConfigured = workspaceSettings?.kitchen?.checkinCheckoutEnabled === true
-    && checklistSettings?.checkinEnabled === true && checklistSettings?.checkoutEnabled === true
-    && Boolean(checklistSettings.checkinInstructions?.trim())
-    && Boolean(checklistSettings.checkoutInstructions?.trim());
-  const trackingEnabled = workspaceSettings?.kitchen?.checkinCheckoutEnabled === true;
+  const trackingConfigured = Boolean(checklistSettings?.checkinInstructions?.trim())
+    && Boolean(checklistSettings?.checkoutInstructions?.trim());
+  // Old links now open the instructions tab instead of a removed switch.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (activeSection !== 'details' || !activeKitchenId || !workspaceSettings || url.searchParams.get('focus') !== 'tracking') return;
+    if (!activeKitchenId || url.searchParams.get('focus') !== 'tracking') return;
     const requestedKitchen = url.searchParams.get('kit');
     if (requestedKitchen && Number(requestedKitchen) !== activeKitchenId) return;
-    if (highlightTrackingSection()) {
-      url.searchParams.delete('focus');
-      window.history.replaceState({}, '', url);
-    }
-  }, [activeSection, activeKitchenId, workspaceSettings, highlightTrackingSection]);
+    url.searchParams.delete('focus');
+    url.searchParams.set('section', 'arrival-departure');
+    setActiveSection('arrival-departure');
+    window.history.replaceState({}, '', url);
+  }, [activeKitchenId]);
   const trackingUid = auth.currentUser?.uid;
   const trackingDismissalKey = trackingUid && activeKitchenId != null ? trackingPromptKey(trackingUid, activeKitchenId) : null;
-  const trackingSignature = workspaceSettings?.kitchen && checklistSettings ? trackingSetupSignature([
-    workspaceSettings.kitchen.checkinCheckoutEnabled,
-    checklistSettings.checkinEnabled, checklistSettings.checkoutEnabled,
+  const trackingSignature = checklistSettings ? trackingSetupSignature([
     checklistSettings.checkinItems, checklistSettings.checkoutItems,
     checklistSettings.checkinPhotoRequirements, checklistSettings.checkoutPhotoRequirements,
     checklistSettings.checkinInstructions, checklistSettings.checkoutInstructions,
@@ -253,7 +234,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   let persistedTrackingDismissed = false;
   if (trackingDismissalKey && trackingSignature) {
     try {
-      const storage = trackingEnabled ? window.localStorage : window.sessionStorage;
+      const storage = window.localStorage;
       persistedTrackingDismissed = isTrackingPromptDismissed(storage, trackingDismissalKey, trackingSignature, Math.max(Date.now(), dismissalCheckedAt));
     } catch { /* Private browsing can disable storage. */ }
   }
@@ -355,6 +336,37 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
    * the tabs while it is up, which is why `kitchensDirty` below is masked by it.
    */
   const showingCreateForm = showCreateKitchen;
+  const sectionTabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let frame: number;
+    const alignSelectedTab = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+      const tabs = sectionTabsRef.current;
+      const selected = tabs?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+      if (!tabs || !selected) return;
+      const viewport = tabs.getBoundingClientRect();
+      const tab = selected.getBoundingClientRect();
+      // The shared scroller's edge fade/chevron covers 32px. Keep the label clear of it.
+      const inset = Math.min(32, Math.max(0, ((viewport.right - viewport.left) - (tab.right - tab.left)) / 2));
+      if (tab.right > viewport.right - inset) tabs.scrollLeft += tab.right - viewport.right + inset;
+      else if (tab.left < viewport.left + inset) tabs.scrollLeft += tab.left - viewport.left - inset;
+      });
+    };
+    alignSelectedTab();
+    window.addEventListener("resize", alignSelectedTab);
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(alignSelectedTab);
+    if (sectionTabsRef.current) {
+      observer?.observe(sectionTabsRef.current);
+      // Translated labels and icons can settle after the list's width stops changing.
+      Array.from(sectionTabsRef.current.children).forEach(child => observer?.observe(child));
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", alignSelectedTab);
+      observer?.disconnect();
+    };
+  }, [activeSection, activeKitchenId, isLoadingKitchens, showingCreateForm]);
 
   /*
    * The details form only exists while its tab is mounted, so unsaved edits can
@@ -371,6 +383,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       || (activeSection === "availability" && availabilityDirty)
       || (activeSection === "tours" && toursDirty)
       || (activeSection === "policies" && policiesDirty)
+      || (activeSection === "arrival-departure" && arrivalDirty)
       || (activeSection === "storage" && storagePenaltyDirty));
 
   useEffect(() => {
@@ -429,6 +442,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       ? await requestPolicySave()
       : activeSection === "storage"
       ? (await storagePenaltyRef.current?.saveAllChanges()) ?? true
+      : activeSection === "arrival-departure"
+      ? (await arrivalRef.current?.save()) ?? true
       : (await detailsRef.current?.saveAllChanges()) ?? true;
     if (!saved) throw new Error("save-failed");
   }, [activeSection, requestPolicySave]);
@@ -481,12 +496,15 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     action();
   };
 
-  const handleSectionChange = (section: string) => {
+  const handleSectionChange = (section: string, focus?: "tracking") => {
     const nextSection = section as KitchenSection;
     guardNavigation(() => {
       setActiveSection(nextSection);
       const url = new URL(window.location.href);
+      if (focus) url.searchParams.set('focus', focus);
       url.searchParams.set('view', 'kitchens');
+      if (activeKitchenId) url.searchParams.set('kit', String(activeKitchenId));
+      url.searchParams.set('locationId', String(location.id));
       if (nextSection === DEFAULT_KITCHEN_SECTION) url.searchParams.delete('section');
       else url.searchParams.set('section', nextSection);
       window.history.replaceState({}, '', url);
@@ -494,10 +512,27 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   };
 
   useEffect(() => {
-    const syncSectionFromUrl = () => setActiveSection(kitchenSectionFromParams(new URLSearchParams(window.location.search)));
+    const syncSectionFromUrl = (event: PopStateEvent) => {
+      const url = new URL(window.location.href);
+      // The shell guards view, location and kitchen changes. This guard owns section changes.
+      if (url.searchParams.get("view") !== "kitchens"
+        || (url.searchParams.has("kit") && Number(url.searchParams.get("kit")) !== activeKitchenId)
+        || (url.searchParams.has("locationId") && Number(url.searchParams.get("locationId")) !== location.id)) return;
+      const section = kitchenSectionFromParams(url.searchParams);
+      if (section === activeSection) return;
+      if (!kitchensDirty || event.state?.managerKitchenNavigationApproved) { setActiveSection(section); return; }
+      const destination = url.toString();
+      if (activeSection === DEFAULT_KITCHEN_SECTION) url.searchParams.delete("section");
+      else url.searchParams.set("section", activeSection);
+      window.history.replaceState(window.history.state, "", url);
+      setPendingNav(() => () => {
+        window.history.replaceState(window.history.state, "", destination);
+        setActiveSection(section);
+      });
+    };
     window.addEventListener('popstate', syncSectionFromUrl);
     return () => window.removeEventListener('popstate', syncSectionFromUrl);
-  }, []);
+  }, [activeSection, activeKitchenId, location.id, kitchensDirty]);
 
   /**
    * Open the create form, asking about unsaved edits first.
@@ -629,7 +664,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
           )}
 
           <Tabs value={activeSection} onValueChange={handleSectionChange} className="w-full min-w-0">
-            <TabsList className="mb-6 h-auto w-full min-w-0 max-w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
+            <TabsList ref={sectionTabsRef} className="mb-6 h-auto w-full min-w-0 max-w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
               <TabsTrigger value="details" className={TAB_TRIGGER}>
                 <KitchenIcon className={TAB_ICON} />{mt("details")} &amp; {mt("navPricing")}
               </TabsTrigger>
@@ -641,6 +676,9 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               </TabsTrigger>
               <TabsTrigger value="policies" className={TAB_TRIGGER}>
                 <ClipboardCheck className={TAB_ICON} />{mt("navBookingRules")}
+              </TabsTrigger>
+              <TabsTrigger value="arrival-departure" className={TAB_TRIGGER}>
+                <ClipboardCheck className={TAB_ICON} />{mt("navKitchenArrivalDeparture")}
               </TabsTrigger>
               <TabsTrigger value="storage" className={TAB_TRIGGER}>
                 <Package className={TAB_ICON} />{mt("navStorage")}
@@ -654,15 +692,15 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             </TabsList>
 
             <TabsContent value="details" className="mt-0 space-y-4">
-              {activeKitchenId && workspaceSettings && checklistSettings && !trackingConfigured && !trackingDismissed &&
+              {activeKitchenId && checklistSettings && !trackingConfigured && !trackingDismissed &&
                 <Card className="overflow-hidden border-l-[3px] border-l-primary/80 shadow-[0_8px_24px_-18px_hsl(var(--primary)/0.5)]"><CardContent className="relative flex flex-wrap items-center justify-between gap-4 p-4">
                   <div className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.8)]"><ClipboardCheck className="size-5" /></span>
                     <div><p className="font-semibold tracking-tight">{mt("trackingSetupTitle")}</p><p className="text-sm text-muted-foreground">{mt("trackingSetupDescription")}</p></div></div>
-                  <div className="flex gap-2"><Button size="sm" onClick={highlightTrackingSection}>{mt("setUpChecklist")}</Button>
+                  <div className="flex gap-2"><Button size="sm" onClick={() => handleSectionChange("arrival-departure")}>{mt("setUpChecklist")}</Button>
                     <Button size="sm" variant="ghost" onClick={() => {
                       if (!trackingDismissalKey || !trackingSignature) return;
                       setSessionTrackingDismissal({ key: trackingDismissalKey, signature: trackingSignature, dismissedAt: Date.now() });
-                      try { saveTrackingPromptDismissal(trackingEnabled ? window.localStorage : window.sessionStorage, trackingDismissalKey, trackingSignature); }
+                      try { saveTrackingPromptDismissal(window.localStorage, trackingDismissalKey, trackingSignature); }
                       catch { /* Still dismissed for this visit if storage is blocked. */ }
                     }}>{mt("dismiss")}</Button></div>
                 </CardContent></Card>}
@@ -672,11 +710,26 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
                   locationId={location.id}
                   locationName={location.name}
                   kitchen={activeKitchen}
-                  highlightTracking={highlightTracking}
-                  onConfigureTracking={() => onNavigate("settings-checkin-checkout", activeKitchen.id)}
                   onDirtyChange={setDetailsDirty}
                 />
               )}
+            </TabsContent>
+
+            <TabsContent value="arrival-departure" className="mt-0 space-y-4">
+              {activeKitchen && <>
+                <p className="text-sm text-muted-foreground">{mt("kitchenArrivalDepartureScope", { location: location.name })}</p>
+                <CheckinCheckoutSettings
+                  // A draft never follows the manager to another kitchen or scope.
+                  key={`${location.id}-${activeKitchen.id}`}
+                  mode="instructions"
+                  location={location}
+                  kitchenContext={{ id: activeKitchen.id, name: activeKitchen.name }}
+                  saveRef={arrivalRef}
+                  onDirtyChange={setArrivalDirty}
+                  onOpenTasks={() => onNavigate("settings-checkin-checkout", activeKitchen.id)}
+                  onNavigate={() => handleSectionChange("policies")}
+                />
+              </>}
             </TabsContent>
 
             <TabsContent value="photos" className="mt-0">

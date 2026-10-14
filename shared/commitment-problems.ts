@@ -2,6 +2,17 @@ export const problemStatuses = ['reported', 'acknowledged', 'escalated', 'resolv
 export type ProblemStatus = typeof problemStatuses[number];
 export type ProblemHistory = { revision: number; at: string; actorId: number; actorRole?: string; action: string; note: string };
 
+/** Safety first; the order is also the order shown to participants. */
+export const problemCategories = ['safety', 'access', 'equipment', 'cleanliness', 'other'] as const;
+export type ProblemCategory = typeof problemCategories[number];
+export function parseProblemCategory(value: unknown): ProblemCategory | null | undefined {
+  if (value === undefined || value === null || value === '') return null;
+  return typeof value === 'string' && (problemCategories as readonly string[]).includes(value) ? value as ProblemCategory : undefined;
+}
+export function problemCategoryLabel(category: string | null | undefined) {
+  return category ? ({ safety: 'Safety', access: 'Access', equipment: 'Equipment', cleanliness: 'Cleanliness', other: 'Other' } as Record<string, string>)[category] || category : '';
+}
+
 export function problemStatusLabel(status: string) {
   return ({ reported: 'Awaiting response', acknowledged: 'In progress', escalated: 'Further review', resolved: 'Resolved' } as Record<string, string>)[status] || status;
 }

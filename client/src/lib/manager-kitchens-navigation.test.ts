@@ -8,6 +8,11 @@ import {
 } from "./manager-kitchens-navigation";
 
 describe("manager Kitchens navigation", () => {
+  it("restores the arrival/departure section without treating shared setup as a second editor tab", () => {
+    expect(kitchenSectionFromParams(new URLSearchParams("view=kitchens&kit=2&section=arrival-departure"))).toBe("arrival-departure");
+    expect(legacyKitchenSection("settings-checkin-checkout")).toBeNull();
+  });
+
   it("keeps legacy inventory URLs on the matching Kitchens tab", () => {
     expect(kitchenSectionFromParams(new URLSearchParams("view=equipment-listings"))).toBe("equipment");
     expect(kitchenSectionFromParams(new URLSearchParams("view=storage-listings"))).toBe("storage");

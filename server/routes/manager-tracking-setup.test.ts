@@ -8,9 +8,11 @@ vi.mock('../db', () => {
         const name = table[Symbol.for('drizzle:Name')];
         if (name === 'locations') return [{ id: 33 }];
         if (name === 'kitchens') return [{ kitchen: state.kitchen, location: { id: 33, managerId: 2 } }];
-        return [state.setup];
+        if (name === 'checkin_checkout_checklists') return [state.setup];
+        return [];
       };
       const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain,
+        leftJoin: () => chain, for: () => chain,
         where: () => chain, limit: () => chain, then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
       return chain;
     },
@@ -23,6 +25,7 @@ vi.mock('../db', () => {
       Object.assign(row, patch);
       return { returning: async () => [row], then: (resolve: any) => Promise.resolve([]).then(resolve) };
     } }) }),
+    execute: vi.fn(),
     transaction: async (run: any) => { state.transactions++; return run(database); },
   };
   return { db: database, pool: {} };
@@ -57,14 +60,16 @@ beforeEach(() => {
   state.writes = []; state.transactions = 0;
 });
 
-it.each([false, true])('rejects enabling without saved notes at the actual route (storage: %s)', async storage => {
-  const res = await call(storage ? { storageCheckinEnabled: true } : { checkinEnabled: true });
+it('rejects storage enablement without saved notes at the actual route', async () => {
+  const res = await call({ storageCheckinEnabled: true });
   expect(res.status).toHaveBeenCalledWith(400); expect(state.writes).toEqual([]);
 });
 it('saves notes and both kitchen stages with empty duties, leaving storage alone', async () => {
   const res = await call({ checkinEnabled: true, checkinInstructions: 'Use the main door.', checkoutInstructions: 'Lock the door.', checkinItems: [], checkoutItems: [] });
   expect(res.status).not.toHaveBeenCalled();
-  expect(state.writes[0]).toMatchObject({ checkinEnabled: true, checkoutEnabled: true, checkinItems: [], checkoutItems: [] });
+  expect(state.writes[0]).toMatchObject({ checkinInstructions: 'Use the main door.', checkoutInstructions: 'Lock the door.', checkinItems: [], checkoutItems: [] });
+  expect(state.writes[0]).not.toHaveProperty('checkinEnabled');
+  expect(state.writes[0]).not.toHaveProperty('checkoutEnabled');
   expect(state.writes[0]).not.toHaveProperty('storageCheckinEnabled');
 });
 it('rejects clearing notes for enabled storage and conflicting stage switches before upsert', async () => {
@@ -73,15 +78,18 @@ it('rejects clearing notes for enabled storage and conflicting stage switches be
   expect((await call({ storageCheckinEnabled: true, storageCheckoutEnabled: false })).status).toHaveBeenCalledWith(400);
   expect(state.writes).toEqual([]);
 });
-it('blocks the per-kitchen enable switch until notes are saved, then enables both shared stages in the same transaction', async () => {
-  expect((await call({ checkinCheckoutEnabled: true }, true)).status).toHaveBeenCalledWith(400);
+it.each([false, true])('ignores the removed kitchen switch without writing either legacy flag (%s)', async enabled => {
+  const res = await call({ checkinCheckoutEnabled: enabled }, true);
+  expect(res.status).not.toHaveBeenCalled();
   expect(state.writes).toEqual([]); expect(state.transactions).toBe(0);
-  Object.assign(state.setup, { checkinInstructions: 'Use the door.', checkoutInstructions: 'Lock the door.' });
-  const res = await call({ checkinCheckoutEnabled: true }, true);
-  expect(res.status).not.toHaveBeenCalled(); expect(state.transactions).toBe(1);
-  expect(state.writes[0]).toMatchObject({ checkinEnabled: true, checkoutEnabled: true });
-  expect(state.kitchen.checkinCheckoutEnabled).toBe(true);
-  expect(state.setup.checkinItems).toEqual([]);
+  expect(state.kitchen.checkinCheckoutEnabled).toBe(false);
+});
+it('lets managers edit instruction drafts with old flags off, retaining unrelated tasks', async () => {
+  state.setup.checkinItems = [{ id: 'keep', label: 'Keep task', required: false }];
+  await call({ checkinInstructions: 'New entrance' });
+  expect(state.writes[0]).toMatchObject({ checkinInstructions: 'New entrance' });
+  expect(state.writes[0]).not.toHaveProperty('checkinItems');
+  expect(state.setup.checkinItems).toEqual([{ id: 'keep', label: 'Keep task', required: false }]);
 });
 
 it('returns the actual configurable kitchen and independent storage review windows for manager help', async () => {

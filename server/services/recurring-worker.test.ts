@@ -29,7 +29,9 @@ vi.mock('./booking-payment-decision', () => ({ recoverPendingBookingDecisions: (
 vi.mock('./auth-expiry-service', () => ({ processExpiredAuthorizations: () => task('authorizations') }));
 vi.mock('./storage-checkout-service', () => ({ processExpiredCheckoutReviews: () => task('storageCheckout') }));
 vi.mock('./kitchen-checkout-service', () => ({ processExpiredKitchenCheckoutReviews: () => task('kitchenCheckout'), getCheckinSettings: async () => ({ checkoutReviewWindowMinutes: 0 }) }));
-vi.mock('./kitchen-visit-lifecycle', () => ({ autoClearKitchenVisits: () => task('visitCheckout') }));
+vi.mock('./clock-closeout', () => ({ sweepClockCloseout: () => task('clockCloseout') }));
+vi.mock('./chef-document-expiry', () => ({ sweepChefDocumentExpiry: () => task('chefDocumentExpiry') }));
+vi.mock('./location-access-notices', () => ({ dispatchAccessNotices: () => task('access') }));
 vi.mock('./tour-outcome-service', () => ({ remindUnrecordedTourOutcomes: () => task('tourOutcomes') }));
 vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChanges: () => task('kitchenChanges') }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
@@ -65,7 +67,9 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     expect(configuredInvocationMs).toBe(30_000); expect(workerSafetyReserveMs).toBe(4_000);
     expect(result).toMatchObject({ taskFailures: [], deferred: false });
     expect(state.calls).toEqual(expect.arrayContaining(['advance', 'booking', 'tour', 'outcome', 'chat', 'reconcile:booking', 'reconcile:tour',
-      'overstays', 'claims', 'paymentRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'kitchenCheckout', 'visitCheckout', 'tourOutcomes', 'kitchenChanges']));
+      'overstays', 'claims', 'paymentRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
+    expect(state.calls.filter(name => name === 'clockCloseout')).toHaveLength(1);
+    expect(state.calls).not.toContain('kitchenCheckout'); expect(state.calls).not.toContain('visitCheckout');
     expect(state.clock).toBeLessThan(30_000); expect(state.stored.finishedAt).toBeTruthy(); expect(state.releases).toBe(1);
     expect(state.configs[0]).toMatchObject({ max: 1, connectionTimeoutMillis: 3000, statement_timeout: 1000, lock_timeout: 500 });
   });

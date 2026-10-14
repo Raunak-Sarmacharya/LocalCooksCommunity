@@ -28,7 +28,7 @@ router.get('/:kind/:id', async (req, res) => {
 router.post('/:kind/:id', async (req, res) => {
   if (!['booking', 'tour'].includes(req.params.kind)) return res.status(400).json({ error: 'Choose booking or tour' });
   try {
-    const result = await reportProblem(req.params.kind as 'booking' | 'tour', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey);
+    const result = await reportProblem(req.params.kind as 'booking' | 'tour', Number(req.params.id), req.neonUser!, req.body.description, req.body.requestKey, req.body.category);
     await attemptOutcomeDelivery();
     res.json(result);
   } catch (error) { return errorResponse(res, error); }

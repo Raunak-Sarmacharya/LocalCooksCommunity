@@ -1,3 +1,6 @@
+import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
+import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
+import { kitchenChecklistFields } from '@shared/kitchen-checklist';
 import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { Router, Request, Response } from "express";
 import { randomUUID } from 'node:crypto';
@@ -9,7 +12,6 @@ import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-
 import { cancelLinkedBookingDates, cancelledStorageStatus } from '../services/booking-linked-cancellation';
 import { approvedBookingCapture, bookingCaptureTerms, BookingTermsReviewRequired } from '@shared/booking-capture-terms';
 import { isKitchenBookingDurationValid, resolveKitchenBookingPolicies } from "@shared/kitchen-booking-policies";
-import { resolveKitchenTracking } from "@shared/kitchen-tracking";
 import { getKitchenTrackingState } from "../services/checkin-checkout-checklist";
 import {
   eq,
@@ -26,7 +28,7 @@ import {
 import { format } from "date-fns";
 import { db } from "../db";
 import { buildKitchenReadiness } from "../services/kitchen-listing-readiness-service";
-import { hasTrackingNotes, normalizeTrackingSetup } from '@shared/tracking-setup';
+import { normalizeTrackingSetup } from '@shared/tracking-setup';
 import { managerWorkspaceVisibility } from "../domains/managers/manager-workspace-visibility";
 import { includeCancelledStorageHistory } from "../domains/managers/storage-booking-history";
 import { resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
@@ -2896,11 +2898,16 @@ router.get(
       );
       const checklistSettings = await ensureDefaultCheckinCheckoutChecklist(locationId);
 
+      const { kitchenCheckinCheckoutOverrides } = await import('@shared/schema');
+      const overridingKitchens = await db.select({ kitchenId: kitchens.id, name: kitchens.name, override: kitchenCheckinCheckoutOverrides })
+        .from(kitchenCheckinCheckoutOverrides).innerJoin(kitchens, eq(kitchens.id, kitchenCheckinCheckoutOverrides.kitchenId))
+        .where(eq(kitchenCheckinCheckoutOverrides.locationId, locationId));
       // Return checklist settings + time window overrides + platform defaults.
       // Checkout review window is admin-only (not surfaced here); kitchen
       // overstay tracking is no longer part of the product.
       return res.json({
         ...checklistSettings,
+        overridingKitchens,
         timeWindowSettings: {
           checkinWindowMinutesBefore: location.checkinWindowMinutesBefore ?? null,
           noShowGraceMinutes: location.noShowGraceMinutes ?? null,
@@ -3019,13 +3026,16 @@ router.put(
       if (storageCheckinInstructions !== undefined) payload.storageCheckinInstructions = storageCheckinInstructions;
 
       const { activeChecklist } = await import('@shared/active-checklist');
-      const [savedSetup] = await db.select().from(checkinCheckoutChecklists)
+      const { KitchenSetupError, queueLocationInstructionUpdates } = await import('../services/kitchen-checklist-overrides');
+      const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(7242, ${locationId})`);
+      const [savedSetup] = await tx.select().from(checkinCheckoutChecklists)
         .where(eq(checkinCheckoutChecklists.locationId, locationId)).limit(1);
       const normalizedSetup = normalizeTrackingSetup(payload, savedSetup);
-      if (normalizedSetup.error) return res.status(400).json({ error: normalizedSetup.error });
+      if (normalizedSetup.error) throw new KitchenSetupError(400, normalizedSetup.error);
       const activePayload = activeChecklist(normalizedSetup.patch!);
       // Upsert: insert if not exists, update if exists
-      const [result] = await db
+      const [result] = await tx
         .insert(checkinCheckoutChecklists)
         .values(activePayload as any)
         .onConflictDoUpdate({
@@ -3050,7 +3060,7 @@ router.put(
         }
 
         if (Object.keys(locationUpdate).length > 1) { // More than just updatedAt
-          await db
+          await tx
             .update(locations)
             .set(locationUpdate)
             .where(eq(locations.id, locationId));
@@ -3058,13 +3068,35 @@ router.put(
         }
       }
 
-      res.json(activeChecklist(result));
+      if (kitchenChecklistFields.some(field => Object.hasOwn(activePayload, field)))
+        await queueLocationInstructionUpdates(tx, locationId, savedSetup || null, result, user.id);
+      return activeChecklist(result);
+      });
+      res.json(result);
     } catch (error: any) {
       logger.error("Error updating checkin/checkout settings:", error);
-      res.status(500).json({ error: error.message || "Failed to update settings" });
+      res.status(error.status || 500).json({ error: error.message || "Failed to update settings" });
     }
   },
 );
+
+router.get('/kitchens/:kitchenId/checkin-checkout-settings', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const { ownedKitchenSetup, kitchenChecklistSetup } = await import('../services/kitchen-checklist-overrides');
+    const { kitchen, location } = await ownedKitchenSetup(Number(req.params.kitchenId), req.neonUser!.id);
+    const setup = await kitchenChecklistSetup(kitchen.id, location.id);
+    res.json({ ...setup.effective, ...setup, kitchenId: kitchen.id, locationId: location.id,
+      timeWindowSettings: { checkinWindowMinutesBefore: location.checkinWindowMinutesBefore, noShowGraceMinutes: location.noShowGraceMinutes } });
+  } catch (error: any) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+router.put('/kitchens/:kitchenId/checkin-checkout-settings', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const { setKitchenChecklistOverrides } = await import('../services/kitchen-checklist-overrides');
+    const setup = await setKitchenChecklistOverrides(Number(req.params.kitchenId), req.neonUser!.id, req.body);
+    res.json({ ...setup.effective, ...setup });
+  } catch (error: any) { res.status(error.status || 500).json({ error: error.message }); }
+});
 
 /**
  * GET /manager/kitchens/:kitchenId/delete-impact
@@ -3273,15 +3305,6 @@ async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
         }
         patch[key] = value;
       }
-      if (req.body?.checkinCheckoutEnabled !== undefined) {
-        if (typeof req.body.checkinCheckoutEnabled !== "boolean") return res.status(400).json({ error: "Invalid check-in/out setting" });
-        patch.checkinCheckoutEnabled = req.body.checkinCheckoutEnabled;
-        if (patch.checkinCheckoutEnabled) {
-          const [setup] = await db.select().from(checkinCheckoutChecklists)
-            .where(eq(checkinCheckoutChecklists.locationId, kitchen.locationId)).limit(1);
-          if (!hasTrackingNotes(setup)) return res.status(400).json({ error: 'Save arrival and departure notes before enabling kitchen check-in/out.' });
-        }
-      }
       if (req.body?.minimumBookingHours !== undefined) {
         const value = req.body.minimumBookingHours;
         if (!Number.isInteger(value) || value < 0 || value > 24) return res.status(400).json({ error: "Invalid minimum booking duration" });
@@ -3293,9 +3316,6 @@ async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
       }
       if (Object.keys(patch).length) {
         await db.transaction(async tx => {
-          if (patch.checkinCheckoutEnabled) await tx.update(checkinCheckoutChecklists)
-            .set({ checkinEnabled: true, checkoutEnabled: true, updatedAt: new Date() })
-            .where(eq(checkinCheckoutChecklists.locationId, kitchen.locationId));
           [kitchen] = await tx.update(kitchens).set({ ...patch, updatedAt: new Date() }).where(eq(kitchens.id, kitchenId)).returning();
         });
       }
@@ -3687,31 +3707,7 @@ router.get(
       const user = req.neonUser!;
       const bookings = await bookingService.getBookingsByManager(user.id);
 
-      // ── Lazy evaluation: expire any authorized bookings past 24-hour window ──
-      // Industry standard: enforce time windows on read, not just via daily cron
-      const { lazyExpireKitchenBookingAuth } = await import(
-        "../services/auth-expiry-service"
-      );
-      for (const b of bookings) {
-        if (b.paymentStatus === "authorized" && b.status === "pending") {
-          const wasExpired = await lazyExpireKitchenBookingAuth({
-            id: b.id,
-            paymentStatus: b.paymentStatus,
-            paymentIntentId: b.paymentIntentId ?? null,
-            chefId: b.chefId ?? null,
-            kitchenId: b.kitchenId,
-            createdAt: b.createdAt ? new Date(b.createdAt) : null,
-            status: b.status,
-          });
-          if (wasExpired) {
-            // Update the in-memory object so the response reflects the change
-            b.status = "cancelled";
-            b.paymentStatus = "failed";
-          }
-        }
-      }
-
-      res.json(bookings);
+        res.json(await projectBookingCloseouts(bookings));
     } catch (error: any) {
       logger.error("Error fetching bookings:", error);
       res
@@ -4078,24 +4074,42 @@ router.put(
   },
 );
 
+router.get("/chef-location-access/bookings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+  try {
+    const chefId = Number(req.query.chefId), locationId = Number(req.query.locationId);
+    if (!Number.isSafeInteger(chefId) || chefId <= 0 || !Number.isSafeInteger(locationId) || locationId <= 0) return res.status(400).json({ error: 'Invalid customer or location ID' });
+    const location = await locationService.getLocationById(locationId);
+    if (!location || location.managerId !== req.neonUser!.id) return res.status(404).json({ error: 'Location not found' });
+    res.json({ bookings: await futureAccessBookings(db, chefId, locationId, location.timezone || undefined), timezone: location.timezone });
+  } catch (error) { return errorResponse(res, error); }
+});
+
 // Manager: Revoke chef access
 router.delete(
   "/chef-location-access",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
-    // Implementation 5445-5536
     try {
       const user = req.neonUser!;
-      const { chefId, locationId } = req.body;
-      // ... verify ...
-      // ... revoke ...
-      await chefService.revokeLocationAccess(chefId, locationId);
-      // ... delete chat ...
-      // ... update profile status ...
-      res.json({ success: true });
+      const { chefId, locationId, reason } = req.body ?? {};
+      if (!Number.isSafeInteger(chefId) || chefId <= 0 || !Number.isSafeInteger(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid chef or location ID" });
+      }
+      if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 2000) {
+        return res.status(400).json({ error: "Please provide a reason for ending access (up to 2,000 characters)." });
+      }
+      const location = await locationService.getLocationById(locationId);
+      if (!location || location.managerId !== user.id) return res.status(404).json({ error: "Location not found" });
+      const result = await revokeManagerLocationAccess(user.id, chefId, locationId, reason);
+      // Notice intent and in-app notification committed with the access change.
+      if (result.noticeId) {
+        try { await deliverAccessNotice(result.noticeId); }
+        catch (error) { logger.error('[Access notice] Queued delivery needs recovery', error); }
+      }
+      res.json({ success: true, bookings: result.bookings });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      return errorResponse(res, e);
     }
   },
 );
@@ -4153,6 +4167,8 @@ router.get(
           endTime: kitchenBookings.endTime,
           status: kitchenBookings.status,
           checkinStatus: kitchenBookings.checkinStatus,
+          visitDuties: kitchenBookings.visitDuties,
+          selectedSlots: kitchenBookings.selectedSlots,
           hasPendingVisitReview: sql<boolean>`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.checkin_status = 'checkout_requested')`,
           checkedInAt: kitchenBookings.checkedInAt,
           checkedInMethod: kitchenBookings.checkedInMethod,
@@ -4184,7 +4200,7 @@ router.get(
         .where(
           and(
             eq(locations.managerId, managerId),
-            inArray(kitchenBookings.status, ['confirmed', 'pending']),
+            inArray(kitchenBookings.status, ['confirmed', 'pending', 'completed']),
             or(
               gteOp(kitchenBookings.bookingDate, todayStart),
               sql`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.checkin_status = 'checkout_requested')`,
@@ -4200,14 +4216,15 @@ router.get(
         if (operatingDate >= todayKey) return true;
         const endDate = calendarDateForBookingTime(operatingDate, booking.endTime,
           booking.operatingWindowStartTime, booking.startTime);
-        if (createBookingDateTime(endDate, booking.endTime, DEFAULT_TIMEZONE) > now) return true;
+        if (createBookingDateTime(endDate, booking.endTime, booking.timezone!) > now) return true;
         return false;
       });
 
-      const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+      const { readKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
 
-      const visitRows = (await Promise.all(todaysBookings.map(async booking => {
-        const visits = await ensureKitchenBookingVisits(booking.id);
+      const derivedBookings = await projectBookingCloseouts(todaysBookings);
+      const visitRows = (await Promise.all(derivedBookings.map(async booking => {
+        const visits = await readKitchenBookingVisits(booking.id);
         if (!visits.length) return [{ ...booking, operationsComplete: bookingOperationsComplete(booking) }];
         return visits.map(visit => ({
           ...booking,
@@ -4239,7 +4256,7 @@ router.get(
       const bookingsWithNames = await Promise.all(
         visitRows.map(async (booking) => ({
           ...booking,
-          chefName: booking.chefId ? await getUserDisplayName(booking.chefId, 'chef') : 'A chef'
+          chefName: booking.chefId ? await getUserDisplayName(booking.chefId, 'chef') : 'Booking customer'
         }))
       );
 
@@ -4323,15 +4340,6 @@ router.get(
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "Access denied" });
       }
-
-      const [checklist] = await db
-        .select({
-          checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
-          checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
-        })
-        .from(checkinCheckoutChecklists)
-        .where(eq(checkinCheckoutChecklists.locationId, location.id))
-        .limit(1);
 
       Object.assign(booking, await getKitchenTrackingState(kitchen.id, booking.checkinStatus, booking.id));
 
@@ -4601,9 +4609,25 @@ router.get(
         }
       }
 
+      const visits = await (await import('../services/kitchen-booking-visits')).readKitchenBookingVisits(id);
+      const { kitchenDuties } = await import('../services/visit-duties');
+      const { kitchenInspectionDeadline } = await import('../services/kitchen-inspection-deadline');
+      const inspectionDuties = await kitchenDuties(id);
+      const derived = await projectBookingCloseout(booking, location.timezone!, visits);
+      // Owner-only (this route already scopes the booking to the manager's location). Derived code appears only
+      // while a staffed challenge is unconsumed and unrevoked.
+      const { getManagerVisitCodes } = await import('../services/visit-code-challenge');
+      const visitCodes = await getManagerVisitCodes(id, req.neonUser!.id).catch(() => []);
+      const visitCodeFor = (visitId: number | null) => visitCodes.find(state => state.visitId === visitId) ?? null;
       res.json({
-        ...booking,
-        visits: await (await import('../services/kitchen-booking-visits')).ensureKitchenBookingVisits(id),
+        ...derived,
+        visitCode: visitCodeFor(null),
+        inspection: {
+          duties: inspectionDuties,
+          dutiesSaved: booking.visitDuties != null,
+          checkoutReviewDeadline: derived.checkoutReviewDeadline,
+        },
+        visits: derived.visits.map((visit: { id: number }) => ({ ...visit, visitCode: visitCodeFor(visit.id) })),
         totalPrice: reconciledKitchenOnlyPrice,
         pricingMode: capturedKitchenRate.mode,
         serviceFee: reconciledServiceFee,
@@ -4778,6 +4802,11 @@ router.put(
         if (!updated) return false;
         if (booking.status === 'pending' && status === 'confirmed' && ['processing', 'paid'].includes(booking.paymentStatus || '')) {
           await reconcileCapturedBookingPayment(tx, booking, user.id);
+        }
+        if (status === 'confirmed' && booking.status !== 'confirmed') {
+          // New confirmations only: arrival challenges are created in the confirming transaction.
+          const { ensureChallengesForBooking } = await import('../services/visit-code-challenge');
+          await ensureChallengesForBooking(tx, id, user.id);
         }
         if (status === 'cancelled') {
           await cancelLinkedBookingDates(tx, id);
@@ -8038,6 +8067,40 @@ router.post('/bookings/:id/assist-visit', requireFirebaseAuthWithUser, requireMa
   } catch (error) {
     return res.status(400).json({ error: error instanceof Error ? error.message : 'Could not save assistance; refresh and retry' });
   }
+});
+
+// Visit code (arrival challenge). Owner-checked in the service; codes never appear outside these responses.
+const visitCodeFailure = (res: Response, error: unknown) => {
+  if (error instanceof Error && error.name === 'VisitCodeManagerError')
+    return res.status((error as Error & { status: number }).status).json({ error: error.message });
+  return res.status(500).json({ error: 'Could not update the visit code' });
+};
+router.get('/bookings/:id/visit-code', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const bookingId = Number(req.params.id);
+  if (!Number.isSafeInteger(bookingId) || bookingId <= 0) return res.status(400).json({ error: 'Invalid booking ID' });
+  try {
+    const { getManagerVisitCodes } = await import('../services/visit-code-challenge');
+    return res.json({ bookingId, targets: await getManagerVisitCodes(bookingId, req.neonUser!.id) });
+  } catch (error) { return visitCodeFailure(res, error); }
+});
+router.post('/bookings/:id/visit-code/issue', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const bookingId = Number(req.params.id);
+  if (!Number.isSafeInteger(bookingId) || bookingId <= 0) return res.status(400).json({ error: 'Invalid booking ID' });
+  if (typeof req.body?.target !== 'string') return res.status(400).json({ error: 'Choose a visit target' });
+  try {
+    const { issueNewCode } = await import('../services/visit-code-challenge');
+    return res.json({ bookingId, targets: await issueNewCode(bookingId, req.neonUser!.id, req.body.target) });
+  } catch (error) { return visitCodeFailure(res, error); }
+});
+router.post('/bookings/:id/visit-code/mode', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  const bookingId = Number(req.params.id);
+  if (!Number.isSafeInteger(bookingId) || bookingId <= 0) return res.status(400).json({ error: 'Invalid booking ID' });
+  const { target, all, mode, reason } = req.body || {};
+  if (all !== true && typeof target !== 'string') return res.status(400).json({ error: 'Choose a visit target or all visits' });
+  try {
+    const { setMode } = await import('../services/visit-code-challenge');
+    return res.json({ bookingId, targets: await setMode(bookingId, req.neonUser!.id, { targetKey: target, all: all === true, mode, reason }) });
+  } catch (error) { return visitCodeFailure(res, error); }
 });
 
 router.post('/bookings/:id/confirm-checkin', requireFirebaseAuthWithUser, requireManager, (_req, res) => {

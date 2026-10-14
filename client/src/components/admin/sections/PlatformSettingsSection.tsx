@@ -157,7 +157,6 @@ export function PlatformSettingsSection() {
     timeWindowMutation.mutate({
       checkinWindowMinutesBefore: parseInt(twDefaults.checkinWindowMinutesBefore, 10),
       noShowGraceMinutes: parseInt(twDefaults.noShowGraceMinutes, 10),
-      checkoutReviewWindowMinutes: Number(twDefaults.checkoutReviewWindowMinutes),
     });
   };
 
@@ -554,7 +553,7 @@ export function PlatformSettingsSection() {
                 onValueChange={(val) => setTwDefaults({ ...twDefaults, checkinWindowMinutesBefore: val })}
                 className="max-w-32"
               />
-              <p className="text-xs text-muted-foreground">How early before start time a chef can check in</p>
+              <p className="text-xs text-muted-foreground">How early before start time arrival can be recorded</p>
             </div>
             <div className="space-y-2">
               <Label>No-Show Grace (minutes after start)</Label>
@@ -564,18 +563,9 @@ export function PlatformSettingsSection() {
                 onValueChange={(val) => setTwDefaults({ ...twDefaults, noShowGraceMinutes: val })}
                 className="max-w-32"
               />
-              <p className="text-xs text-muted-foreground">Grace period before marking as no-show</p>
+              <p className="text-xs text-muted-foreground">Arrival reminder grace. Missing arrival never marks a no-show automatically.</p>
             </div>
-            <div className="space-y-2">
-              <Label>Checkout Review Window (minutes after checkout request)</Label>
-              <NumericInput
-                suffix="min"
-                value={twDefaults.checkoutReviewWindowMinutes}
-                onValueChange={(val) => setTwDefaults({ ...twDefaults, checkoutReviewWindowMinutes: val })}
-                className="max-w-32"
-              />
-              <p className="text-xs text-muted-foreground">How long manager has to review checkout before auto-clear (admin-only; no per-location override)</p>
-            </div>
+            <p className="text-sm text-muted-foreground">Service end grace and the kitchen inspection window are configured in Lifecycle timing. Unanswered inspections close without manager approval.</p>
           </div>
           <Button
             onClick={handleSaveTimeWindows}

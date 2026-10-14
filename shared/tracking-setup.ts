@@ -5,7 +5,7 @@ export function hasTrackingNotes(settings: Settings | null | undefined, storage 
   return [arrival, departure].every(key => typeof settings?.[key] === 'string' && (settings[key] as string).trim().length > 0);
 }
 
-/** One tracking choice per workflow; duties/photos are never a setup gate. */
+/** Kitchen instructions are editable drafts; storage retains its enablement contract. */
 export function normalizeTrackingSetup(patch: Settings, existing: Settings | null | undefined) {
   const normalized = { ...patch };
   for (const storage of [false, true]) {
@@ -13,6 +13,14 @@ export function normalizeTrackingSetup(patch: Settings, existing: Settings | nul
     const departure = storage ? 'storageCheckout' : 'checkout';
     const keys = [arrival, departure].flatMap(prefix => ['Enabled', 'Instructions', 'Items', 'PhotoRequirements'].map(suffix => prefix + suffix));
     if (!keys.some(key => Object.hasOwn(patch, key))) continue;
+    if (!storage) {
+      for (const prefix of [arrival, departure]) {
+        const note = normalized[prefix + 'Instructions'];
+        if (note != null && typeof note !== 'string') return { error: 'Arrival and departure notes must be text.' };
+        delete normalized[prefix + 'Enabled'];
+      }
+      continue;
+    }
     const flags = [normalized[arrival + 'Enabled'], normalized[departure + 'Enabled']].filter(value => value !== undefined);
     if (flags.some(value => typeof value !== 'boolean') || flags.length === 2 && flags[0] !== flags[1])
       return { error: 'Check-in and checkout must use the same tracking setting.' };

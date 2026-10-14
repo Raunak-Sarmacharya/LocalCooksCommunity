@@ -59,9 +59,9 @@ export function areAllRequiredPhotosUploaded(
   if (requirements.length === 0) {
     return true
   }
-  return requirements
-    .filter((r) => r.required !== false) // required defaults to true
-    .every((r) => (photos[r.id]?.length || 0) >= 1)
+  const required = requirements.filter((r) => r.required !== false)
+  return required.every((r) => (photos[r.id] || []).some(Boolean))
+    && new Set(required.flatMap(r => photos[r.id] || []).filter(Boolean)).size >= required.length
 }
 
 function SingleRequirementSlot({
@@ -165,7 +165,7 @@ function SingleRequirementSlot({
             <Camera className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">
               {label}
-              {required && <span className="text-destructive ml-0.5">*</span>}
+              <span className="ml-2 text-xs text-muted-foreground">{required ? t("kciRequired", "Required") : t("kciOptional", "Optional")}</span>
             </span>
           </p>
           {description && (
@@ -312,16 +312,16 @@ export function PhotoRequirementUploader({
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium flex items-center gap-1.5">
           <Camera className="h-4 w-4" />
-          {t("photosRequired", "Photos Required")}
+          {t("kciPhotoEvidence", "Photo evidence")}
         </Label>
         <InfoChip
           variant={completedRequired === totalRequired ? "success" : "outline"}
         >
-          {completedRequired}/{totalRequired} {t("completed", "completed")}
+          {totalRequired > 0 ? `${completedRequired}/${totalRequired} ${t("kciRequired", "Required")}` : t("kciOptional", "Optional")}
         </InfoChip>
       </div>
       <p className="text-xs text-muted-foreground">
-        {t("onePhotoRequiredPerItem", "One photo required per item. You can upload up to {max} per slot.", { max: MAX_PHOTOS_PER_REQUIREMENT })}
+        {t("kciPhotoRules", "Add one photo for each slot marked Required. Optional slots can be skipped. Up to {max} photos per slot.", { max: MAX_PHOTOS_PER_REQUIREMENT })}
       </p>
       <div className="space-y-2">
         {requirements.map((req) => (

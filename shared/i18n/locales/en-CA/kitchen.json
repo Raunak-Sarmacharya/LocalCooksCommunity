@@ -1725,7 +1725,7 @@
   "requirementsMessageManager": "Message kitchen manager",
   "requirementsOpeningChat": "Opening messages…",
   "requirementsChatError": "Couldn’t open kitchen messages. Please try again.",
-  "preConfirmationRefundTitle": "100% refund before confirmation",
+  "preConfirmationRefundTitle": "Free to cancel until the kitchen confirms your request — your card is only on hold.",
   "preConfirmationRefundPolicy": "Cancel before your booking is confirmed for a 100% refund of any amount paid, including taxes and fees. ",
   "confirmedBookingRefundPolicy": "After confirmation, the saved cancellation deadline applies. Cancellation and any refund are reviewed separately; processing costs and platform service fees may be retained. Review your cancellation and refund outcome for the exact amount."
 }

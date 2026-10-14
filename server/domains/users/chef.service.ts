@@ -5,9 +5,11 @@ import { userService } from "./user.service";
 import { locationService } from "../locations/location.service";
 import { applicationService } from "../applications/application.service";
 import { db } from "../../db";
-import { applications, locations, kitchens, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
+import { applications, locations, kitchens } from "@shared/schema";
 import { licenseAllowsBookings } from "@shared/kitchen-license";
 import { eq, and, asc, desc } from "drizzle-orm";
+
+import { readLocationBookingEligibility } from "../../services/location-booking-eligibility";
 
 export class ChefService {
     constructor(private repo: ChefRepository) { }
@@ -108,6 +110,7 @@ export class ChefService {
                 hasApplication: true,
                 status: 'listing_unavailable',
                 canBook: false,
+                actionUrl: undefined as string | undefined,
                 // Same sentence the licence branch uses, deliberately: from the chef's side both
                 // are "the kitchen is not taking bookings", and the reassurance that existing
                 // bookings survive is the part that actually matters to them.
@@ -137,6 +140,7 @@ export class ChefService {
                 hasApplication: true,
                 status: 'license_invalid',
                 canBook: false,
+                actionUrl: undefined as string | undefined,
                 message:
                     'This kitchen is not accepting bookings right now. Any bookings you already have are unaffected.',
             };
@@ -146,116 +150,7 @@ export class ChefService {
     }
 
     private async resolveApplicationAccess(chefId: number, locationId: number) {
-        // Check multiple sources for booking access:
-        // 1. chef_location_access table (new tiered application system - Tier 2+)
-        // 2. chef_kitchen_applications table (new tiered application system)
-        // 3. chef_location_profiles table (legacy profile sharing system)
-
-        // First, check chef_location_access (most authoritative for new system)
-        const [accessRecord] = await db
-            .select()
-            .from(chefLocationAccess)
-            .where(
-                and(
-                    eq(chefLocationAccess.chefId, chefId),
-                    eq(chefLocationAccess.locationId, locationId)
-                )
-            );
-
-        if (accessRecord) {
-            return {
-                hasApplication: true,
-                status: 'approved',
-                canBook: true,
-                message: 'Application approved. You can book kitchens at this location.',
-            };
-        }
-
-        // Check chef_kitchen_applications for approved applications at Tier 2+
-        const [kitchenApplication] = await db
-            .select()
-            .from(chefKitchenApplications)
-            .where(
-                and(
-                    eq(chefKitchenApplications.chefId, chefId),
-                    eq(chefKitchenApplications.locationId, locationId)
-                )
-            );
-
-        if (kitchenApplication) {
-            // If application is approved and at Tier 2+, grant access
-            const currentTier = (kitchenApplication as any).currentTier ?? (kitchenApplication as any).current_tier ?? 1;
-            if (kitchenApplication.status === 'approved' && currentTier >= 2) {
-                // Auto-create access record for future checks (self-healing)
-                try {
-                    await db.insert(chefLocationAccess).values({
-                        chefId,
-                        locationId,
-                        grantedBy: kitchenApplication.reviewedBy || chefId,
-                        grantedAt: new Date(),
-                    }).onConflictDoNothing();
-                    logger.info(`✅ Auto-created chef_location_access for chef ${chefId} at location ${locationId}`);
-                } catch (err) {
-                    logger.error('Error auto-creating chef_location_access:', err);
-                }
-
-                return {
-                    hasApplication: true,
-                    status: 'approved',
-                    canBook: true,
-                    message: 'Application approved. You can book kitchens at this location.',
-                };
-            } else if (kitchenApplication.status === 'rejected') {
-                return {
-                    hasApplication: true,
-                    status: 'rejected',
-                    canBook: false,
-                    message: 'Your application was rejected by the manager.',
-                };
-            } else {
-                return {
-                    hasApplication: true,
-                    status: kitchenApplication.status || 'pending',
-                    canBook: false,
-                    message: 'Your application is pending manager review or requires additional steps.',
-                };
-            }
-        }
-
-        // Fallback: Check legacy chef_location_profiles table
-        const profile = await this.getProfile(chefId, locationId);
-
-        if (!profile) {
-            return {
-                hasApplication: false,
-                status: null,
-                canBook: false,
-                message: 'You must apply to this location before booking.',
-            };
-        }
-
-        if (profile.status === 'approved') {
-            return {
-                hasApplication: true,
-                status: 'approved',
-                canBook: true,
-                message: 'Application approved. You can book kitchens at this location.',
-            };
-        } else if (profile.status === 'rejected') {
-            return {
-                hasApplication: true,
-                status: 'rejected',
-                canBook: false,
-                message: 'Your profile was rejected by the manager.',
-            };
-        } else {
-            return {
-                hasApplication: true,
-                status: 'pending',
-                canBook: false,
-                message: 'Your profile is pending manager review.',
-            };
-        }
+        return readLocationBookingEligibility(chefId, locationId);
     }
 
     async getChefProfilesForManager(managerId: number) {

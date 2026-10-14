@@ -15,12 +15,12 @@ vi.mock('@/i18n/manager', async () => {
 });
 afterEach(cleanup);
 
-function show(trackingEnabled = true, checkinEnabled = true, checkoutEnabled = true, storage = false) {
+function show(notesSaved = true, storage = false) {
   const onNavigate = vi.fn();
   const review: KitchenReadinessReview = {
     checklist: buildListingChecklist({ hasDescription: true, hasRate: true, licenseApproved: true,
       hasAvailability: true, hasCoverPhoto: true, stripeConnected: true, hasApplicationRequirements: true,
-      hasVisitSetup: trackingEnabled && checkinEnabled && checkoutEnabled, hasBookingRules: true,
+      hasVisitSetup: notesSaved, hasBookingRules: true,
       hasGalleryImages: true, hasTerms: true, toursEnabled: false, hasEquipment: true, hasStorage: storage, hasStorageVisitSetup: false }),
     details: { kitchenName: 'Test Kitchen', locationName: 'Test Location', description: 'A kitchen',
       hourlyRateCents: 2500, dailyRateCents: null, coverPhotoUrl: 'cover.jpg', galleryImageCount: 1,
@@ -28,7 +28,7 @@ function show(trackingEnabled = true, checkinEnabled = true, checkoutEnabled = t
       hasApplicationRequirements: true, termsUploadedAt: null, toursEnabled: false,
       cancellationPolicyHours: 24, dailyBookingLimit: 2, minimumBookingWindowHours: 1, minimumBookingHours: 1,
       storageVisitSetup: { listingCount: storage ? 1 : 0, checkinEnabled: false, checkoutEnabled: false, arrivalNotesSaved: false, departureNotesSaved: false },
-      visitSetup: { trackingEnabled, checkinEnabled, checkoutEnabled, arrivalNotesSaved: true, departureNotesSaved: true, arrivalRequirementCount: 0,
+      visitSetup: { checkinEnabled: true, checkoutEnabled: true, arrivalNotesSaved: notesSaved, departureNotesSaved: notesSaved, arrivalRequirementCount: 0,
         departureRequirementCount: 0, checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 60 } },
     listingStatus: 'draft', adminHidden: false,
   };
@@ -51,18 +51,18 @@ describe('listing review arrival/departure responsibilities', () => {
     const navigate = show(false);
     expect(screen.getByRole('button', { name: 'List this kitchen' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Fix' }));
-    expect(navigate).toHaveBeenCalledWith('kitchens', 7, 'details', 'tracking');
+    expect(navigate).toHaveBeenCalledWith('kitchens', 7, 'arrival-departure');
   });
 
   it('takes missing shared stages to the same highlighted tracking card with the kitchen context', () => {
-    const navigate = show(true, false, false);
+    const navigate = show(false);
     fireEvent.click(screen.getByRole('button', { name: 'Fix' }));
-    expect(navigate).toHaveBeenCalledWith('kitchens', 7, 'details', 'tracking');
+    expect(navigate).toHaveBeenCalledWith('kitchens', 7, 'arrival-departure');
   });
 });
 
 it('shows storage setup only with listed storage and links its Fix action to storage settings', () => {
-  const navigate = show(true, true, true, true);
+  const navigate = show(true, true);
   expect(screen.getByText('Storage arrival and departure setup')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'List this kitchen' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Fix' }));

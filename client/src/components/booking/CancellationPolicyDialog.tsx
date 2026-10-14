@@ -29,7 +29,7 @@ export function cancellationPolicyFirstLine(
   customMessage: string | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  return t('preConfirmationRefundTitle', { defaultValue: '100% refund before confirmation' });
+  return t('preConfirmationRefundTitle', { defaultValue: 'Free to cancel until the kitchen confirms your request — your card is only on hold.' });
 }
 
 export function CancellationPolicyDialog({

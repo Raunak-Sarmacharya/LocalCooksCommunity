@@ -224,16 +224,35 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(state.tables.damage_claims[0].status).toBe('draft');
   });
   it('commits clearance with its chef notice and rolls back when the outbox fails', async () => {
-    expect((await processKitchenCheckoutClear(10, 2)).success).toBe(true);
-    expect(state.tables.kitchen_bookings[0].status).toBe('completed');
-    expect(state.tables.booking_lifecycle_events[0].kind).toBe('checkout_cleared');
-    expect(state.tables.booking_lifecycle_events[0].emails).toHaveLength(1);
-    state.tables.kitchen_bookings[0].status = 'confirmed'; state.tables.kitchen_bookings[0].checkinStatus = 'checkout_requested';
-    state.failIntent = true;
-    expect((await processKitchenCheckoutClear(10, 2)).success).toBe(false);
-    expect(state.tables.kitchen_bookings[0].status).toBe('confirmed');
-    expect(state.tables.kitchen_bookings[0].checkinStatus).toBe('checkout_requested');
-    expect(state.tables.booking_lifecycle_events).toHaveLength(1);
+    // Clearance now runs through clock-closeout.recordKitchenInspection, which reads the booking joined to its
+    // location (zone, manager) and its visit rows, and only accepts a response once the inspection is due.
+    // The booking row doubles as that joined row, so the writes land on the booking the test asserts on.
+    const booking: any = { ...state.tables.kitchen_bookings[0], bookingDate: new Date('2026-10-13'), startTime: '09:00', endTime: '10:00',
+      checkoutRequestedAt: new Date('2026-10-13T12:20:00Z'), visitDuties: null, locationId: 1, timezone: 'America/St_Johns', managerId: 2, kitchen: { id: 4, locationId: 1 } };
+    booking.booking = booking;
+    state.tables.kitchen_bookings = [booking];
+    state.tables.kitchen_booking_visits = [];
+    // Cutover before the visit so the service-ended notice is queued; 12:50Z is after service end (10:00 local + 15 min = 12:45Z).
+    state.tables.platform_settings = [{ key: 'closeout_notifications_from', value: '2026-10-01T00:00:00.000Z' }];
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-13T12:50:00Z'));
+    try {
+      expect((await processKitchenCheckoutClear(10, 2)).success).toBe(true);
+      expect(state.tables.kitchen_bookings[0].status).toBe('completed');
+      expect(state.tables.kitchen_bookings[0]).toMatchObject({ checkinStatus: 'checked_out', checkoutApprovedBy: 2 });
+      const [cleared, ended] = state.tables.booking_lifecycle_events;
+      expect(cleared.kind).toBe('checkout_cleared');
+      expect(cleared.emails).toHaveLength(1);
+      expect(cleared.emails[0].to).toBe('chef@example.test');
+      expect(ended.kind).toBe('service_ended');
+      expect(ended.emails.map((email: any) => email.to).sort()).toEqual(['chef@example.test', 'manager@example.test']);
+      booking.status = 'confirmed'; booking.checkinStatus = 'checkout_requested'; booking.visitDuties = null;
+      const events = state.tables.booking_lifecycle_events.length;
+      state.failIntent = true;
+      expect((await processKitchenCheckoutClear(10, 2)).success).toBe(false);
+      expect(state.tables.kitchen_bookings[0].status).toBe('confirmed');
+      expect(state.tables.kitchen_bookings[0].checkinStatus).toBe('checkout_requested');
+      expect(state.tables.booking_lifecycle_events).toHaveLength(events);
+    } finally { vi.useRealTimers(); }
   });
   it('reconciles acceptance after a DB acknowledgment interruption without another send', async () => {
     vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '1'); await submitClaim(7, 2); vi.stubEnv('E2E_SUPPRESS_OUTBOUND', '0');

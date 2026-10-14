@@ -13,9 +13,7 @@
  * list of common tasks, which is how every mature product in this space avoids
  * an intimidating blank form.
  *
- * Preview opens as a side Dialog that mirrors exactly what chefs see in
- * `KitchenCheckinTracker.tsx` — the goal being no surprises between what the
- * manager configures and what the chef eventually interacts with.
+ * Kitchen setup reviews the draft inline. Shared storage keeps its dialog.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +24,7 @@ import {
   AlertTriangle,
   Camera,
   Check,
+  ChevronRight,
   ClipboardCheck,
   Duplicate,
   GripVertical,
@@ -85,9 +84,26 @@ export interface UnifiedChecklistItem {
   requiredOnCheckin: boolean;
   requiredOnCheckout: boolean;
   photoRequired: boolean;
+  /** Original stage records keep legacy optional duties and photo-only rows intact. */
+  saved?: {
+    checkin: SavedStage;
+    checkout: SavedStage;
+    label: string;
+    description?: string;
+    photoRequired: boolean;
+    index: number;
+    ambiguous: boolean;
+  };
 }
 
 export type Stage = "checkin" | "checkout";
+
+interface SavedStage {
+  item?: ChecklistItem;
+  photo?: PhotoRequirement;
+  itemIndex?: number;
+  photoIndex?: number;
+}
 
 // ─── ID helper ────────────────────────────────────────────────────────────────
 
@@ -129,7 +145,7 @@ const PRESET_TASKS: { key: string; stages: Stage[]; photo?: boolean }[] = [
  * Collapse server-side arrays (kitchen check-in items, kitchen check-out items,
  * and the sibling photo-requirement arrays) into a single unified list for the
  * editor. Items appearing in both arrays by id are merged; photo requirements
- * without a matching item become items with empty prerequisites.
+ * without a matching item remain photo-only records when saved.
  */
 export function unifyStorageToItems(params: {
   checkinItems: ChecklistItem[];
@@ -137,145 +153,88 @@ export function unifyStorageToItems(params: {
   checkinPhotoRequirements: PhotoRequirement[];
   checkoutPhotoRequirements: PhotoRequirement[];
 }): UnifiedChecklistItem[] {
-  const {
-    checkinItems,
-    checkoutItems,
-    checkinPhotoRequirements,
-    checkoutPhotoRequirements,
-  } = params;
-
   const map = new Map<string, UnifiedChecklistItem>();
-
-  const checkinPhotoIds = new Set(checkinPhotoRequirements.map((p) => p.id));
-  const checkoutPhotoIds = new Set(checkoutPhotoRequirements.map((p) => p.id));
-
-  const upsert = (
-    source: ChecklistItem,
-    stage: Stage,
-  ): UnifiedChecklistItem => {
-    const existing = map.get(source.id);
-    const photoFromFlag = source.photoRequired === true;
-    const photoFromLegacyArray =
-      stage === "checkin"
-        ? checkinPhotoIds.has(source.id)
-        : checkoutPhotoIds.has(source.id);
-    const photoRequired = photoFromFlag || photoFromLegacyArray;
-
-    if (existing) {
-      existing.requiredOnCheckin =
-        existing.requiredOnCheckin || stage === "checkin";
-      existing.requiredOnCheckout =
-        existing.requiredOnCheckout || stage === "checkout";
-      existing.photoRequired = existing.photoRequired || photoRequired;
-      // Prefer the richer label/description if we already saw this id
-      if (!existing.description && source.description) {
-        existing.description = source.description;
-      }
-      return existing;
+  const add = (source: ChecklistItem | PhotoRequirement, stage: Stage, record: SavedStage) => {
+    let item = map.get(source.id);
+    if (!item) {
+      item = {
+        id: source.id, label: source.label || "", description: source.description,
+        requiredOnCheckin: false, requiredOnCheckout: false, photoRequired: false,
+        saved: { checkin: {}, checkout: {}, label: source.label || "", description: source.description,
+          photoRequired: false, index: map.size, ambiguous: false },
+      };
+      map.set(source.id, item);
     }
-
-    const next: UnifiedChecklistItem = {
-      id: source.id,
-      label: source.label || "",
-      description: source.description,
-      requiredOnCheckin: stage === "checkin",
-      requiredOnCheckout: stage === "checkout",
-      photoRequired,
-    };
-    map.set(source.id, next);
-    return next;
+    const saved = item.saved;
+    if (!saved) return;
+    const records = saved[stage];
+    if ((record.item && records.item) || (record.photo && records.photo)) saved.ambiguous = true;
+    Object.assign(records, record);
+    if (stage === "checkin") item.requiredOnCheckin = true;
+    else item.requiredOnCheckout = true;
+    item.photoRequired ||= !!record.photo || record.item?.photoRequired === true;
+    saved.photoRequired = item.photoRequired;
   };
-
-  for (const item of checkinItems || []) upsert(item, "checkin");
-  for (const item of checkoutItems || []) upsert(item, "checkout");
-
-  // Orphan photo requirements (no matching checklist item) → synthesize items
-  const mergeOrphan = (photo: PhotoRequirement, which: Stage) => {
-    const existing = map.get(photo.id);
-    if (existing) {
-      existing.photoRequired = true;
-      if (which === "checkin") existing.requiredOnCheckin = true;
-      else existing.requiredOnCheckout = true;
-      return;
-    }
-    map.set(photo.id, {
-      id: photo.id,
-      label: photo.label || "",
-      description: photo.description,
-      requiredOnCheckin: which === "checkin",
-      requiredOnCheckout: which === "checkout",
-      photoRequired: true,
-    });
-  };
-  for (const photo of checkinPhotoRequirements || []) mergeOrphan(photo, "checkin");
-  for (const photo of checkoutPhotoRequirements || []) mergeOrphan(photo, "checkout");
-
+  params.checkinItems.forEach((item, index) => add(item, "checkin", { item, itemIndex: index }));
+  params.checkoutItems.forEach((item, index) => add(item, "checkout", { item, itemIndex: index }));
+  params.checkinPhotoRequirements.forEach((photo, index) => add(photo, "checkin", { photo, photoIndex: index }));
+  params.checkoutPhotoRequirements.forEach((photo, index) => add(photo, "checkout", { photo, photoIndex: index }));
   return Array.from(map.values());
 }
 
-/**
- * Split the unified list back into the server's legacy four-array shape.
- * Items with an empty label are dropped. If an item has neither flag set, it is
- * dropped (the editor prevents this state from being saved).
- */
+/** Split the editor draft without changing saved customer obligations. */
 export function itemsToStorage(items: UnifiedChecklistItem[]): {
   checkinItems: ChecklistItem[];
   checkoutItems: ChecklistItem[];
   checkinPhotoRequirements: PhotoRequirement[];
   checkoutPhotoRequirements: PhotoRequirement[];
 } {
-  const checkinItems: ChecklistItem[] = [];
-  const checkoutItems: ChecklistItem[] = [];
-  const checkinPhotoRequirements: PhotoRequirement[] = [];
-  const checkoutPhotoRequirements: PhotoRequirement[] = [];
-
-  for (const item of items) {
-    if (!item.label.trim()) continue;
-    if (!item.requiredOnCheckin && !item.requiredOnCheckout) continue;
-
-    const base: ChecklistItem = {
-      id: item.id,
-      label: item.label.trim(),
-      description: item.description?.trim() || undefined,
-      required: true,
-      category: "general",
-      photoRequired: item.photoRequired,
-    };
-
-    if (item.requiredOnCheckin) {
-      checkinItems.push(base);
-      if (item.photoRequired) {
-        checkinPhotoRequirements.push({
-          id: item.id,
-          label: item.label.trim(),
-          description: item.description?.trim() || undefined,
-          required: true,
-        });
-      }
-    }
-
-    if (item.requiredOnCheckout) {
-      checkoutItems.push(base);
-      if (item.photoRequired) {
-        checkoutPhotoRequirements.push({
-          id: item.id,
-          label: item.label.trim(),
-          description: item.description?.trim() || undefined,
-          required: true,
-        });
-      }
-    }
+  if (items.some(item => item.saved?.ambiguous)) {
+    throw new Error("Duplicate saved duty IDs cannot be represented by a single task row.");
   }
-
-  return {
-    checkinItems,
-    checkoutItems,
-    checkinPhotoRequirements,
-    checkoutPhotoRequirements,
+  // Preserve independent stage order until the manager explicitly reorders rows.
+  const savedIndices = items.flatMap(item => item.saved ? [item.saved.index] : []);
+  const reordered = savedIndices.some((index, position) => position > 0 && index < savedIndices[position - 1]);
+  const stageArrays = (stage: Stage) => {
+    const duties: { value: ChecklistItem; order: number }[] = [];
+    const photos: { value: PhotoRequirement; order: number }[] = [];
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      if (!item.label.trim() || !(stage === "checkin" ? item.requiredOnCheckin : item.requiredOnCheckout)) continue;
+      const saved = item.saved;
+      const original = saved?.[stage];
+      const stageExisted = !!(original?.item || original?.photo);
+      const photoChanged = !saved || saved.photoRequired !== item.photoRequired;
+      const text = (source?: ChecklistItem | PhotoRequirement) => ({
+        label: source && saved && item.label === saved.label ? source.label : item.label.trim(),
+        description: source && saved && item.description === saved.description ? source.description : item.description?.trim() || undefined,
+      });
+      if (original?.item || !stageExisted) {
+        const value: ChecklistItem = original?.item
+          ? { ...original.item, ...text(original.item) }
+          : { id: item.id, ...text(), required: true, category: "general", photoRequired: item.photoRequired };
+        if (photoChanged) value.photoRequired = item.photoRequired;
+        duties.push({ value, order: !reordered ? original?.itemIndex ?? Infinity : index });
+      }
+      const stagePhoto = photoChanged || !stageExisted ? item.photoRequired : !!original?.photo;
+      if (stagePhoto) {
+        photos.push({
+          value: original?.photo ? { ...original.photo, ...text(original.photo) }
+            : { id: item.id, ...text(), required: true },
+          order: !reordered ? original?.photoIndex ?? Infinity : index,
+        });
+      }
+    }
+    return {
+      duties: duties.sort((a, b) => a.order - b.order).map(entry => entry.value),
+      photos: photos.sort((a, b) => a.order - b.order).map(entry => entry.value),
+    };
   };
+  const checkin = stageArrays("checkin");
+  const checkout = stageArrays("checkout");
+  return { checkinItems: checkin.duties, checkoutItems: checkout.duties,
+    checkinPhotoRequirements: checkin.photos, checkoutPhotoRequirements: checkout.photos };
 }
-
-// ─── Validation helpers ──────────────────────────────────────────────────────
 
 /**
  * Returns the ids of items that would be silently dropped on save, so the page
@@ -286,8 +245,10 @@ export function itemsToStorage(items: UnifiedChecklistItem[]): {
 export function findUnifiedItemProblems(items: UnifiedChecklistItem[]): {
   empty: UnifiedChecklistItem[];
   unassigned: UnifiedChecklistItem[];
+  ambiguous: UnifiedChecklistItem[];
 } {
   return {
+    ambiguous: items.filter(item => item.saved?.ambiguous),
     empty: items.filter((i) => !i.label.trim()),
     unassigned: items.filter(
       (i) => !i.requiredOnCheckin && !i.requiredOnCheckout && !!i.label.trim(),
@@ -339,9 +300,24 @@ const SCOPE_STYLES: Record<
   },
 };
 
+/**
+ * Stages where the saved record stays optional for the customer. Mirrors
+ * `itemsToStorage`: an existing stage record keeps its own `required` flag;
+ * a newly added stage is always required.
+ */
+function savedOptionalStages(item: UnifiedChecklistItem): Stage[] {
+  return (["checkin", "checkout"] as Stage[]).filter((stage) => {
+    if (!(stage === "checkin" ? item.requiredOnCheckin : item.requiredOnCheckout)) return false;
+    const original = item.saved?.[stage];
+    return (original?.item ?? original?.photo)?.required === false;
+  });
+}
+
 // ─── Single checklist row ────────────────────────────────────────────────────
 
 interface ChecklistRowProps {
+  /** Kitchen setup: customer wording, and saved optional duties are labelled. */
+  setupUx?: boolean;
   item: UnifiedChecklistItem;
   index: number;
   /** True while this row is the one being dragged. */
@@ -360,6 +336,7 @@ interface ChecklistRowProps {
 }
 
 function ChecklistRow({
+  setupUx,
   item,
   index,
   isDragging,
@@ -382,6 +359,10 @@ function ChecklistRow({
     if (item.description) setNoteOpen(true);
   }, [item.description]);
 
+  const optionalStages = setupUx ? savedOptionalStages(item) : [];
+  const detailLabel = setupUx
+    ? mt("setupUx.detailLabel", { defaultValue: "Extra detail shown to the customer" })
+    : mt("optionalHintForChefs");
   const isOnlyCheckin = item.requiredOnCheckin && !item.requiredOnCheckout;
   const isOnlyCheckout = item.requiredOnCheckout && !item.requiredOnCheckin;
 
@@ -425,7 +406,7 @@ function ChecklistRow({
         the row grows when a note is added, and a vertically-centred action set
         would drift downward as it did.
       */}
-      <div className="flex items-start gap-2 p-2.5">
+      <div className={cn("flex items-start gap-2 p-2.5", setupUx && "flex-wrap sm:flex-nowrap")}>
         {/* Drag handle. The only grab surface, so the text field stays usable. */}
         <div className="flex shrink-0 items-center gap-1 pt-0.5">
           <TooltipProvider delayDuration={300}>
@@ -467,8 +448,8 @@ function ChecklistRow({
           </span>
         </div>
 
-        {/* Primary field + optional note */}
-        <div className="min-w-0 flex-1">
+        {/* Primary field + optional note. Setup phones: full width beside the rail. */}
+        <div className={cn("min-w-0 flex-1", setupUx && "basis-[calc(100%-3rem)] sm:basis-0")}>
           <Input
             ref={labelRef}
             value={item.label}
@@ -498,8 +479,8 @@ function ChecklistRow({
                       description: e.target.value || undefined,
                     })
                   }
-                  placeholder={mt("optionalHintForChefs")}
-                  aria-label={mt("optionalHintForChefs")}
+                  placeholder={detailLabel}
+                  aria-label={detailLabel}
                   autoFocus={!item.description}
                   className="h-6 border-transparent bg-transparent px-1 text-xs text-muted-foreground shadow-none hover:border-input focus-visible:border-input focus-visible:bg-background"
                 />
@@ -523,15 +504,29 @@ function ChecklistRow({
                 className="!min-h-0 !min-w-0 inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
               >
                 <Plus className="size-3" />
-                {mt("addNote")}
+                {setupUx ? mt("setupUx.addDetail", { defaultValue: "Add detail" }) : mt("addNote")}
               </button>
+            )}
+            {optionalStages.length > 0 && (
+              <Badge variant="outline" className="ml-auto h-5 shrink-0 px-1.5 text-[10px] font-medium">
+                {optionalStages.length === 2
+                  ? mt("setupUx.rowOptional", { defaultValue: "Optional for the customer" })
+                  : optionalStages[0] === "checkin"
+                    ? mt("setupUx.rowOptionalCheckin", { defaultValue: "Optional at check-in" })
+                    : mt("setupUx.rowOptionalCheckout", { defaultValue: "Optional at check-out" })}
+              </Badge>
             )}
           </div>
         </div>
 
         {/* Scope chips */}
+        {/* Setup: on phones the chips and row actions share a second line under
+            the task text, aligned with it, so the text field keeps its width. */}
         <div
-          className="flex shrink-0 items-center gap-1 pt-0.5"
+          className={cn(
+            "flex shrink-0 items-center gap-1 pt-0.5",
+            setupUx && "order-last pl-12 sm:order-none sm:pl-0",
+          )}
           role="group"
           aria-label={mt("appliesTo")}
         >
@@ -575,6 +570,12 @@ function ChecklistRow({
                       ? scope === "checkin"
                         ? tt("addToCheckoutFirst")
                         : tt("addToCheckinFirst")
+                      : active && setupUx
+                        ? scope === "checkin"
+                          ? mt("setupUx.chipCheckinOn", { defaultValue: "Included at check-in. Select to remove it from check-in." })
+                          : scope === "checkout"
+                            ? mt("setupUx.chipCheckoutOn", { defaultValue: "Included at check-out. Select to remove it from check-out." })
+                            : mt("setupUx.chipPhotoOn", { defaultValue: "This task needs a photo. Select to stop asking for one." })
                       : active
                         ? scope === "checkin"
                           ? mt("requiredWhenChefChecksIn")
@@ -594,7 +595,13 @@ function ChecklistRow({
         </div>
 
         {/* Row actions — revealed on hover/focus so the resting row stays calm */}
-        <div className="flex shrink-0 items-center gap-0.5 pt-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <div className={cn(
+          "flex shrink-0 items-center gap-0.5 pt-0.5 transition-opacity",
+          // Hover-only actions are invisible on touch, so setup keeps them visible on phones.
+          setupUx
+            ? "order-last ml-auto sm:order-none sm:ml-0 sm:opacity-0 sm:focus-within:opacity-100 sm:group-hover:opacity-100"
+            : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+        )}>
           <Button
             type="button"
             variant="ghost"
@@ -685,6 +692,111 @@ function PresetPicker({
 }
 
 // ─── Chef View Preview (matches KitchenCheckinTracker) ───────────────────────
+
+function InlineStagePreview({ stage, instructions, items, onEdit, missingInstructions }: {
+  stage: Stage;
+  instructions: string | null;
+  items: UnifiedChecklistItem[];
+  /** Targets edited on another surface are simply not offered here. */
+  onEdit: Partial<Record<ReviewEditTarget, () => void>>;
+  missingInstructions?: string;
+}) {
+  const ambiguous = items.some(item => item.saved?.ambiguous);
+  const arrays = ambiguous ? null : itemsToStorage(items);
+  const duties = (stage === "checkin" ? arrays?.checkinItems : arrays?.checkoutItems) ?? [];
+  const photos = (stage === "checkin" ? arrays?.checkinPhotoRequirements : arrays?.checkoutPhotoRequirements) ?? [];
+  const headingId = `setup-preview-${stage}`;
+  const StageIcon = stage === "checkin" ? LogIn : LogOut;
+  // Same Required / Optional words the customer sees in KitchenCheckinTracker,
+  // as quiet text rather than a badge per row.
+  const entry = (record: ChecklistItem | PhotoRequirement) => <li key={record.id} className="flex items-start justify-between gap-3 py-1.5 text-sm">
+    <div className="min-w-0">
+      <p className="break-words">{record.label}</p>
+      {record.description && <p className="text-xs text-muted-foreground">{record.description}</p>}
+    </div>
+    <span className={cn("shrink-0 pt-0.5 text-[11px]", record.required !== false ? "text-muted-foreground" : "font-medium text-amber-700")}>
+      {record.required !== false
+        ? mt("setupUx.requiredTask", { defaultValue: "Required" })
+        : mt("setupUx.optionalLegacy", { defaultValue: "Optional" })}
+    </span>
+  </li>;
+  const subheading = "text-xs font-medium text-muted-foreground";
+  const editButton = (target: ReviewEditTarget) => onEdit[target] && <Button type="button" variant="ghost" size="sm" aria-describedby={headingId}
+    onClick={onEdit[target]}
+    className="!min-h-0 -mr-2 h-7 shrink-0 px-2 text-xs font-medium text-primary hover:bg-primary/5 hover:text-primary">
+    {target === "instructions"
+      ? mt("setupUx.editNotes", { defaultValue: "Edit instructions" })
+      : mt("setupUx.editTasks", { defaultValue: "Edit tasks" })}
+  </Button>;
+  return <section aria-labelledby={headingId} className="min-w-0 rounded-xl border bg-background p-4 sm:p-5">
+    <h4 id={headingId} className="flex items-center gap-2 text-sm font-semibold">
+      <StageIcon className="size-4 text-muted-foreground" />
+      {stage === "checkin"
+        ? mt("setupUx.arrivalPreview", { defaultValue: "At check-in (arrival)" })
+        : mt("setupUx.departurePreview", { defaultValue: "At check-out (departure)" })}
+    </h4>
+    <div className="mt-3 space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <h5 className={subheading}>{mt("setupUx.previewInstructions", { defaultValue: "Instructions" })}</h5>
+        {editButton("instructions")}
+      </div>
+      {instructions?.trim()
+        ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{instructions.trim()}</p>
+        : <p className="text-sm italic text-destructive">{missingInstructions ?? mt("setupUx.previewMissing", { defaultValue: "Not written yet. Required before you can save." })}</p>}
+    </div>
+    <div className="mt-4 space-y-1 border-t pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <h5 className={subheading}>{mt("setupUx.previewTasks", { defaultValue: "Tasks to complete" })}</h5>
+        {editButton("checklist")}
+      </div>
+      {ambiguous ? <p role="alert" className="text-sm text-destructive">{mt("setupUx.ambiguous", { defaultValue: "Saved duties contain duplicate IDs within a stage. Saving is blocked to avoid losing data. Ask Local Cooks to review this configuration." })}</p>
+        : duties.length === 0 && photos.length === 0 ? <p className="text-sm text-muted-foreground">{mt("setupUx.noTasks", { defaultValue: "No tasks. Customers see only the instructions." })}</p>
+        : <>
+          {duties.length > 0 && <ol className="divide-y divide-border/60">{duties.map(entry)}</ol>}
+          {photos.length > 0 && <div className="pt-2">
+            <h5 className={cn(subheading, "flex items-center gap-1.5")}><Camera className="size-3.5" />{mt("setupUx.photos", { defaultValue: "Photos to upload" })}</h5>
+            <ul className="divide-y divide-border/60">{photos.map(entry)}</ul>
+          </div>}
+        </>}
+    </div>
+  </section>;
+}
+
+/**
+ * One titled step of the kitchen setup page. Sections share one card and are
+ * separated by its dividers, so the page reads as a single form instead of a
+ * stack of nested boxes. `tag` states the required/optional rule next to the
+ * title, where it is read first.
+ */
+export function SetupSection({ id, title, tag, description, actions, children, className, ...rest }: {
+  id: string;
+  title: string;
+  tag?: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+} & Omit<React.HTMLAttributes<HTMLElement>, "title" | "id">) {
+  return <section aria-labelledby={`${id}-title`} className={cn("space-y-4 px-4 py-5 sm:px-6 sm:py-6", className)} {...rest}>
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div className="min-w-0 max-w-2xl">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id={`${id}-title`} className="text-base font-semibold">{title}</h3>
+          {tag}
+        </div>
+        {description && <div className="mt-1 space-y-1 text-sm text-muted-foreground">{description}</div>}
+      </div>
+      {actions}
+    </div>
+    {children}
+  </section>;
+}
+
+/** Small neutral pill stating a section's rule ("Required" / "Optional"). */
+export function SetupTag({ tone = "neutral", children }: { tone?: "neutral" | "strong"; children: React.ReactNode }) {
+  return <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium",
+    tone === "strong" ? "bg-foreground text-background" : "bg-muted text-muted-foreground")}>{children}</span>;
+}
 
 function ReviewDialog({
   open,
@@ -916,6 +1028,7 @@ function ReviewBlock({
 // ─── Stage Header ─────────────────────────────────────────────────────────────
 
 interface StageHeaderProps {
+  setupUx?: boolean;
   coupledStages?: boolean;
   stage: Stage;
   enabled: boolean;
@@ -936,6 +1049,7 @@ interface StageHeaderProps {
 }
 
 function StageHeader({
+  setupUx,
   coupledStages,
   stage,
   enabled,
@@ -1049,11 +1163,44 @@ function StageHeader({
     [notesDirty, cancelNotes],
   );
 
+  if (setupUx) {
+    const missing = enabled && !instructions?.trim();
+    // Plain field, no inner card: the section heading already says both are required.
+    return (
+      <div data-stage-panel={stage} tabIndex={-1} className="flex flex-col gap-1.5 focus:outline-none">
+        <Label htmlFor={`${stage}-instructions`} className="flex items-center gap-1.5 text-sm font-medium">
+          {stage === "checkin" ? <LogIn className="size-4 text-muted-foreground" /> : <LogOut className="size-4 text-muted-foreground" />}
+          {stage === "checkin"
+            ? mt("setupUx.arrivalInstructions", { defaultValue: "Arrival instructions" })
+            : mt("setupUx.departureInstructions", { defaultValue: "Departure instructions" })}
+        </Label>
+        <p id={`${stage}-setup-example`} className="text-xs text-muted-foreground">
+          {stage === "checkin"
+            ? mt("setupUx.arrivalHelp", { defaultValue: "Where to enter, how to get in if nobody is there, and who to call if access fails." })
+            : mt("setupUx.departureHelp", { defaultValue: "Where to leave keys, how to lock up, and who to call if something goes wrong." })}
+        </p>
+        <Textarea id={`${stage}-instructions`} value={instructions ?? ""} rows={5}
+          className="mt-1 min-h-[132px] resize-y"
+          placeholder={stage === "checkin"
+            ? mt("setupUx.arrivalExample", { defaultValue: "Example:\n1. Use the side entrance.\n2. If it is locked, call the kitchen contact listed in your booking." })
+            : mt("setupUx.departureExample", { defaultValue: "Example:\n1. Leave the key on the marked hook.\n2. Close the door. If it will not lock, call the kitchen manager." })}
+          required={enabled} aria-invalid={missing}
+          aria-describedby={missing ? `${stage}-setup-example ${stage}-notes-help` : `${stage}-setup-example`}
+          onChange={event => onInstructionsChange(event.target.value || null)} />
+        {missing && <p id={`${stage}-notes-help`} className="text-xs text-destructive">
+          {stage === "checkin"
+            ? mt("setupUx.arrivalMissing", { defaultValue: "Write arrival instructions before saving." })
+            : mt("setupUx.departureMissing", { defaultValue: "Write departure instructions before saving." })}
+        </p>}
+      </div>
+    );
+  }
+
   if (coupledStages) return (
     <div data-stage-panel={stage} className="space-y-3 rounded-lg border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold">{title}</span>
-        <Badge variant="outline">{mt(enabled ? 'trackingNotesRequired' : 'trackingOffNotesDraft')}</Badge>
+        <Badge variant="outline">{mt(enabled ? 'trackingNotesRequired' : 'storageTrackingOffNotesDraft')}</Badge>
       </div>
       <div className="space-y-2">
         <Label htmlFor={`${stage}-instructions`}>
@@ -1064,10 +1211,10 @@ function StageHeader({
           aria-describedby={`${stage}-notes-help`}
           onChange={event => onInstructionsChange(event.target.value || null)} />
         <p id={`${stage}-notes-help`} className={enabled && !instructions?.trim() ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
-          {mt(enabled && !instructions?.trim() ? 'trackingRequiredNotes' : 'trackingNotesSaveTogether')}
+          {mt(enabled && !instructions?.trim() ? 'storageTrackingRequiredNotes' : 'trackingNotesSaveTogether')}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground">{mt('trackingOptionalDuties')}</p>
+      <p className="text-xs text-muted-foreground">{mt('storageTrackingOptionalDuties')}</p>
     </div>
   );
 
@@ -1336,8 +1483,10 @@ function StageHeader({
 type ItemFilter = "all" | "checkin" | "checkout" | "photo";
 
 interface ChecklistListProps {
+  setupUx?: boolean;
   /** The rows to render — already filtered. */
   items: UnifiedChecklistItem[];
+  sourceItems: UnifiedChecklistItem[];
   /** How many rows exist in the unfiltered list, for the filtered empty state. */
   totalCount: number;
   filter: ItemFilter;
@@ -1366,7 +1515,9 @@ interface ChecklistListProps {
  * manager cannot see. Numbering stays absolute for the same reason.
  */
 function ChecklistList({
+  setupUx,
   items,
+  sourceItems,
   totalCount,
   filter,
   onItemsChange,
@@ -1383,8 +1534,10 @@ function ChecklistList({
 
   // Refs keep the drag handlers and the stable callbacks free of `items` deps,
   // which avoids re-creating them on every keystroke.
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
+  const itemsRef = useRef(sourceItems);
+  itemsRef.current = sourceItems;
+  const visibleItemsRef = useRef(items);
+  visibleItemsRef.current = items;
   const onItemsChangeRef = useRef(onItemsChange);
   onItemsChangeRef.current = onItemsChange;
 
@@ -1433,6 +1586,7 @@ function ChecklistList({
     const clone: UnifiedChecklistItem = {
       ...current[index],
       id: generateUnifiedItemId(),
+      saved: undefined,
     };
     const next = [...current];
     next.splice(index + 1, 0, clone);
@@ -1477,8 +1631,8 @@ function ChecklistList({
    */
   const moveItem = useCallback((from: number, to: number) => {
     const current = itemsRef.current;
-    const dragged = itemsRef.current[from];
-    const over = itemsRef.current[to];
+    const dragged = visibleItemsRef.current[from];
+    const over = visibleItemsRef.current[to];
     if (!dragged || !over) return;
     const fromAbs = current.findIndex((i) => i.id === dragged.id);
     const toAbs = current.findIndex((i) => i.id === over.id);
@@ -1538,8 +1692,8 @@ function ChecklistList({
   }, [dragActive, onDragEnd]);
 
   const existingLabels = useMemo(
-    () => new Set(items.map((i) => i.label.trim().toLowerCase())),
-    [items],
+    () => new Set(sourceItems.map((i) => i.label.trim().toLowerCase())),
+    [sourceItems],
   );
 
   const checkinCount = items.filter((i) => i.requiredOnCheckin).length;
@@ -1567,6 +1721,33 @@ function ChecklistList({
           >
             {mt("showAllTasks")}
           </Button>
+        </div>
+      ) : items.length === 0 && setupUx ? (
+        // Zero tasks is a valid setup, so the empty state is one quiet line, not a call to action.
+        <div className="flex flex-col gap-3 rounded-lg border border-dashed px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{mt("setupUx.emptyTitle", { defaultValue: "No tasks added" })}</span>
+            {" · "}
+            {mt("setupUx.emptyHint", { defaultValue: "Customers will see only your instructions." })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={addItem}
+              className="h-8 rounded-lg px-3 text-xs shadow-none hover:translate-y-0 hover:shadow-none">
+              <Plus className="mr-1.5 size-3.5" />
+              {mt("setupUx.addTask", { defaultValue: "Add a task" })}
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="h-8 rounded-lg px-3 text-xs hover:bg-muted">
+                  <PlaylistPlus className="mr-1.5 size-3.5" />
+                  {mt("startFromCommonTasks")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-1.5">
+                <PresetPicker onPick={addPreset} existingLabels={existingLabels} />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-lg border border-dashed py-8 text-center">
@@ -1609,6 +1790,7 @@ function ChecklistList({
           {items.map((item, index) => (
             <ChecklistRow
               key={item.id}
+              setupUx={setupUx}
               item={item}
               index={index}
               isDragging={dragIndex === index}
@@ -1640,16 +1822,16 @@ function ChecklistList({
           which already offers a way out. */}
       {items.length > 0 && (
         <div className="space-y-2 pt-0.5">
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className={setupUx ? "flex flex-wrap gap-2" : "flex flex-col sm:flex-row gap-2"}>
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={addItem}
-              className="h-8 flex-1 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none"
+              className={cn("h-8 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none", !setupUx && "flex-1")}
             >
               <Plus className="mr-1.5 size-3.5" />
-              {mt("addChecklistItem")}
+              {setupUx ? mt("setupUx.addTask", { defaultValue: "Add a task" }) : mt("addChecklistItem")}
             </Button>
             {/* Sits beside the add button, not only in the empty state, so the
                 preset list stays one tap away however long the list has grown. */}
@@ -1657,9 +1839,9 @@ function ChecklistList({
               <PopoverTrigger asChild>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant={setupUx ? "ghost" : "outline"}
                   size="sm"
-                  className="h-8 flex-1 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none"
+                  className={cn("h-8 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none", setupUx ? "hover:bg-muted" : "flex-1")}
                 >
                   <PlaylistPlus className="mr-1.5 size-3.5" />
                   {mt("startFromCommonTasks")}
@@ -1670,10 +1852,12 @@ function ChecklistList({
               </PopoverContent>
             </Popover>
           </div>
-          <p className="flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
-            <Lightbulb className="size-3" />
-            {mt("scopeLegend")}
-          </p>
+          {!setupUx && (
+            <p className="flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
+              <Lightbulb className="size-3" />
+              {mt("scopeLegend")}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1683,6 +1867,24 @@ function ChecklistList({
 // ─── Main Editor ──────────────────────────────────────────────────────────────
 
 export interface KitchenCheckinCheckoutEditorProps {
+  instructionControls?: Partial<Record<Stage, React.ReactNode>>;
+  instructionReadOnly?: Partial<Record<Stage, boolean>>;
+  taskControls?: React.ReactNode;
+  previewItems?: UnifiedChecklistItem[];
+  previewInstructions?: { checkinInstructions: string | null; checkoutInstructions: string | null };
+  previewKitchenName?: string;
+  /** Kitchen setup opts in; shared storage keeps its existing review behavior. */
+  setupLocationName?: string;
+  /** Kitchen setup only: rendered as its own section between tasks and the preview. */
+  beforeReview?: React.ReactNode;
+  /**
+   * Kitchen setup only. The instructions surface edits the two notes and shows the
+   * saved tasks as a summary; the tasks surface edits tasks and shows the saved notes
+   * read-only. Each surface's preview is still the customer's whole view.
+   */
+  setupMode?: "instructions" | "tasks";
+  /** Instructions surface: opens the customer tasks page. */
+  onOpenTasks?: () => void;
   coupledStages?: boolean;
   title?: string;
   items: UnifiedChecklistItem[];
@@ -1702,6 +1904,16 @@ export interface KitchenCheckinCheckoutEditorProps {
 }
 
 export function KitchenCheckinCheckoutEditor({
+  instructionControls,
+  instructionReadOnly,
+  taskControls,
+  previewItems,
+  previewInstructions,
+  previewKitchenName,
+  setupLocationName,
+  beforeReview,
+  setupMode,
+  onOpenTasks,
   coupledStages,
   title,
   items,
@@ -1718,6 +1930,12 @@ export function KitchenCheckinCheckoutEditor({
   onFlowToggleMouseDown,
   onFlowToggleKeyDown,
 }: KitchenCheckinCheckoutEditorProps) {
+  const setupUx = coupledStages && setupLocationName !== undefined;
+  const hasSavedOptional = useMemo(
+    () => !!setupUx && items.some((item) => savedOptionalStages(item).length > 0),
+    [setupUx, items],
+  );
+  const editorRef = useRef<HTMLDivElement>(null);
   const [previewStage, setPreviewStage] = useState<Stage | null>(null);
   /** Which slice of the shared list is on screen. Editing is never restricted. */
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
@@ -1735,11 +1953,17 @@ export function KitchenCheckinCheckoutEditor({
    * a scroll started in the same tick.
    */
   const handleEditSection = useCallback((target: ReviewEditTarget) => {
-    setPreviewStage((stage) => {
-      if (stage) scrollToReviewTarget(stage, target);
-      return null;
-    });
-  }, []);
+    if (previewStage) scrollToReviewTarget(previewStage, target);
+    setPreviewStage(null);
+  }, [previewStage]);
+
+  const editInlineSection = (stage: Stage, target: ReviewEditTarget) => {
+    if (target === "checklist") setItemFilter("all");
+    const anchor = editorRef.current?.querySelector<HTMLElement>(target === "instructions"
+      ? `[data-stage-panel="${stage}"]` : "[data-setup-tasks]");
+    anchor?.scrollIntoView({ behavior: "smooth", block: "center" });
+    (anchor?.querySelector<HTMLElement>("textarea, input") ?? anchor)?.focus({ preventScroll: true });
+  };
 
   const checkinItemCount = useMemo(
     () => items.filter((i) => i.requiredOnCheckin).length,
@@ -1780,7 +2004,168 @@ export function KitchenCheckinCheckoutEditor({
     }
   }, [items, itemFilter]);
 
-  const bothDisabled = !checkinEnabled && !checkoutEnabled;
+  const bothDisabled = !setupUx && !checkinEnabled && !checkoutEnabled;
+
+  const filterTabs = (
+    <div
+      className="flex items-center gap-0.5 rounded-full bg-muted p-0.5"
+      role="group"
+      aria-label={mt("filterTasks")}
+    >
+      {(
+        [
+          { id: "all", label: mt("filterAll"), count: items.length },
+          // Reuse the scope-chip labels already used on every row, so the
+          // filter and the chips call the same thing by the same name.
+          { id: "checkin", label: mt("checkIn"), count: checkinItemCount },
+          { id: "checkout", label: mt("checkOut"), count: checkoutItemCount },
+          { id: "photo", label: mt("photo"), count: photoItemCount },
+        ] as const
+      ).map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          aria-pressed={itemFilter === tab.id}
+          onClick={() => setItemFilter(tab.id)}
+          className={cn(
+            "!min-h-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+            itemFilter === tab.id
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {tab.label}
+          <span className="tabular-nums text-[10px] opacity-60">{tab.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const stageField = (stage: Stage) => (
+    <StageHeader
+      setupUx={setupUx}
+      coupledStages={coupledStages}
+      stage={stage}
+      enabled={stage === "checkin" ? checkinEnabled : checkoutEnabled}
+      onEnabledChange={stage === "checkin" ? onCheckinEnabledChange : onCheckoutEnabledChange}
+      instructions={stage === "checkin" ? checkinInstructions : checkoutInstructions}
+      onInstructionsChange={stage === "checkin" ? onCheckinInstructionsChange : onCheckoutInstructionsChange}
+      itemCount={stage === "checkin" ? checkinItemCount : checkoutItemCount}
+      photoCount={stage === "checkin" ? checkinPhotoCount : checkoutPhotoCount}
+      onOpenPreview={() => setPreviewStage(stage)}
+      onToggleClick={onFlowToggleClick}
+      onToggleMouseDown={onFlowToggleMouseDown}
+      onToggleKeyDown={onFlowToggleKeyDown}
+    />
+  );
+
+  const checklist = (
+    <ChecklistList
+      setupUx={setupUx}
+      items={visibleItems}
+      sourceItems={items}
+      totalCount={items.length}
+      filter={itemFilter}
+      onItemsChange={onItemsChange}
+      checkinEnabled={checkinEnabled}
+      checkoutEnabled={checkoutEnabled}
+      onClearFilter={() => setItemFilter("all")}
+    />
+  );
+
+  const tasksSection = (
+    <SetupSection
+      id="setup-tasks"
+      data-setup-tasks
+      tabIndex={-1}
+      className="focus:outline-none"
+      title={mt("setupUx.tasksStep", { defaultValue: "Customer tasks" })}
+      tag={<SetupTag>{mt("setupUx.optionalTag", { defaultValue: "Optional to add" })}</SetupTag>}
+      description={<>
+        <p>{mt("setupUx.tasksHelp", { defaultValue: "Each task you add is required at the stage you pick. Turn on Photo to also require a photo." })}</p>
+        {hasSavedOptional && <p>{mt("setupUx.legacyOptionalHelp", { defaultValue: "Tasks labelled Optional were saved that way earlier and stay optional for customers. Tasks you add now are required." })}</p>}
+      </>}
+      actions={setupMode === "instructions"
+        ? <Button type="button" variant="outline" size="sm" onClick={onOpenTasks} className="h-9 rounded-lg">
+            <ListChecks className="mr-1.5 size-4" />
+            {items.length
+              ? mt("setupUx.editTasksAction", { defaultValue: "Edit customer tasks" })
+              : mt("setupUx.addTasksAction", { defaultValue: "Add customer tasks" })}
+            <ChevronRight className="ml-1 size-4" />
+          </Button>
+        : items.length > 0 ? filterTabs : undefined}
+    >
+      {taskControls}
+      {setupMode === "instructions" ? (
+        // The saved list is summarised here and edited on its own page.
+        items.length === 0
+          ? <p className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{mt("setupUx.emptyTitle", { defaultValue: "No tasks added" })}</span>
+              {" · "}
+              {mt("setupUx.emptyHint", { defaultValue: "Customers will see only your instructions." })}
+            </p>
+          : <ul className="flex flex-wrap gap-2 text-xs">
+              {[
+                { key: "checkin", Icon: LogIn, text: mt("setupUx.arrivalTaskCount", { count: checkinItemCount, defaultValue: "{count} at check-in" }) },
+                { key: "checkout", Icon: LogOut, text: mt("setupUx.departureTaskCount", { count: checkoutItemCount, defaultValue: "{count} at check-out" }) },
+                ...(photoItemCount ? [{ key: "photo", Icon: Camera, text: mt("setupUx.photoTaskCount", { count: photoItemCount, defaultValue: "{count} with a photo" }) }] : []),
+              ].map(({ key, Icon, text }) => <li key={key} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 font-medium">
+                <Icon className="size-3.5 text-muted-foreground" />{text}
+              </li>)}
+            </ul>
+      ) : <fieldset disabled={!checkinEnabled && !checkoutEnabled}>{checklist}</fieldset>}
+    </SetupSection>
+  );
+
+  /*
+    Kitchen setup: one card, plain sections in reading order — what to write,
+    what to ask for, when, and what the customer will see. Each section states
+    its rule once beside its title; examples live in the empty fields. Saving
+    is the surface's single Save, so nothing here repeats it.
+  */
+  if (setupUx) return (
+    <Card ref={editorRef} className="overflow-hidden">
+      <CardContent className="divide-y p-0">
+        {setupMode !== "tasks" && <SetupSection
+          id="setup-instructions"
+          title={mt("setupUx.instructionsStep", { defaultValue: "Arrival and departure instructions" })}
+          tag={<SetupTag tone="strong">{mt("setupUx.requiredBadge", { defaultValue: "Required" })}</SetupTag>}
+          description={mt("setupUx.scope", { defaultValue: "Write both instructions before publishing. You can save with no customer tasks." })}
+        >
+          <div className="grid gap-5 md:grid-cols-2 md:gap-6">
+            {(["checkin", "checkout"] as const).map(stage => <div key={stage} className="space-y-3">
+              {instructionControls?.[stage]}
+              <fieldset disabled={instructionReadOnly?.[stage]}>{stageField(stage)}</fieldset>
+            </div>)}
+          </div>
+        </SetupSection>}
+
+        {tasksSection}
+
+        {beforeReview}
+
+        <SetupSection
+          id="setup-review"
+          className="bg-muted/30"
+          title={mt("setupUx.reviewStep", { defaultValue: "What customers will see" })}
+          description={mt("setupUx.reviewHelp", { defaultValue: "Preview of your unsaved draft. Nothing changes for customers until you save." })}
+        >
+          {previewKitchenName && <p className="text-sm font-medium">{mt("kitchenScope.previewKitchen", { kitchen: previewKitchenName })}</p>}
+          <div className="grid gap-4 md:grid-cols-2">
+            {(["checkin", "checkout"] as const).map(stage => <InlineStagePreview key={stage} stage={stage}
+              instructions={stage === "checkin" ? previewInstructions?.checkinInstructions ?? checkinInstructions : previewInstructions?.checkoutInstructions ?? checkoutInstructions} items={previewItems ?? items}
+              missingInstructions={setupMode === "tasks"
+                ? mt("setupUx.previewMissingElsewhere", { defaultValue: "Not written yet. Add it under Arrival & departure." })
+                : undefined}
+              onEdit={{
+                instructions: setupMode === "tasks" ? undefined : () => editInlineSection(stage, "instructions"),
+                checklist: setupMode === "instructions" ? onOpenTasks : () => editInlineSection(stage, "checklist"),
+              }} />)}
+          </div>
+        </SetupSection>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <Card>
@@ -1803,41 +2188,15 @@ export function KitchenCheckinCheckoutEditor({
             edits per-item lives here, because a panel that is half settings and
             half content reads as one undifferentiated block. */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <StageHeader
-            coupledStages={coupledStages}
-            stage="checkin"
-            enabled={checkinEnabled}
-            onEnabledChange={onCheckinEnabledChange}
-            instructions={checkinInstructions}
-            onInstructionsChange={onCheckinInstructionsChange}
-            itemCount={checkinItemCount}
-            photoCount={checkinPhotoCount}
-            onOpenPreview={() => setPreviewStage("checkin")}
-            onToggleClick={onFlowToggleClick}
-            onToggleMouseDown={onFlowToggleMouseDown}
-            onToggleKeyDown={onFlowToggleKeyDown}
-          />
-          <StageHeader
-            coupledStages={coupledStages}
-            stage="checkout"
-            enabled={checkoutEnabled}
-            onEnabledChange={onCheckoutEnabledChange}
-            instructions={checkoutInstructions}
-            onInstructionsChange={onCheckoutInstructionsChange}
-            itemCount={checkoutItemCount}
-            photoCount={checkoutPhotoCount}
-            onOpenPreview={() => setPreviewStage("checkout")}
-            onToggleClick={onFlowToggleClick}
-            onToggleMouseDown={onFlowToggleMouseDown}
-            onToggleKeyDown={onFlowToggleKeyDown}
-          />
+          {stageField("checkin")}
+          {stageField("checkout")}
         </div>
 
         {/* Nothing is switched on — the list is inert, so say so once. */}
         {bothDisabled && (
           <div className="flex items-start gap-2 rounded-lg border border-dashed border-border bg-muted/40 p-2.5 text-[10px] leading-snug text-muted-foreground/80">
             <Info className="mt-0.5 size-3.5 shrink-0" />
-            <p>{mt(coupledStages ? 'trackingDisabledHint' : 'bothStagesDisabledHint')}</p>
+            <p>{mt(coupledStages ? 'storageTrackingDisabledHint' : 'bothStagesDisabledHint')}</p>
           </div>
         )}
 
@@ -1852,49 +2211,10 @@ export function KitchenCheckinCheckoutEditor({
               <ListChecks className="size-4 shrink-0 text-muted-foreground" />
               <h3 className="text-sm font-semibold">{mt("checklistItems")}</h3>
             </div>
-            <div
-              className="flex items-center gap-0.5 rounded-full bg-muted p-0.5"
-              role="group"
-              aria-label={mt("filterTasks")}
-            >
-              {(
-                [
-                  { id: "all", label: mt("filterAll"), count: items.length },
-                  // Reuse the scope-chip labels already used on every row, so the
-                  // filter and the chips call the same thing by the same name.
-                  { id: "checkin", label: mt("checkIn"), count: checkinItemCount },
-                  { id: "checkout", label: mt("checkOut"), count: checkoutItemCount },
-                  { id: "photo", label: mt("photo"), count: photoItemCount },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  aria-pressed={itemFilter === tab.id}
-                  onClick={() => setItemFilter(tab.id)}
-                  className={cn(
-                    "!min-h-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
-                    itemFilter === tab.id
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {tab.label}
-                  <span className="tabular-nums text-[10px] opacity-60">{tab.count}</span>
-                </button>
-              ))}
-            </div>
+            {filterTabs}
           </div>
 
-          <ChecklistList
-            items={visibleItems}
-            totalCount={items.length}
-            filter={itemFilter}
-            onItemsChange={onItemsChange}
-            checkinEnabled={checkinEnabled}
-            checkoutEnabled={checkoutEnabled}
-            onClearFilter={() => setItemFilter("all")}
-          />
+          {checklist}
         </div>
       </CardContent>
 

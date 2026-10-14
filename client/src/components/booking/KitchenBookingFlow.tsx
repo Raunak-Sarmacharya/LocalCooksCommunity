@@ -3,6 +3,9 @@ import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
+import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
@@ -265,7 +268,7 @@ function BookingPlaceContext({
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </p>
             <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-              {t("preConfirmationRefundTitle", "100% refund before confirmation")}
+              {t("preConfirmationRefundTitle", "Free to cancel until the kitchen confirms your request — your card is only on hold.")}
             </p>
           </div>
           <Icon icon="mdi:chevron-right" className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
@@ -337,6 +340,13 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
 }
 
+/** The server's own words for a refused checkout/booking, with a plain fallback per status so a failure is never silent. */
+async function describeBookingFailure(response: Response, fallbackFor: (status: number) => string) {
+  const body = await response.json().catch(() => null) as { error?: unknown; message?: unknown; eligibility?: unknown } | null;
+  const text = [body?.error, body?.message].find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return { message: text || fallbackFor(response.status), refusedAccess: response.status === 403 && !!body?.eligibility };
+}
+
 export default function KitchenBookingFlow({
   locationId,
   locationName,
@@ -354,7 +364,19 @@ export default function KitchenBookingFlow({
   const { t, i18n } = useTranslation(["booking", "kitchen"]);
   const { kitchens, createBooking, isLoadingKitchens } = useKitchenBookings();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { guard, gate } = useEmailVerificationGuard();
+  // Read up front: a chef who cannot book is told why before they pick dates, not after checkout.
+  const { eligibility } = useBookingEligibility(locationId);
+  const bookingBlocked = !!eligibility && !eligibility.canBook;
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const failureFallback = (status: number) =>
+    status === 403 ? t("bookingErrorForbidden", "You cannot book this kitchen right now. See the notice at the top of this page.")
+    : status === 409 ? t("bookingErrorConflict", "Those hours were just taken or changed. Please choose your hours again.")
+    : status === 422 || status === 400 ? t("bookingErrorInvalid", "Some booking details need attention. Please review them and try again.")
+    : status >= 500 ? t("bookingErrorServer", "Something went wrong on our side. Your card was not charged. Please try again in a moment.")
+    : t("toastCheckoutFailedDefaultDesc", "Failed to start checkout. Please try again.");
 
   // Filter kitchens to only those in this location
   const locationKitchens = useMemo(() => {
@@ -630,6 +652,7 @@ export default function KitchenBookingFlow({
     } catch (error) {
       logger.error('Error loading month availability:', error);
       setDateAvailability({});
+      setLoadError(t("bookingErrorLoadAvailability", "We could not load availability. Please check your connection and try again."));
     } finally {
       setIsLoadingAvailability(false);
     }
@@ -834,6 +857,7 @@ export default function KitchenBookingFlow({
       return { storage: storageData, equipment };
     } catch (error) {
       logger.error('Error fetching kitchen addons:', error);
+      setLoadError(t("bookingErrorLoadOptions", "We could not load this kitchen's add-on options. Reload the page to try again."));
       setStorageListings([]);
       setEquipmentListings(empty.equipment);
       return empty;
@@ -913,6 +937,7 @@ export default function KitchenBookingFlow({
           platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
         });
       } else {
+        setLoadError(t("bookingErrorLoadKitchen", "We could not load this kitchen's pricing. Reload the page before booking."));
         setKitchenPricing({ hourlyRate: null, dailyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       }
 
@@ -954,6 +979,7 @@ export default function KitchenBookingFlow({
       }
     } catch (error) {
       logger.error('Error fetching kitchen data:', error);
+      setLoadError(t("bookingErrorLoadKitchen", "We could not load this kitchen's pricing. Reload the page before booking."));
       setKitchenPricing({ hourlyRate: null, dailyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       setHideDateStep(false);
       setCurrentStep("calendar");
@@ -1110,7 +1136,9 @@ export default function KitchenBookingFlow({
   // Redirect to Stripe Checkout
   const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (bookingBlocked) return;
     if (!requireValidSelection()) return;
+    setCheckoutError(null);
 
     // Enforce minimum booking hours (0 = no restriction)
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
@@ -1179,8 +1207,10 @@ export default function KitchenBookingFlow({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create checkout session');
+        const failure = await describeBookingFailure(response, failureFallback);
+        // A refused eligibility (expired document, ended access) updates the notice at the top too.
+        if (failure.refusedAccess) void queryClient.invalidateQueries({ queryKey: ['booking-eligibility', locationId] });
+        throw new Error(failure.message);
       }
 
       const data = await response.json();
@@ -1192,9 +1222,13 @@ export default function KitchenBookingFlow({
         throw new Error(tt("noCheckoutUrl"));
       }
     } catch (error: any) {
+      const message = error instanceof TypeError
+        ? t("bookingErrorNetwork", "We could not reach Local Cooks. Check your connection and try again.")
+        : error.message || t("toastCheckoutFailedDefaultDesc", "Failed to start checkout. Please try again.");
+      setCheckoutError(message);
       toast({
         title: t("toastCheckoutFailedTitle", "Checkout Failed"),
-        description: error.message || t("toastCheckoutFailedDefaultDesc", "Failed to start checkout. Please try again."),
+        description: message,
         variant: "destructive",
       });
       setIsRedirectingToCheckout(false);
@@ -1205,7 +1239,9 @@ export default function KitchenBookingFlow({
   // Handle free booking submission
   const handleFreeBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (bookingBlocked) return;
     if (!requireValidSelection()) return;
+    setCheckoutError(null);
 
     // Enforce minimum booking hours (0 = no restriction)
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
@@ -1273,9 +1309,12 @@ export default function KitchenBookingFlow({
           onComplete?.(typeof bookingId === "number" ? bookingId : undefined);
         },
         onError: (error: any) => {
+          const message = error.message || t("toastBookingFailedDefaultDesc", "Failed to create booking. Please try again.");
+          setCheckoutError(message);
+          void queryClient.invalidateQueries({ queryKey: ['booking-eligibility', locationId] });
           toast({
             title: t("toastBookingFailedTitle", "Booking Failed"),
-            description: error.message || t("toastBookingFailedDefaultDesc", "Failed to create booking. Please try again."),
+            description: message,
             variant: "destructive",
           });
           setIsProcessingBooking(false);
@@ -2162,7 +2201,8 @@ export default function KitchenBookingFlow({
   const continueDisabled =
     (currentStep === "calendar" && (!selectedDate || !isDayAvailable(selectedDate))) ||
     (currentStep === "slots" && selectedSlots.length === 0) ||
-    ((currentStep === "equipment" || currentStep === "storage") && isLoadingAddons);
+    ((currentStep === "equipment" || currentStep === "storage") && isLoadingAddons) ||
+    bookingBlocked;
 
   const renderStepActions = () => {
     if (!isFlowReady) {
@@ -2185,7 +2225,7 @@ export default function KitchenBookingFlow({
                   grandTotal > 0 ? redirectToStripeCheckout() : handleFreeBookingSubmit()
                 )
               }
-              disabled={createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
+              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
             >
               {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
                 <>
@@ -2240,6 +2280,7 @@ export default function KitchenBookingFlow({
   return (
     <>
       <div className="space-y-4 lg:flex lg:h-[calc(100dvh-9rem)] lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-hidden">
+        <BookingEligibilityBanner eligibility={eligibility} locationName={locationName} />
         {/* ReUI c-stepper-10 — equal columns, title + description, line separators */}
         {isFlowReady ? (
           <Stepper
@@ -2319,10 +2360,15 @@ export default function KitchenBookingFlow({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
-              <div className="mx-auto h-full w-full max-w-3xl lg:mx-0">{renderStepContent()}</div>
+              {loadError ? <p role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{loadError}</p> : null}
+              {/* Blocked chefs can still read the page; the steps are inert so nothing can be submitted. */}
+              <div className={cn("mx-auto h-full w-full max-w-3xl lg:mx-0", bookingBlocked && "pointer-events-none opacity-60")} aria-disabled={bookingBlocked || undefined} {...(bookingBlocked ? { inert: "" } : {})}>{renderStepContent()}</div>
             </div>
 
             <div className="sticky bottom-0 flex-shrink-0 border-t bg-white px-4 py-4 sm:px-6 lg:px-8">
+              {checkoutError ? (
+                <p role="alert" className="mx-auto mb-3 w-full max-w-3xl rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive lg:mx-0">{checkoutError}</p>
+              ) : null}
               <div className="mx-auto w-full max-w-3xl lg:mx-0">{renderStepActions()}</div>
             </div>
           </div>

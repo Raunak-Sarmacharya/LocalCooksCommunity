@@ -1,17 +1,19 @@
+import { makeCloseoutSnapshot } from '@shared/clock-closeout';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { AsyncLocalStorage } from 'node:async_hooks';
 const state = vi.hoisted(() => ({ db: null as any, booking: null as any, tour: null as any, visits: [] as any[], logs: [] as any[],
   send: vi.fn(), alerts: [] as any[], locks: new Set<number>(), advisory: new Map<string, Promise<void>>(), failAck: false,
-  claim: null as any, penalty: null as any, storage: null as any, settings: {} as Record<string, string>, people: [] as any[], location: null as any, tourSettings: {} as any }));
+  claim: null as any, penalty: null as any, storage: null as any, settings: {} as Record<string, string>, people: [] as any[], location: null as any, checklist: {} as any, tourSettings: {} as any }));
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) }));
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
-import { dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder,
+import { acknowledgeConfirmationReminders, dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder, renderBookingVisitReminder,
   selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
 import { currentDeadlineReminders, deadlineWarningDue } from './deadline-reminders';
 import { retryFailedEmail } from './email-log-service';
 import { describeDelivery } from './delivery-visibility';
+import { generateBookingConfirmationEmail, arrivalModeLine } from '../email';
 
 const dialect = new PgDialect();
 const context = new AsyncLocalStorage<{ locks: number[]; release: (() => void)[] }>();
@@ -53,7 +55,7 @@ beforeEach(() => {
   state.location = { id: 5, managerId: 2, name: 'Fixture location', address: 'Fixture address', timezone: 'UTC' };
   const people = state.people, location = state.location;
   const kitchen = { id: 4, name: 'Fixture kitchen', checkinCheckoutEnabled: true };
-  const checklist = { checkinEnabled: true, checkoutEnabled: true, checkinInstructions: 'Meet the manager', checkoutInstructions: 'Clean and submit checklist' };
+  const checklist = state.checklist = { checkinEnabled: true, checkoutEnabled: true, checkinInstructions: 'Meet the manager', checkoutInstructions: 'Clean and submit checklist' };
   state.db = {
     transaction: (run: any) => context.run({ locks: [], release: [] }, async () => {
       try { return await run(state.db); } finally { context.getStore()!.locks.forEach(id => state.locks.delete(id)); context.getStore()!.release.forEach(release => release()); }
@@ -103,6 +105,122 @@ const schedule = (source: any = 'booking', id = 10) => state.db.transaction((tx:
 const dispatch = (clock = now, limit = 30) => dispatchAdvanceReminders({ now: clock, policy, limit });
 afterEach(() => vi.useRealTimers());
 
+it('renders the approved mode lines in all three outbound locales', () => {
+  expect(arrivalModeLine('staffed')).toBe('When you arrive, meet kitchen staff and ask for your 6-digit visit code. Enter it in Local Cooks to confirm arrival. The visit code is for the app; it does not open the door.');
+  expect(arrivalModeLine('self')).toContain('No visit code needed.');
+  expect(arrivalModeLine('mixed')).toContain('varies by visit');
+  expect(arrivalModeLine('legacy')).toContain('Follow the arrival instructions');
+  expect(arrivalModeLine('staffed', 'fr-CA')).toContain('À votre arrivée');
+  expect(arrivalModeLine('staffed', 'uk')).toContain('Коли прибудете');
+});
+
+it.each(['2026-10-04T08:00:00Z', '2026-10-05T07:00:00Z'])('late confirmation at %s acknowledges equivalent content without another chef email', async instant => {
+  const clock = new Date(instant); vi.setSystemTime(clock);
+  state.checklist.checkinInstructions = 'PRIVATE-ACCESS-SENTINEL';
+  const [preparation] = (await currentReminders(state.db, 'booking', 10, policy, clock)).filter(reminder => reminder.kind === 'preparation');
+  await state.send(generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Alex', kitchenName: 'Fixture kitchen',
+    bookingId: 10, bookingDate: state.booking.bookingDate, startTime: state.booking.startTime, endTime: state.booking.endTime, timezone: 'UTC',
+    instructionsReleased: true, arrivalInstructions: preparation.arrivalNotes, departureInstructions: preparation.departureNotes }));
+  await acknowledgeConfirmationReminders(state.db, 10, 3, 'email', clock);
+  await acknowledgeConfirmationReminders(state.db, 10, 3, 'notification', clock);
+  await schedule(); await dispatch(clock); await schedule(); await dispatch(clock);
+  const chefEmails = state.send.mock.calls.filter(([content]) => content.to === 'chef@example.test');
+  expect(chefEmails).toHaveLength(1);
+  expect(chefEmails[0][0].text).toContain('PRIVATE-ACCESS-SENTINEL');
+  expect(state.logs.some(log => log.status === 'sent' && JSON.parse(log.textBody).acknowledgedBy === 'confirmation')).toBe(true);
+});
+
+it('acknowledges preparation released early by the check-in window even before its normal email due time', async () => {
+  const clock = new Date('2026-10-05T04:00:00Z'); vi.setSystemTime(clock);
+  state.settings = { preparation_reminder_hours: '3', arrival_reminder_hours: '2' };
+  state.booking.visitDuties = { version: 2, capturedAt: now.toISOString(), source: 'confirmation', checkinWindowMinutesBefore: 240,
+    checkoutReviewWindowMinutes: 60, arrival: { enabled: true, instructions: 'Meet the manager', items: [], photos: [] },
+    departure: { enabled: true, instructions: 'Clean up', items: [], photos: [] } };
+  const preparation = (await currentReminders(state.db, 'booking', 10, policy, clock)).find(reminder => reminder.kind === 'preparation')!;
+  expect(preparation.instructionsReleased).toBe(true);
+  expect(Date.parse(preparation.due)).toBeGreaterThan(clock.getTime());
+  await acknowledgeConfirmationReminders(state.db, 10, 3, 'email', clock);
+  await acknowledgeConfirmationReminders(state.db, 10, 3, 'notification', clock);
+  await schedule(); await dispatch(new Date('2026-10-05T05:00:00Z'));
+  expect(state.send).not.toHaveBeenCalled();
+});
+
+it('keeps instruction text out of pre-release reminder intents and confirmation content', async () => {
+  state.booking.bookingDate = new Date('2026-10-10');
+  state.checklist.checkinInstructions = 'PRIVATE-ACCESS-SENTINEL';
+  state.checklist.checkoutInstructions = 'PRIVATE-ACCESS-SENTINEL';
+  await schedule(); await dispatch();
+  expect(state.send).not.toHaveBeenCalled();
+  expect(JSON.stringify(state.logs)).not.toContain('PRIVATE-ACCESS-SENTINEL');
+  expect(JSON.stringify(state.alerts)).not.toContain('PRIVATE-ACCESS-SENTINEL');
+  const content = generateBookingConfirmationEmail({ chefEmail: 'chef@example.test', chefName: 'Alex', kitchenName: 'Fixture kitchen',
+    bookingId: 10, bookingDate: state.booking.bookingDate, startTime: '08:00', endTime: '12:00', timezone: 'UTC',
+    instructionsReleased: false, instructionsReleaseAt: '2026-10-08T08:00:00Z', arrivalMode: 'staffed',
+    arrivalInstructions: 'PRIVATE-ACCESS-SENTINEL', departureInstructions: 'PRIVATE-ACCESS-SENTINEL' });
+  expect(JSON.stringify(content)).not.toContain('PRIVATE-ACCESS-SENTINEL');
+  expect(content.text).toContain('6-digit visit code');
+  expect(content.text).toContain('48 hours');
+});
+
+it('schedules manager arrival only and sends no full instructions in the routine arrival reminder', async () => {
+  await schedule(); await dispatch();
+  state.send.mockClear();
+  await dispatch(new Date('2026-10-05T06:00:00Z'));
+  const chef = state.send.mock.calls.find(([content]) => content.to === 'chef@example.test')![0];
+  const manager = state.send.mock.calls.find(([content]) => content.to === 'host@example.test')![0];
+  expect(chef.text).not.toContain('Meet the manager');
+  expect(chef.text).not.toContain('Clean and submit checklist');
+  expect(chef.text).toContain('see your preparation email');
+  expect(manager.subject).toContain('arrives at');
+  expect(manager.text.startsWith(manager.subject)).toBe(true);
+  expect(manager.text).toContain('/manager/booking/10');
+  expect(state.logs.filter(log => log.recipientRole === 'manager').every(log => JSON.parse(log.textBody).reminder.kind === 'arrival')).toBe(true);
+});
+
+it('delivers booking preparation with named, escaped instructions through the existing dispatcher', async () => {
+  state.booking.referenceCode = 'KB-FIXTURE';
+  state.people.find(person => person.id === 3).managerProfileData = { fullName: 'Priya' };
+  state.booking.visitDuties = { version: 1, capturedAt: now.toISOString(), source: 'confirmation', checkinWindowMinutesBefore: 15,
+    noShowGraceMinutes: 30, checkoutReviewWindowMinutes: 60,
+    arrival: { enabled: true, instructions: 'Use <side> entrance & ask for Sam\nBring your supplies.', items: [], photos: [] },
+    departure: { enabled: true, instructions: 'Wipe counters and lock the door.', items: [], photos: [] } };
+  Object.assign(state.checklist, { checkinInstructions: state.booking.visitDuties.arrival.instructions, checkoutInstructions: state.booking.visitDuties.departure.instructions });
+  await schedule(); await dispatch();
+  const mail = state.send.mock.calls.find(([content]) => content.to === 'chef@example.test')[0];
+  expect(mail.subject).toContain('Get ready for your kitchen visit');
+  expect(mail.subject).toContain('Fixture kitchen');
+  expect(mail.text).toContain('Reference: KB-FIXTURE');
+  expect(mail.text).toContain('Hi Priya,');
+  expect(mail.text).toContain('Arrival instructions: Use <side> entrance & ask for Sam');
+  expect(mail.text).toContain('Departure instructions: Wipe counters and lock the door.');
+  expect(mail.text).toContain('Starts:'); expect(mail.text).toContain('Ends:');
+  expect(mail.html).toContain('Use &lt;side&gt; entrance &amp; ask for Sam');
+  expect(mail.html).toContain('white-space:pre-line');
+  expect(mail.text).toContain('/booking/10');
+  expect(mail.text).toContain('unless a photo is marked Required');
+  expect(mail.text).not.toContain('Hi Chef');
+  expect(state.logs.find(log => log.category === 'advance_reminder' && log.recipientRole === 'chef')?.subject).toBe(mail.subject);
+  if (process.env.PHASE0_PREP_EMAIL_PREVIEW === '1') {
+    const fs = await import('node:fs');
+    fs.writeFileSync('.phase0-harness/booking-preparation-preview.html', mail.html);
+    fs.writeFileSync('.phase0-harness/booking-preparation-preview.txt', mail.text);
+  }
+});
+
+it('renders overnight kitchen-local dates and escapes preparation content without promising code verification', () => {
+  const mail = renderBookingVisitReminder({ source: 'booking', kind: 'preparation', reservationId: 10, recipientId: 3,
+    role: 'chef', email: 'chef@example.test', recipientName: 'Priya', timezone: 'America/St_Johns',
+    start: '2026-10-13T00:30:00Z', end: '2026-10-13T04:30:00Z', due: now.toISOString(), revision: 'fixture',
+    path: '/booking/10', title: 'Kitchen booking #10', kitchenName: 'Fixture kitchen', message: 'Legacy plain text', shortVisit: false,
+    instructionsReleased: true, arrivalNotes: '<script>private</script>', departureNotes: 'Lock up', contactEmail: 'host@example.test' }, 'https://chef.example.test/booking/10');
+  expect(mail.text).toMatch(/Starts:.*Oct 12, 2026/);
+  expect(mail.text).toMatch(/Ends:.*Oct 13, 2026/);
+  expect(mail.html).not.toContain('<script>private</script>');
+  expect(mail.html).toContain('&lt;script&gt;private&lt;/script&gt;');
+  expect(mail.text).not.toContain('PIN');
+  expect(mail.text).not.toContain('payment released');
+});
+
 it('uses current kitchen tour notes in visitor emails, without booking instructions or stale queued notes', async () => {
   state.tour.scheduledAt = new Date('2026-10-05T11:00:00Z');
   state.tourSettings = { id: 1, kitchenId: 4, arrivalNotes: 'OLD entrance', departureNotes: 'Return visitor badge' };
@@ -132,7 +250,7 @@ describe('recurring reconciliation against a moving runtime clock', () => {
     await schedule(); await schedule(); expect(state.logs.filter(r => consolidated.includes(r.id)).every(r => r.status === 'suppressed')).toBe(true);
     vi.setSystemTime(new Date('2026-10-05T12:00:00Z')); await schedule(); await schedule();
     expect(state.logs.some(r => ['scheduled', 'failed'].includes(r.status))).toBe(false);
-    expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
+    expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(4);
   });
   it('restores genuinely actionable unsent channels, retains accepted ones, and replaces changed requirement keys', async () => {
     vi.useFakeTimers(); vi.setSystemTime(now); await schedule(); await dispatchAdvanceReminders({ policy, limit: 30 });
@@ -140,9 +258,9 @@ describe('recurring reconciliation against a moving runtime clock', () => {
     state.booking.status = 'cancelled'; await schedule();
     state.booking.status = 'confirmed'; await schedule();
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(4);
-    state.booking.startTime = '09:00'; await schedule(); await schedule();
     expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(6);
+    state.booking.startTime = '09:00'; await schedule(); await schedule();
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(8);
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
   });
 });
@@ -153,14 +271,14 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     const accepted = state.logs.filter(r => r.status === 'sent').map(r => r.id);
     state.settings = { preparation_reminder_hours: '36', arrival_reminder_hours: '4', departure_reminder_minutes: '45' };
     await schedule();
-    expect(state.logs).toHaveLength(6);
+    expect(state.logs).toHaveLength(8);
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
     const arrival = state.logs.find(r => JSON.parse(r.textBody).reminder.kind === 'arrival');
     expect(JSON.parse(arrival.textBody).reminder.due).toBe('2026-10-05T04:00:00.000Z');
     const departure = state.logs.find(r => JSON.parse(r.textBody).reminder.kind === 'departure');
     expect(JSON.parse(departure.textBody).reminder.due).toBe('2026-10-05T11:15:00.000Z');
-    expect((await dispatch(new Date('2026-10-05T04:00:00Z'))).accepted).toBe(2);
-    expect(state.send).toHaveBeenCalledTimes(2);
+    expect((await dispatch(new Date('2026-10-05T04:00:00Z'))).accepted).toBe(4);
+    expect(state.send).toHaveBeenCalledTimes(3);
   });
   it('uses the configured arrival lead for preparation consolidation', async () => {
     state.settings = { arrival_reminder_hours: '4' };
@@ -168,16 +286,16 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     expect(state.logs.some(r => JSON.parse(r.textBody).reminder.kind === 'preparation')).toBe(false);
   });
   it('persists future work outside decision queues, sends only due channels and reuses semantic keys', async () => {
-    await schedule(); await schedule(); expect(state.logs).toHaveLength(6);
+    await schedule(); await schedule(); expect(state.logs).toHaveLength(8);
     expect(state.logs.every(r => r.category === 'advance_reminder')).toBe(true);
     expect((await dispatch()).accepted).toBe(2); expect(state.send).toHaveBeenCalledTimes(1);
     expect(state.send.mock.calls[0][0].text).toContain('/booking/10');
     expect(state.send.mock.calls[0][0].text).toContain('Fixture address');
     expect((await dispatch()).accepted).toBe(0);
-    state.booking.updatedAt = new Date(); await schedule(); expect(state.logs).toHaveLength(6);
+    state.booking.updatedAt = new Date(); await schedule(); expect(state.logs).toHaveLength(8);
   });
   it('serializes competing producers and claims across simultaneous workers', async () => {
-    await Promise.all([schedule(), schedule()]); expect(state.logs).toHaveLength(6);
+    await Promise.all([schedule(), schedule()]); expect(state.logs).toHaveLength(8);
     let release!: () => void; const gate = new Promise<void>(resolve => release = resolve);
     state.send.mockImplementation(async () => { await gate; return true; });
     const first = dispatchAdvanceReminders({ now, policy, limit: 1, onlyLogId: 2 }); await vi.waitFor(() => expect(state.send).toHaveBeenCalledTimes(1));
@@ -192,17 +310,19 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     await schedule(); state.booking.checkinStatus = 'checkout_requested';
     expect((await dispatch(new Date('2026-10-05T11:45:00Z'))).suppressed).toBeGreaterThan(0); expect(state.send).not.toHaveBeenCalled();
   });
-  it('retains preparation/contact with tracking off and suppresses departure', async () => {
+  it('retains preparation, arrival and departure reminders with the old kitchen switch off', async () => {
     state.db.select = ((original: any) => (shape: any) => {
       const chain = original(shape); const then = chain.then; chain.then = (resolve: any, reject: any) => then((rows: any[]) => resolve(rows.map(r => r.kitchen ? { ...r, kitchen: { ...r.kitchen, checkinCheckoutEnabled: false } } : r)), reject); return chain;
     })(state.db.select);
-    await schedule(); expect(state.logs).toHaveLength(4); await dispatch();
+    await schedule(); expect(state.logs).toHaveLength(8);
+    expect(state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'departure')).toHaveLength(2);
+    await dispatch();
     expect(state.send.mock.calls[0][0].text).toContain('Meet the manager'); expect(state.send.mock.calls[0][0].text).toContain('host@example.test');
   });
   it('consolidates overdue preparation into arrival and expires at actual start', async () => {
-    await schedule(); expect((await dispatch(new Date('2026-10-05T07:00:00Z'))).accepted).toBe(2);
-    expect(state.send).toHaveBeenCalledTimes(1); expect(state.logs.filter(r => r.status === 'suppressed')).toHaveLength(2);
-    expect(state.send.mock.calls[0][0].text).toContain('Arrival guidance');
+    await schedule(); expect((await dispatch(new Date('2026-10-05T07:00:00Z'))).accepted).toBe(4);
+    expect(state.send).toHaveBeenCalledTimes(2); expect(state.logs.filter(r => r.status === 'suppressed')).toHaveLength(2);
+    expect(state.send.mock.calls[0][0].text).toContain('Arrival instructions');
     expect((await dispatch(new Date('2026-10-05T08:00:00Z'))).accepted).toBe(0);
   });
   it('dispatches short departure inside the visit, only with a selected short-visit policy', async () => {
@@ -227,7 +347,7 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     const failed = state.logs.find(log => log.status === 'failed');
     const visible = describeDelivery(failed, failed, undefined, now);
     expect(visible).toMatchObject({ source: 'booking', sourceId: 10, channel: 'email', canRetry: true,
-      destination: '/admin?section=transactions&bookingId=10', recipientDestination: '/booking/10',
+      destination: '/admin?section=transactions&bookingId=10', recipientDestination: '/booking/10/visit',
       nextAttemptAt: '2026-10-04T08:01:00.000Z' });
     expect(visible.state).toContain('recovery required');
     expect((await dispatch(new Date(now.getTime() + 60000))).accepted).toBe(1);
@@ -278,13 +398,13 @@ describe('actual downstream deadline tasks and action owners', () => {
     state.settings = { inspection_warning_percent: '25' };
     await scheduleReview();
     expect(state.logs).toHaveLength(2);
-    expect(JSON.parse(state.logs[0].textBody).reminder).toMatchObject({ due: '2026-10-04T08:15:00.000Z', end: '2026-10-04T09:00:00.000Z' });
-    await dispatchAdvanceReminders({ now: new Date('2026-10-04T08:15:00Z') });
+    expect(JSON.parse(state.logs[0].textBody).reminder).toMatchObject({ due: '2026-10-04T21:00:00.000Z', end: '2026-10-06T12:00:00.000Z' });
+    await dispatchAdvanceReminders({ now: new Date('2026-10-04T21:00:00Z') });
     state.settings = { inspection_warning_percent: '75' };
     await scheduleReview();
     expect(state.logs).toHaveLength(2);
     expect(state.logs.every(r => r.status === 'sent')).toBe(true);
-    await dispatchAdvanceReminders({ now: new Date('2026-10-04T08:45:00Z') });
+    await dispatchAdvanceReminders({ now: new Date('2026-10-05T23:00:00Z') });
     expect(state.send).toHaveBeenCalledTimes(1);
   });
   it('uses chef claim deadline, caps short windows and suppresses after response', async () => {
@@ -296,7 +416,7 @@ describe('actual downstream deadline tasks and action owners', () => {
   });
   it('uses assigned manager, each inspection and storage independent of ended kitchen', async () => {
     state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
-    expect((await currentReminders(state.db, 'booking_review', 10, policy))[0]).toMatchObject({ recipientId: 2, role: 'manager', due: '2026-10-04T08:30:00.000Z' });
+    expect((await currentReminders(state.db, 'booking_review', 10, policy))[0]).toMatchObject({ recipientId: 2, role: 'manager', due: '2026-10-05T10:00:00.000Z' });
     state.storage = { id: 30, chefId: 3, checkoutStatus: 'checkout_requested', checkoutRequestedAt: now }; state.booking.status = 'completed';
     const [storage] = await currentDeadlineReminders(state.db, 'storage_review', 30, policy);
     expect(storage.due).toBe('2026-10-04T09:00:00.000Z'); expect(storage.path).toContain('storage-checkouts');
@@ -322,44 +442,46 @@ describe('actual downstream deadline tasks and action owners', () => {
       checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 120 };
     state.booking.visitDuties = duties;
     state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
+    duties.clockCloseout = makeCloseoutSnapshot(state.booking, 'UTC', { serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 });
+    state.booking.visitDuties = duties;
+    state.settings.kitchen_inspection_auto_close_hours = '1';
     state.settings.kitchen_checkout_review_window_minutes = '10';
-    expect((await currentReminders(state.db, 'booking_review', 10, policy))[0].end).toBe('2026-10-04T10:00:00.000Z');
+    expect((await currentReminders(state.db, 'booking_review', 10, policy))[0].end).toBe('2026-10-06T12:00:00.000Z');
     state.storage = { id: 30, chefId: 3, checkoutStatus: 'checkout_requested', checkoutRequestedAt: now,
       visitDuties: { ...duties, checkoutReviewWindowMinutes: 180 } };
     state.settings.storage_checkout_review_window_hours = '1';
     state.booking.status = 'completed';
     expect((await currentReminders(state.db, 'storage_review', 30, policy))[0].end).toBe('2026-10-04T11:00:00.000Z');
   });
-  it('keeps empty confirmed instructions frozen instead of borrowing later location instructions', async () => {
+  it('uses current kitchen instructions while retaining accepted timing', async () => {
     const section = { enabled: true, instructions: null, items: [], photos: [] };
     state.booking.visitDuties = { version: 1, source: 'confirmation', capturedAt: now.toISOString(),
       arrival: section, departure: section, checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 60 };
     const reminders = await currentReminders(state.db, 'booking', 10, policy);
     expect(reminders.length).toBeGreaterThan(0);
-    expect(reminders[0].message).toContain('Review your booking and contact the kitchen manager');
-    expect(reminders[0].message).toContain('Review the departure checklist in your booking.');
-    expect(reminders[0].message).not.toContain('Meet the manager');
-    expect(reminders[0].message).not.toContain('Clean and submit checklist');
+    expect(reminders[0].message).toContain('Meet the manager');
+    expect(reminders[0].message).toContain('Clean and submit checklist');
   });
-  it.each(['legacy', 'per-visit'])('preserves checkout scheduling with a zero-minute %s review window', async kind => {
+  it.each(['legacy', 'per-visit'])('ignores the retired zero-minute %s auto-clear setting', async kind => {
     state.booking.checkinStatus = 'checkout_requested'; state.booking.checkoutRequestedAt = now;
-    if (kind === 'per-visit') state.visits = [{ id: 11, checkinStatus: 'checkout_requested', checkoutRequestedAt: now }];
+    if (kind === 'per-visit') state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '12:00', checkinStatus: 'checkout_requested', checkoutRequestedAt: now }];
     state.settings.kitchen_checkout_review_window_minutes = '0';
-    expect(await currentReminders(state.db, 'booking_review', 10, policy)).toEqual([]);
+    const [review] = await currentReminders(state.db, 'booking_review', 10, policy);
+    expect(review.end).toBe('2026-10-06T12:00:00.000Z');
     await schedule('booking_review', 10);
-    expect(state.logs).toHaveLength(0);
+    expect(state.logs).toHaveLength(2);
     state.settings.kitchen_checkout_review_window_minutes = '60';
     await schedule('booking_review', 10);
     expect(state.logs).toHaveLength(2);
-    expect(JSON.parse(state.logs[0].textBody).reminder.due).toBe('2026-10-04T08:30:00.000Z');
+    expect(JSON.parse(state.logs[0].textBody).reminder.due).toBe('2026-10-05T10:00:00.000Z');
   });
   it('dispatches each separated visit independently and closes only the completed block', async () => {
     state.booking.selectedSlots = ['08:00', '11:00'];
-    state.visits = [{ id: 11, startTime: '08:00', endTime: '09:00', checkinStatus: 'checked_out' },
-      { id: 12, startTime: '11:00', endTime: '12:00', checkinStatus: 'not_checked_in' }];
-    await schedule(); expect(state.logs).toHaveLength(6);
+    state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '09:00', checkinStatus: 'checked_out' },
+      { id: 12, blockIndex: 1, startTime: '11:00', endTime: '12:00', checkinStatus: 'not_checked_in' }];
+    await schedule(); expect(state.logs).toHaveLength(8);
     expect(state.logs.every(r => JSON.parse(r.textBody).reminder.resource.endsWith('visit-1'))).toBe(true);
-    expect((await dispatch(new Date('2026-10-05T09:00:00Z'))).accepted).toBe(2);
+    expect((await dispatch(new Date('2026-10-05T09:00:00Z'))).accepted).toBe(4);
   });
   it('reschedules a corrected contact and never sends to an obsolete recipient', async () => {
     await schedule(); state.booking.chefId = 2; await schedule();
@@ -369,8 +491,8 @@ describe('actual downstream deadline tasks and action owners', () => {
   it('revives unsent restored work without repeating an accepted channel', async () => {
     await schedule(); await dispatch(); state.booking.status = 'cancelled'; await schedule();
     state.booking.status = 'confirmed'; await schedule();
-    expect(state.logs).toHaveLength(6); expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(4); await dispatch(); expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs).toHaveLength(8); expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(6); await dispatch(); expect(state.send).toHaveBeenCalledTimes(1);
   });
   it('warns the storage penalty chef, then suppresses a recorded dispute', async () => {
     state.storage = { id: 30, chefId: 3 };
@@ -633,4 +755,112 @@ it('activates tour reminders by an explicit flag independently of booking prose 
   expect(reminderEligibility(reminder, now, { ...policy, approval: '', tourEnabled: true })).toBe('due');
   expect(reminderEligibility(reminder, now, { ...policy, tourEnabled: false })).toBe('policy_pending');
   expect(reminderEligibility({ ...reminder, source: 'booking' }, now, { ...policy, approval: '', tourEnabled: true })).toBe('policy_pending');
+});
+
+describe('session_ending reminder for the chef in-session screen', () => {
+  const sessionRows = () => state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'session_ending');
+  const sessionMail = () => state.send.mock.calls.map(([content]) => content).filter(content => /booked time/i.test(content.subject) || /Votre temps/.test(content.subject));
+  const scheduleAt = (clock: string) => state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'booking', 10, policy, new Date(clock)));
+  const dispatchAt = (clock: string) => dispatchAdvanceReminders({ now: new Date(clock), policy, limit: 30 });
+
+  it('is not created until arrival is recorded, and the 30-minute departure reminder is unchanged', async () => {
+    await schedule();
+    expect(sessionRows()).toHaveLength(0);
+    const kinds = state.logs.map(row => JSON.parse(row.textBody).reminder.kind);
+    expect(kinds.filter(kind => kind === 'departure')).toHaveLength(2);
+    const departure = state.logs.map(row => JSON.parse(row.textBody).reminder).find(reminder => reminder.kind === 'departure');
+    expect(departure.due).toBe('2026-10-05T11:30:00.000Z');
+  });
+
+  it('fires 15 minutes before the booked end by notification and email, linking to the visit page without any code', async () => {
+    state.booking.checkinStatus = 'checked_in';
+    await schedule();
+    expect(sessionRows()).toHaveLength(2);
+    const reminder = JSON.parse(sessionRows()[0].textBody).reminder;
+    expect(reminder.due).toBe('2026-10-05T11:45:00.000Z');
+    expect(reminder.path).toBe('/booking/10/visit');
+    await dispatchAt('2026-10-05T11:44:00Z');
+    expect(sessionMail()).toHaveLength(0);
+    expect(state.alerts.filter(alert => alert.title.includes('booked time ends soon'))).toHaveLength(0);
+    await dispatchAt('2026-10-05T11:45:00Z');
+    const [mail] = sessionMail();
+    expect(mail.to).toBe('chef@example.test');
+    expect(mail.subject).toContain('Your booked time ends soon');
+    expect(mail.text).toContain('/booking/10/visit');
+    expect(mail.text).toContain('12:00');
+    expect(mail.text).toContain('Fixture kitchen');
+    expect(mail.text).not.toMatch(/access code|visit code|\b\d{6}\b/i);
+    const [alert] = state.alerts.filter(value => value.title.includes('booked time ends soon'));
+    expect(alert).toMatchObject({ userId: 3, actionUrl: '/booking/10/visit' });
+    expect(alert.message).not.toMatch(/access code|visit code/i);
+    // Idempotent: a second pass sends nothing more.
+    await schedule(); await dispatchAt('2026-10-05T11:46:00Z');
+    expect(sessionMail()).toHaveLength(1);
+  });
+
+  it('is suppressed once departure is recorded and never created for a cancelled booking', async () => {
+    state.booking.checkinStatus = 'checked_in';
+    await schedule(); expect(sessionRows()).toHaveLength(2);
+    state.booking.checkinStatus = 'checkout_requested';
+    await schedule(); await dispatchAt('2026-10-05T11:50:00Z');
+    expect(sessionMail()).toHaveLength(0);
+    expect(sessionRows().every(row => row.status === 'suppressed')).toBe(true);
+
+    state.logs = []; state.send.mockClear();
+    state.booking.checkinStatus = 'checked_in'; state.booking.status = 'cancelled';
+    await schedule();
+    expect(sessionRows()).toHaveLength(0);
+  });
+
+  it('is created once per visit for split visits, each at its own end minus 15 minutes', async () => {
+    state.booking.selectedSlots = ['08:00', '11:00'];
+    state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '09:00', checkinStatus: 'checked_in' },
+      { id: 12, blockIndex: 1, startTime: '11:00', endTime: '12:00', checkinStatus: 'checked_in' }];
+    await schedule();
+    const rows = sessionRows().map(row => JSON.parse(row.textBody).reminder);
+    expect(rows).toHaveLength(4);
+    expect(new Set(rows.map(reminder => `${reminder.resource}@${reminder.due}`))).toEqual(new Set([
+      'kitchen-4-visit-0@2026-10-05T08:45:00.000Z', 'kitchen-4-visit-1@2026-10-05T11:45:00.000Z']));
+    state.visits[1].checkinStatus = 'not_checked_in';
+    await schedule();
+    expect(sessionRows().filter(row => row.status === 'scheduled').map(row => JSON.parse(row.textBody).reminder.resource)).toEqual(
+      ['kitchen-4-visit-0', 'kitchen-4-visit-0']);
+  });
+
+  it('does not backfill visits that ended before the schedule runs, and skips very short visits', async () => {
+    state.booking.checkinStatus = 'checked_in';
+    await scheduleAt('2026-10-05T12:30:00Z');
+    expect(sessionRows()).toHaveLength(0);
+    expect((await dispatchAt('2026-10-05T12:30:00Z')).accepted).toBe(0);
+    expect(sessionMail()).toHaveLength(0);
+
+    state.booking.endTime = '08:25'; await schedule();
+    expect(sessionRows()).toHaveLength(0);
+  });
+
+  it('expires instead of sending after the booked end', async () => {
+    state.booking.checkinStatus = 'checked_in';
+    await schedule();
+    await dispatchAt('2026-10-05T12:01:00Z');
+    expect(sessionMail()).toHaveLength(0);
+    expect(sessionRows().every(row => row.status === 'suppressed')).toBe(true);
+  });
+
+  it('writes the notice in the chef preferred language', async () => {
+    state.booking.checkinStatus = 'checked_in';
+    state.people.find(person => person.id === 3).preferredLocale = 'fr-CA';
+    await schedule(); await dispatchAt('2026-10-05T11:45:00Z');
+    const [mail] = sessionMail();
+    expect(mail.subject).toContain('Votre temps réservé se termine bientôt');
+    expect(mail.text).toContain('Ouvrir votre visite');
+  });
+
+  it('renders the session_ending email with the shared renderer', async () => {
+    state.booking.checkinStatus = 'checked_in';
+    const reminder = (await state.db.transaction((tx: any) => currentReminders(tx, 'booking', 10, policy, new Date('2026-10-05T11:00:00Z'))))
+      .find((value: any) => value.kind === 'session_ending')!;
+    const mail = renderBookingVisitReminder(reminder);
+    expect(mail.html).toContain('Open your visit');
+    expect(mail.html).toContain('/booking/10/visit');
+  });
 });

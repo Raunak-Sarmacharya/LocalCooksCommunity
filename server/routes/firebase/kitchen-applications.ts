@@ -1,3 +1,6 @@
+import { accessDocumentDaysLeft, usesRenewalSlot } from "@shared/location-booking-eligibility";
+import { attachDocumentRenewals, decideDocumentRenewal, readDocumentRenewals, submitDocumentRenewal, type RenewalKey } from "../../services/document-renewals";
+import { readLocationBookingEligibility } from "../../services/location-booking-eligibility";
 import { sendAdminNotificationEmail } from '../../services/admin-email-preferences';
 import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
@@ -1017,10 +1020,12 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
         const managerId = (location as any)?.managerId as number | undefined;
         const managerName = managerId ? await getUserDisplayName(managerId, 'manager') : null;
 
+        const bookingEligibility = await readLocationBookingEligibility(req.neonUser!.id, locationId);
         res.json({
             ...application,
             hasApplication: true,
-            canBook: application.status === 'approved' && currentTier >= 3,
+            bookingEligibility,
+            canBook: bookingEligibility.canBook,
             location: location ? {
                 id: (location as any).id,
                 name: (location as any).name,
@@ -1115,7 +1120,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 return res.status(400).json({ error: 'Invalid application ID' });
             }
 
-            const [existing] = await chefApplicationService.getChefApplications(req.neonUser!.id);
+
             // Optimization: previous code used getChefKitchenApplicationById, 
             // but we can filter from getChefApplications or add getById to service.
             // For now, I'll use the service's getChefApplications and find the specific one.
@@ -1129,17 +1134,24 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
             // Handle file uploads
             const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
             const updateData: any = { id: applicationId };
+            const renewalsQueued: RenewalKey[] = [];
+            const renewalLocation = await locationService.getLocationById(application.locationId);
 
             if (files) {
                 if (files['foodSafetyLicenseFile']?.[0]) {
                     const expiry = String(req.body.foodSafetyLicenseExpiry || '');
-                    if (!Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) < Date.now() - 86400000) {
+                    if ((accessDocumentDaysLeft(expiry, renewalLocation.timezone || undefined) ?? 0) <= 0) {
                         return res.status(400).json({ error: 'Enter a valid future expiry date with the replacement food safety certificate.' });
                     }
                     try {
-                        updateData.foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
-                        updateData.foodSafetyLicenseExpiry = expiry;
-                        updateData.foodSafetyLicenseStatus = 'pending';
+                        const url = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
+                        // An approved certificate stays valid until it expires; the renewal waits in its own slot.
+                        if (usesRenewalSlot(application as any, 'foodSafetyLicense') && await submitDocumentRenewal({ applicationId, key: 'foodSafetyLicense', url, expiry })) renewalsQueued.push('foodSafetyLicense');
+                        else {
+                            updateData.foodSafetyLicenseUrl = url;
+                            updateData.foodSafetyLicenseExpiry = expiry;
+                            updateData.foodSafetyLicenseStatus = 'pending';
+                        }
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food safety license:', uploadError);
                         throw uploadError;
@@ -1147,9 +1159,16 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 }
 
                 if (files['foodEstablishmentCertFile']?.[0]) {
+                    const expiry = String(req.body.foodEstablishmentCertExpiry || '');
+                    if ((accessDocumentDaysLeft(expiry, renewalLocation.timezone || undefined) ?? 0) <= 0) return res.status(400).json({ error: 'Enter a valid future expiry date with the replacement Food Establishment Licence.' });
                     try {
-                        updateData.foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
-                        updateData.foodEstablishmentCertStatus = 'pending';
+                        const url = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
+                        if (usesRenewalSlot(application as any, 'foodEstablishmentCert') && await submitDocumentRenewal({ applicationId, key: 'foodEstablishmentCert', url, expiry })) renewalsQueued.push('foodEstablishmentCert');
+                        else {
+                            updateData.foodEstablishmentCertExpiry = expiry;
+                            updateData.foodEstablishmentCertUrl = url;
+                            updateData.foodEstablishmentCertStatus = 'pending';
+                        }
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food establishment cert:', uploadError);
                         throw uploadError;
@@ -1157,12 +1176,17 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 }
             }
 
-            const updatedApplication = await chefApplicationService.updateApplicationDocuments(updateData);
+            const updatedApplication = Object.keys(updateData).length > 1
+                ? await chefApplicationService.updateApplicationDocuments(updateData)
+                : (await chefApplicationService.getApplicationById(applicationId)) ?? application;
 
             res.json({
                 success: true,
                 application: updatedApplication,
-                message: "Documents updated successfully. We'll notify you when there's an update.",
+                renewalsQueued,
+                message: renewalsQueued.length
+                    ? "Renewal submitted for review. Your current document stays valid until it expires."
+                    : "Documents updated successfully. We'll notify you when there's an update.",
             });
         } catch (error) {
             logger.error('Error updating kitchen application documents:', error);
@@ -1185,17 +1209,37 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
 router.get('/firebase/admin/kitchen-applications', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const applications = await chefApplicationService.getAllApplications();
-        res.json(applications);
+        res.json(await attachDocumentRenewals(applications));
     } catch (error) {
         logger.error('Error fetching admin kitchen applications:', error);
         res.status(500).json({ error: 'Failed to fetch applications' });
     }
 });
 
+/**
+ * A pending renewal is reviewed instead of the current document: approving replaces it, rejecting keeps it and tells the chef why.
+ * Returns the document keys handled here so the single-slot review below skips them.
+ */
+async function reviewPendingRenewals(application: { id: number; chat_conversation_id?: string | null }, body: Record<string, any>, reviewer: 'manager' | 'local_cooks') {
+    const pending = (await readDocumentRenewals(application.id)).filter(renewal => renewal.status === 'pending');
+    const handled: RenewalKey[] = [];
+    for (const [key, field, documentName] of [['foodSafetyLicense', 'foodSafetyLicenseStatus', 'Food Safety Certificate'], ['foodEstablishmentCert', 'foodEstablishmentCertStatus', 'Food Establishment Licence']] as const) {
+        const decision = body[field];
+        if (!decision || !pending.some(renewal => renewal.key === key)) continue;
+        await decideDocumentRenewal({ applicationId: application.id, key, decision, reviewer, reason: body.rejectionReason });
+        handled.push(key);
+        if (decision === 'approved' && application.chat_conversation_id) {
+            try { await sendSystemNotification(application.chat_conversation_id, 'DOCUMENT_VERIFIED', { documentName }); }
+            catch (error) { logger.error('Error announcing renewed document approval:', error); }
+        }
+    }
+    return handled;
+}
+
 router.patch('/firebase/admin/kitchen-applications/:id/verify-documents', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const applicationId = Number(req.params.id);
-        const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
+        let { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
         const reviewStatuses = ['approved', 'rejected'];
         if (!Number.isInteger(applicationId) ||
             (!foodSafetyLicenseStatus && !foodEstablishmentCertStatus) ||
@@ -1205,14 +1249,20 @@ router.patch('/firebase/admin/kitchen-applications/:id/verify-documents', requir
         }
         const application = await chefApplicationService.getApplicationById(applicationId);
         if (!application) return res.status(404).json({ error: 'Application not found' });
+        const renewed = await reviewPendingRenewals(application, req.body, 'local_cooks');
+        if (renewed.includes('foodSafetyLicense')) foodSafetyLicenseStatus = undefined;
+        if (renewed.includes('foodEstablishmentCert')) foodEstablishmentCertStatus = undefined;
+        if (renewed.length && !foodSafetyLicenseStatus && !foodEstablishmentCertStatus) {
+            return res.json({ success: true, application: await chefApplicationService.getApplicationById(applicationId), renewed });
+        }
         if (foodSafetyLicenseStatus && !application.foodSafetyLicenseUrl) return res.status(400).json({ error: 'No food safety certificate is on file.' });
-        if (foodSafetyLicenseStatus === 'approved' && (!application.foodSafetyLicenseExpiry || !Number.isFinite(Date.parse(application.foodSafetyLicenseExpiry)) || Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000)) {
+        if (foodSafetyLicenseStatus === 'approved' && (accessDocumentDaysLeft(application.foodSafetyLicenseExpiry, undefined) ?? 0) <= 0) {
             return res.status(400).json({ error: 'The certificate needs a current expiry date before it can be verified.' });
         }
         if (foodEstablishmentCertStatus && (!application.tier2_completed_at || !application.foodEstablishmentCertUrl)) {
             return res.status(400).json({ error: 'Chef Application Requirements must be submitted before review.' });
         }
-        if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && Date.parse(application.foodEstablishmentCertExpiry) < Date.now() - 86400000) {
+        if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && (accessDocumentDaysLeft(application.foodEstablishmentCertExpiry, undefined) ?? 0) <= 0) {
             return res.status(400).json({ error: 'The Food Establishment Licence has expired.' });
         }
         const updated = await chefApplicationService.updateApplicationDocuments({ id: applicationId, foodSafetyLicenseStatus, foodEstablishmentCertStatus, verifiedBy: 'local_cooks' });
@@ -1223,6 +1273,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/verify-documents', requir
         }
         return res.json({ success: true, application: updated });
     } catch (error) {
+        if (error instanceof DomainError) return res.status(error.statusCode).json({ error: error.message });
         logger.error('Error reviewing food safety certificate:', error);
         return res.status(500).json({ error: 'Failed to review certificate' });
     }
@@ -1767,7 +1818,7 @@ router.get('/manager/kitchen-applications', requireFirebaseAuthWithUser, require
     try {
         const user = req.neonUser!;
         const applications = await chefApplicationService.getApplicationsForManager(user.id);
-        res.json(applications);
+        res.json(await attachDocumentRenewals(applications));
     } catch (error) {
         logger.error('Error getting kitchen applications for manager:', error);
         res.status(500).json({ error: 'Failed to get applications' });
@@ -1793,7 +1844,7 @@ router.get('/manager/kitchen-applications/location/:locationId', requireFirebase
         }
 
         const applications = await chefApplicationService.getApplicationsByLocation(locationId);
-        res.json(applications);
+        res.json(await attachDocumentRenewals(applications));
     } catch (error) {
         logger.error('Error getting kitchen applications for location:', error);
         res.status(500).json({ error: 'Failed to get applications' });
@@ -2115,7 +2166,7 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
             return res.status(400).json({ error: 'Invalid application ID' });
         }
 
-        const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
+        let { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
         // Validate statuses
         const validStatuses = ['approved', 'rejected'];
         if (!foodSafetyLicenseStatus && !foodEstablishmentCertStatus) {
@@ -2142,18 +2193,24 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if ((application.current_tier ?? 1) < 2 || !application.tier2_completed_at) {
             return res.status(403).json({ error: 'Chef Application Requirements must be submitted before manager review.' });
         }
+        const renewed = await reviewPendingRenewals(application, req.body, 'manager');
+        if (renewed.includes('foodSafetyLicense')) foodSafetyLicenseStatus = undefined;
+        if (renewed.includes('foodEstablishmentCert')) foodEstablishmentCertStatus = undefined;
+        if (renewed.length && !foodSafetyLicenseStatus && !foodEstablishmentCertStatus) {
+            return res.json({ success: true, application: await chefApplicationService.getApplicationById(applicationId), renewed, message: 'Renewal reviewed' });
+        }
         // Update document statuses
         const updateData: any = { id: applicationId, verifiedBy: 'manager' };
         if (foodSafetyLicenseStatus && !application.foodSafetyLicenseUrl) {
             return res.status(400).json({ error: 'No food safety certificate is on file.' });
         }
-        if (foodSafetyLicenseStatus === 'approved' && (!application.foodSafetyLicenseExpiry || !Number.isFinite(Date.parse(application.foodSafetyLicenseExpiry)) || Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000)) {
+        if (foodSafetyLicenseStatus === 'approved' && (accessDocumentDaysLeft(application.foodSafetyLicenseExpiry, location.timezone || undefined) ?? 0) <= 0) {
             return res.status(400).json({ error: 'The certificate needs a current expiry date before it can be verified.' });
         }
         if (foodEstablishmentCertStatus && !application.foodEstablishmentCertUrl) {
             return res.status(400).json({ error: 'No Food Establishment Licence is on file.' });
         }
-        if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && Date.parse(application.foodEstablishmentCertExpiry) < Date.now() - 86400000) {
+        if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && (accessDocumentDaysLeft(application.foodEstablishmentCertExpiry, location.timezone || undefined) ?? 0) <= 0) {
             return res.status(400).json({ error: 'The Food Establishment Licence has expired.' });
         }
         if (foodSafetyLicenseStatus) updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
@@ -2183,6 +2240,7 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
             message: 'Document verification updated',
         });
     } catch (error) {
+        if (error instanceof DomainError) return res.status(error.statusCode).json({ error: error.message });
         logger.error('Error verifying kitchen application documents:', error);
         res.status(500).json({
             error: 'Failed to verify documents',
