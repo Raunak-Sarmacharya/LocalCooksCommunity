@@ -7,7 +7,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { bookingFeedbackTags, feedbackInputForRole, type BookingFeedbackRole, type BookingFeedbackState } from '@shared/booking-feedback';
 
 export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone }: {
@@ -74,7 +74,7 @@ export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone 
     <div className="space-y-2"><label htmlFor={noteId} className="text-sm font-medium">{t('privateFeedback.note')}</label>
       <Textarea id={noteId} value={comment} onChange={event => setComment(event.target.value)} maxLength={1000} disabled={saving} className="min-w-0" />
       <p className="text-right text-xs text-muted-foreground">{comment.length}/1000</p></div>
-    <p className="text-sm text-muted-foreground">{privacy}</p>
+    <p id={`${noteId}-privacy`} className="text-sm text-muted-foreground">{privacy}</p>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Button type="submit" disabled={saving || query.isFetching} className="min-h-11">{t('privateFeedback.send')}</Button>
   </form>;
@@ -93,7 +93,7 @@ export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone 
           {mobile && <Sheet open={editing} onOpenChange={value => { if (!saving) setEditing(value); }}>
             <SheetContent side="bottom" hideClose className="max-h-[90dvh] overflow-y-auto" aria-describedby={`${noteId}-privacy`}>
               <SheetClose asChild><Button type="button" variant="ghost" disabled={saving} className="mb-2 min-h-11">{t('privateFeedback.close')}</Button></SheetClose>
-              <SheetHeader className="mb-4"><SheetTitle>{question}</SheetTitle><SheetDescription id={`${noteId}-privacy`}>{privacy}</SheetDescription></SheetHeader>{form}
+              <SheetHeader className="mb-4"><SheetTitle>{question}</SheetTitle></SheetHeader>{form}
             </SheetContent>
           </Sheet>}
         </>}

@@ -1,4 +1,5 @@
 import { chefBookingInstructions, bookingInstructionRelease, redactInstructionDuties } from '../services/visit-duties';
+import { goodwillRefundCentsSql } from '../services/booking-goodwill';
 import { getBookingResponseDeadlineAt } from '../services/booking-response-deadline';
 import { getLifecycleSettings } from '../services/lifecycle-settings';
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
@@ -1783,6 +1784,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     refundedAt: paymentTransactions.refundedAt,
                     refundReason: paymentTransactions.refundReason,
                     metadata: paymentTransactions.metadata,
+                    goodwillRefundCents: goodwillRefundCentsSql,
                 })
                 .from(paymentTransactions)
                 .where(
@@ -1809,6 +1811,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     refundedAt: txn.refundedAt || null,
                     refundReason: txn.refundReason || null,
                     metadata: txn.metadata || null,
+                    goodwillRefundCents: Number(txn.goodwillRefundCents) || 0,
                 };
             }
         } catch (err) {

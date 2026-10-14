@@ -251,6 +251,67 @@ describe("why a request ended", () => {
   });
 });
 
+describe("Local Cooks goodwill refund on the payment card", () => {
+  const refunded = (extra = {}) => ({ ...base(), status: "confirmed", paymentStatus: "partially_refunded", totalPrice: 10000,
+    paymentTransaction: { amount: 10000, serviceFee: 0, managerRevenue: 9000, status: "partially_refunded", refundAmount: 2600, goodwillRefundCents: 2600, ...extra } });
+  it("tells the chef the amount and shows the Local Cooks refund line", async () => {
+    h.manager = false; h.booking = refunded();
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(within(card).getByText("Refunded $26.00")).toBeInTheDocument();
+    expect(within(card).getByTestId("goodwill-line")).toHaveTextContent("Local Cooks refund · $26.00");
+    expect(within(card).queryByText("Part of your payment was refunded.")).not.toBeInTheDocument();
+  });
+  it("tells the manager the payout is unchanged", async () => {
+    h.manager = true; h.booking = refunded();
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    
+    expect(card).toHaveTextContent("a $26.00 refund. Your payout is unchanged.");
+  });
+});
+
+describe("payout after closeout on the payment card", () => {
+  const paid = (payout: Record<string, unknown>, extra = {}) => ({ ...base(), status: "confirmed", paymentStatus: "paid", totalPrice: 10000,
+    paymentTransaction: { amount: 12000, serviceFee: 700, managerRevenue: 11300, stripeProcessingFee: 358, status: "succeeded" },
+    payout: { timing: "after_closeout", status: "scheduled", holdReason: null, expectedAt: "2030-01-16T15:30:00Z", sentAt: null, amountCents: 10942, ...payout }, ...extra });
+  it("shows the manager what is owed and when, without implying the money is already theirs", async () => {
+    h.manager = true; h.booking = paid({});
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(within(card).getByTestId("kitchen-payout-status")).toHaveAttribute("data-status", "scheduled");
+    expect(card).toHaveTextContent("The chef has paid. Your payout is sent after the visit closes.");
+    expect(card).toHaveTextContent("$109.42");
+    expect(card).not.toHaveTextContent("Payment collected from the chef.");
+  });
+  it("keeps the legacy wording for an at-capture payout", async () => {
+    h.manager = true; h.booking = paid({ timing: "at_capture", status: "sent" });
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(within(card).queryByTestId("kitchen-payout-status")).not.toBeInTheDocument();
+    expect(card).toHaveTextContent("Payment collected from the chef.");
+  });
+  it("offers the chef the final invoice once the booking is completed", async () => {
+    h.manager = false; h.booking = paid({}, { status: "completed", payout: undefined });
+    render(<BookingDetailsPage />);
+    const card = await screen.findByTestId("payment-card");
+    expect(within(card).getByRole("button", { name: /Download final invoice/ })).toBeInTheDocument();
+    expect(within(card).queryByTestId("kitchen-payout-status")).not.toBeInTheDocument();
+  });
+});
+
+describe("overnight slots", () => {
+  it("label the details date with the calendar day the slot starts on", async () => {
+    h.manager = false;
+    // Window opens 06:00 on Wed Jan 16; slot 00:15-01:15 is Thu Jan 17.
+    h.booking = { ...base(), status: "confirmed", paymentStatus: "paid", bookingDate: "2030-01-16", startTime: "00:15", endTime: "01:15", operatingWindowStartTime: "06:00" };
+    render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-header");
+    expect(document.body.textContent).toContain("Thursday, January 17, 2030");
+    expect(document.body.textContent).not.toContain("Wednesday, January 16, 2030");
+  });
+});
+
 describe("a manager opening a chef link", () => {
   it("is sent to the manager page for that booking instead of seeing Not found", async () => {
     h.manager = false; h.navigate.mockClear();

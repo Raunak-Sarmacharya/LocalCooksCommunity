@@ -3763,5 +3763,9 @@
   "sweepModified": "Mis à jour",
   "sweepReviewPending": "Local Cooks examine cette demande.",
   "visitCodeEmptyPending": "Un code de visite est créé lorsque vous confirmez cette demande.",
-  "visitCodeEmptyLegacy": "Cette réservation utilise l’enregistrement d’un simple toucher; aucun code requis."
+  "visitCodeEmptyLegacy": "Cette réservation utilise l’enregistrement d’un simple toucher; aucun code requis.",
+  "revenueUpcomingPayouts": "Versements à venir",
+  "revenueUpcomingPayoutsBody": "Envoyés après la clôture de chaque visite. Pas encore inclus dans vos gains.",
+  "revenueUpcomingUnavailable": "Les versements à venir sont indisponibles pour le moment. Veuillez réessayer sous peu.",
+  "revenueUpcomingBooking": "Réservation {reference}"
 }

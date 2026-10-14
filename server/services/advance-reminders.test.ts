@@ -9,7 +9,7 @@ vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) 
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
 import { acknowledgeConfirmationReminders, dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder, renderBookingVisitReminder,
-  selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
+  formatVisitRange, selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
 import { currentDeadlineReminders, deadlineWarningDue } from './deadline-reminders';
 import { retryFailedEmail } from './email-log-service';
 import { describeDelivery } from './delivery-visibility';
@@ -274,6 +274,30 @@ it('renders overnight kitchen-local dates and escapes preparation content withou
   expect(mail.html).toContain('&lt;script&gt;private&lt;/script&gt;');
   expect(mail.text).not.toContain('PIN');
   expect(mail.text).not.toContain('payment released');
+});
+
+describe('reminder visit copy', () => {
+  it('formats same-day and overnight kitchen-local visit ranges with a friendly zone', () => {
+    expect(formatVisitRange('2026-10-20T13:30:00Z', '2026-10-20T14:30:00Z', 'America/St_Johns'))
+      .toBe('Tue, Oct 20 · 11:00 a.m.–12:00 p.m. Newfoundland Time');
+    expect(formatVisitRange('2026-10-21T01:30:00Z', '2026-10-21T04:30:00Z', 'America/St_Johns'))
+      .toBe('Tue, Oct 20 · 11:00 p.m. – Wed, Oct 21 · 2:00 a.m. Newfoundland Time');
+  });
+  it('words each reminder kind for its own action instead of reusing the arrival text', async () => {
+    const reminders = await currentReminders(state.db, 'booking', 10, policy, now);
+    const byKind = (kind: string) => reminders.find(reminder => reminder.kind === kind)!;
+    expect(byKind('preparation').message).toContain('Visit: Mon, Oct 5 · 8:00 a.m.–12:00 p.m. GMT');
+    expect(byKind('arrival').message).toContain('Follow the arrival instructions');
+    expect(byKind('arrival').message).not.toContain('Your visit ends at');
+    expect(byKind('departure').message).toContain('Your visit ends at 12:00 p.m.');
+    expect(byKind('departure').message).toContain('check out in Local Cooks');
+    expect(byKind('departure').message).not.toMatch(/When you arrive|visit code/i);
+  });
+  it('titles chef and manager reminders with the kitchen name and reference, falling back to #id', async () => {
+    expect((await currentReminders(state.db, 'booking', 10, policy, now)).every(reminder => reminder.title === 'Fixture kitchen · #10')).toBe(true);
+    state.booking.referenceCode = 'KB-33A3C5';
+    expect((await currentReminders(state.db, 'booking', 10, policy, now)).every(reminder => reminder.title === 'Fixture kitchen · KB-33A3C5')).toBe(true);
+  });
 });
 
 it('uses current kitchen tour notes in visitor emails, without booking instructions or stale queued notes', async () => {

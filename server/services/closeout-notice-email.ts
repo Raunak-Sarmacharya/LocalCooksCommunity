@@ -106,6 +106,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   }
 
   if (chefIsRecipient) {
+    await ensureServerI18n();
     const recorded = rows.map(({ visit, row: evidenceRow }) => ({
       label: rows.length > 1 ? `Visit on ${formatInTimezone(new Date(visit.scheduledStartAt), 'MMM d', timezone)}` : 'Recorded times',
       value: recordedTimes(evidenceRow, timezone) }));
@@ -115,6 +116,9 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
       message: `Thanks for cooking at ${kitchen.name}. Your booked time has ended. Here is a short summary of your visit.`,
       facts: [], sections: [{ title: 'Your visit', facts: place }, { title: 'Summary', facts: recorded }],
       actionLabel: feedbackAction?.label || 'View booking', actionUrl: feedbackAction?.url || bookingUrl,
+      // Receipt at capture, final invoice at closeout: the booking page offers it once the booking is completed.
+      ...(closeout.status === 'completed' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '')
+        ? { actions: [{ label: tEmail(recipient.locale, 'bookingDownloadFinalInvoice'), url: `${bookingUrl}#booking-payment-title` }] } : {}),
       secondaryLink: { label: 'Need help or want to report a problem with this visit?', url: `${bookingUrl}#booking-support` },
       note: 'This is a visit summary, not a payment receipt.' });
   }

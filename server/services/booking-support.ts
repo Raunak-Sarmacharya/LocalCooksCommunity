@@ -21,6 +21,7 @@ import { claimKitchenVisit } from './kitchen-visit-lifecycle';
 import { changeBookingFlag } from './booking-support-flags';
 import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { getBookingResponseDeadline } from './booking-response-deadline';
+import { getUserDisplayName } from '../utils/user-display';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Booking = typeof kitchenBookings.$inferSelect;
@@ -32,12 +33,22 @@ export class BookingSupportError extends Error {
 const chef = alias(users, 'support_chef'), manager = alias(users, 'support_manager');
 const chefName = sql<string>`COALESCE(${chef.managerProfileData}->>'fullName', ${chef.managerProfileData}->>'displayName',
   (SELECT a.full_name FROM applications a WHERE a.user_id = ${chef.id} AND a.status = 'approved' ORDER BY a.id DESC LIMIT 1),
-  (SELECT a.full_name FROM chef_kitchen_applications a WHERE a.chef_id = ${chef.id} ORDER BY a.id DESC LIMIT 1), 'Chef')`;
-const managerName = sql<string>`COALESCE(${manager.managerProfileData}->>'fullName', ${manager.managerProfileData}->>'displayName', 'Kitchen manager')`;
+  (SELECT a.full_name FROM chef_kitchen_applications a WHERE a.chef_id = ${chef.id} ORDER BY a.id DESC LIMIT 1))`;
+const managerName = sql<string>`COALESCE(${manager.managerProfileData}->>'fullName', ${manager.managerProfileData}->>'displayName')`;
 const contextFields = { booking: kitchenBookings, kitchen: { id: kitchens.id, name: kitchens.name },
   location: { id: locations.id, name: locations.name, address: locations.address, timezone: locations.timezone },
   chef: { id: chef.id, name: chefName, email: chef.username, phone: chef.phoneNumber },
   manager: { id: manager.id, name: managerName, email: manager.username, phone: manager.phoneNumber } };
+/**
+ * A real person name or null. getUserDisplayName ends in the email's local part or a role word
+ * ("Manager", "A chef"); neither is a name, so the staff view shows "Name not set" instead.
+ */
+async function partyName(party: { id: number | null; email: string | null } | null, role: 'chef' | 'manager'): Promise<string | null> {
+  if (!party?.id) return null;
+  const name = (await getUserDisplayName(party.id, role)).trim();
+  if (!name || name.includes('@') || name === party.email?.split('@')[0] || ['Manager', 'A chef'].includes(name)) return null;
+  return name;
+}
 function contextQuery(tx: Tx) {
   return tx.select(contextFields).from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).leftJoin(chef, eq(chef.id, kitchenBookings.chefId))
@@ -50,7 +61,7 @@ export async function searchBookingSupport(q: string) {
   const rows = await contextQuery(db as unknown as Tx).where(or(eq(kitchenBookings.id, /^\d+$/.test(query) && Number.isSafeInteger(Number(query)) ? Number(query) : -1),
     sql`${kitchenBookings.referenceCode} ILIKE ${pattern}`, sql`${chef.username} ILIKE ${pattern}`, sql`${manager.username} ILIKE ${pattern}`,
     sql`${chefName} ILIKE ${pattern}`, sql`${managerName} ILIKE ${pattern}`)).orderBy(desc(kitchenBookings.id)).limit(50);
-  return { results: rows.map(row => ({ bookingId: row.booking.id, referenceCode: row.booking.referenceCode || `KB-${row.booking.id}`,
+  return { results: rows.map(row => ({ bookingId: row.booking.id, referenceCode: row.booking.referenceCode || `#${row.booking.id}`,
     status: row.booking.status, paymentStatus: row.booking.paymentStatus, chefName: row.chef?.name || null,
     managerName: row.manager?.name || null, kitchenName: row.kitchen.name, bookingDate: row.booking.bookingDate.toISOString(),
     startTime: row.booking.startTime, endTime: row.booking.endTime, timezone: row.location.timezone || DEFAULT_TIMEZONE })) };
@@ -78,6 +89,7 @@ const labels: Record<SupportActionType, string> = {
   issue_visit_code: 'Issue a new visit code', set_arrival_mode: 'Change how arrival is recorded', record_assisted_arrival: 'Add a reported arrival',
   correct_attendance: 'Fix the visit record', clear_checkout_for_manager: 'Clear the kitchen inspection', report_issue_for_manager: 'Report a visit concern',
   goodwill_refund: 'Send a Local Cooks goodwill refund', resend_notice: 'Send a booking notice again', open_flag: 'Pause refunds and kitchen payments', resolve_flag: 'Resolve a support flag',
+  release_payout: 'Release payout',
 };
 const updates: Record<SupportActionType, string> = {
   confirm_for_manager: 'the kitchen has confirmed your booking', decline_for_manager: 'the kitchen request was declined and the card hold was released',
@@ -89,6 +101,7 @@ const updates: Record<SupportActionType, string> = {
   clear_checkout_for_manager: 'the kitchen inspection is complete', report_issue_for_manager: 'a visit concern has been recorded for review; no new charge has been made',
   goodwill_refund: 'a goodwill refund has been sent by Local Cooks', resend_notice: 'a booking notice has been queued to send again',
   open_flag: 'refunds and kitchen payments are paused while we review a payment issue', resolve_flag: 'a payment support flag has been resolved',
+  release_payout: 'the kitchen payout has been released',
 };
 const cents = (value: unknown) => value == null ? 0 : Number(value);
 function money(ctx: Pick<Context, 'booking' | 'payments'>) {
@@ -136,6 +149,9 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
   if (!busy && ['confirmed', 'completed'].includes(booking.status)
     && (ctx.visits.length ? ctx.visits.some(visit => now >= visitAttendanceEnd(booking, visit)) : now >= bookingAttendanceEnd(booking))) result.push('correct_attendance');
   const original = ctx.payments.find(row => row.paymentIntentId === booking.paymentIntentId);
+  // Payout after closeout: support can release over a reported-issue hold. An open flag still blocks (resolve it first).
+  if (!busy && !recovering && !flags && !moneyNeedsReview && original?.payoutTiming === 'after_closeout'
+    && !original.transferId && original.payoutHoldReason === 'reported_issue') result.push('release_payout');
   if (!busy && !recovering && !flags && !moneyNeedsReview && original && ['succeeded', 'partially_refunded'].includes(original.status)
     && cents(original.amount) > cents(original.refundAmount)) result.push('goodwill_refund');
   const summary = money(ctx), goodwill = ctx.actions.filter(row => row.actionType === 'goodwill_refund' && row.status !== 'failed').reduce((sum, row) => sum + (row.amountCents || 0), 0);
@@ -222,8 +238,9 @@ export async function readBookingSupport(id: number) {
   const zoneLabel = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, timeZoneName: 'longGeneric' }).formatToParts(ctx.booking.bookingDate).find(part => part.type === 'timeZoneName')?.value || timezone;
   const schedule = (await import('./advance-reminders')).reminderVisitTimes(ctx.booking, timezone).map(row => ({
     startAt: row.start.toISOString(), endAt: row.end.toISOString(), localStart: format.format(row.start), localEnd: format.format(row.end) }));
-  return { bookingId: id, referenceCode: ctx.booking.referenceCode || `KB-${id}`, ...snapshot(ctx.booking),
-    parties: { chef: ctx.chef, manager: ctx.manager }, kitchen: ctx.kitchen, location: ctx.location,
+  return { bookingId: id, referenceCode: ctx.booking.referenceCode || `#${id}`, ...snapshot(ctx.booking),
+    parties: { chef: ctx.chef && { ...ctx.chef, name: await partyName(ctx.chef, 'chef') },
+      manager: ctx.manager && { ...ctx.manager, name: await partyName(ctx.manager, 'manager') } }, kitchen: ctx.kitchen, location: ctx.location,
     schedule: { timezone, zoneLabel, blocks: schedule }, decision: ctx.booking.paymentDecision ? {
       state: (ctx.booking.paymentDecision as { state: string }).state, target: (ctx.booking.paymentDecision as { target: string }).target } : null,
     deadlines: { responseAt: ctx.booking.status === 'pending' ? ctx.responseDeadlineAt?.toISOString() ?? null : null,
@@ -235,6 +252,7 @@ export async function readBookingSupport(id: number) {
       locked: code.locked, consumed: code.consumed, consumedAt: code.consumedAt, consumedMethod: code.consumedMethod, revoked: code.revoked })),
     items: { storage: ctx.storage.map(item => ({ id: item.id, status: item.status, paymentStatus: item.paymentStatus, totalPriceCents: cents(item.totalPrice) })),
       equipment: ctx.equipment.map(item => ({ id: item.id, status: item.status, paymentStatus: item.paymentStatus, totalPriceCents: cents(item.totalPrice) })) },
+    payout: await (await import('./kitchen-payout-service')).readKitchenPayout(id),
     money: money(ctx), paymentEvidence, evidenceUnavailable, cancellationQuote: cancellationQuote && 'quoteHash' in cancellationQuote ? {
       quoteHash: cancellationQuote.quoteHash, chefReceivesCents: cancellationQuote.sources.reduce((sum, row) => sum + row.managerRefund, 0),
       parentVersion: cancellationQuote.parentVersion } : null,
@@ -246,7 +264,7 @@ const requiredActingFor: Partial<Record<SupportActionType, SupportActionInput['a
   confirm_for_manager: 'manager', decline_for_manager: 'manager', release_hold_for_chef: 'chef',
   cancel_kitchen_caused: 'manager', request_cancellation_for_chef: 'chef', accept_cancellation_for_manager: 'manager',
   issue_visit_code: 'manager', set_arrival_mode: 'manager', record_assisted_arrival: 'manager',
-  clear_checkout_for_manager: 'manager', report_issue_for_manager: 'manager', goodwill_refund: 'local_cooks',
+  clear_checkout_for_manager: 'manager', report_issue_for_manager: 'manager', goodwill_refund: 'local_cooks', release_payout: 'local_cooks',
 };
 function validateDetails(input: SupportActionInput) {
   const d = input.details || {};
@@ -273,6 +291,11 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
     case 'request_cancellation_for_chef': return requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage);
     case 'accept_cancellation_for_manager': return acceptCancellationRefund(id, managerId!, d.quoteHash!, undefined, input.operationKey);
     case 'goodwill_refund': return refundSupportGoodwill(id, managerId!, actorId, input.amountCents!, input.operationKey);
+    case 'release_payout': {
+      // Verified once the payout is sent (or nothing is owed), or support's release is saved for when the visits close.
+      const release = await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, `support:${input.operationKey}`, new Date(), { override: true });
+      return { ...release, success: release.success || release.overrideRecorded === true };
+    }
     case 'issue_visit_code': {
       if (!(await chefVisitCodes(id)).length) await db.transaction(async tx => {
         const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, id)).for('update');
@@ -326,7 +349,7 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
     const exception = input.type === 'goodwill_refund' && goodwill + input.amountCents! > 2500;
     if (exception && input.confirmException !== true) throw new BookingSupportError('Goodwill above $25 for this booking needs your explicit exception confirmation.');
     if (input.type === 'goodwill_refund' && ctx.booking.currency.toUpperCase() !== 'CAD') throw new BookingSupportError('This goodwill allowance is set in Canadian dollars. Review other currencies separately.');
-    const [action] = await tx.insert(supportActions).values({ bookingId: id, caseRef: ctx.booking.referenceCode || `KB-${id}`, actionType: input.type,
+    const [action] = await tx.insert(supportActions).values({ bookingId: id, caseRef: ctx.booking.referenceCode || `#${id}`, actionType: input.type,
       actorUserId: actorId, actingFor: input.actingFor, requestSource: input.requestSource, sourceRef: input.sourceRef,
       reasonCode: input.reasonCode, internalNote: input.note, amountCents: input.amountCents ?? (input.type === 'cancel_kitchen_caused' ? money(ctx).capturedCents - money(ctx).refundedCents : null), currency: ctx.booking.currency,
       fundedBy: input.type === 'goodwill_refund' || input.type === 'cancel_kitchen_caused' ? 'local_cooks' : input.type === 'accept_cancellation_for_manager' ? 'manager' : 'none',
@@ -348,6 +371,10 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
           const intent = await getBookingPaymentIntent(decision.intentId);
           verified = decision.target === 'confirmed' ? intent.status === 'succeeded' && intent.amount_received === decision.amount : intent.status === 'canceled';
         }
+      } else if (input.type === 'release_payout') {
+        // The release is idempotent: a retry finds the committed decision and recovers the same transfer.
+        const release = await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, `support:${input.operationKey}`, new Date(), { override: true });
+        verified = release.success || release.overrideRecorded === true;
       } else if (input.type === 'accept_cancellation_for_manager') {
         const operations = reserved.ctx.payments.flatMap(source => {
           const operation = (source.metadata as { cancellationRefundOperation?: { supportOperationKey?: string; id: string; managerRefund: number } } | null)?.cancellationRefundOperation;
@@ -374,7 +401,7 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
     }
   } catch {
     // A rejected/unknown provider response is never evidence that no money moved.
-    outcome = ['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'accept_cancellation_for_manager'].includes(input.type) ? 'recovery_required' : 'failed';
+    outcome = ['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'accept_cancellation_for_manager', 'release_payout'].includes(input.type) ? 'recovery_required' : 'failed';
     error = outcome === 'recovery_required' ? 'Local Cooks needs to verify this original payment operation before another attempt.' : 'The update could not be completed. Refresh the booking and review the next step.';
   }
   await db.transaction(async tx => {
@@ -384,7 +411,7 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
     const message = outcome === 'verified' ? `Local Cooks support updated your booking: ${updates[input.type]}.${input.type === 'goodwill_refund' ? ` The refund is $${(input.amountCents! / 100).toFixed(2)}. Your bank may take a few days to show it.` : ''}`
       : 'Local Cooks support is checking an update to your booking. We’ll confirm the next step once it has been reviewed.';
     await queueBookingLifecycleEvent(tx, id, 'support_updated', 'Local Cooks support updated your booking', message, actorId,
-      { recipientPolicy: 'participants', supportActionId: reserved.action.id });
+      { recipientPolicy: input.type === 'release_payout' ? 'manager' : 'participants', supportActionId: reserved.action.id });
     const events = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, id), sql`${bookingLifecycleEvents.metadata}->>'supportActionId' = ${String(reserved.action.id)}`));
     await tx.update(supportActions).set({ status: outcome, afterState: booking ? { ...snapshot(booking),
       ...Object.fromEntries(['amountCents', 'managerPaysCents', 'localCooksPaysCents', 'processingCostAbsorbedCents'].flatMap(key =>

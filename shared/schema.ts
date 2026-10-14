@@ -1879,6 +1879,12 @@ export const paymentTransactions = pgTable("payment_transactions", {
   refundId: text("refund_id"), // Stripe Refund ID
   paymentMethodId: text("payment_method_id"), // Stripe PaymentMethod ID
   transferId: text("transfer_id"), // Stripe Transfer ID (post-capture transfer to manager Connect account)
+  // Payout after closeout (migration 0079). payout_timing is snapshotted at capture: NULL/'at_capture' = legacy transfer
+  // at capture; 'after_closeout' = released by kitchen-payout-service once the visit closes.
+  payoutTiming: text("payout_timing"),
+  payoutEligibleAt: timestamp("payout_eligible_at", { withTimezone: true }),
+  payoutHoldReason: text("payout_hold_reason"),
+  payoutReleasedAt: timestamp("payout_released_at", { withTimezone: true }), // durable release decision, not bank arrival
   // Status tracking
   status: transactionStatusEnum("status").notNull().default("pending"),
   stripeStatus: text("stripe_status"), // Raw Stripe status for comparison
@@ -1893,7 +1899,13 @@ export const paymentTransactions = pgTable("payment_transactions", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   paidAt: timestamp("paid_at"), // When payment was successfully captured
   refundedAt: timestamp("refunded_at"), // When refund was issued
-});
+}, table => [
+  index('payment_transactions_closeout_payout_due').on(table.payoutEligibleAt, table.id)
+    .where(sql`${table.payoutTiming} = 'after_closeout' AND ${table.transferId} IS NULL AND ${table.payoutReleasedAt} IS NULL`),
+  index('payment_transactions_closeout_payout_retry').on(table.id)
+    .where(sql`${table.payoutTiming} = 'after_closeout' AND ${table.transferId} IS NULL AND ${table.payoutReleasedAt} IS NOT NULL
+      AND COALESCE(${table.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`),
+]);
 
 // ===== PAYMENT HISTORY TABLE =====
 // Audit trail for payment transaction status changes and events

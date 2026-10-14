@@ -88,6 +88,9 @@ export async function recordKitchenInspection(bookingId: number, managerId: numb
       const closeout = await persistBookingCloseout(bookingId, tx, now);
       return { success: true, bookingId, visitId, checkinStatus: 'checked_out' as const, bookingCompleted: closeout.projection?.status === 'completed' };
     });
+    // Inspection success is already committed; a payout outage must not undo it.
+    await (await import('./kitchen-payout-service')).releaseKitchenPayout(bookingId, 'inspection_clear')
+      .catch(error => logger.error('[Payout] Inspection saved; payout will retry', { bookingId, error }));
     return result;
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Could not record inspection' }; }
 }
@@ -117,6 +120,7 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
     ...(row.booking.status !== 'completed' && projection.status === 'completed' && !row.booking.feedbackRequestedAt
       && projection.visits.some(visit => visit.attendance !== 'no_show') ? { feedbackRequestedAt: now } : {}),
     status: projection.status as typeof row.booking.status, updatedAt: now }).where(eq(kitchenBookings.id, bookingId));
+  await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx, now);
   const announcesEnd = !existing?.serviceEndedAt && !!next.serviceEndedAt;
   const closedInspections = projection.visits.filter(visit => next.inspections?.[visit.key]
     && !(existing?.inspections?.[visit.key] ?? existing?.inspections?.[visit.clockKey]));

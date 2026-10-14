@@ -23,7 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DEFAULT_TIMEZONE, createBookingDateTime } from "@/utils/timezone-utils"
-import { calendarDateKey, formatCalendarDate } from "@/lib/calendar-date"
+import { bookingStartDateKey, calendarDateKey, formatCalendarDate } from "@/lib/calendar-date"
 import { isBookingListPast } from "@/lib/booking-list-split"
 import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
 import { BookingOperationsStatus } from './BookingOperationsStatus';
@@ -492,7 +492,7 @@ const getChefBookingColumns = ({
         <div className="flex flex-col text-sm">
           <div className="flex items-center">
             <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
-            {formatDate(row.getValue("bookingDate"))}
+            {formatDate(bookingStartDateKey(booking) ?? row.getValue("bookingDate"))}
           </div>
           <div className="flex items-center text-xs text-muted-foreground mt-0.5">
             <Clock className="h-3 w-3 mr-2" />
@@ -1269,7 +1269,7 @@ export default function ChefBookingsView({
         const searchableText = [
           kitchenName,
           locationName,
-          formatDate(b.bookingDate),
+          formatDate(bookingStartDateKey(b) ?? b.bookingDate),
           b.specialNotes || '',
           b.referenceCode || '',
         ].join(' ').toLowerCase()

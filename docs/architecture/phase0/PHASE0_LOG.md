@@ -735,3 +735,40 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
   - Codex Sol Medium: `build-response-deadline.md` (R5 rule `min(created+24h, start−1h)` with a short-notice fallback; manager reminders at −12 h/−2 h; `responseDeadlineAt` on payloads; people-language expiry copy);
   - Codex Sol Medium: `build-private-feedback.md` (migration 0078, private to Local Cooks, 14-day window, day-3 reminder, low-rating admin flag).
   - Payout-after-closeout is next, after those land (it touches the same refund/transfer writers).
+- **Deployed `a5c2eb41` to dev (owner approved).** Pre-deploy checks: full server suite 50 failed / 2306 passed against the HEAD baseline of 51/2150 (no new failing files); client 12 pre-existing failing files; tsc clean. Migration 0078 applied to dev.
+- **Live check on dev (chef, manager, admin):**
+  - list dates correct;
+  - #152 under Past;
+  - 123 shows "Declined… Your card wasn't charged" + "Find another time" + "Request declined" + "Not charged $30.50";
+  - booking 153 (seeded, auto-closed by deployed dev) shows the feedback card for both roles; the chef sent 4★ with "Trouble getting in" (→ admin flag event "Booking feedback needs a look"), the manager 5★; the admin case shows both, chef marked "Needs attention";
+  - a $10 goodwill refund on 149 via the support desk: Stripe sandbox `re_3UQInrCvcNYAkDXN1zc427ie` succeeded, metadata `manager_debited=0`, `platform_goodwill_cents=1000`;
+  - a $16 exception after the double-confirm, "Recorded as an exception"; refunded total $26.
+  - Not yet tested live: the dispute webhook (needs a sandbox payment with a dispute card) and payout-failure.
+- **Owner Q (refund fees):** Stripe charges no fee on refunds and doesn't return the original processing fee. Goodwill costs exactly the refund amount; the preview label was changed to "Original processing fee".
+- **Polish batch** (`build-live-check-polish.md`, Sonnet) done locally, not committed:
+  - no-check-in wording;
+  - admin names/date/code-state/exception copy/toast + banner, `#id` fallback;
+  - chef/manager see goodwill refunds (`goodwillRefundCents`, history `goodwill_refunded`);
+  - overnight slot calendar dates on the chef list/details (the manager list is still on the operating date; follow-up);
+  - the fee label.
+- **Launched:** Codex Sol High builds `build-payout-after-closeout.md`: transfer at closeout (inspection cleared or auto-closed), hold on issue/flag, `release_payout` support action, migration 0079, env `KITCHEN_PAYOUT_TIMING` (dev `after_closeout`, default `at_capture`), the manager "Sent after the visit closes" card, the revenue "Upcoming payouts" view, the chef "Final invoice" at closeout.
+- **Dispute live test PASSED (sandbox).**
+  - Booking 154 (KB-33A3C5): booked by the chef through real hosted Checkout with card 4000000000000259. The "What happens next" block showed the R5 deadline "Oct 15, 12:15 p.m." and the manager banner "Respond by Oct 15, 12:16 p.m.".
+  - Manager approved → capture → Stripe dispute `du_1UQTSECvcNYAkDXNcJYOWFhb` → webhook opened `booking_flags` #1 (chargeback) → admin email "Booking payment needs review" sent.
+  - The support case shows the red flag; goodwill and kitchen-caused cancel are no longer offered (frozen).
+  - It also proves the payout risk: the kitchen's $27.32 was transferred at capture, minutes before the chargeback.
+  - Leave flag #1 open as the fixture.
+- **Observed:** the chef has two scheduled "Before you leave the kitchen" emails, and the manager two "arrives at 11:00 a.m." emails, for booking 154. Check whether these are departure (30 min) + session_ending (15 min) with the same subject, or duplicates; if both are intended, give them distinct subjects or merge.
+- **Payout-after-closeout Codex task hit the usage limit** (resets 14:24 NDT) with partial edits in the tree (migration 0079 written, `KitchenPayoutStatus.tsx`, transfer/revenue files). It will be re-delegated to continue from the partial state, per the owner's "let rate-limited tasks resume" rule. The polish batch is mixed into the same uncommitted tree.
+- **Reminder "duplicates" explained:** each reminder has a notification row and an email row (same tracking id, different channel). Not a bug.
+- **In-app notification copy bugs (next package, after payout lands; same server files):**
+  - (a) the chef got "New kitchen booking request: A new kitchen booking request is ready to review." on their own request (manager copy sent to the chef);
+  - (b) the reminder `message` text uses raw "Visit: 2026-10-20 11:00–2026-10-20 12:00" instead of "Tue, Oct 20 · 11:00 a.m.–12:00 p.m.";
+  - (c) the chef departure reminder's in-app message repeats the arrival text ("When you arrive…");
+  - (d) reminder titles read "Kitchen booking #154" (use the kitchen name + reference);
+  - (e) confirmation copy "approved items are paid" is stiff; seeded 153 shows "Booking #153 is confirmed. Follow the applicable check-in and checkout requirements" (old producer copy is still reachable).
+  - Ties into the known gap "per-recipient notification i18n".
+- **Owner (Oct14): don't wait for Codex; use Claude and Code Buddy.**
+  - Payout-after-closeout re-delegated to Claude Opus, which first inventories Codex's partial edits (keep/fix/redo) and preserves the uncommitted polish batch.
+  - Code Buddy DeepSeek fixes the reminder copy (b, c, d) in `advance-reminders.ts` only, and maps producers (a, e) read-only (those live in payout-owned files and are fixed after payout lands).
+- **Owner (Oct14): pre-authorized for THIS round:** after the lead reviews the payout + notification-copy + polish work, push to development and deploy on Vercel dev, applying the needed dev migration (0079), without asking again.

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus';
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useSupportT } from "./useSupportT";
@@ -6,7 +7,7 @@ import { AlertTriangle, ArrowLeft, Mail, Phone, RefreshCw, MapPin, CalendarClock
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatAdminDateTime } from "@/lib/admin-time";
+import { formatAdminDateTime, formatAdminRange } from "@/lib/admin-time";
 import { fmtMoney } from "./format";
 import { loadBookingFeedback, type TokenGetter } from "./api";
 import { bookingFeedbackTags } from "@shared/booking-feedback";
@@ -23,7 +24,7 @@ function PartyBlock({ role, party }: { role: "chef" | "manager"; party: Party | 
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(`bsParty_${role}`)}</p>
       {!party ? <p className="text-sm text-muted-foreground">{t("bsPartyUnknown")}</p> : (
         <>
-          <p className="truncate text-sm font-medium">{party.name || t("bsPartyNoName")}</p>
+          <p className={party.name ? "truncate text-sm font-medium" : "truncate text-sm text-muted-foreground"}>{party.name || t("bsPartyNoName")}</p>
           <div className="flex flex-wrap gap-2">
             {party.email && (
               <Button asChild size="sm" variant="outline" className="h-9">
@@ -75,7 +76,7 @@ export function CaseHeader({ c, onBack, onRefresh, refreshing }: { c: SupportCas
           <div className="flex items-start gap-2"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             <div data-testid="schedule">
               {c.schedule.blocks.length === 0 && <span className="text-muted-foreground">{t("bsNoSchedule")}</span>}
-              {c.schedule.blocks.map((b, i) => <p key={i}>{b.localStart} – {b.localEnd}</p>)}
+              {c.schedule.blocks.map((b, i) => <p key={i}>{formatAdminRange(b.startAt, b.endAt, { timeZone: c.schedule.timezone, zoneLabel: c.schedule.zoneLabel })}</p>)}
               <p className="text-xs text-muted-foreground">{t("bsTimesIn", { zone: c.schedule.zoneLabel })}</p>
             </div>
           </div>
@@ -131,6 +132,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
           <Row label={t("bsMoneyProcessingFee")}>{fmtMoney(m.processingFeeCents, m.currency)}</Row>
           <Row label={t("bsMoneyPlatformFee")}>{fmtMoney(m.platformFeeCents, m.currency)}</Row>
         </dl>
+        {c.payout && <KitchenPayoutStatus payout={c.payout} timezone={c.schedule.timezone} currency={m.currency} />}
         <div className="border-t pt-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("bsTransfers")}</p>
           {m.transfers.length === 0 ? <p className="text-sm text-muted-foreground">{t("bsNoTransfers")}</p> : (
@@ -218,6 +220,16 @@ export function FeedbackCard({ c, getFirebaseToken }: { c: SupportCase; getFireb
   );
 }
 
+/** True once this visit's booked time is over, using the saved closeout phase first and the schedule as a backstop. */
+function visitEnded(c: SupportCase, visitId: number | null, blockIndex: number | undefined): boolean {
+  const done = (phase?: string) => phase === "booked_time_ended" || phase === "ended";
+  const row = c.deadlines.closeout?.visits?.find((x) => (visitId != null && x.visitId === visitId) || (blockIndex != null && x.blockIndex === blockIndex));
+  if (row?.phase) return done(row.phase);
+  if (done(c.deadlines.closeout?.phase) || c.status === "completed") return true;
+  const block = c.schedule.blocks[blockIndex ?? c.schedule.blocks.length - 1];
+  return !!block && Date.parse(block.endAt) <= Date.now();
+}
+
 export function VisitCodesCard({ c }: { c: SupportCase }) {
   const t = useSupportT();
   return (
@@ -227,7 +239,7 @@ export function VisitCodesCard({ c }: { c: SupportCase }) {
           <ul className="space-y-1.5">
             {c.visitCodes.map((v) => {
               const visit = c.visits.find((x) => x.id === v.visitId);
-              const state = v.revoked ? "revoked" : v.consumed ? "used" : v.locked ? "locked" : !v.codeRequired ? "notRequired" : "waiting";
+              const state = v.revoked ? "revoked" : v.consumed ? "used" : v.locked ? "locked" : !v.codeRequired ? "notRequired" : visitEnded(c, v.visitId, visit?.blockIndex) ? "unused" : "waiting";
               return (
                 <li key={v.targetKey} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span>{visit ? t("bsVisitN", { n: visit.blockIndex + 1 }) : t("bsVisitGeneral")} · {t(v.mode === "self" ? "bsModeSelfShort" : "bsModeStaffedShort")}</span>

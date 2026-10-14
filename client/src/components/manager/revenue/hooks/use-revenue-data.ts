@@ -331,6 +331,17 @@ export function usePayouts(enabled: boolean = true) {
     })
 }
 
+/** Payout after closeout: kitchen shares not sent yet (scheduled or on hold). */
+export function useUpcomingPayouts(enabled: boolean = true) {
+  return useQuery({ queryKey: ['/api/manager/revenue/upcoming-payouts'], enabled,
+    queryFn: async () => {
+      const response = await fetch('/api/manager/revenue/upcoming-payouts', { headers: await getAuthHeaders(), credentials: 'include' });
+      if (!response.ok) throw new Error(mt('revenueUpcomingUnavailable'));
+      return response.json() as Promise<{ totalCents: number; payouts: Array<import('@shared/kitchen-payout').KitchenPayout
+        & { bookingId: number; referenceCode: string; timezone: string | null }> }>;
+    } });
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // STRIPE CONNECT STATUS HOOK
 // ═══════════════════════════════════════════════════════════════════════

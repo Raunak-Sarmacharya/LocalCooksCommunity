@@ -39,3 +39,23 @@ export function formatAdminDateOnly(iso: string | null | undefined, zone?: Admin
   const { timeZone } = resolve(zone);
   return new Intl.DateTimeFormat(locale, { timeZone, year: "numeric", month: "short", day: "numeric" }).format(date);
 }
+
+/**
+ * "Wed, Oct 14, 2026 · 10:00–11:00 a.m." A same-day range shows its date once and the a.m./p.m. once
+ * when both ends share it. A range over midnight keeps both full dates.
+ */
+export function formatAdminRange(startIso: string, endIso: string, zone?: AdminTimeZone, locale = "en-CA"): string {
+  const start = new Date(startIso), end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+  const { timeZone } = resolve(zone);
+  const dateFmt = new Intl.DateTimeFormat(locale, { timeZone, weekday: "short", year: "numeric", month: "short", day: "numeric" });
+  const timeFmt = new Intl.DateTimeFormat(locale, { timeZone, hour: "numeric", minute: "2-digit" });
+  if (dateFmt.format(start) !== dateFmt.format(end)) return `${dateFmt.format(start)} · ${timeFmt.format(start)} – ${dateFmt.format(end)} · ${timeFmt.format(end)}`;
+  const parts = (d: Date) => timeFmt.formatToParts(d);
+  const period = (d: Date) => parts(d).find((p) => p.type === "dayPeriod")?.value;
+  let from = timeFmt.format(start);
+  if (period(start) && period(start) === period(end)) {
+    from = parts(start).filter((p) => p.type !== "dayPeriod").map((p) => p.value).join("").trim();
+  }
+  return `${dateFmt.format(start)} · ${from}–${timeFmt.format(end)}`;
+}

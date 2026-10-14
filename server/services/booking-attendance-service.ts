@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, bookingLifecycleEvents, kitchens, locations } from '@shared/schema';
+import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, bookingLifecycleEvents, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
 import { buildBookingHistory } from '@shared/booking-history';
 import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
@@ -29,7 +29,13 @@ export async function readBookingHistory(bookingId: number, actor: AttendanceAct
   const visits = await db.select({ id: kitchenBookingVisits.id, checkedInAt: kitchenBookingVisits.checkedInAt,
     checkoutRequestedAt: kitchenBookingVisits.checkoutRequestedAt, checkoutApprovedAt: kitchenBookingVisits.checkoutApprovedAt })
     .from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
-  return buildBookingHistory(context.booking, records, visits);
+  // Local Cooks goodwill is recorded in payment history, not as a lifecycle event.
+  const goodwill = await db.select({ id: paymentHistory.id, createdAt: paymentHistory.createdAt, metadata: paymentHistory.metadata })
+    .from(paymentHistory).innerJoin(paymentTransactions, eq(paymentTransactions.id, paymentHistory.transactionId))
+    .where(and(eq(paymentHistory.eventType, 'support_goodwill_verified'), eq(paymentTransactions.bookingId, bookingId),
+      sql`${paymentTransactions.bookingType} IN ('kitchen', 'bundle')`)).orderBy(asc(paymentHistory.id));
+  return buildBookingHistory(context.booking, [...records,
+    ...goodwill.map(row => ({ id: row.id, key: `payment-${row.id}`, kind: 'goodwill_refunded', createdAt: row.createdAt, metadata: row.metadata }))], visits);
 }
 
 export async function readBookingAttendance(bookingId: number, actor: AttendanceActor) {

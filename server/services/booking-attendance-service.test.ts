@@ -43,6 +43,13 @@ describe('explicit booking attendance statements (mocked database only)', () => 
     expect(state.updates).toEqual([]);
     expect(state.notify).not.toHaveBeenCalled();
   });
+  it('adds Local Cooks goodwill from verified payment history, with the amount and no provider identifiers', async () => {
+    state.rows.push([context({ createdAt: new Date(timestamp) })], [], [], [
+      { id: 12, createdAt: new Date('2026-10-14T12:00:00.000Z'), metadata: { amountCents: 2600, refundId: 're_private', operationKey: 'private-key' } }]);
+    const result = await readBookingHistory(10, { id: 3, role: 'chef' });
+    expect(result.events.find(event => event.kind === 'goodwill_refunded')).toEqual({ key: 'payment-12', kind: 'goodwill_refunded', recordedAt: '2026-10-14T12:00:00.000Z', amountCents: 2600 });
+    expect(JSON.stringify(result)).not.toMatch(/re_private|private-key/);
+  });
   it('reports after end without completing, cancelling, clearing inspection or changing money', async () => {
     prepare(); response(); await recordBookingAttendance(10, actor, input);
     expect(state.updates).toHaveLength(1);

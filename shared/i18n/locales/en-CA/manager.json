@@ -3763,5 +3763,9 @@
   "sweepModified": "Updated",
   "sweepReviewPending": "Local Cooks is reviewing this request.",
   "visitCodeEmptyPending": "A visit code is created when you confirm this request.",
-  "visitCodeEmptyLegacy": "This booking uses tap check-in; no code needed."
+  "visitCodeEmptyLegacy": "This booking uses tap check-in; no code needed.",
+  "revenueUpcomingPayouts": "Upcoming payouts",
+  "revenueUpcomingPayoutsBody": "Sent after each visit closes. Not in your earnings yet.",
+  "revenueUpcomingUnavailable": "Upcoming payouts are unavailable right now. Please try again shortly.",
+  "revenueUpcomingBooking": "Booking {reference}"
 }

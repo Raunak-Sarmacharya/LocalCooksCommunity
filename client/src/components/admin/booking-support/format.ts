@@ -9,3 +9,10 @@ export function fmtOperatingDate(iso: string, locale = "en-CA"): string {
   if (Number.isNaN(d.getTime())) return "";
   return new Intl.DateTimeFormat(locale, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" }).format(d);
 }
+
+/** Like fmtMoney, but a whole-dollar amount drops the cents ("$25"). */
+export function fmtMoneyWhole(cents: number | null | undefined, currency = "CAD", locale = "en-CA"): string {
+  if (cents == null) return "";
+  if (cents % 100 !== 0) return fmtMoney(cents, currency, locale);
+  return new Intl.NumberFormat(locale, { style: "currency", currency, currencyDisplay: "narrowSymbol", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cents / 100);
+}

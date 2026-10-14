@@ -74,6 +74,9 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   const canReport = active && chosen && Date.now() >= Date.parse(selected?.scheduledEnd || data!.scheduledEnd);
   const arrived = !!arrival || clock?.arrivalRecorded || ['checked_in', 'checkout_requested', 'checked_out', 'checkout_claim_filed'].includes(status || '');
   const noShow = status === 'no_show' || latest?.action === 'report_no_show';
+  const ended = !!chosen && (clock ? ['booked_time_ended', 'ended'].includes(clock.phase) : Date.now() >= Date.parse(selected?.scheduledEnd || data?.scheduledEnd || ''));
+  // The visit is over and nobody checked in: one plain line instead of "No check-in yet".
+  const missed = ended && !arrived && !noShow && latest?.action !== 'report_attended' && status !== 'checked_out';
   const canAssist = manager && !localCooks && data?.status === 'confirmed' && chosen && !!clock && clock.phase !== 'upcoming'
     && ['not_due', 'due'].includes(clock.inspection.outcome) && !!zone;
   const reset = () => { setAction(null); setMessage(''); setInternalNotes(''); setContacted(false); setError(''); };
@@ -143,7 +146,9 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     {query.error && <p role="alert">{t('bookingAttendanceUnavailable')} <Button variant="link" onClick={() => void query.refetch()}>{t('fixRetry')}</Button></p>}
     {data && <>
       {visitPicker}
-      {chosen && !(hideArrivalStatus && arrival && !departure && !noShow && latest?.action !== 'report_attended') && <p className="text-sm" data-testid="visit-record-status">{noShow ? latest?.action === 'report_no_show' ? t('fixNoShowStatus', { time: when(latest.createdAt) }) : t('bookingAttendanceLegacy')
+      {chosen && missed && manager && !localCooks && <p className="text-sm" data-testid="visit-no-checkin">{t('fixMissedManager', { chef })}{' '}
+        <button type="button" className="underline underline-offset-2" onClick={() => setOpen(true)}>{t('fixMissedManagerLink')}</button></p>}
+      {chosen && !missed && !(hideArrivalStatus && arrival && !departure && !noShow && latest?.action !== 'report_attended') && <p className="text-sm" data-testid="visit-record-status">{noShow ? latest?.action === 'report_no_show' ? t('fixNoShowStatus', { time: when(latest.createdAt) }) : t('bookingAttendanceLegacy')
         : latest?.action === 'report_attended' ? t('fixAttendedStatus') : arrival ? departure ? t('fixArrivalDepartureStatus', { arrival: when(arrival, false), departure: when(departure, false) }) : t('fixArrivalStatus', { time: when(arrival, false) })
           : arrived ? t('fixArrivedStatus') : t('fixNoArrival')}</p>}
       {zone && !embedded && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(zone, locale)}</p>}

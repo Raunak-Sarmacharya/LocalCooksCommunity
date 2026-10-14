@@ -3763,5 +3763,9 @@
   "sweepModified": "Оновлено",
   "sweepReviewPending": "Local Cooks розглядає цей запит.",
   "visitCodeEmptyPending": "Код візиту створюється, коли ви підтверджуєте цей запит.",
-  "visitCodeEmptyLegacy": "Для цього бронювання реєстрація одним дотиком; код не потрібен."
+  "visitCodeEmptyLegacy": "Для цього бронювання реєстрація одним дотиком; код не потрібен.",
+  "revenueUpcomingPayouts": "Майбутні виплати",
+  "revenueUpcomingPayoutsBody": "Надсилаються після завершення кожного візиту. Ще не враховані у ваших заробітках.",
+  "revenueUpcomingUnavailable": "Майбутні виплати зараз недоступні. Спробуйте ще раз трохи згодом.",
+  "revenueUpcomingBooking": "Бронювання {reference}"
 }

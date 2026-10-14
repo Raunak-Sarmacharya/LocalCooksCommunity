@@ -422,7 +422,10 @@ export async function generateInvoicePDF(
       const isPayout = invoiceViewer === 'manager';
       const docTitle = isPayout
         ? tLocale(locale, "payoutStatementTitle", { ns: "chef", defaultValue: "PAYOUT STATEMENT" })
-        : tLocale(locale, "invoiceTitle", { ns: "chef", defaultValue: "INVOICE" });
+        // Receipt at capture; once the booking is completed the same document is the chef's final invoice.
+        : booking.status === 'completed'
+          ? tLocale(locale, "finalInvoiceTitle", { ns: "chef", defaultValue: "FINAL INVOICE" })
+          : tLocale(locale, "invoiceTitle", { ns: "chef", defaultValue: "INVOICE" });
 
       const invoiceDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',

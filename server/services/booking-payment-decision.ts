@@ -11,6 +11,7 @@ import { ensureChallengesForBooking } from './visit-code-challenge';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 import { getBookingResponseDeadline } from './booking-response-deadline';
+import { kitchenPayoutTiming } from '@shared/kitchen-payout';
 
 type ItemAction = { action: 'confirmed' | 'cancelled'; storageBookingId?: number; equipmentBookingId?: number };
 type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending' | 'complete'; intentId: string;
@@ -120,6 +121,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         { kind: 'kitchen', bookingId, subtotalCents: subtotal - components.reduce((sum, item) => sum + item.subtotalCents, 0) }, ...components
       ], next.tax) : [];
       if (target === 'confirmed' && transaction) await tx.update(paymentTransactions).set({ amount: String(next.amount),
+        // Snapshot at capture: only this env opt-in defers the kitchen transfer until the visit closes.
+        payoutTiming: kitchenPayoutTiming(process.env.KITCHEN_PAYOUT_TIMING),
         baseAmount: String(subtotal + next.tax), taxAmount: String(next.tax), serviceFee: String(next.commission),
         metadata: { ...(transaction.metadata as object || {}), partialCapture: next.amount < terms.authorizedAmount,
           approvedSubtotal: subtotal, approvedTax: next.tax, taxRatePercent: terms.rate, platformCommission: next.commission,
@@ -226,9 +229,10 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
     else await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
-      decision!.target === 'confirmed' ? `Your kitchen booking is confirmed and the approved items are paid. Open the booking for arrival details and next steps.`
+      decision!.target === 'confirmed' ? `The kitchen confirmed your booking. Arrival details will be in your booking.`
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
-      decision!.actorId, { decisionId: decision!.id });
+      decision!.actorId, { decisionId: decision!.id, ...(decision!.target === 'confirmed' ? { roleText: {
+        manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Give them the visit code in person when they arrive.' } } } : {}) });
   });
   return { success: true, status: decision.target,
     authorizationVoided: decision.target === 'cancelled', recovered: false };

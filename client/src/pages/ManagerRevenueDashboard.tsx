@@ -34,6 +34,8 @@ import { RevenueTrendChart } from "@/components/manager/revenue/components/Reven
 import { formatBookingDate, formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import { useToast } from "@/hooks/use-toast"
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup"
+import { useUpcomingPayouts } from '@/components/manager/revenue/hooks/use-revenue-data'
+import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus'
 
 // ═══════════════════════════════════════════════════════════════════════
 // COMPONENT PROPS
@@ -124,6 +126,7 @@ function RevenueAnalytics({
   )
 
   const { data: payouts = [], isLoading: isLoadingPayouts, isError: isErrorPayouts, refetch: refetchPayouts } = usePayouts(isEnabled)
+  const upcoming = useUpcomingPayouts(isEnabled)
 
   const { data: stripeStatus } = useStripeConnectStatus(isEnabled)
 
@@ -208,7 +211,17 @@ function RevenueAnalytics({
       </Card>}
 
       {/* Revenue Metrics */}
-      {!isErrorCharts && <RevenueMetricCards data={chartData} isLoading={isLoadingCharts} />}
+      {!isErrorCharts && <RevenueMetricCards data={chartData} isLoading={isLoadingCharts} upcomingPayoutCents={upcoming.data?.totalCents} />}
+      {/* Payout after closeout: scheduled and on-hold kitchen shares, kept apart from paid earnings. */}
+      {upcoming.isError ? <RevenueSectionError section={mt('revenueUpcomingPayouts')} onRetry={() => void upcoming.refetch()} />
+        : upcoming.isLoading ? <Skeleton className="h-28 w-full" /> : !!upcoming.data?.payouts.length && <Card className="rounded-2xl border-border/70" data-testid="upcoming-payouts">
+          <CardHeader><CardTitle>{mt('revenueUpcomingPayouts')}</CardTitle></CardHeader>
+          <CardContent><ul className="space-y-3">{upcoming.data.payouts.map(payout => <li key={payout.bookingId}>
+            <a className="inline-block text-sm font-medium underline underline-offset-4" href={`/manager/booking/${payout.bookingId}`}>
+              {mt('revenueUpcomingBooking', { reference: payout.referenceCode })}</a>
+            <KitchenPayoutStatus payout={payout} timezone={payout.timezone} />
+          </li>)}</ul></CardContent>
+        </Card>}
 
       {isErrorCharts ? <RevenueSectionError section={mt("revenueEarningsActivity")} onRetry={() => void refetchCharts()} />
         : <RevenueTrendChart data={chartData} dateRange={dateRange} isLoading={isLoadingCharts} />}

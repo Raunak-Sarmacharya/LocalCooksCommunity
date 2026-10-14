@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { NativeSelect } from "./NativeSelect";
-import { fmtMoney } from "./format";
+import { fmtMoney, fmtMoneyWhole } from "./format";
 import { postAction, SupportApiError, type TokenGetter } from "./api";
 import {
   ACTION_SPECS, REQUEST_SOURCES, buildActionRequest, eligibleCodeTargets, initialForm, lifecycleEvents,
@@ -23,6 +23,8 @@ type Props = {
   getFirebaseToken: TokenGetter;
   onClose: () => void;
   onCaseUpdated: (next: SupportCase) => void;
+  /** Called with the finished action's label so the page can keep a visible confirmation after the dialog closes. */
+  onDone?: (label: string) => void;
 };
 
 export function ActionDialog(props: Props) {
@@ -50,7 +52,7 @@ function Field({ label, error, hint, children, htmlFor }: { label: string; error
   );
 }
 
-function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose, onCaseUpdated }: Props & { action: AvailableSupportAction }) {
+function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose, onCaseUpdated, onDone }: Props & { action: AvailableSupportAction }) {
   const t = useSupportT();
   const type = action.type;
   const spec = ACTION_SPECS[type];
@@ -71,7 +73,13 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
   const preview = previewForDisplay(type, action.moneyPreview, form.amount);
   const isGoodwill = type === "goodwill_refund";
   const currency = preview.currency;
-  const limit = fmtMoney(action.moneyPreview.requiresExceptionAboveCents, currency);
+  // Ordinary goodwill limit for this booking = what was already sent + what is left of the allowance.
+  const sentCents = c.supportActions.filter((a) => a.type === "goodwill_refund" && a.status === "verified").reduce((sum, a) => sum + (a.amountCents ?? 0), 0);
+  const leftCents = action.moneyPreview.requiresExceptionAboveCents ?? 0;
+  const exceptionCopy = {
+    limit: fmtMoneyWhole(sentCents + leftCents, currency), sent: fmtMoney(sentCents, currency),
+    left: fmtMoney(leftCents, currency), amount: fmtMoney(preview.localCooksPaysCents ?? 0, currency),
+  };
 
   async function send(confirmException: boolean) {
     const built = buildActionRequest(type, c, form, operationKey, confirmException);
@@ -87,6 +95,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
       setResult(data);
       if (data.action.status === "verified") {
         toast.success(t("bsToastDone", { action: actionLabel }));
+        onDone?.(actionLabel);
         onClose();
         return;
       }
@@ -135,7 +144,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
         {header}
         <AppDialogBody>
           <div className="space-y-2 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm" data-testid="exception-confirm">
-            <p className="font-semibold">{t("bsExceptionQuestion", { limit })}</p>
+            <p className="font-semibold">{t(sentCents > 0 ? "bsExceptionQuestionSent" : "bsExceptionQuestion", exceptionCopy)}</p>
             <p>{t("bsExceptionBody")}</p>
           </div>
         </AppDialogBody>
@@ -166,6 +175,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
       {header}
       <form onSubmit={(e) => { e.preventDefault(); void send(false); }} className="flex min-h-0 flex-1 flex-col">
         <AppDialogBody className="space-y-5">
+          {type === 'release_payout' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{t('bsReleasePayoutHelp')}</p>}
           {serverError && (
             <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm" data-testid="server-error">
               <p>{serverError}</p>
@@ -351,9 +361,10 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
               {row(t("bsPvChefReceives"), preview.chefReceivesCents, nullText)}
               {(preview.chefPaysCents ?? 0) > 0 && row(t("bsPvChefPays"), preview.chefPaysCents, nullText)}
               {row(t("bsPvManagerPays"), preview.managerPaysCents, nullText)}
-              {row(t("bsPvLocalCooksPays"), preview.localCooksPaysCents, nullText)}
+              {row(t(isGoodwill ? "bsPvLocalCooksPaysRefundOnly" : "bsPvLocalCooksPays"), preview.localCooksPaysCents, nullText)}
               {row(t("bsPvProcessingFee"), preview.processingFeeCents, nullText)}
             </dl>
+            <p className="text-xs text-muted-foreground">{t("bsPvProcessingFeeHint")}</p>
             {!preview.providerVerified && <p className="text-xs text-muted-foreground">{t("bsPvUnverified")}</p>}
           </section>
 

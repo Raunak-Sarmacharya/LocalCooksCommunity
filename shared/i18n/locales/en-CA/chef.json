@@ -3393,5 +3393,17 @@
   "inspectDoneTitle": "Inspection finished",
   "inspectDoneBody": "You finished this inspection on {date} at {time}. {chef} was notified.",
   "inspectDoneBodyNoTime": "You finished this inspection. {chef} was notified.",
-  "inspectFoundLater": "Found a problem later? Ask Local Cooks to review"
+  "inspectFoundLater": "Found a problem later? Ask Local Cooks to review",
+  "fixMissedManager": "{chef} didn’t check in. If they came,",
+  "fixMissedManagerLink": "fix the visit record.",
+  "clockNoCheckinRecorded": "No check-in was recorded for this visit.",
+  "bdRefundedTotal": "Refunded {amount}",
+  "bdGoodwillChef": "Local Cooks sent you a refund of {amount}. It can take a few days to show at your bank.",
+  "bdGoodwillLine": "Local Cooks refund · {amount}",
+  "bdGoodwillManager": "Local Cooks sent {chef} a {amount} refund. Your payout is unchanged.",
+  "bdGoodwillManagerDetail": "Local Cooks paid this refund itself, so the kitchen's payout for this booking stays the same.",
+  "bdPaidSummaryManagerHeld": "The chef has paid. Your payout is sent after the visit closes.",
+  "bdPaidDetailManagerHeld": "Local Cooks holds the payment until the visit closes and any reported issue is settled, then sends your share to your Stripe account.",
+  "bdDownloadFinalInvoice": "Download final invoice",
+  "finalInvoiceTitle": "FINAL INVOICE"
 }

@@ -154,9 +154,18 @@ export async function transferToManagerForBooking(
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
     await assertBookingMoneyWritable({ paymentTransactionId: params.paymentTransactionId, paymentIntentId: params.paymentIntentId }, tx);
-    return transferLockedSource(params, tx);
+    const [timing] = await tx.select({ payoutTiming: paymentTransactions.payoutTiming }).from(paymentTransactions)
+      .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
+    const result = await transferLockedSource(params, tx);
+    // The release command's transfer (or a webhook/sync recovery of it) records the payout and queues its notice once.
+    if (timing?.payoutTiming === 'after_closeout' && result.transferred)
+      await (await import('./kitchen-payout-service')).recordReleasedPayout(params.paymentTransactionId, result, tx);
+    return result;
   });
 }
+
+/** Reason prefix for an after-closeout kitchen charge that has no release decision yet. Not an error. */
+export const PAYOUT_DEFERRED_REASON = 'deferred: the kitchen payout is sent after the visit closes';
 
 async function transferLockedSource(params: TransferToManagerParams, connection: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<TransferResult> {
   const baseResult: TransferResult = {
@@ -167,6 +176,19 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
     feeWithheldCents: params.actualStripeFeeCents,
     transferredCents: Math.max(0, params.chargeAmountCents - params.actualStripeFeeCents),
   };
+
+  // Payout after closeout: every caller (payment_intent.succeeded, charge.updated, manual sync, claim/overstay
+  // fallbacks) reaches this point under the source lock, before any provider I/O. A kitchen charge snapshotted
+  // `after_closeout` is only transferred once releaseKitchenPayout committed a decision and it is still eligible.
+  // NULL/at_capture rows (legacy) skip this block entirely.
+  const [payout] = await connection.select({ payoutTiming: paymentTransactions.payoutTiming, payoutReleasedAt: paymentTransactions.payoutReleasedAt,
+    payoutHoldReason: paymentTransactions.payoutHoldReason, transferId: paymentTransactions.transferId, bookingId: paymentTransactions.bookingId })
+    .from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
+  if (payout?.payoutTiming === 'after_closeout' && !payout.transferId) {
+    if (!payout.payoutReleasedAt || payout.payoutHoldReason
+      || !await (await import('./kitchen-payout-service')).releasedPayoutStillEligible(payout.bookingId, connection))
+      return { ...baseResult, transferredCents: 0, reason: PAYOUT_DEFERRED_REASON };
+  }
 
   // A captured adjustment is not an approved new schedule until inventory commit.
   // Reload durable source on every payment/charge.updated retry, never trust stale metadata.

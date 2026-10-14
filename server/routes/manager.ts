@@ -1,5 +1,7 @@
 import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
+import { readKitchenPayout, attachKitchenPayouts, upcomingKitchenPayouts } from '../services/kitchen-payout-service';
+import { originalKitchenEntitlement } from '@shared/kitchen-payout';
 import { kitchenChecklistFields } from '@shared/kitchen-checklist';
 import { sendAdminNotificationEmail } from '../services/admin-email-preferences';
 import { Router, Request, Response } from "express";
@@ -72,6 +74,7 @@ import {
   // generateBookingStatusChangeEmail // check usage
 } from "../email";
 import { getUserDisplayName, withChefDisplayNames } from "../utils/user-display";
+import { goodwillRefundCentsSql } from "../services/booking-goodwill";
 import {
   sendSMS,
   generateChefBookingConfirmationSMS,
@@ -1461,7 +1464,10 @@ router.post(
       const currentRefundAmount =
         parseInt(String(transaction.refund_amount || "0")) || 0;
       const managerRevenue =
-        parseInt(String(transaction.manager_revenue || "0")) || 0;
+        transaction.payout_timing === 'after_closeout' && !transaction.transfer_id
+          ? originalKitchenEntitlement({ amount: transaction.amount, baseAmount: transaction.base_amount,
+            serviceFee: transaction.service_fee, stripeProcessingFee: transaction.stripe_processing_fee, metadata: transaction.metadata })
+          : parseInt(String(transaction.manager_revenue || "0")) || 0;
       const stripeProcessingFee =
         parseInt(String(transaction.stripe_processing_fee || "0")) || 0;
       const serviceFee =
@@ -1493,7 +1499,7 @@ router.post(
         .where(eq(users.id, managerId))
         .limit(1);
 
-      if (!manager?.stripeConnectAccountId) {
+      if (!manager?.stripeConnectAccountId && !(transaction.payout_timing === 'after_closeout' && !transaction.transfer_id)) {
         throw new DomainError("REFUND_VALIDATION", "Manager Stripe Connect account not found", 400);
       }
 
@@ -2278,6 +2284,11 @@ router.get(
 );
 
 // Get payout history for manager
+router.get('/revenue/upcoming-payouts', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+  try { res.json(await upcomingKitchenPayouts(req.neonUser!.id)); }
+  catch { res.status(503).json({ error: 'Upcoming payouts are unavailable. Please try again shortly.' }); }
+});
+
 router.get(
   "/revenue/payouts",
   requireFirebaseAuthWithUser,
@@ -3706,7 +3717,7 @@ router.get(
       const user = req.neonUser!;
       const bookings = await bookingService.getBookingsByManager(user.id);
 
-        res.json(await Promise.all((await projectBookingCloseouts(bookings)).map(async booking => ({
+        res.json(await Promise.all((await attachKitchenPayouts(await projectBookingCloseouts(bookings))).map(async booking => ({
           ...booking, responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone),
         }))));
     } catch (error: any) {
@@ -4223,7 +4234,7 @@ router.get(
 
       const { readKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
 
-      const derivedBookings = await projectBookingCloseouts(todaysBookings);
+      const derivedBookings = await attachKitchenPayouts(await projectBookingCloseouts(todaysBookings));
       const visitRows = (await Promise.all(derivedBookings.map(async booking => {
         const visits = await readKitchenBookingVisits(booking.id);
         if (!visits.length) return [{ ...booking, operationsComplete: bookingOperationsComplete(booking) }];
@@ -4304,7 +4315,7 @@ router.get(
       // ... get add-ons ...
       // ... get chef ...
 
-      res.json({ ...booking, responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone), kitchen, location });
+      res.json({ ...booking, payout: await readKitchenPayout(id), responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone), kitchen, location });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -4484,6 +4495,7 @@ router.get(
             refundedAt: paymentTransactions.refundedAt,
             refundReason: paymentTransactions.refundReason,
             metadata: paymentTransactions.metadata,
+            goodwillRefundCents: goodwillRefundCentsSql,
           })
           .from(paymentTransactions)
           .where(
@@ -4511,6 +4523,7 @@ router.get(
             refundedAt: txn.refundedAt || null,
             refundReason: txn.refundReason || null,
             metadata: txn.metadata || null,
+            goodwillRefundCents: Number(txn.goodwillRefundCents) || 0,
           };
         }
       } catch (err) {
@@ -4622,6 +4635,7 @@ router.get(
       const visitCodeFor = (visitId: number | null) => visitCodes.find(state => state.visitId === visitId) ?? null;
       res.json({
         ...derived,
+        payout: await readKitchenPayout(id),
         responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone),
         visitCode: visitCodeFor(null),
         inspection: {

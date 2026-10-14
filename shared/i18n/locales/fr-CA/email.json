@@ -204,5 +204,14 @@
   "bookingFeedbackRate": "Évaluez votre séance",
   "bookingFeedbackFlagTitle": "Des commentaires sur une réservation méritent votre attention",
   "bookingFeedbackFlagBody": "Une personne a signalé une préoccupation au sujet de sa séance. Ouvrez la réservation pour lire ses commentaires privés et voir comment nous pouvons l’aider.",
-  "bookingFeedbackSupport": "Ouvrir le soutien aux réservations"
+  "bookingFeedbackSupport": "Ouvrir le soutien aux réservations",
+  "payoutReleasedTitle": "Vous avez été payé",
+  "payoutReleasedBody": "Vous avez reçu {amount} pour la réservation de {chef} du {date}.",
+  "payoutReleasedNext": "Il arrivera à votre banque selon votre calendrier de versements Stripe habituel.",
+  "payoutViewStatement": "Voir le relevé de versement",
+  "payoutHeldTitle": "Votre versement est en attente",
+  "payoutHeldBody": "Votre versement pour {reference} est en attente pendant que Local Cooks examine le problème signalé. Nous vous préviendrons dès qu’il sera envoyé.",
+  "payoutViewBooking": "Voir la réservation",
+  "payoutChefFallback": "le chef",
+  "bookingDownloadFinalInvoice": "Télécharger votre facture finale"
 }

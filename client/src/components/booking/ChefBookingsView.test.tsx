@@ -52,6 +52,14 @@ describe('chef bookings list', () => {
     expect(screen.queryByText(/\(\d+[dh]\)/)).not.toBeInTheDocument();
   });
 
+  it('labels an overnight slot with the day it starts on, not the operating day', () => {
+    const overnight = [row({ id: 139, bookingDate: '2026-10-14T00:00:00.000Z', startTime: '00:15', endTime: '01:15', operatingWindowStartTime: '06:00' })];
+    render(<QueryClientProvider client={new QueryClient()}><ChefBookingsView bookings={overnight as never} isLoading={false} onCancelBooking={vi.fn()} kitchens={[]} /></QueryClientProvider>);
+    // The slot is Thu Oct 15 00:15 NDT (still ahead of "now"), so it is Upcoming and carries Thursday's date.
+    expect(within(screen.getByRole('table')).getByText(/Thu, Oct 15, 2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/Wed, Oct 14/)).not.toBeInTheDocument();
+  });
+
   it('words the confirmed row action like the booking page', () => {
     mount();
     expect(screen.getByRole('button', { name: 'Cancel or change' })).toBeInTheDocument();

@@ -31,6 +31,7 @@ vi.mock('./storage-checkout-service', () => ({ processExpiredCheckoutReviews: ()
 vi.mock('./kitchen-checkout-service', () => ({ processExpiredKitchenCheckoutReviews: () => task('kitchenCheckout'), getCheckinSettings: async () => ({ checkoutReviewWindowMinutes: 0 }) }));
 vi.mock('./clock-closeout', () => ({ sweepClockCloseout: () => task('clockCloseout') }));
 vi.mock('./booking-feedback-service', () => ({ sweepBookingFeedback: () => task('bookingFeedback') }));
+vi.mock('./kitchen-payout-service', () => ({ releaseDuePayouts: () => task('closeoutPayouts') }));
 vi.mock('./chef-document-expiry', () => ({ sweepChefDocumentExpiry: () => task('chefDocumentExpiry') }));
 vi.mock('./location-access-notices', () => ({ dispatchAccessNotices: () => task('access') }));
 vi.mock('./tour-outcome-service', () => ({ remindUnrecordedTourOutcomes: () => task('tourOutcomes') }));
@@ -68,8 +69,9 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     expect(configuredInvocationMs).toBe(30_000); expect(workerSafetyReserveMs).toBe(4_000);
     expect(result).toMatchObject({ taskFailures: [], deferred: false });
     expect(state.calls).toEqual(expect.arrayContaining(['advance', 'booking', 'tour', 'outcome', 'chat', 'reconcile:booking', 'reconcile:tour',
-      'overstays', 'claims', 'paymentRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
+      'overstays', 'claims', 'paymentRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
     expect(state.calls.filter(name => name === 'clockCloseout')).toHaveLength(1);
+    expect(state.calls.filter(name => name === 'closeoutPayouts')).toHaveLength(1);
     expect(state.calls).not.toContain('kitchenCheckout'); expect(state.calls).not.toContain('visitCheckout');
     expect(state.clock).toBeLessThan(30_000); expect(state.stored.finishedAt).toBeTruthy(); expect(state.releases).toBe(1);
     expect(state.configs[0]).toMatchObject({ max: 1, connectionTimeoutMillis: 3000, statement_timeout: 1000, lock_timeout: 500 });

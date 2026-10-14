@@ -18,4 +18,12 @@ describe("RevenueMetricCards", () => {
     expect(screen.getByText("revenueRefundsIssued")).toBeInTheDocument();
     expect(screen.getByText("$45.00")).toBeInTheDocument();
   });
+  it("shows upcoming payouts apart from paid earnings, only when a payout is owed", () => {
+    const data = [{ date: "2026-09-03", managerRevenue: 0, paidEarnings: 0, bookingCount: 1, totalRevenue: 12000, platformFee: 0 }];
+    const { rerender } = render(<RevenueMetricCards data={data} isLoading={false} upcomingPayoutCents={2732} />);
+    expect(screen.getByTestId("upcoming-payouts-card")).toHaveTextContent("revenueUpcomingPayouts$27.32revenueUpcomingPayoutsBody");
+    expect(screen.getByText("revenueNetActivity").nextSibling).toHaveTextContent("$0.00");
+    rerender(<RevenueMetricCards data={data} isLoading={false} upcomingPayoutCents={0} />);
+    expect(screen.queryByTestId("upcoming-payouts-card")).toBeNull();
+  });
 });

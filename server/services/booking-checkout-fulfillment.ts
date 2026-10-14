@@ -11,6 +11,19 @@ import { fulfillKitchenCheckout, KitchenHoldMissingError, KitchenSlotUnavailable
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
 import { storageListingAwaitingRemoval } from './booking-linked-cancellation';
+import { kitchenPayoutTiming } from '@shared/kitchen-payout';
+import { getBookingResponseDeadline } from './booking-response-deadline';
+import { emailLocalDateTime } from '../email';
+
+/** The chef's own in-app notice for a new request; the manager keeps the review copy. */
+async function chefRequestCopy(booking: Parameters<typeof getBookingResponseDeadline>[0], reader: Parameters<typeof getBookingResponseDeadline>[1], kitchenName: string | null, timezone: string | null) {
+  const kitchen = kitchenName || 'the kitchen';
+  // Copy must never block the booking: without a computable deadline the notice simply omits it.
+  const deadline = await getBookingResponseDeadline(booking, reader, timezone)
+    .then(value => emailLocalDateTime(value, timezone || undefined)).catch(() => null);
+  return { title: `Request sent to ${kitchen}`,
+    message: `Request sent to ${kitchen}. You’re only charged if they accept.${deadline ? ` They have until ${deadline} to respond.` : ''}` };
+}
 
 /** New sessions commit the booking, quoted items, payment ledger and delivery evidence together. */
 export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Session, intent: Stripe.PaymentIntent, stripe: Stripe) {
@@ -33,7 +46,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     const booking = await fulfillKitchenCheckout(metadata.hold_id, session.id, kitchenId, metadata.booking_date.slice(0, 10),
       parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time), metadata.window_start_time || metadata.start_time,
       () => db.transaction(async tx => {
-        const [context] = await tx.select({ managerId: locations.managerId }).from(kitchens)
+        const [context] = await tx.select({ managerId: locations.managerId, kitchenName: kitchens.name, timezone: locations.timezone }).from(kitchens)
           .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, kitchenId)).limit(1);
         if (!context?.managerId) throw new Error('Checkout manager not found');
         const [parent] = await tx.insert(kitchenBookings).values({ referenceCode: await generateReferenceCode('kitchen_booking'),
@@ -74,7 +87,10 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
         await tx.update(kitchenBookings).set({ storageItems, equipmentItems }).where(eq(kitchenBookings.id, parent.id));
         await tx.insert(paymentTransactions).values({ bookingId: parent.id, bookingType: 'kitchen', chefId, managerId: context.managerId,
           amount: String(intent.amount), baseAmount: String(terms.subtotal + terms.tax), taxAmount: String(terms.tax), serviceFee: String(terms.commission),
-          managerRevenue: String(terms.subtotal + terms.tax), netAmount: String(intent.amount), paymentIntentId: intent.id,
+          managerRevenue: String(terms.subtotal + terms.tax),
+          // An immediate capture snapshots its payout timing now; a card hold snapshots it at the manager's confirmation.
+          ...(!authorized ? { payoutTiming: kitchenPayoutTiming(process.env.KITCHEN_PAYOUT_TIMING) } : {}),
+          netAmount: String(intent.amount), paymentIntentId: intent.id,
           status: authorized ? 'authorized' : 'succeeded', stripeStatus: intent.status,
           metadata: { checkout_session_id: session.id, fee_model: metadata.fee_model, taxRatePercent: terms.rate,
             platformCommission: terms.commission, storage_items: storageItems, equipment_items: equipmentItems,
@@ -85,7 +101,8 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
             ], terms.tax) } });
         await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'New kitchen booking request',
           authorized ? `A new kitchen booking request is ready to review. The chef’s card is on hold and will only be charged if the kitchen accepts.`
-            : `A new kitchen booking request is ready to review. The checkout payment has been received.`, chefId);
+            : `A new kitchen booking request is ready to review. The checkout payment has been received.`, chefId,
+          authorized ? { roleText: { chef: await chefRequestCopy(parent, tx, context.kitchenName, context.timezone) } } : undefined);
         return parent;
       }));
     return booking.id;

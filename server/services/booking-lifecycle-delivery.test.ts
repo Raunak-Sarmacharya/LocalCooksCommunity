@@ -199,6 +199,17 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     expect(emails).toHaveLength(1); expect(emails[0].content.html).toContain('http://kitchen.localhost:5001/manager/stripe-connect/refresh?role=manager');
     expect(emails[0].content.text).toContain('update your payout details');
   });
+  it('tells only the manager they have been paid, with the amount and a link to the payout statement', async () => {
+    await queueBookingLifecycleEvent(tx, 10, 'payout_released', 'You’ve been paid', 'Queued fallback', undefined,
+      { recipientPolicy: 'manager', transactionId: 8, amountCents: 2732 });
+    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
+    expect(state.notify.mock.calls[0][0]).toMatchObject({ title: 'You’ve been paid', actionLabel: 'View payout statement' });
+    expect(state.notify.mock.calls[0][0].message).toContain('$27.32');
+    const emails = state.insert.mock.calls[0][0].emails;
+    expect(emails).toHaveLength(1); expect(emails[0].to).toBe('manager@example.test');
+    expect(emails[0].content.text).toContain('on your usual Stripe payout schedule');
+    expect(emails[0].content.html).toContain('http://kitchen.localhost:5001/manager/booking/10#booking-payment-title');
+  });
   it('rolls back the caller when the outbox cannot be saved', async () => {
     state.insert.mockRejectedValueOnce(new Error('outbox unavailable'));
     await expect(queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Confirmed', 'Payment captured')).rejects.toThrow('outbox unavailable');

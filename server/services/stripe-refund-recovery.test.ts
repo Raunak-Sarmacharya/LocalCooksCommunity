@@ -86,6 +86,17 @@ describe('source-specific reversal and refund recovery', () => {
     await expect(reverseTransferAndRefund('pi_one', 12200, 'requested_by_customer', { ...options, reverseTransferAmount: 11500 })).rejects.toThrow('Separate funding approval');
     expect(state.refund).not.toHaveBeenCalled();
   });
+  it('payout after closeout: a chef or kitchen-caused cancellation before release refunds from the platform without any reversal', async () => {
+    state.noTransfer = true;
+    state.source = { transferId: null, payoutTiming: 'after_closeout', payoutReleasedAt: null, managerRevenue: '11500', amount: '12200', serviceFee: '700' };
+    // Chef cancellation keeping a retained share: refund 50% of the kitchen share.
+    await reverseTransferAndRefund('pi_one', 5558, 'requested_by_customer', { idempotencyKey: 'chef_cancel', reverseTransferAmount: 5558 });
+    // Kitchen-caused: the whole unpaid share (charge - commission - actual fee) plus the service fee.
+    await reverseTransferAndRefund('pi_one', 12200, 'requested_by_customer', { idempotencyKey: 'kitchen_cancel', reverseTransferAmount: 12200 - 700 - 384 });
+    expect(state.refund).toHaveBeenCalledTimes(2); expect(state.reverse).not.toHaveBeenCalled();
+    await expect(reverseTransferAndRefund('pi_one', 12200, 'requested_by_customer', { idempotencyKey: 'too_much', reverseTransferAmount: 12200 - 700 }))
+      .rejects.toThrow('exceeds verified unpaid entitlement');
+  });
   it('a reserved cancellation source cannot fund a competing direct refund', async () => {
     state.source.metadata = { cancellationRefundOperation: { id: 'reserved_cancellation', status: 'pending' } };
     await expect(reverseTransferAndRefund('pi_one', 2440, 'requested_by_customer', options)).rejects.toThrow('Refund funding cannot be verified');

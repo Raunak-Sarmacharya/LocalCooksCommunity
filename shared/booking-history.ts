@@ -1,5 +1,5 @@
 const kinds = ['requested', 'confirmed', 'cancelled', 'cancellation_requested', 'cancellation_declined',
-  'cancellation_reviewed', 'refund_issued', 'payment_recovery_needed', 'item_withdrawn', 'item_cancellation_requested',
+  'cancellation_reviewed', 'refund_issued', 'goodwill_refunded', 'payment_recovery_needed', 'item_withdrawn', 'item_cancellation_requested',
   'checkin_recorded', 'checkout_requested', 'checkout_cleared', 'checkout_claim_filed',
   'report_no_show', 'report_attended', 'withdraw_attendance', 'kitchen_change_requested', 'kitchen_change_applied',
   'kitchen_change_declined', 'kitchen_change_withdrawn', 'kitchen_change_expired'] as const;
@@ -8,11 +8,13 @@ export function compareHistoryEvents(a: { kind: string; recordedAt: string; key:
   const rank = (kind: string) => { const index = (kinds as readonly string[]).indexOf(kind); return index < 0 ? kinds.length : index; };
   return Date.parse(a.recordedAt) - Date.parse(b.recordedAt) || rank(a.kind) - rank(b.kind) || a.key.localeCompare(b.key);
 }
-export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; recordedAt: string; visitId?: number; itemKind?: 'storage' | 'equipment'; itemId?: number };
+export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; recordedAt: string; visitId?: number; itemKind?: 'storage' | 'equipment'; itemId?: number;
+  /** Cents; only on `goodwill_refunded` (a Local Cooks-funded refund; the kitchen payout is unchanged). */ amountCents?: number };
 export type BookingHistoryResponse = { events: BookingHistoryEvent[]; complete: boolean };
 type Facts = { createdAt?: unknown; cancellationRequestedAt?: unknown; cancellationRequestDeclinedAt?: unknown;
   checkedInAt?: unknown; checkoutRequestedAt?: unknown; checkoutApprovedAt?: unknown };
-type RecordedEvent = { id: number; kind: string; createdAt: unknown; metadata?: unknown };
+type RecordedEvent = { id: number; kind: string; createdAt: unknown; metadata?: unknown;
+  /** Records from another table (payment history) pass their own key so ids never collide with lifecycle ids. */ key?: string };
 const instant = (value: unknown) => {
   if (!(value instanceof Date) && typeof value !== 'string') return undefined;
   const date = new Date(value);
@@ -30,7 +32,11 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     const quote = metadata.quote && typeof metadata.quote === 'object' ? metadata.quote as Record<string, unknown> : {};
     const scope = quote.scope && typeof quote.scope === 'object' ? quote.scope as Record<string, unknown> : {};
     const itemKind = metadata.itemKind ?? scope.kind, itemId = metadata.itemId ?? scope.id;
-    events.push({ key: 'event-' + record.id, kind: record.kind as BookingHistoryEvent['kind'], recordedAt,
+    const amount = record.kind === 'goodwill_refunded' && Number.isSafeInteger(metadata.amountCents) && Number(metadata.amountCents) > 0 ? Number(metadata.amountCents) : undefined;
+    // A goodwill refund without a known amount cannot say what was refunded, so it is left out.
+    if (record.kind === 'goodwill_refunded' && !amount) continue;
+    events.push({ key: record.key ?? 'event-' + record.id, kind: record.kind as BookingHistoryEvent['kind'], recordedAt,
+      ...(amount ? { amountCents: amount } : {}),
       ...(positiveId(metadata.visitId) ? { visitId: metadata.visitId } : {}),
       ...((itemKind === 'storage' || itemKind === 'equipment') && positiveId(itemId)
         ? { itemKind, itemId } : {}) });

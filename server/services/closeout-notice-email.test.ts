@@ -69,6 +69,19 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     expect(email.html).toContain('width=device-width');
     expect(email.html).toContain('role="presentation"');
   });
+  it('offers the chef the final invoice once the paid booking is completed, and keeps the help link', async () => {
+    state.booking.paymentStatus = 'paid';
+    const email = (await send('service_ended', 3, 'maya@example.test'))!;
+    for (const text of [email.text!, email.html!]) {
+      expect(text).toContain('Download your final invoice');
+      expect(text).toContain('/booking/128#booking-payment-title');
+      expect(text).toContain('/booking/128#booking-support');
+    }
+    state.booking.paymentStatus = 'authorized';
+    expect((await send('service_ended', 3, 'maya@example.test'))!.text).not.toContain('final invoice');
+    state.booking.paymentStatus = 'paid';
+    expect((await send('service_ended', 7, 'sam@example.test'))!.text).not.toContain('final invoice');
+  });
   it.each([
     [undefined, undefined, 'No arrival or departure was recorded.'],
     ['2026-10-13T12:34:00Z', undefined, 'Arrival recorded at 10:04 AM. No departure was recorded.'],

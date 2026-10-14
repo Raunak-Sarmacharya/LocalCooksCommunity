@@ -3393,5 +3393,17 @@
   "inspectDoneTitle": "Огляд завершено",
   "inspectDoneBody": "Ви завершили цей огляд {date} о {time}. {chef} отримав(ла) сповіщення.",
   "inspectDoneBodyNoTime": "Ви завершили цей огляд. {chef} отримав(ла) сповіщення.",
-  "inspectFoundLater": "Помітили проблему пізніше? Попросіть Local Cooks розглянути її"
+  "inspectFoundLater": "Помітили проблему пізніше? Попросіть Local Cooks розглянути її",
+  "fixMissedManager": "{chef} не відмітився. Якщо кухар приходив,",
+  "fixMissedManagerLink": "виправте запис про візит.",
+  "clockNoCheckinRecorded": "Для цього візиту не зафіксовано жодної відмітки про прихід.",
+  "bdRefundedTotal": "Повернено {amount}",
+  "bdGoodwillChef": "Local Cooks надіслала вам повернення {amount}. Воно може з’явитися в банку за кілька днів.",
+  "bdGoodwillLine": "Повернення від Local Cooks · {amount}",
+  "bdGoodwillManager": "Local Cooks надіслала {chef} повернення {amount}. Ваша виплата не змінюється.",
+  "bdGoodwillManagerDetail": "Local Cooks сплатила це повернення сама, тому виплата кухні за це бронювання не змінюється.",
+  "bdPaidSummaryManagerHeld": "Кухар оплатив. Вашу виплату буде надіслано після завершення візиту.",
+  "bdPaidDetailManagerHeld": "Local Cooks утримує оплату, доки візит не завершиться й усі повідомлені проблеми не буде вирішено, а потім надсилає вашу частку на ваш рахунок Stripe.",
+  "bdDownloadFinalInvoice": "Завантажити остаточний рахунок",
+  "finalInvoiceTitle": "ОСТАТОЧНИЙ РАХУНОК-ФАКТУРА"
 }

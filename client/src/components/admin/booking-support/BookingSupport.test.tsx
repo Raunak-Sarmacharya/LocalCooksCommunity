@@ -23,7 +23,7 @@ vi.mock("./api", async () => {
 
 import { SupportApiError } from "./api";
 import { ActionDialog } from "./ActionDialog";
-import { ActionPanel, Chronology, CaseHeader, FeedbackCard, PaymentEvidenceCard, VisitCodesCard } from "./CaseView";
+import { ActionPanel, Chronology, CaseHeader, FeedbackCard, MoneyCard, PaymentEvidenceCard, VisitCodesCard } from "./CaseView";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const preview = (over: Partial<SupportCase["availableActions"][number]["moneyPreview"]> = {}) => ({
@@ -57,10 +57,10 @@ const result = (status: ActionResult["action"]["status"], c: SupportCase, replay
   ({ action: { id: 1, operationKey: "k", status, exception: false }, case: c, replayed });
 
 function mountDialog(type: SupportCase["availableActions"][number]["type"], c = baseCase()) {
-  const onClose = vi.fn(), onCaseUpdated = vi.fn();
+  const onClose = vi.fn(), onCaseUpdated = vi.fn(), onDone = vi.fn();
   const action = c.availableActions.find((a) => a.type === type)!;
-  render(<ActionDialog action={action} supportCase={c} getFirebaseToken={async () => "t"} onClose={onClose} onCaseUpdated={onCaseUpdated} />);
-  return { onClose, onCaseUpdated, c };
+  render(<ActionDialog action={action} supportCase={c} getFirebaseToken={async () => "t"} onClose={onClose} onCaseUpdated={onCaseUpdated} onDone={onDone} />);
+  return { onClose, onCaseUpdated, onDone, c };
 }
 const type = (label: RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
@@ -130,6 +130,27 @@ describe("dialog validation", () => {
   });
 });
 
+describe("kitchen payout after closeout", () => {
+  const held = { timing: "after_closeout" as const, status: "on_hold" as const, holdReason: "reported_issue" as const,
+    expectedAt: "2026-10-17T13:30:00.000Z", sentAt: null, amountCents: 10942 };
+  it("shows the payout block on the money card, and none for a legacy payment", () => {
+    render(<MoneyCard c={baseCase({ payout: held })} />);
+    expect(screen.getByTestId("kitchen-payout-status")).toHaveAttribute("data-status", "on_hold");
+    cleanup();
+    render(<MoneyCard c={baseCase()} />);
+    expect(screen.queryByTestId("kitchen-payout-status")).not.toBeInTheDocument();
+  });
+  it("explains Release payout and sends it on behalf of Local Cooks", async () => {
+    const c = baseCase({ payout: held, availableActions: [{ type: "release_payout", label: "Release payout", moneyPreview: preview({ maximumCents: null, requiresExceptionAboveCents: null }) }] });
+    expect(screen.queryByText("Release the kitchen payout")).toBeNull();
+    mountDialog("release_payout", c);
+    expect(screen.getAllByText("Release the kitchen payout").length).toBeGreaterThan(0);
+    expect(screen.getByText(/once the reported issue is settled/)).toBeVisible();
+    const built = buildActionRequest("release_payout", c, { ...initialForm("release_payout", c), note: NOTE }, "support-149-abcdefgh", false);
+    expect(built.ok && built.body).toMatchObject({ type: "release_payout", actingFor: "local_cooks" });
+  });
+});
+
 describe("money preview and exception confirmation", () => {
   it("shows plain placeholders for amounts that are not known yet, then follows the goodwill amount", () => {
     mountDialog("goodwill_refund");
@@ -153,6 +174,26 @@ describe("money preview and exception confirmation", () => {
     expect(body.confirmException).toBeUndefined();
     expect(body.operationKey).toMatch(/^support-149-/);
   });
+  it("explains what was already sent when goodwill was sent before", async () => {
+    const sent = { id: 1, type: "goodwill_refund", actorUserId: 77, actingFor: "local_cooks" as const, requestSource: "call" as const, sourceRef: null, reasonCode: "service_recovery",
+      amountCents: 1000, currency: "CAD", fundedBy: "local_cooks", exception: false, operationKey: "k1", status: "verified" as const,
+      createdAt: "2026-10-14T12:00:00.000Z", completedAt: "2026-10-14T12:00:01.000Z", notifiedEventIds: [] };
+    const base = baseCase();
+    const c = baseCase({ supportActions: [sent], availableActions: base.availableActions.map((a) => a.type === "goodwill_refund" ? { ...a, moneyPreview: preview({ requiresExceptionAboveCents: 1500 }) } : a) });
+    mountDialog("goodwill_refund", c);
+    type(/Goodwill amount/, "16");
+    type(/Internal note/, NOTE);
+    fireEvent.click(screen.getByRole("button", { name: "Do this now" }));
+    expect(await screen.findByText("Goodwill for this booking is limited to $25. $10.00 was already sent, so $15.00 is left. Record this $16.00 as an exception?")).toBeVisible();
+  });
+  it("labels the processing fee as the original one and says Local Cooks pays only the refund", () => {
+    mountDialog("goodwill_refund");
+    type(/Goodwill amount/, "10");
+    const box = screen.getByTestId("money-preview");
+    expect(box).toHaveTextContent("Original processing fee");
+    expect(box).toHaveTextContent("Stripe doesn't return it and charges no fee for this refund.");
+    expect(box).toHaveTextContent(/Local Cooks pays \(the refund amount only\)\s*\$10\.00/);
+  });
   it("asks a second question above the limit and only then sends confirmException", async () => {
     const c = baseCase();
     postAction.mockResolvedValue(result("verified", c));
@@ -160,7 +201,7 @@ describe("money preview and exception confirmation", () => {
     type(/Goodwill amount/, "30");
     type(/Internal note/, NOTE);
     fireEvent.click(screen.getByRole("button", { name: "Do this now" }));
-    expect(await screen.findByText("This is above the $25.00 goodwill limit. Record as an exception?")).toBeVisible();
+    expect(await screen.findByText("Goodwill for this booking is limited to $25. Record this $30.00 as an exception?")).toBeVisible();
     expect(postAction).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByLabelText(/Goodwill amount/)).toHaveValue("30");
@@ -183,12 +224,14 @@ describe("what happens after the server answers", () => {
   it("shows a success toast and closes when the action is verified, replacing the case", async () => {
     const next = baseCase({ status: "cancelled" });
     postAction.mockResolvedValue(result("verified", next));
-    const { onClose, onCaseUpdated } = mountDialog("open_flag");
+    const { onClose, onCaseUpdated, onDone } = mountDialog("open_flag");
     type(/Internal note/, NOTE);
     fireEvent.click(screen.getByRole("button", { name: "Do this now" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onCaseUpdated).toHaveBeenCalledWith(next);
-    expect(toastSuccess).toHaveBeenCalled();
+    expect(toastSuccess).toHaveBeenCalledWith("Done. Pause refunds and kitchen payments");
+    // The page keeps the same confirmation visible after the dialog closes.
+    expect(onDone).toHaveBeenCalledWith("Pause refunds and kitchen payments");
   });
   it("explains a failed action and still replaces the case, with no success toast", async () => {
     const next = baseCase({ status: "pending" });
@@ -239,7 +282,8 @@ describe("times and facts", () => {
     expect(formatAdminDateTime("2026-10-16T11:30:00.000Z")).toMatch(/Newfoundland Time$/);
     const c = baseCase({ chronology: [{ source: "lifecycle", id: 1, kind: "support_updated", title: "Booking updated", createdAt: "2026-10-14T12:00:00.000Z", completedAt: null }] });
     render(<><CaseHeader c={c} onBack={() => undefined} onRefresh={() => undefined} refreshing={false} /><Chronology c={c} /></>);
-    expect(screen.getByTestId("schedule")).toHaveTextContent("Oct 16, 2026, 9:00 a.m.");
+    expect(screen.getByTestId("schedule")).toHaveTextContent("Fri, Oct 16, 2026 · 9:00–11:00 a.m.");
+    expect(screen.getByTestId("schedule")).not.toHaveTextContent("Oct 16, 2026, 9:00 a.m. –");
     expect(screen.getByTestId("schedule")).toHaveTextContent("Newfoundland Time");
     expect(screen.getByTestId("chronology")).toHaveTextContent(/Newfoundland Time/);
   });
@@ -267,7 +311,22 @@ describe("times and facts", () => {
     render(<><PaymentEvidenceCard c={c} /><VisitCodesCard c={c} /></>);
     expect(screen.getByTestId("evidence-unavailable")).toHaveTextContent("couldn’t load payment details");
     expect(screen.getByText("The code digits are never shown here.")).toBeVisible();
-    expect(screen.getByText("Waiting to be used")).toBeVisible();
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-14T12:00:00.000Z"));
+    try { expect(screen.getByText("Waiting to be used")).toBeVisible(); } finally { vi.useRealTimers(); }
+  });
+  it("calls an unused code after the visit has ended 'Not used'", () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-17T12:00:00.000Z"));
+    try {
+      render(<VisitCodesCard c={baseCase()} />);
+      expect(screen.getByText("Not used")).toBeVisible();
+      expect(screen.queryByText("Waiting to be used")).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+  it("shows a muted 'Name not set' rather than a role word or an email", () => {
+    const c = baseCase({ parties: { chef: { id: 4, name: null, email: "alex@example.test", phone: null }, manager: { id: 5, name: "Sam Lee", email: "sam@example.test", phone: null } } });
+    render(<CaseHeader c={c} onBack={() => undefined} onRefresh={() => undefined} refreshing={false} />);
+    expect(screen.getByText("Name not set")).toHaveClass("text-muted-foreground");
+    expect(screen.getByText("Sam Lee")).toBeVisible();
   });
 });
 

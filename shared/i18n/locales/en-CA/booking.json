@@ -276,6 +276,7 @@
     "cancellation_declined": "Cancellation declined",
     "cancellation_reviewed": "Cancellation accepted",
     "refund_issued": "Refund issued",
+    "goodwill_refunded": "Refund sent by Local Cooks",
     "payment_recovery_needed": "Payment verification needed",
     "item_withdrawn": "Add-on withdrawn",
     "item_cancellation_requested": "Add-on cancellation requested",
@@ -373,5 +374,16 @@
   },
   "sheetResponseDeadline": "The kitchen has until {deadline} to respond.",
   "sheetResponseDeadlineOnPage": "Your booking page will show when the kitchen needs to respond.",
-  "sheetPreparationLead": "Arrival details are shared {hours} hours before your visit, once the kitchen accepts."
+  "sheetPreparationLead": "Arrival details are shared {hours} hours before your visit, once the kitchen accepts.",
+  "historyGoodwill_chef": "Local Cooks refunded {amount}",
+  "historyGoodwill_manager": "Local Cooks sent {chef} a {amount} refund (your payout is unchanged)",
+  "historyChefFallback": "the chef",
+  "payoutAmount": "Your payout {amount}",
+  "payoutScheduled": "Sent after the visit closes (around {date})",
+  "payoutAfterVisit": "Sent after the visit closes",
+  "payoutOnHold": "On hold while Local Cooks reviews the reported issue",
+  "payoutOnHoldReview": "On hold while Local Cooks reviews this booking",
+  "payoutSent": "Sent to your Stripe account on {date}",
+  "payoutSentNoDate": "Sent to your Stripe account",
+  "payoutNotApplicable": "No payout is owed for this booking."
 }

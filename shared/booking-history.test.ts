@@ -48,3 +48,16 @@ describe('same-instant ordering', () => {
     expect(history.events.map(event => event.kind)).toEqual(['requested', 'confirmed']);
   });
 });
+
+describe('Local Cooks goodwill in the history', () => {
+  it('shows the refunded amount without payment identifiers, and drops one with no amount', () => {
+    const history = buildBookingHistory({}, [
+      { id: 1, kind: 'requested', createdAt: '2026-10-01T12:00:00Z' },
+      { id: 5, key: 'payment-5', kind: 'goodwill_refunded', createdAt: '2026-10-14T12:00:00Z', metadata: { amountCents: 2600, refundId: 're_private', operationKey: 'k' } },
+      { id: 6, key: 'payment-6', kind: 'goodwill_refunded', createdAt: '2026-10-14T13:00:00Z', metadata: {} },
+    ]);
+    expect(history.events.map(event => [event.key, event.kind, event.amountCents])).toEqual([
+      ['event-1', 'requested', undefined], ['payment-5', 'goodwill_refunded', 2600]]);
+    expect(JSON.stringify(history)).not.toMatch(/re_private|operationKey/);
+  });
+});

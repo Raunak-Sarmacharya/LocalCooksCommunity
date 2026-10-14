@@ -98,6 +98,7 @@ export async function cancelKitchenCausedBooking(bookingId: number, managerId: n
     await (await import('./payment-refund-reconciliation')).reconcilePaymentRefundReceipts(source.paymentIntentId, tx);
     await tx.update(kitchenBookings).set({ status: 'cancelled', paymentStatus: 'refunded', updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
     await cancelLinkedBookingDates(tx, bookingId);
+    if (source.payoutTiming === 'after_closeout') await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx);
     await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: 'refunded', eventType: 'kitchen_caused_cancellation',
       description: 'Kitchen cancellation fully refunded; Local Cooks absorbed processing cost', createdBy: actorId,
       metadata: { operationKey, amountCents: amount, processingCostAbsorbedCents: amount - managerDebit - serviceFeeReturn, refundId: refund.refundId } }, tx);
@@ -263,6 +264,8 @@ export async function acceptCancellationRefund(bookingId: number, managerId: num
     if (!scope) {
       await tx.update(kitchenBookings).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
       await cancelLinkedBookingDates(tx, bookingId);
+      if (reviewed.ctx.sources.some(source => source.payoutTiming === 'after_closeout'))
+        await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx);
     } else {
       let itemStatus = 'cancelled';
       if (scope.kind === 'storage') { const [updatedItem] = await tx.update(storageBookings).set({ status: cancelledStorageStatus, cancellationAcceptedAt: new Date(), updatedAt: new Date() }).where(eq(storageBookings.id, scope.id)).returning({ status: storageBookings.status }); itemStatus = updatedItem.status; }

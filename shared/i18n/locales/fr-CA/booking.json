@@ -276,6 +276,7 @@
     "cancellation_declined": "Annulation refusée",
     "cancellation_reviewed": "Annulation acceptée",
     "refund_issued": "Remboursement émis",
+    "goodwill_refunded": "Remboursement envoyé par Local Cooks",
     "payment_recovery_needed": "Vérification du paiement requise",
     "item_withdrawn": "Option retirée",
     "item_cancellation_requested": "Annulation d’une option demandée",
@@ -373,5 +374,16 @@
   },
   "sheetResponseDeadline": "La cuisine a jusqu’à {deadline} pour répondre.",
   "sheetResponseDeadlineOnPage": "Votre réservation indiquera quand la cuisine doit répondre.",
-  "sheetPreparationLead": "Les détails d’arrivée sont partagés {hours} heures avant votre visite, une fois la demande acceptée."
+  "sheetPreparationLead": "Les détails d’arrivée sont partagés {hours} heures avant votre visite, une fois la demande acceptée.",
+  "historyGoodwill_chef": "Local Cooks a remboursé {amount}",
+  "historyGoodwill_manager": "Local Cooks a envoyé à {chef} un remboursement de {amount} (votre versement ne change pas)",
+  "historyChefFallback": "la personne cuisinière",
+  "payoutAmount": "Votre versement : {amount}",
+  "payoutScheduled": "Envoyé après la clôture de la visite (vers le {date})",
+  "payoutAfterVisit": "Envoyé après la clôture de la visite",
+  "payoutOnHold": "En attente pendant que Local Cooks examine le problème signalé",
+  "payoutOnHoldReview": "En attente pendant que Local Cooks examine cette réservation",
+  "payoutSent": "Envoyé à votre compte Stripe le {date}",
+  "payoutSentNoDate": "Envoyé à votre compte Stripe",
+  "payoutNotApplicable": "Aucun versement n’est dû pour cette réservation."
 }

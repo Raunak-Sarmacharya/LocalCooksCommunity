@@ -64,6 +64,10 @@ export interface UpdatePaymentTransactionParams {
 }
 
 export interface PaymentTransactionRecord {
+  payout_timing?: string | null;
+  payout_eligible_at?: Date | null;
+  payout_hold_reason?: string | null;
+  payout_released_at?: Date | null;
   id: number;
   booking_id: number;
   booking_type: BookingType;
@@ -202,7 +206,7 @@ export async function updatePaymentTransaction(
 ): Promise<PaymentTransactionRecord | null> {
   // Get current transaction to track status changes
   const currentResult = await db.execute(sql`
-    SELECT status, refund_amount, amount
+    SELECT status, refund_amount, amount, payout_timing
     FROM payment_transactions
     WHERE id = ${transactionId}
     ${inTransaction ? sql`FOR UPDATE` : sql``}
@@ -225,6 +229,11 @@ export async function updatePaymentTransaction(
     params = { ...params, metadata: params.metadata ? { ...params.metadata } : undefined };
     if (['partially_refunded', 'refunded'].includes(previousStatus) && params.status === 'succeeded') delete params.status;
     if (params.metadata) {
+      if (current.payout_timing === 'after_closeout') {
+        delete params.metadata.payoutRelease;
+        delete params.metadata.payoutSent;
+        delete params.metadata.payoutNoEntitlement;
+      }
       delete params.metadata.refunds;
       delete params.metadata.lastRefund;
       delete params.metadata.fullRefundRequest;

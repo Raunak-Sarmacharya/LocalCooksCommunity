@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button';
 import { bookingReference } from '@/lib/booking-reference';
 import type { BookingCancelCause } from '@/lib/booking-cancel-cause';
 
-export function BookingHistoryPanel({ id, version, reference, role, timezone, cancelCause, limit }: { id: number; version: string; reference?: string | null; role: 'chef' | 'manager'; timezone?: string | null;
+export function BookingHistoryPanel({ id, version, reference, role, timezone, cancelCause, chefName, limit }: { id: number; version: string; reference?: string | null; role: 'chef' | 'manager'; timezone?: string | null;
   /** Why the request ended, when known: relabels the cancelled entry (declined, expired, withdrawn). */
   cancelCause?: BookingCancelCause | null;
+  /** The chef's name, used in the kitchen's line about a Local Cooks refund. */
+  chefName?: string | null;
   /** Show only the latest N events until "Show all" is pressed (booking page sidebar). */
   limit?: number }) {
   const { t, i18n } = useTranslation('booking');
@@ -28,6 +30,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
       return { ...data, events: [...data.events].sort(compareHistoryEvents) } as BookingHistoryResponse;
     },
   });
+  const money = (cents: number) => new Intl.NumberFormat(i18n.resolvedLanguage || 'en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(cents / 100);
   const when = (value: string, _compact = false) => timezone ? formatVisitTime(value, timezone, i18n.resolvedLanguage) : t('historyTimeUnavailable');
   return <section aria-label={t('historyTitle')} className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -50,7 +53,10 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
               <span data-testid="booking-history-dot" aria-hidden="true" className="absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full bg-primary" />
               <div className="grid min-w-0 items-start gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
                 <p className="min-w-0 break-words font-medium leading-4">{event.kind === 'cancelled' && cancelCause && ['declined', 'expired', 'withdrawn'].includes(cancelCause)
-                  ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined') : t(`historyEvents.${event.kind}` as const)}</p>
+                  ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')
+                  : event.kind === 'goodwill_refunded' && event.amountCents
+                    ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
+                    : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>
               </div>
               {event.visitId && <p className="text-muted-foreground">{t('historyVisit', { id: event.visitId })}</p>}

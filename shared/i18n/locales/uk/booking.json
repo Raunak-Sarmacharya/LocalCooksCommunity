@@ -276,6 +276,7 @@
     "cancellation_declined": "Скасування відхилено",
     "cancellation_reviewed": "Скасування прийнято",
     "refund_issued": "Повернення коштів оформлено",
+    "goodwill_refunded": "Повернення коштів від Local Cooks",
     "payment_recovery_needed": "Потрібна перевірка платежу",
     "item_withdrawn": "Додаткову послугу відкликано",
     "item_cancellation_requested": "Запитано скасування додаткової послуги",
@@ -373,5 +374,16 @@
   },
   "sheetResponseDeadline": "Кухня має відповісти до {deadline}.",
   "sheetResponseDeadlineOnPage": "На сторінці бронювання буде вказано строк відповіді кухні.",
-  "sheetPreparationLead": "Інформація про прибуття буде доступна за {hours} годин до візиту після підтвердження кухнею."
+  "sheetPreparationLead": "Інформація про прибуття буде доступна за {hours} годин до візиту після підтвердження кухнею.",
+  "historyGoodwill_chef": "Local Cooks повернула {amount}",
+  "historyGoodwill_manager": "Local Cooks надіслала {chef} повернення {amount} (ваша виплата не змінюється)",
+  "historyChefFallback": "кухарю",
+  "payoutAmount": "Ваша виплата: {amount}",
+  "payoutScheduled": "Надійде після завершення візиту (приблизно {date})",
+  "payoutAfterVisit": "Надійде після завершення візиту",
+  "payoutOnHold": "Призупинено, поки Local Cooks розглядає повідомлену проблему",
+  "payoutOnHoldReview": "Призупинено, поки Local Cooks перевіряє це бронювання",
+  "payoutSent": "Надіслано на ваш рахунок Stripe {date}",
+  "payoutSentNoDate": "Надіслано на ваш рахунок Stripe",
+  "payoutNotApplicable": "За це бронювання виплата не належить."
 }

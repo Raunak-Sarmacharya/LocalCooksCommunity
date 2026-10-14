@@ -23,8 +23,12 @@ describe.each(['en-CA', 'fr-CA', 'uk'] as const)('%s clock closeout copy', langu
     const closeout = reduceClockCloseout(booking, [], saved, new Date('2026-10-15T14:00:00Z'));
     render(<I18nextProvider i18n={i18n}><ClockCloseoutSummary closeout={closeout} manager={manager} /></I18nextProvider>);
     const copy = locales[language][manager ? 'manager' : 'chef'];
-    expect(screen.getByText(copy.clockVisitFinished)).toBeInTheDocument();
-    expect(screen.getByText(copy.clockArrivalNotRecorded)).toBeInTheDocument();
+    // A finished visit with no check-in gets one plain line for the chef, and none here for the manager
+    // (their line, with the fix-the-record link, lives in the attendance panel).
+    expect(screen.queryByText(copy.clockArrivalNotRecorded)).not.toBeInTheDocument();
+    expect(screen.queryByText(copy.clockVisitFinished)).not.toBeInTheDocument();
+    if (manager) expect(screen.queryByText(locales[language].chef.clockNoCheckinRecorded)).not.toBeInTheDocument();
+    else expect(screen.getByText(locales[language].chef.clockNoCheckinRecorded)).toBeInTheDocument();
     expect(screen.getByText(copy.clockNoInspection)).toBeInTheDocument();
     expect(screen.queryByText(copy.clockManagerInspected)).not.toBeInTheDocument();
   });

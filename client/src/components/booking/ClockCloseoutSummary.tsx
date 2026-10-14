@@ -20,12 +20,14 @@ export function ClockCloseoutSummary({ closeout, visit, manager = false, hideFin
   const day = (value: string) => new Intl.DateTimeFormat(i18n.language, { timeZone: closeout.timezone, dateStyle: 'medium' }).format(new Date(value));
   const lines = visits.filter(row => visits.length > 1 || (!hideFinished && ['booked_time_ended', 'ended'].includes(row.phase)) || !row.arrivalRecorded
     || (row.inspection.canRespond && !hideInspectionDeadline) || ['auto_closed_uninspected', 'manager_cleared', 'issue_filed'].includes(row.inspection.outcome));
+  const missed = (row: VisitCloseout) => !row.arrivalRecorded && ['booked_time_ended', 'ended'].includes(row.phase);
   if (embedded && !lines.length) return null;
   return <section aria-label={t('clockCloseoutSummary')} className={embedded ? 'space-y-2' : 'rounded-xl border bg-card p-4 space-y-3'}>
     {visits.map(row => <div key={row.key} className="space-y-1 text-sm">
       {visits.length > 1 && <p className="font-medium">{day(row.scheduledStartAt)}</p>}
-      {!hideFinished && ['booked_time_ended', 'ended'].includes(row.phase) && <p className="font-medium">{t('clockVisitFinished')}</p>}
-      {!row.arrivalRecorded && <p>{t('clockArrivalNotRecorded')}</p>}
+      {!hideFinished && !missed(row) && ['booked_time_ended', 'ended'].includes(row.phase) && <p className="font-medium">{t('clockVisitFinished')}</p>}
+      {/* Finished with no check-in: the chef gets one plain line; the manager's line (with the fix link) is in the attendance panel. */}
+      {missed(row) ? (!manager && <p>{t('clockNoCheckinRecorded')}</p>) : !row.arrivalRecorded && <p>{t('clockArrivalNotRecorded')}</p>}
       {row.inspection.canRespond && !hideInspectionDeadline && <p>{t('clockInspectionDue', { time: time(row.inspection.deadline) })}</p>}
       {row.inspection.outcome === 'auto_closed_uninspected' && <p>{t('clockNoInspection')}</p>}
       {row.inspection.outcome === 'manager_cleared' && <p>{t('clockManagerInspected')}</p>}

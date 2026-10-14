@@ -204,5 +204,14 @@
   "bookingFeedbackRate": "Rate your session",
   "bookingFeedbackFlagTitle": "Booking feedback needs a look",
   "bookingFeedbackFlagBody": "Someone shared a concern about their session. Open the booking to read their private feedback and see how we can help.",
-  "bookingFeedbackSupport": "Open booking support"
+  "bookingFeedbackSupport": "Open booking support",
+  "payoutReleasedTitle": "You’ve been paid",
+  "payoutReleasedBody": "You’ve been paid {amount} for {chef}’s booking on {date}.",
+  "payoutReleasedNext": "It’s on its way to your bank on your usual Stripe payout schedule.",
+  "payoutViewStatement": "View payout statement",
+  "payoutHeldTitle": "Your payout is on hold",
+  "payoutHeldBody": "Your payout for {reference} is on hold while Local Cooks reviews the reported issue. We’ll let you know when it’s released.",
+  "payoutViewBooking": "View booking",
+  "payoutChefFallback": "the chef",
+  "bookingDownloadFinalInvoice": "Download your final invoice"
 }

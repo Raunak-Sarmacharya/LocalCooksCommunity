@@ -4,7 +4,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { emailLogs, kitchenBookings, kitchenBookingVisits, kitchenViewings, kitchenViewingSettings, kitchens, locations, users, checkinCheckoutChecklists, kitchenCheckinCheckoutOverrides, storageBookings, storageListings } from '@shared/schema';
 import { bookingLifecycleEvents } from '@shared/schema';
-import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone, friendlyTimezoneName } from '@shared/timezone-utils';
+import { createBookingDateTime, DEFAULT_TIMEZONE, friendlyTimezoneName } from '@shared/timezone-utils';
 import { makeVisitDuties, readVisitDuties } from '@shared/visit-duties';
 import { tourDateKey, formatTourDate, formatTourSlotRange } from '@shared/tour-time';
 import { getAppBaseUrl } from '../config';
@@ -64,6 +64,23 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 export const SESSION_ENDING_MINUTES = 15;
 export const reminderKey = (r: Reminder, channel: 'email' | 'notification') =>
   `advance:${r.source}:${r.reservationId}:${r.resource}:${r.kind}:${r.recipientId}:${channel}:${r.revision}`;
+
+/** 12-hour kitchen-local clock, e.g. "12:00 p.m.". */
+export function formatVisitClock(value: Date | string, timezone: string, locale = 'en-CA') {
+  return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value));
+}
+
+/** Kitchen-local visit window, e.g. "Tue, Oct 20 · 11:00 a.m.–12:00 p.m. Newfoundland Time".
+ * The date is shown once for same-day visits and on both ends for overnight visits. */
+export function formatVisitRange(start: Date | string, end: Date | string, timezone: string, locale = 'en-CA') {
+  const from = new Date(start), to = new Date(end);
+  const day = new Intl.DateTimeFormat(locale, { timeZone: timezone, weekday: 'short', month: 'short', day: 'numeric' });
+  const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const zone = friendlyTimezoneName(timezone, locale);
+  return dayKey.format(from) === dayKey.format(to)
+    ? `${day.format(from)} · ${formatVisitClock(from, timezone, locale)}–${formatVisitClock(to, timezone, locale)} ${zone}`
+    : `${day.format(from)} · ${formatVisitClock(from, timezone, locale)} – ${day.format(to)} · ${formatVisitClock(to, timezone, locale)} ${zone}`;
+}
 
 function tourReminderAcknowledges(row: { textBody: string | null }, reminder: Reminder, channel: string) {
   try {
@@ -194,13 +211,13 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
       const release = instructionStateForVisit(block.start, policy!.preparationReminderHours!, settings.checkinWindowMinutesBefore, true, now);
       const visitPath = `/booking/${id}/visit${visit ? `?visitId=${visit.id}` : ''}`;
       const facts = `${row.kitchen.name} at ${row.location.name}. Address: ${row.location.address || 'See booking details'}. ` +
-        `Visit: ${formatInTimezone(block.start, 'yyyy-MM-dd HH:mm', timezone)}–${formatInTimezone(block.end, 'yyyy-MM-dd HH:mm', timezone)} (${friendlyTimezoneName(timezone)}). `;
+        `Visit: ${formatVisitRange(block.start, block.end, timezone)}. `;
       const tasks = [duties.arrival, duties.departure].flatMap(section => [
         ...section.items.filter(item => item.required !== false).map(item => item.label),
         ...section.photos.filter(photo => photo.required !== false).map(photo => `${photo.label} (required photo)`)]).join('; ');
       const chefReminders = visitReminders({ source, reservationId: id, resource: `kitchen-${row.kitchen.id}-visit-${block.index}`,
         recipientId: row.booking.chefId!, role: 'chef', email: chef?.username || '', timezone,
-        start: block.start.toISOString(), end: block.end.toISOString(), path: visitPath, title: `Kitchen booking #${id}`,
+        start: block.start.toISOString(), end: block.end.toISOString(), path: visitPath, title: `${row.kitchen.name} · ${row.booking.referenceCode || `#${id}`}`,
         message: facts + arrivalModeLine(mode, locale), referenceCode: row.booking.referenceCode || undefined,
         recipientName: typeof name === 'string' && name.trim() ? name.trim() : undefined,
         kitchenName: row.kitchen.name, locationName: row.location.name, address: row.location.address || undefined,
@@ -216,7 +233,10 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
           message: reminder.kind === 'preparation' ? facts + (release.instructionsReleased
             ? `${arrivalModeLine(mode, locale)} ${tEmail(locale, 'instructionsReleased')} Arrival instructions: ${duties.arrival.instructions || ''} Departure instructions: ${duties.departure.instructions || ''}. Required tasks/photos: ${tasks || 'None requested'}. Contact: ${manager?.username || 'Support'}.`
             : arrivalModeLine(mode, locale))
-            : ['arrival', 'checkin_open'].includes(reminder.kind) ? facts + `${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}` : reminder.message,
+            : reminder.kind === 'arrival' ? facts + `${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`
+            : reminder.kind === 'checkin_open' ? facts + `Check-in is now available for this visit. ${arrivalModeLine(mode, locale, true)} ${tEmail(locale, 'visitArrivalInstructionsLink')}`
+            : reminder.kind === 'departure' ? facts + `Your visit ends at ${formatVisitClock(block.end, timezone)}. Follow the departure instructions, then check out in Local Cooks.`
+            : reminder.message,
           ...(reminder.kind !== 'preparation' && reminder.kind !== 'departure' ? { arrivalNotes: undefined, departureNotes: undefined } : {}) }));
       const arrival = chefReminders.find(reminder => reminder.kind === 'arrival');
       if (!manager || !arrival) return chefReminders;

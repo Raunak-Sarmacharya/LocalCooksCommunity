@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { originalKitchenEntitlement } from '@shared/kitchen-payout';
 
 import { Router, Request, Response } from "express";
 import { db, getDbError } from "../db";
@@ -3653,7 +3654,10 @@ router.post("/transactions/:transactionId/full-refund-request/decision", require
 
         const totalAmount = Number(transaction.amount || 0);
         const alreadyRefunded = Number(transaction.refund_amount || 0);
-        const managerRevenue = Number(transaction.manager_revenue || 0);
+        const managerRevenue = transaction.payout_timing === 'after_closeout' && !transaction.transfer_id
+            ? originalKitchenEntitlement({ amount: transaction.amount, baseAmount: transaction.base_amount,
+                serviceFee: transaction.service_fee, stripeProcessingFee: transaction.stripe_processing_fee, metadata: transaction.metadata })
+            : Number(transaction.manager_revenue || 0);
         const serviceFee = Number(transaction.service_fee || 0);
         const stripeFee = Number(transaction.stripe_processing_fee || 0);
         const priorRefunds = Array.isArray(metadata.refunds) ? metadata.refunds : [];

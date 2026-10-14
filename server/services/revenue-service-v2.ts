@@ -190,14 +190,16 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(
           SUM(
             CASE 
-              WHEN pt.service_fee::numeric > 0 THEN pt.service_fee::numeric
+              WHEN pt.payout_timing = 'after_closeout' OR pt.service_fee::numeric > 0 THEN pt.service_fee::numeric
               ELSE (pt.amount::numeric - pt.manager_revenue::numeric)
             END
           ), 
           0
         )::bigint as platform_fee,
-        COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
-        COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
+        COALESCE(SUM(CASE WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
+        -- Payout after closeout: an unreleased kitchen share is "upcoming", never paid earnings.
+        COALESCE(SUM(CASE WHEN pt.status = 'succeeded' AND NOT (pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL)
+          THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
         COUNT(DISTINCT CONCAT(pt.booking_id, '-', pt.booking_type)) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as paid_booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
@@ -252,6 +254,10 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(SUM(
           CASE WHEN pt.status IN ('succeeded', 'partially_refunded') THEN
             CASE
+              WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0
+              WHEN pt.payout_timing = 'after_closeout' THEN GREATEST(0, pt.manager_revenue::numeric -
+                COALESCE((SELECT SUM((receipt->>'managerDebited')::numeric) FROM jsonb_array_elements(
+                  CASE WHEN jsonb_typeof(pt.metadata->'refunds') = 'array' THEN pt.metadata->'refunds' ELSE '[]'::jsonb END) receipt), 0))
               WHEN COALESCE(pt.manager_revenue::numeric, 0) > 0 THEN
                 GREATEST(0, pt.manager_revenue::numeric - COALESCE(pt.refund_amount::numeric, 0))
               ELSE
@@ -509,7 +515,7 @@ export async function getRevenueByLocationFromTransactions(
           ), 
           0
         )::bigint as platform_fee,
-        COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
+        COALESCE(SUM(CASE WHEN pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL THEN 0 ELSE pt.manager_revenue::numeric END), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_count
       FROM payment_transactions pt
@@ -604,7 +610,9 @@ export async function getRevenueByDateFromTransactions(
         SELECT pt.id,
           (entry.value->>'createdAt')::timestamptz AS occurred_at,
           GREATEST(0, COALESCE((entry.value->>'customerReceived')::numeric, 0)) AS customer_amount,
-          GREATEST(0, COALESCE((entry.value->>'managerDebited')::numeric, (entry.value->>'customerReceived')::numeric, 0)) AS manager_debit
+          CASE WHEN pt.payout_timing = 'after_closeout' AND (pt.transfer_id IS NULL
+            OR (entry.value->>'createdAt')::timestamptz <= pt.payout_released_at) THEN 0 ELSE
+            GREATEST(0, COALESCE((entry.value->>'managerDebited')::numeric, (entry.value->>'customerReceived')::numeric, 0)) END AS manager_debit
         FROM scoped pt
         CROSS JOIN LATERAL jsonb_array_elements(
           CASE WHEN jsonb_typeof(pt.metadata->'refunds') = 'array'
@@ -617,8 +625,12 @@ export async function getRevenueByDateFromTransactions(
       ), events AS (
         SELECT DATE(COALESCE(pt.paid_at, pt.created_at) AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) AS day,
           pt.amount::numeric AS gross, 0::numeric AS refunds,
-          pt.manager_revenue::numeric AS earnings, 0::numeric AS refund_debit, 1 AS bookings
+          CASE WHEN pt.payout_timing = 'after_closeout' THEN 0 ELSE pt.manager_revenue::numeric END AS earnings, 0::numeric AS refund_debit, 1 AS bookings
         FROM scoped pt
+        UNION ALL
+        SELECT DATE((pt.metadata->'payoutSent'->>'sentAt')::timestamptz AT TIME ZONE ${managerTimezone}),
+          0, 0, (pt.metadata->'payoutSent'->>'amountCents')::numeric, 0, 0
+        FROM scoped pt WHERE pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NOT NULL AND pt.metadata->'payoutSent' IS NOT NULL
         UNION ALL
         SELECT DATE(item.occurred_at AT TIME ZONE ${managerTimezone}),
           0, item.customer_amount, 0, item.manager_debit, 0
@@ -627,10 +639,11 @@ export async function getRevenueByDateFromTransactions(
         SELECT DATE(COALESCE(pt.refunded_at, pt.updated_at) AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}),
           0,
           GREATEST(0, LEAST(pt.amount::numeric, COALESCE(pt.refund_amount::numeric, 0)) - COALESCE(logged.customer_amount, 0)),
-          0, LEAST(
+          0, CASE WHEN pt.payout_timing = 'after_closeout' AND (pt.transfer_id IS NULL
+            OR COALESCE(pt.refunded_at, pt.updated_at) AT TIME ZONE 'UTC' <= pt.payout_released_at) THEN 0 ELSE LEAST(
             GREATEST(0, pt.manager_revenue::numeric - COALESCE(logged.manager_debit, 0)),
             GREATEST(0, LEAST(pt.amount::numeric, COALESCE(pt.refund_amount::numeric, 0)) - COALESCE(logged.customer_amount, 0))
-          ), 0
+          ) END, 0
         FROM scoped pt LEFT JOIN logged_refunds logged ON logged.id = pt.id
         WHERE COALESCE(pt.refund_amount::numeric, 0) > COALESCE(logged.customer_amount, 0)
       )

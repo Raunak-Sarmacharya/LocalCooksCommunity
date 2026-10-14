@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableName } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ booking: {} as any, payments: [] as any[], visits: [] as any[], flags: [] as any[], actions: [] as any[],
-  events: [] as any[], storage: [] as any[], equipment: [] as any[], provider: vi.fn(), goodwill: vi.fn(), queue: vi.fn(), issue: vi.fn(), database: null as any, receipts: [] as any[], codes: [] as any[], enroll: vi.fn() }));
+  events: [] as any[], storage: [] as any[], equipment: [] as any[], provider: vi.fn(), goodwill: vi.fn(), queue: vi.fn(), issue: vi.fn(), database: null as any, receipts: [] as any[], codes: [] as any[], enroll: vi.fn(), names: {} as Record<number, string>,
+  release: vi.fn(), payout: { timing: 'at_capture', status: 'sent', holdReason: null, expectedAt: null, sentAt: null, amountCents: 9680 } as any }));
 vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.select(...args), insert: (...args: any[]) => state.database.insert(...args),
   update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
 vi.mock('./booking-payment-decision', () => ({ decideAuthorizedBooking: state.provider, reconcileBookingDecision: state.provider }));
@@ -23,6 +24,8 @@ vi.mock('./advance-reminders', () => ({ reminderVisitTimes: () => [{ start: new 
 vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: async () => ({ id: 'pi_one', status: 'succeeded', amount: 10000, amount_received: 10000 }),
   getPaymentIntentRefunds: async () => state.receipts,
   getCancellationPaymentFacts: async () => ({ captured: 10000, refunded: 0, processingCost: 320 }), getBookingCheckoutSession: async () => null }));
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async (id: number) => state.names[id] ?? 'Manager' }));
+vi.mock('./kitchen-payout-service', () => ({ readKitchenPayout: async () => state.payout, releaseKitchenPayout: state.release }));
 const params = (condition: any) => condition ? new PgDialect().sqlToQuery(condition).params : [];
 const database: any = {
   transaction: async (run: any) => run(database), execute: async () => ({ rows: [] }),
@@ -178,6 +181,29 @@ describe('support operation reservation and notices', () => {
     await executeBookingSupportAction(1, 7, input());
     expect(state.goodwill).toHaveBeenCalledTimes(1); expect(JSON.stringify(result)).not.toContain('987654');
   });
+  it('offers release_payout only for an after-closeout payout held for a reported issue, never over an open flag', () => {
+    const types = () => availableSupportActions(context()).map(row => row.type);
+    expect(types()).not.toContain('release_payout');
+    Object.assign(state.payments[0], { transferId: null, payoutTiming: 'after_closeout', payoutHoldReason: 'reported_issue' });
+    expect(types()).toContain('release_payout');
+    state.flags = [{ id: 1 }]; expect(types()).not.toContain('release_payout');
+    state.flags = []; state.payments[0].payoutHoldReason = 'support_flag'; expect(types()).not.toContain('release_payout');
+    state.payments[0].payoutHoldReason = null; expect(types()).not.toContain('release_payout');
+  });
+  it('release_payout releases over the issue hold, tells the manager only and keeps an uncertain transfer in recovery', async () => {
+    Object.assign(state.payments[0], { transferId: null, payoutTiming: 'after_closeout', payoutHoldReason: 'reported_issue' });
+    state.release.mockResolvedValue({ success: true, transferred: true, transferId: 'tr_two' });
+    const result = await executeBookingSupportAction(1, 7, input('release_payout', { amountCents: undefined, reasonCode: 'internal_review' }));
+    expect(result.action.status).toBe('verified');
+    expect(state.release).toHaveBeenCalledWith(1, 'support:test-operation-1', expect.any(Date), { override: true });
+    expect(state.events.at(-1)).toMatchObject({ kind: 'support_updated', metadata: { recipientPolicy: 'manager' } });
+    expect(state.events.at(-1).message).toContain('the kitchen payout has been released');
+    state.actions = []; state.events = []; state.release.mockReset().mockRejectedValue(Error('Stripe timeout'));
+    const uncertain = await executeBookingSupportAction(1, 7, input('release_payout', { amountCents: undefined, operationKey: 'test-operation-2' }));
+    expect(uncertain.action.status).toBe('recovery_required');
+    await expect(executeBookingSupportAction(1, 7, input('release_payout', { amountCents: undefined, actingFor: 'manager', operationKey: 'test-operation-3' })))
+      .rejects.toThrow('party');
+  });
   it('refuses an unavailable action and incorrect acting-for attribution', async () => {
     state.booking.status = 'cancelled';
     await expect(executeBookingSupportAction(1, 7, input('confirm_for_manager', { actingFor: 'manager' }))).rejects.toThrow('unavailable');
@@ -189,6 +215,21 @@ describe('support operation reservation and notices', () => {
     expect(result.schedule.zoneLabel).toContain('Newfoundland');
     expect(result.paymentEvidence?.capturedCents).toBe(10000);
     expect(JSON.stringify(result)).not.toMatch(/987654|private-nonce/);
+  });
+  it('resolves both party names like the lifecycle emails and never shows an email or a role word', async () => {
+    state.names = { 4: 'Alex Rivera', 5: 'Sam Lee' };
+    let result = await readBookingSupport(1);
+    expect(result.parties.chef?.name).toBe('Alex Rivera');
+    expect(result.parties.manager?.name).toBe('Sam Lee');
+    state.names = { 4: 'alex', 5: 'Manager' };
+    result = await readBookingSupport(1);
+    expect(result.parties.chef?.name).toBeNull();
+    expect(result.parties.manager?.name).toBeNull();
+    state.names = {};
+  });
+  it('uses #id, not a made-up KB reference, when a booking has no reference code', async () => {
+    state.booking = { ...state.booking, id: 153, referenceCode: null };
+    expect((await readBookingSupport(153)).referenceCode).toBe('#153');
   });
   it('offers code reissue only for an open staffed target and requires enrollment before changing legacy arrival mode', async () => {
     state.codes = [{ targetKey: 'booking:1', mode: 'self', consumed: false, revoked: false }];

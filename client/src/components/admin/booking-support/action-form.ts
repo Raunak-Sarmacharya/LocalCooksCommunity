@@ -37,6 +37,7 @@ export const ACTION_SPECS: Record<SupportActionType, Spec> = {
   resend_notice: { acting: ANY, reasons: ["notice_not_received", "other"], fields: ["resend"], notifies: false },
   open_flag: { acting: ANY, reasons: ["internal_review", "payment_problem", "safety_concern", "other"], fields: [], notifies: false },
   resolve_flag: { acting: ANY, reasons: ["internal_review", "other"], fields: ["flag"], notifies: false },
+  release_payout: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: [], notifies: true },
 };
 
 export type ActionForm = {

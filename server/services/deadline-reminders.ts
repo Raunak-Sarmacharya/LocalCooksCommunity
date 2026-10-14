@@ -8,6 +8,14 @@ import { chefIssuesHref, managerDashboardView } from '@shared/notification-deep-
 import type { Reminder, ReminderPolicy, ReminderSource } from './advance-reminders';
 import { readVisitDuties } from '@shared/visit-duties';
 import { lifecycleSettings } from './lifecycle-settings';
+
+/** "Oct 15, 2026, 12:15 p.m. Newfoundland Time" in the kitchen's zone. */
+function friendlyDeadline(value: Date, timezone: string) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'longGeneric' }).format(value);
+  } catch { return formatInTimezone(value, 'yyyy-MM-dd HH:mm', timezone); }
+}
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Task = { source: ReminderSource; id: number; resource: string; opened: Date; deadline: Date; ownerId: number | null;
   role: 'chef' | 'manager'; timezone: string; path: string; title: string; inspection: boolean };
@@ -103,7 +111,7 @@ export async function currentDeadlineReminders(tx: Transaction, source: Reminder
     reminders.push({ source, reservationId: id, resource: task.resource, kind: 'deadline', recipientId: task.ownerId,
       role: task.role, email: person?.username || '', timezone: task.timezone, start: task.opened.toISOString(), end: task.deadline.toISOString(), due,
       revision: createHash('sha256').update(JSON.stringify([task.resource, task.opened, task.deadline, identityDue, task.ownerId, person?.username])).digest('hex'),
-      path: task.path, title: task.title, message: `${task.title}. Recorded deadline: ${formatInTimezone(task.deadline, 'yyyy-MM-dd HH:mm', task.timezone)} (${task.timezone}). Open the current task to respond or inspect. This warning does not extend the deadline, establish a charge, prove that a visit happened or confirm physical removal.`, shortVisit: false });
+      path: task.path, title: task.title, message: `${task.title}. Please respond by ${friendlyDeadline(task.deadline, task.timezone)}. Open the task to respond.`, shortVisit: false });
   }
   return reminders;
 }

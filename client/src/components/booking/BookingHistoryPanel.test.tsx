@@ -7,12 +7,12 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () =
 vi.mock('react-i18next', async () => {
   const { default: locale } = await import('../../../../shared/i18n/locales/en-CA/booking.json');
   return { useTranslation: () => ({ i18n: { resolvedLanguage: 'en-CA' }, t: (key: string, options?: any) =>
-    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)) }) };
+    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef)\}/g, (_m, key) => String(options?.[key])) }) };
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function mount(role: 'chef' | 'manager' = 'chef') {
+function mount(role: 'chef' | 'manager' = 'chef', chefName: string | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const tree = (version: string) => <QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={10} reference="KB-TEST" version={version} role={role} /></QueryClientProvider>;
+  const tree = (version: string) => <QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={10} reference="KB-TEST" version={version} role={role} chefName={chefName} /></QueryClientProvider>;
   const view = render(tree('first'));
   return { client, view, tree };
 }
@@ -92,4 +92,16 @@ it('keeps "Booking cancelled" when the cause is unknown or a post-confirmation c
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><BookingHistoryPanel timezone="America/St_Johns" id={152} version="v" role="chef" cancelCause="cancelled_after_confirmation" /></QueryClientProvider>);
   expect(await screen.findByText('Booking cancelled')).toBeInTheDocument();
+});
+
+it.each([
+  ['chef', 'Local Cooks refunded $26.00'],
+  ['manager', 'Local Cooks sent Alex a $26.00 refund (your payout is unchanged)'],
+] as const)('names a Local Cooks goodwill refund for the %s', async (role, line) => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: 'event-1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: 'payment-5', kind: 'goodwill_refunded', recordedAt: '2026-10-14T12:00:00Z', amountCents: 2600 },
+  ] }) })));
+  mount(role, 'Alex');
+  expect(await screen.findByText(line)).toBeInTheDocument();
 });

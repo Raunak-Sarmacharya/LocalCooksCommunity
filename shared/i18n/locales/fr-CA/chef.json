@@ -3393,5 +3393,17 @@
   "inspectDoneTitle": "Inspection terminée",
   "inspectDoneBody": "Vous avez terminé cette inspection le {date} à {time}. {chef} a été avisé(e).",
   "inspectDoneBodyNoTime": "Vous avez terminé cette inspection. {chef} a été avisé(e).",
-  "inspectFoundLater": "Un problème constaté plus tard? Demandez à Local Cooks de l’examiner"
+  "inspectFoundLater": "Un problème constaté plus tard? Demandez à Local Cooks de l’examiner",
+  "fixMissedManager": "{chef} ne s’est pas enregistré(e). Si cette personne est venue,",
+  "fixMissedManagerLink": "corrigez le registre de la visite.",
+  "clockNoCheckinRecorded": "Aucune arrivée n’a été enregistrée pour cette visite.",
+  "bdRefundedTotal": "Remboursé : {amount}",
+  "bdGoodwillChef": "Local Cooks vous a envoyé un remboursement de {amount}. Il peut prendre quelques jours à apparaître à votre banque.",
+  "bdGoodwillLine": "Remboursement de Local Cooks · {amount}",
+  "bdGoodwillManager": "Local Cooks a envoyé à {chef} un remboursement de {amount}. Votre versement ne change pas.",
+  "bdGoodwillManagerDetail": "Local Cooks a payé ce remboursement elle-même, donc le versement de la cuisine pour cette réservation reste le même.",
+  "bdPaidSummaryManagerHeld": "Le chef a payé. Votre versement est envoyé après la clôture de la visite.",
+  "bdPaidDetailManagerHeld": "Local Cooks conserve le paiement jusqu’à la clôture de la visite et au règlement de tout problème signalé, puis envoie votre part à votre compte Stripe.",
+  "bdDownloadFinalInvoice": "Télécharger la facture finale",
+  "finalInvoiceTitle": "FACTURE FINALE"
 }

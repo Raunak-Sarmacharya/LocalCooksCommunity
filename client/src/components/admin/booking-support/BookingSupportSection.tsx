@@ -32,6 +32,7 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<AvailableSupportAction | null>(null);
+  const [doneLabel, setDoneLabel] = useState<string | null>(null);
 
   useEffect(() => {
     const handle = setTimeout(() => setQuery(text.trim()), 350);
@@ -51,7 +52,7 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
   });
 
   const open = (id: number) => { setBookingId(id); setBookingParam(id); };
-  const back = () => { setBookingId(null); setBookingParam(null); setChosen(null); };
+  const back = () => { setDoneLabel(null); setBookingId(null); setBookingParam(null); setChosen(null); };
   const replaceCase = (next: SupportCase) => queryClient.setQueryData(["/api/admin/booking-support/case", next.bookingId], next);
 
   if (bookingId === null) {
@@ -98,17 +99,18 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
   const c = caseQuery.data;
   return (
     <div className="space-y-4">
+      {doneLabel && <p role="status" data-testid="action-done" className="rounded-xl border border-success/40 bg-success/10 p-3 text-sm font-medium">{t("bsToastDone", { action: doneLabel })}</p>}
       <CaseHeader c={c} onBack={back} onRefresh={() => void caseQuery.refetch()} refreshing={caseQuery.isFetching} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_20rem] xl:items-start">
         <div className="order-1 md:col-span-2 xl:order-3 xl:col-span-1">
-          <ActionPanel actions={c.availableActions} supportActions={c.supportActions} onChoose={setChosen} />
+          <ActionPanel actions={c.availableActions} supportActions={c.supportActions} onChoose={(action) => { setDoneLabel(null); setChosen(action); }} />
         </div>
         <div className="order-2 space-y-4 xl:order-1">
           <MoneyCard c={c} /><DeadlinesCard c={c} /><FeedbackCard c={c} getFirebaseToken={getFirebaseToken} /><VisitCodesCard c={c} /><PaymentEvidenceCard c={c} />
         </div>
         <div className="order-3 min-w-0 xl:order-2"><Chronology c={c} /></div>
       </div>
-      <ActionDialog action={chosen} supportCase={c} getFirebaseToken={getFirebaseToken} onClose={() => setChosen(null)} onCaseUpdated={replaceCase} />
+      <ActionDialog action={chosen} supportCase={c} getFirebaseToken={getFirebaseToken} onClose={() => setChosen(null)} onCaseUpdated={replaceCase} onDone={setDoneLabel} />
     </div>
   );
 }

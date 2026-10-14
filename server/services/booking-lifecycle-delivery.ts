@@ -19,6 +19,7 @@ import { deliveryReserve, deliveryLeaseMs } from './worker-context';
 import { isPermanentRecipientRejection } from './bounded-smtp';
 import { closeoutNoticeKinds, currentCloseoutEmail, type CloseoutNoticeKind } from './closeout-notice-email';
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
+import { kitchenPayoutNotice } from './kitchen-payout-notice';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Email = { key: string; to: string; url: string; adminRecipient?: boolean; content?: Parameters<typeof sendEmail>[0]; confirmation?: Parameters<typeof generateBookingConfirmationEmail>[0]; afterFailedAttempts?: boolean; facts?: ReturnType<typeof bookingEmailFacts>; locale?: string | null; recipientName?: string };
@@ -229,15 +230,23 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       + (kind === 'feedback_requested' ? '#feedback' : '');
     const feedbackCopy = ['feedback_requested', 'feedback_flagged'].includes(kind)
       ? (await import('./booking-feedback-service')).bookingFeedbackNoticeCopy(kind, context.kitchenName, person.locale) : undefined;
+    // Manager-only payout notices (payout after closeout); the operating date is a calendar date, read in UTC.
+    const payoutCopy = kind === 'payout_released' || kind === 'payout_on_hold' ? await kitchenPayoutNotice(kind, person.locale,
+      { reference: String(metadata.reference || context.referenceCode || `#${bookingId}`), amountCents: Number(metadata.amountCents || 0),
+        chef: nameOf(context.chefId) || null, date: context.bookingDate, timezone: 'UTC' }) : undefined;
     // A producer may word the in-app notice per role; email content is rendered separately.
     const roleText = (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     if (!arrivalNotice) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: feedbackCopy?.title ?? roleText?.title ?? title, message: feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
+      title: payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
     if ((arrivalNotice || person.email && operationalEmailAllowed(person)) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
+        ...(payoutCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
+          subject: payoutCopy.title, heading: payoutCopy.title, message: payoutCopy.message, facts: [], actionLabel: payoutCopy.actionLabel,
+          // The booking page holds the per-booking payout statement download (the API route needs an app session).
+          actionUrl: kind === 'payout_released' ? `${url}#booking-payment-title` : url }) } : {}),
         ...(metadata.requestExpired ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
           subject: roleText?.title ?? title, heading: roleText?.title ?? title, message: roleText?.message ?? message, facts: [],
           actionLabel: chef ? 'Find another time' : 'View booking', actionUrl: chef ? `${getAppBaseUrl('chef')}${metadata.kitchenPath}` : url }) } : {}),

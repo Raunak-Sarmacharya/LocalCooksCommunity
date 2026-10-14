@@ -125,3 +125,22 @@ it.each(['pending', 'cancelled'])('hides an unused visit card for %s bookings', 
   const { client } = mount({ data: { ...record, status } }); await waitFor(() => expect(client.isFetching()).toBe(0));
   expect(screen.queryByRole('heading', { name: 'Visit record' })).not.toBeInTheDocument();
 });
+const endedClock = { ...clock, visits: [{ ...clock.visits[0], phase: 'ended' }] };
+it('says once, in plain words, that a finished visit has no check-in, and the link opens the fix dialog', async () => {
+  mount({ closeout: endedClock });
+  const line = await screen.findByTestId('visit-no-checkin');
+  expect(line).toHaveTextContent('Alex didn’t check in. If they came, fix the visit record.');
+  expect(screen.queryByText('No check-in recorded yet')).not.toBeInTheDocument();
+  fireEvent.click(within(line).getByRole('button', { name: 'fix the visit record.' }));
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+});
+it('leaves the chef line to the visit summary and does not show the manager line to a chef', async () => {
+  mount({ closeout: endedClock, manager: false });
+  await waitFor(() => expect(screen.queryByText('No check-in recorded yet')).not.toBeInTheDocument());
+  expect(screen.queryByTestId('visit-no-checkin')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('visit-record-status')).not.toBeInTheDocument();
+});
+it('keeps "No check-in recorded yet" while the visit has not ended', async () => {
+  mount();
+  expect(await screen.findByText('No check-in recorded yet')).toBeInTheDocument();
+});

@@ -1,4 +1,5 @@
 import { ct } from '@/i18n/chef-ns';
+import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus';
 import { ClockCloseoutSummary } from "@/components/booking/ClockCloseoutSummary";
 import { bookingStatusLabel } from "@/components/booking/booking-status-label";
 import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
@@ -34,7 +35,7 @@ import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, 
 import { arrivalRecorded, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canCancelOrChange, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
 import { bookingReference } from '@/lib/booking-reference';
-import { calendarDateKey } from '@/lib/calendar-date';
+import { bookingStartDateKey, calendarDateKey } from '@/lib/calendar-date';
 import { bookingIcs, downloadBookingIcs } from "@/lib/booking-ics";
 import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown } from "@shared/booking-pricing-breakdown";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -59,6 +60,7 @@ import { CheckinPolicyTimesCard } from "@/components/booking/CheckinPolicyTimesC
 import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
 
 interface BookingDetails {
+  payout?: import('@shared/kitchen-payout').KitchenPayout;
   closeout?: import("@shared/clock-closeout").BookingCloseout;
   id: number;
   referenceCode?: string | null;
@@ -155,6 +157,8 @@ interface BookingDetails {
     estimatedManagerPayout?: number;
     paidAt?: string;
     refundAmount?: number;
+    /** Part of refundAmount that Local Cooks sent as goodwill; the kitchen payout is unchanged by it. */
+    goodwillRefundCents?: number;
     netAmount?: number;
     refundedAt?: string;
     refundReason?: string;
@@ -532,11 +536,28 @@ export default function BookingDetailsPage() {
     const status = booking.paymentStatus;
     if (status === 'authorized') return { summary: isManagerView ? t('bdPaymentHeldSummaryManager') : t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
     if (status === 'failed' && booking.status === 'cancelled') return { summary: isManagerView ? t('bdAuthVoidedSummaryManager') : t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
+    const goodwill = booking.paymentTransaction?.goodwillRefundCents || 0;
+    if (goodwill > 0 && (status === 'refunded' || status === 'partially_refunded')) {
+      const total = Math.max(booking.paymentTransaction?.refundAmount || 0, goodwill);
+      const other = total - goodwill;
+      const chefLabel = booking.chef?.fullName || booking.chef?.username || t('bdhChefFallback');
+      return isManagerView ? {
+        // Visible on the card itself (the detail sits in a popover): the payout does not change.
+        summary: t('bdGoodwillManager', { chef: chefLabel, amount: formatCurrency(goodwill) }),
+        detail: other > 0 ? t('bdRefundedToChef', { amount: formatCurrency(other) }) : t('bdGoodwillManagerDetail'),
+      } : {
+        summary: t('bdRefundedTotal', { amount: formatCurrency(total) }),
+        detail: other > 0 ? t('bdRefundedYou', { amount: formatCurrency(total) }) : t('bdGoodwillChef', { amount: formatCurrency(goodwill) }),
+      };
+    }
     if (status === 'refunded' || status === 'partially_refunded') return {
       summary: status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
       detail: `${booking.paymentTransaction?.refundAmount ? (isManagerView ? t('bdRefundedToChef', { amount: formatCurrency(booking.paymentTransaction.refundAmount) }) : t('bdRefundedYou', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
     };
     if (status === 'paid' && booking.status === 'cancelled') return { summary: t('bdCancelledPaidSummary', { defaultValue: 'Your booking was cancelled after payment.' }), detail: t(isManagerView ? 'bdBookingCancelledManager' : 'bdBookingCancelledChef') };
+    // Payout after closeout: the chef has paid, but the kitchen's share is not the kitchen's money until it is sent.
+    if (status === 'paid' && isManagerView && booking.payout?.timing === 'after_closeout' && booking.payout.status !== 'sent')
+      return { summary: t('bdPaidSummaryManagerHeld'), detail: t('bdPaidDetailManagerHeld') };
     if (status === 'paid') return { summary: isManagerView ? t('bdPaidSummaryManager') : t('bdPaidSummary', { defaultValue: 'Your payment was collected.' }), detail: t('bdPaymentCapturedInfo', { defaultValue: 'Your payment has been captured for this booking.' }) };
     if (status === 'processing') return { summary: t('bdProcessingSummary', { defaultValue: 'Your payment is processing.' }), detail: t('bdPaymentProcessingInfo', { defaultValue: 'Your payment is being processed. This page will show the final status once it is available.' }) };
     if (status === 'pending') return { summary: t('bdPendingSummary', { defaultValue: 'Your payment is pending.' }), detail: t('bdPaymentPendingInfo', { defaultValue: 'Payment has not been completed yet.' }) };
@@ -561,6 +582,7 @@ export default function BookingDetailsPage() {
   const isPartiallyRefunded = booking?.paymentStatus === 'partially_refunded';
   const hasRefund = isRefunded || isPartiallyRefunded;
   const refundAmount = booking?.paymentTransaction?.refundAmount || 0;
+  const goodwillRefund = booking?.paymentTransaction?.goodwillRefundCents || 0;
 
   // Helper: item was voided (never charged — exclude from totals)
   const isItemVoided = (item: { paymentStatus?: string; status: string }) =>
@@ -634,7 +656,8 @@ export default function BookingDetailsPage() {
         ? null
         : booking.paymentTransaction?.managerRevenue,
       chargeAmountCents: booking.paymentTransaction?.amount,
-      refundAmountCents: booking.paymentTransaction?.refundAmount || 0,
+      // Local Cooks goodwill never reduces the kitchen's payout.
+      refundAmountCents: Math.max(0, (booking.paymentTransaction?.refundAmount || 0) - (isManagerView ? goodwillRefund : 0)),
       hourlyRateCents: booking.hourlyRate,
       bookedHours: booking.durationHours,
       showPaymentProcessorFee: stripeFee > 0,
@@ -865,7 +888,7 @@ export default function BookingDetailsPage() {
     managerRemainingBalance: Math.max(
       0,
       (booking.paymentTransaction?.managerRevenue || 0) -
-        (booking.paymentTransaction?.refundAmount || 0),
+        Math.max(0, (booking.paymentTransaction?.refundAmount || 0) - goodwillRefund),
     ),
     refundAmount: booking.paymentTransaction?.refundAmount || 0,
     cancellationRequested: booking.status === 'cancellation_requested',
@@ -1100,7 +1123,7 @@ export default function BookingDetailsPage() {
   const paymentHeadline = (() => {
     if (!booking?.paymentTransaction || !pricingBreakdownInput || booking.paymentDecision?.state === 'pending'
       || (booking.paymentStatus === 'failed' && booking.status === 'cancelled')) return null;
-    if (isManagerView) return { label: payoutTitle, cents: buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents, struck: false };
+    if (isManagerView) return { label: payoutTitle, cents: booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents, struck: false };
     return { label: booking.paymentStatus === 'authorized' ? t('bdhOnHold') : t('bdhTotalPaid'), cents: buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
   })();
   const renderChefCheckinPolicy = (startTime: string) => {
@@ -1232,7 +1255,7 @@ export default function BookingDetailsPage() {
 
   const whenLine = booking ? [
     visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
-      : new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
+      : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
     timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
     t('bdHours', { count: calculateDuration() }),
     tz ? friendlyTimezoneName(tz, lang) : null,
@@ -1270,7 +1293,7 @@ export default function BookingDetailsPage() {
     if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
     menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => setFixOpen(true) });
   }
-  if (canDownload) menuItems.push({ key: 'download', label: isManagerView ? t('bdDownloadPayoutStatement') : t('bdDownloadReceipt'), icon: Download, onSelect: () => void handleDownloadInvoice() });
+  if (canDownload) menuItems.push({ key: 'download', label: isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt'), icon: Download, onSelect: () => void handleDownloadInvoice() });
   menuItems.push({ key: 'help', label: t('bdhGetHelp'), icon: LifeBuoy, onSelect: goToHelp });
   const hasBottomBar = !!primary || messageAllowed;
 
@@ -1502,7 +1525,7 @@ export default function BookingDetailsPage() {
             <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-xs text-muted-foreground">{t('bdDate')}</dt>
-                <dd className="mt-0.5 font-medium">{formatDate(booking.bookingDate)}</dd>
+                <dd className="mt-0.5 font-medium">{formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">{t('bdTime')}</dt>
@@ -1639,6 +1662,7 @@ export default function BookingDetailsPage() {
           <section className={sectionClass} aria-labelledby="booking-payment-title" data-testid="payment-card">
             {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
             <h2 id="booking-payment-title" className={headingClass}>{t('bdPaymentSection')}</h2>
+            {isManagerView && booking.payout?.timing === 'after_closeout' && <KitchenPayoutStatus payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} />}
             {paymentHeadline && (
               <div className="mt-3">
                 <p className="text-xs text-muted-foreground">{paymentHeadline.label}</p>
@@ -1762,13 +1786,18 @@ export default function BookingDetailsPage() {
 
               </>)}
 
-              {!isManagerView && refundAmount > 0 && (
+              {!isManagerView && goodwillRefund > 0 && (
+                <div className="flex items-center justify-between gap-2 text-sm text-warning" data-testid="goodwill-line">
+                  <span>{t("bdGoodwillLine", { amount: formatCurrency(goodwillRefund) })}</span>
+                </div>
+              )}
+              {!isManagerView && refundAmount - goodwillRefund > 0 && (
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="inline-flex items-center gap-1 text-warning">
                     {t("bdRefundedLine")}
                     <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
                   </span>
-                  <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
+                  <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount - goodwillRefund)}</span>
                 </div>
               )}
             </div>
@@ -1780,7 +1809,7 @@ export default function BookingDetailsPage() {
                 {canDownload && (
                   <Button onClick={handleDownloadInvoice} disabled={isDownloading} variant="outline" className="w-full" size="sm">
                     {isDownloading ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t("bdGenerating")}</>
-                      : <><Download className="mr-1.5 h-3.5 w-3.5" />{isManagerView ? t("bdDownloadPayoutStatement") : t("bdDownloadReceipt")}</>}
+                      : <><Download className="mr-1.5 h-3.5 w-3.5" />{isManagerView ? t("bdDownloadPayoutStatement") : t(booking.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt')}</>}
                   </Button>
                 )}
                 {showRefundReview && (
@@ -1805,7 +1834,7 @@ export default function BookingDetailsPage() {
           {!isManagerView && (
             <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
               summary={{ kitchenName, reference: booking.referenceCode || undefined,
-                schedule: `${formatDate(booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
+                schedule: `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
                 amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
               cancellationDeadline={cancellationDeadlineText}
               decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
@@ -1817,7 +1846,7 @@ export default function BookingDetailsPage() {
               onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
           )}
 
-          <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} version={booking.updatedAt || booking.createdAt} limit={3} />
+          <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || booking.chef?.username || null} version={booking.updatedAt || booking.createdAt} limit={3} />
 
           <Card id="booking-support" className="scroll-mt-24 rounded-2xl border-border shadow-none">
             <CardContent className="p-5 sm:p-6">

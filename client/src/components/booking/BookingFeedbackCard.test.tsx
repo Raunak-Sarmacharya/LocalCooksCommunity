@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import locale from '../../../../shared/i18n/locales/en-CA/booking.json';
@@ -65,6 +65,17 @@ describe('private booking feedback card', () => {
   it('shows a mobile sheet after tapping a star', async () => {
     mobile.value = true; mount(); fireEvent.click(await screen.findByRole('radio', { name: '3 out of 5 stars' }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Send feedback' })).toBeInTheDocument();
+  });
+  it('says the privacy line once in the mobile sheet, above the button', async () => {
+    mobile.value = true; mount(); fireEvent.click(await screen.findByRole('radio', { name: '3 out of 5 stars' }));
+    const dialog = await screen.findByRole('dialog');
+    const lines = within(dialog).getAllByText(/private|only/i).filter(node => node.tagName === 'P');
+    const privacy = dialog.querySelectorAll('[id$="-privacy"]');
+    expect(privacy).toHaveLength(1);
+    expect(lines.length).toBeGreaterThan(0);
+    const send = within(dialog).getByRole('button', { name: 'Send feedback' });
+    expect(privacy[0].compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(dialog).getAllByText(privacy[0].textContent!)).toHaveLength(1);
   });
   it('keeps the form and a localized error on failed submission', async () => {
     mount('chef', initial, false); fireEvent.click(await screen.findByRole('radio', { name: '4 out of 5 stars' }));
