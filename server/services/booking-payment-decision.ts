@@ -263,14 +263,14 @@ async function requestOutcome(tx: any, booking: { chefId: number | null; kitchen
   const when = [date, time].filter(Boolean).join(', ') || 'your requested time';
   const released = 'Your card hold has been released — you weren’t charged.';
   const roleText = kind === 'withdrawn' ? {
-    chef: { title: 'Request withdrawn', message: `You withdrew your request for ${kitchenName} on ${when}. ${released}` },
-    manager: { title: `${chefName} withdrew their request`, message: `${chefName} withdrew the request for ${when}. No action is needed.` },
+    chef: { title: 'Request withdrawn', message: `You withdrew your request for ${kitchenName} on ${when} — ${released.charAt(0).toLowerCase()}${released.slice(1)}` },
+    manager: { title: `${chefName} withdrew their request`, message: `${chefName} withdrew the request for ${when} — no action is needed.` },
   } : kind === 'support' ? {
-    chef: { title: 'Request released by Local Cooks', message: `Local Cooks released your request for ${kitchenName} on ${when}. ${released}` },
-    manager: { title: `Request released by Local Cooks`, message: `Local Cooks released ${chefName}’s request for ${when}. No action is needed.` },
+    chef: { title: 'Request released by Local Cooks', message: `Local Cooks released your request for ${kitchenName} on ${when} — ${released.charAt(0).toLowerCase()}${released.slice(1)}` },
+    manager: { title: `Request released by Local Cooks`, message: `Local Cooks released ${chefName}’s request for ${when} — no action is needed.` },
   } : {
-    chef: { title: `${kitchenName} couldn’t take your request`, message: `Your request for ${when} wasn’t accepted. ${released}`, actionLabel: 'Find another time' },
-    manager: { title: `You declined ${chefName}’s request`, message: `${when}. Their card hold was released.` },
+    chef: { title: `${kitchenName} couldn’t take your request`, message: `Your request for ${when} wasn’t accepted — ${released.charAt(0).toLowerCase()}${released.slice(1)}`, actionLabel: 'Find another time' },
+    manager: { title: `You declined ${chefName}’s request`, message: `Request for ${when} — their card hold was released.` },
   };
   return { kind, roleText };
 }

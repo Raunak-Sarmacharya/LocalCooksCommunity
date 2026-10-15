@@ -327,7 +327,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (adminCopy || metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
-        ...(closedCopy || metadata.cancellationNotice ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
+        ...(closedCopy || metadata.cancellationNotice || metadata.requestOutcome ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
           recipientName: nameOf(person.id), subject: closedCopy?.title ?? roleText?.title ?? title,
           heading: closedCopy?.title ?? roleText?.title ?? title, message: closedCopy?.message ?? roleText?.message ?? message,
           facts: [], actionLabel: roleActionLabel || 'View booking', actionUrl: url }) } : {}),
