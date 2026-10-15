@@ -16,7 +16,7 @@ import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { formatCurrency, formatHourSlotRange, formatTime as formatClockTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { BookingStorageSelector } from "./BookingStorageSelector";
-import { BookingPriceSummary, FeesInfoPopover } from "./BookingPriceSummary";
+import { BookingPriceSummary } from "./BookingPriceSummary";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -109,6 +109,8 @@ function InventoryPreviewList({
   items,
   rental,
   columns = 2,
+  selectedIds = [],
+  onToggle,
 }: {
   title: string;
   subtitle: string;
@@ -116,7 +118,10 @@ function InventoryPreviewList({
   rental: boolean;
   /** Item grid columns within this list (default 2 for modals). */
   columns?: 1 | 2;
+  selectedIds?: number[];
+  onToggle?: (id: number) => void;
 }) {
+  const { t } = useTranslation("booking");
   return (
     <section className="min-w-0">
       <div className="mb-1">
@@ -147,6 +152,12 @@ function InventoryPreviewList({
                 {rental ? `${formatCurrency(equipment.sessionRate || 0)} per session` : "Included"}
               </span>
             </span>
+            {rental && onToggle && <Button type="button" variant="outline" className="min-h-11 shrink-0"
+              aria-pressed={selectedIds.includes(equipment.id)}
+              aria-label={`${t(selectedIds.includes(equipment.id) ? "wfbRemove" : "wfbAdd")} ${equipmentName(equipment)}`}
+              onClick={() => onToggle(equipment.id)}>
+              {t(selectedIds.includes(equipment.id) ? "wfbRemove" : "wfbAdd")}
+            </Button>}
           </li>
         ))}
       </ul>
@@ -1118,7 +1129,9 @@ export default function KitchenBookingFlow({
       const zone = kitchenPricing?.timezone || DEFAULT_TIMEZONE;
       return formatResponseDeadline(responseDeadlineForBooking({ createdAt: new Date(), status: 'pending',
         bookingDate: toLocalDateString(selectedDate), startTime: orderedSelectedSlots[0], endTime: addHour(orderedSelectedSlots.at(-1)!),
-        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time }, zone, kitchenPricing?.managerResponseBufferHours), i18n.language, zone);
+        selectedSlots: orderedSelectedSlots, operatingWindowStartTime: allSlots[0]?.time,
+        // Same frozen policy the server uses: the kitchen must answer before the chef's free cancellation ends.
+        cancellationPolicyHours: acceptedPolicy?.policy.noticeHours ?? null }, zone, kitchenPricing?.managerResponseBufferHours), i18n.language, zone);
     } catch { return null; }
   })();
   const hoursUntilVisit = (() => {
@@ -1571,11 +1584,11 @@ export default function KitchenBookingFlow({
                         "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
                         isSelected && "bg-[#F51042] text-white border-[#F51042]",
                         !isSelected && !isFullyBooked && "bg-white text-gray-700 border-gray-200 hover:border-[#F51042]/40",
-                        isFullyBooked && "bg-muted/50 text-muted-foreground/50 cursor-not-allowed border-transparent line-through"
+                        isFullyBooked && "bg-muted/50 text-muted-foreground cursor-not-allowed border-transparent"
                       )}
                     >
                       <span>
-                        {formatSlotRange(slot.time)}
+                        {formatSlotRange(slot.time)}{slot.isFullyBooked && <span className="ml-1 text-xs no-underline"> · {t("wfbBooked")}</span>}
                         {slot.capacity > 1 && !isFullyBooked ? (
                           <span className={cn("ml-1.5", isSelected ? "text-white/80" : "text-muted-foreground")}>
                             · {t("sheetSlotsLeft", { count: slot.available, defaultValue: `${slot.available} left` })}
@@ -1614,7 +1627,8 @@ export default function KitchenBookingFlow({
             <Button
               type="button"
               size="sm"
-              className={chefPrimaryCtaClass("shrink-0")}
+              variant="outline"
+              className={chefOutlineCtaClass("min-h-11 shrink-0")}
               onClick={() => {
                 setEquipmentInventoryModal(null);
                 setPendingEquipmentIds(selectedEquipmentIds);
@@ -1669,6 +1683,8 @@ export default function KitchenBookingFlow({
                     title={t("sheetOptionalRentalsLabel", "Optional rentals")}
                     subtitle={t("sheetRentalEquipmentDesc", "Optional rentals for this kitchen session.")}
                     items={rentalPreview}
+                    selectedIds={selectedEquipmentIds}
+                    onToggle={(id) => setSelectedEquipmentIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
                     rental
                     columns={1}
                   />
@@ -1860,10 +1876,7 @@ export default function KitchenBookingFlow({
                   </p>
                   <p className="text-sm font-semibold text-gray-900">{bookingTimeBlocks.join(', ')}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
-                    {t("sheetHoursCount", {
-                      count: selectedSlots.length,
-                      defaultValue: `${selectedSlots.length} hour${selectedSlots.length > 1 ? "s" : ""}`,
-                    })}
+                    {t("sheetHoursCount", { count: selectedSlots.length, defaultValue: `${selectedSlots.length} hours` })}
                   </p>
                 </div>
               </div>
@@ -1880,23 +1893,15 @@ export default function KitchenBookingFlow({
               </button>
             </div>
 
-            {hasEquipment ? (
+            {hasEquipment && selectedEquipmentIds.length > 0 ? (
               <div className="flex items-start justify-between gap-3 px-4 py-3.5">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {selectedEquipmentIds.length > 0
-                      ? t("sheetEquipmentLineLabel", {
-                          count: selectedEquipmentIds.length,
-                          defaultValue: `Equipment (${selectedEquipmentIds.length})`,
-                        })
-                      : t("sheetNoRentalsSelected", "No rentals selected")}
-                    {selectedEquipmentIds.length > 0 ? (
-                      <span className="ml-2 font-medium text-gray-900">
-                        {formatCurrency(equipmentPricing.subtotal)}
-                      </span>
-                    ) : null}
-                  </p>
+                  <div className="mt-1 space-y-1 text-sm text-muted-foreground">
+                    {equipmentPricing.items.length ? equipmentPricing.items.map((item, index) => <div key={index} className="flex justify-between gap-4">
+                      <span>{item.name}</span><span className="shrink-0 tabular-nums">{formatCurrency(item.rate)}</span>
+                    </div>) : t("sheetNoRentalsSelected")}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1913,23 +1918,15 @@ export default function KitchenBookingFlow({
               </div>
             ) : null}
 
-            {hasStorage ? (
+            {hasStorage && selectedStorage.length > 0 ? (
               <div className="flex items-start justify-between gap-3 px-4 py-3.5">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">{t("sheetStepStorage", "Storage")}</p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {selectedStorage.length > 0
-                      ? t("sheetStorageLineLabel", {
-                          count: selectedStorage.length,
-                          defaultValue: `Storage (${selectedStorage.length})`,
-                        })
-                      : t("sheetNoStorageSelected", "No storage selected")}
-                    {selectedStorage.length > 0 ? (
-                      <span className="ml-2 font-medium text-gray-900">
-                        {formatCurrency(storagePricing.subtotal)}
-                      </span>
-                    ) : null}
-                  </p>
+                  <div className="mt-1 space-y-1 text-sm text-muted-foreground">
+                    {storagePricing.items.length ? storagePricing.items.map((item, index) => <div key={index} className="flex justify-between gap-4">
+                      <span>{item.listing.name}</span><span className="shrink-0 tabular-nums">{formatCurrency(item.basePrice)}</span>
+                    </div>) : t("sheetNoStorageSelected")}
+                  </div>
                 </div>
                 <button type="button" className={editLinkClass} onClick={() => setStorageModalOpen(true)}>
                   <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
@@ -1988,12 +1985,17 @@ export default function KitchenBookingFlow({
         );
       }
       return (
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-muted-foreground">{t("sheetTotalLabel", "Total")}</span>
-          <span className="text-base font-semibold text-[#F51042]">
-            {formatCurrency(grandTotal)} {kitchenPricing?.currency || "CAD"}
-          </span>
-        </div>
+        <details className="mb-3 text-sm">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3">
+            <span className="underline underline-offset-4">{t("bpsPriceBreakdown")}</span>
+            <span className="font-semibold tabular-nums">{formatCurrency(grandTotal)} {kitchenPricing?.currency || "CAD"}</span>
+          </summary>
+          <BookingPriceSummary kitchenSubtotal={estimatedPrice?.basePrice || 0} equipmentSubtotal={equipmentPricing.subtotal}
+            storageSubtotal={storagePricing.subtotal} taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
+            serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || "CAD"}
+            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
+            storageItems={storagePricing.items.map(item => ({ name: item.listing.name, priceCents: item.basePrice }))} />
+        </details>
       );
     }
 
@@ -2066,62 +2068,17 @@ export default function KitchenBookingFlow({
                 )}
               </div>
             )}
-            {selectedSlots.length > 0 && estimatedPrice && (
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">
-                  {bookingRateMode === "daily"
-                    ? t("sheetFullDayKitchenItem", "Full-day kitchen booking")
-                    : t("sheetKitchenTimeItem", {
-                        count: estimatedPrice.durationHours,
-                        defaultValue: `${estimatedPrice.durationHours} hour${estimatedPrice.durationHours > 1 ? "s" : ""} kitchen time`,
-                      })}
-                </span>
-                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(estimatedPrice.basePrice)}</span>
-              </div>
-            )}
-            {selectedEquipmentIds.length > 0 && (
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">
-                  {t("sheetEquipmentRentalsItem", {
-                    count: selectedEquipmentIds.length,
-                    defaultValue: `${selectedEquipmentIds.length} equipment`,
-                  })}
-                </span>
-                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(equipmentPricing.subtotal)}</span>
-              </div>
-            )}
-            {selectedStorage.length > 0 && (
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">
-                  {t("sheetStorageReservationsItem", {
-                    count: selectedStorage.length,
-                    defaultValue: `${selectedStorage.length} storage`,
-                  })}
-                </span>
-                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(storagePricing.subtotal)}</span>
-              </div>
-            )}
-            {(tax > 0 || serviceFee > 0) && (
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">
-                  {t("sheetTaxesAndFees", "Taxes & non-govt. fees")}
-                  <FeesInfoPopover
-                    tax={tax}
-                    serviceFee={serviceFee}
-                    taxRatePercent={selectedKitchen?.taxRatePercent || 0}
-                    serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
-                  />
-                </span>
-                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(tax + serviceFee)}</span>
-              </div>
-            )}
-            <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
-              <span className="text-sm font-semibold">{t("sheetTotalLabel", "Total")}</span>
-              <span className="text-base font-semibold text-[#F51042] tabular-nums">
-                {formatCurrency(grandTotal)}{" "}
-                <span className="text-sm font-medium text-muted-foreground">{kitchenPricing?.currency || "CAD"}</span>
-              </span>
-            </div>
+            <BookingPriceSummary
+              kitchenSubtotal={estimatedPrice?.basePrice || 0}
+              equipmentSubtotal={equipmentPricing.subtotal}
+              storageSubtotal={storagePricing.subtotal}
+              equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
+              storageItems={storagePricing.items.map(item => ({ name: item.listing.name, priceCents: item.basePrice }))}
+              taxRatePercent={selectedKitchen?.taxRatePercent || 0}
+              taxLabel={selectedKitchen?.taxLabel}
+              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
+              currency={kitchenPricing?.currency || "CAD"}
+            />
           </div>
         )}
       </div>
@@ -2191,7 +2148,7 @@ export default function KitchenBookingFlow({
     <Button
       type="button"
       variant="outline"
-      className={chefOutlineCtaClass("min-h-[44px] flex-1")}
+      className={chefOutlineCtaClass("min-h-[44px] min-w-0 flex-1 px-3 sm:px-5")}
       onClick={goToPreviousStep}
       disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}
     >
@@ -2247,11 +2204,11 @@ export default function KitchenBookingFlow({
         <div className="space-y-3">
           <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>
           {grandTotal > 0 && <CheckoutCancellationDisclosure policy={acceptedPolicy} startAt={policyStartAt} acknowledged={policyAcknowledged} onAcknowledged={setPolicyAcknowledged} />}
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:flex [&>button:first-child]:col-span-2 [&>button:first-child]:sm:col-auto">
             {cancelButton}
             {previousButton}
             <Button
-              className={chefPrimaryCtaClass("flex-1 min-h-[44px]")}
+              className={chefPrimaryCtaClass("min-w-0 flex-1 min-h-[44px] px-3 sm:px-5")}
               // Guarded rather than disabled: an unverified chef gets the gate with
               // a way forward instead of a dead button.
               onClick={() =>
@@ -2292,11 +2249,11 @@ export default function KitchenBookingFlow({
       return (
         <>
           <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:flex [&>button:first-child]:col-span-2 [&>button:first-child]:sm:col-auto">
             {cancelButton}
             {previousButton}
             <Button
-              className={chefPrimaryCtaClass("min-h-[44px] flex-1")}
+              className={chefPrimaryCtaClass(cn("min-h-[44px] min-w-0 flex-1 px-3 sm:px-5", !canGoPrevious && "col-span-2 sm:col-auto"))}
               onClick={goToNextStep}
               disabled={continueDisabled}
             >
@@ -2335,10 +2292,11 @@ export default function KitchenBookingFlow({
                 >
                   <StepperTrigger
                     tabIndex={-1}
+                    aria-label={step.label}
                     className="pointer-events-none flex shrink-0 items-start justify-start gap-1.5 rounded-none text-left"
                   >
                     <StepperIndicator className="mt-0.5 shrink-0">{index + 1}</StepperIndicator>
-                    <div className="min-w-0 text-left">
+                    <div className="hidden min-w-0 text-left sm:block">
                       <StepperTitle className="text-base font-semibold">
                         {step.label}
                       </StepperTitle>
@@ -2353,6 +2311,7 @@ export default function KitchenBookingFlow({
                 </StepperItem>
               ))}
             </StepperNav>
+            <p className="mt-2 text-center text-sm font-medium sm:hidden" aria-live="polite">{steps.find(step => step.key === currentStep)?.label}</p>
           </Stepper>
         ) : (
           <Skeleton className="h-[4.5rem] w-full rounded-xl" />
@@ -2436,10 +2395,10 @@ export default function KitchenBookingFlow({
                       "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
                       selected && "border-[#F51042] bg-[#F51042] text-white",
                       !selected && !slot.isFullyBooked && "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40",
-                      slot.isFullyBooked && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground/50 line-through"
+                      slot.isFullyBooked && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground"
                     )}
                   >
-                    {formatSlotRange(slot.time)}
+                    {formatSlotRange(slot.time)}{slot.isFullyBooked && <span className="ml-1 text-xs no-underline"> · {t("wfbBooked")}</span>}
                   </button>
                 );
               })}
@@ -2495,6 +2454,8 @@ export default function KitchenBookingFlow({
               items={equipmentInventoryModal === "included"
                 ? equipmentListings.included
                 : equipmentListings.rental}
+              selectedIds={selectedEquipmentIds}
+                    onToggle={(id) => setSelectedEquipmentIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
               rental={equipmentInventoryModal === "rental"}
             />
           </div>
@@ -2578,6 +2539,12 @@ export default function KitchenBookingFlow({
               taxRatePercent={selectedKitchen?.taxRatePercent || 0}
               serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
               currency={kitchenPricing?.currency || "CAD"}
+              equipmentItems={pendingEquipmentIds.flatMap(id => {
+                const item = equipmentListings.rental.find((equipment: any) => equipment.id === id);
+                return item ? [{ name: equipmentName(item), priceCents: item.sessionRate || 0 }] : [];
+              })}
+              storageItems={storagePricing.items.map(item => ({ name: item.listing.name, priceCents: item.basePrice }))}
+              taxLabel={selectedKitchen?.taxLabel}
               focusAddon="equipment"
             />
             <div className="flex items-center justify-between gap-3 border-t pt-3">
@@ -2623,6 +2590,8 @@ export default function KitchenBookingFlow({
             onCancel={() => setDiscardModal("storage")}
             kitchenSubtotal={estimatedPrice?.basePrice || 0}
             equipmentSubtotal={equipmentPricing.subtotal || 0}
+            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
+            taxLabel={selectedKitchen?.taxLabel}
             taxRatePercent={selectedKitchen?.taxRatePercent || 0}
             serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
             currency={kitchenPricing?.currency || "CAD"}

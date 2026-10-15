@@ -45,6 +45,7 @@ vi.mock("@/components/support/CommitmentProblems", () => ({ CommitmentProblems: 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({
   i18n: { language: "en-CA", resolvedLanguage: "en-CA" },
   t: (key: string, options?: any) => {
+    key = key.replace(/^booking:/, "");
     const value = (chef as Record<string, string>)[key] ?? (bookingCopy as Record<string, string>)[key] ?? options?.defaultValue ?? key;
     try { return new IntlMessageFormat(value, "en-CA").format(typeof options === "object" ? options : {}) as string; } catch { return value; }
   },
@@ -102,7 +103,7 @@ describe("pending booking page", () => {
       closeout: { phase: "ended", timezone: "America/St_Johns", visits: [{ key: "b", phase: "ended", arrivalRecorded: true, scheduledStartAt: "2030-01-15T14:00:00Z", inspection: { deadline: "2030-01-17T14:00:00Z", canRespond: false, outcome: "not_due" } }] } };
     render(<BookingDetailsPage />);
     const next = await screen.findByTestId("booking-next-step");
-    expect(next).toHaveTextContent(/^Visit complete\. Thanks for leaving the kitchen ready\.$/);
+    expect(next).toHaveTextContent(/^Visit complete\.$/);
     expect(document.body.textContent).not.toMatch(/reviews by/);
     // A localized time ending in "p.m." must not leave a double period.
     expect(next.textContent).not.toMatch(/\.\.$/);

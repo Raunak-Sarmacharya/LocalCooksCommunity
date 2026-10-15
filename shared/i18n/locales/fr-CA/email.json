@@ -305,7 +305,7 @@
   "ncVisitCompleteTitle": "Visite terminée · {kitchen}",
   "ncVisitCompleteGood": "{kitchen} a vérifié les lieux — tout est en ordre.",
   "ncVisitCompleteInvoice": "Votre facture finale est prête.",
-  "ncCancelledRefundTitle": "Votre réservation est annulée · remboursement de {amount} en cours (5 à 10 jours ouvrables)",
+  "ncCancelledRefundTitle": "Réservation annulée · remboursement de {amount} en route",
   "ncCancelledNoRefundTitle": "Votre réservation est annulée · aucun remboursement ne s’applique",
   "ncPayoutBooking": "Réservation",
   "ncPayoutExtension": "Temps supplémentaire ({duration})",

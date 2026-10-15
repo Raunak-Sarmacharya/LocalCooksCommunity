@@ -3863,5 +3863,20 @@
   "scpResumeWhat": "Chefs can ask for more time, and kitchens can offer it or charge for extra time again.",
   "scpSaveFailed": "Couldn’t save this change. Try again.",
   "scpShowCode": "Show code",
-  "scpCountFailed": "We couldn't count your upcoming bookings."
+  "scpCountFailed": "We couldn't count your upcoming bookings.",
+  "mblNeedsAction": "Needs action",
+  "mblToday": "Today",
+  "mblUpcoming": "Upcoming",
+  "mblPast": "Past",
+  "mblCancelled": "Cancelled",
+  "mblColWhen": "When",
+  "mblColWho": "Chef and kitchen",
+  "mblColStatus": "Status",
+  "mblColPayment": "Payment",
+  "mblTimesIn": "Times are in {zone}",
+  "mblEmptyUpcoming": "No upcoming bookings.",
+  "mblEmptyPast": "No past bookings yet.",
+  "mblNoMatch": "No bookings match “{query}”.",
+  "mblSearch": "Search by chef, kitchen or reference",
+  "mblTimeEnded": "Time ended · still checked in"
 }

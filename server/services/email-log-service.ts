@@ -72,6 +72,8 @@ export function inferEmailCategory(subject: string, trackingId?: string, emailTy
 
 export function resolveRecipientRole(user: RecipientFlags | null | undefined): string {
   if (!user) return "unknown";
+  // An admin copy is logged as "admin" even when the same account also has chef/manager flags.
+  if (user.role === "admin") return "admin";
   if (user.isChef && user.isManager) return "chef_and_manager";
   if (user.isChef || user.role === "chef") return "chef";
   if (user.isManager || user.role === "manager") return "manager";

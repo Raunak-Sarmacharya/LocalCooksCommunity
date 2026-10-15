@@ -83,12 +83,29 @@ describe("chef: Need more time?", () => {
     fireEvent.click(screen.getByRole("button", { name: "Message Harbour Kitchen" }));
     expect(onMessage).toHaveBeenCalled();
   });
-  it("outside the last hour (or when unavailable) it opens the conversation with the draft, as before", async () => {
+  it("outside the last hour it explains when to add time and waits for an explicit message click", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ canRequest: false }) });
     const onMessage = vi.fn();
     mount(onMessage);
     fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
-    await waitFor(() => expect(onMessage).toHaveBeenCalledWith("Hi, could I have more time?"));
+    expect(await screen.findByTestId("extension-unavailable")).toHaveTextContent(/You can add time from 3:00.*the last hour/);
+    expect(onMessage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Message Harbour Kitchen" }));
+    expect(onMessage).toHaveBeenCalledWith("Hi, could I have more time?");
+  });
+  it.each([
+    [{ enabled: false }, "This kitchen handles extra time by message."],
+    [{ hasSavedCard: false }, "Add time by messaging the kitchen — your booking card can't be reused."],
+    [{ unavailableReason: 'Extra time needs Local Cooks to review this booking.' }, 'Extra time needs Local Cooks to review this booking.'],
+  ])('explains an unavailable extension: %s', async (extra, reason) => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state(extra) });
+    const onMessage = vi.fn(); mount(onMessage);
+    fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(posts()).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Message Harbour Kitchen" }));
+    expect(onMessage).toHaveBeenCalledWith("Hi, could I have more time?");
   });
   it("a declined request says the card wasn't charged", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ history: [item({ status: "declined" })] }) });

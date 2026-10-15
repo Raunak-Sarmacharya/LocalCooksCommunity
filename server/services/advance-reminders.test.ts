@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ db: null as any, booking: null as any, tour: n
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_, key) => state.db[key] }) }));
 vi.mock('../email', async original => ({ ...await original<typeof import('../email')>(), sendEmail: state.send }));
 vi.mock('./notification.service', () => ({ notificationService: { create: async (value: any) => state.alerts.push(value) } }));
-import { acknowledgeConfirmationReminders, dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder, renderBookingVisitReminder,
+import { confirmedInsidePreparationWindow, acknowledgeConfirmationReminders, dispatchAdvanceReminders, currentReminders, reminderVisitTimes, scheduleAdvanceReminders, renderTourReminder, renderBookingVisitReminder,
   formatVisitRange, endInstructionSentence, selectedReminderPolicy, reminderEligibility, type ReminderPolicy } from './advance-reminders';
 import { currentDeadlineReminders, deadlineWarningDue } from './deadline-reminders';
 import { retryFailedEmail } from './email-log-service';
@@ -1012,5 +1012,15 @@ describe('manager "chef has not checked in" alert', () => {
     state.booking.endTime = '08:10';
     await schedule();
     expect(noCheckin()).toHaveLength(0);
+  });
+});
+
+describe('preparation notice after an in-window confirmation', () => {
+  it('is skipped only when the confirmation was created at or after the preparation due time', () => {
+    const due = '2026-10-04T08:00:00.000Z';
+    expect(confirmedInsidePreparationWindow([{ createdAt: new Date('2026-10-04T08:00:00Z') }], due)).toBe(true);
+    expect(confirmedInsidePreparationWindow([{ createdAt: '2026-10-04T09:30:00Z' }], due)).toBe(true);
+    expect(confirmedInsidePreparationWindow([{ createdAt: new Date('2026-10-01T09:30:00Z') }], due)).toBe(false);
+    expect(confirmedInsidePreparationWindow([], due)).toBe(false);
   });
 });

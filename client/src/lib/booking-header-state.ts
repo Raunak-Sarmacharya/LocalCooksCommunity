@@ -33,9 +33,14 @@ export function bookingHeaderPhase(input: BookingHeaderInput): BookingHeaderPhas
   if (status === 'cancelled' || status === 'rejected' || status === 'expired' || status === 'declined') return 'cancelled';
   if (status === 'pending') return 'pending';
   if (status === 'cancellation_requested') return 'cancellation_requested';
+  // Clock closeout marks the booking completed at the end of the booked time but keeps the raw check-in value. While the
+  // kitchen can still inspect, that value is real (an overstay to record, a checkout to review). Once the inspection
+  // window has closed, a leftover "still checked in" / "checkout waiting" is settled history: it reads as checked out.
+  const settled = (value?: string | null) => status === 'completed' && !input.inspectionCanRespond
+    && (value === 'checked_in' || value === 'checkout_requested') ? 'checked_out' : value;
   const visitStates = input.visits && input.visits.length > 1
-    ? input.visits.map(visit => visit.checkinStatus)
-    : [input.checkinStatus || 'not_checked_in'];
+    ? input.visits.map(visit => settled(visit.checkinStatus) || 'not_checked_in')
+    : [settled(input.checkinStatus) || 'not_checked_in'];
   const ended = ['booked_time_ended', 'ended'].includes(input.closeoutPhase || '');
   if (visitStates.includes('checkout_requested')) return 'checkout_review';
   if (visitStates.includes('checked_in')) return ended ? 'time_ended_in_session' : 'in_session';
@@ -64,7 +69,8 @@ export function bookingPillTone(phase: BookingHeaderPhase): BookingPillTone {
   switch (phase) {
     case 'pending': case 'cancellation_requested': case 'issue': return 'amber';
     case 'confirmed': case 'today': case 'checkin_open': return 'blue';
-    case 'in_session': case 'time_ended_in_session': return 'green';
+    case 'in_session': return 'green';
+    case 'time_ended_in_session': return 'amber';
     case 'checkout_review': return 'purple';
     case 'no_show': return 'red';
     case 'cancelled': return 'grey';

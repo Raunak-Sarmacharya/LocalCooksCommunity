@@ -10,7 +10,7 @@ import { SessionExtensionsCard } from "./SessionExtensionsCard";
 import type { DamageClaimCardData } from "@/lib/damage-claims";
 
 const claim = (extra: Partial<DamageClaimCardData> = {}): DamageClaimCardData => ({ id: 7, referenceCode: "DC-7", bookingId: 5, visitId: null, chefId: 1, managerId: 2,
-  status: "submitted", claimVersion: 2, description: "Burnt pan", amountCents: 4500, claimedAmountCents: 4500, lines: [], visitEvidence: { kitchenName: "Harbour Kitchen", timezone: "America/St_Johns" } as never,
+  status: "submitted", claimVersion: 2, description: "Burnt pan", amountCents: 4500, claimedAmountCents: 4500, lines: [], visitEvidence: { before: [], after: [], kitchenName: "Harbour Kitchen", timezone: "America/St_Johns" } as never,
   chefResponse: null, deadline: "2030-01-18T15:30:00Z", upheldAt: null, publicMessage: null, kitchenPaid: false, fundedBy: "chef", chefOwes: true, chefVisible: true,
   reviewRequest: null, kitchenReply: null, paymentBusy: false, compensationPending: false, evidence: [], history: [], ...extra });
 
@@ -40,6 +40,14 @@ describe("Now card shell", () => {
 });
 
 describe("claims in the Now card (§1.5)", () => {
+  it("an existing claim sheet says Your claim and shows the Local Cooks request once", () => {
+    render(<NowClaimRows claims={[claim({ status: "awaiting_kitchen", chefVisible: false, reviewRequest: "Add the invoice", publicMessage: "Add the invoice" })]}
+      manager chefName="Ada" timezone="America/St_Johns" onChanged={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reply to Local Cooks" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Your claim · $45.00" })).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Add the invoice")).toHaveLength(1);
+  });
   it("chef: a sent claim is an attention row with Pay $ and Dispute; the first Pay may be the page's one primary", () => {
     render(<NowClaimRows claims={[claim()]} manager={false} chefName="Ada" timezone="America/St_Johns" allowPrimary onChanged={vi.fn()} />);
     const row = screen.getByTestId("claim-attention");

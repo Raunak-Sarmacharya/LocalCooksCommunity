@@ -1,6 +1,6 @@
 import { managerNavIcons } from "@/lib/manager-nav-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { bookingNextAction, tourNextAction, licenseNextAction, overstayNextAction, storageHasEnded } from "@/lib/manager-overview-lifecycle";
 import { tourRequestDecision } from '@shared/tour-request-decision';
 import { formatTourWhen } from '@/lib/chef-viewing-display';
@@ -16,7 +16,7 @@ import { mt } from "@/i18n/manager";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { useManagerOverviewActivity } from "@/hooks/use-manager-overview-activity";
-import { formatBookingDate, formatCurrency, formatDate, formatRelativeTime } from "@/lib/formatters";
+import { formatCurrency, formatDate, formatRelativeTime } from "@/lib/formatters";
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from "@shared/kitchen-license";
 import { CheckCircle, ChevronRight, DollarSign } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import BookingCalendarWidget from "./BookingCalendarWidget";
+import { StatusPill } from "@/components/booking/BookingNowCard";
+import { bookingCancelCause } from "@/lib/booking-cancel-cause";
+import { bookingListBounds, bookingListPhase, bookingListPill, listWhenLine, type BookingListRow } from "@/lib/booking-list-status";
+import { ct } from "@/i18n/chef-ns";
 
 interface Location { id: number; name: string; address: string; kitchenLicenseUrl?: string | null; kitchenLicenseStatus?: string | null; kitchenLicenseExpiry?: string | null; timezone?: string; kitchenLicensePendingUrl?: string | null; kitchenLicensePendingExpiry?: string | null }
 interface Kitchen { id: number; locationId: number; name: string; isActive: boolean; listingStatus?: string }
@@ -45,6 +49,11 @@ interface Booking {
   createdAt: string;
   checkinStatus?: string | null;
   operatingWindowStartTime?: string | null;
+  locationTimezone?: string | null;
+  timezone?: string | null;
+  closeout?: BookingListRow["closeout"];
+  visitStates?: BookingListRow["visitStates"];
+  checkinWindowMinutesBefore?: number | null;
 }
 interface Viewing { viewing: { id: number; locationId: number; status: string; scheduledAt: string; createdAt?: string; updatedAt?: string; durationMinutes?: number; requestedRescheduleAt?: string | null; disruptionReason?: string | null; outcomeHistory?: unknown; checkedInAt?: string | null; checkedOutAt?: string | null; attendanceHistory?: unknown; targetedKitchenId?: number | null; adminReviewDecision?: string | null; cancelledBy?: string | null }; chefName?: string; kitchenName?: string; locationName?: string }
 interface Application { chefId?: number; createdAt?: string; updatedAt?: string; fullName?: string; id: number; locationId: number; status: string; current_tier?: number; currentTier?: number; tier2_completed_at?: string | null }
@@ -194,8 +203,11 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
     (application.status === "approved" && (application.current_tier ?? application.currentTier) === 2 && !!application.tier2_completed_at));
   const approvedApplications = locationApplications.filter((application) => application.status === "approved" && (application.current_tier ?? application.currentTier ?? 1) >= 2);
   const todayBookings = bookings.filter((booking) => dayKey(booking.bookingDate) === today && ["pending", "confirmed", "cancellation_requested"].includes(booking.status));
-  const upcoming = bookings.filter((booking) => ["pending", "confirmed", "cancellation_requested"].includes(booking.status) && dayKey(booking.bookingDate) >= today && bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone) !== "overviewBookingOutcomes")
-    .sort((a, b) => `${a.bookingDate} ${a.startTime}`.localeCompare(`${b.bookingDate} ${b.startTime}`));
+  // A visit the booking page already calls finished (checked out early, ended, no-show) is not on the schedule.
+  const upcoming = bookings.filter((booking) => ["pending", "confirmed", "cancellation_requested"].includes(booking.status) && dayKey(booking.bookingDate) >= today
+    && !["completed", "visit_ended", "no_show", "issue", "cancelled"].includes(bookingListPhase(booking)) && bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone) !== "overviewBookingOutcomes")
+    // By the real start in the kitchen zone (an overnight slot starts the next calendar day).
+    .sort((a, b) => (bookingListBounds(a)?.startAt.getTime() ?? 0) - (bookingListBounds(b)?.startAt.getTime() ?? 0));
   const weekBookings = upcoming.filter((booking) => dayKey(booking.bookingDate) <= nextWeekKey);
   const bookingActivityLabel: Record<string, string> = { pending: "activityBookingRequested", confirmed: "activityBookingConfirmed", cancelled: "activityBookingCancelled", completed: "activityBookingCompleted", cancellation_requested: "activityBookingCancellationRequested" };
   const tourActivityLabel: Record<string, string> = { pending: "activityTourRequested", confirmed: "activityTourScheduled", cancelled: "activityTourCancelled", completed: "activityTourCompleted", no_show: "activityTourNoShow", rejected: "activityTourDeclined" };
@@ -206,7 +218,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   };
   const financialActivityStatus: Record<string,string> = {draft:"overviewDraft",submitted:"overviewAwaitingAdmin",under_review:"overviewAwaitingAdmin",chef_disputed:"overviewAwaitingAdmin",chef_accepted:"chefAccepted",approved:"approved",partially_approved:"partiallyApproved",charge_pending:"overviewPaymentProcessing",charge_failed:"chargeFailed",charge_succeeded:"overviewPaymentCollected",resolved:"overviewResolved",rejected:"rejected",expired:"overviewExpired",escalated:"overviewEscalated",pending_review:"overviewAwaitingReview",penalty_approved:"approved",penalty_waived:"overviewWaived",detected:"overviewOverstayDetected",grace_period:"overviewGracePeriod"};
   const recent = [
-    ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: formatBookingDate(booking.bookingDate), time: [booking.startTime, booking.endTime].filter(Boolean).join(" – "), href: `/manager/booking/${booking.id}` })),
+    ...bookings.map((booking) => ({ kind: "booking" as const, id: booking.id, activityKey: `created:${booking.id}`, date: booking.createdAt, title: mt("activityBookingRequested"), person: chefDisplayName(booking), kitchen: booking.kitchenName || locationKitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name, scheduled: listWhenLine(booking, i18n.language, { today: mt("mblToday"), tomorrow: ct("ovTomorrow") }), time: "", href: `/manager/booking/${booking.id}` })),
     // The booking row above already says "Booking requested"; its own "requested" lifecycle event is the same moment.
     ...(activity.bookingEvents || []).filter(event => !(event.kind === "requested" && bookings.some(booking => booking.id === event.bookingId))).map(event => ({ kind: "booking" as const, id: event.bookingId!, activityKey: `event:${event.id}`, date: event.createdAt!,
       title: event.title || mt("activityBooking"), person: chefDisplayName(bookings.find(booking => booking.id === event.bookingId) || {}),
@@ -235,7 +247,7 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   if (!unreadThreads.length && activity.unreadMessages > 0) addTask("overviewUnreadMessages", { id: "messages", title: mt("overviewUnreadThreadCount", { count: activity.unreadMessages }), view: "messages" });
   for (const booking of bookings) {
     const label = bookingNextAction(booking, locations.find((location) => location.id === (booking.locationId ?? booking.location?.id))?.timezone);
-    if (label) addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: `${formatBookingDate(booking.bookingDate)} · ${booking.startTime} – ${booking.endTime}`, view: "bookings", href: `/manager/booking/${booking.id}` });
+    if (label) addTask(label, { id: String(booking.id), title: recordTitle(booking), detail: listWhenLine(booking, i18n.language, { today: mt("mblToday"), tomorrow: ct("ovTomorrow") }), view: "bookings", href: `/manager/booking/${booking.id}` });
     for (const item of booking.equipmentItems || []) if (booking.status === 'confirmed' && item.status === 'cancellation_requested')
       addTask('overviewEquipmentCancellations', { id: `${booking.id}:equipment:${item.equipmentBookingId ?? item.id}`, title: item.name || recordTitle(booking),
         view: 'bookings', href: `/manager/booking/${booking.id}` });
@@ -282,7 +294,8 @@ export default function KitchenDashboardOverview({ selectedLocation, locations, 
   const futureTours = locationViewings.filter((tour) => tour.viewing.status === "confirmed" && isPendingOrUpcomingTour({ ...tour.viewing, durationMinutes: tour.viewing.durationMinutes ?? null }));
   const scheduledStorage = activity.storageBookings.filter((booking) => booking.status === "confirmed" && !["completed", "checkout_claim_filed"].includes(booking.checkoutStatus ?? "") && !!booking.endDate && Number.isFinite(Date.parse(booking.endDate)) && !storageHasEnded(booking.endDate));
   const scheduleRows = [
-    ...upcoming.map(booking => ({key:`booking-${booking.id}`,id:String(booking.id),title:chefDisplayName(booking),detail:[formatBookingDate(booking.bookingDate),`${booking.startTime} – ${booking.endTime}`,booking.kitchenName].filter(Boolean).join(" · "),time:createBookingDateTime(dayKey(booking.bookingDate),booking.startTime,locations.find(location=>location.id===(booking.locationId ?? booking.location?.id))?.timezone ?? DEFAULT_TIMEZONE).getTime(),href:`/manager/booking/${booking.id}`,view:"bookings",param:undefined,label:mt(booking.status === "cancellation_requested" ? "cancellationRequested" : booking.status)})),
+    // The booking page's pill and 12-hour, friendly "Today · 2:00–4:00 p.m." line (not the raw status and clock).
+    ...upcoming.map(booking => { const phase = bookingListPhase(booking); return ({key:`booking-${booking.id}`,id:String(booking.id),title:chefDisplayName(booking),detail:[listWhenLine(booking,i18n.language,{today:mt("mblToday"),tomorrow:ct("ovTomorrow")}),booking.kitchenName].filter(Boolean).join(" · "),time:bookingListBounds(booking)?.startAt.getTime() ?? NaN,href:`/manager/booking/${booking.id}`,view:"bookings",param:undefined,label:"",pill:bookingListPill(phase,true,bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision as never }))}); }),
     ...futureTours.map(tour => ({key:`tour-${tour.viewing.id}`,id:String(tour.viewing.id),title:chefDisplayName(tour),detail:[displayDate(tour.viewing.scheduledAt),tourTime(tour),tour.kitchenName || tour.locationName].filter(Boolean).join(" · "),time:Date.parse(tour.viewing.scheduledAt),href:undefined,view:"viewings",param:"viewing",label:mt("kitchenTours")})),
     ...scheduledStorage.map(storage => ({key:`storage-${storage.id}`,id:String(storage.id),title:recordTitle(storage),detail:[displayDate(storage.startDate ?? ""),displayDate(storage.endDate ?? "")].join(" – "),time:Date.parse(storage.startDate ?? ""),href:undefined,view:"storage-bookings",param:"storageBooking",label:mt("overviewStorageBookingType")})),
   ].sort((a,b)=>(Number.isFinite(a.time)?a.time:Infinity)-(Number.isFinite(b.time)?b.time:Infinity));
@@ -389,7 +402,7 @@ return <div key={kitchen.id}><button type="button" onClick={() => onNavigate(lis
     {bookings.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-muted/35 px-3 py-2.5">{[{label:"overviewTodaySessions",value:todayBookings.length},{label:"overviewNextSevenDays",value:weekBookings.length}].map(metric => <div key={metric.label}><p className="text-xs text-muted-foreground">{mt(metric.label)}</p><strong className="text-xl tabular-nums">{metric.value}</strong></div>)}</div>}
     <ScrollArea className={scrollClass} tabIndex={0} role="region" aria-label={mt("overviewUpcomingBookings")}>
       {isLoadingBookings || isLoadingViewings || (!bookings.length && isLoadingApplications) || activity.isLoading ? <Skeleton className="h-32 rounded-xl" /> : isErrorBookings || isErrorViewings || (!bookings.length && isErrorApplications) || activity.isError ? <p role="status" className="text-sm text-destructive">{mt("overviewActivityPartialError")}</p> : null}
-      {scheduleRows.map(item => {const content=<><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span></span><span className="flex shrink-0 items-center gap-2"><Badge variant="outline" className="font-medium">{item.label}</Badge><ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" /></span></>;return item.href ? <Link key={item.key} href={item.href} className={rowClass}>{content}</Link> : <button key={item.key} className={rowClass} onClick={()=>openTask(item)}>{content}</button>;})}
+      {scheduleRows.map(item => {const content=<><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span></span><span className="flex shrink-0 items-center gap-2">{"pill" in item && item.pill ? <StatusPill tone={item.pill.tone}>{ct(item.pill.key)}</StatusPill> : <Badge variant="outline" className="font-medium">{item.label}</Badge>}<ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" /></span></>;return item.href ? <Link key={item.key} href={item.href} className={rowClass}>{content}</Link> : <button key={item.key} className={rowClass} onClick={()=>openTask(item)}>{content}</button>;})}
       {!upcoming.length && !futureTours.length && !scheduledStorage.length && !isLoadingBookings && !isLoadingViewings && !isLoadingApplications && !activity.isLoading && !isErrorBookings && !isErrorViewings && !isErrorApplications && !activity.isError && <div className="rounded-xl bg-muted/40 p-4"><p className="font-medium">{mt(bookings.length ? "overviewNoUpcoming" : !applicationJourney ? "overviewPrepareForApplications" : pendingApplications.length ? "overviewApplicationsToReview" : approvedApplications.length ? "overviewApprovedChefs" : "overviewWaitingForApplications")}</p><p className="mt-1 text-sm text-muted-foreground">{mt(bookings.length ? status === "draft" && hasHistory ? "overviewPastBookingsRemain" : "overviewNoUpcomingBody" : !applicationJourney ? "overviewPublishBeforeApplicationsBody" : pendingApplications.length ? "overviewReviewApplicationsBody" : approvedApplications.length ? "overviewApprovedChefsBody" : "overviewWaitingForApplicationsBody")}</p></div>}
     </ScrollArea></CardContent></Card>;
   const historyLoading = isLoadingBookings || isLoadingViewings || isLoadingApplications || activity.isLoading;

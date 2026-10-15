@@ -3,6 +3,7 @@ import { logger } from "@/lib/logger";
 import i18n from "@/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
+import { bt } from '@/i18n/booking-ns';
 import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -1986,6 +1987,7 @@ function GuestHoursCard({
           </Fragment>
         ))}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">{bt("wfbPriceHint")}</p>
       {Number.isFinite(minimumBookingHours) && minimumBookingHours > 0 && <p className="mt-1 text-xs leading-5 text-muted-foreground">
         {t("minimumBookingHoursLabel", { defaultValue: minimumBookingHours === 1 ? "Minimum booking: {count} hour" : "Minimum booking: {count} hours", count: minimumBookingHours })}
       </p>}
@@ -2288,7 +2290,7 @@ function KitchenDetailsSection({
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">{kitchen.name}</h2>
             {rateLabel && !hidePhotoCollage && (
-              <p className="text-base font-semibold text-[#F51042] shrink-0">{rateLabel}</p>
+              <p className="text-base font-semibold text-[#F51042] shrink-0">{rateLabel}<span className="ml-2 text-xs font-normal text-muted-foreground">{bt("wfbPriceHint")}</span></p>
             )}
           </div>
           {aboutCopy && isStacked && (
@@ -3701,7 +3703,7 @@ export default function KitchenPreviewPage() {
                         >
                           {kitchen.name}
                         </span>
-                        {rate && <span className="block text-xs text-gray-500 mt-0.5">{rate}</span>}
+                        {rate && <span className="block text-xs text-gray-500 mt-0.5">{rate}<span className="ml-2">{bt("wfbPriceHint")}</span></span>}
                       </button>
                     );
                   })}

@@ -138,6 +138,9 @@ describe("in-session panel", () => {
   it("opens the booking conversation with a prefilled request for more time", async () => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
+    await screen.findByTestId("extension-unavailable");
+    expect(screen.queryByTestId("chat")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Message Test kitchen" }));
     const chat = await screen.findByTestId("chat");
     expect(fetchMock).toHaveBeenCalledWith("/api/bookings/901/conversation", expect.objectContaining({ method: "POST" }));
     expect(chat).toHaveAttribute("data-conversation", "conv-1");

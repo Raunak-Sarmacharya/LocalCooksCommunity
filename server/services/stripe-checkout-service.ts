@@ -17,6 +17,7 @@ import { bookingAddonPrices } from '@shared/booking-addon-prices';
  */
 
 import Stripe from 'stripe';
+import { ensureServerI18n, tLocale } from '../i18n';
 import { expandHourlySlots, serializeCheckoutSlots } from './checkout-metadata';
 import { assertConsecutiveBookingSlots } from '@shared/consecutive-booking-slots';
 import { saveStorageOverstayQuote, describeStorageOverstayTerms } from './storage-overstay-terms-service';
@@ -32,6 +33,12 @@ const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
   apiVersion: '2026-02-25.clover',
 }) : null;
 
+async function kitchenSubmitText(locale: string | undefined, storageTerms: boolean): Promise<string> {
+  await ensureServerI18n();
+  return [tLocale(locale, 'booking:wfbCheckoutHold'),
+    ...(storageTerms ? [tLocale(locale, 'booking:wfbCheckoutStorageTerms')] : [])].join(' ');
+}
+
 export interface CreateCheckoutSessionParams {
   bookingPriceInCents: number;
   platformFeeInCents: number;
@@ -39,6 +46,7 @@ export interface CreateCheckoutSessionParams {
   customerEmail: string;
   bookingId: number;
   currency?: string;
+  locale?: Stripe.Checkout.SessionCreateParams.Locale;
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
@@ -64,6 +72,7 @@ export interface CreatePendingCheckoutSessionParams {
   managerStripeAccountId: string;
   customerEmail: string;
   currency?: string;
+  locale?: Stripe.Checkout.SessionCreateParams.Locale;
   successUrl: string;
   cancelUrl: string;
   /** All booking data to be stored in metadata - booking created in webhook */
@@ -346,6 +355,8 @@ export async function createPendingCheckoutSession(
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      submit_type: 'book',
+      ...(params.locale ? { locale: params.locale } : {}),
       // Stripe requires at least 30 minutes from its own clock; allow for transit and clock skew.
       expires_at: Math.floor(Date.now() / 1000) + 32 * 60,
       // Cards only (wallets like Apple Pay/Google Pay are cards). Keeps BNPL such as Klarna
@@ -372,9 +383,7 @@ export async function createPendingCheckoutSession(
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
-      ...(bookingData.selectedStorage?.length ? { custom_text: { submit: {
-        message: 'By continuing, you agree to the storage overstay terms displayed in this checkout. Rates are fixed for this booking.',
-      } } } : {}),
+      custom_text: { submit: { message: await kitchenSubmitText(params.locale, !!bookingData.selectedStorage?.length) } },
       // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
       // Invoices are generated at capture time via payment_intent.succeeded webhook
       // Stripe will send receipt email when payment is actually captured
@@ -530,6 +539,8 @@ export async function createCheckoutSession(
     // Create Checkout session
     const session = await provider.checkout.sessions.create({
       mode: 'payment',
+      submit_type: 'book',
+      ...(params.locale ? { locale: params.locale } : {}),
       payment_method_types: ['card'],
       customer_email: customerEmail,
       // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
@@ -551,8 +562,10 @@ export async function createCheckoutSession(
       success_url: successUrl,
       cancel_url: cancelUrl,
       ...(params.kitchenChangeAuthorization ? { expires_at: params.kitchenChangeAuthorization.expiresAt } : {}),
-      ...(Object.keys(overstayQuoteMetadata).length ? { custom_text: { submit: {
-        message: 'By continuing, you agree to the storage overstay terms displayed in this checkout. Rates are fixed for this booking.',
+      ...(!params.kitchenChangeAuthorization ? { custom_text: { submit: {
+        message: await kitchenSubmitText(params.locale, !!Object.keys(overstayQuoteMetadata).length),
+      } } } : Object.keys(overstayQuoteMetadata).length ? { custom_text: { submit: {
+        message: tLocale(params.locale, 'booking:wfbCheckoutStorageTerms'),
       } } } : {}),
       metadata: {
         booking_id: bookingId.toString(),

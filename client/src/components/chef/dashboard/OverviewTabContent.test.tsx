@@ -54,6 +54,7 @@ it('labels booking 138 with its overnight calendar date and localized clock', ()
       bookingDate: '2026-10-15T00:00:00Z', startTime: '04:45', endTime: '05:45', operatingWindowStartTime: '06:00' }]} />);
     expect(screen.getAllByText(/Oct 16/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/2026/)).not.toBeInTheDocument();
-    expect(screen.getAllByText(/4:45 a\.m\./).length).toBeGreaterThan(0);
+    // Same 12-hour range as My bookings and the booking page ("4:45–5:45 a.m.").
+    expect(screen.getAllByText(/4:45–5:45\s*a\.m\./).length).toBeGreaterThan(0);
   } finally { vi.useRealTimers(); }
 });

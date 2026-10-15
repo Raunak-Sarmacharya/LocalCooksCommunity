@@ -202,6 +202,14 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const { t: claimT } = useTranslation('booking');
   const chef = booking.chef?.fullName || booking.chef?.username || t('fixChef');
   const queryClient = useQueryClient();
+  const claimsQuery = useQuery({ queryKey: ['damage-claims', booking.id],
+    queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${booking.id}/damage-claims`), retry: false });
+  const visitClaims = claimsQuery.data?.claims.filter(claim => claim.claimVersion === 2 && claim.status !== 'draft'
+    && (claim.visitId ?? undefined) === visitId) ?? [];
+  const alreadyReported = visitClaims.length > 0;
+  const claimStateReady = !!claimsQuery.data && !claimsQuery.isError && !claimsQuery.isFetching;
+  const continuingClaim = !claimStateReady || visitClaims.some(claim => claim.resolutionType !== 'withdrawn');
+  const reportedLink = <Link href="/manager/dashboard?view=support" className="text-sm text-muted-foreground underline underline-offset-4">{claimT('dcV2AlreadyReported')}</Link>;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
@@ -256,11 +264,11 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   };
   return <>
     <Dialog open={confirmOpen} onOpenChange={value => { if (!saving) setConfirmOpen(value); }}>
-      <DialogContent showCloseButton><DialogHeader><DialogTitle>{t('inspectConfirmTitle')}</DialogTitle><DialogDescription>{t('inspectConfirmBody', { chef })}</DialogDescription></DialogHeader>
+      <DialogContent showCloseButton><DialogHeader><DialogTitle>{t('inspectConfirmTitle')}</DialogTitle><DialogDescription>{t(continuingClaim ? 'wfdConfirmClaim' : 'inspectConfirmBody', { chef })}</DialogDescription></DialogHeader>
         {payoutNow && <p className="text-sm font-medium">{t('inspectConfirmPayoutLine', { amount: payoutAmount })}</p>}
         {note && <blockquote className="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{note}</blockquote>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setConfirmOpen(false)}>{t('fixBack')}</Button><Button disabled={saving || blocked || !canClear} onClick={() => void clear()}>{t(saving ? 'fixSaving' : 'inspectConfirmButton')}</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setConfirmOpen(false)}>{t('fixBack')}</Button><Button disabled={saving || blocked || !canClear || !claimStateReady} onClick={() => void clear()}>{t(saving ? 'fixSaving' : 'inspectConfirmButton')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
     {finished ? <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectDoneTitle')} data-testid="inspection-done">
@@ -272,7 +280,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-wrap items-center gap-4">
         <Button asChild><Link href={`/manager/booking/${booking.id}`}>{t('inspectCopy26')}</Link></Button>
-        {canReportLater && <button type="button" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={() => setIssueOpen(true)}>{t('inspectFoundLater')}</button>}
+        {alreadyReported ? reportedLink : canReportLater && <button type="button" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={() => setIssueOpen(true)}>{t('inspectFoundLater')}</button>}
       </div>
     </section> : <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-3" aria-label={t('inspectCopy46')}>
       {liveSentence ? <p className="text-[15px] leading-[22px]" data-testid="inspection-sentence">{liveSentence}</p> : <>
@@ -293,8 +301,8 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
       {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{t(blocked ? 'inspectRefreshFirst' : clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome) ? 'inspectWindowClosed' : 'inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
-        <Button disabled={!canClear || blocked || saving || saved || !booking.inspection} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>
-        <Button variant="outline" disabled={saving} onClick={() => setIssueOpen(true)}>{claimT('dcV2Report')}</Button>
+        <Button disabled={!canClear || blocked || saving || saved || !booking.inspection || !claimStateReady} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(continuingClaim ? 'wfdFinishClaim' : payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>
+        {alreadyReported ? reportedLink : <Button variant="outline" disabled={saving || !claimsQuery.data} onClick={() => setIssueOpen(true)}>{claimT('dcV2Report')}</Button>}
         {canAssist && <Button variant="outline" disabled={saving || blocked} onClick={() => { setAssistanceOpen(true); assistanceRef.current?.focus(); }}>{t('inspectCopy62')}</Button>}
       </div>
     </section>}

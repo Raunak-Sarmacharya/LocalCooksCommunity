@@ -130,6 +130,7 @@ export function KitchenCheckinTracker({
 
   const [arrivedAt, setArrivedAt] = useState<string | null>(null)
   const [checkinNotes, setCheckinNotes] = useState("")
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [checkoutNotes, setCheckoutNotes] = useState("")
   const [submitError, setSubmitError] = useState("")
   const [fieldErrors, setFieldErrors] = useState<DutyFieldErrors>({})
@@ -146,6 +147,7 @@ export function KitchenCheckinTracker({
 
   useEffect(() => { setSelectedVisitId(initialVisitId ?? null) }, [bookingId, initialVisitId])
   useEffect(() => {
+    setCheckoutOpen(false)
     setCheckinNotes("")
     setCheckoutNotes("")
     setCheckinPhotos({})
@@ -347,7 +349,6 @@ export function KitchenCheckinTracker({
   const dutiesReady = !!currentDuties || !!currentChecklist
   const isPending = isCheckingIn || isCheckingOut
   const requirementsMessage = t("kciConfiguredTasks", "Only checklist items and photos marked Required must be completed. Everything marked Optional can be skipped.")
-  const hasCheckinTasks = (checklist?.checkinItems || []).length > 0 || checkinPhotoReqs.length > 0
   const hasCheckoutTasks = (checklist?.checkoutItems || []).length > 0 || checkoutPhotoReqs.length > 0
 
   // In session: arrival recorded, departure not yet recorded, and the booked time has not fully closed.
@@ -355,10 +356,14 @@ export function KitchenCheckinTracker({
   const requiredCheckoutTasks = (checklist?.checkoutItems || []).filter(item => item.required !== false).length
     + checkoutPhotoReqs.filter(photo => photo.required).length
   const startCheckout = () => {
+    setCheckoutOpen(true)
+  }
+  useEffect(() => {
+    if (!checkoutOpen) return
     const section = document.getElementById("visit-checkout-section")
     section?.scrollIntoView?.({ behavior: "smooth", block: "start" })
     document.getElementById("visit-checkout-title")?.focus()
-  }
+  }, [checkoutOpen])
 
   const hideIdleChip = !clockEnded && data?.status === "confirmed" && checkinStatus === "not_checked_in"
   const chip = lateCheckout
@@ -534,7 +539,7 @@ export function KitchenCheckinTracker({
         {showInSession && clockVisit && data && (
           <InSessionPanel bookingId={bookingId} chefId={data.chefId} kitchenName={kitchenName || t("kitchenDefault", "Kitchen")}
             timezone={timezone} scheduledStartAt={clockVisit.scheduledStartAt} scheduledEndAt={clockVisit.scheduledEndAt}
-            canCheckout={canCheckout && dutiesReady} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
+            canCheckout={canCheckout && dutiesReady} checkoutStarted={checkoutOpen} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
             departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
         )}
 
@@ -568,23 +573,6 @@ export function KitchenCheckinTracker({
           <InstructionsOverview mode={arrivalMode} releaseAt={data?.instructionsReleaseAt} timezone={timezone}
             visitStartAt={visitStartAt} requiredTasks={overviewTasks} />
         </section>}
-        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-4" aria-labelledby="visit-instructions-title">
-          <h2 id="visit-instructions-title" className="font-semibold">{t("kciRequiredInstructions", "Visit instructions")}</h2>
-          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
-          {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
-          {instructions.map(item => (
-            <div key={item.key}>
-              <h3 className="text-sm font-medium">{item.title}</h3>
-              <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
-            </div>
-          ))}
-          {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
-          {/* In session the panel above already offers Message kitchen. */}
-          {!showInSession && codeGate !== "locked" && codeGate !== "revoked" && <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">{t("kciHelpActions", "Having trouble getting in or submitting? Reach the kitchen:")}</p>
-            <MessageKitchenButton bookingId={bookingId} phone={kitchenPhone} />
-          </div>}
-        </section>}
         {!currentDuties && checklistQuery.isError && <div role="alert" className="rounded-lg border p-3 text-sm">
           <p>{t("kciDutiesLoadFailed", "Could not load your visit requirements. Retry before submitting.")}</p>
           <Button variant="outline" onClick={() => void checklistQuery.refetch()}>{t("kciRetryRequirements", "Retry requirements")}</Button>
@@ -597,16 +585,23 @@ export function KitchenCheckinTracker({
         ) : (
           <>
             {canCheckin && dutiesReady && (
-              <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-3" aria-labelledby="visit-checkin-title">
+              <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-2.5 sm:space-y-3" aria-labelledby="visit-checkin-title">
                 <h2 id="visit-checkin-title" className="font-semibold">{t("kciCheckInHeading", "Check in")}</h2>
-                {hasCheckinTasks && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
+                {arrivalChanged && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-sm">{t("kciAcModeChanged", "Arrival details changed. Review the current instructions.")}</p>}
+                {codeGate !== "none" && codeState && data && (
+                  <VisitCodeField gate={codeGate} state={codeState} value={visitCodeInput} onChange={changeVisitCode}
+                    problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
+                    kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
+                )}
+                {!!checklist?.checkinItems?.length && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
                 {(checklist?.checkinItems || []).length > 0 && renderChecklist(checklist?.checkinItems || [], t("kciChecklistLabel"))}
 
                 {fieldErrors.items && <p role="alert" className="text-sm text-destructive">{fieldErrors.items}</p>}
 
+                {checkinPhotoReqs.some(photo => photo.required !== false) && <>
                 {/* Per-requirement photo uploader */}
                 <PhotoRequirementUploader
-                  requirements={checkinPhotoReqs}
+                  requirements={checkinPhotoReqs.filter(photo => photo.required !== false)}
                   photos={checkinPhotos}
                   onPhotosChange={setCheckinPhotos}
                   uploadFolder="kitchen-checkin"
@@ -616,20 +611,8 @@ export function KitchenCheckinTracker({
 
                 {fieldErrors.photos && <p role="alert" className="text-sm text-destructive">{fieldErrors.photos}</p>}
 
-                <Label htmlFor="chef-checkin-message">{t('bookingAttendanceChefMessage')} ({t("kciOptional", "Optional")})</Label>
-                <Textarea id="chef-checkin-message"
-                  placeholder={bt("optionalCheckinNotesPlaceholder")}
-                  disabled={isPending}
-                  value={checkinNotes}
-                  onChange={(e) => setCheckinNotes(e.target.value)}
-                  rows={2}
-                />
-                {arrivalChanged && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-sm">{t("kciAcModeChanged", "Arrival details changed. Review the current instructions.")}</p>}
-                {codeGate !== "none" && codeState && data && (
-                  <VisitCodeField gate={codeGate} state={codeState} value={visitCodeInput} onChange={changeVisitCode}
-                    problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
-                    kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
-                )}
+                </>}
+
                 <Button
                   className="w-full"
                   aria-describedby="arrival-submit-help"
@@ -649,10 +632,37 @@ export function KitchenCheckinTracker({
                   {t("kciConfirmCheckin", "Confirm check-in")}
                 </Button>
                 <p id="arrival-submit-help" className="text-sm text-muted-foreground" role="status">{submitHelp("checkin")}</p>
+                <details className="text-sm">
+                  <summary className="flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">{t("wfbArrivalOptional")}</summary>
+                  <div className="space-y-3 pt-2">
+                    {(!checkinPhotoReqs.length || checkinPhotoReqs.some(photo => photo.required === false)) && <>
+                {/* Per-requirement photo uploader */}
+                <PhotoRequirementUploader
+                  requirements={checkinPhotoReqs.filter(photo => photo.required === false)}
+                  photos={checkinPhotos}
+                  onPhotosChange={setCheckinPhotos}
+                  uploadFolder="kitchen-checkin"
+                  genericInstruction={t("kciCheckinPhotoInstruction")}
+                  disabled={isCheckingIn}
+                />
+
+                {fieldErrors.photos && <p role="alert" className="text-sm text-destructive">{fieldErrors.photos}</p>}
+
+                    </>}
+                <Label htmlFor="chef-checkin-message">{t('bookingAttendanceChefMessage')} ({t("kciOptional", "Optional")})</Label>
+                <Textarea id="chef-checkin-message"
+                  placeholder={bt("optionalCheckinNotesPlaceholder")}
+                  disabled={isPending}
+                  value={checkinNotes}
+                  onChange={(e) => setCheckinNotes(e.target.value)}
+                  rows={2}
+                />
+                  </div>
+                </details>
               </section>
             )}
 
-            {canCheckout && dutiesReady && (
+            {canCheckout && dutiesReady && (!showInSession || checkoutOpen) && (
               <section id="visit-checkout-section" className="rounded-2xl border bg-card p-5 sm:p-6 space-y-3" aria-labelledby="visit-checkout-title">
                 <h2 id="visit-checkout-title" tabIndex={-1} className="font-semibold outline-none">{t("kciCheckOutHeading", "Check out")}</h2>
                 {hasCheckoutTasks && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
@@ -715,6 +725,25 @@ export function KitchenCheckinTracker({
               renderRecordedChecklist(data.checkoutChecklistItems, t("kciCheckoutChecklist"))}
           </>
         )}
+        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <details role="region" open={canCheckin ? undefined : true} className="rounded-2xl border bg-card p-4 sm:p-6" aria-labelledby="visit-instructions-title">
+          <summary id="visit-instructions-title" className="min-h-11 cursor-pointer text-sm font-medium">{t(canCheckin ? "kciArrivalInstructions" : "kciRequiredInstructions")}</summary>
+          <div className="space-y-4 pt-3">
+          {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
+          {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
+          {instructions.map(item => (
+            <div key={item.key}>
+              <h3 className="text-sm font-medium">{item.title}</h3>
+              <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>
+            </div>
+          ))}
+          {beforeArrival && <p className="text-xs text-muted-foreground" data-testid="departure-after-checkin">{t("kciDepartureAfterCheckin", "Departure instructions appear here after you check in.")}</p>}
+          {/* In session the panel above already offers Message kitchen. */}
+          {!showInSession && codeGate !== "locked" && codeGate !== "revoked" && <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{t("kciHelpActions", "Having trouble getting in or submitting? Reach the kitchen:")}</p>
+            <MessageKitchenButton bookingId={bookingId} phone={kitchenPhone} />
+          </div>}
+          </div>
+        </details>}
     </section>
   )
 }

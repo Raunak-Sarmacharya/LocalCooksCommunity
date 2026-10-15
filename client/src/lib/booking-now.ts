@@ -45,6 +45,7 @@ export interface BookingNowFacts {
   payoutReview?: { amount: string; date: string } | null;
   settledClaim?: { outcome: 'chef_paid' | 'local_cooks_paid' | 'closed'; amount: string } | null;
   hasClaim?: boolean;
+  claimDeadline?: string;
   inspectionOutcome?: string | null;
   inspectedOn?: string | null;
   /** Booking status, for the few rules that depend on it beyond the phase. */
@@ -79,7 +80,7 @@ function pillKey(phase: BookingHeaderPhase, role: NowRole, cause?: BookingCancel
   if (phase === 'cancelled' && (cause === 'declined' || cause === 'expired')) return `bdhPill_${cause}`;
   if (phase === 'checkout_review' && role === 'chef') return 'bdhPill_checkout_submitted';
   if (phase === 'checkin_open') return 'bdhPill_today';
-  if (phase === 'time_ended_in_session') return 'bdhPill_in_session';
+  if (phase === 'time_ended_in_session') return 'bdhPill_time_ended_in_session';
   return `bdhPill_${phase}`;
 }
 
@@ -104,10 +105,14 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
     case 'in_session': return t('bdhNextChefInSession', { time: f.endClock || '' });
     case 'time_ended_in_session': return t('bnChefTimeEnded', { end: f.overstayEndWithZone || f.endWithZone || '' });
     case 'checkout_review':
+      if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
+      if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
+      if (f.claimDeadline) return t('booking:bnChefClaimOpen', { kitchen, date: f.claimDeadline });
       return f.checkoutClock ? t('bnChefCheckoutSubmitted', { time: f.checkoutClock }) : t('bnChefCheckoutSubmittedNoTime');
     case 'completed':
       if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
       if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
+      if (f.claimDeadline) return t('booking:bnChefClaimOpen', { kitchen, date: f.claimDeadline });
       // Hidden claims are omitted from the chef response, so a cleared inspection cannot promise “all good”.
       return t('booking:bnVisitComplete');
     case 'visit_ended': return t('bdhNextChefMissed');
@@ -160,7 +165,6 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
   switch (phase) {
     case 'pending':
       if (f.canCancel) out.push('cancel_request');
-      if (f.canAddToCalendar) out.push('add_to_calendar');
       break;
     case 'confirmed':
       out.push('see_arrival_details');

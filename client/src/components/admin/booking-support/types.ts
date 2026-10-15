@@ -60,7 +60,7 @@ export type SupportCase = {
   money: {
     capturedCents: number; refundedCents: number; platformFeeCents: number; processingFeeCents: number;
     currency: string; providerVerified: boolean;
-    transfers: { transactionId: number; transferId: string | null; status: string; managerRevenueCents: number }[];
+    transfers: { transactionId: number; transferId: string | null; status: string; managerRevenueCents: number; sent?: boolean; sentAt?: string | null; amountCents?: number }[];
   };
   paymentEvidence: {
     id: string; status: string; authorizedCents: number; capturedCents: number; refundedCents: number;

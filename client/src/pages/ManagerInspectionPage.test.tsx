@@ -298,8 +298,21 @@ describe('manager inspection with isolated API mocks', () => {
     expect(within(departure).getByText('Clean surfaces · Required · No answer yet')).toBeInTheDocument();
   });
 
+  it.each(['submitted', 'charge_succeeded', 'resolved'])('a %s claim changes Finish copy and replaces Report with support', async status => {
+    claims = [{ id: 77, claimVersion: 2, visitId: null, status, amountCents: 7000, resolutionType: null }];
+    mount();
+    const button = await screen.findByRole('button', { name: 'Finish inspection and send my payout' });
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(screen.queryByRole('button', { name: 'Report damage or extra cleaning' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'You reported this visit · Contact Local Cooks to add costs' })).toHaveAttribute('href', '/manager/dashboard?view=support');
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog')).toHaveTextContent('This closes the visit. Your damage claim continues separately.');
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('with no issues');
+    expect(posts()).toHaveLength(0);
+  });
+
   it('opens the itemized claim sheet without filing until its final review step', async () => {
-    mount(); await clearButton(); fireEvent.click(screen.getByRole('button', { name: 'Report damage or extra cleaning' }));
+    mount(); await clearButton(); await waitFor(() => expect(screen.getByRole('button', { name: 'Report damage or extra cleaning' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: 'Report damage or extra cleaning' }));
     expect(await screen.findByLabelText('What happened?')).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Report damage or extra cleaning' })).toBeInTheDocument();
     expect(posts()).toHaveLength(0);

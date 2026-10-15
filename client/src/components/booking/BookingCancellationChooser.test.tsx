@@ -31,7 +31,7 @@ describe('one parent cancellation chooser', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByText(/Already using storage/)).toBeInTheDocument();
-    expect(await screen.findByText(/Your refund is.*98.00/)).toBeInTheDocument();
+    expect(await screen.findByText(/Refund: .*98\.00 \(your payment minus the .* card processing fee\)/)).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Your booking is cancelled');
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -45,7 +45,7 @@ describe('one parent cancellation chooser', () => {
       .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Mixer cutoff passed' }) } as any);
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    await screen.findByText(/Your refund is.*98.00/);
+    await screen.findByText(/Refund: .*98\.00 \(your payment minus the .* card processing fee\)/);
     fireEvent.click(screen.getByLabelText(/Selected add-ons/));
     fireEvent.click(screen.getByLabelText(/Cold storage/)); fireEvent.click(screen.getByLabelText(/Mixer/));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
@@ -60,7 +60,7 @@ describe('one parent cancellation chooser', () => {
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="partially_refunded" items={[]} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     expect(await screen.findByText('Refunded: $50.00')).toBeInTheDocument();
-    expect(screen.getByText(/Your refund is.*20.00/)).toBeInTheDocument(); expect(screen.queryByText(/Amount kept/)).not.toBeInTheDocument(); expect(screen.getByText('Review what happens before you cancel.')).toBeInTheDocument(); expect(screen.queryByText(/Unstarted equipment/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Refund: .*20.00/)).toBeInTheDocument(); expect(screen.queryByText(/Amount kept/)).not.toBeInTheDocument(); expect(screen.getByText('Review what happens before you cancel.')).toBeInTheDocument(); expect(screen.queryByText(/Unstarted equipment/)).not.toBeInTheDocument();
   });
   it('uncaptured requests have an explicit confirm action and Escape exits without submitting', async () => {
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" items={items} onChanged={async () => {}} />);

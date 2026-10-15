@@ -19,6 +19,7 @@ import { recordBookingAttendance } from './booking-attendance-service';
 import { recordKitchenInspection, projectBookingCloseout } from './clock-closeout';
 import { claimKitchenVisit } from './kitchen-visit-lifecycle';
 import { changeBookingFlag } from './booking-support-flags';
+import { kitchenPayout, type PayoutSource } from '@shared/kitchen-payout';
 import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { getBookingResponseDeadline } from './booking-response-deadline';
 import { getUserDisplayName } from '../utils/user-display';
@@ -108,14 +109,22 @@ const updates: Record<SupportActionType, string> = {
   release_payout: 'the kitchen payout has been released',
 };
 const cents = (value: unknown) => value == null ? 0 : Number(value);
+/** Admin transfer line: what Stripe actually moved once sent (payoutSent / transfer metadata), else the expected net (revenue minus processing fee). */
+export function supportTransferLine(row: Context['payments'][number]) {
+  const payout = kitchenPayout(row as unknown as PayoutSource);
+  const sent = !!row.transferId || payout.status === 'sent';
+  const expected = Math.max(0, cents(row.managerRevenue) - cents(row.stripeProcessingFee));
+  return { transactionId: row.id, transferId: row.transferId, status: sent ? 'recorded' : 'not_recorded',
+    managerRevenueCents: cents(row.managerRevenue), sent, sentAt: sent ? payout.sentAt : null,
+    amountCents: sent ? payout.amountCents : expected };
+}
 function money(ctx: Pick<Context, 'booking' | 'payments'>) {
   const captured = ctx.payments.filter(row => ['succeeded', 'partially_refunded', 'refunded'].includes(row.status));
   return { capturedCents: captured.reduce((sum, row) => sum + cents(row.amount), 0),
     refundedCents: captured.reduce((sum, row) => sum + cents(row.refundAmount), 0),
     platformFeeCents: captured.reduce((sum, row) => sum + cents(row.serviceFee), 0),
     processingFeeCents: captured.reduce((sum, row) => sum + cents(row.stripeProcessingFee), 0), currency: ctx.booking.currency,
-    providerVerified: false as const, transfers: ctx.payments.map(row => ({ transactionId: row.id, transferId: row.transferId,
-      status: row.transferId ? 'recorded' : 'not_recorded', managerRevenueCents: cents(row.managerRevenue) })) };
+    providerVerified: false as const, transfers: ctx.payments.map(supportTransferLine) };
 }
 export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments' | 'visits' | 'flags' | 'actions' | 'storage' | 'equipment'> & Partial<Pick<Context, 'responseDeadlineAt' | 'location'>>, now = new Date()): AvailableSupportAction[] {
   const booking = ctx.booking, decision = booking.paymentDecision as { state?: string; target?: string } | null;

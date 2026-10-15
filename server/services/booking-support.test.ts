@@ -251,3 +251,18 @@ describe('support operation reservation and notices', () => {
     expect(result.availableActions.map(action => action.type)).not.toContain('set_arrival_mode');
   });
 });
+
+describe('admin kitchen transfer lines', () => {
+  it('shows the actual transferred cents and time once released, never the gross revenue', async () => {
+    const { supportTransferLine } = await import('./booking-support');
+    const sent = supportTransferLine({ id: 8, transferId: 'tr_1', managerRevenue: '5750', stripeProcessingFee: '256', amount: '7000', baseAmount: '5750', serviceFee: '700',
+      payoutTiming: 'after_closeout', metadata: { payoutSent: { sentAt: '2026-10-14T15:00:00.000Z', amountCents: 5494 } } } as any);
+    expect(sent).toMatchObject({ sent: true, amountCents: 5494, sentAt: '2026-10-14T15:00:00.000Z', status: 'recorded' });
+  });
+  it('shows the expected net (revenue minus processing fee) before release', async () => {
+    const { supportTransferLine } = await import('./booking-support');
+    const held = supportTransferLine({ id: 9, transferId: null, managerRevenue: '5750', stripeProcessingFee: '256', amount: '7000', baseAmount: '5750', serviceFee: '700',
+      payoutTiming: 'after_closeout', metadata: {} } as any);
+    expect(held).toMatchObject({ sent: false, amountCents: 5494, sentAt: null, status: 'not_recorded' });
+  });
+});

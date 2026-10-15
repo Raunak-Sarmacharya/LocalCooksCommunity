@@ -58,6 +58,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                   ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')
                   : event.kind === 'goodwill_refunded' && event.amountCents
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
+                    : role === 'chef' && event.kind === 'checkout_requested' ? t('historyYouCheckedOut')
                     : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>
               </div>

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fixture = vi.hoisted(() => ({ toast: vi.fn(), mutate: vi.fn(), minimum: 1, full: [] as string[],
+const fixture = vi.hoisted(() => ({ toast: vi.fn(), mutate: vi.fn(), minimum: 1, full: [] as string[], rental: [] as any[],
   rateMode: 'hourly',
   times: ['09:00', '10:00', '11:00', '12:00'],
   kitchen: { id: 4, name: 'Test Kitchen', locationId: 1, hourlyRate: 0, location: { id: 1, minimumBookingWindowHours: 0 } } }));
@@ -18,7 +18,7 @@ vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<type
 import KitchenBookingFlow from './KitchenBookingFlow';
 
 beforeEach(() => {
-  localStorage.clear(); fixture.toast.mockReset(); fixture.mutate.mockReset(); fixture.minimum = 1;
+  localStorage.clear(); fixture.toast.mockReset(); fixture.mutate.mockReset(); fixture.minimum = 1; fixture.rental = [];
   fixture.times = ['09:00', '10:00', '11:00', '12:00']; fixture.full = [];
   fixture.rateMode = 'hourly';
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -27,7 +27,7 @@ beforeEach(() => {
       preparationReminderHours: 36, managerResponseBufferHours: 2, timezone: 'America/St_Johns' }
       : url.includes('/policy') ? { maxSlotsPerChef: 4 }
       : url.includes('/slots?') ? fixture.times.map(time => ({ time, available: 1, capacity: 1, isFullyBooked: fixture.full.includes(time) }))
-      : url.includes('equipment-listings') ? { included: [], rental: [] } : [];
+      : url.includes('equipment-listings') ? { included: [], rental: fixture.rental } : [];
     return { ok: true, json: async () => data };
   }));
 });
@@ -45,6 +45,19 @@ const hour = (start: number) => screen.getByRole('button', { name: new RegExp(`$
 const selected = (start: number) => expect(hour(start).className).toContain('bg-[#F51042]');
 
 describe('actual kitchen picker consecutive selection', () => {
+  it('adds and removes an optional rental inline without opening a dialog', async () => {
+    fixture.rental = [{ id: 17, equipmentType: 'mixer', sessionRate: 2500 }];
+    await open(['09:00']);
+    fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
+    const add = await screen.findByRole('button', { name: 'wfbAdd Mixer' });
+    expect(add).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(add);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const remove = screen.getByRole('button', { name: 'wfbRemove Mixer' });
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(remove);
+    expect(screen.getByRole('button', { name: 'wfbAdd Mixer' })).toHaveAttribute('aria-pressed', 'false');
+  });
   it('shows the configured preparation lead and a friendly kitchen-zone response deadline', async () => {
     await open(['09:00']);
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
@@ -84,6 +97,7 @@ describe('actual kitchen picker consecutive selection', () => {
     fixture.full = ['10:00']; await open(['09:00', '10:00', '11:00']);
     await waitFor(() => expect(fixture.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Choose your visit hours' })));
     expect(hour(10)).toBeDisabled();
+    expect(hour(10)).toHaveTextContent('wfbBooked');
     fireEvent.click(hour(9)); fireEvent.click(hour(11));
     expect(hour(11).className).not.toContain('bg-[#F51042]');
   });

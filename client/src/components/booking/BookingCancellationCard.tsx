@@ -40,7 +40,7 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
     <Card className="rounded-2xl border-border/70 p-4 shadow-none sm:p-6">
       <h2 id="booking-cancellation-title" className="mb-2 text-base font-semibold leading-6">{t('bdhCancellationTitle')}</h2>
       <div className="text-muted-foreground [&_p]:text-sm">{sentence}</div>
-      {canCancel && <button type="button" className="mt-1 min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onCancel}>{t('bdhCancelOrChangeShort')}</button>}
+      {canCancel && status !== 'pending' && <button type="button" className="mt-1 min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onCancel}>{t('bdhCancelOrChangeShort')}</button>}
     </Card>
   </section>;
 }

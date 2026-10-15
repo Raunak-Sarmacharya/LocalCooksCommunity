@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, MapPin, Calendar, Building2, Users, Clock, Mail, CreditCard, Snowflake, Thermometer, FileText, Shield, Image, ExternalLink, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CancellationPolicyEditor } from '@/components/manager/settings/CancellationPolicyEditor';
+import { AdminCancellationPolicyEditor } from '@/components/admin/AdminCancellationPolicyEditor';
 import { SessionExtensionSettingsCard } from '@/components/manager/settings/SessionExtensionSettingsCard';
 
 interface LocationDetailDialogProps {
@@ -497,7 +497,7 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
             </div>
           )}
 
-          <CancellationPolicyEditor kitchenId={kitchen.id} admin />
+          <AdminCancellationPolicyEditor kitchenId={kitchen.id} />
           <SessionExtensionSettingsCard kitchenId={kitchen.id} admin />
           {/* Images */}
           {(kitchen.imageUrl || (kitchen.galleryImages && kitchen.galleryImages.length > 0)) && (

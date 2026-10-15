@@ -49,7 +49,7 @@ export async function lateDepartureOpen(booking: ClockBooking, timezone: string,
 export async function projectBookingCloseouts<T extends { id: number }>(items: T[]) {
   if (!items.length) return items;
   const ids = items.map(item => item.id);
-  const rows = await db.select({ booking: kitchenBookings, timezone: locations.timezone })
+  const rows = await db.select({ booking: kitchenBookings, timezone: locations.timezone, checkinWindow: locations.checkinWindowMinutesBefore })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(inArray(kitchenBookings.id, ids));
   const visits = await db.select().from(kitchenBookingVisits).where(inArray(kitchenBookingVisits.bookingId, ids));
@@ -57,8 +57,12 @@ export async function projectBookingCloseouts<T extends { id: number }>(items: T
   return Promise.all(items.map(async item => {
     const row = rows.find(row => row.booking.id === item.id);
     if (!row?.timezone) return item;
-    const derived = await projectBookingCloseout(row.booking, row.timezone, visits.filter(visit => visit.bookingId === item.id), timing);
-    return { ...item, status: derived.status, closeout: derived.closeout, timezone: derived.timezone };
+    const own = visits.filter(visit => visit.bookingId === item.id).sort((a, b) => a.blockIndex - b.blockIndex);
+    const derived = await projectBookingCloseout(row.booking, row.timezone, own, timing);
+    // Read-only list facts so a list row derives the same phase as the booking page (visit states, check-in window).
+    return { ...item, status: derived.status, closeout: derived.closeout, timezone: derived.timezone,
+      visitStates: own.map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus, checkoutRequestedAt: visit.checkoutRequestedAt })),
+      checkinWindowMinutesBefore: row.checkinWindow ?? timing.checkinWindowMinutesBefore };
   }));
 }
 

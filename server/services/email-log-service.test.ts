@@ -5,7 +5,7 @@ vi.mock('../db', () => ({ db: {
   insert: () => ({ values: state.insert }),
 } }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
-import { logOutgoingEmail, retryFailedEmail } from './email-log-service';
+import { logOutgoingEmail, retryFailedEmail, resolveRecipientRole } from './email-log-service';
 beforeEach(() => { vi.clearAllMocks(); });
 it('preserves the actual attempt when recipient role enrichment fails', async () => {
   state.lookup.mockRejectedValue(Error('Worker checkpoint reached'));
@@ -18,4 +18,8 @@ it('preserves historical sent support mail when a retry is requested', async () 
   state.lookup.mockResolvedValue([{ id: 1, recipientEmail: 'support@localcook.shop', category: 'general', status: 'sent' }]);
   await expect(retryFailedEmail(1)).resolves.toMatchObject({ success: true });
   expect(state.insert).not.toHaveBeenCalled();
+});
+it('logs an admin copy as admin even when the account also has chef or manager flags', () => {
+  expect(resolveRecipientRole({ id: 1, role: 'admin', isChef: true, isManager: false, isPortalUser: false })).toBe('admin');
+  expect(resolveRecipientRole({ id: 2, role: 'chef', isChef: true, isManager: false, isPortalUser: false })).toBe('chef');
 });

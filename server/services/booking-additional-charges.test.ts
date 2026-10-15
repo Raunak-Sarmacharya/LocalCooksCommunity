@@ -24,6 +24,11 @@ describe('booking additional charges', () => {
     expect(lines.map(line => [line.kind, line.amountCents, line.kitchenShareCents, line.minutes])).toEqual([
       ['extension', 1438, 1250, 30], ['damage_claim', 9000, 9000, null], ['damage_claim', 4500, 0, null]]);
   });
+  it('kitchen share of an extension is net of its own processing fee; claims carry none (live #166: $14.38 − $0.86)', () => {
+    const lines = toAdditionalCharges([row({ amount: '1526', managerRevenue: '1438', stripeProcessingFee: '86' }),
+      row({ id: 2, amount: '9000', managerRevenue: '9000', stripeProcessingFee: '291', paymentIntentId: 'pi_claim', metadata: { type: 'damage_claim', damage_claim_id: '9' } })], 'manager');
+    expect(lines.map(line => line.kitchenShareCents)).toEqual([1352, 9000]);
+  });
   it('leaves out the parent charge, unpaid rows and unrelated rows; keeps refunds visible', () => {
     expect(toAdditionalCharges([row({ paymentIntentId: 'pi_parent' })], 'chef', 'pi_parent')).toEqual([]);
     expect(toAdditionalCharges([row({ status: 'pending' }), row({ status: 'failed' })], 'chef')).toEqual([]);

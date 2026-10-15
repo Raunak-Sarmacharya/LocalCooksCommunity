@@ -93,3 +93,15 @@ describe('the booking\'s own payment is never an extension charge', () => {
     expect(state.params[update]).toContain('pi_booking');
   });
 });
+
+describe('manager dashboard pending payments', () => {
+  it('counts captured payouts held until after closeout (net of processing fee), and returns the value', async () => {
+    state.respond = text => text.includes('table_exists') ? [{ table_exists: true }] : text.includes('total_bookings') ? [{ total_bookings: '1', bookings_with_transactions: '1' }]
+      : text.includes('COUNT(*)') ? [{ count: '1' }] : text.includes('as pending_payments') ? [{ pending_payments: '5494' }] : [{}];
+    const metrics = await getRevenueMetricsFromTransactions(2, db).catch(() => undefined);
+    const totals = state.queries.find(text => text.includes('as pending_payments'))!;
+    expect(totals).toContain("pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL");
+    expect(totals).toMatch(/manager_revenue::numeric, 0\) - COALESCE\(pt\.stripe_processing_fee/);
+    if (metrics) expect(metrics.pendingPayments).toBe(5494);
+  });
+});

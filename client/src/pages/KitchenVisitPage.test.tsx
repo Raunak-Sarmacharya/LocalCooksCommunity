@@ -79,6 +79,43 @@ describe("full-page kitchen visit", () => {
   });
   afterEach(() => { cleanup(); clients.forEach(value => value.clear()); vi.unstubAllGlobals(); });
 
+  it('keeps required arrival photos before Confirm and instructions collapsed after the form', async () => {
+    status.currentVisitDuties = { ...status.currentVisitDuties, arrival: { ...section,
+      photos: [{ id: 'floor', label: 'Floor photo', required: true }] } } as any;
+    setup();
+    const confirm = await screen.findByRole('button', { name: 'Confirm check-in' });
+    const photo = screen.getByText('Floor photo');
+    const instructions = screen.getByRole('region', { name: 'Arrival instructions' });
+    expect(photo).toBeVisible();
+    expect(photo.closest('details')).toBeNull();
+    expect(photo.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(confirm.compareDocumentPosition(instructions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(instructions).not.toHaveAttribute('open');
+  });
+
+  it("keeps optional arrival photos and notes collapsed after Confirm", async () => {
+    setup();
+    const confirm = await screen.findByRole('button', { name: 'Confirm check-in' });
+    const toggle = screen.getByText('Add photos or a note (optional)');
+    const details = toggle.closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    expect(confirm.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(details.querySelector('textarea')).toBeInTheDocument();
+  });
+
+  it("opens the checkout form only after choosing Check out early", async () => {
+    const end = new Date(Date.now() + 2 * 3_600_000);
+    const start = new Date(Date.now() - 3_600_000);
+    status = visit({ chefId: 3, checkinStatus: 'checked_in', checkedInAt: start.toISOString(),
+      visitCloseout: { id: 901, blockIndex: 0, phase: 'in_progress', scheduledStartAt: start.toISOString(), scheduledEndAt: end.toISOString() } });
+    setup();
+    const early = await screen.findByRole('button', { name: 'Check out early' });
+    expect(screen.queryByRole('button', { name: 'Submit checkout' })).not.toBeInTheDocument();
+    fireEvent.click(early);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Check out early' }));
+    expect(await screen.findByRole('button', { name: 'Submit checkout' })).toBeInTheDocument();
+  });
+
   it("hides preparation on a completed direct visit route while keeping its recorded outcome", async () => {
     status = visit({ status: "completed", checkinStatus: "checked_out", checkedInAt: "2026-10-12T14:05:00Z", checkoutRequestedAt: "2026-10-12T17:10:00Z",
       checkoutApprovedAt: "2026-10-12T17:40:00Z", checkinChecklistItems: [{ id: "floor", label: "Check the floor", checked: true }] });
@@ -118,7 +155,8 @@ describe("full-page kitchen visit", () => {
     expect(screen.getByRole("link", { name: "Back to booking" })).toHaveAttribute("href", "/booking/901");
     expect(screen.getByText("Test kitchen")).toBeInTheDocument();
     expect(screen.getAllByText(/GMT/).length).toBeGreaterThan(0);
-    const instructions = screen.getByRole("region", { name: "Visit instructions" });
+    const instructions = screen.getByRole("region", { name: "Arrival instructions" });
+    fireEvent.click(within(instructions).getByText("Arrival instructions", { selector: "summary" }));
     expect(within(instructions).getByText("Use the side entrance.")).toBeInTheDocument();
     // Departure details wait until the chef has checked in.
     expect(within(instructions).queryByText("Lock the side entrance.")).not.toBeInTheDocument();
@@ -340,7 +378,7 @@ describe("full-page kitchen visit", () => {
   it("shows status, kitchen-local time and next step without opening any disclosure", async () => {
     const { container } = setup();
     const summary = await screen.findByRole("region", { name: "Visit status" });
-    expect(container.querySelector("details")).toBeNull();
+    expect(screen.getByTestId("visit-next-step").closest("details")).toBeNull();
     // One status line: the next-step sentence, not a "Not checked in" chip repeating it.
     expect(within(summary).queryByText("Not checked in")).not.toBeInTheDocument();
     expect(within(summary).getByText(/Check-in is open/)).toBeInTheDocument();
@@ -420,7 +458,7 @@ describe("full-page kitchen visit", () => {
   it("states the check-in time once when checked in", async () => {
     status = visit({ checkinStatus: "checked_in", checkedInAt: "2026-10-12T09:28:00Z" });
     setup();
-    expect(await screen.findByTestId("visit-next-step")).toHaveTextContent("You checked in at 9:28 a.m. When you’re finished, submit checkout below.");
+    expect(await screen.findByTestId("visit-next-step")).toHaveTextContent("You checked in at 9:28 a.m. Choose Check out when you’re finished.");
     expect((document.body.textContent || "").match(/9:28\s*a\.m\./g)).toHaveLength(1);
   });
 

@@ -192,8 +192,10 @@ describe('booking lifecycle recipients and durable email evidence', () => {
   });
   it('commits an in-app alert and email outbox recipient for each surface', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Chef attendance reported', 'Shared attendance evidence', 2, { visitId: 5 });
+    // Attendance is on the owner's admin tracking list (problems): Local Cooks gets its own summary.
     expect(state.notify).toHaveBeenCalledTimes(3);
     expect(state.notify.mock.calls.map(call => call[0].actionUrl)).toEqual(['/booking/10', '/manager/booking/10', '/admin?section=transactions&bookingId=10']);
+    expect(state.notify.mock.calls[2][0].title).toMatch(/^Attendance reported · /);
     expect(state.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: 'report_attended', actorId: 2,
       emails: [expect.objectContaining({ url: 'http://chef.localhost:5001/booking/10' }),
         expect.objectContaining({ url: 'http://kitchen.localhost:5001/manager/booking/10' }),
@@ -218,14 +220,16 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     expect(emails).toHaveLength(1); expect(emails[0].content.html).toContain('http://kitchen.localhost:5001/manager/stripe-connect/refresh?role=manager');
     expect(emails[0].content.text).toContain('update your payout details');
   });
-  it('tells only the manager they have been paid, with the amount and a link to the payout statement', async () => {
+  it('tells the manager they have been paid (amount + statement link); Local Cooks gets a "Payout sent" summary', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'payout_released', 'You’ve been paid', 'Queued fallback', undefined,
       { recipientPolicy: 'manager', transactionId: 8, amountCents: 2732 });
-    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
+    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2, 1]);
+    expect(state.notify.mock.calls[1][0].title).toMatch(/^Payout sent · .* · \$27\.32$/);
     expect(state.notify.mock.calls[0][0]).toMatchObject({ title: 'You’ve been paid $27.32 · #10', actionLabel: 'View payout statement' });
     expect(state.notify.mock.calls[0][0].message).toContain('$27.32');
     const emails = state.insert.mock.calls[0][0].emails;
-    expect(emails).toHaveLength(1); expect(emails[0].to).toBe('manager@example.test');
+    expect(emails.map((email: any) => email.to)).toEqual(['manager@example.test', 'support@example.test']);
+    expect(emails[1].content.subject).toMatch(/^Payout sent · /);
     expect(emails[0].content.text).toContain('your usual payout schedule');
     expect(emails[0].content.html).toContain('http://kitchen.localhost:5001/manager/booking/10#booking-payment-title');
   });
@@ -233,19 +237,35 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     state.insert.mockRejectedValueOnce(new Error('outbox unavailable'));
     await expect(queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Confirmed', 'Payment captured')).rejects.toThrow('outbox unavailable');
   });
-  it('keeps every admin in-app alert but queues email only for opted-in admins', async () => {
+  it('Local Cooks events: every admin gets the in-app alert, email only for opted-in admins', async () => {
     state.rows[1][2].adminEmailNotifications = false;
     state.rows[1].push({ id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true });
-    await queueBookingLifecycleEvent(tx, 10, 'report_attended', 'Attendance reported', 'Shared evidence');
-    expect(state.notify).toHaveBeenCalledTimes(4);
-    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual([
-      'chef@example.test', 'manager@example.test', 'test_admin@localcooks.ca',
-    ]);
+    await queueBookingLifecycleEvent(tx, 10, 'support_flag', 'Payment needs review', 'Flag', undefined, { recipientPolicy: 'admins', supportCase: true });
+    expect(state.notify).toHaveBeenCalledTimes(2);
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).toEqual(['test_admin@localcooks.ca']);
+  });
+  it('visit milestones and reminders never copy admins', async () => {
+    state.rows[1].push({ id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true });
+    await queueBookingLifecycleEvent(tx, 10, 'checkin_recorded', 'Checked in', 'Chef checked in.');
+    expect(state.insert.mock.calls[0][0].emails.map((email: any) => email.to)).not.toContain('test_admin@localcooks.ca');
+    expect(state.notify.mock.calls.map(call => call[0].userId)).not.toContain(4);
+  });
+  it('a cancellation reaches opted-in admins in Local Cooks wording with the refund facts (never "You cancelled")', async () => {
+    Object.assign(state.rows[0][0], { startTime: '10:00', bookingDate: new Date('2026-10-17T00:00:00Z'), referenceCode: 'KB-Z2BR6J' });
+    state.rows[1].push({ id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true });
+    await queueBookingLifecycleEvent(tx, 10, 'cancelled', 'Booking cancelled', 'You cancelled your booking.', 3,
+      { cancellationNotice: { cause: 'chef', refundCents: 2907, feeCents: 143 } });
+    const admin = state.notify.mock.calls.find(call => call[0].userId === 4)![0];
+    expect(admin.title).toMatch(/^Booking cancelled · /);
+    expect(admin.message).toMatch(/cancelled — .* Refunded \$29\.07\. Processing fee kept: \$1\.43\./);
+    expect(admin.message).not.toMatch(/You cancelled/);
+    const email = state.insert.mock.calls[0][0].emails.find((item: any) => item.to === 'test_admin@localcooks.ca');
+    expect(email.content.subject).toMatch(/^Booking cancelled · /);
   });
   it('commits participant receipts, manager-only email and reminder reconciliation for a visit action', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Inspection needed', 'Inspect current visit', 3,
       { visitId: 5, recipientPolicy: 'participants', emailRecipientPolicy: 'manager' });
-    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([3, 2]);
+    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
     expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
     expect(state.insert.mock.calls[0][0].emails[0].to).toBe('manager@example.test');
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking', 10);
@@ -343,7 +363,7 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     expect(emails[0].content.text).toContain('2026-10-07–2026-10-10');
     expect(emails[0].content.text).not.toContain('Check in for each visit');
     expect(emails[1].content.text).toContain('Estimated payout: CAD $10.80');
-    expect(emails[0].content.text).not.toMatch(/service fee|tax CAD|America\//i);
+    expect(emails[0].content.text).not.toMatch(/^Service fee:|tax CAD|America\//im);
     expect(emails[0].content.text).toContain('Hi Sam Taylor,');
     expect(emails[0].content.text).not.toContain('Hi Chef,');
     expect(emails[0].content.text).toContain('Meet at side entrance');
@@ -492,21 +512,61 @@ describe('consolidated checkout and closeout notices', () => {
   it.each([true, false])('selects exactly one manager checkout notice (after closeout: %s)', async afterCloseout => {
     state.payout = afterCloseout ? { timing: 'after_closeout', status: 'scheduled', amountCents: 2732, expectedAt: '2026-10-16T12:00:00Z' } : { timing: 'at_capture', status: 'sent' };
     state.rows = [[context], people];
-    await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Checked out', 'Review checkout', 3, { recipientPolicy: 'manager' });
+    await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Checked out', 'Review checkout', 3, { recipientPolicy: 'participants' });
     expect(state.notify).toHaveBeenCalledTimes(1);
+    expect(state.notify.mock.calls[0][0].userId).toBe(2);
+    expect(state.insert.mock.calls[0][0].emails[0].to).toBe('manager@example.test');
     expect(state.notify.mock.calls[0][0].title).toContain('checked out');
     expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
     expect(state.notify.mock.calls[0][0].message.includes('$27.32')).toBe(afterCloseout);
   });
   it('sends one chef Visit complete notice with the outcome and no second email, idempotent per visit', async () => {
-    state.rows = [[], [context], people];
+    state.rows = [[], [context], people, []];
     await queueBookingLifecycleEvent(tx, 10, 'visit_closed', 'Fallback', 'Fallback', 2,
       { visitId: 5, recipientPolicy: 'chef', emailRecipientPolicy: 'none', inspectionOutcome: 'manager_cleared' });
     expect(state.notify).toHaveBeenCalledTimes(1);
-    expect(state.notify.mock.calls[0][0]).toMatchObject({ userId: 3, title: 'Visit complete \u00b7 Harbour Kitchen', message: 'Harbour Kitchen checked the space \u2014 all good.' });
+    expect(state.notify.mock.calls[0][0]).toMatchObject({ userId: 3, title: 'Visit complete \u00b7 Harbour Kitchen', message: tEmail('en-CA', 'ncVisitCompleteInvoice', { kitchen: 'Harbour Kitchen' }) });
     expect(state.insert.mock.calls[0][0].emails).toEqual([]);
     state.rows = [[{ id: 99 }]];
     await queueBookingLifecycleEvent(tx, 10, 'visit_closed', 'Fallback', 'Fallback', 2, { visitId: 5 });
     expect(state.notify).toHaveBeenCalledTimes(1);
   });
+});
+
+
+describe('claim-aware chef closeout delivery', () => {
+  beforeEach(() => { vi.clearAllMocks(); state.database = tx; state.payout = null; });
+  it.each(['submitted', 'charge_succeeded', 'rejected'])('a %s claim replaces all-good copy in both channels', async status => {
+    const claim = { id: 9, claimVersion: 2, chefVisibleAt: new Date(), kitchenBookingVisitId: 5, status,
+      claimedAmountCents: 7000, finalAmountCents: 7000, chefResponseDeadline: new Date('2026-10-18T12:00:00Z') };
+    state.rows = [[], [{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC' }],
+      [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }], [claim]];
+    await queueBookingLifecycleEvent(tx, 10, 'visit_closed', 'Visit complete', 'Fallback', 2,
+      { visitId: 5, recipientPolicy: 'chef', inspectionOutcome: 'manager_cleared' });
+    const notice = state.notify.mock.calls[0][0];
+    expect(notice.userId).toBe(3);
+    expect(notice.message).not.toMatch(/all good|kitchen payout|sent to the kitchen/i);
+    expect(notice.message).toContain(status === 'charge_succeeded' ? 'You paid $70.00' : status === 'submitted' ? 'Pay or dispute by' : 'nothing to pay');
+    expect(state.insert.mock.calls[0][0].emails[0].content.text).toContain(notice.message);
+  });
+});
+
+it.each([0, 5000])('cancellation delivers recipient copy and only retained kitchen money (%i)', async retained => {
+  vi.clearAllMocks(); state.database = tx; state.payout = null;
+  state.people = [{ id: 3, profile: { fullName: 'Sam' } }, { id: 2, profile: { fullName: 'Maya' } }];
+  state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC' }],
+    [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' }]];
+  await queueBookingLifecycleEvent(tx, 10, 'cancelled', 'Fallback', 'Fallback', 3,
+    { recipientPolicy: 'participants', cancellationNotice: { cause: 'chef', kitchenShareRetainedCents: retained } });
+  expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([3, 2]);
+  const kitchen = state.notify.mock.calls.find(call => call[0].userId === 2)![0];
+  expect(kitchen.title).toBe('Booking cancelled');
+  expect(kitchen.message).toContain('Sam cancelled'); expect(kitchen.message).toContain('9:00 a.m.');
+  expect(kitchen.message).toContain('that time is open again.');
+  expect(kitchen.message.includes('$50.00')).toBe(retained > 0);
+  const emails = state.insert.mock.calls[0][0].emails;
+  expect(emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test']);
+  expect(emails[1].content.text).toContain(kitchen.message);
+  expect(emails[1].content.text).not.toContain('$0.00');
+  expect(emails[0].content.text).not.toContain('that time is open again');
 });

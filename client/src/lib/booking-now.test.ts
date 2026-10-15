@@ -96,7 +96,7 @@ describe('completed claims', () => {
     facts: { ...facts, inspectionOutcome: 'manager_cleared', inspectedOn: 'Oct 15', ...extra } }).sentence;
   it('reflects a chef payment for both viewers', () => {
     const settledClaim = { outcome: 'chef_paid' as const, amount: '$90.00' };
-    expect(sentence('chef', { settledClaim })).toBe('Visit complete. You paid $90.00 for damage or extra cleaning.');
+    expect(sentence('chef', { settledClaim })).toBe('You paid $90.00 for damage or extra cleaning.');
     expect(sentence('manager', { settledClaim })).toBe('Visit complete. Ada Lovelace paid your $90.00 claim.');
   });
   it('shows a closed report without a charge', () => {
@@ -111,4 +111,20 @@ describe('completed claims', () => {
     expect(sentence('chef', { hasClaim: true })).toBe('Visit complete.');
     expect(sentence('manager', { hasClaim: true })).toBe('Visit complete.');
   });
+});
+
+it.each(['chef', 'manager'] as const)('uses an amber Past end time pill for %s', role => {
+  const now = bookingNowContent({ phase: 'time_ended_in_session', role, facts, t });
+  expect(t(now.pill.key)).toBe('Past end time');
+  expect(now.pill.tone).toBe('amber');
+});
+it('never offers calendar on a pending request, even when a caller supplies the calendar gate', () => {
+  expect(bookingNowContent({ phase: 'pending', role: 'chef', facts, t }).secondary).not.toContain('add_to_calendar');
+});
+
+it.each(['checkout_review', 'completed'] as const)('chef %s reflects a visible claim instead of promising all set', phase => {
+  const content = (extra: Partial<BookingNowFacts>) => bookingNowContent({ phase, role: 'chef', facts: { ...facts, ...extra }, t }).sentence;
+  expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.' })).toBe('Harbour Kitchen reported damage or extra cleaning. Pay or dispute by Oct 18 at 3:30 p.m.');
+  expect(content({ settledClaim: { outcome: 'chef_paid', amount: '$70.00' } })).toBe('You paid $70.00 for damage or extra cleaning.');
+  expect(content({ settledClaim: { outcome: 'closed', amount: '' } })).toContain('nothing to pay');
 });

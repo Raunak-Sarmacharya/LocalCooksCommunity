@@ -2,11 +2,11 @@ import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { bookingInstructionRelease } from './visit-duties';
 import { getLifecycleSettings } from './lifecycle-settings';
 import { chefVisitCodes, arrivalModeFor, currentArrivalNoticeTargets, type ArrivalNoticeTarget } from './visit-code-challenge';
-import { ensureServerI18n } from '../i18n';
+import { ensureServerI18n, tLocale } from '../i18n';
 import { tEmail } from '../i18n/outbound';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
-import { bookingLifecycleEvents, users, kitchens, locations, kitchenBookings, kitchenBookingVisits, emailLogs, storageBookings, equipmentBookings, storageListings, equipmentListings, paymentTransactions } from '@shared/schema';
+import { bookingLifecycleEvents, users, kitchens, locations, kitchenBookings, kitchenBookingVisits, emailLogs, storageBookings, equipmentBookings, storageListings, equipmentListings, paymentTransactions, damageClaims } from '@shared/schema';
 import { db } from '../db';
 import { notificationService } from './notification.service';
 import { sendEmail, generateBookingConfirmationEmail, generateBookingRequestEmail, generateBookingNotificationEmail, bookingResponseDeadline, arrivalModeLine, renderTransactionalEmail, bookingEmailFacts, bookingDeliveryEmail, emailLocalDateTimeSentence, emailZoneName, emailClock } from '../email';
@@ -130,6 +130,7 @@ export function bookingEmailRetryDelayMs(failures: number) {
 /** Notifications and durable email/history evidence commit with the decision. */
 export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: number, kind: string, title: string,
   message: string, actorId?: number, metadata: Record<string, unknown> = {}, afterFailedAttempts = false) {
+  if (kind === 'checkout_requested') metadata = { ...metadata, recipientPolicy: 'manager' };
   if (kind === 'visit_closed') {
     const [existing] = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents).where(and(
       eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, kind),
@@ -163,6 +164,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   const displayNames = new Map(await Promise.all(recipients.filter(person => person.role !== 'admin').map(async person =>
     [person.id, await getUserDisplayName(person.id, person.id === context.chefId ? 'chef' : 'manager').catch(() => '')] as const)));
   const nameOf = (id?: number | null) => { const name = id ? displayNames.get(id) : undefined; return name && !['A chef', 'Manager'].includes(name) ? name : ''; };
+  const closeoutClaims = kind === 'visit_closed' ? await tx.select().from(damageClaims).where(eq(damageClaims.kitchenBookingId, bookingId)) : [];
+  const closeoutClaim = closeoutClaims.filter(claim => claim.claimVersion === 2 && !!claim.chefVisibleAt
+    && (claim.kitchenBookingVisitId ?? null) === (metadata.visitId ?? null)).sort((a, b) => b.id - a.id)[0];
   const emails: Email[] = [];
   // Snapshot the approved itinerary in the same transaction as confirmation.
   // Retries keep its recorded money, items and calendar identity.
@@ -177,7 +181,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     if (!row || row.booking.status !== 'confirmed' || row.booking.paymentStatus !== 'paid')
       throw new Error('Confirmed itinerary requires verified paid booking state');
     await (await import('./clock-closeout')).persistBookingCloseout(bookingId, tx);
-    const [payment] = await tx.select({ amount: paymentTransactions.amount, payout: paymentTransactions.managerRevenue, payoutTiming: paymentTransactions.payoutTiming }).from(paymentTransactions)
+    const [payment] = await tx.select({ amount: paymentTransactions.amount, payout: paymentTransactions.managerRevenue, payoutTiming: paymentTransactions.payoutTiming, processingFee: paymentTransactions.stripeProcessingFee }).from(paymentTransactions)
       .where(and(eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId!), eq(paymentTransactions.status, 'succeeded'))).limit(1);
     if (!payment) throw new Error('Confirmed itinerary requires recorded successful payment');
     const storage = await tx.select({ item: storageBookings, name: storageListings.name }).from(storageBookings)
@@ -195,7 +199,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       durationHours: row.booking.durationHours == null ? undefined : Number(row.booking.durationHours),
       kitchenName: row.kitchen.name, locationName: row.location.name, locationAddress: row.location.address || '',
       referenceCode: row.booking.referenceCode, reservationChefName: nameOf(context.chefId) || 'the chef',
-      payoutAfterCloseout: payment.payoutTiming === 'after_closeout', totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout),
+      payoutAfterCloseout: payment.payoutTiming === 'after_closeout', totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout), processingFeeCents: Number(payment.processingFee ?? 0),
       cancellationPolicyHours: row.booking.cancellationPolicyHours ?? 24,
       cancellationDeadline: new Date(Math.min(...(await import('./advance-reminders')).reminderVisitTimes(row.booking, row.location.timezone || DEFAULT_TIMEZONE).map(visit => visit.start.getTime())) - (row.booking.cancellationPolicyHours ?? 24) * 3600000).toISOString(),
       specialNotes: row.booking.specialNotes || undefined,
@@ -247,7 +251,12 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
   }
   const confirmationTime = new Date();
   const arrivalDetails = confirmation ? await confirmationArrivalDetails(bookingId, tx, recipients.find(person => person.id === context.chefId)?.locale, confirmationTime) : undefined;
-  for (const person of recipients.filter(person => arrivalNotice ? person.id === context.chefId : metadata.recipientPolicy === 'admins' ? person.role === 'admin' : metadata.recipientPolicy === 'manager' ? person.id === context.managerId
+  // Local Cooks (admins) get the events addressed to them (support, feedback, recovery) and the owner's tracking list
+  // (bookings & money, problems — ADMIN_BOOKING_KINDS) in their own wording; never reminders or visit milestones.
+  const { ADMIN_BOOKING_KINDS, adminBookingNotice } = await import('./admin-booking-notice');
+  const adminTracked = ADMIN_BOOKING_KINDS.has(kind);
+  const forLocalCooks = metadata.recipientPolicy === 'admins' || metadata.supportCase === true || kind === 'kitchen_change_recovery_required' || adminTracked;
+  for (const person of recipients.filter(person => person.role === 'admin' ? forLocalCooks && !arrivalNotice : arrivalNotice ? person.id === context.chefId : metadata.recipientPolicy === 'admins' ? false : metadata.recipientPolicy === 'manager' ? person.id === context.managerId
     : metadata.recipientPolicy === 'participants'
     ? person.id === context.chefId || person.id === context.managerId
     : metadata.recipientPolicy !== 'chef' || person.id === context.chefId)) {
@@ -279,21 +288,37 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       message: confirmation?.payoutAfterCloseout ? tEmail(person.locale, 'ncConfirmedPayout') : message } : undefined;
     const closedCopy = kind === 'visit_closed' && chef ? {
       title: tEmail(person.locale, 'ncVisitCompleteTitle', { kitchen: context.kitchenName }),
-      message: tEmail(person.locale, metadata.inspectionOutcome === 'manager_cleared' ? 'ncVisitCompleteGood' : 'ncVisitCompleteInvoice', { kitchen: context.kitchenName }) } : undefined;
+      message: closeoutClaim ? tLocale(person.locale, closeoutClaim.status === 'charge_succeeded' ? 'bnChefClaimPaid'
+        : ['resolved', 'rejected'].includes(closeoutClaim.status) ? 'bnChefClaimClosed' : 'bnChefClaimOpen', { ns: 'booking', kitchen: context.kitchenName,
+          amount: new Intl.NumberFormat(person.locale || 'en-CA', { style: 'currency', currency: 'CAD' }).format((closeoutClaim.finalAmountCents ?? closeoutClaim.claimedAmountCents) / 100),
+          date: new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: context.timezone || DEFAULT_TIMEZONE, dateStyle: 'medium', timeStyle: 'short' }).format(closeoutClaim.chefResponseDeadline) }).replace(/\.\.$/, '.')
+        : tEmail(person.locale, 'ncVisitCompleteInvoice', { kitchen: context.kitchenName }) } : undefined;
     // A producer may word the in-app notice per role; email content is rendered separately.
     const kitchenCaused = metadata.kitchenCaused === true && chef;
     const kitchenPath = kitchenCaused ? `/kitchen-preview/${context.locationId}?kitchenId=${context.kitchenId}` : undefined;
     const roleText = metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.cancellationNotice as CancellationNotice),
-        kitchenName: context.kitchenName, date: new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(context.bookingDate) })
+        chefName: nameOf(context.chefId), kitchenName: context.kitchenName,
+        date: `${new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(context.bookingDate)}, ${emailClock(context.startTime, person.locale || 'en-CA')}` })
       : (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     const roleActionLabel = (roleText as { actionLabel?: string } | undefined)?.actionLabel;
-    if (!arrivalNotice && (metadata.notificationRecipientPolicy !== 'manager' || person.id === context.managerId)) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
+    const adminCopy = localCooks && adminTracked ? adminBookingNotice(kind, { chef: nameOf(context.chefId) || 'The chef', kitchen: context.kitchenName,
+      reference: String(context.referenceCode || `#${bookingId}`), message, locale: person.locale,
+      when: [context.bookingDate ? new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(context.bookingDate)) : '',
+        context.startTime ? emailClock(context.startTime, person.locale || 'en-CA') : ''].filter(Boolean).join(', '),
+      cancellation: metadata.cancellationNotice as CancellationNotice | undefined, requestExpired: metadata.requestExpired === true,
+      payoutCents: typeof metadata.amountCents === 'number' ? metadata.amountCents : undefined,
+      holdReason: typeof metadata.holdReason === 'string' ? metadata.holdReason : null }) : undefined;
+    if (!arrivalNotice && (adminCopy || metadata.notificationRecipientPolicy !== 'manager' || person.id === context.managerId)) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
+      title: adminCopy?.title ?? confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: adminCopy?.message ?? confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
-    if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
+    if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (adminCopy || metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
+        ...(closedCopy || metadata.cancellationNotice ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
+          recipientName: nameOf(person.id), subject: closedCopy?.title ?? roleText?.title ?? title,
+          heading: closedCopy?.title ?? roleText?.title ?? title, message: closedCopy?.message ?? roleText?.message ?? message,
+          facts: [], actionLabel: roleActionLabel || 'View booking', actionUrl: url }) } : {}),
         ...(payoutCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),
           subject: payoutCopy.title, heading: payoutCopy.title, message: payoutCopy.emailMessage ?? payoutCopy.message,
           facts: payoutCopy.facts ?? [], actions: payoutCopy.actions, actionLabel: payoutCopy.actionLabel,
@@ -314,6 +339,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         ...(request && !localCooks ? { content: chef
           ? generateBookingRequestEmail({ ...request, chefName: nameOf(person.id) || 'there', chefEmail: person.email, locale: person.locale })
           : generateBookingNotificationEmail({ ...request, managerEmail: person.email, managerName: nameOf(person.id) || undefined, bookingId, locale: person.locale }) } : {}),
+        // Local Cooks summary email for tracked events ("confirmed" keeps its own admin template below).
+        ...(adminCopy && kind !== 'confirmed' ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: 'Local Cooks',
+          subject: adminCopy.title, heading: adminCopy.title, message: adminCopy.message, facts: [], actionLabel: 'Open booking', actionUrl: url }) } : {}),
         ...(confirmation ? { content: generateBookingConfirmationEmail({ ...confirmation,
           ...(chef ? arrivalDetails : { arrivalMode: arrivalDetails?.arrivalMode }),
           locale: person.locale, chefEmail: person.email, chefName: localCooks ? 'Local Cooks' : nameOf(person.id),

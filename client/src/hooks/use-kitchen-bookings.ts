@@ -28,6 +28,14 @@ interface Booking {
   checkedOutAt?: string | null;
   checkoutApprovedAt?: string | null;
   noShowDetectedAt?: string | null;
+  timezone?: string | null;
+  closeout?: { phase?: string | null; visits?: Array<{ inspection?: { canRespond?: boolean } | null }> | null } | null;
+  visitStates?: Array<{ checkinStatus: string; checkoutRequestedAt?: string | null }> | null;
+  checkinWindowMinutesBefore?: number | null;
+  responseDeadlineAt?: string | null;
+  paymentDecision?: { state?: string; target?: string; actorId?: number | null } | null;
+  kitchenPhoto?: string | null;
+  chefDue?: { kind: 'claim' | 'extra_time'; amountCents: number } | null;
 }
 
 interface CreateBookingData {
@@ -175,6 +183,15 @@ export function useKitchenBookings() {
         checkedOutAt: booking.checkedOutAt ?? booking.checked_out_at ?? null,
         checkoutApprovedAt: booking.checkoutApprovedAt ?? booking.checkout_approved_at ?? null,
         noShowDetectedAt: booking.noShowDetectedAt ?? booking.no_show_detected_at ?? null,
+        // Read-only facts the list needs to show the booking page's phase, pill and next step.
+        timezone: booking.timezone ?? null,
+        closeout: booking.closeout ?? null,
+        visitStates: Array.isArray(booking.visitStates) ? booking.visitStates : null,
+        checkinWindowMinutesBefore: booking.checkinWindowMinutesBefore ?? null,
+        responseDeadlineAt: booking.responseDeadlineAt ?? null,
+        paymentDecision: booking.paymentDecision ?? null,
+        kitchenPhoto: booking.kitchenPhoto ?? null,
+        chefDue: booking.chefDue ?? null,
       }));
       
       return normalizedBookings;

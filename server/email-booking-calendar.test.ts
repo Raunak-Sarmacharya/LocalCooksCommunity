@@ -73,3 +73,17 @@ describe('kitchen booking calendar invite', () => {
     expect(email.text).not.toContain('closes 45 minutes after');
   });
 });
+
+describe('staff confirmation payout line', () => {
+  const base = { chefEmail: 'admin@example.test', chefName: 'Admin', kitchenName: 'Kitchen', bookingDate: '2026-09-25', startTime: '09:00', endTime: '15:00',
+    timezone: 'America/St_Johns', isStaff: true, isAdmin: true, bookingId: 10 };
+  it('shows manager revenue minus the processing fee, matching the kitchen page', () => {
+    const email = generateBookingConfirmationEmail({ ...base, payoutCents: 5750, processingFeeCents: 256 });
+    expect(email.text).toContain('CAD $54.94');
+    expect(email.text).not.toContain('$57.50');
+  });
+  it('keeps the stored figure when no fee is supplied and never goes negative', () => {
+    expect(generateBookingConfirmationEmail({ ...base, payoutCents: 5750 }).text).toContain('CAD $57.50');
+    expect(generateBookingConfirmationEmail({ ...base, payoutCents: 100, processingFeeCents: 500 }).text).toContain('CAD $0.00');
+  });
+});

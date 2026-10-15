@@ -33,7 +33,7 @@ interface PendingStorageExtension {
   locationId: number;
 }
 
-export function StorageExtensionApprovals() {
+export function StorageExtensionApprovals({ hideWhenEmpty = false }: { hideWhenEmpty?: boolean } = {}) {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -134,6 +134,7 @@ export function StorageExtensionApprovals() {
   };
 
   if (isLoading) {
+    if (hideWhenEmpty) return null;
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -165,6 +166,7 @@ export function StorageExtensionApprovals() {
   }
 
   if (!pendingExtensions || pendingExtensions.length === 0) {
+    if (hideWhenEmpty) return null;
     return (
       <Card>
         <CardHeader className="pb-3">

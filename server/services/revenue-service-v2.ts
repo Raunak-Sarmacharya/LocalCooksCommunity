@@ -206,6 +206,17 @@ export async function getRevenueMetricsFromTransactions(
         COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
+        -- Pending payments: payments still processing, plus captured payouts held until after closeout (the kitchen's
+        -- net share, i.e. manager revenue minus processing fee and refund debits, not yet transferred).
+        COALESCE(SUM(
+          CASE WHEN pt.status = 'processing' THEN pt.amount::numeric
+            WHEN pt.status IN ('succeeded', 'partially_refunded') AND pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL
+              AND COALESCE(pt.metadata->>'payoutNoEntitlement', 'false') <> 'true'
+            THEN GREATEST(0, COALESCE(pt.manager_revenue::numeric, 0) - COALESCE(pt.stripe_processing_fee::numeric, 0)
+              - (SELECT COALESCE(SUM(COALESCE((refund_item->>'managerDebited')::numeric, 0)), 0)
+                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(pt.metadata->'refunds') = 'array' THEN pt.metadata->'refunds' ELSE '[]'::jsonb END) AS refund_item))
+            ELSE 0 END
+        ), 0)::bigint as pending_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') AND COALESCE(pt.metadata->>'kitchenRetainsTransfer', 'false') <> 'true' THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
         -- ENTERPRISE STANDARD: Stripe does NOT refund processing fees on refunds

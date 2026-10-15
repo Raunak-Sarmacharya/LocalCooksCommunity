@@ -3863,5 +3863,20 @@
   "scpResumeWhat": "Les chefs peuvent de nouveau demander du temps supplémentaire, et les cuisines peuvent en offrir ou le facturer.",
   "scpSaveFailed": "Impossible d’enregistrer ce changement. Réessayez.",
   "scpShowCode": "Afficher le code",
-  "scpCountFailed": "Nous n’avons pas pu compter vos réservations à venir."
+  "scpCountFailed": "Nous n’avons pas pu compter vos réservations à venir.",
+  "mblNeedsAction": "À traiter",
+  "mblToday": "Aujourd’hui",
+  "mblUpcoming": "À venir",
+  "mblPast": "Passées",
+  "mblCancelled": "Annulées",
+  "mblColWhen": "Quand",
+  "mblColWho": "Chef et cuisine",
+  "mblColStatus": "Statut",
+  "mblColPayment": "Paiement",
+  "mblTimesIn": "Heures indiquées en {zone}",
+  "mblEmptyUpcoming": "Aucune réservation à venir.",
+  "mblEmptyPast": "Aucune réservation passée pour l’instant.",
+  "mblNoMatch": "Aucune réservation ne correspond à « {query} ».",
+  "mblSearch": "Rechercher par chef, cuisine ou référence",
+  "mblTimeEnded": "Créneau terminé · toujours sur place"
 }

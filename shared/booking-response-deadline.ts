@@ -2,11 +2,31 @@ import { makeCloseoutSnapshot, savedCloseout, type ClockBooking } from './clock-
 
 export const RESPONSE_WINDOW_HOURS = 24;
 export const MIN_RESPONSE_MINUTES = 30;
+/** A request booked with free cancellation must be answered this long before free cancellation ends. */
+export const FREE_CANCEL_RESPONSE_GAP_HOURS = 1;
 
-/** The response window can never continue beyond the first visit's start. */
+/**
+ * When the kitchen must answer so the chef keeps some free-cancellation time after confirming, or null when the
+ * request was made too close to the free-cancellation deadline for that (the checkout disclosure then says so).
+ */
+export function freeCancelResponseCap({ createdAt, startAt, freeCancelHours, minResponseMinutes = MIN_RESPONSE_MINUTES }: {
+  createdAt: Date | string; startAt: Date | string; freeCancelHours?: number | null; minResponseMinutes?: number;
+}): Date | null {
+  if (freeCancelHours == null || !Number.isFinite(freeCancelHours) || freeCancelHours <= 0) return null;
+  const created = new Date(createdAt).getTime(), start = new Date(startAt).getTime();
+  if (!Number.isFinite(created) || !Number.isFinite(start)) return null;
+  const cap = start - (freeCancelHours + FREE_CANCEL_RESPONSE_GAP_HOURS) * 3_600_000;
+  return cap >= created + minResponseMinutes * 60_000 ? new Date(cap) : null;
+}
+
+/**
+ * The response window can never continue beyond the first visit's start, and (for requests made with free cancellation
+ * still available) closes an hour before free cancellation ends, so a confirmed chef always keeps a free-cancel window.
+ */
 export function resolveResponseDeadline({ createdAt, startAt, windowHours = RESPONSE_WINDOW_HOURS, bufferHours = 1,
-  minResponseMinutes = MIN_RESPONSE_MINUTES }: {
+  minResponseMinutes = MIN_RESPONSE_MINUTES, freeCancelHours }: {
   createdAt: Date | string; startAt: Date | string; windowHours?: number; bufferHours?: number; minResponseMinutes?: number;
+  freeCancelHours?: number | null;
 }): Date {
   const created = new Date(createdAt).getTime(), start = new Date(startAt).getTime();
   if (!Number.isFinite(created) || !Number.isFinite(start) || !Number.isFinite(windowHours) || windowHours <= 0
@@ -14,7 +34,9 @@ export function resolveResponseDeadline({ createdAt, startAt, windowHours = RESP
     throw new Error('Invalid booking response window');
   const windowEnd = created + windowHours * 3_600_000;
   const buffered = Math.min(windowEnd, start - bufferHours * 3_600_000);
-  return new Date(Math.max(created, buffered < created + minResponseMinutes * 60_000 ? Math.min(windowEnd, start) : buffered));
+  const deadline = new Date(Math.max(created, buffered < created + minResponseMinutes * 60_000 ? Math.min(windowEnd, start) : buffered));
+  const cap = freeCancelResponseCap({ createdAt, startAt, freeCancelHours, minResponseMinutes });
+  return cap && cap < deadline ? cap : deadline;
 }
 
 /** Reuses operating-day, dated-slot and DST rules; never the host or browser zone. */
@@ -26,6 +48,15 @@ export function firstBookingVisitStart(booking: ClockBooking, timezone: string):
   return new Date(start);
 }
 
-export function responseDeadlineForBooking(booking: ClockBooking & { createdAt: Date | string }, timezone: string, bufferHours = 1): Date {
-  return resolveResponseDeadline({ createdAt: booking.createdAt, startAt: firstBookingVisitStart(booking, timezone), bufferHours });
+/** The free-cancellation notice frozen on the booking (snapshot first, then the legacy hours column). */
+export function bookingFreeCancelHours(booking: { cancellationPolicySnapshot?: unknown; cancellationPolicyHours?: number | null }): number | null {
+  const snapshot = booking.cancellationPolicySnapshot as { noticeHours?: unknown } | null | undefined;
+  const hours = typeof snapshot?.noticeHours === 'number' ? snapshot.noticeHours : booking.cancellationPolicyHours;
+  return typeof hours === 'number' && Number.isFinite(hours) ? hours : null;
+}
+
+export function responseDeadlineForBooking(booking: ClockBooking & { createdAt: Date | string; cancellationPolicySnapshot?: unknown; cancellationPolicyHours?: number | null },
+  timezone: string, bufferHours = 1): Date {
+  return resolveResponseDeadline({ createdAt: booking.createdAt, startAt: firstBookingVisitStart(booking, timezone), bufferHours,
+    freeCancelHours: bookingFreeCancelHours(booking) });
 }

@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], answers: [] as any[], cutover: null as Date | null, users: {} as Record<number, any> }));
+const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], claims: [] as any[], answers: [] as any[], cutover: null as Date | null, users: {} as Record<number, any> }));
 vi.mock('../db', () => ({ db: {} }));
 vi.mock('./lifecycle-settings', () => ({ getSavedCloseoutNotificationsFrom: async () => state.cutover }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async (id: number) => state.users[id]?.name ?? (id === 3 ? 'A chef' : 'Manager') }));
@@ -14,6 +14,7 @@ function withUser(_id: number, username: string) {
     const rows = () => table === 'users' ? [{ username }]
       : table === 'booking_feedback_responses' ? state.answers
       : table === 'kitchen_booking_visits' ? state.visits
+      : table === 'damage_claims' ? state.claims
       : [{ booking: state.booking, kitchen: { id: 4, name: 'Harbour Kitchen' },
         location: { id: 1, name: 'Water Street Commissary', address: '1 Water St, St. John’s', timezone: 'America/St_Johns', managerId: 7 } }];
     const q: any = { from: (value: any) => { table = name(value); return q; }, innerJoin: () => q, where: () => q, orderBy: () => q,
@@ -33,7 +34,7 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     const booking: any = { ...base, visitDuties: null };
     booking.visitDuties = { clockCloseout: { ...makeCloseoutSnapshot(booking, 'America/St_Johns',
       { serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 }), serviceEndedAt: '2026-10-13T13:45:00.000Z' } };
-    state.booking = booking; state.visits = []; state.answers = []; state.cutover = null;
+    state.booking = booking; state.visits = []; state.claims = []; state.answers = []; state.cutover = null;
     state.users = { 3: { name: 'Maya Chen', username: 'maya@example.test' }, 7: { name: 'Sam Lee', username: 'sam@example.test' } };
   });
   afterEach(() => vi.useRealTimers());
@@ -49,6 +50,16 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     expect((await send('service_ended', 3, 'maya@example.test'))?.text).not.toContain('#feedback');
   });
 
+  it.each(['submitted', 'charge_succeeded', 'rejected'])('chef closeout email reflects a %s claim without kitchen-only state', async status => {
+    state.claims = [{ id: 1, claimVersion: 2, chefVisibleAt: new Date(), status, claimedAmountCents: 7000, finalAmountCents: 7000,
+      chefResponseDeadline: new Date('2026-10-18T12:00:00Z') }];
+    const email = (await send('service_ended', 3, 'maya@example.test'))!;
+    expect(email.text).toContain(status === 'charge_succeeded' ? 'You paid $70.00 for damage or extra cleaning.' : status === 'submitted' ? 'Pay or dispute by' : 'nothing to pay');
+    expect(email.text).not.toMatch(/all good|on its way to your bank|booking pause|kitchen payout/i);
+    expect((await send('service_ended', 7, 'sam@example.test'))?.text).not.toContain('You paid $70.00');
+    state.claims[0].chefVisibleAt = null;
+    expect((await send('service_ended', 3, 'maya@example.test'))?.text).not.toMatch(/damage|cleaning|Pay or dispute/);
+  });
   it('tells the chef the visit is complete with a neutral summary, local time and a help link', async () => {
     state.visits = [{ id: 1, blockIndex: 0, startTime: '10:00', endTime: '11:00', checkinStatus: 'checked_out', checkedInAt: new Date('2026-10-13T12:34:00Z'), checkoutRequestedAt: new Date('2026-10-13T13:31:00Z') }];
     const email = (await send('service_ended', 3, 'maya@example.test'))!;

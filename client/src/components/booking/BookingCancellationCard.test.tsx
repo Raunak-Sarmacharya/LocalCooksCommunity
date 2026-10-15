@@ -18,3 +18,11 @@ it.each([50, 100])('explains a booking made inside the notice window (%s%% charg
   expect(screen.queryByText(/deadline passed/)).not.toBeInTheDocument();
   client.clear();
 });
+
+it('keeps the pending hold explanation without a second cancel action', () => {
+  const client = new QueryClient();
+  render(<QueryClientProvider client={client}><BookingCancellationCard bookingId={138} status="pending" canCancel onCancel={() => {}} /></QueryClientProvider>);
+  expect(screen.queryByRole('button', { name: /Cancel or change/ })).not.toBeInTheDocument();
+  expect(screen.getByTestId('cancellation-card')).toHaveTextContent(/hold/);
+  client.clear();
+});

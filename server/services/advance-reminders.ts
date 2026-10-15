@@ -116,6 +116,12 @@ function bookingReminderAcknowledges(row: { textBody: string | null }, reminder:
   } catch { return false; }
 }
 
+/** True when a confirmation was created at or after the preparation reminder's due time (so it carried the arrival details). */
+export function confirmedInsidePreparationWindow(confirmations: Array<{ createdAt: Date | string }>, dueAt: string) {
+  const due = Date.parse(dueAt);
+  return confirmations.some(row => new Date(row.createdAt).getTime() >= due);
+}
+
 /** Record equivalent confirmation content only after that channel was accepted. */
 export async function acknowledgeConfirmationReminders(tx: Transaction, bookingId: number, recipientId: number,
   channel: 'email' | 'notification', now = new Date()) {
@@ -543,6 +549,15 @@ export async function dispatchAdvanceReminders(options: { now?: Date; policy?: R
         return { id: intent.id, state: 'suppressed' };
       }
       const r = fresh!, url = `${getAppBaseUrl(r.role === 'chef' ? 'chef' : 'kitchen')}${r.path}`;
+      if (r.source === 'booking' && r.role === 'chef' && r.kind === 'preparation') {
+        // A confirmation sent inside the preparation window already carried the arrival details.
+        const confirmations = await tx.select({ createdAt: bookingLifecycleEvents.createdAt }).from(bookingLifecycleEvents)
+          .where(and(eq(bookingLifecycleEvents.bookingId, r.reservationId), eq(bookingLifecycleEvents.kind, 'confirmed')));
+        if (confirmedInsidePreparationWindow(confirmations, r.due)) {
+          await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Confirmation already carried the arrival details.' }).where(eq(emailLogs.id, intent.id));
+          return { id: intent.id, state: 'suppressed' };
+        }
+      }
       if (r.source === 'booking' && r.role === 'chef' && ['preparation', 'arrival'].includes(r.kind)) {
         const previous = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, category), eq(emailLogs.status, 'sent'),
           sql`${emailLogs.trackingId} LIKE ${`advance:booking:${r.reservationId}:%`}`));

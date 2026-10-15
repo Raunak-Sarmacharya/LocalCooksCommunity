@@ -1,5 +1,5 @@
-import { bookingStartDateKey } from "@/lib/calendar-date";
-import { friendlyDate } from "@/lib/friendly-date";
+import { bookingListBounds, bookingListPill, chefBookingTabs, chefNextVisit, listDayLabel, listTimezone, listWhenLine, type BookingListRow } from "@/lib/booking-list-status";
+import { StatusPill } from "@/components/booking/BookingNowCard";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -13,7 +13,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatDate, formatTime } from "@/lib/formatters";
+import { formatDate } from "@/lib/formatters";
 import { ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { openChefShopHome, useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
@@ -24,7 +24,6 @@ import type {
   KitchenApplicationWithLocation,
   KitchenSummary,
   EnrichedBooking,
-  StatusVariant,
 } from "./types";
 import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
 import { TruncatedText } from "@/components/common/TruncatedText";
@@ -33,7 +32,6 @@ import { Icon } from "@iconify/react";
 import { KitchenIcon } from "@/components/ui/kitchen-icon";
 import { findChefNavItem } from "@/lib/chef-nav-sections";
 import { useLocation } from "wouter";
-import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { countPendingOrUpcomingTours, normalizeChefTourRow, viewingStatusBadge, type ChefTourRow } from "@/lib/chef-viewing-display";
 import { tourActivity } from "@shared/tour-activity";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
@@ -266,21 +264,9 @@ export default function OverviewTabContent({
   );
   const openKitchenPreview = (locationId: number) => navigate(`/kitchen-preview/${locationId}`);
 
-  const upcomingBookings = useMemo(() => {
-    return (enrichedBookings || [])
-      .filter((booking) => booking.status === "pending" || booking.status === "confirmed")
-      .sort((a, b) => {
-        const priority = a.status === "pending" ? 0 : 1;
-        const other = b.status === "pending" ? 0 : 1;
-        if (priority !== other) return priority - other;
-        return (
-          (bookingStartDateKey(a) || "").localeCompare(bookingStartDateKey(b) || "") ||
-          (a.startTime || "").localeCompare(b.startTime || "")
-        );
-      });
-  }, [enrichedBookings]);
-
-  const nextBooking = upcomingBookings[0];
+  // Same phases and order as My bookings: the tile shows the next visit (happening now or confirmed), never a request.
+  const bookingSummary = useMemo(() => chefNextVisit((enrichedBookings || []) as unknown as BookingListRow[]), [enrichedBookings]);
+  const nextBooking = bookingSummary.next?.row as EnrichedBooking | undefined;
 
   const kitchenHint = useMemo(() => {
     const actionNeeded = kitchenDisplays.filter((item) => item.display.tone === "warning").length;
@@ -292,11 +278,20 @@ export default function OverviewTabContent({
     return kitchenApplications.length > 0 ? t("ovOpenKitchenAccess") : t("ovBrowseKitchensHint");
   }, [kitchenDisplays, kitchenApplications.length, t]);
 
+  const nextWhen = (() => {
+    const bounds = nextBooking ? bookingListBounds(nextBooking as unknown as BookingListRow) : null;
+    if (!nextBooking || !bounds) return "";
+    const zone = listTimezone(nextBooking as unknown as BookingListRow);
+    const day = listDayLabel(bounds.startAt, zone, i18n.language, { today: t("ovToday"), tomorrow: t("ovTomorrow") });
+    const time = new Intl.DateTimeFormat(i18n.language, { timeZone: zone, hour: "numeric", minute: "2-digit", hour12: true }).format(bounds.startAt);
+    return `${day} ${time}`;
+  })();
+  const pendingRequests = bookingSummary.pending ? t("blRequestsPending", { count: bookingSummary.pending }) : "";
+  const bookingsValue = nextWhen ? t("blNextWhen", { when: nextWhen })
+    : pendingRequests || (enrichedBookings?.length ? t("ovBookingsTotal", { count: enrichedBookings.length }) : t("ovNone"));
   const bookingsHint = nextBooking
-    ? `${formatBookingWhen(nextBooking, t, i18n.language)}${nextBooking.startTime ? ` · ${formatTime(nextBooking.startTime, i18n.language)}` : ""}`
-    : enrichedBookings?.length
-      ? t("ovNoUpcomingSessions")
-      : t("ovNoSessionsBooked");
+    ? [nextBooking.kitchenName || nextBooking.locationName, pendingRequests].filter(Boolean).join(" · ")
+    : pendingRequests ? "" : enrichedBookings?.length ? t("ovNoUpcomingSessions") : t("ovNoSessionsBooked");
 
   const attentionItems = useMemo(() => {
     const items: Array<{
@@ -392,14 +387,14 @@ export default function OverviewTabContent({
     if (attentionItems.length > 0) {
       return attentionItems[0].title;
     }
-    if (upcomingBookings.length > 0) {
-      return t("ovSubtitleUpcoming", { count: upcomingBookings.length });
+    if (bookingSummary.upcoming > 0) {
+      return t("ovSubtitleUpcoming", { count: bookingSummary.upcoming });
     }
     if (!applications.length && kitchenApplications.length === 0) {
       return t("ovSubtitleStart");
     }
     return t("ovSubtitleAllSet");
-  }, [attentionItems, upcomingBookings.length, applications.length, kitchenApplications.length, t]);
+  }, [attentionItems, bookingSummary.upcoming, applications.length, kitchenApplications.length, t]);
 
   const handleOpenDashboard = async () => {
     try {
@@ -460,21 +455,9 @@ export default function OverviewTabContent({
         />
         <StatCard
           label={t("ovStatBookings")}
-          value={
-            upcomingBookings.length
-              ? t("ovBookingsUpcoming", { count: upcomingBookings.length })
-              : enrichedBookings?.length
-                ? t("ovBookingsTotal", { count: enrichedBookings.length })
-                : t("ovNone")
-          }
+          value={bookingsValue}
           hint={bookingsHint}
-          tone={
-            upcomingBookings.some((booking) => booking.status === "pending")
-              ? "warning"
-              : upcomingBookings.length
-                ? "success"
-                : "neutral"
-          }
+          tone={nextBooking ? "success" : bookingSummary.pending ? "warning" : "neutral"}
           onClick={() => onSetActiveTab("bookings")}
         />
       </div>
@@ -746,32 +729,6 @@ export default function OverviewTabContent({
   );
 }
 
-function formatBookingWhen(
-  booking: EnrichedBooking,
-  t: import("i18next").TFunction<"chef", undefined>,
-  locale?: string
-): string {
-  const day = bookingStartDateKey(booking);
-  const bookingDateObj = day ? new Date(day + "T00:00:00") : null;
-  if (!bookingDateObj) return t("ovScheduled");
-
-  const today = new Date();
-  const tomorrow = new Date(Date.now() + 86400000);
-  if (today.toDateString() === bookingDateObj.toDateString()) return t("ovToday");
-  if (tomorrow.toDateString() === bookingDateObj.toDateString()) return t("ovTomorrow");
-  return friendlyDate(`${day}T12:00:00Z`, locale || "en-CA", "UTC");
-}
-
-const bookingStatusConfig: Record<
-  string,
-  { labelKey: string; fallback: string; variant: StatusVariant; tone: StatusTone }
-> = {
-  confirmed: { labelKey: "ovBookingConfirmed", fallback: "Confirmed", variant: "success", tone: "success" },
-  pending: { labelKey: "ovBookingPending", fallback: "Awaiting approval", variant: "warning", tone: "warning" },
-  completed: { labelKey: "ovBookingCompleted", fallback: "Completed", variant: "outline", tone: "neutral" },
-  cancelled: { labelKey: "ovBookingCancelled", fallback: "Cancelled", variant: "outline", tone: "neutral" },
-};
-
 function UpcomingBookings({
   bookings,
   onViewAll,
@@ -782,31 +739,12 @@ function UpcomingBookings({
   locale?: string;
 }) {
   const { t } = useTranslation("chef");
-
-  const sortedBookings = [...bookings].sort((a, b) => {
-    const priority: Record<string, number> = {
-      pending: 0,
-      confirmed: 1,
-      completed: 2,
-      cancelled: 3,
-    };
-    const pa = priority[a.status] ?? 4;
-    const pb = priority[b.status] ?? 4;
-    if (pa !== pb) return pa - pb;
-    return (
-      (bookingStartDateKey(a) || "").localeCompare(bookingStartDateKey(b) || "") ||
-      (a.startTime || "").localeCompare(b.startTime || "")
-    );
-  });
-
-  const displayBookings = sortedBookings.slice(0, 4);
-  const pendingCount = bookings.filter((booking) => booking.status === "pending").length;
-  const confirmedCount = bookings.filter((booking) => booking.status === "confirmed").length;
-
-  const descriptionParts = [
-    pendingCount ? t("ovAwaitingApproval", { count: pendingCount }) : null,
-    confirmedCount ? t("ovConfirmed", { count: confirmedCount }) : null,
-  ].filter(Boolean);
+  const lang = locale || "en-CA";
+  const words = { today: t("ovToday"), tomorrow: t("ovTomorrow") };
+  // My bookings' Upcoming tab, in its order (now, requests, confirmed); past visits only when nothing is ahead.
+  const tabs = chefBookingTabs(bookings as unknown as BookingListRow[]);
+  const listed = tabs.upcoming.length ? tabs.upcoming : tabs.past;
+  const displayBookings = listed.slice(0, 4);
 
   return (
     <Card className="shadow-none">
@@ -815,7 +753,7 @@ function UpcomingBookings({
           <div>
             <CardTitle className="text-base">{t("ovBookingsTitle")}</CardTitle>
             <CardDescription>
-              {descriptionParts.length > 0 ? descriptionParts.join(" · ") : t("ovRecentSessions")}
+              {tabs.upcoming.length ? t("ovBookingsUpcoming", { count: tabs.upcoming.length }) : t("ovRecentSessions")}
             </CardDescription>
           </div>
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onViewAll}>
@@ -826,55 +764,30 @@ function UpcomingBookings({
       </CardHeader>
       <CardContent className="pt-0">
         <div className="divide-y border-t">
-          {displayBookings.map((booking) => {
-            const config = bookingStatusConfig[booking.status] || {
-              labelKey: booking.status,
-              fallback: booking.status,
-              variant: "outline" as const,
-              tone: "neutral" as const,
-            };
-            const timeLabel =
-              booking.startTime && booking.endTime
-                ? kitchenBookingBlocks(booking).map(block =>
-                    `${formatTime(block.startTime, locale)} – ${formatTime(block.endTime, locale)}`).join(', ')
-                : "";
-
+          {displayBookings.map(({ row, phase }) => {
+            const booking = row as unknown as EnrichedBooking;
             return (
               <button
                 key={booking.id}
                 type="button"
-                className="flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-muted/40"
+                className="flex min-h-11 w-full items-center gap-4 py-3 text-left transition-colors hover:bg-muted/40"
                 onClick={onViewAll}
               >
-                <div className="w-[4.5rem] shrink-0">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {formatBookingWhen(booking, t, locale)}
-                  </p>
-                  {booking.startTime && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {formatTime(booking.startTime, locale)}
-                    </p>
-                  )}
-                </div>
                 <div className="min-w-0 flex-1">
                   <TruncatedText as="p" className="truncate text-sm font-medium">
                     {booking.kitchenName || booking.locationName || t("ovKitchenSession")}
                   </TruncatedText>
-                  {timeLabel && (
-                    <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{timeLabel}</TruncatedText>
-                  )}
+                  <TruncatedText as="p" className="truncate text-xs tabular-nums text-muted-foreground">{listWhenLine(row, lang, words)}</TruncatedText>
                 </div>
-                <InfoChip variant={config.variant} className="shrink-0">
-                  {t(config.labelKey as never, { defaultValue: config.fallback })}
-                </InfoChip>
+                <StatusPill tone={bookingListPill(phase, false).tone} className="shrink-0">{t(bookingListPill(phase, false).key as never)}</StatusPill>
               </button>
             );
           })}
         </div>
-        {bookings.length > 4 && (
+        {listed.length > 4 && (
           <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onViewAll}>
             <Icon icon={findChefNavItem("bookings")!.icon} className="size-4" aria-hidden />
-            {t("ovMore", { count: bookings.length - 4 })}
+            {t("ovMore", { count: listed.length - 4 })}
           </Button>
         )}
       </CardContent>

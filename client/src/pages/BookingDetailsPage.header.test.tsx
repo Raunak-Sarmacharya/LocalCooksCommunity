@@ -1,11 +1,11 @@
 vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chef from "@shared/i18n/locales/en-CA/chef.json";
 import bookingCopy from "@shared/i18n/locales/en-CA/booking.json";
 import { IntlMessageFormat } from "intl-messageformat";
 
-const h = vi.hoisted(() => ({ manager: false, booking: {} as Record<string, unknown>, navigate: vi.fn(), attendance: {} as Record<string, unknown>, code: null as Record<string, unknown> | null }));
+const h = vi.hoisted(() => ({ manager: false, claims: [] as any[], booking: {} as Record<string, unknown>, navigate: vi.fn(), attendance: {} as Record<string, unknown>, code: null as Record<string, unknown> | null }));
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "token" } } }));
 vi.mock("@/hooks/use-auth", () => ({ useFirebaseAuth: () => ({ loading: false, user: { uid: "u" } }) }));
@@ -13,7 +13,7 @@ vi.mock("@/components/booking/BookingFeedbackCard", () => ({ BookingFeedbackCard
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
-vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }), useQuery: () => ({ data: undefined, isLoading: false }) }));
+vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }), useQuery: () => ({ data: { claims: h.claims }, isLoading: false, refetch: vi.fn() }) }));
 vi.mock("wouter", () => ({
   useRoute: (pattern: string) => (pattern === "/manager/booking/:id" ? (h.manager ? [true, { id: "5" }] : [false, null]) : (!h.manager && pattern === "/booking/:id" ? [true, { id: "5" }] : [false, null])),
   useLocation: () => ["/", h.navigate],
@@ -46,11 +46,13 @@ vi.mock("@/components/support/CommitmentProblems", () => ({ CommitmentProblems: 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({
   i18n: { language: "en-CA", resolvedLanguage: "en-CA" },
   t: (key: string, options?: any) => {
+    key = key.replace(/^booking:/, "");
     const value = (chef as Record<string, string>)[key] ?? (bookingCopy as Record<string, string>)[key] ?? options?.defaultValue ?? key;
     try { return new IntlMessageFormat(value, "en-CA").format(typeof options === "object" ? options : {}) as string; } catch { return value; }
   },
 }) }));
 
+vi.mock("@/components/booking/DamageClaimPayment", () => ({ default: ({ onPaid }: any) => <button onClick={onPaid}>Confirm mock claim payment</button> }));
 import BookingDetailsPage from "./BookingDetailsPage";
 
 // 10:00–12:00 Newfoundland time (UTC−3:30 in January) = 13:30–15:30 UTC.
@@ -95,7 +97,7 @@ const cases: Case[] = [
   { name: "completed", now: START + 3 * 86_400_000, booking: { status: "completed", paymentStatus: "paid", checkinStatus: "checked_out",
       checkedInAt: "2030-01-15T13:32:00Z", checkoutRequestedAt: "2030-01-15T15:20:00Z" },
     pill: { chef: "Completed", manager: "Completed" },
-    next: { chef: /^Visit complete\. Thanks for leaving the kitchen ready\.$/, manager: /^This visit is closed\.$/ },
+    next: { chef: /^Visit complete\.$/, manager: /^This visit is closed\.$/ },
     primary: { chef: null, manager: null }, message: true },
   { name: "cancelled", now: START - 3 * 86_400_000, booking: { status: "cancelled", paymentStatus: "failed" },
     pill: { chef: "Cancelled", manager: "Cancelled" },
@@ -103,7 +105,7 @@ const cases: Case[] = [
     primary: { chef: null, manager: null }, message: false },
 ];
 
-beforeEach(() => { vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(h.booking)))); });
+beforeEach(() => { h.claims = []; vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(h.booking)))); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe.each(["chef", "manager"] as const)("booking details header (%s)", role => {
@@ -600,7 +602,9 @@ describe("payment card: card holds and the true total (round 3)", () => {
       payout: { timing: "after_closeout", status: "sent", holdReason: null, expectedAt: null, sentAt: "2030-01-16T15:30:00Z", amountCents: 10942 } });
     render(<BookingDetailsPage />);
     await screen.findByTestId("payment-card");
-    expect(headline()).toBe("$211.92"); // 109.42 + 12.50 + 90.00
+    // The headline is exactly the sum of the visible lines: the booking's own net payout ($113.00 here) + each extra line's net.
+    // It never starts from payout.amountCents, which already includes the extras (live #166 double-counted $14.38).
+    expect(headline()).toBe("$215.50"); // 113.00 + 12.50 + 90.00
     const lines = screen.getAllByTestId("extra-charge-line");
     expect(lines[0]).toHaveTextContent("Extra time · 30 min$12.50");
     expect(lines[1]).toHaveTextContent("Damage and cleaning$90.00");
@@ -613,5 +617,40 @@ describe("payment card: card holds and the true total (round 3)", () => {
     await screen.findByTestId("payment-card");
     expect(headline()).toBe("$30.50");
     expect(screen.queryByTestId("extra-charges")).not.toBeInTheDocument();
+  });
+});
+
+describe('claim-aware booking page', () => {
+  const sent = () => ({ id: 7, bookingId: 5, visitId: null, chefId: 1, managerId: 2, claimVersion: 2,
+    status: 'submitted', chefVisible: true, chefOwes: true, amountCents: 7000, claimedAmountCents: 7000,
+    deadline: '2030-01-18T15:30:00Z', visitEvidence: { kitchenName: 'Harbour Kitchen', timezone: 'America/St_Johns', before: [], after: [] },
+    history: [], evidence: [], lines: [] });
+  const checkedOut = () => ({ ...base(), status: 'confirmed', paymentStatus: 'paid', checkinStatus: 'checkout_requested',
+    checkedInAt: '2030-01-15T13:32:00Z', checkoutRequestedAt: '2030-01-15T15:20:00Z', totalPrice: 10000,
+    paymentTransaction: { amount: 10000, serviceFee: 700, managerRevenue: 9300, stripeProcessingFee: 320, status: 'succeeded' } });
+  it('chef payment refetches booking details and updates the total without remounting', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START + 3 * 3600000);
+    h.manager = false; h.booking = checkedOut(); h.claims = [sent()];
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId('booking-next-step')).toHaveTextContent('Harbour Kitchen reported damage or extra cleaning. Pay or dispute by');
+    expect(screen.getByTestId('booking-next-step')).not.toHaveTextContent('all set');
+    const before = vi.mocked(fetch).mock.calls.length;
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pay $70.00' })[0]);
+    const paid = await screen.findByRole('button', { name: 'Confirm mock claim payment' });
+    h.booking = { ...h.booking, additionalCharges: [{ id: 20, kind: 'damage_claim', amountCents: 7000, refundedCents: 0, paidAt: '2030-01-16T15:00:00Z', status: 'succeeded' }] };
+    h.claims = [{ ...sent(), status: 'charge_succeeded', chefOwes: false }];
+    fireEvent.click(paid);
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(before));
+    expect(await screen.findByTestId('extra-charges-total')).toHaveTextContent('$177.00');
+    expect(screen.getByTestId('booking-next-step')).toHaveTextContent('You paid $70.00 for damage or extra cleaning.');
+  });
+  it('manager gets support instead of another report entry for this visit', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(START + 3 * 3600000);
+    h.manager = true; h.booking = checkedOut(); h.claims = [sent()];
+    render(<BookingDetailsPage />); await screen.findByTestId('booking-header');
+    expect(screen.queryByRole('button', { name: 'Report damage or extra cleaning' })).not.toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /You reported this visit/ });
+    expect(link).toHaveAttribute('href', '/manager/dashboard?view=support');
+    expect(link).toHaveClass('!text-muted-foreground');
   });
 });

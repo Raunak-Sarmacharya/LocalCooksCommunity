@@ -141,7 +141,7 @@ async function stillFits(tx: Tx, row: Context, extension: Extension, now: Date, 
     : isInSession(row, visit, evidence, now, false) && (await available(tx, row, visit, now, excludeHoldId)).some(option => option.minutes === extension.minutes && option.endAt === extension.endAt.toISOString());
   return { visit, fits: fits && Date.parse(boundary.at) === extension.originalEndAt.getTime() };
 }
-/** Arrival recorded, departure not yet, booked time not over. `finalHour` limits chef requests to the last 60 minutes. */
+/** Arrival recorded, departure not yet, booked time not over. `finalHour` (unused for chef requests since Oct 15) limits to the last 60 minutes. */
 const isInSession = (row: Context, visit: VisitCloseout, evidence: { checkoutRequestedAt?: Date | null; checkedOutAt?: Date | null } | undefined, now: Date, finalHour: boolean) =>
   row.booking.status === 'confirmed' && visit.arrivalRecorded && visit.inspection.outcome === 'not_due'
   && !evidence?.checkoutRequestedAt && !evidence?.checkedOutAt && now.getTime() < Date.parse(visit.scheduledEndAt)
@@ -191,7 +191,8 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   let options: ExtensionOption[] = [], earlyOptions: EarlyStartOption[] = [], extraTime: ReturnType<typeof extraTimeQuote> | null = null, unavailableReason: string | null = null;
   const beforeStart = !!clock && isBeforeStart(row, clock.visit, now);
   const inSession = !!clock && isInSession(row, clock.visit, clock.evidence, now, false);
-  const finalHour = !!clock && isInSession(row, clock.visit, clock.evidence, now, true);
+  // Owner (Oct 14): the chef can ask for more time any time while checked in; the kitchen still approves. No last-hour gate.
+  const finalHour = inSession;
   if (enabled && clock) try {
     await assertBookingMoneyWritable({ bookingId }, tx);
     if ((manager ? inSession : finalHour) && !history.some(ext => openActive(ext, clock.visit.blockIndex))) options = await available(tx, row, clock.visit, now);
@@ -283,7 +284,7 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
       quote = { ...extraTimeQuote(clock.visit.scheduledEndAt, new Date(clock.checkout!).toISOString(), terms.hourlyRateCents, terms.ratios, input.amountCents),
         endAt: clock.visit.scheduledEndAt, endTime: clock.visit.endTime };
     } else {
-      if (!isInSession(row, clock.visit, clock.evidence, now, input.kind === 'request'))
+      if (!isInSession(row, clock.visit, clock.evidence, now, false))
         throw new SessionExtensionError(input.kind === 'request' ? 'You can ask for more time during the last hour of your session, before you check out.' : 'More time can only be offered while the chef is in session.');
       if (prior.some(ext => openActive(ext, clock.visit.blockIndex))) throw new SessionExtensionError('There is already an open extra-time request or offer for this visit.');
       if (!validExtensionMinutes(input.minutes)) throw new SessionExtensionError('Choose a time in 15-minute steps.', 400);

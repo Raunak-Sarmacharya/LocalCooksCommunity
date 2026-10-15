@@ -305,7 +305,7 @@
   "ncVisitCompleteTitle": "Visit complete · {kitchen}",
   "ncVisitCompleteGood": "{kitchen} checked the space — all good.",
   "ncVisitCompleteInvoice": "Your final invoice is ready.",
-  "ncCancelledRefundTitle": "Your booking is cancelled · refund of {amount} on its way (5–10 business days)",
+  "ncCancelledRefundTitle": "Booking cancelled · {amount} refund on its way",
   "ncCancelledNoRefundTitle": "Your booking is cancelled · no refund applies",
   "ncPayoutBooking": "Booking",
   "ncPayoutExtension": "Extra time ({duration})",

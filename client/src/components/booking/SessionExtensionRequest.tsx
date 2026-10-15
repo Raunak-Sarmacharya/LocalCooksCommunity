@@ -3,7 +3,7 @@
  * In the last hour it lists the server-priced quick picks (+30 min, +1 h, +2 h) plus "Choose a time…" (any free end in
  * 15-minute steps, priced in 30-minute blocks); one tap places a hold on the saved card
  * (the kitchen approves) or charges it at once when the kitchen approves automatically. Outside that window, or when
- * extra time is unavailable, it opens the kitchen conversation with a prefilled message, as before.
+ * extra time is unavailable, it explains why and offers a message button.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -13,7 +13,7 @@ import { createExtension, isExtensionState, isQuickPick, kitchenClock, lengthTex
   type ExtensionItem, type ExtensionOption, type ExtensionState } from "@/lib/session-extensions"
 
 const POLL_MS = 20_000
-type View = { kind: "idle" } | { kind: "loading" } | { kind: "options"; state: ExtensionState } | { kind: "busy"; state: ExtensionState }
+type View = { kind: "unavailable"; state: ExtensionState | null } | { kind: "idle" } | { kind: "loading" } | { kind: "options"; state: ExtensionState } | { kind: "busy"; state: ExtensionState }
   | { kind: "waiting"; item: ExtensionItem; state: ExtensionState } | { kind: "confirmed"; item: ExtensionItem; state: ExtensionState }
   | { kind: "declined"; state: ExtensionState } | { kind: "booked"; state: ExtensionState }
 
@@ -50,8 +50,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     const pending = state?.history.find(item => item.kind === "request" && ["requested", "approved"].includes(item.status) && !item.confirmed)
     if (state && pending) return settle(pending, state)
     if (!state || !state.enabled || !state.canRequest || state.unavailableReason || !state.hasSavedCard) {
-      setView({ kind: "idle" })
-      return onMessage(moreTimeDraft)
+      return setView({ kind: "unavailable", state })
     }
     if (state.noTimeFree || !state.options.length) return setView({ kind: "booked", state })
     setView({ kind: "options", state })
@@ -96,6 +95,22 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     </Button>
   )
   if (view.kind === "idle" || view.kind === "loading") return button
+
+  if (view.kind === "unavailable") {
+    const state = view.state
+    const reason = state?.unavailableReason || (!state ? t("wfbExtensionFailed")
+      : !state.enabled ? t("wfbExtensionDisabled")
+      : !state.hasSavedCard ? t("wfbExtensionNoCard")
+      : state.endAt && !state.canRequest ? t("wfbExtensionLater", { time: clock(new Date(Date.parse(state.endAt) - 3_600_000).toISOString(), state.timezone) })
+      : t("wfbExtensionDisabled"))
+    return <div className="space-y-2" data-testid="extension-unavailable">
+      {button}
+      <p className="text-sm text-muted-foreground" role="status">{reason}</p>
+      <Button type="button" variant="outline" className={className} onClick={() => onMessage(moreTimeDraft)}>
+        <MessageSquare className="mr-2 h-4 w-4 shrink-0" />{t("sxMessageKitchen", { kitchen: kitchenName })}
+      </Button>
+    </div>
+  }
 
   const state = view.state
   if (view.kind === "waiting") return (

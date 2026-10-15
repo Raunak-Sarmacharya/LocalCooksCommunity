@@ -120,6 +120,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return <div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{children}</dd></div>;
 }
 
+export function transferLine(t: (key: string, options?: Record<string, unknown>) => string,
+  tr: SupportCase["money"]["transfers"][number], currency: string, timezone?: string | null) {
+  if (tr.amountCents === undefined) return t("bsTransferLine", { amount: fmtMoney(tr.managerRevenueCents, currency), status: t(`bsTransferStatus_${tr.status}`, { defaultValue: humanize(tr.status) }) });
+  const amount = fmtMoney(tr.amountCents, currency);
+  if (!tr.sent) return t("bsTransferExpectedLine", { amount });
+  return tr.sentAt ? t("bsTransferSentLine", { amount, date: new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: timezone || undefined }).format(new Date(tr.sentAt)) })
+    : t("bsTransferSentNoDate", { amount });
+}
+
 export function MoneyCard({ c }: { c: SupportCase }) {
   const t = useSupportT();
   const m = c.money;
@@ -132,14 +141,17 @@ export function MoneyCard({ c }: { c: SupportCase }) {
           <Row label={t("bsMoneyProcessingFee")}>{fmtMoney(m.processingFeeCents, m.currency)}</Row>
           <Row label={t("bsMoneyPlatformFee")}>{fmtMoney(m.platformFeeCents, m.currency)}</Row>
         </dl>
-        {c.payout && <KitchenPayoutStatus payout={c.payout} timezone={c.schedule.timezone} currency={m.currency} />}
+        {c.payout && <div data-testid="admin-kitchen-payout">
+          {c.payout.status !== 'not_applicable' && <p className="mt-3 text-sm font-medium">{t("bsKitchenPayout")} {fmtMoney(c.payout.amountCents, m.currency)}</p>}
+          <KitchenPayoutStatus payout={c.payout} timezone={c.schedule.timezone} currency={m.currency} showAmount={false} />
+        </div>}
         <div className="border-t pt-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("bsTransfers")}</p>
           {m.transfers.length === 0 ? <p className="text-sm text-muted-foreground">{t("bsNoTransfers")}</p> : (
             <ul className="mt-1 space-y-1">
               {m.transfers.map((tr) => (
                 <li key={tr.transactionId} className="text-sm">
-                  {t("bsTransferLine", { amount: fmtMoney(tr.managerRevenueCents, m.currency), status: t(`bsTransferStatus_${tr.status}`, { defaultValue: humanize(tr.status) }) })}
+                  {transferLine(t, tr, m.currency, c.schedule.timezone)}
                 </li>
               ))}
             </ul>

@@ -249,5 +249,10 @@
   "bsCodeState_unused": "Non utilisé",
   "bsExceptionQuestionSent": "Le geste commercial pour cette réservation est limité à {limit}. {sent} a déjà été envoyé, il reste donc {left}. Enregistrer ce montant de {amount} comme exception?",
   "bsAction_release_payout": "Libérer le versement de la cuisine",
-  "bsReleasePayoutHelp": "Utilisez cette action une fois le problème signalé réglé. La part de la cuisine est envoyée à son compte Stripe maintenant, ou dès que toutes les visites sont clôturées. Un signalement de soutien ouvert la met toujours en pause."
+  "bsReleasePayoutHelp": "Utilisez cette action une fois le problème signalé réglé. La part de la cuisine est envoyée à son compte Stripe maintenant, ou dès que toutes les visites sont clôturées. Un signalement de soutien ouvert la met toujours en pause.",
+  "bsKitchenPayout": "Versement à la cuisine",
+  "bsTransferSentLine": "{amount} envoyés à la cuisine le {date}",
+  "bsTransferSentNoDate": "{amount} envoyés à la cuisine",
+  "bsTransferExpectedLine": "{amount} prévus pour la cuisine (après les frais de traitement), pas encore envoyés",
+  "bsPolicyRightNow": "Les réservations existantes conservent les conditions acceptées par leurs chefs."
 }

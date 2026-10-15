@@ -120,3 +120,18 @@ describe('bookedHours (header duration)', () => {
     expect(sentence('Saving...')).toBe('Saving...');
   });
 });
+
+describe('closed-out bookings keep a raw check-in value (live #132 / #160 / #164)', () => {
+  const base = { status: 'completed', closeoutPhase: 'ended' } as const;
+  it('inspection closed: a leftover checked_in / checkout_requested is settled history → completed', () => {
+    expect(bookingHeaderPhase({ ...base, checkinStatus: 'checked_in', inspectionCanRespond: false })).toBe('completed');
+    expect(bookingHeaderPhase({ ...base, checkinStatus: 'checkout_requested', inspectionCanRespond: false })).toBe('completed');
+  });
+  it('inspection still open: the raw value is real — overstay or checkout to review', () => {
+    expect(bookingHeaderPhase({ ...base, checkinStatus: 'checked_in', inspectionCanRespond: true })).toBe('time_ended_in_session');
+    expect(bookingHeaderPhase({ ...base, checkinStatus: 'checkout_requested', inspectionCanRespond: true })).toBe('checkout_review');
+  });
+  it('a recorded no-show stays as recorded', () => {
+    expect(bookingHeaderPhase({ ...base, checkinStatus: 'no_show', inspectionCanRespond: false })).toBe('no_show');
+  });
+});

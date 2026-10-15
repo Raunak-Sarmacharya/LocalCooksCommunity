@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { apiGet, apiPut } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CancellationPolicyEditor } from '@/components/manager/settings/CancellationPolicyEditor';
+import { AdminCancellationPolicyEditor } from '@/components/admin/AdminCancellationPolicyEditor';
 type Settings = { noticeOptions: number[]; chargeOptions: number[]; default: { notice: number; charge: number } };
 export function CancellationSettings() {
   const { t } = useTranslation('booking');
@@ -25,6 +25,6 @@ export function CancellationSettings() {
     {message && <p role="status">{message}</p>}
     <label className="block text-sm">{t('cpKitchenId')}<input className="ml-2 rounded border p-2" type="number" min="1" value={kitchenId} onChange={event => setKitchenId(event.target.value)} /></label>
     <Button variant="outline" disabled={!Number.isSafeInteger(Number(kitchenId)) || Number(kitchenId) <= 0} onClick={() => setSelectedId(Number(kitchenId))}>{t('cpTitle')}</Button>
-    {selectedId && <CancellationPolicyEditor key={selectedId} kitchenId={selectedId} admin />}
+    {selectedId && <AdminCancellationPolicyEditor key={selectedId} kitchenId={selectedId} />}
   </CardContent></Card>;
 }

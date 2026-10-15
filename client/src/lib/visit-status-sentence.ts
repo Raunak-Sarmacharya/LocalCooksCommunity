@@ -65,11 +65,11 @@ function buildSentence(input: VisitSentenceInput, t: VisitSentenceTranslate): Vi
     case "checked_in": {
       if (!checkedInTime) {
         return plain(canCheckout
-          ? t("kciStatusCheckedIn", "You’re checked in. When you’re finished, follow the departure instructions and submit checkout below.")
+          ? t("kciStatusCheckedIn", "You’re checked in. Choose Check out when you’re finished.")
           : t("kciStatusCheckedInNoAction", "You’re checked in."))
       }
       const base = canCheckout
-        ? t("kvCheckedIn", "You checked in at {time}. When you’re finished, submit checkout below.", { time: checkedInTime })
+        ? t("kvCheckedIn", "You checked in at {time}. Choose Check out when you’re finished.", { time: checkedInTime })
         : t("kvCheckedInNoAction", "You checked in at {time}.", { time: checkedInTime })
       return { text: base + (checkedInLate ? stillEnds(bookingEnds) : ""), coversCheckin: true, coversCheckout: false }
     }

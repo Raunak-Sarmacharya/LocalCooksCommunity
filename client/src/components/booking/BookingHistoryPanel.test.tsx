@@ -105,3 +105,13 @@ it.each([
   mount(role, 'Alex');
   expect(await screen.findByText(line)).toBeInTheDocument();
 });
+
+it.each(['chef', 'manager'] as const)('checkout history uses the %s voice', async role => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [
+    { key: 'checkout', kind: 'checkout_requested', recordedAt: '2026-10-15T12:00:00Z' },
+  ] }) })));
+  const { client } = mount(role);
+  expect(await screen.findByText(role === 'chef' ? 'You checked out' : 'Checkout requested')).toBeInTheDocument();
+  expect(screen.queryByText(role === 'chef' ? 'Checkout requested' : 'You checked out')).not.toBeInTheDocument();
+  client.clear();
+});

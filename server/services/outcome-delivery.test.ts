@@ -258,7 +258,11 @@ describe('actual producer → persisted intent → worker → admin replay', () 
     expect(state.tables.damage_claims[0].status).toBe('under_review');
     expect(state.tables.damage_claim_history).toHaveLength(1);
     expect(state.tables.email_logs).toHaveLength(3); // chef, manager, Local Cooks reviewer
-    expect(state.tables.email_logs.every(row => row.textBody.includes('Local Cooks is reviewing both sides'))).toBe(true);
+    // Each side is addressed as itself (batch D / lead): the chef reviews their dispute, the kitchen learns of the dispute.
+    const body = (role: string) => state.tables.email_logs.find(row => row.recipientRole === role)!.textBody;
+    expect(body('chef')).toContain('Local Cooks is reviewing your dispute');
+    expect(body('manager')).toMatch(/disputed your claim\. Local Cooks is reviewing both sides/);
+    expect(body('admin')).toContain('Local Cooks is reviewing both sides');
   });
   it('suppresses previously queued admin outcomes when the current preference is disabled', async () => {
     state.tables.users[2].adminEmailNotifications = false;

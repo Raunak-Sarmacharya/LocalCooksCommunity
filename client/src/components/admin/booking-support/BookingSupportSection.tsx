@@ -13,7 +13,7 @@ import { ActionPanel, CaseHeader, Chronology, DeadlinesCard, FeedbackCard, Money
 import type { AvailableSupportAction, SearchRow, SupportCase } from "./types";
 import { FrozenCancellationPolicy } from './FrozenCancellationPolicy';
 import { DamageClaimPanel } from './DamageClaimPanel';
-import { CancellationPolicyEditor } from '@/components/manager/settings/CancellationPolicyEditor';
+import { AdminCancellationPolicyEditor } from '@/components/admin/AdminCancellationPolicyEditor';
 
 function readBookingParam(): number | null {
   const raw = new URLSearchParams(window.location.search).get("booking");
@@ -111,7 +111,7 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
         </div>
         <div className="order-2 space-y-4 xl:order-1">
           <FrozenCancellationPolicy snapshot={c.cancellationPolicySnapshot} />
-          {c.kitchen && <CancellationPolicyEditor kitchenId={c.kitchen.id} admin />}
+          {c.kitchen && <AdminCancellationPolicyEditor kitchenId={c.kitchen.id} />}
           <MoneyCard c={c} /><DeadlinesCard c={c} /><FeedbackCard c={c} getFirebaseToken={getFirebaseToken} /><VisitCodesCard c={c} /><PaymentEvidenceCard c={c} />
         </div>
         <div className="order-3 min-w-0 xl:order-2"><Chronology c={c} /></div>

@@ -62,7 +62,7 @@ export function DamageClaimCard({ claim, manager = false, onChanged }: { claim: 
     <ul className="space-y-2 text-sm">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <a href={line.document.fileUrl} className="underline" target="_blank" rel="noopener noreferrer">{line.document.fileName}</a></li>)}</ul>
     {claim.amountCents < claim.claimedAmountCents && <p className="text-sm font-medium">{t('dcV2ApprovedOf', { approved: amount, claimed: claimMoney(claim.claimedAmountCents, i18n.language) })}</p>}
     {manager && claim.reviewRequest && claim.status === 'awaiting_kitchen' && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.reviewRequest}</p>}
-    {claim.publicMessage && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.publicMessage}</p>}
+    {claim.publicMessage && !(manager && claim.status === 'awaiting_kitchen' && claim.publicMessage === claim.reviewRequest) && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.publicMessage}</p>}
     {claim.chefResponse && <p className="text-sm whitespace-pre-wrap"><strong>{t('dcV2ChefStatement')}: </strong>{claim.chefResponse}</p>}
     {claim.kitchenReply && <p className="text-sm whitespace-pre-wrap"><strong>{t('dcV2KitchenReply')}: </strong>{claim.kitchenReply}</p>}
     <ClaimEvidence claim={claim} />

@@ -50,7 +50,7 @@ export function NowAttentionRow({ as, tone = 'warning', className, children, ...
   </Alert>;
 }
 
-export type NowSecondaryLink = { key: string; label: string; onSelect?: () => void; href?: string; icon?: ComponentType<{ className?: string }>; testId?: string };
+export type NowSecondaryLink = { muted?: boolean; key: string; label: string; onSelect?: () => void; href?: string; icon?: ComponentType<{ className?: string }>; testId?: string };
 
 export function BookingNowCard({ reference, bookedOn, title, subtitle, leading, heroImage, actions, whenLine, pill, sentence, sentenceExtra, attention, body, secondary, footnote, labels }: {
   reference: string; bookedOn: string; title: string; subtitle?: ReactNode; leading?: ReactNode;
@@ -92,7 +92,7 @@ export function BookingNowCard({ reference, bookedOn, title, subtitle, leading, 
       {secondary.length > 0 && <nav aria-label={labels.secondary} className="flex flex-wrap items-center gap-x-5" data-testid="now-secondary">
         {secondary.map(link => {
           const content = <>{link.icon && <link.icon className="mr-1.5 h-4 w-4" aria-hidden />}{link.label}</>;
-          const className = 'inline-flex min-h-11 items-center text-[13px] font-medium leading-[18px] text-foreground/80 underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm';
+          const className = cn(link.muted && '!text-muted-foreground !font-normal', 'inline-flex min-h-11 items-center text-[13px] font-medium leading-[18px] text-foreground/80 underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm');
           return link.href
             ? <a key={link.key} href={link.href} className={className} data-testid={link.testId} onClick={link.onSelect ? event => { event.preventDefault(); link.onSelect!(); } : undefined}>{content}</a>
             : <button key={link.key} type="button" className={className} data-testid={link.testId} onClick={link.onSelect}>{content}</button>;
@@ -193,7 +193,7 @@ export function NowClaimRows({ claims, manager, chefName, timezone, allowPrimary
     })}
     <Sheet open={!!open} onOpenChange={value => { if (!value) setOpen(null); }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
-        <SheetHeader className="mb-4"><SheetTitle>{tb('dcV2Report')}</SheetTitle><SheetDescription className="sr-only">{open ? amount(open) : ''}</SheetDescription></SheetHeader>
+        <SheetHeader className="mb-4"><SheetTitle>{open ? tb(manager ? 'dcV2ViewingTitle' : 'dcV2ClaimTitle', { kitchen: kitchenOf(open), amount: amount(open) }) : ''}</SheetTitle><SheetDescription className="sr-only">{open ? amount(open) : ''}</SheetDescription></SheetHeader>
         {open && <DamageClaimCard claim={open} manager={manager} onChanged={() => { setOpen(null); onChanged(); }} />}
       </SheetContent>
     </Sheet>

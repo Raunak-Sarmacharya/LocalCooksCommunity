@@ -16,14 +16,14 @@ export interface AdditionalCharge {
   minutes: number | null;
   /** What the chef paid for this line, in cents. */
   amountCents: number;
-  /** Manager view only: the kitchen's share of this line, in cents. */
+  /** Manager view only: what the kitchen nets from this line, in cents (after its card processing fee; claims carry none). */
   kitchenShareCents?: number;
   refundedCents: number;
   paidAt: string | null;
   status: string;
 }
 
-type Row = { id: number; amount: string | number | null; managerRevenue: string | number | null; refundAmount: string | number | null;
+type Row = { id: number; amount: string | number | null; managerRevenue: string | number | null; stripeProcessingFee?: string | number | null; refundAmount: string | number | null;
   status: string; paidAt: Date | string | null; paymentIntentId: string | null; metadata: unknown };
 
 const PAID = ['succeeded', 'partially_refunded', 'refunded'] as const;
@@ -44,7 +44,9 @@ export function toAdditionalCharges(rows: Row[], role: 'chef' | 'manager', paren
     if (parentPaymentIntentId && row.paymentIntentId === parentPaymentIntentId) return [];
     const meta = (row.metadata || {}) as Record<string, unknown>;
     // A claim Local Cooks funded (compensation recovery) was never the kitchen's money from this row.
-    const kitchenShare = kind === 'damage_claim' && (meta.fundedBy === 'local_cooks' || meta.platformRecovery === true) ? 0 : cents(row.managerRevenue);
+    // Extensions and extra time carry their own processing fee like the booking charge; Local Cooks absorbs it on claims.
+    const kitchenShare = kind === 'damage_claim' ? (meta.fundedBy === 'local_cooks' || meta.platformRecovery === true ? 0 : cents(row.managerRevenue))
+      : Math.max(0, cents(row.managerRevenue) - cents(row.stripeProcessingFee));
     const minutes = kind === 'damage_claim' ? null : Number.isFinite(Number(meta.minutes)) ? Number(meta.minutes) : null;
     const line: AdditionalCharge = { id: row.id, kind, minutes, amountCents: cents(row.amount), refundedCents: cents(row.refundAmount),
       paidAt: row.paidAt ? new Date(row.paidAt).toISOString() : null, status: row.status };
@@ -55,7 +57,7 @@ export function toAdditionalCharges(rows: Row[], role: 'chef' | 'manager', paren
 /** Reads the booking's extra charge rows (same booking, other PaymentIntents) and maps them for the viewer. */
 export async function readAdditionalCharges(db: any, bookingId: number, role: 'chef' | 'manager', parentPaymentIntentId?: string | null): Promise<AdditionalCharge[]> {
   const rows: Row[] = await db.select({
-    id: paymentTransactions.id, amount: paymentTransactions.amount, managerRevenue: paymentTransactions.managerRevenue,
+    id: paymentTransactions.id, amount: paymentTransactions.amount, managerRevenue: paymentTransactions.managerRevenue, stripeProcessingFee: paymentTransactions.stripeProcessingFee,
     refundAmount: paymentTransactions.refundAmount, status: paymentTransactions.status, paidAt: paymentTransactions.paidAt,
     paymentIntentId: paymentTransactions.paymentIntentId, metadata: paymentTransactions.metadata,
   }).from(paymentTransactions).where(and(

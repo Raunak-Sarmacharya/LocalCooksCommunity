@@ -15,7 +15,7 @@ const say = (overrides: Partial<VisitSentenceInput>) => visitStatusSentence({ ..
 describe("visitStatusSentence", () => {
   it("carries the check-in time and says it covers the check-in row", () => {
     const result = say({ checkinStatus: "checked_in", canCheckout: true, checkedInTime: "9:28 a.m." });
-    expect(result.text).toBe("You checked in at 9:28 a.m. When you’re finished, submit checkout below.");
+    expect(result.text).toBe("You checked in at 9:28 a.m. Choose Check out when you’re finished.");
     expect(result.coversCheckin).toBe(true);
   });
   it("adds that the booking still ends on time after a late check-in", () => {

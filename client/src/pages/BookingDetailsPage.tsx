@@ -18,7 +18,7 @@ import { StorageRows, EquipmentRows } from '@/components/booking/BookingAddOns';
 import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
 import { formatBookedDuration } from '@/lib/booked-duration';
 import { friendlyDate, friendlyDateTime } from '@/lib/friendly-date';
-import { claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimMoney, claimWhen, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import { canReportRunningLate } from '@shared/running-late';
 import { cn } from '@/lib/utils';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
@@ -1179,7 +1179,9 @@ export default function BookingDetailsPage() {
     if (!booking?.paymentTransaction || !pricingBreakdownInput || booking.paymentDecision?.state === 'pending'
       || (!paymentCaptured && bookingEnded)) return null;
     if (isManagerView) return { label: payoutTitle, struck: false,
-      cents: (booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents) + extraTotalCents };
+      // The booking's own net plus each extra charge's net. (The payout snapshot already includes the extras: never add them to it.)
+      cents: (extraCharges.length ? buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents
+        : booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents) + extraTotalCents };
     // Before capture it is only a hold on the card; "Total paid" appears once the money was actually taken.
     if (!paymentCaptured) return { label: t('bnCardHold'), cents: booking.paymentTransaction.amount || buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
     return { label: t('bdhTotalPaid'), cents: buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents + extraTotalCents, struck: false };
@@ -1262,6 +1264,9 @@ export default function BookingDetailsPage() {
     queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${booking!.id}/damage-claims`), retry: false });
   const claims = claimsQuery.data?.claims;
   const visibleClaims = claims?.filter(claim => claim.claimVersion === 2 && claim.status !== 'draft' && (isManagerView || claim.chefVisible));
+  const unreportedVisits = (booking?.visits || []).filter(visit => !claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft' && claim.visitId === visit.id));
+  const alreadyReported = !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft')
+    && (!(booking?.visits || []).length || unreportedVisits.length === 0);
   const latestClaim = visibleClaims?.reduce<DamageClaimCardData | undefined>((latest, claim) => !latest || claim.id > latest.id ? claim : latest, undefined);
   const settledClaim = latestClaim?.status === 'charge_succeeded' ? { outcome: 'chef_paid' as const, amount: claimMoney(latestClaim.amountCents, i18n.language) }
     : latestClaim?.status === 'resolved' && latestClaim.kitchenPaid && ['closed', 'write_off'].includes(latestClaim.resolutionType || '') && latestClaim.fundedBy === 'local_cooks'
@@ -1285,9 +1290,10 @@ export default function BookingDetailsPage() {
     inspectionCanRespond, inspectionDue: inspectionDueText,
     payoutReview: isManagerView && booking?.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt
       ? { amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) } : null,
+    claimDeadline: latestClaim && !settledClaim && !['resolved', 'rejected'].includes(latestClaim.status) ? claimWhen(latestClaim.deadline, latestClaim.visitEvidence?.timezone || tz || 'America/St_Johns', i18n.language) : undefined,
     settledClaim, hasClaim: claimsQuery.isPending || claimsQuery.isError || !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft'),
     inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
-    canCancel: chefCanCancel, canAddToCalendar: !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
+    canCancel: chefCanCancel, canAddToCalendar: booking?.status === 'confirmed' && !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
     canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
   } });
   const primary = now.primary;
@@ -1345,7 +1351,9 @@ export default function BookingDetailsPage() {
       case 'manage_refund': return [{ key, label: t('bdhManageRefund'), onSelect: openManagementDialog }];
       case 'fix_record': return [{ key, label: t('fixTitle'), onSelect: () => openFix() }];
       case 'record_left': return [{ key, label: t('bdhOverstayRecordLeft'), icon: LogOut, onSelect: () => openFix('departure') }];
-      case 'report_damage': return [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
+      case 'report_damage': return !claimsQuery.data ? [] : alreadyReported
+        ? [{ key, label: policyT('dcV2AlreadyReported'), muted: true, href: '/manager/dashboard?view=support' }]
+        : [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
     }
   });
   const visibleSecondary = secondaryLinks.slice(0, NOW_SECONDARY_VISIBLE);
@@ -1355,14 +1363,14 @@ export default function BookingDetailsPage() {
   // ⋯ menu: the full action list, minus whatever is already one tap away (the primary and the visible links).
   const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
   if (isManagerView && booking?.status === 'confirmed') menuItems.push({ key: 'kitchen-cancel', label: policyT('cpKitchenCancel'), icon: CalendarX, onSelect: () => setKitchenCancelOpen(true) });
-  if (chefCanCancel && !visibleKeys.has('cancel_request')) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
+  if (chefCanCancel && booking?.status !== 'pending' && !visibleKeys.has('cancel_request')) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
   if (managerCanManage && primary !== 'review_cancellation' && !visibleKeys.has('change_booking') && !visibleKeys.has('manage_refund'))
     menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : booking?.status === 'confirmed' ? t('bdhChangeBooking') : t('bdhReviewCancellation'), icon: CalendarX, onSelect: openManagementDialog });
   if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
     if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
     if (!visibleKeys.has('fix_record') && !visibleKeys.has('record_left')) menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => openFix() });
   }
-  if (visitBounds && upcoming && !visibleKeys.has('add_to_calendar')) menuItems.push({ key: 'calendar', label: t('bdhAddToCalendar'), icon: CalendarPlus, onSelect: addToCalendar });
+  if (visitBounds && booking?.status === 'confirmed' && upcoming && !visibleKeys.has('add_to_calendar')) menuItems.push({ key: 'calendar', label: t('bdhAddToCalendar'), icon: CalendarPlus, onSelect: addToCalendar });
   if (canDownload && !visibleKeys.has('download_invoice') && !visibleKeys.has('download_payout_statement')) menuItems.push({ key: 'download', label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() });
   for (const link of overflowSecondary) if (!menuItems.some(item => item.label === link.label)) menuItems.push({ key: `more-${link.key}`, label: link.label, icon: link.icon || MoreHorizontal, onSelect: link.onSelect || (() => { if (link.href) navigate(link.href); }) });
   menuItems.push({ key: 'help', label: t('bdhGetHelp'), icon: LifeBuoy, onSelect: goToHelp });
@@ -1528,7 +1536,7 @@ export default function BookingDetailsPage() {
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}
         {/* A payable claim comes first: unpaid after a final decision, it pauses new bookings. */}
         {now.attention.includes('claims') && claims && <NowClaimRows claims={claims} manager={isManagerView} chefName={chefName} timezone={tz || 'America/St_Johns'}
-          allowPrimary={claimTakesPrimary && !narrow} payInBarFor={narrow && claimTakesPrimary ? payableClaim?.id : null} payingId={payingClaimId} onPayingChange={setPayingClaimId} onChanged={() => void claimsQuery.refetch()} />}
+          allowPrimary={claimTakesPrimary && !narrow} payInBarFor={narrow && claimTakesPrimary ? payableClaim?.id : null} payingId={payingClaimId} onPayingChange={setPayingClaimId} onChanged={() => { void claimsQuery.refetch(); void reloadBookingDetails(); }} />}
         {now.attention.includes('extensions') && ['confirmed', 'completed'].includes(booking.status) && (
           <SessionExtensionsCard variant="now" key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails}
             tool={extTool} onToolChange={setExtTool} onToolsChange={setExtTools} allowPrimary={!primary && !claimTakesPrimary && !narrow}
@@ -1708,7 +1716,7 @@ export default function BookingDetailsPage() {
             chargeLabel={t("bdTotalCharged", { defaultValue: "Total charged" })}
             processingFeeLabel={pricingBreakdownInput.paymentProcessorFeeIsEstimate ? t("bdEstProcessingFee", { defaultValue: "Est. processing fee" }) : t("bdProcessingFee")}
             platformFeeLabel={t("bdLocalCooksServiceFee", { percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100), defaultValue: "Service fee ({percent}%)" })}
-            platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", { defaultValue: "Service fee" })}
+            platformFeeChefPaidLabel={t("wfbChefServiceFee")}
             platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
             refundLabel={t("bdRefund")}
             hstLabel={t("bdHstPercent", { percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0 })}
@@ -1813,7 +1821,7 @@ export default function BookingDetailsPage() {
       <KitchenCausedCancellation bookingId={booking.id} open={kitchenCancelOpen} onOpenChange={setKitchenCancelOpen} onChanged={reloadBookingDetails} />
       <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
       {isManagerView && claimWindowOpen && <ManagerDamageClaimEntry mode="secondary" open={claimOpen} onOpenChange={setClaimOpen} bookingId={booking.id} chefName={chefName}
-        visits={booking.visits || []} onFiled={() => void claimsQuery.refetch()} />}
+        visits={unreportedVisits} onFiled={() => void claimsQuery.refetch()} />}
       {!isManagerView && (
         <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
           summary={{ kitchenName, reference: booking.referenceCode || undefined,

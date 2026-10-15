@@ -20,6 +20,8 @@ vi.mock("@tanstack/react-query", () => ({ useQuery: ({ queryKey }: { queryKey: s
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ i18n: { language: "en-CA" } }) }));
 vi.mock("wouter", () => ({ Link: ({ href, children, ...props }: { href: string; children: ReactNode }) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@/i18n/manager", () => ({ mt: (key: string) => key }));
+vi.mock("@/i18n/chef-ns", () => ({ ct: (key: string) => key }));
+vi.mock("@/components/booking/BookingNowCard", () => ({ StatusPill: ({ children }: { children: ReactNode }) => <span data-testid="booking-status-pill">{children}</span> }));
 vi.mock("@/lib/api", () => ({ apiGet: vi.fn() }));
 vi.mock("./BookingCalendarWidget", () => ({ default: () => <div>calendar</div> }));
 
@@ -172,7 +174,7 @@ it("keeps requested storage move-ins and unfinished expired storage actionable",
 
 it("prioritizes attention for listed kitchens and setup for unlisted kitchens",()=>{state.kitchens=[{id:10,locationId:1,name:"Kitchen East",listingStatus:"active",isActive:true},{id:11,locationId:1,name:"Kitchen West",listingStatus:"draft",isActive:true}];let html=render();expect(html.indexOf("overviewNeedsAttention")).toBeLessThan(html.indexOf("overviewListingStatus"));expect(html).toContain("Kitchen East");expect(html).toContain("Kitchen West");expect(html).toContain("listingStatusLiveLabel");expect(html).toContain("listingStatusDraftLabel");state.kitchens[0].listingStatus="draft";html=render();expect(html.indexOf("overviewListingStatus")).toBeLessThan(html.indexOf("overviewNeedsAttention"));});
 
-it("explains booking history with status, chef, kitchen and schedule, without a history View all",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,chefName:"Morgan",kitchenName:"Kitchen East",bookingDate:"2025-01-01",createdAt:"2024-12-01",startTime:"09:00",endTime:"12:00",status:"cancelled"}];const html=render();const history=html.slice(html.indexOf("overviewHistory"));expect(history).toContain("activityBookingRequested");expect(history).not.toContain("activityBookingCancelled");expect(history).toContain("Morgan · Kitchen East · Jan 1, 2025 · 09:00 – 12:00");expect(history).not.toContain("viewAll");expect(history).toContain("/manager/booking/90");});
+it("explains booking history with status, chef, kitchen and schedule, without a history View all",()=>{state.bookings=[{id:90,kitchenId:10,locationId:1,chefName:"Morgan",kitchenName:"Kitchen East",bookingDate:"2025-01-01",createdAt:"2024-12-01",startTime:"09:00",endTime:"12:00",status:"cancelled"}];const html=render();const history=html.slice(html.indexOf("overviewHistory"));expect(history).toContain("activityBookingRequested");expect(history).not.toContain("activityBookingCancelled");expect(history).toContain("Morgan · Kitchen East · Wed, Jan 1, 2025 · 9:00 a.m.–12:00 p.m.");expect(history).not.toContain("viewAll");expect(history).toContain("/manager/booking/90");});
 
 it("does not count a submitted licence awaiting review as manager work",()=>{state.licenseStatus="pending";const html=render();expect(html).not.toContain("overviewLicenseAttention");expect(html).toContain("overviewAllCaughtUp");});
 

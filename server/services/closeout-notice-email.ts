@@ -1,8 +1,8 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { bookingFeedbackResponses, kitchenBookings, kitchenBookingVisits, kitchens, locations, users } from '@shared/schema';
+import { bookingFeedbackResponses, kitchenBookings, kitchenBookingVisits, kitchens, locations, users, damageClaims } from '@shared/schema';
 import { feedbackOpen } from '@shared/booking-feedback';
-import { ensureServerI18n } from '../i18n';
+import { ensureServerI18n, tLocale } from '../i18n';
 import { tEmail } from '../i18n/outbound';
 import { matchVisitEvidence, reduceClockCloseout, savedCloseout, type ClockEvidence, type VisitCloseout } from '@shared/clock-closeout';
 import { DEFAULT_TIMEZONE, formatInTimezone, friendlyTimezoneName } from '@shared/timezone-utils';
@@ -107,13 +107,19 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
 
   if (chefIsRecipient) {
     await ensureServerI18n();
+    const claims = await reader.select().from(damageClaims).where(eq(damageClaims.kitchenBookingId, bookingId)).orderBy(asc(damageClaims.id));
+    const claimSummary = claims.filter(claim => claim.claimVersion === 2 && claim.chefVisibleAt).map(claim =>
+      tLocale(recipient.locale, claim.status === 'charge_succeeded' ? 'bnChefClaimPaid'
+        : ['resolved', 'rejected'].includes(claim.status) ? 'bnChefClaimClosed' : 'bnChefClaimOpen', { ns: 'booking', kitchen: kitchen.name,
+          amount: new Intl.NumberFormat(recipient.locale || 'en-CA', { style: 'currency', currency: 'CAD' }).format((claim.finalAmountCents ?? claim.claimedAmountCents) / 100),
+          date: new Intl.DateTimeFormat(recipient.locale || 'en-CA', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' }).format(claim.chefResponseDeadline) }).replace(/\.\.$/, '.'));
     const recorded = rows.map(({ visit, row: evidenceRow }) => ({
       label: rows.length > 1 ? `Visit on ${formatInTimezone(new Date(visit.scheduledStartAt), 'MMM d', timezone)}` : 'Recorded times',
       value: recordedTimes(evidenceRow, timezone) }));
     return renderTransactionalEmail({ to, recipientName,
       subject: `Your visit at ${kitchen.name} is complete · ${reference}`,
       heading: `Your visit at ${kitchen.name} on ${date} is complete`,
-      message: `Thanks for cooking at ${kitchen.name}. Your booked time has ended. Here is a short summary of your visit.`,
+      message: [`Thanks for cooking at ${kitchen.name}. Your booked time has ended. Here is a short summary of your visit.`, ...claimSummary].join(' '),
       facts: [], sections: [{ title: 'Your visit', facts: place }, { title: 'Summary', facts: recorded }],
       actionLabel: feedbackAction?.label || 'View booking', actionUrl: feedbackAction?.url || bookingUrl,
       // Receipt at capture, final invoice at closeout: the booking page offers it once the booking is completed.

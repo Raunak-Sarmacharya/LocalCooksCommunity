@@ -305,7 +305,7 @@
   "ncVisitCompleteTitle": "Візит завершено · {kitchen}",
   "ncVisitCompleteGood": "{kitchen} перевірила приміщення — усе гаразд.",
   "ncVisitCompleteInvoice": "Ваш остаточний рахунок готовий.",
-  "ncCancelledRefundTitle": "Ваше бронювання скасовано · повернення {amount} у дорозі (5–10 робочих днів)",
+  "ncCancelledRefundTitle": "Бронювання скасовано · повернення {amount} уже в дорозі",
   "ncCancelledNoRefundTitle": "Ваше бронювання скасовано · повернення коштів не передбачено",
   "ncPayoutBooking": "Бронювання",
   "ncPayoutExtension": "Додатковий час ({duration})",

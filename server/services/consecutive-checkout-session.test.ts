@@ -22,6 +22,18 @@ it('new session builder preserves adjacent overnight hours and amounts', async (
   expect(state.create).toHaveBeenCalledOnce();
   expect(state.create.mock.calls[0][0].metadata).toMatchObject({ start_time: '23:00', end_time: '01:00', duration_hours: '2' });
   expect(state.create.mock.calls[0][0].line_items[0].price_data.product_data.name)
-    .toBe('Kitchen session · Harbour Kitchen · 2099-10-04 11:00 p.m.–1:00 a.m.');
+    .toBe('Kitchen session · Harbour Kitchen · Sun, Oct 4 11:00 p.m.–1:00 a.m.');
   expect(state.create.mock.calls[0][0].line_items[0].price_data.unit_amount).toBe(1000);
+});
+
+it.each([undefined, 'fr-CA'] as const)('uses Book and explains the manual hold (locale %s)', async locale => {
+  await create({ ...params, locale });
+  const request = state.create.mock.calls[0][0];
+  expect(request.submit_type).toBe('book');
+  expect(request.payment_intent_data.capture_method).toBe('manual');
+  expect(request.custom_text.submit.message).toBe(locale === 'fr-CA'
+    ? 'Le montant est seulement préautorisé sur votre carte jusqu’à ce que la cuisine accepte. Vous payez seulement si elle accepte.'
+    : "Your card is only held until the kitchen accepts. You're charged only if they do.");
+  expect(request.custom_text.submit.message.length).toBeLessThanOrEqual(1200);
+  expect(request.locale).toBe(locale);
 });

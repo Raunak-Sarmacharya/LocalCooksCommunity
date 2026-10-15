@@ -58,6 +58,10 @@ interface PendingCancellationRequestsProps {
   onAcceptStorageCancellation: (storageBookingId: number) => void;
   onDeclineStorageCancellation: (storageBookingId: number) => void;
   isProcessing?: boolean;
+  /** Only storage-item requests (the bookings list already shows kitchen cancellation requests as "Needs action"). */
+  storageOnly?: boolean;
+  /** Render nothing instead of an empty card. */
+  hideWhenEmpty?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -73,6 +77,8 @@ export function PendingCancellationRequests({
   onAcceptStorageCancellation,
   onDeclineStorageCancellation,
   isProcessing = false,
+  storageOnly = false,
+  hideWhenEmpty = false,
 }: PendingCancellationRequestsProps) {
   
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -87,7 +93,7 @@ export function PendingCancellationRequests({
 
     for (const booking of bookings) {
       // Kitchen booking cancellation requests
-      if (booking.status === "cancellation_requested") {
+      if (!storageOnly && booking.status === "cancellation_requested") {
         const dateStr = booking.bookingDate?.split("T")[0];
         result.push({
           kind: "kitchen",
@@ -128,9 +134,10 @@ export function PendingCancellationRequests({
     }
 
     return result;
-  }, [bookings]);
+  }, [bookings, storageOnly]);
 
   if (requests.length === 0) {
+    if (hideWhenEmpty) return null;
     return (
       <Card>
         <CardHeader className="pb-3">

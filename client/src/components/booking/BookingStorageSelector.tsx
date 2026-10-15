@@ -10,7 +10,7 @@ import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { useTranslation } from "react-i18next";
 import { bt } from "@/i18n/booking-ns";
-import { BookingPriceSummary } from "./BookingPriceSummary";
+import { BookingPriceSummary, type BookingPriceItem } from "./BookingPriceSummary";
 
 interface StorageListing {
   id: number;
@@ -38,6 +38,8 @@ interface BookingStorageSelectorProps {
   onCancel: () => void;
   kitchenSubtotal: number;
   equipmentSubtotal: number;
+  equipmentItems?: BookingPriceItem[];
+  taxLabel?: string;
   taxRatePercent: number;
   serviceFeeRate: number;
   currency?: string;
@@ -72,6 +74,8 @@ export function BookingStorageSelector({
   onCancel,
   kitchenSubtotal,
   equipmentSubtotal,
+  equipmentItems,
+  taxLabel,
   taxRatePercent,
   serviceFeeRate,
   currency,
@@ -113,15 +117,16 @@ export function BookingStorageSelector({
   const selectedListings = activeListings.filter((listing) => selectedIds.includes(listing.id));
   const currentListing =
     selectedListings.find((listing) => listing.id === activeDateId) ?? selectedListings[0];
-  const draftStorageSubtotal = selectedListings.reduce((sum, listing) => {
+  const draftStorageItems = selectedListings.flatMap(listing => {
     const listingRange = dateMode === "same" && stage === "dates" ? sameRange : ranges[listing.id];
-    if (!listingRange?.from || !listingRange?.to) return sum;
+    if (!listingRange?.from || !listingRange?.to) return [];
     const days = Math.max(
       differenceInDays(listingRange.to, listingRange.from) + 1,
       listing.minimumBookingDuration || 1
     );
-    return sum + listing.basePrice * days;
-  }, 0);
+    return [{ name: listing.name, priceCents: listing.basePrice * days }];
+  });
+  const draftStorageSubtotal = draftStorageItems.reduce((sum, item) => sum + item.priceCents, 0);
 
   const priceSummary = (
     <BookingPriceSummary
@@ -131,6 +136,9 @@ export function BookingStorageSelector({
       taxRatePercent={taxRatePercent}
       serviceFeeRate={serviceFeeRate}
       currency={currency}
+      equipmentItems={equipmentItems}
+      storageItems={draftStorageItems}
+      taxLabel={taxLabel}
       focusAddon="storage"
     />
   );

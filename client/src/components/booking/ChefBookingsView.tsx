@@ -1,2141 +1,270 @@
-import { friendlyDate } from "@/lib/friendly-date";
-import { ct } from '@/i18n/chef-ns';
-import { BookingRefundPolicyNotice } from "./BookingRefundPolicyNotice";
-import { StorageIcon as Package } from "@/components/ui/inventory-icons";
-import { logger } from "@/lib/logger";
-import { useState, useMemo, useEffect } from "react"
-import { useLocation } from "wouter"
-import { ColumnDef, ColumnFiltersState, SortingState, VisibilityState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table"
-import { Calendar, Clock, MapPin, CheckCircle, XCircle, ChevronDown, Search, ArrowUpDown, Loader2, FileText, CalendarDays, MoreHorizontal, Eye, Download, AlertTriangle, Ban, X, CalendarPlus, LogIn, LogOut, Building2 } from "lucide-react"
-import { toast } from "sonner"
+/**
+ * The chef's "My bookings" (design-booking-consolidation.md §0, §6, §7; Airbnb Trips): three tabs, one card per booking,
+ * the whole card opens the booking page. Each card speaks the booking page's language — the same phase, pill and
+ * 12-hour times — with ONE short line (the next step or the money outcome) and at most ONE action when it is the
+ * obvious next step. Everything else lives on the booking page.
+ */
+import { useMemo, useState } from "react"
+import { Link } from "wouter"
+import { useTranslation } from "react-i18next"
+import { Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
-import { InfoChip } from "@/components/chef/info-chip"
+import { SmartImage } from "@/components/ui/smart-image"
+import { KitchenIcon } from "@/components/ui/kitchen-icon"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useTranslation } from "react-i18next"
-import { friendlyTimezoneName } from "@shared/timezone-utils"
-import i18n, { type TFunction } from "i18next"
-import { formatTime as formatKitchenClock } from "@/lib/formatters"
-import { Separator } from "@/components/ui/separator"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { DEFAULT_TIMEZONE, createBookingDateTime } from "@/utils/timezone-utils"
-import { bookingStartDateKey, calendarDateKey, formatCalendarDate } from "@/lib/calendar-date"
-import { isBookingListPast } from "@/lib/booking-list-split"
-import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
-import { BookingOperationsStatus } from './BookingOperationsStatus';
-import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from "@shared/operating-hours"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { StorageExtensionDialog } from "./StorageExtensionDialog"
-import { StorageCheckoutDialog } from "./StorageCheckoutDialog"
-import { StorageCheckinDialog } from "./StorageCheckinDialog"
-import { CheckoutStatusTracker } from "./CheckoutStatusTracker"
-import { CheckinStatusTracker } from "./CheckinStatusTracker"
-import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
+import { StatusPill } from "@/components/booking/BookingNowCard"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
-import { CancellationRequestDialog, type CancellationTarget } from "./CancellationRequestDialog"
-import { STRIPE_PROCESSING_FEE_REFUND_DOCS, stripeLinkClassName } from "@/lib/stripe-brand"
-import { auth } from "@/lib/firebase"
-import { onAuthStateChanged } from "firebase/auth"
-import { format, differenceInDays } from "date-fns"
+import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
+import { ChefStorageBookings } from "./ChefStorageBookings"
+import { sentence } from "@/lib/booking-header-state"
+import { bookingCancelCause } from "@/lib/booking-cancel-cause"
+import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
+import {
+  bookingListBounds, bookingListPill, chefBookingTabs, chefUpcomingRank, listTimezone, listWhenLine,
+  type BookingListRow, type ChefListTab, type ListedBooking,
+} from "@/lib/booking-list-status"
+import { friendlyTimezoneName } from "@shared/timezone-utils"
+import { getR2ProxyUrl } from "@/utils/r2-url-helper"
+import { bt } from "@/i18n/booking-ns"
 import { cn } from "@/lib/utils"
-import { tt } from "@/i18n/common-ns";
-import { bt } from "@/i18n/booking-ns";
 
-// Types
-interface Booking {
+export interface ChefListBooking extends BookingListRow {
   id: number
-  referenceCode?: string | null
-  chefId: number
+  chefId?: number
   kitchenId: number
-  bookingDate: string
-  startTime: string
-  endTime: string
-  operatingWindowStartTime?: string | null
-  selectedSlots?: Array<string | { startTime: string; endTime: string }>
-  status: "pending" | "confirmed" | "cancelled" | "completed" | "cancellation_requested"
-  specialNotes?: string
-  createdAt: string
-  updatedAt: string
-  kitchenName?: string
-  locationName?: string
-  locationTimezone?: string
-  location?: {
-    id: number
-    name: string
-    cancellationPolicyHours?: number
-    cancellationPolicyMessage?: string
-  }
-  totalPrice?: number
-  paymentStatus?: string
-  // ── Payment State Flags (from server PT join) ────────────────────────
-  isVoidedAuthorization?: boolean  // true when PT canceled before capture — $0 charged
-  isAuthorizedHold?: boolean       // true when payment held but not yet captured
-  originalAuthorizedAmount?: number // Original auth amount for voided display context (cents)
-  refundAmount?: number            // Actual refund amount in cents (from PT)
-  chargedAmount?: number | null     // Tax-inclusive amount from PT (what chef actually paid/authorized)
-  cancellationRequestedAt?: string
-  // ── Kitchen Check-In/Checkout Lifecycle ──────────────────────────────────
-  checkinStatus?: string | null
-  checkedInAt?: string | null
-  checkedInMethod?: string | null
-  checkoutRequestedAt?: string | null
-  checkedOutAt?: string | null
-  checkoutApprovedAt?: string | null
-  noShowDetectedAt?: string | null
-  checkinEnabled?: boolean
-  checkoutEnabled?: boolean
-}
-
-interface StorageBooking {
-  cancellationAcceptedAt?: string | null
-  id: number
   referenceCode?: string | null
-  storageListingId?: number
-  kitchenBookingId?: number
-  storageName?: string
-  storageType?: string
-  locationId?: number
+  createdAt?: string
+  kitchenName?: string
   locationName?: string
-  kitchenName?: string
-  startDate: string
-  endDate: string
-  status: string
+  kitchenPhoto?: string | null
   paymentStatus?: string
-  checkoutStatus?: string
-  checkoutRequestedAt?: string
-  checkoutApprovedAt?: string
-  checkinStatus?: string
-  checkinRequestedAt?: string
-  checkinCompletedAt?: string
-  cancellationRequestedAt?: string
-  totalPrice?: number
-  serviceFee?: number
-  basePrice?: number
-  minimumBookingDuration?: number
-  storageCheckinEnabled?: boolean
-  storageCheckoutEnabled?: boolean
-}
-
-interface EquipmentBooking {
-  id: number
-  equipmentListingId?: number
-  kitchenBookingId?: number
-  equipmentType?: string
-  brand?: string
-  kitchenName?: string
-  status: string
-  totalPrice?: number
-  paymentStatus?: string
+  paymentDecision?: { state?: string; target?: string; actorId?: number | null } | null
+  responseDeadlineAt?: string | null
+  isVoidedAuthorization?: boolean
+  /** Cents. */
+  totalPrice?: number | null
+  /** Cents, tax included: what the chef actually paid. */
+  chargedAmount?: number | null
+  /** Cents. */
+  refundAmount?: number | null
+  checkedInAt?: string | null
+  chefDue?: { kind: "claim" | "extra_time"; amountCents: number } | null
 }
 
 interface ChefBookingsViewProps {
-  bookings: Booking[]
+  bookings: ChefListBooking[]
   isLoading: boolean
-  onCancelBooking: (bookingId: number, reason?: string) => void
   kitchens?: Array<{ id: number; name: string; locationName?: string }>
+  /** "Find a kitchen" in the empty state. */
+  onFindKitchen?: () => void
 }
 
-type FilterType = "all" | "pending" | "confirmed" | "cancelled" | "completed" | "cancellation_requested"
-type ViewType = "upcoming" | "past" | "all"
+type T = (key: string, options?: Record<string, unknown>) => string
 
-// Helper functions
-async function getAuthHeaders(): Promise<HeadersInit> {
-  try {
-    const currentUser = auth.currentUser
-    if (currentUser) {
-      const token = await currentUser.getIdToken()
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      }
-    }
-  } catch (error) {
-    logger.error('Error getting Firebase token:', error)
-  }
-  return { 'Content-Type': 'application/json' }
+/** A search box only earns its place once a tab is long. */
+const SEARCH_AFTER = 8
+
+const money = (cents: number, locale: string) =>
+  new Intl.NumberFormat(locale, { style: "currency", currency: "CAD" }).format(cents / 100)
+
+const clock = (at: Date | string, locale: string, timeZone: string) => {
+  try { return new Intl.DateTimeFormat(locale, { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(at)) }
+  catch { return "" }
 }
 
-const formatDate = (dateStr: string) =>
-  friendlyDate(`${calendarDateKey(dateStr)}T12:00:00Z`, i18n.language, "UTC") || 'Invalid Date'
-
-const formatTime = (timeString: string) => formatKitchenClock(timeString, i18n.language)
-
-const formatBookingTimeSlots = (booking: Booking): string => {
-  const zone = booking.locationTimezone ? ` ${friendlyTimezoneName(booking.locationTimezone, i18n.language)}` : ""
-  const rawSlots = booking.selectedSlots
-
-  if (!rawSlots || rawSlots.length === 0) {
-    return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}${zone}`
-  }
-
-  const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
-    if (typeof slot === 'string') {
-      return {
-        startTime: slot,
-        endTime: addHour(slot)
-      }
+/** The single next-step or money line under the date (empty when nothing is worth saying). */
+export function chefListLine(booking: ChefListBooking, item: ListedBooking<ChefListBooking>, t: T, locale: string): string {
+  const zone = listTimezone(booking)
+  const paid = booking.chargedAmount ?? booking.totalPrice ?? 0
+  const refund = booking.refundAmount ?? 0
+  const bounds = bookingListBounds(booking)
+  switch (item.phase) {
+    case "pending": {
+      const deadline = bookingResponseDeadline(booking)
+      const text = deadline ? formatResponseDeadline(deadline, locale, zone, false) : null
+      return text ? t("blKitchenRepliesBy", { deadline: text }) : ""
     }
-    return slot
-  }
-
-  const normalized = rawSlots.map(normalizeSlot).filter(s => s.startTime && s.endTime)
-  const ordered = sortTimesInOperatingWindow(normalized.map(slot => slot.startTime),
-    booking.operatingWindowStartTime || booking.startTime)
-  const sorted = ordered.map(time => normalized.find(slot => slot.startTime === time)!)
-
-  let isContiguous = true
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i - 1].endTime !== sorted[i].startTime) {
-      isContiguous = false
-      break
+    case "today": return bounds ? t("blCheckinOpensAt", { time: clock(bounds.opensAt, locale, zone) }) : ""
+    case "checkin_open": return t("blCheckinOpen")
+    case "in_session": return bounds ? t("blInSessionUntil", { time: clock(bounds.endAt, locale, zone) }) : ""
+    case "time_ended_in_session": return bounds ? sentence(t("blTimeEnded", { time: clock(bounds.endAt, locale, zone) })) : ""
+    case "checkout_review": {
+      const at = booking.checkoutRequestedAt || booking.visitStates?.find(visit => visit.checkoutRequestedAt)?.checkoutRequestedAt
+      return at ? t("blCheckoutAt", { time: clock(at, locale, zone) }) : ""
     }
+    case "cancellation_requested": return t("blCancelWaiting")
+    case "visit_ended": return t("blNoCheckin")
+    case "cancelled":
+      if (refund > 0) return t("blRefunded", { amount: money(refund, locale) })
+      if (booking.isVoidedAuthorization || !["paid", "partially_refunded", "refunded"].includes(booking.paymentStatus || "")) return t("blNotCharged")
+      return t("blNoRefund")
+    case "completed": case "issue": case "no_show":
+      if (booking.chefDue) return t(booking.chefDue.kind === "claim" ? "blDueClaim" : "blDueExtra")
+      if (item.phase !== "completed" || paid <= 0) return ""
+      return refund > 0 ? t("blPaidRefunded", { amount: money(paid, locale), refund: money(refund, locale) }) : t("blPaid", { amount: money(paid, locale) })
+    case "confirmed":
+      // A partial refund on a booking that still goes ahead (a shortened booking, a removed add-on) says what it is.
+      return refund > 0 ? t("blPartRefunded", { amount: money(refund, locale) }) : ""
   }
-
-  if (isContiguous) {
-    return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}${zone}`
-  }
-
-  return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ') + zone
+  return ""
 }
 
-type LooseTFunction = (key: string, options?: Record<string, unknown>) => string
+type CardAction = { label: string; href: string } | null
 
-const canCancelBooking = (booking: Booking, now: Date): boolean => {
-  if (['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '')) return false
-  if (booking.status === 'cancelled' || booking.status === 'completed' || booking.status === 'cancellation_requested') return false
-  if (booking.status === 'pending' && ['authorized', 'pending', 'failed'].includes(booking.paymentStatus || '')) return true
-
-  try {
-    const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
-    // Resolve the booking start in the LOCATION's timezone — the kitchen's
-    // wall-clock time is what the cancellation policy is measured against,
-    // not the chef's browser timezone.
-    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-    const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
-
-    if (isNaN(bookingDateTime.getTime())) return false
-    if (bookingDateTime < now) return false
-
-    const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-    const cancellationHours = booking.location?.cancellationPolicyHours ?? 24
-
-    return hoursUntilBooking > cancellationHours
-  } catch {
-    return false
-  }
+/** At most one action, only when it is the obvious next step. */
+export function chefListAction(booking: ChefListBooking, item: ListedBooking<ChefListBooking>, t: T, locale: string): CardAction {
+  if (["checkin_open", "in_session", "time_ended_in_session"].includes(item.phase)) return { label: t("bdhOpenVisit"), href: `/booking/${booking.id}/visit` }
+  if (booking.chefDue && booking.chefDue.amountCents > 0 && item.phase !== "cancelled")
+    return { label: bt("dcV2Pay", { amount: money(booking.chefDue.amountCents, locale) }), href: `/booking/${booking.id}` }
+  return null
 }
 
-// Column definitions factory
-interface BookingColumnsProps {
-  onCancelBooking: (bookingId: number) => void
-  onDownloadInvoice: (bookingId: number, bookingDate: string) => void | Promise<void>
-  onNavigate: (path: string) => void
-  onCheckinTracker: (bookingId: number) => void
-  downloadingInvoiceId: number | null
-  now: Date
-  kitchens: Array<{ id: number; name: string; locationName?: string }>
-  storageBookings: StorageBooking[]
-  equipmentBookings: EquipmentBooking[]
-  t: LooseTFunction
-}
-
-const getChefBookingColumns = ({
-  onCancelBooking,
-  onDownloadInvoice,
-  onNavigate,
-  onCheckinTracker,
-  downloadingInvoiceId,
-  now,
-  kitchens,
-  storageBookings: allStorageBookings,
-  equipmentBookings: allEquipmentBookings,
-  t,
-}: BookingColumnsProps): ColumnDef<Booking>[] => [
-  {
-    accessorKey: "createdAt",
-    header: () => null,
-    cell: () => null,
-    enableHiding: true,
-  },
-  {
-    id: "reference",
-    header: t("bkColRef"),
-    cell: ({ row }) => {
-      const ref = row.original.referenceCode || row.original.id;
-      return (
-        <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-          {ref ? `#${ref}` : "—"}
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: "status",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 -ml-3"
-      >
-        {t("bkColStatus")}
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const status = row.getValue("status") as string
-      const booking = row.original
-
-      let variant: "success" | "destructive" | "outline" | "warning" = "outline"
-      let icon = null
-      let label = status as string
-
-      if (status === 'confirmed') {
-        variant = "success"
-        icon = <CheckCircle className="h-3 w-3 mr-1" />
-        label = t("bkStatusConfirmed")
-      } else if (status === 'cancelled') {
-        // Industry standard: distinguish by cause
-        if (booking.paymentStatus === 'failed' || booking.isVoidedAuthorization) {
-          // Payment auth expired or voided — never charged
-          variant = "outline"
-          icon = <Clock className="h-3 w-3 mr-1" />
-          label = t("bkStatusExpired")
-        } else if (booking.cancellationRequestedAt) {
-          // Chef requested cancellation, manager accepted
-          variant = "outline"
-          icon = <XCircle className="h-3 w-3 mr-1" />
-          label = t("bkStatusCancelled")
-        } else if (booking.paymentStatus === 'refunded') {
-          // Cancelled AND refunded. The status stays "Cancelled" for the same reason as the
-          // manager's row: a refund is a PAYMENT fact, stated by the payment column, so labelling
-          // the status "Refunded" as well printed the same word twice across the row.
-          variant = "outline"
-          icon = <XCircle className="h-3 w-3 mr-1" />
-          label = t("bkStatusCancelled")
-        } else {
-          // Manager declined the booking
-          variant = "destructive"
-          icon = <XCircle className="h-3 w-3 mr-1" />
-          label = t("bkStatusDeclined")
-        }
-      } else if (status === 'completed') {
-        variant = "success"
-        icon = <CheckCircle className="h-3 w-3 mr-1" />
-        label = t("bkStatusCompleted")
-      } else if (status === 'cancellation_requested') {
-        variant = "warning"
-        icon = <Clock className="h-3 w-3 mr-1" />
-        label = t("bkStatusCancellationPending")
-      } else {
-        variant = "outline"
-        icon = <Clock className="h-3 w-3 mr-1" />
-        label = t("bkStatusPendingApproval")
-      }
-
-      // Pending requests say when the kitchen has to answer; other rows carry no unexplained age.
-      let timeBadge = null
-      const respondBy = bookingResponseDeadline(booking as Parameters<typeof bookingResponseDeadline>[0])
-      const respondByText = respondBy ? formatResponseDeadline(respondBy, i18n.language, booking.locationTimezone || DEFAULT_TIMEZONE, false) : null
-      if (respondByText) {
-        timeBadge = (
-          <span className="text-xs text-muted-foreground ml-1">
-            {t("bkRespondsBy", { deadline: respondByText })}
-          </span>
-        )
-      }
-
-      // Check for mixed storage statuses
-      const relatedStorage = allStorageBookings.filter(
-        (sb) => sb.kitchenBookingId === booking.id
-      )
-      const rejectedStorageCount = relatedStorage.filter((sb) => sb.status === 'cancelled' && sb.checkoutStatus !== 'completed' && sb.checkoutStatus !== 'checkout_claim_filed').length
-      const pendingStorageCount = relatedStorage.filter((sb) => sb.status === 'pending').length
-
-      // Check for mixed equipment statuses (mirrors storage logic)
-      const relatedEquipment = allEquipmentBookings.filter(
-        (eb) => eb.kitchenBookingId === booking.id
-      )
-      const rejectedEquipmentCount = relatedEquipment.filter((eb) => eb.status === 'cancelled').length
-
-      const isVoided = booking.isVoidedAuthorization === true
-      const isAuthHold = booking.isAuthorizedHold === true
-
-      // ── Kitchen Check-In/Check-Out lifecycle badge (chef-facing) ──────────
-      const checkinStatus = booking.checkinStatus
-      let checkinBadge: { label: string; variant: "success" | "warning" | "destructive" | "outline"; icon: React.ReactNode } | null = null
-      if ((status === 'confirmed' || status === 'completed') && checkinStatus && ((booking as any).checkinEnabled === true || (booking as any).checkoutEnabled === true)) {
-        if (checkinStatus === 'checked_in') {
-          checkinBadge = { label: t("bdCiCheckedIn"), variant: 'success', icon: <LogIn className="h-2.5 w-2.5" /> }
-        } else if (checkinStatus === 'checkout_requested') {
-          checkinBadge = { label: t("bkStatusCheckoutPendingReview"), variant: 'warning', icon: <Clock className="h-2.5 w-2.5" /> }
-        } else if (checkinStatus === 'checked_out') {
-          checkinBadge = { label: t("bdCiCheckedOut"), variant: 'success', icon: <CheckCircle className="h-2.5 w-2.5" /> }
-        } else if (checkinStatus === 'no_show') {
-          checkinBadge = { label: t("bdCiNoShow"), variant: 'destructive', icon: <XCircle className="h-2.5 w-2.5" /> }
-        } else if (checkinStatus === 'checkout_claim_filed') {
-          checkinBadge = { label: t("bdCiClaimFiled"), variant: 'warning', icon: <AlertTriangle className="h-2.5 w-2.5" /> }
-        }
-      }
-
-      return (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center">
-            <InfoChip variant={variant} icon={icon} className="w-fit">
-              {label}
-            </InfoChip>
-            {timeBadge}
-          </div>
-          {checkinBadge && (
-            <InfoChip variant={checkinBadge.variant} icon={checkinBadge.icon} className="w-fit">
-              {checkinBadge.label}
-            </InfoChip>
-          )}
-          <BookingOperationsStatus booking={booking} />
-          {status === "pending" && <BookingRefundPolicyNotice compact />}
-          {isVoided && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
-              <XCircle className="h-2.5 w-2.5" />
-              {t("noCharge")}
-            </div>
-          )}
-          {isAuthHold && status === 'pending' && (
-            <InfoChip variant="outline" icon={<Clock className="h-2.5 w-2.5" />} className="w-fit">
-              {t("bdPaymentHeldLower")}
-            </InfoChip>
-          )}
-          {/* Only show individual addon rejection badges when the booking itself was NOT fully voided.
-              Full voided auth already communicates everything was rejected — individual badges would be redundant
-              and misleading (implying kitchen was approved but specific addons were individually rejected). */}
-          {!isVoided && rejectedStorageCount > 0 && (
-            <InfoChip variant="destructive" icon={<Package className="h-2.5 w-2.5" />} className="w-fit">
-              {t("storageDeclinedCount", { count: rejectedStorageCount })}
-            </InfoChip>
-          )}
-          {!isVoided && rejectedEquipmentCount > 0 && (
-            <InfoChip variant="destructive" icon={<Package className="h-2.5 w-2.5" />} className="w-fit">
-              {t("equipmentDeclinedCount", { count: rejectedEquipmentCount })}
-            </InfoChip>
-          )}
-          {pendingStorageCount > 0 && status === 'confirmed' && (
-            <InfoChip variant="warning" icon={<Package className="h-2.5 w-2.5" />} className="w-fit">
-              {t("storagePendingCount", { count: pendingStorageCount })}
-            </InfoChip>
-          )}
-          {/*
-            No partial-refund chip here, deliberately: the payment column already reads
-            "Partial Refund" for this same booking, so this repeated it word for word. Same reason
-            the status label above stays "Cancelled" instead of "Refunded".
-          */}
-        </div>
-      )
-    },
-    filterFn: (row, id, value) => {
-      if (value === "all") return true
-      return row.getValue(id) === value
-    },
-  },
-  {
-    accessorKey: "kitchenName",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 -ml-3"
-      >
-        {t("bkColKitchen")}
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const booking = row.original
-      const kitchen = kitchens.find((k) => k.id === booking.kitchenId)
-      const kitchenName = kitchen?.name || booking.kitchenName || t("bkKitchenFallback", { id: booking.kitchenId })
-      const locationName = kitchen?.locationName || booking.locationName || 'Unknown Location'
-
-      return (
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="font-medium text-sm">{kitchenName}</span>
-          </div>
-          <div className="flex items-center text-xs text-muted-foreground mt-0.5 ml-5">
-            <MapPin className="h-3 w-3 mr-1" />
-            <span>{locationName}</span>
-          </div>
-        </div>
-      )
-    },
-  },
-  {
-    accessorKey: "bookingDate",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 -ml-3"
-      >
-        {t("bkColDateTime")}
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const booking = row.original
-
-      return (
-        <div className="flex flex-col text-sm">
-          <div className="flex items-center">
-            <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
-            {formatDate(bookingStartDateKey(booking) ?? row.getValue("bookingDate"))}
-          </div>
-          <div className="flex items-center text-xs text-muted-foreground mt-0.5">
-            <Clock className="h-3 w-3 mr-2" />
-            {formatBookingTimeSlots(booking)}
-          </div>
-        </div>
-      )
-    },
-  },
-  {
-    accessorKey: "totalPrice",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 justify-end w-full"
-      >
-        {t("bkColAmount")}
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      // Use chargedAmount (tax-inclusive from PT) as primary, fall back to totalPrice (pre-tax from KB)
-      const chargedAmount = row.original.chargedAmount
-      const totalPrice = chargedAmount ?? row.original.totalPrice
-      const isVoided = row.original.isVoidedAuthorization === true
-      const isAuthHold = row.original.isAuthorizedHold === true
-      const originalAuthAmount = row.original.originalAuthorizedAmount
-      const paymentStatus = row.original.paymentStatus
-
-      const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`
-
-      // ── VOIDED AUTHORIZATION: No money captured ────────────────────────
-      if (isVoided) {
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-right cursor-help">
-                  <div className="font-medium text-sm text-muted-foreground">{t("payNoCharge")}</div>
-                  <div className="text-xs text-muted-foreground">{t("payHoldReleased")}</div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <div className="space-y-1 text-sm">
-                  <p className="font-medium">{t("payBookingRejected")}</p>
-                  {originalAuthAmount != null && originalAuthAmount > 0 && (
-                    <div className="flex justify-between gap-4 text-muted-foreground">
-                      <span>{t("payOriginalHold")}</span>
-                      <span className="font-mono line-through">{formatPrice(originalAuthAmount)}</span>
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {t("payHoldReleasedNote")}
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )
-      }
-
-      if (!totalPrice) {
-        return <span className="text-muted-foreground text-xs">—</span>
-      }
-
-      // ── AUTHORIZED HOLD: Pending manager action ────────────────────────
-      if (isAuthHold) {
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-right cursor-help">
-                  <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-muted-foreground">{t("bdPaymentHeldLower")}</div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <div className="space-y-1 text-sm">
-                  <p className="font-medium">{t("bdPaymentHoldTitle")}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("bdPaymentHoldDesc")}
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )
-      }
-
-      // ── CAPTURED / DEFAULT ─────────────────────────────────────────────
-      const refundAmount = row.original.refundAmount ?? 0
-      const hasRefund = refundAmount > 0
-      const isCancelled = row.original.status === 'cancelled'
-      const isRefunded = paymentStatus === 'refunded'
-
-      // Cancelled + refunded: show original charge struck through + refund amount
-      if (isCancelled && hasRefund) {
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-right cursor-help">
-                  <div className="font-medium text-sm text-muted-foreground line-through">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-muted-foreground">{ct('sweepLabel17')}{' '}{formatPrice(refundAmount)}</div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <div className="space-y-1.5 text-sm">
-                  <p className="font-medium">{isRefunded ? t('payFullyRefunded') : t('payPartiallyRefunded')}</p>
-                  <div className="flex justify-between gap-4 text-muted-foreground">
-                    <span>{t("payOriginalCharge")}</span>
-                    <span className="font-mono line-through">{formatPrice(totalPrice)}</span>
-                  </div>
-                  <div className="flex justify-between gap-4 font-semibold">
-                    <span>{t("payRefundedToYou")}</span>
-                    <span>{formatPrice(refundAmount)}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground pt-1 border-t leading-snug">
-                    {t("stripeFeeNonRefundableTooltip")}{" "}
-                    <a
-                      href={STRIPE_PROCESSING_FEE_REFUND_DOCS}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={stripeLinkClassName}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {t("stripeFeeNonRefundableDocsLink")}
-                    </a>
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )
-      }
-
-      // Active booking + partial refund (e.g., some addons cancelled)
-      if (!isCancelled && hasRefund) {
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-right cursor-help">
-                  <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-muted-foreground">{ct('sweepLabel18')}{' '}{formatPrice(refundAmount)}</div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <div className="space-y-1.5 text-sm">
-                  <p className="font-medium">{t("bkPartialRefundIssued")}</p>
-                  <div className="flex justify-between gap-4">
-                    <span>{t("bkTotalCharged")}</span>
-                    <span className="font-medium font-mono">{formatPrice(totalPrice)}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span>{t("bkRefundedToYou")}</span>
-                    <span>{formatPrice(refundAmount)}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground pt-1 border-t leading-snug">
-                    {t("stripeFeeNonRefundableTooltip")}{" "}
-                    <a
-                      href={STRIPE_PROCESSING_FEE_REFUND_DOCS}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={stripeLinkClassName}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {t("stripeFeeNonRefundableDocsLink")}
-                    </a>
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )
-      }
-
-      // Default: no refund
-      const statusLabel = paymentStatus === 'paid' ? t("bkPaymentPaid")
-        : paymentStatus === 'refunded' ? t("bkPaymentRefunded")
-        : paymentStatus === 'partially_refunded' ? t("bkPaymentPartialRefund")
-        : paymentStatus === 'processing' ? t("bkPaymentProcessing")
-        : t("bkPaymentPending")
-
-      const statusColor = paymentStatus === 'paid' ? 'text-muted-foreground'
-        : paymentStatus === 'refunded' || paymentStatus === 'partially_refunded' ? 'text-muted-foreground'
-        : 'text-muted-foreground'
-
-      return (
-        <div className="text-right">
-          <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-          <div className={`text-xs ${statusColor}`}>{statusLabel}</div>
-        </div>
-      )
-    },
-  },
-  {
-    accessorKey: "specialNotes",
-    header: t("bkColNotes"),
-    cell: ({ row }) => {
-      const notes = row.getValue("specialNotes") as string
-      if (!notes) return <span className="text-muted-foreground text-xs">—</span>
-
-      return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center cursor-help">
-                <FileText className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-sm">{notes}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )
-    },
-  },
-  {
-    id: "actions",
-    header: "",
-    cell: ({ row }) => {
-      const booking = row.original
-      const showCancel = canCancelBooking(booking, now)
-      const isDownloading = downloadingInvoiceId === booking.id
-      const isVoided = booking.isVoidedAuthorization === true
-      const canDownloadInvoice = booking.status !== 'cancelled' && !isVoided
-
-      return (
-        <div className="flex flex-wrap items-center gap-2">
-        {showCancel && <Button variant="outline" size="sm" onClick={() => onNavigate(`/booking/${booking.id}?cancel=1`)}>
-          {booking.status === 'pending' ? ct('sweepText14') : t('bdhCancelOrChangeShort')}
-        </Button>}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onNavigate(`/booking/${booking.id}`)}>
-              <Eye className="h-4 w-4 mr-2" />
-              {t("bkViewDetails")}
-            </DropdownMenuItem>
-
-            {(booking.status === 'confirmed' || booking.status === 'completed') &&
-             ((booking as any).checkinEnabled === true || (booking as any).checkoutEnabled === true) && (
-              <DropdownMenuItem onClick={() => onCheckinTracker(booking.id)}>
-                <LogIn className="h-4 w-4 mr-2" />
-                {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                  ? t("bkCheckIn")
-                  : booking.status === 'completed'
-                    ? t("bkViewSessionSummary")
-                    : booking.checkinStatus === 'checked_in'
-                      ? t("bkViewCheckinStatus")
-                      : t("bkCheckinCheckoutStatus")}
-              </DropdownMenuItem>
-            )}
-
-            {canDownloadInvoice && (
-              <DropdownMenuItem
-                onClick={() => onDownloadInvoice(booking.id, booking.bookingDate)}
-                disabled={isDownloading}
-              >
-                {isDownloading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4 mr-2" />
-                )}
-                {t("bkDownloadInvoice")}
-              </DropdownMenuItem>
-            )}
-
-          </DropdownMenuContent>
-        </DropdownMenu>
-        </div>
-      )
-    },
-  },
-]
-
-// Storage Booking Column definitions factory
-interface StorageBookingColumnsProps {
-  onExtend: (storageBookingId: number) => void
-  onDownloadInvoice: (storageBookingId: number) => void | Promise<void>
-  onCheckout: (storageBookingId: number) => void
-  onCheckin: (storageBookingId: number) => void
-  onViewCheckoutStatus: (storageBookingId: number) => void
-  onViewCheckinStatus: (storageBookingId: number) => void
-  onCancelStorage: (storageBookingId: number) => void
-  downloadingInvoiceId: number | null
-  now: Date
-  kitchenBookings: Booking[]
-}
-
-const getStorageBookingColumns = ({
-  onExtend,
-  onDownloadInvoice,
-  onCheckout,
-  onCheckin,
-  onViewCheckoutStatus,
-  onViewCheckinStatus,
-  onCancelStorage,
-  downloadingInvoiceId,
-  now,
-  kitchenBookings,
-  t,
-}: StorageBookingColumnsProps & { t: LooseTFunction }): ColumnDef<StorageBooking>[] => [
-  {
-    id: "reference",
-    header: t("bkColRef"),
-    cell: ({ row }) => {
-      const ref = row.original.referenceCode || row.original.id;
-      return (
-        <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-          {ref ? `#${ref}` : "—"}
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: "storageName",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 -ml-3"
-      >
-        {t("bkColStorage")}
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const storageBooking = row.original
-      return (
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <Package className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="font-medium text-sm">{storageBooking.storageName ||
-              t("sxDefaultUnitName")}</span>
-          </div>
-          <div className="flex items-center text-xs text-muted-foreground mt-0.5 ml-5">
-            <MapPin className="h-3 w-3 mr-1" />
-            <span>{storageBooking.locationName || t("bkUnknownLocation")}</span>
-          </div>
-        </div>
-      )
-    },
-  },
-  {
-    accessorKey: "storageType",
-    header: t("bkColType"),
-    cell: ({ row }) => {
-      const storageType = row.getValue("storageType") as string
-      return (
-        <InfoChip variant="outline" className="capitalize">
-          {storageType || 'Standard'}
-        </InfoChip>
-      )
-    },
-  },
-  {
-    accessorKey: "startDate",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 -ml-3"
-      >
-        {t("bkColPeriod")}
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const storageBooking = row.original
-      const endDate = new Date(storageBooking.endDate)
-      const daysUntilExpiry = differenceInDays(endDate, now)
-      const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 7
-      const isExpired = daysUntilExpiry < 0
-      const isActive = storageBooking.status === 'confirmed' || storageBooking.status === 'pending' || storageBooking.status === 'cancellation_requested'
-
-      return (
-        <div className="flex flex-col">
-          <div className="flex items-center text-sm">
-            <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
-            {format(new Date(storageBooking.startDate), "MMM d")} - {format(endDate, "MMM d, yyyy")}
-          </div>
-          {isActive && isExpiringSoon && !isExpired && (
-            <div className="text-xs text-muted-foreground mt-0.5 ml-5">
-              {t("bkExpiresIn", { count: daysUntilExpiry })}
-            </div>
-          )}
-          {isActive && isExpired && (
-            <div className="text-xs text-destructive mt-0.5 ml-5">
-              {t("bkExpiredAgo", { count: Math.abs(daysUntilExpiry) })}
-            </div>
-          )}
-        </div>
-      )
-    },
-  },
-  {
-    accessorKey: "status",
-    header: t("bkColStatus"),
-    cell: ({ row }) => {
-      const storageBooking = row.original
-      const status = storageBooking.status
-      const checkoutStatus = storageBooking.checkoutStatus
-
-      // Completed bookings — checkout cleared or claim filed
-      if (status === 'completed' && checkoutStatus === 'checkout_claim_filed') {
-        return (
-          <InfoChip variant="warning" icon={<AlertTriangle className="h-3 w-3" />}>
-            {t("bkClaimFiled")}
-          </InfoChip>
-        )
-      } else if (status === 'completed') {
-        return (
-          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
-            {t("bkCleared")}
-          </InfoChip>
-        )
-      // Cancelled bookings — distinguish by cause for intuitive labels
-      // Industry standard: Expired (payment failed), Cancelled (chef-initiated), Declined (manager rejected)
-      } else if (status === 'cancelled' && storageBooking.paymentStatus === 'failed') {
-        // Distinguish auth-expired (whole booking died) vs manager-declined (parent KB still confirmed)
-        const parentKB = storageBooking.kitchenBookingId
-          ? kitchenBookings.find(b => b.id === storageBooking.kitchenBookingId)
-          : null
-        const isManagerDeclined = parentKB && (parentKB.status === 'confirmed' || parentKB.paymentStatus === 'paid')
-        if (isManagerDeclined) {
-          return (
-            <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>{ct('sweepLabel19')}</InfoChip>
-          )
-        }
-        // Payment auth expired or failed — never charged
-        return (
-          <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>{ct('sweepLabel08')}</InfoChip>
-        )
-      } else if (status === 'cancelled' && storageBooking.cancellationRequestedAt) {
-        // Chef requested cancellation, manager accepted
-        return (
-          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
-            {t("bkStatusCancelled")}
-          </InfoChip>
-        )
-      } else if (status === 'cancelled' && storageBooking.paymentStatus === 'refunded') {
-        // Cancelled and fully refunded
-        return (
-          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
-            {t("bkStatusRefunded")}
-          </InfoChip>
-        )
-      } else if (status === 'cancelled') {
-        // Manager declined the booking (no chef cancellation request, payment was paid)
-        return (
-          <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
-            {t("bkStatusDeclined")}
-          </InfoChip>
-        )
-      } else if (status === 'cancellation_requested') {
-        return (
-          <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
-            {t("bkStatusCancellationPending")}
-          </InfoChip>
-        )
-      } else if (status === 'pending') {
-        return (
-          <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
-            {t("bkStatusPendingApproval")}
-          </InfoChip>
-        )
-      } else if (status === 'confirmed' && checkoutStatus === 'checkout_requested') {
-        return (
-          <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
-            {t("bkCheckoutUnderReview")}
-          </InfoChip>
-        )
-      } else if (status === 'confirmed' && checkoutStatus === 'checkout_approved') {
-        return (
-          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
-            {t("bkCheckoutApproved")}
-          </InfoChip>
-        )
-      } else if (status === 'confirmed' && checkoutStatus === 'active') {
-        return (
-          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
-            {t("bkActive")}
-          </InfoChip>
-        )
-      } else if (status === 'confirmed') {
-        return (
-          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
-            {t("bkStatusConfirmed")}
-          </InfoChip>
-        )
-      }
-      return (
-        <InfoChip variant="outline" className="capitalize">
-          {status}
-        </InfoChip>
-      )
-    },
-  },
-  {
-    id: "actions",
-    header: "",
-    cell: ({ row }) => {
-      const storageBooking = row.original
-      const isDownloading = downloadingInvoiceId === storageBooking.id
-      const isConfirmed = storageBooking.status === 'confirmed'
-      const isCompleted = storageBooking.status === 'completed'
-      const isCancellationRequested = storageBooking.status === 'cancellation_requested'
-      const canCancel = (isConfirmed || storageBooking.status === 'pending') && !isCancellationRequested
-      const checkoutStatusActive = !storageBooking.checkoutStatus || storageBooking.checkoutStatus === 'active'
-      const bookingEndDate = new Date(storageBooking.endDate)
-      bookingEndDate.setHours(0, 0, 0, 0)
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      const isExpired = bookingEndDate < todayStart
-
-      // Storage Check-In: available once the booking has started and before
-      // check-in has been completed. Symmetric with the checkout gate below.
-      const bookingStartDate = new Date(storageBooking.startDate)
-      bookingStartDate.setHours(0, 0, 0, 0)
-      const hasStarted = bookingStartDate <= todayStart
-      const checkinStatus = storageBooking.checkinStatus || 'not_checked_in'
-      const checkinCompleted = checkinStatus === 'checkin_completed' || checkinStatus === 'skipped'
-      const canCheckin =
-        isConfirmed &&
-        checkoutStatusActive &&
-        hasStarted &&
-        !checkinCompleted &&
-        storageBooking.storageCheckinEnabled === true
-
-      // Storage Check-Out: only available AFTER check-in is completed.
-      // You cannot check out of a storage unit you haven't checked into.
-      const canCheckout = checkoutStatusActive && (
-        Boolean(storageBooking.cancellationAcceptedAt) ||
-        (isConfirmed && hasStarted && (checkinCompleted || storageBooking.storageCheckinEnabled !== true))
-      )
-
-      const canExtend = isConfirmed && checkoutStatusActive && !isCompleted && !isExpired
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {canExtend && (
-              <DropdownMenuItem onClick={() => onExtend(storageBooking.id)}>
-                <CalendarPlus className="h-4 w-4 mr-2" />
-                {t("bkExtendStorage")}
-              </DropdownMenuItem>
-            )}
-
-            <DropdownMenuItem
-              onClick={() => onDownloadInvoice(storageBooking.id)}
-              disabled={isDownloading}
-            >
-              {isDownloading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              {t("bkDownloadInvoice")}
-            </DropdownMenuItem>
-
-            {canCheckin && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onCheckin(storageBooking.id)}>
-                  <LogIn className="h-4 w-4 mr-2" />
-                  {t("bkCheckIn")}
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {checkinCompleted && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onViewCheckinStatus(storageBooking.id)}>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  {t("bkViewCheckinHistory")}
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {canCheckout && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onCheckout(storageBooking.id)}>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  {t("bkRequestCheckout")}
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {storageBooking.checkoutStatus && storageBooking.checkoutStatus !== 'active' && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onViewCheckoutStatus(storageBooking.id)}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  {t("bkViewCheckoutStatus")}
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {canCancel && (() => {
-              const isConfirmedPaid = storageBooking.status === 'confirmed' &&
-                (storageBooking.paymentStatus === 'paid' || storageBooking.paymentStatus === 'partially_refunded')
-              return (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => onCancelStorage(storageBooking.id)}
-                    className={isConfirmedPaid ? "text-warning focus:text-warning" : "text-destructive focus:text-destructive"}
-                  >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    {isConfirmedPaid ? t("bkRequestCancellation") : t("bkCancelStorage")}
-                  </DropdownMenuItem>
-                </>
-              )
-            })()}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
-    },
-  },
-]
-
-// Main Component
-export default function ChefBookingsView({
-  bookings,
-  isLoading,
-  onCancelBooking,
-  kitchens = [],
-}: ChefBookingsViewProps) {
-  const [, navigate] = useLocation()
-  const { t: tStrict } = useTranslation("chef")
-  const t = tStrict as unknown as (key: string, options?: Record<string, unknown>) => string
-  const [statusFilter, setStatusFilter] = useState<FilterType>("all")
-  const [viewType, setViewType] = useState<ViewType>("upcoming")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null)
-  const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null)
-  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState<number | null>(null)
-  const [checkinDialogOpen, setCheckinDialogOpen] = useState<number | null>(null)
-  const [checkoutStatusBookingId, setCheckoutStatusBookingId] = useState<number | null>(null)
-  const [checkinStatusBookingId, setCheckinStatusBookingId] = useState<number | null>(null)
-  const [cancellationTarget, setCancellationTarget] = useState<CancellationTarget | null>(null)
-
-  // TanStack Table state
-  const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ createdAt: false })
-
-  const [isAuthReady, setIsAuthReady] = useState(false)
-  const [hasAuthUser, setHasAuthUser] = useState(false)
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthReady(true)
-      setHasAuthUser(!!user)
-    })
-    return () => unsubscribe()
-  }, [])
-
-  // Storage bookings query
-  const { data: storageBookings = [] } = useQuery({
-    queryKey: ['/api/chef/storage-bookings'],
-    enabled: isAuthReady && hasAuthUser,
-    queryFn: async () => {
-      const headers = await getAuthHeaders()
-      const response = await fetch('/api/chef/storage-bookings', {
-        headers,
-        credentials: 'include',
-      })
-      if (!response.ok) throw new Error(tt("failedToFetchStorageBookings"))
-      return response.json()
-    },
-  })
-
-  // Equipment bookings query (mirrors storage bookings pattern)
-  const { data: equipmentBookings = [] } = useQuery({
-    queryKey: ['/api/chef/equipment-bookings'],
-    enabled: isAuthReady && hasAuthUser,
-    queryFn: async () => {
-      const headers = await getAuthHeaders()
-      const response = await fetch('/api/chef/equipment-bookings', {
-        headers,
-        credentials: 'include',
-      })
-      if (!response.ok) throw new Error(tt("failedToFetchEquipmentBookings"))
-      return response.json()
-    },
-  })
-
-  const now = useMemo(() => new Date(), [])
-
-  // Categorize bookings
-  const { upcomingBookings, pastBookings, allBookings } = useMemo(() => {
-    const upcoming: Booking[] = []
-    const past: Booking[] = []
-
-    if (!Array.isArray(bookings) || bookings.length === 0) {
-      return { upcomingBookings: [], pastBookings: [], allBookings: [] }
-    }
-
-    bookings.forEach((booking) => {
-      if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return
-
-      // Past = finished (completed, cancelled, checked out) or past the visit's end instant in the kitchen zone.
-      let endAt: Date | null = null
-      try {
-        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-        const bookingDateStr = booking.bookingDate.split('T')[0]
-        endAt = createBookingDateTime(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)
-      } catch {
-        endAt = null
-      }
-      if (isBookingListPast({ status: booking.status, checkinStatus: booking.checkinStatus, endAt })) {
-        past.push(booking)
-      } else {
-        upcoming.push(booking)
-      }
-    })
-
-    // Sort using each booking's location timezone so two bookings in different
-    // time zones (e.g. one in NDT, one in PST) compare at their actual UTC
-    // instants rather than being aligned to the browser's local midnight.
-    const toStartMs = (bk: Booking): number => {
-      const dateStr = bk.bookingDate?.split('T')[0] || bk.bookingDate
-      const tz = bk.locationTimezone || DEFAULT_TIMEZONE
-      return createBookingDateTime(calendarDateForBookingTime(dateStr, bk.startTime, bk.operatingWindowStartTime), bk.startTime, tz).getTime()
-    }
-    upcoming.sort((a, b) => toStartMs(a) - toStartMs(b))
-    past.sort((a, b) => toStartMs(b) - toStartMs(a))
-
-    return { upcomingBookings: upcoming, pastBookings: past, allBookings: bookings }
-  }, [bookings])
-
-  // Get current view data
-  const currentViewData = useMemo(() => {
-    if (viewType === "upcoming") return upcomingBookings
-    if (viewType === "past") return pastBookings
-    return allBookings
-  }, [viewType, upcomingBookings, pastBookings, allBookings])
-
-  // Apply search filter
-  const filteredData = useMemo(() => {
-    let filtered = currentViewData
-
-    // Status filter
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((b) => b.status === statusFilter)
-    }
-
-    // Search filter (includes reference code for lookup)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      filtered = filtered.filter((b) => {
-        const kitchen = kitchens.find((k) => k.id === b.kitchenId)
-        const kitchenName = kitchen?.name || b.kitchenName || t("bkKitchenFallback", { id: b.kitchenId })
-        const locationName = kitchen?.locationName || b.locationName || "Unknown Location"
-        const searchableText = [
-          kitchenName,
-          locationName,
-          formatDate(bookingStartDateKey(b) ?? b.bookingDate),
-          b.specialNotes || '',
-          b.referenceCode || '',
-        ].join(' ').toLowerCase()
-        return searchableText.includes(query)
-      })
-    }
-
-    return filtered
-  }, [currentViewData, statusFilter, searchQuery, kitchens])
-
-  // Status counts for current view
-  const statusCounts = useMemo(() => {
-    const counts = { all: 0, pending: 0, confirmed: 0, cancelled: 0, completed: 0, cancellation_requested: 0 }
-    currentViewData.forEach((b) => {
-      counts.all++
-      if (b.status in counts) counts[b.status as keyof typeof counts]++
-    })
-    return counts
-  }, [currentViewData])
-
-  // Handle invoice download
-  const handleDownloadInvoice = async (bookingId: number, bookingDate: string) => {
-    setDownloadingInvoiceId(bookingId)
-    try {
-      const currentUser = auth.currentUser
-      if (!currentUser) {
-        toast.error(t("bkLoginToDownload"))
-        setDownloadingInvoiceId(null)
-        return
-      }
-
-      const token = await currentUser.getIdToken()
-      const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
-        credentials: 'include',
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-
-      if (!response.ok) {
-        let errorMessage = ct('sweepText00')
-        try {
-          const contentType = response.headers.get('content-type')
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json()
-            errorMessage = errorData.error || errorData.message || errorMessage
-          }
-        } catch {
-          errorMessage = `Server returned ${response.status}`
-        }
-        throw new Error(errorMessage)
-      }
-
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.style.display = 'none'
-      a.href = url
-      const dateStr = calendarDateKey(bookingDate) ?? 'unknown'
-      a.download = `LocalCooks-Invoice-${bookingId}-${dateStr}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast.success(t("bkInvoiceDownloaded"))
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : t("bkInvoiceFailed")
-      toast.error(errorMessage)
-    } finally {
-      setDownloadingInvoiceId(null)
-    }
-  }
-
-  // Handle storage invoice download
-  const handleDownloadStorageInvoice = async (storageBookingId: number) => {
-    setDownloadingInvoiceId(storageBookingId)
-    try {
-      const currentUser = auth.currentUser
-      if (!currentUser) {
-        toast.error(t("bkLoginToDownload"))
-        setDownloadingInvoiceId(null)
-        return
-      }
-
-      const token = await currentUser.getIdToken()
-      const response = await fetch(`/api/chef/invoices/storage/${storageBookingId}`, {
-        credentials: 'include',
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-
-      if (!response.ok) {
-        let errorMessage = ct('sweepText00')
-        try {
-          const contentType = response.headers.get('content-type')
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json()
-            errorMessage = errorData.error || errorData.message || errorMessage
-          }
-        } catch {
-          errorMessage = `Server returned ${response.status}`
-        }
-        throw new Error(errorMessage)
-      }
-
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.style.display = 'none'
-      a.href = url
-      a.download = `storage-invoice-${storageBookingId}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast.success(t("bkStorageInvoiceDownloaded"))
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : t("bkInvoiceFailed")
-      toast.error(errorMessage)
-    } finally {
-      setDownloadingInvoiceId(null)
-    }
-  }
-
-  // ── Cancel Storage Booking mutation ─────────────────────────────────────
-  const queryClient = useQueryClient()
-  const cancelStorageMutation = useMutation({
-    mutationFn: async ({ storageBookingId, reason }: { storageBookingId: number; reason?: string }) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(`/api/chef/storage-bookings/${storageBookingId}/cancel`, {
-        method: 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ reason }),
-      })
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || ct('sweepText16'))
-      }
-      return response.json()
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] })
-      if (data?.action === 'cancellation_requested') {
-        toast.success(bt('cancellationRequestSent'))
-      } else {
-        toast.success(bt('storageBookingCancelled'))
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
-  const handleCancelStorage = (storageBookingId: number) => {
-    const sb = (storageBookings as StorageBooking[]).find(s => s.id === storageBookingId)
-    if (!sb) return
-
-    const isConfirmedPaid = sb.status === 'confirmed' &&
-      (sb.paymentStatus === 'paid' || sb.paymentStatus === 'partially_refunded')
-
-    setCancellationTarget({
-      type: "storage",
-      id: storageBookingId,
-      name: sb.storageName || sb.storageType || `Storage #${storageBookingId}`,
-      date: sb.startDate && sb.endDate
-        ? `${format(new Date(sb.startDate), 'MMM d')} – ${format(new Date(sb.endDate), 'MMM d, yyyy')}`
-        : undefined,
-      location: sb.locationName || sb.kitchenName || undefined,
-      tier: isConfirmedPaid ? "request" : "immediate",
-    })
-  }
-
-  // Handle cancel with policy check
-  // Tier 1: pending/authorized → immediate cancel prompt
-  // Tier 2: confirmed+paid → cancellation request prompt with reason
-  const handleCancel = (bookingId: number) => {
-    const booking = bookings.find(b => b.id === bookingId)
-    if (!booking) return
-
-    const uncapturedRequest = booking.status === 'pending' && ['authorized', 'pending', 'failed'].includes(booking.paymentStatus || '')
-
-    const dateStr = booking.bookingDate.split('T')[0]
-    // Resolve in the location's timezone so the cancellation-window math
-    // agrees with the server (which measures against the kitchen's wall clock).
-    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-    const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
-
-    if (isNaN(bookingDateTime.getTime())) {
-      toast.error(t("bkInvalidDateFormat"))
-      return
-    }
-
-    const cancellationHours = booking.location?.cancellationPolicyHours ?? 24
-    const policyMessage = booking.location?.cancellationPolicyMessage
-      ?.replace('{hours}', cancellationHours.toString())
-      ?? `Bookings cannot be cancelled within ${cancellationHours} hours of the scheduled time.`
-
-    const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-
-    if (!uncapturedRequest && hoursUntilBooking < 0) {
-      toast.error(t("bkAlreadyStarted"))
-      return
-    }
-
-    if (!uncapturedRequest && hoursUntilBooking <= cancellationHours) {
-      toast.error(policyMessage)
-      return
-    }
-
-    // Tier 2: Confirmed + paid bookings → cancellation request with reason
-    const isConfirmedPaid = booking.status === 'confirmed' &&
-      (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')
-
-    const kitchen = kitchens.find(k => k.id === booking.kitchenId)
-    const dateStr2 = booking.bookingDate.split('T')[0]
-
-    setCancellationTarget({
-      type: "kitchen",
-      id: bookingId,
-      name: kitchen?.name || `Kitchen Booking #${bookingId}`,
-      date: format(new Date(dateStr2), 'EEEE, MMM d, yyyy'),
-      location: booking.location?.name || undefined,
-      tier: isConfirmedPaid ? "request" : "immediate",
-    })
-  }
-
-  // Table columns
-  const columns = useMemo(
-    () => getChefBookingColumns({
-      onCancelBooking: handleCancel,
-      onDownloadInvoice: handleDownloadInvoice,
-      onNavigate: navigate,
-      onCheckinTracker: (id) => navigate(`/booking/${id}/visit`),
-      downloadingInvoiceId,
-      now,
-      kitchens,
-      storageBookings: storageBookings as StorageBooking[],
-      equipmentBookings: equipmentBookings as EquipmentBooking[],
-      t,
-    }),
-    [downloadingInvoiceId, now, kitchens, navigate, storageBookings, equipmentBookings, bookings, t]
+function KitchenThumb({ src, alt }: { src?: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false)
+  const resolved = src ? getR2ProxyUrl(src) || src : null
+  return (
+    <div className="relative aspect-square w-[72px] shrink-0 self-start overflow-hidden rounded-xl bg-muted sm:aspect-[4/3] sm:w-[120px]">
+      {resolved && !failed
+        ? <SmartImage src={resolved} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} />
+        : <div className="flex h-full w-full items-center justify-center text-muted-foreground/60" data-testid="kitchen-thumb-placeholder"><KitchenIcon className="size-6" aria-hidden /></div>}
+    </div>
   )
+}
 
-  // Storage table columns
-  const storageColumns = useMemo(
-    () => getStorageBookingColumns({
-      onExtend: (id) => setExtendDialogOpen(id),
-      onDownloadInvoice: handleDownloadStorageInvoice,
-      onCheckout: (id) => setCheckoutDialogOpen(id),
-      onCheckin: (id) => setCheckinDialogOpen(id),
-      onViewCheckoutStatus: (id) => setCheckoutStatusBookingId(id),
-      onViewCheckinStatus: (id) => setCheckinStatusBookingId(id),
-      onCancelStorage: handleCancelStorage,
-      downloadingInvoiceId,
-      now,
-      kitchenBookings: bookings,
-      t,
-    }),
-    [downloadingInvoiceId, now, storageBookings, bookings, t]
+function BookingCard({ item, kitchenName, t, locale, words, primary, showZone }: {
+  item: ListedBooking<ChefListBooking>; kitchenName: string; t: T; locale: string; words: { today: string; tomorrow: string }
+  /** The pinned "now" card carries the one filled button on the page. */
+  primary: boolean; showZone: boolean
+}) {
+  const booking = item.row
+  const cause = bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision })
+  const pill = bookingListPill(item.phase, false, cause)
+  const line = chefListLine(booking, item, t, locale)
+  const action = chefListAction(booking, item, t, locale)
+  const when = listWhenLine(booking, locale, words)
+  const zone = showZone ? friendlyTimezoneName(listTimezone(booking), locale) : ""
+  return (
+    <article className="group relative flex gap-3 rounded-2xl border border-border/70 bg-card p-3 transition-shadow sm:gap-5 sm:p-4 [@media(hover:hover)]:hover:shadow-[0_4px_16px_-8px_rgba(15,23,42,0.18)]"
+      data-testid="chef-booking-card" data-phase={item.phase}>
+      <KitchenThumb src={booking.kitchenPhoto} alt={kitchenName} />
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-col-reverse items-start gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <h3 className="min-w-0 max-w-full truncate text-[15px] font-semibold leading-6">
+            {/* The whole card is the link (stretched); the inline action sits above it. */}
+            <Link href={`/booking/${booking.id}`} className="outline-none after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring">
+              {kitchenName}
+            </Link>
+          </h3>
+          <StatusPill tone={pill.tone} className="shrink-0">{t(pill.key)}</StatusPill>
+        </div>
+        <p className="text-sm font-medium tabular-nums text-foreground/80">{when}{zone ? ` · ${zone}` : ""}</p>
+        {line && <p className="text-[13px] leading-[18px] text-muted-foreground">{line}</p>}
+        {action && (
+          <Button asChild size="sm" variant={primary ? "default" : "outline"} className="relative z-10 mt-2 min-h-11 sm:min-h-9">
+            <Link href={action.href}>{action.label}</Link>
+          </Button>
+        )}
+      </div>
+    </article>
   )
+}
 
-  // TanStack Table instance for kitchen bookings
-  const table = useReactTable({
-    data: filteredData,
-    columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-    },
-    initialState: {
-      pagination: { pageSize: 10 },
-    },
-  })
+export default function ChefBookingsView({ bookings, isLoading, kitchens = [], onFindKitchen }: ChefBookingsViewProps) {
+  const { t: tStrict, i18n } = useTranslation("chef")
+  const t = tStrict as unknown as T
+  const locale = i18n.language || "en-CA"
+  const [tab, setTab] = useState<ChefListTab>("upcoming")
+  const [query, setQuery] = useState("")
+  const words = { today: t("ovToday"), tomorrow: t("ovTomorrow") }
 
-  // TanStack Table instance for storage bookings
-  const storageTable = useReactTable({
-    data: (storageBookings as StorageBooking[]),
-    columns: storageColumns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    initialState: {
-      pagination: { pageSize: 10 },
-    },
-  })
+  const rows = useMemo(() => (Array.isArray(bookings) ? bookings : []).filter(Boolean), [bookings])
+  const tabs = useMemo(() => chefBookingTabs(rows), [rows])
+  const kitchenName = (booking: ChefListBooking) =>
+    kitchens.find(kitchen => kitchen.id === booking.kitchenId)?.name || booking.kitchenName || t("bkKitchenFallback", { id: booking.kitchenId })
 
-  const statusConfig = {
-    all: { variant: "outline" as const, className: "" },
-    pending: { variant: "outline" as const, className: "" },
-    confirmed: { variant: "success" as const, className: "" },
-    cancelled: { variant: "destructive" as const, className: "" },
-    completed: { variant: "success" as const, className: "" },
-    cancellation_requested: { variant: "outline" as const, className: "" },
+  // Cancelled is a tab only while it holds something.
+  const activeTab: ChefListTab = tab === "cancelled" && !tabs.cancelled.length ? "upcoming" : tab
+  const current = tabs[activeTab]
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return current
+    return current.filter(({ row }) => [kitchenName(row), row.locationName, row.referenceCode, listWhenLine(row, locale, words)]
+      .filter(Boolean).join(" ").toLowerCase().includes(q))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, query, locale])
+
+  // The kitchen zone is said once for the page; per card only when bookings span zones.
+  const zones = useMemo(() => Array.from(new Set(rows.map(row => listTimezone(row)))), [rows])
+  const pinned = activeTab === "upcoming" ? visible.find(item => chefUpcomingRank(item.row, item.phase) === 0) : undefined
+
+  const tabLabel = (key: ChefListTab, label: string) => {
+    const count = tabs[key].length
+    return <TabsTrigger value={key} className="min-h-11 gap-1.5 px-4 sm:min-h-9">{label}{count > 0 && <span className="tabular-nums text-muted-foreground">{count}</span>}</TabsTrigger>
   }
 
-  // ── Compute bookings needing check-in/check-out action ──────────────────
-  const needsCheckinBookings = useMemo(() => {
-    const now = new Date()
-    return upcomingBookings.filter(b => {
-      if (b.status !== 'confirmed') return false
-      // Explicit opt-in only — missing/null checklist rows mean disabled
-      if (b.checkinEnabled !== true) return false
-      if (b.checkinStatus && b.checkinStatus !== 'not_checked_in') return false
-      // Resolve booking start in the LOCATION's timezone so this filter agrees
-      // with the kitchen's wall clock (not the chef's browser clock). An NDT
-      // booking viewed from IST must not show the "check in now" card until
-      // it's actually within 2 hours in NDT.
-      const dateStr = b.bookingDate.split('T')[0]
-      const timezone = b.locationTimezone || DEFAULT_TIMEZONE
-      const bookingStart = createBookingDateTime(calendarDateForBookingTime(dateStr, b.startTime, b.operatingWindowStartTime), b.startTime, timezone)
-      const hoursUntil = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60)
-      return hoursUntil <= 2 // Within 2 hours of start time
-    })
-  }, [upcomingBookings])
-
-  const needsCheckoutBookings = useMemo(() => {
-    return upcomingBookings.filter(b => {
-      if (b.status !== 'confirmed') return false
-      return b.checkinStatus === 'checked_in'
-    })
-  }, [upcomingBookings])
-
-  const needsStorageCheckin = useMemo(() => {
-    const now = new Date()
-    const todayStr = now.toISOString().split('T')[0]
-    return (storageBookings as StorageBooking[]).filter(sb => {
-      if (sb.status !== 'confirmed') return false
-      // Explicit opt-in only — missing/null means disabled
-      if (sb.storageCheckinEnabled !== true) return false
-      if (sb.checkinStatus && sb.checkinStatus !== 'not_checked_in') return false
-      const sd = String(sb.startDate).split('T')[0]
-      return sd <= todayStr // Start date is today or earlier
-    })
-  }, [storageBookings])
-
-  const needsStorageCheckout = useMemo(() => {
-    return (storageBookings as StorageBooking[]).filter(sb => {
-      const active = !sb.checkoutStatus || sb.checkoutStatus === 'active'
-      if (sb.cancellationAcceptedAt) return active
-      return sb.status === 'confirmed' && new Date(sb.startDate) <= new Date() && (sb.checkinStatus === 'checkin_completed' || sb.storageCheckinEnabled !== true) && active
-    })
-  }, [storageBookings])
+  const findKitchen = onFindKitchen && <Button variant="outline" className="min-h-11" onClick={onFindKitchen}>{t("blFindKitchen")}</Button>
 
   return (
-    <div className="space-y-6">
-      {/* Pending Overstay Penalties */}
+    <div className="w-full max-w-[880px] space-y-5">
       <PendingOverstayPenalties />
-
-      {/* Expiring Storage Notifications */}
       <ExpiringStorageNotification />
 
-      {/* ── Check-In Action Banner ──────────────────────────────────────── */}
-      {needsCheckinBookings.length > 0 && (
-        <div className="rounded-[1.35rem] border p-4">
-          <div className="flex items-start gap-3">
-            <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold">
-                {needsCheckinBookings.length === 1
-                  ? t("bkTimeToCheckIn")
-                  : t("bkBookingsNeedCheckin", { count: needsCheckinBookings.length })}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("bkCheckinBannerBody")}
-              </p>
-              <div className="flex flex-wrap gap-2 mt-3">
-                {needsCheckinBookings.map(b => {
-                  const kitchen = kitchens.find(k => k.id === b.kitchenId)
-                  const kitchenName = kitchen?.name || b.kitchenName || t("bkKitchenFallback", { id: b.kitchenId })
-                  return (
-                    <Button
-                      key={b.id}
-                      size="sm"
-                      className="max-w-full whitespace-normal text-left"
-                      onClick={() => navigate(`/booking/${b.id}/visit`)}
-                    >
-                      <LogIn className="h-3.5 w-3.5 mr-1.5" />
-                      {t("bkCheckinAction", { name: kitchenName })}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
+      {isLoading ? (
+        <div className="space-y-3" role="status" aria-label={t("bkLoadingBookings")}>
+          {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-[104px] w-full rounded-2xl" />)}
         </div>
-      )}
-
-      {/* ── Check-Out Action Banner ─────────────────────────────────────── */}
-      {needsCheckoutBookings.length > 0 && (
-        <div className="rounded-[1.35rem] border p-4">
-          <div className="flex items-start gap-3">
-            <LogOut className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold">
-                {needsCheckoutBookings.length === 1
-                  ? t("bkReadyToCheckOut")
-                  : t("bkBookingsNeedCheckout", { count: needsCheckoutBookings.length })}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("bkCheckoutBannerBody")}
-              </p>
-              <div className="flex flex-wrap gap-2 mt-3">
-                {needsCheckoutBookings.map(b => {
-                  const kitchen = kitchens.find(k => k.id === b.kitchenId)
-                  const kitchenName = kitchen?.name || b.kitchenName || t("bkKitchenFallback", { id: b.kitchenId })
-                  return (
-                    <Button
-                      key={b.id}
-                      size="sm"
-                      variant="outline"
-                      className="max-w-full whitespace-normal text-left"
-                      onClick={() => navigate(`/booking/${b.id}/visit`)}
-                    >
-                      <LogOut className="h-3.5 w-3.5 mr-1.5" />
-                      {t("bkCheckoutAction", { name: kitchenName })}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
+      ) : !rows.length ? (
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed p-6">
+          <p className="text-[15px]">{t("blEmptyAll")}</p>
+          {findKitchen}
         </div>
-      )}
-
-      {/* ── Storage Check-In Action Banner (only when not checked in) ──── */}
-      {needsStorageCheckin.length > 0 && (
-        <div className="rounded-[1.35rem] border p-4">
-          <div className="flex items-start gap-3">
-            <Package className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold">
-                {needsStorageCheckin.length === 1
-                  ? t("sbMoveInDue")
-                  : t("sbUnitsNeedCheckin", { count: needsStorageCheckin.length })}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("sbMoveInBody")}
-              </p>
-              <div className="flex flex-wrap gap-2 mt-3">
-                {needsStorageCheckin.map(sb => (
-                  <Button
-                    key={`checkin-${sb.id}`}
-                    size="sm"
-                    className="max-w-full whitespace-normal text-left"
-                    onClick={() => setCheckinDialogOpen(sb.id)}
-                  >
-                    <LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bkCheckIn")} — {sb.storageName || `Storage #${sb.id}`}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Storage Check-Out Action Banner (only after check-in completed) ── */}
-      {needsStorageCheckout.length > 0 && (
-        <div className="rounded-[1.35rem] border p-4">
-          <div className="flex items-start gap-3">
-            <LogOut className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold">
-                {needsStorageCheckout.length === 1
-                  ? t("bkReadyToMoveOut")
-                  : t("bkStorageReadyCheckout", { count: needsStorageCheckout.length })}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("bkMoveOutBannerBody")}
-              </p>
-              <div className="flex flex-wrap gap-2 mt-3">
-                {needsStorageCheckout.map(sb => (
-                  <Button
-                    key={`checkout-${sb.id}`}
-                    size="sm"
-                    variant="outline"
-                    className="max-w-full whitespace-normal text-left"
-                    onClick={() => setCheckoutDialogOpen(sb.id)}
-                  >
-                    <LogOut className="h-3.5 w-3.5 mr-1.5" />
-                    {t("bkCheckoutAction", { name: sb.storageName || `Storage #${sb.id}` })}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Kitchen Bookings Table */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <CardTitle className="text-xl font-semibold">{t("bkMyBookings")}</CardTitle>
-              <CardDescription>
-                {ct('sweepBookingCount', { shown: table.getFilteredRowModel().rows.length, count: currentViewData.length })}
-              </CardDescription>
-            </div>
-
-            {/* Search */}
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder={t("bkSearchPlaceholder")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                  onClick={() => setSearchQuery('')}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {/* View Type Tabs */}
-          <Tabs value={viewType} onValueChange={(v) => setViewType(v as ViewType)} className="min-w-0 w-full">
-            <TabsList className="grid w-full min-w-0 grid-cols-3">
-              <TabsTrigger value="upcoming" className="min-w-0 gap-1 px-1 text-xs sm:gap-2 sm:px-3 sm:text-sm">
-                <CalendarDays className="hidden h-4 w-4 sm:block" />
-                {t("bkTabUpcoming")}
-                <Badge variant="count" className="ml-1 hidden sm:inline-flex">{upcomingBookings.length}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="past" className="min-w-0 gap-1 px-1 text-xs sm:gap-2 sm:px-3 sm:text-sm">
-                {t("bkTabPast")}
-                <Badge variant="count" className="ml-1 hidden sm:inline-flex">{pastBookings.length}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="all" className="min-w-0 gap-1 px-1 text-xs sm:gap-2 sm:px-3 sm:text-sm">
-                {t("bkTabAll")}
-                <Badge variant="count" className="ml-1 hidden sm:inline-flex">{allBookings.length}</Badge>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          {/* Status Filter Pills & Column Visibility */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {(["all", "pending", "confirmed", "cancelled"] as FilterType[]).map((filter) => {
-              const config = statusConfig[filter]
-              return (
-                <Button
-                  key={filter}
-                  variant={statusFilter === filter ? config.variant : "outline"}
-                  size="sm"
-                  onClick={() => setStatusFilter(filter)}
-                  className={cn(
-                    "h-8 text-xs font-medium",
-                    statusFilter === filter && config.className
-                  )}
-                >
-                  {t(filter === "all" ? "bkFilterAll" : filter === "pending" ? "bkFilterPending" : filter === "confirmed" ? "bkFilterConfirmed" : "bkFilterCancelled")}
-                  <span className="ml-1.5 opacity-70">({statusCounts[filter]})</span>
-                </Button>
-              )
-            })}
-
-            {/* Column Visibility Toggle */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 ml-auto">
-                  {t("bkColumns")} <ChevronDown className="ml-2 h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {table
-                  .getAllColumns()
-                  .filter((column) => column.getCanHide() && column.id !== 'actions')
-                  .map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="capitalize"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    >
-                      {column.id === 'kitchenName' ? t("bkColKitchen") : 
-                       column.id === 'bookingDate' ? t("bkColDateTime") : 
-                       column.id === 'totalPrice' ? t("bkColAmount") : 
-                       column.id === 'specialNotes' ? t("bkColNotes") : 
-                       column.id === 'reference' ? t("bkColRef") :
-                       column.id === 'status' ? t("bkColStatus") :
-                       column.id === 'createdAt' ? t("bkColCreatedAt") :
-                       column.id}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+      ) : (
+        <section className="space-y-4" aria-label={t("bkMyBookings")}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Tabs value={activeTab} onValueChange={value => { setTab(value as ChefListTab); setQuery("") }}>
+              <TabsList className="h-auto">
+                {tabLabel("upcoming", t("blTabUpcoming"))}
+                {tabLabel("past", t("blTabPast"))}
+                {tabs.cancelled.length > 0 && tabLabel("cancelled", t("blTabCancelled"))}
+              </TabsList>
+            </Tabs>
+            {zones.length === 1 && <p className="text-[13px] text-muted-foreground">{t("blTimesIn", { zone: friendlyTimezoneName(zones[0], locale) })}</p>}
           </div>
 
-          <Separator />
-
-          {/* Table */}
-          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 4 }, (_, index) => <TableRow key={index}><TableCell colSpan={columns.length}><Skeleton className="h-12 w-full rounded-lg" /></TableCell></TableRow>)
-                ) : table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                      className={cn(
-                        "hover:bg-muted/50",
-                        row.original.status === "cancelled" && "opacity-60"
-                      )}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="h-48 text-center">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Calendar className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          {viewType === "upcoming"
-                            ? t("bkNoUpcoming")
-                            : viewType === "past"
-                            ? t("bkNoPast")
-                            : t("bkNoMatch")}
-                        </p>
-                        {searchQuery && (
-                          <Button variant="ghost" size="sm" onClick={() => setSearchQuery('')}>
-                            {t("bkClearSearch")}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="text-sm text-muted-foreground order-2 sm:order-1">
-              {t("bkShowingResults", { shown: table.getRowModel().rows.length, total: filteredData.length })}
+          {current.length > SEARCH_AFTER && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <Input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t("blSearch")} aria-label={t("blSearch")} className="min-h-11 pl-9 pr-10" />
+              {query && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2" onClick={() => setQuery("")} aria-label={t("bkClearSearch")}><X className="h-4 w-4" /></Button>}
             </div>
-            <div className="flex items-center gap-2 order-1 sm:order-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                {t("bkPrevPage")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                {t("bkNextPage")}
-              </Button>
+          )}
+
+          {visible.length ? (
+            <ul className="space-y-3" data-testid={`chef-bookings-${activeTab}`}>
+              {visible.map(item => (
+                <li key={item.row.id}>
+                  <BookingCard item={item} kitchenName={kitchenName(item.row)} t={t} locale={locale} words={words}
+                    primary={item === pinned} showZone={zones.length > 1} />
+                </li>
+              ))}
+            </ul>
+          ) : query ? (
+            <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed p-6">
+              <p className="text-[15px]">{t("blNoMatch", { query: query.trim() })}</p>
+              <Button variant="outline" className="min-h-11" onClick={() => setQuery("")}>{t("bkClearSearch")}</Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Storage Bookings Section */}
-      {storageBookings.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              {t("bkMyStorageTitle")}
-            </CardTitle>
-            <CardDescription>
-              {t("bkStorageCount", {
-                shown: storageTable.getFilteredRowModel().rows.length,
-                total: storageBookings.length,
-              })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-              <Table>
-                <TableHeader>
-                  {storageTable.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {storageTable.getRowModel().rows?.length ? (
-                    storageTable.getRowModel().rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        data-state={row.getIsSelected() && "selected"}
-                        className="hover:bg-muted/50"
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={storageColumns.length} className="h-24 text-center">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <Package className="h-8 w-8 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">{t("bkNoStorageFound")}</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+          ) : (
+            <div className={cn("flex flex-col items-start gap-3 rounded-2xl border border-dashed p-6")}>
+              <p className="text-[15px]">{t(activeTab === "past" ? "blEmptyPast" : "blEmptyUpcoming")}</p>
+              {findKitchen}
             </div>
-
-            {/* Storage Pagination */}
-            {storageBookings.length > 10 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-sm text-muted-foreground order-2 sm:order-1">
-                  {t("bkShowingResults", { shown: storageTable.getRowModel().rows.length, total: storageBookings.length })}
-                </div>
-                <div className="flex items-center gap-2 order-1 sm:order-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => storageTable.previousPage()}
-                    disabled={!storageTable.getCanPreviousPage()}
-                  >
-                    {t("bkPrevPage")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => storageTable.nextPage()}
-                    disabled={!storageTable.getCanNextPage()}
-                  >
-                    {t("bkNextPage")}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </section>
       )}
 
-      {/* Extension Dialog */}
-      {extendDialogOpen && storageBookings.find((sb: StorageBooking) => sb.id === extendDialogOpen) && (
-        <StorageExtensionDialog
-          booking={storageBookings.find((sb: StorageBooking) => sb.id === extendDialogOpen) as any}
-          open={extendDialogOpen !== null}
-          onOpenChange={(open) => !open && setExtendDialogOpen(null)}
-          onSuccess={() => setExtendDialogOpen(null)}
-        />
-      )}
-
-      {/* Storage Checkout Dialog */}
-      {checkoutDialogOpen && (
-        <StorageCheckoutDialog
-          open={checkoutDialogOpen !== null}
-          onOpenChange={(open) => !open && setCheckoutDialogOpen(null)}
-          storageBooking={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutDialogOpen) || {
-            id: checkoutDialogOpen,
-            storageName: 'Storage Unit',
-            storageType: 'dry',
-            endDate: new Date().toISOString(),
-          }}
-          onSuccess={() => setCheckoutDialogOpen(null)}
-        />
-      )}
-
-      {/* Storage Check-In Dialog (move-in inspection baseline) */}
-      {checkinDialogOpen && (
-        <StorageCheckinDialog
-          open={checkinDialogOpen !== null}
-          onOpenChange={(open) => !open && setCheckinDialogOpen(null)}
-          storageBooking={(storageBookings as StorageBooking[]).find((b) => b.id === checkinDialogOpen) || {
-            id: checkinDialogOpen,
-            storageName: 'Storage Unit',
-            storageType: 'dry',
-            startDate: new Date().toISOString(),
-          }}
-          onSuccess={() => setCheckinDialogOpen(null)}
-        />
-      )}
-
-      {/* Checkout Status Tracker */}
-      {checkoutStatusBookingId && (
-        <CheckoutStatusTracker
-          open={checkoutStatusBookingId !== null}
-          onOpenChange={(open) => !open && setCheckoutStatusBookingId(null)}
-          storageBookingId={checkoutStatusBookingId}
-          storageName={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.storageName}
-          checkoutStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.checkoutStatus}
-        />
-      )}
-
-      {/* Check-In Status Tracker (move-in inspection history) */}
-      {checkinStatusBookingId && (
-        <CheckinStatusTracker
-          open={checkinStatusBookingId !== null}
-          onOpenChange={(open) => !open && setCheckinStatusBookingId(null)}
-          storageBookingId={checkinStatusBookingId}
-          storageName={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkinStatusBookingId)?.storageName}
-          checkinStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkinStatusBookingId)?.checkinStatus}
-        />
-      )}
-
-      {/* Cancellation Request / Confirm Sheet */}
-      <CancellationRequestDialog
-        open={cancellationTarget !== null}
-        onOpenChange={(open) => { if (!open) setCancellationTarget(null) }}
-        target={cancellationTarget}
-        isPending={cancelStorageMutation.isPending}
-        onConfirm={(id, reason) => {
-          if (!cancellationTarget) return
-          if (cancellationTarget.type === "storage") {
-            cancelStorageMutation.mutate(
-              { storageBookingId: id, reason },
-              { onSettled: () => setCancellationTarget(null) },
-            )
-          } else {
-            onCancelBooking(id, reason)
-            setCancellationTarget(null)
-          }
-        }}
-      />
+      <ChefStorageBookings kitchenBookings={rows.map(row => ({ id: row.id, status: row.status, paymentStatus: row.paymentStatus }))} />
     </div>
   )
 }

@@ -19,3 +19,13 @@ it('does not accept payment terms before a published policy loads', () => {
   render(<CheckoutCancellationDisclosure acknowledged={false} onAcknowledged={vi.fn()} />);
   expect(screen.getByRole('checkbox')).toBeDisabled(); expect(screen.getByRole('alert')).toBeInTheDocument();
 });
+it('warns when the kitchen may confirm after free cancellation ends (requested just before the deadline)', () => {
+  // 48-hour policy, start in 48h40m: free cancellation ends in 40 minutes — too soon to require the kitchen to answer first.
+  render(<CheckoutCancellationDisclosure policy={policy} startAt={new Date(Date.now() + (48 * 60 + 40) * 60000).toISOString()} acknowledged={false} onAcknowledged={vi.fn()} />);
+  expect(screen.getByTestId('cancel-near-deadline')).toHaveTextContent(/If the kitchen confirms after it ends, you pay 50% of the booking total/);
+  expect(screen.getByText(/Cancel by.*Newfoundland/)).toBeInTheDocument();
+});
+it('no near-deadline warning when the kitchen must answer before free cancellation ends', () => {
+  render(<CheckoutCancellationDisclosure policy={policy} startAt={new Date(Date.now() + 5 * 86400000).toISOString()} acknowledged={false} onAcknowledged={vi.fn()} />);
+  expect(screen.queryByTestId('cancel-near-deadline')).not.toBeInTheDocument();
+});

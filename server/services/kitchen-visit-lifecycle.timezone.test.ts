@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 
 const state = vi.hoisted(() => ({ context: {} as any, duties: {} as any, parent: {} as any,
-  writes: [] as any[], conditions: [] as any[], won: true, queue: vi.fn(), capture: vi.fn(), checkin: vi.fn(), checkout: vi.fn(), lateOpen: vi.fn(async () => false), persist: vi.fn(async () => ({ changed: true })) }));
+  method: 'self' as 'code' | 'self', verify: vi.fn(), writes: [] as any[], conditions: [] as any[], won: true, queue: vi.fn(), capture: vi.fn(), checkin: vi.fn(), checkout: vi.fn(), lateOpen: vi.fn(async () => false), persist: vi.fn(async () => ({ changed: true })) }));
 vi.mock('../db', () => {
   const db: any = {
     select: (projection: any) => { const q: any = { from: () => q, innerJoin: () => q, where: () => q,
@@ -27,6 +27,13 @@ vi.mock('./checkin-checkout-checklist', () => ({}));
 vi.mock('./lifecycle-settings', () => ({}));
 vi.mock('./worker-context', () => ({ inRecurringWorker: () => false }));
 vi.mock('./clock-closeout', () => ({ lateDepartureOpen: state.lateOpen, persistBookingCloseout: state.persist }));
+vi.mock('./visit-code-challenge', async importOriginal => ({
+  ...await importOriginal<typeof import('./visit-code-challenge')>(),
+  arrivalAlreadyRecordedForRequest: async () => false,
+  verifyArrivalCode: state.verify,
+  gateArrivalInTx: async () => ({ kind: 'ok', method: state.method }),
+  consumeForArrival: vi.fn(),
+}));
 import { checkinKitchenVisit, checkoutKitchenVisit } from './kitchen-visit-lifecycle';
 
 const zones = [
@@ -40,6 +47,8 @@ const zones = [
 describe('split kitchen visit timezone (mocked DB and notifications, real time helpers)', () => {
   beforeEach(() => {
     vi.clearAllMocks(); vi.useFakeTimers();
+    state.method = 'self';
+    state.verify.mockImplementation(async () => ({ kind: 'ok', method: state.method }));
     state.context = { timezone: 'America/Vancouver', locationId: 4, managerId: 2,
       booking: { id: 10, chefId: 3, status: 'confirmed', bookingDate: new Date('2026-10-02T00:00:00Z'),
         startTime: '09:00', endTime: '17:00', operatingWindowStartTime: '08:00', updatedAt: new Date('2026-10-01T00:00:00Z') },
@@ -50,6 +59,15 @@ describe('split kitchen visit timezone (mocked DB and notifications, real time h
     state.writes = []; state.conditions = []; state.won = true;
   });
   afterEach(() => vi.useRealTimers());
+
+  it.each(['code', 'self'] as const)('stores %s as the check-in method returned by the arrival gate', async method => {
+    state.method = method;
+    vi.setSystemTime(new Date('2026-10-02T16:00:00Z'));
+    expect(await checkinKitchenVisit(10, 5, 3, undefined, undefined, undefined,
+      method === 'code' ? '123456' : undefined, 'arrival-request')).toMatchObject({ success: true });
+    expect(state.verify).toHaveBeenCalledWith(expect.objectContaining({ visitCode: method === 'code' ? '123456' : undefined }));
+    expect(state.writes[0]).toMatchObject({ checkinStatus: 'checked_in', checkedInMethod: method });
+  });
 
   describe.each(zones)('$timezone arrival', ({ timezone, start }) => {
     it.each([

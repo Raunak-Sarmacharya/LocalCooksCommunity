@@ -249,5 +249,10 @@
   "bsCodeState_unused": "Not used",
   "bsExceptionQuestionSent": "Goodwill for this booking is limited to {limit}. {sent} was already sent, so {left} is left. Record this {amount} as an exception?",
   "bsAction_release_payout": "Release the kitchen payout",
-  "bsReleasePayoutHelp": "Use this once the reported issue is settled. The kitchen’s share is sent to its Stripe account now, or as soon as every visit has closed. An open support flag still pauses it."
+  "bsReleasePayoutHelp": "Use this once the reported issue is settled. The kitchen’s share is sent to its Stripe account now, or as soon as every visit has closed. An open support flag still pauses it.",
+  "bsKitchenPayout": "Kitchen payout",
+  "bsTransferSentLine": "{amount} sent to the kitchen on {date}",
+  "bsTransferSentNoDate": "{amount} sent to the kitchen",
+  "bsTransferExpectedLine": "{amount} expected for the kitchen (after processing fee), not sent yet",
+  "bsPolicyRightNow": "Existing bookings keep the terms their chefs accepted."
 }

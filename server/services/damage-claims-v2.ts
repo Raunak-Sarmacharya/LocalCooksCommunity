@@ -115,9 +115,14 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
   const chef = audience === 'chef', lastAdmin = history.filter(row => row.actionBy === 'admin' && row.action.startsWith('claim_')).at(-1);
   // Reply evidence and its history row use the same PostgreSQL transaction timestamp (including old replies).
   const replyTimes = new Set(history.filter(row => row.action === 'kitchen_reply').map(row => row.createdAt.getTime()));
-  const publicEvidence = evidence.map(({ createdAt, ...row }) => ({ ...row, description: chef && row.uploadedBy === claim.managerId
-    && replyTimes.has(createdAt.getTime()) ? null : row.description }));
+  const publicEvidence = evidence.map(({ createdAt, ...row }) => {
+    const fromKitchenReply = row.uploadedBy === claim.managerId && replyTimes.has(createdAt.getTime());
+    return { ...row, fromKitchenReply, description: chef && fromKitchenReply ? null : row.description };
+  });
   const publicMessage = chef && (!lastAdmin || kitchenOnlyClaimActions.includes(lastAdmin.action)) ? null : claim.adminDecisionReason;
+  const sentIndex = history.findIndex(row => row.action === 'claim_send');
+  const visibleHistory = !chef || claim.claimVersion !== 2 ? history : sentIndex >= 0 ? history.slice(sentIndex)
+    : history.filter(row => claim.chefVisibleAt && row.createdAt >= claim.chefVisibleAt);
   return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, visitId: claim.kitchenBookingVisitId,
     chefId: claim.chefId, managerId: claim.managerId, status: claim.status, claimVersion: claim.claimVersion,
     createdAt: claim.createdAt, claimTitle: claim.claimTitle,
@@ -130,7 +135,7 @@ export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as C
     chefVisible: chefCanSeeClaim(claim), reviewRequest: chef ? null : claim.reviewRequest, kitchenReply: chef ? null : claim.kitchenReply,
     paymentBusy: !!claim.paymentOperation && !['cancelled', 'succeeded'].includes(claim.paymentOperation.state),
     compensationPending: claim.compensationOperation?.state === 'pending', withdrawalPending: claim.withdrawalOperation?.state === 'pending',
-    resolutionType: claim.resolutionType, evidence: publicEvidence, history: history.map(({ actionBy: _actionBy, ...row }) => row) };
+    resolutionType: claim.resolutionType, evidence: publicEvidence, history: visibleHistory.map(({ actionBy: _actionBy, ...row }) => row) };
 }
 export async function readManagerClaims(managerId: number) {
   const claims = await db.select().from(damageClaims).where(eq(damageClaims.managerId, managerId)).orderBy(desc(damageClaims.id)).limit(100);

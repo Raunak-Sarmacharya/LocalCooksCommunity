@@ -1,3 +1,4 @@
+import { bt } from '@/i18n/booking-ns';
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -136,6 +137,7 @@ export function KitchenGridCard({
             aria-hidden={!price}
           >
             {price || "$0/hr"}
+            <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{bt("wfbPriceHint")}</span>
           </span>
         </div>
         <TruncatedText

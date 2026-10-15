@@ -4018,9 +4018,15 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
 
         // Check if firebaseStorage.getBookingsByChef exists, if not use pool
         const bookings = await bookingService.getKitchenBookingsByChef(chefId);
+        const { readChefBookingDues } = await import('../services/chef-booking-dues');
+        const dues = await readChefBookingDues(chefId, bookings.map(booking => booking.id));
 
         res.json(await Promise.all((await projectBookingCloseouts(bookings)).map(async booking => ({
             ...await chefBookingInstructions(booking), responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, booking.timezone),
+            // Read-only list facts: the kitchen's cover photo (same source as the booking page) and anything payable now.
+            kitchenPhoto: (Array.isArray(booking.kitchen?.galleryImages) ? (booking.kitchen.galleryImages as unknown[]).find(item => typeof item === 'string' && item) as string | undefined : undefined)
+                || booking.kitchen?.imageUrl || null,
+            chefDue: dues.get(booking.id) ?? null,
         }))));
     } catch (error) {
         logger.error("Error fetching bookings:", error);

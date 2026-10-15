@@ -202,8 +202,11 @@ describe('chef asks for more time (approval mode, the default)', () => {
     await expireSessionExtensions(stripe, 3, new Date('2026-10-14T18:17:00Z'));
     expect(stripe.paymentIntents.cancel).toHaveBeenCalledTimes(1);
   });
-  it('asks only in the final hour, and only for time that is free', async () => {
-    await expect(ask(60, 3000, new Date('2026-10-14T17:20:00Z'))).rejects.toThrow(/last hour/);
+  it('asks any time while checked in (owner, Oct 14: no last-hour gate)', async () => {
+    const { extension } = await ask(60, 3000, new Date('2026-10-14T17:20:00Z'));
+    expect(extension).toMatchObject({ minutes: 60, amountCents: 3000 });
+  });
+  it('asks only for time that is free', async () => {
     state.tables.kitchen_checkout_holds.push({ id: 'other', kitchenId: 5, operatingDate: '2026-10-14', windowStartTime: '08:00',
       selectedSlots: [{ startTime: '16:30', endTime: '18:00' }], expiresAt: new Date('2026-10-15T00:00:00Z') });
     await expect(ask(60)).rejects.toThrow(/just booked — pick another/);

@@ -19,6 +19,15 @@ export function DamageClaimPanel({ bookingId }: { bookingId: number }) {
     {query.data?.claims?.map(claim => <ClaimReview key={claim.id} claim={claim} bookingId={bookingId} onChanged={() => void query.refetch()} />)}
   </section>;
 }
+type EvidenceItem = DamageClaimCardData['evidence'][number];
+/** Files the kitchen attached to its ask-info reply (not claim-line invoices). Admin sees every evidence row. */
+export function splitReplyEvidence(claim: DamageClaimCardData): { replyEvidence: EvidenceItem[]; otherEvidence: EvidenceItem[] } {
+  const lineUrls = new Set((claim.lines ?? []).map(line => line.document?.fileUrl));
+  const isReply = (item: EvidenceItem) => !lineUrls.has(item.fileUrl) && ((item as { fromKitchenReply?: boolean }).fromKitchenReply === true
+    || (!!claim.kitchenReply && item.uploadedBy === claim.managerId && (item as { evidenceType?: string }).evidenceType === 'document'));
+  const all = claim.evidence ?? [];
+  return { replyEvidence: all.filter(isReply), otherEvidence: all.filter(item => !isReply(item)) };
+}
 function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardData; bookingId: number; onChanged: () => void }) {
   const { t, i18n } = useTranslation('booking');
   const [type, setType] = useState<ClaimSupportInput['type'] | ''>(''), [amount, setAmount] = useState(String(claim.amountCents / 100));
@@ -26,6 +35,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
   const [source, setSource] = useState<ClaimSupportInput['requestSource']>('proactive'), [chefStillOwes, setChefStillOwes] = useState(false);
   const [operationKey, setKey] = useState(() => crypto.randomUUID()), [busy, setBusy] = useState(false), [error, setError] = useState(''), [retrying, setRetrying] = useState(false);
   const firstReview = !claim.chefVisible;
+  const { replyEvidence, otherEvidence } = splitReplyEvidence(claim);
   const actions: ClaimSupportInput['type'][] = [];
   if (claim.status === 'in_review') actions.push('claim_send', 'claim_ask_info', 'claim_close', 'claim_compensate');
   if (claim.status === 'under_review') actions.push('claim_uphold', 'claim_reduce', 'claim_reject', 'claim_compensate');
@@ -49,7 +59,9 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
     <p className="text-sm">{t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
     <div className="grid gap-4 sm:grid-cols-2"><section><h4 className="text-sm font-medium">{t('dcV2KitchenStatement')}</h4><p className="text-sm whitespace-pre-wrap">{claim.description}</p>{claim.kitchenReply && <p className="text-sm whitespace-pre-wrap">{claim.kitchenReply}</p>}</section>
       <section><h4 className="text-sm font-medium">{t('dcV2ChefStatement')}</h4><p className="text-sm whitespace-pre-wrap">{claim.chefResponse || t(firstReview ? 'dcV2ChefNotContacted' : 'dcV2NoResponse')}</p></section></div>
-    <ClaimEvidence claim={claim} />
+    <ClaimEvidence claim={{ ...claim, evidence: otherEvidence }} />
+    {replyEvidence.length > 0 && <section className="rounded-lg border p-3"><h4 className="text-sm font-medium">{t('dcV2SentWithReply')}</h4>
+      <ul className="mt-2 space-y-1 text-sm">{replyEvidence.map(item => <li key={item.id}><a className="underline break-all" href={item.fileUrl} target="_blank" rel="noopener noreferrer">{item.fileName || t('dcV2ViewFile')}</a></li>)}</ul></section>}
     <ul className="text-sm space-y-1">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <a className="underline" href={line.document.fileUrl} target="_blank" rel="noopener noreferrer">{line.document.fileName}</a></li>)}</ul>
     <ClaimTimeline claim={claim} />
     {(claim.compensationPending || claim.withdrawalPending || claim.kitchenPaymentPending) && <div className="space-y-2">

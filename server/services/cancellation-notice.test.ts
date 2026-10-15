@@ -10,3 +10,10 @@ it.each(['en-CA', 'fr-CA', 'uk'])('localizes chef, manager, kitchen and fee-pend
   expect(personal.title).toContain('Fixture Kitchen'); expect(personal.message).toContain('Power outage'); expect(personal.message).not.toMatch(/[.!?]\s?[”»]?[”»]\./); expect(personal.actionLabel).toBeTruthy();
   expect(chef.message).not.toMatch(/free|100% back/i); expect(kitchen.message).toContain('Fixture');
 });
+
+it.each([0, 5000])('kitchen sees who cancelled, when and only a positive retained payout (%i)', async retained => {
+  const notice = await cancellationNotice('manager', 'en-CA', { cause: 'chef', chefName: 'Sam', date: 'Oct 15, 9:00 a.m.', kitchenShareRetainedCents: retained });
+  expect(notice.message).toContain('Sam cancelled · Oct 15, 9:00 a.m. — that time is open again.');
+  expect(notice.message.includes('You keep $50.00')).toBe(retained > 0);
+  expect(notice.message).not.toMatch(/\$0|Your booking is cancelled|refund/i);
+});

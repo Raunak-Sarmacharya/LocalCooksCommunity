@@ -22,7 +22,7 @@ import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { queryClient } from "@/lib/queryClient";
 import { Application, UserWithFlags } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, CheckCircle, Calendar, Shield, AlertCircle, MessageCircle, CreditCard, Loader2 } from "lucide-react";
+import { ChevronRight, CheckCircle, Calendar, Shield, AlertCircle, MessageCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
@@ -49,7 +49,6 @@ import { applicationStatusVariant, hasStep2BeenSubmitted } from "@/components/ch
 import { ChefPageHeader } from "@/components/chef/ui";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
-import { bt } from "@/i18n/booking-ns";
 import { OverviewTabContent, MyKitchensTabContent, SellerApplicationTabContent, type PublicKitchen, type KitchenApplicationWithLocation, type BookingLocation, getTrainingStatusLabel } from "@/components/chef/dashboard";
 
 // Type alias for application
@@ -260,7 +259,7 @@ export default function ApplicantDashboard() {
   };
 
   // Fetch bookings for chefs with approved kitchen access
-  const { bookings, isLoadingBookings, cancelBooking: cancelBookingMutation, kitchens } = useKitchenBookings();
+  const { bookings, isLoadingBookings, kitchens } = useKitchenBookings();
 
   // Enrich bookings with kitchen and location information
   const enrichedBookings = useMemo(() => {
@@ -311,32 +310,6 @@ export default function ApplicantDashboard() {
       };
     });
   }, [bookings, kitchens]);
-
-  // Handle cancel booking (or request cancellation for confirmed+paid)
-  const handleCancelBooking = (bookingId: number, reason?: string) => {
-    cancelBookingMutation.mutate({ bookingId, reason }, {
-      onSuccess: (data: any) => {
-        if (data?.action === 'cancellation_requested') {
-          toast({
-            title: t("kbcCancellationRequestSubmittedTitle"),
-            description: t("kbcCancellationRequestSubmittedDesc"),
-          });
-        } else {
-          toast({
-            title: bt("kbcBookingCancelledTitle"),
-            description: bt("kbcBookingCancelledDesc"),
-          });
-        }
-      },
-      onError: (error: any) => {
-        toast({
-          title: bt("kbcCancellationFailedTitle"),
-          description: error.message || bt("kbcCancellationFailedDesc"),
-          variant: "destructive",
-        });
-      },
-    });
-  };
 
   // Handle "Book a Session" button click - use platform standard booking flow
   const handleBookSessionClick = () => {
@@ -752,10 +725,10 @@ export default function ApplicantDashboard() {
         title={t("shellKitchenBookings")}
         description={t("shellKitchenBookingsDesc")}
         actions={
-          <Button variant="outline" onClick={() => setActiveTab("transactions")}>
-            <CreditCard className="h-4 w-4 mr-2" />
-            {t("shellTransactions")}
-          </Button>
+          <button type="button" className="min-h-11 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            onClick={() => setActiveTab("transactions")}>
+            {t("blTransactionHistory")}
+          </button>
         }
       />
 
@@ -765,8 +738,8 @@ export default function ApplicantDashboard() {
       <ChefBookingsView
         bookings={enrichedBookings}
         isLoading={isLoadingBookings}
-        onCancelBooking={handleCancelBooking}
         kitchens={kitchens || []}
+        onFindKitchen={() => setActiveTab("discover-kitchens")}
       />
     </div>
   );

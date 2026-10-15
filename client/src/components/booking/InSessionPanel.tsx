@@ -37,6 +37,8 @@ interface InSessionPanelProps {
   scheduledEndAt: string
   /** True while the existing departure flow can accept a check-out. */
   canCheckout: boolean
+  /** The departure form now owns the single submit action. */
+  checkoutStarted?: boolean
   /** Moves the chef to the existing departure instructions and tasks. */
   onStartCheckout: () => void
   /** Refreshes visit data; called on window focus / tab visibility only. */
@@ -47,7 +49,7 @@ interface InSessionPanelProps {
 
 export function InSessionPanel({
   bookingId, chefId, kitchenName, timezone, scheduledStartAt, scheduledEndAt, canCheckout, onStartCheckout, onRefresh,
-  departureInstructions, requiredTaskCount = 0,
+  departureInstructions, requiredTaskCount = 0, checkoutStarted = false,
 }: InSessionPanelProps) {
   const { t, i18n } = useTranslation("chef")
   const locale = i18n.resolvedLanguage || i18n.language || "en-CA"
@@ -153,12 +155,12 @@ export function InSessionPanel({
       {phase === "ending" && <p className="text-sm">{t("kvIsLast15Hint", { defaultValue: "Your booked time is almost up. Check out when you’re finished." })}</p>}
       {/* One row of actions. Outside the last 15 minutes there is no filled button: nothing is urgent. */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        {phase !== "active" && canCheckout && <Button type="button" className={tap} onClick={onStartCheckout}>
+        {phase !== "active" && canCheckout && !checkoutStarted && <Button type="button" className={tap} onClick={onStartCheckout}>
           <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsCheckOutNow", { defaultValue: "Check out now" })}
         </Button>}
         {phase !== "ended" && <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
           moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />}
-        {phase === "active" && canCheckout && <Button type="button" variant="outline" className={tap} onClick={() => setEarlyOpen(true)}>
+        {phase === "active" && canCheckout && !checkoutStarted && <Button type="button" variant="outline" className={tap} onClick={() => setEarlyOpen(true)}>
           <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kvIsCheckOutEarly", { defaultValue: "Check out early" })}
         </Button>}
       </div>
