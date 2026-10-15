@@ -1,7 +1,7 @@
 import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { kitchenBookings, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents } from '@shared/schema';
+import { kitchenBookings, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents, users, kitchens } from '@shared/schema';
 import { approvedBookingCapture, bookingCaptureTerms, BookingTermsReviewRequired } from '@shared/booking-capture-terms';
 import { db } from '../db';
 import { capturePaymentIntent, cancelPaymentIntent, getBookingCheckoutSession, getBookingPaymentIntent } from './stripe-service';
@@ -231,16 +231,48 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
     else {
     const [paidTiming] = decision!.target === 'confirmed' ? await tx.select({ timing: paymentTransactions.payoutTiming }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1) : [];
+    // An unaccepted request released by someone: say who, to each side (never the generic "cancelled … storage" text).
+    const outcome = decision!.target === 'cancelled' ? await requestOutcome(tx, booking!, decision!.actorId) : undefined;
     await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
       decision!.target === 'confirmed' ? `The kitchen confirmed your booking. Arrival details will be in your booking.`
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
-      decision!.actorId, { decisionId: decision!.id, ...(decision!.target === 'confirmed' ? { roleText: {
+      decision!.actorId, { decisionId: decision!.id, ...(outcome ? { requestOutcome: outcome.kind, roleText: outcome.roleText, kitchenCaused: outcome.kind === 'declined' } : {}),
+        ...(decision!.target === 'confirmed' ? { roleText: {
         manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Share the check-in code with them in person when they arrive.' + (paidTiming?.timing === 'after_closeout' ? ' Paid after the visit: as soon as you finish the inspection, or automatically 24 hours after it ends.' : '') } } } : {}) });
     }
   });
   return { success: true, status: decision.target,
     authorizationVoided: decision.target === 'cancelled', recovered: false };
+}
+
+/** Who released an unaccepted request, and what each side reads. Owner (Oct 15): role-specific, no generic cancellation text. */
+async function requestOutcome(tx: any, booking: { chefId: number | null; kitchenId: number; bookingDate: Date | string; startTime: string }, actorId?: number | null) {
+  const [actor] = actorId ? await tx.select({ role: users.role }).from(users).where(eq(users.id, actorId)).limit(1) : [];
+  const kind = actorId && actorId === booking.chefId ? 'withdrawn' as const : actor?.role === 'admin' ? 'support' as const : 'declined' as const;
+  const [kitchen] = await tx.select({ name: kitchens.name }).from(kitchens).where(eq(kitchens.id, booking.kitchenId)).limit(1);
+  // Same display-name rule as every booking notice (profile, then sign-in name; never an email).
+  const { getUserDisplayName } = await import('../utils/user-display');
+  const shown = booking.chefId ? await getUserDisplayName(booking.chefId, 'chef').catch(() => '') : '';
+  const kitchenName = kitchen?.name || 'The kitchen';
+  const chefName = shown && shown !== 'A chef' ? shown : 'The chef';
+  const day = new Date(booking.bookingDate as Date);
+  const date = Number.isFinite(day.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(day) : '';
+  const [h, m] = String(booking.startTime || '').split(':').map(Number);
+  const time = Number.isFinite(h) ? `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, '0')} ${h < 12 ? 'a.m.' : 'p.m.'}` : '';
+  const when = [date, time].filter(Boolean).join(', ') || 'your requested time';
+  const released = 'Your card hold has been released — you weren’t charged.';
+  const roleText = kind === 'withdrawn' ? {
+    chef: { title: 'Request withdrawn', message: `You withdrew your request for ${kitchenName} on ${when}. ${released}` },
+    manager: { title: `${chefName} withdrew their request`, message: `${chefName} withdrew the request for ${when}. No action is needed.` },
+  } : kind === 'support' ? {
+    chef: { title: 'Request released by Local Cooks', message: `Local Cooks released your request for ${kitchenName} on ${when}. ${released}` },
+    manager: { title: `Request released by Local Cooks`, message: `Local Cooks released ${chefName}’s request for ${when}. No action is needed.` },
+  } : {
+    chef: { title: `${kitchenName} couldn’t take your request`, message: `Your request for ${when} wasn’t accepted. ${released}`, actionLabel: 'Find another time' },
+    manager: { title: `You declined ${chefName}’s request`, message: `${when}. Their card hold was released.` },
+  };
+  return { kind, roleText };
 }
 
 export async function recoverPendingBookingDecisions(limit = 10) {

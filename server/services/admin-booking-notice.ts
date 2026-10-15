@@ -14,7 +14,7 @@ export const ADMIN_BOOKING_KINDS = new Set([
 type Cancellation = { cause?: 'chef' | 'kitchen'; refundCents?: number; feeCents?: number; kitchenShareRetainedCents?: number; feePending?: boolean };
 export type AdminBookingFacts = {
   chef: string; kitchen: string; reference: string; when: string; message: string; locale?: string | null;
-  cancellation?: Cancellation; requestExpired?: boolean; payoutCents?: number; holdReason?: string | null;
+  cancellation?: Cancellation; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support'; payoutCents?: number; holdReason?: string | null;
 };
 
 export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { title: string; message: string } | undefined {
@@ -28,6 +28,9 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. The kitchen accepted and the chef's card was charged.` };
     case 'cancelled': {
       if (facts.requestExpired) return { title: `Request expired · ${facts.chef}`, message: `${who}. The kitchen didn't respond in time; the card hold was released.` };
+      if (facts.requestOutcome === 'declined') return { title: `Request declined · ${facts.chef}`, message: `${who}. ${facts.kitchen} declined the request; the card hold was released.` };
+      if (facts.requestOutcome === 'withdrawn') return { title: `Request withdrawn · ${facts.chef}`, message: `${who}. The chef withdrew the request; the card hold was released.` };
+      if (facts.requestOutcome === 'support') return { title: `Request released by Local Cooks · ${facts.chef}`, message: `${who}. Local Cooks released the request; the card hold was released.` };
       const c = facts.cancellation;
       if (!c) return { title: `Booking cancelled · ${facts.reference}`, message: `${who}. ${facts.message}` };
       const by = c.cause === 'kitchen' ? `${facts.kitchen} cancelled` : `${facts.chef} cancelled`;

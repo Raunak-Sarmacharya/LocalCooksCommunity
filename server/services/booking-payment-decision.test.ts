@@ -38,6 +38,7 @@ vi.mock('../db', () => {
   };
   return { db: database(mocks.state) };
 });
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: vi.fn(async () => 'Sam Taylor') }));
 import { decideAuthorizedBooking, BookingRequestExpired } from './booking-payment-decision';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 describe('durable booking capture recovery (isolated Stripe and transaction model)', () => {
@@ -116,6 +117,23 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow();
     await expect(decideAuthorizedBooking(1, 'cancelled')).rejects.toThrow('different payment decision');
     expect(mocks.cancel).not.toHaveBeenCalled();
+  });
+  it.each([
+    [2, 'manager', 'declined', 'PHASE0 Main Kitchen couldn’t take your request', 'You declined Sam Taylor’s request'],
+    [3, 'chef', 'withdrawn', 'Request withdrawn', 'Sam Taylor withdrew their request'],
+  ])('releasing a request as user %i (%s) says who released it to each side (%s)', async (actorId, _role, kind, chefTitle, managerTitle) => {
+    Object.assign(mocks.state.kitchen_bookings[0], { bookingDate: new Date('2026-10-19T12:00:00Z'), startTime: '12:00' });
+    mocks.state.users = [{ id: actorId, role: _role }];
+    mocks.state.kitchens = [{ id: 4, name: 'PHASE0 Main Kitchen' }];
+    mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+      .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+      .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+    await decideAuthorizedBooking(1, 'cancelled', [], [], actorId);
+    const metadata = vi.mocked(queueBookingLifecycleEvent).mock.calls.at(-1)![6] as any;
+    expect(metadata.requestOutcome).toBe(kind);
+    expect(metadata.roleText.chef.title).toBe(chefTitle);
+    expect(metadata.roleText.manager.title).toBe(managerTitle);
+    expect(JSON.stringify(metadata.roleText)).not.toMatch(/Storage in use/);
   });
   it('releases a historical uncaptured hold without reconstructing its missing fee terms or ledger', async () => {
     mocks.state.payment_transactions = [];

@@ -317,6 +317,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       when: [context.bookingDate ? new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(context.bookingDate)) : '',
         context.startTime ? emailClock(context.startTime, person.locale || 'en-CA') : ''].filter(Boolean).join(', '),
       cancellation: metadata.cancellationNotice as CancellationNotice | undefined, requestExpired: metadata.requestExpired === true,
+      requestOutcome: ['declined', 'withdrawn', 'support'].includes(String(metadata.requestOutcome)) ? metadata.requestOutcome as 'declined' | 'withdrawn' | 'support' : undefined,
       payoutCents: typeof metadata.amountCents === 'number' ? metadata.amountCents : undefined,
       holdReason: typeof metadata.holdReason === 'string' ? metadata.holdReason : null }) : undefined;
     if (!arrivalNotice && (adminCopy || metadata.notificationRecipientPolicy !== 'manager' || person.id === context.managerId)) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
