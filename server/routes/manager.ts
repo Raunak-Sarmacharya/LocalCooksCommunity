@@ -4677,6 +4677,8 @@ router.get(
       res.json({
         ...derived,
         payout: await readKitchenPayout(id),
+        // Read-only: extra time and claim payments on this booking, with the kitchen's share of each.
+        additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, id, 'manager', booking.paymentIntentId).catch(() => []),
         responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location.timezone),
         visitCode: visitCodeFor(null),
         inspection: {

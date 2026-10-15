@@ -299,9 +299,7 @@ describe('reminder visit copy', () => {
     expect(byKind('preparation').message).toContain('Visit: Mon, Oct 5 · 8:00 a.m.–12:00 p.m. GMT');
     expect(byKind('arrival').message).toContain('Follow the arrival instructions');
     expect(byKind('arrival').message).not.toContain('Your visit ends at');
-    expect(byKind('departure').message).toContain('Your visit ends at 12:00 p.m.');
-    expect(byKind('departure').message).toContain('check out in Local Cooks');
-    expect(byKind('departure').message).not.toMatch(/When you arrive|visit code|check-in code/i);
+    expect(byKind('departure')).toBeUndefined();
   });
   it('titles chef and manager reminders with the kitchen name and reference, falling back to #id', async () => {
     expect((await currentReminders(state.db, 'booking', 10, policy, now)).every(reminder => reminder.title === 'Fixture kitchen · #10')).toBe(true);
@@ -347,9 +345,9 @@ describe('recurring reconciliation against a moving runtime clock', () => {
     state.booking.status = 'cancelled'; await schedule();
     state.booking.status = 'confirmed'; await schedule();
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(8);
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(6);
     state.booking.startTime = '09:00'; await schedule(); await schedule();
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(10);
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(8);
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
   });
 });
@@ -360,12 +358,12 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     const accepted = state.logs.filter(r => r.status === 'sent').map(r => r.id);
     state.settings = { preparation_reminder_hours: '36', arrival_reminder_hours: '4', departure_reminder_minutes: '45' };
     await schedule();
-    expect(state.logs).toHaveLength(10);
+    expect(state.logs).toHaveLength(8);
     expect(state.logs.filter(r => accepted.includes(r.id)).every(r => r.status === 'sent')).toBe(true);
     const arrival = state.logs.find(r => JSON.parse(r.textBody).reminder.kind === 'arrival');
     expect(JSON.parse(arrival.textBody).reminder.due).toBe('2026-10-05T04:00:00.000Z');
     const departure = state.logs.find(r => JSON.parse(r.textBody).reminder.kind === 'departure');
-    expect(JSON.parse(departure.textBody).reminder.due).toBe('2026-10-05T11:15:00.000Z');
+    expect(departure).toBeUndefined();
     expect((await dispatch(new Date('2026-10-05T04:00:00Z'))).accepted).toBe(4);
     expect(state.send).toHaveBeenCalledTimes(3);
   });
@@ -375,16 +373,16 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     expect(state.logs.some(r => JSON.parse(r.textBody).reminder.kind === 'preparation')).toBe(false);
   });
   it('persists future work outside decision queues, sends only due channels and reuses semantic keys', async () => {
-    await schedule(); await schedule(); expect(state.logs).toHaveLength(10);
+    await schedule(); await schedule(); expect(state.logs).toHaveLength(8);
     expect(state.logs.every(r => r.category === 'advance_reminder')).toBe(true);
     expect((await dispatch()).accepted).toBe(2); expect(state.send).toHaveBeenCalledTimes(1);
     expect(state.send.mock.calls[0][0].text).toContain('/booking/10');
     expect(state.send.mock.calls[0][0].text).toContain('Fixture address');
     expect((await dispatch()).accepted).toBe(0);
-    state.booking.updatedAt = new Date(); await schedule(); expect(state.logs).toHaveLength(10);
+    state.booking.updatedAt = new Date(); await schedule(); expect(state.logs).toHaveLength(8);
   });
   it('serializes competing producers and claims across simultaneous workers', async () => {
-    await Promise.all([schedule(), schedule()]); expect(state.logs).toHaveLength(10);
+    await Promise.all([schedule(), schedule()]); expect(state.logs).toHaveLength(8);
     let release!: () => void; const gate = new Promise<void>(resolve => release = resolve);
     state.send.mockImplementation(async () => { await gate; return true; });
     const first = dispatchAdvanceReminders({ now, policy, limit: 1, onlyLogId: 2 }); await vi.waitFor(() => expect(state.send).toHaveBeenCalledTimes(1));
@@ -403,8 +401,8 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
     state.db.select = ((original: any) => (shape: any) => {
       const chain = original(shape); const then = chain.then; chain.then = (resolve: any, reject: any) => then((rows: any[]) => resolve(rows.map(r => r.kitchen ? { ...r, kitchen: { ...r.kitchen, checkinCheckoutEnabled: false } } : r)), reject); return chain;
     })(state.db.select);
-    await schedule(); expect(state.logs).toHaveLength(10);
-    expect(state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'departure')).toHaveLength(2);
+    await schedule(); expect(state.logs).toHaveLength(8);
+    expect(state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'departure')).toHaveLength(0);
     await dispatch();
     expect(state.send.mock.calls[0][0].text).toContain('Meet the manager'); expect(state.send.mock.calls[0][0].text).toContain('host@example.test');
   });
@@ -417,9 +415,9 @@ describe('durable current-action scheduling and controlled-clock dispatch', () =
   it('dispatches short departure inside the visit, only with a selected short-visit policy', async () => {
     state.booking.endTime = '08:20'; await schedule();
     const departures = state.logs.filter(r => JSON.parse(r.textBody).reminder.kind === 'departure');
-    expect(departures.map(r => JSON.parse(r.textBody).reminder.due)).toEqual(['2026-10-05T08:00:00.000Z', '2026-10-05T08:00:00.000Z']);
+    expect(departures).toEqual([]);
     expect((await dispatchAdvanceReminders({ now: new Date('2026-10-05T08:00:00Z'), policy: { ...policy, shortVisit: undefined } })).accepted).toBe(0);
-    expect((await dispatch(new Date('2026-10-05T08:00:00Z'))).accepted).toBe(2);
+    expect((await dispatch(new Date('2026-10-05T08:00:00Z'))).accepted).toBe(0);
   });
   it('targets an early-tour chef with preparation and the current host with arrival guidance', async () => {
     await schedule('tour', 20); expect(state.logs).toHaveLength(4);
@@ -568,20 +566,20 @@ describe('actual downstream deadline tasks and action owners', () => {
     state.booking.selectedSlots = ['08:00', '11:00'];
     state.visits = [{ id: 11, blockIndex: 0, startTime: '08:00', endTime: '09:00', checkinStatus: 'checked_out' },
       { id: 12, blockIndex: 1, startTime: '11:00', endTime: '12:00', checkinStatus: 'not_checked_in' }];
-    await schedule(); expect(state.logs).toHaveLength(10);
+    await schedule(); expect(state.logs).toHaveLength(8);
     expect(state.logs.every(r => JSON.parse(r.textBody).reminder.resource.endsWith('visit-1'))).toBe(true);
     expect((await dispatch(new Date('2026-10-05T09:00:00Z'))).accepted).toBe(4);
   });
   it('reschedules a corrected contact and never sends to an obsolete recipient', async () => {
     await schedule(); state.booking.chefId = 2; await schedule();
-    expect(state.logs.filter(r => r.status === 'suppressed')).toHaveLength(6);
+    expect(state.logs.filter(r => r.status === 'suppressed')).toHaveLength(4);
     await dispatch(); expect(state.send.mock.calls[0][0].to).toBe('host@example.test');
   });
   it('revives unsent restored work without repeating an accepted channel', async () => {
     await schedule(); await dispatch(); state.booking.status = 'cancelled'; await schedule();
     state.booking.status = 'confirmed'; await schedule();
-    expect(state.logs).toHaveLength(10); expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
-    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(8); await dispatch(); expect(state.send).toHaveBeenCalledTimes(1);
+    expect(state.logs).toHaveLength(8); expect(state.logs.filter(r => r.status === 'sent')).toHaveLength(2);
+    expect(state.logs.filter(r => r.status === 'scheduled')).toHaveLength(6); await dispatch(); expect(state.send).toHaveBeenCalledTimes(1);
   });
   it('warns the storage penalty chef, then suppresses a recorded dispute', async () => {
     state.storage = { id: 30, chefId: 3 };
@@ -848,17 +846,17 @@ it('activates tour reminders by an explicit flag independently of booking prose 
 
 describe('session_ending reminder for the chef in-session screen', () => {
   const sessionRows = () => state.logs.filter(row => JSON.parse(row.textBody).reminder.kind === 'session_ending');
-  const sessionMail = () => state.send.mock.calls.map(([content]) => content).filter(content => /booked time/i.test(content.subject) || /Votre temps/.test(content.subject));
+  const sessionMail = () => state.send.mock.calls.map(([content]) => content).filter(content => /booked time/i.test(content.subject) || /Votre réservation se termine/.test(content.subject));
   const scheduleAt = (clock: string) => state.db.transaction((tx: any) => scheduleAdvanceReminders(tx, 'booking', 10, policy, new Date(clock)));
   const dispatchAt = (clock: string) => dispatchAdvanceReminders({ now: new Date(clock), policy, limit: 30 });
 
-  it('is not created until arrival is recorded, and the 30-minute departure reminder is unchanged', async () => {
+  it('is not created until arrival is recorded and replaces the 30-minute departure reminder', async () => {
     await schedule();
     expect(sessionRows()).toHaveLength(0);
     const kinds = state.logs.map(row => JSON.parse(row.textBody).reminder.kind);
-    expect(kinds.filter(kind => kind === 'departure')).toHaveLength(2);
+    expect(kinds.filter(kind => kind === 'departure')).toHaveLength(0);
     const departure = state.logs.map(row => JSON.parse(row.textBody).reminder).find(reminder => reminder.kind === 'departure');
-    expect(departure.due).toBe('2026-10-05T11:30:00.000Z');
+    expect(departure).toBeUndefined();
   });
 
   it('fires 15 minutes before the booked end by notification and email, linking to the visit page without any code', async () => {
@@ -870,16 +868,16 @@ describe('session_ending reminder for the chef in-session screen', () => {
     expect(reminder.path).toBe('/booking/10/visit');
     await dispatchAt('2026-10-05T11:44:00Z');
     expect(sessionMail()).toHaveLength(0);
-    expect(state.alerts.filter(alert => alert.title.includes('booked time ends soon'))).toHaveLength(0);
+    expect(state.alerts.filter(alert => alert.title.includes('booked time ends at'))).toHaveLength(0);
     await dispatchAt('2026-10-05T11:45:00Z');
     const [mail] = sessionMail();
     expect(mail.to).toBe('chef@example.test');
-    expect(mail.subject).toContain('Your booked time ends soon');
+    expect(mail.subject).toContain('Your booked time ends at');
     expect(mail.text).toContain('/booking/10/visit');
     expect(mail.text).toContain('12:00');
     expect(mail.text).toContain('Fixture kitchen');
     expect(mail.text).not.toMatch(/access code|visit code|\b\d{6}\b/i);
-    const [alert] = state.alerts.filter(value => value.title.includes('booked time ends soon'));
+    const [alert] = state.alerts.filter(value => value.title.includes('booked time ends at'));
     expect(alert).toMatchObject({ userId: 3, actionUrl: '/booking/10/visit' });
     expect(alert.message).not.toMatch(/access code|visit code|check-in code/i);
     // Idempotent: a second pass sends nothing more.
@@ -940,7 +938,7 @@ describe('session_ending reminder for the chef in-session screen', () => {
     state.people.find(person => person.id === 3).preferredLocale = 'fr-CA';
     await schedule(); await dispatchAt('2026-10-05T11:45:00Z');
     const [mail] = sessionMail();
-    expect(mail.subject).toContain('Votre temps réservé se termine bientôt');
+    expect(mail.subject).toContain('Votre réservation se termine à');
     expect(mail.text).toContain('Ouvrir votre visite');
   });
 

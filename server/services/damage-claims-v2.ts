@@ -71,6 +71,12 @@ export async function fileDamageClaim(managerId: number, raw: unknown) {
     }
     const ctx = await bookingContext(input.bookingId, managerId, input.visitId, tx);
     if (!ctx.window.allowed) throw new DamageClaimError('Report within 72 hours of leaving the kitchen. Contact Local Cooks for help.');
+    // One claim per visit keeps the $250 cap meaningful (no splitting); further costs go through Local Cooks.
+    const visitKey = 'bookingId' in ctx.visit ? ctx.visit.id : null;
+    const [earlier] = await tx.select({ id: damageClaims.id }).from(damageClaims).where(and(eq(damageClaims.kitchenBookingId, input.bookingId),
+      eq(damageClaims.claimVersion, 2), sql`${damageClaims.status} <> 'draft'`,
+      visitKey === null ? sql`${damageClaims.kitchenBookingVisitId} IS NULL` : eq(damageClaims.kitchenBookingVisitId, visitKey))).limit(1);
+    if (earlier) throw new DamageClaimError('You already reported this visit. Contact Local Cooks to add more costs.', 409);
     const now = new Date();
     const reviewFirst = await damageClaimsReviewFirst(tx);
     const photos = (value: unknown) => Array.isArray(value) ? value.filter((url): url is string => typeof url === 'string') : [];
@@ -96,26 +102,35 @@ export async function fileDamageClaim(managerId: number, raw: unknown) {
     return publicClaim(claim, tx);
   });
 }
-/** No provider/customer identifiers or internal notes cross party APIs. */
-export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as ClaimTx) {
+/** First-review admin messages and the kitchen's replies are between Local Cooks and the kitchen only. */
+export const kitchenOnlyClaimActions = ['claim_send', 'claim_ask_info', 'claim_close'];
+/** No provider/customer identifiers or internal notes cross party APIs. The chef audience never sees first-review exchanges. */
+export async function publicClaim(claim: Claim, tx: ClaimTx = db as unknown as ClaimTx, audience: 'kitchen' | 'chef' = 'kitchen') {
   const evidence = await tx.select({ id: damageEvidence.id, evidenceType: damageEvidence.evidenceType, fileUrl: damageEvidence.fileUrl,
-    fileName: damageEvidence.fileName, uploadedBy: damageEvidence.uploadedBy, description: damageEvidence.description })
+    fileName: damageEvidence.fileName, uploadedBy: damageEvidence.uploadedBy, description: damageEvidence.description, createdAt: damageEvidence.createdAt })
     .from(damageEvidence).where(eq(damageEvidence.damageClaimId, claim.id)).orderBy(asc(damageEvidence.id));
   const history = await tx.select({ id: damageClaimHistory.id, action: damageClaimHistory.action, status: damageClaimHistory.newStatus,
-    createdAt: damageClaimHistory.createdAt }).from(damageClaimHistory).where(eq(damageClaimHistory.damageClaimId, claim.id)).orderBy(asc(damageClaimHistory.id));
+    createdAt: damageClaimHistory.createdAt, actionBy: damageClaimHistory.actionBy }).from(damageClaimHistory)
+    .where(eq(damageClaimHistory.damageClaimId, claim.id)).orderBy(asc(damageClaimHistory.id));
+  const chef = audience === 'chef', lastAdmin = history.filter(row => row.actionBy === 'admin' && row.action.startsWith('claim_')).at(-1);
+  // Reply evidence and its history row use the same PostgreSQL transaction timestamp (including old replies).
+  const replyTimes = new Set(history.filter(row => row.action === 'kitchen_reply').map(row => row.createdAt.getTime()));
+  const publicEvidence = evidence.map(({ createdAt, ...row }) => ({ ...row, description: chef && row.uploadedBy === claim.managerId
+    && replyTimes.has(createdAt.getTime()) ? null : row.description }));
+  const publicMessage = chef && (!lastAdmin || kitchenOnlyClaimActions.includes(lastAdmin.action)) ? null : claim.adminDecisionReason;
   return { id: claim.id, referenceCode: claim.referenceCode, bookingId: claim.kitchenBookingId, visitId: claim.kitchenBookingVisitId,
     chefId: claim.chefId, managerId: claim.managerId, status: claim.status, claimVersion: claim.claimVersion,
     createdAt: claim.createdAt, claimTitle: claim.claimTitle,
     description: claim.claimDescription, amountCents: claim.finalAmountCents ?? claim.claimedAmountCents, claimedAmountCents: claim.claimedAmountCents,
     lines: claim.costLines, visitEvidence: claim.visitEvidence, chefResponse: claim.chefResponse,
-    deadline: claim.chefResponseDeadline, upheldAt: claim.upheldAt, publicMessage: claim.adminDecisionReason,
+    deadline: claim.chefResponseDeadline, upheldAt: claim.upheldAt, publicMessage,
     kitchenPaid: claim.transferOperation?.state === 'succeeded' || claim.compensationOperation?.state === 'succeeded',
     kitchenPaymentPending: !!claim.chargeSucceededAt && claim.fundedBy !== 'local_cooks' && claim.transferOperation?.state !== 'succeeded',
     fundedBy: claim.fundedBy, chefOwes: claim.chefOwes, holdReleasedAt: claim.holdReleasedAt,
-    chefVisible: chefCanSeeClaim(claim), reviewRequest: claim.reviewRequest, kitchenReply: claim.kitchenReply,
+    chefVisible: chefCanSeeClaim(claim), reviewRequest: chef ? null : claim.reviewRequest, kitchenReply: chef ? null : claim.kitchenReply,
     paymentBusy: !!claim.paymentOperation && !['cancelled', 'succeeded'].includes(claim.paymentOperation.state),
     compensationPending: claim.compensationOperation?.state === 'pending', withdrawalPending: claim.withdrawalOperation?.state === 'pending',
-    resolutionType: claim.resolutionType, evidence, history };
+    resolutionType: claim.resolutionType, evidence: publicEvidence, history: history.map(({ actionBy: _actionBy, ...row }) => row) };
 }
 export async function readManagerClaims(managerId: number) {
   const claims = await db.select().from(damageClaims).where(eq(damageClaims.managerId, managerId)).orderBy(desc(damageClaims.id)).limit(100);
@@ -132,12 +147,12 @@ export async function readBookingClaims(bookingId: number, actor: { id: number; 
   }
   const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.kitchenBookingId, bookingId), sql`${damageClaims.status} <> 'draft'`))
     .orderBy(desc(damageClaims.id)).limit(50);
-  return { claims: await Promise.all(claims.filter(claim => kitchenParticipant || chefCanSeeClaim(claim)).map(claim => publicClaim(claim))) };
+  return { claims: await Promise.all(claims.filter(claim => kitchenParticipant || chefCanSeeClaim(claim)).map(claim => publicClaim(claim, undefined, kitchenParticipant ? 'kitchen' : 'chef'))) };
 }
 export async function readChefClaims(chefId: number) {
   const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.chefId, chefId), sql`${damageClaims.status} <> 'draft'`))
     .orderBy(desc(damageClaims.id)).limit(100);
-  return { claims: await Promise.all(claims.filter(chefCanSeeClaim).map(claim => publicClaim(claim))) };
+  return { claims: await Promise.all(claims.filter(chefCanSeeClaim).map(claim => publicClaim(claim, undefined, 'chef'))) };
 }
 export async function replyToClaimReview(id: number, managerId: number, raw: unknown) {
   const parsed = z.object({ note: z.string().trim().min(10).max(2000), files: z.array(claimUpload).max(10).default([]) }).strict().safeParse(raw);
@@ -148,7 +163,7 @@ export async function replyToClaimReview(id: number, managerId: number, raw: unk
     if (claim.status !== 'awaiting_kitchen') throw new DamageClaimError('This claim is not waiting for kitchen information.');
     await tx.update(damageClaims).set({ status: 'in_review', kitchenReply: parsed.data.note, updatedAt: new Date() }).where(eq(damageClaims.id, id));
     if (parsed.data.files.length) await tx.insert(damageEvidence).values(parsed.data.files.map(file => ({ ...file, damageClaimId: id, uploadedBy: managerId,
-      evidenceType: file.mimeType?.startsWith('image/') ? 'photo_after' as const : 'document' as const, description: parsed.data.note })));
+      evidenceType: file.mimeType?.startsWith('image/') ? 'photo_after' as const : 'document' as const, description: null })));
     await claimHistory(tx, claim, 'in_review', 'kitchen_reply', 'manager', managerId);
     return { success: true };
   });

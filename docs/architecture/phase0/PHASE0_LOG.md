@@ -934,3 +934,44 @@ Already-failing tests found before any change (baseline, not ours): 21 in `tour-
 - **Owner (Oct 14): storage availability + manager occupancy tracking must be designed end to end** (currently none). The lead's framing: per-unit availability (unit count × date ranges, atomic assignment, separate from the session calendar) + a manager storage board (unit states Free/Reserved/Items stored/Move-out due/Holdover/Needs cleaning, occupant, dates, paid status, timeline, one-tap actions). Code Buddy is researching TFC/Neighbor/self-storage software/Skedda-Nexudus → availability & occupancy section.
 - **Storage availability research DONE** (`research-storage-availability.md`; no peer does our exact hybrid — the design combines self-storage occupancy boards with Skedda/Nexudus date ranges). **Owner LOCKED the defaults** (auto-assign, chef-visible unit label, reserved hold + 7-day alert, pause listing + needs-cleaning, 'Available from', optional cleaning buffer off, no waitlist, manager storage board) with the guardrail: no overkill, minimal options, intuitive, uncluttered.
 - **Owner (Oct 14): storage kitchen flexibility** — waive/charge holdover, early move-out with an optional refund, extend free/charged, invite a specific chef with a special price, one-off adjustments; all reuse booking patterns, in the rental's '⋯ More' menu so the board stays uncluttered. Recorded in `research-storage-structure.md`.
+- **Damage claims v2 SHIPPED to dev** (commit 6b76d432; migration 0083 applied to dev; 0082 hash unchanged). The lead reviewed the money code: an unconfirmed on-session PaymentIntent (never off-session); the kitchen gets the full amount (the platform absorbs the fee); compensation draws on the platform balance with a balance check; persisted operation keys; a 23 h reconciliation fence.
+- **Live test on dev (sandbox, synthetic users), Oct 14:**
+  - claim #6 (booking 155): filed $83.50 (2 lines, receipts) → only kitchen + admin notified, chef saw nothing → admin Send to chef reduced to $70 → chef paid in one tap with the saved card → transfer `tr_3UQbUXC…` $70.00 to the Express account from the claim charge; a $2.89 fee recorded as a platform cost.
+  - claim #7 (booking 159): the $275 cap redirect works → filed $120 → Ask kitchen for info → kitchen replied → back to review → sent $120 → chef disputed → admin Reduce and uphold $90 → `upheld_at` backdated 8 days → the chef dashboard showed the hold banner → the chef paid $90 → the hold lifted at once.
+  - claim #8 (booking 152): Local Cooks pays the kitchen $25 → a platform-balance transfer; the chef was never contacted.
+  - All support_actions show as `verified`.
+- **Bug found live + fixed (lead):** the chef could see Local Cooks' first-review message to the kitchen ("Send to chef" note), the info request and the kitchen's reply, both in the booking-page card and in the chef notice. `publicClaim(…, 'chef')` now hides the review request/kitchen reply and shows the admin message only when the last admin decision isn't first-review; the chef notice drops kitchen-only messages. Test: `damage-claim-privacy.test.ts`.
+- **Also fixed:**
+  - chef status labels ("Waiting for your answer", "Paid · thank you", not "Sent to chef"/"Chef paid");
+  - "Local Cooks approved $70.00 of the $83.50 requested";
+  - the kitchen sees "You reported…";
+  - the filing copy says "The visit's photos";
+  - the admin queue `?` separators.
+  - These ship with the design build (shared files with WP-C).
+- **Polish noted for later:**
+  - the admin case Money block uses kitchen wording ("Your payout"), and the policy block uses chef wording ("If you cancel now");
+  - the admin claim "Reason" is free text (fine for the pilot);
+  - "Report damage" is still offered after a claim exists (allowed: one claim per visit is not enforced in the UI).
+- **Design consolidation build started:** WP-A booking page (Opus), WP-B visit + inspection pages (Sonnet), WP-C settings previews + notification consolidation (Codex Sol). Common brief `.phase0-harness/consolidation-brief-common.md`.
+- **WP-C (Codex) finished its code, then hit the usage limit (resets Oct 20)** before writing its checkpoint.
+  - Its final evidence on disk (`.phase0-harness/consolidation-c-*`): tsc clean, client failures = the 9 known ICU entries only, server failing set = baseline (+ inngest/bounded-smtp, which are network-only).
+  - The lead reviewed the payout notice batching: the after-closeout path only; the notice moves to a post-commit flush keyed on a release tick with an advisory lock; replay-safe via `payoutSent.noticeQueued`; at_capture is untouched. OK.
+  - WP-C acceptance is to be verified in the lead's screenshot pass together with WP-A/B.
+
+## 2026-10-15 — Design consolidation: rounds finished, lead verification, Codex server review
+
+- WP-A round 3 and WP-B round 2 (sent 2026-10-15 00:58, stopped by the Claude session limit) were resumed and finished in the morning. No work was redone; both agents continued their own transcripts. The owner stopped both agents once the code was in and the lead took over verification.
+- WP-A: the payment card now says "Card hold" before capture. The total includes extensions, extra time and paid damage claims through a read-only `additionalCharges` field (`server/services/booking-additional-charges.ts`, chef + manager details routes). Booking 159 shows $166.00 = 30.50 + 30.50 + 15.00 + 90.00, matching `payment_transactions`.
+- WP-B: calmer in-session panel (outline buttons, neutral progress, one link row), inspection header = chef identity + one-sentence deadline, no year on times, single check-in-code heading.
+- Codex (GPT-6.1 Sol) read-only server review found 2 real bugs; Codex then fixed both, with tests:
+  1. HIGH: the kitchen's private ask-info reply leaked to the chef through `damageEvidence.description`. Fix: reply attachments store no description; historical reply descriptions are redacted for chefs (files stay visible).
+  2. MED: concurrent payout-notice flushes could permanently drop later lines (extensions) under one release tick. Fix: queue an idempotent supplemental notice for unrepresented transaction IDs; mark only represented rows.
+  Codex confirmed one-claim-per-visit cannot race: filing holds the booking row `FOR UPDATE`.
+- Lead fixes from live screenshots:
+  - after checkout, the chef visit page no longer shows the pre-arrival "What to expect" card;
+  - no duplicate departure instructions in session;
+  - the collapsed check-in code uses an inline "Show code" link;
+  - the chef pill after checkout reads "Checked out".
+- Verification: tsc clean. Client suite = baseline (KitchenHero passes alone; load flake). Server suite = baseline (14 files / 48 tests). 44 screens × fold re-shot on fresh synthetic bookings 163/164/165 with no horizontal overflow.
+- Noted, not changed: synthetic $0 bookings read "Total paid $0.00" (real bookings always carry an hourly price). In session, the sentence and the timer both state the end time when the chef checked in late (intentional: late arrival doesn't move the end).
+- Pending: owner approval of screenshots → commit (explicit paths) → deploy to dev → live-check claim #7's chef evidence redaction and one-claim-per-visit.

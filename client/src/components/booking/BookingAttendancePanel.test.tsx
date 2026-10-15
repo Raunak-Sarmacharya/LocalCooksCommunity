@@ -95,8 +95,10 @@ it('keeps a no-show read-only for chefs and offers messaging and support', async
 it('inside the booking page drops its own heading and trigger and opens from the page menu', async () => {
   const onFixOpenChange = vi.fn();
   const view = { props: { embedded: true, fixOpen: false, onFixOpenChange } };
-  mount(view.props);
-  expect(await screen.findByTestId('visit-record-status')).toBeInTheDocument();
+  const { client } = mount(view.props);
+  // The booking page's Now card and visit timeline carry the status; the embedded panel adds no status line.
+  await waitFor(() => expect(client.getQueryState(['/api/manager/bookings/10/attendance'])?.status).toBe('success'));
+  expect(screen.queryByTestId('visit-record-status')).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Visit record' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Fix the visit record' })).not.toBeInTheDocument();
   expect(screen.queryByText('Newfoundland Time')).not.toBeInTheDocument();

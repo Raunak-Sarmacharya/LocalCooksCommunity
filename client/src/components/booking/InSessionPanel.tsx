@@ -7,12 +7,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { LifeBuoy, LogOut, MessageSquare, ShieldAlert, Mail, Phone } from "lucide-react"
+import { LogOut, Mail, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { getAuthHeaders } from "@/lib/api"
-import { friendlyTimezoneName } from "@shared/timezone-utils"
 import UnifiedChatView from "@/components/chat/UnifiedChatView"
 import { SessionExtensionRequest } from "./SessionExtensionRequest"
 
@@ -76,12 +76,11 @@ export function InSessionPanel({
   const minutesLeft = Math.max(0, Math.ceil((endMs - now) / 60_000))
   const endTime = useMemo(() => new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit" })
     .format(new Date(endMs)), [locale, timezone, endMs])
-  const zone = friendlyTimezoneName(timezone, locale)
-  const progress = Number.isFinite(startMs) && endMs > startMs ? Math.min(100, Math.max(0, ((now - startMs) / (endMs - startMs)) * 100)) : 0
+    const progress = Number.isFinite(startMs) && endMs > startMs ? Math.min(100, Math.max(0, ((now - startMs) / (endMs - startMs)) * 100)) : 0
 
   // After the end the header already says the booking ended; the count shows how long past it the chef is.
   const minutesOver = Math.max(0, Math.floor((now - endMs) / 60_000))
-  const countdown = phase === "ended" ? minutesOver < 1 ? t("kciIsTimeEnded", { defaultValue: "Your booked time ended" })
+  const countdown = phase === "ended" ? minutesOver < 1 ? t("kvIsJustEnded", { defaultValue: "Just ended" })
     : minutesOver >= 60 ? t("kciIsOverHM", { defaultValue: "{hours} h {minutes} min past your booking", hours: Math.floor(minutesOver / 60), minutes: minutesOver % 60 })
     : t("kciIsOverM", { defaultValue: "{minutes} min past your booking", minutes: minutesOver })
     : minutesLeft < 1 ? t("kciIsLeftLessMinute", { defaultValue: "Less than a minute left" })
@@ -131,70 +130,66 @@ export function InSessionPanel({
     } finally { setReportBusy(false) }
   }
 
-  const tap = "min-h-11 w-full whitespace-normal h-auto py-2"
+  const tap = "min-h-11 w-full whitespace-normal h-auto py-2 sm:w-auto"
+  const link = "min-h-11 px-1 text-sm underline-offset-4 hover:underline disabled:opacity-50"
+  const [earlyOpen, setEarlyOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   return (
-    <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-4" aria-labelledby="in-session-title" data-phase={phase}>
-      <div className="space-y-1">
-        <h2 id="in-session-title" className="text-lg font-semibold">{kitchenName}</h2>
-        <p className="text-sm font-medium">{t("kciIsEndsAt", { defaultValue: "In session · ends {time} {zone}", time: endTime, zone })}</p>
-      </div>
-
+    <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-4" aria-label={t("kciInSessionTitle", { defaultValue: "Your visit" })} data-phase={phase}>
       <div className="space-y-2">
-        {/* One countdown, announced politely: its text changes at most once a minute. */}
-        <p className="text-2xl font-semibold tabular-nums" role="status" aria-live="polite">{countdown}</p>
+        {/* One countdown, announced politely: its text changes at most once a minute. The end time is its small label. */}
+        <div>
+          <p className="text-[22px] font-semibold leading-7 tabular-nums" role="status" aria-live="polite">{countdown}</p>
+          <p className="text-[13px] leading-[18px] text-muted-foreground tabular-nums">{phase === "ended"
+            ? t("kvIsEndedAt", { defaultValue: "Ended at {time}", time: endTime })
+            : t("kvIsEndsAt", { defaultValue: "Ends at {time}", time: endTime })}</p>
+        </div>
         <div role="progressbar" aria-label={t("kciIsProgressLabel", { defaultValue: "Booked time used" })} aria-valuemin={0} aria-valuemax={100}
-          aria-valuenow={Math.round(progress)} className="h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
+          aria-valuenow={Math.round(progress)} className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full bg-foreground/50 transition-[width] motion-reduce:transition-none" style={{ width: `${progress}%` }} />
         </div>
       </div>
 
-      {phase === "active" && (
-        <div className="space-y-2">
-          {/* In the last hour this lists bookable extra time; otherwise it opens the conversation as before. */}
-          <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
-            moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />
-          <p className="text-xs text-muted-foreground">{t("sxNeedMoreTimeHint", { defaultValue: "In the last hour of your booking you can add time here in one tap. Before that, this opens a message to the kitchen." })}</p>
-        </div>
-      )}
-      {phase !== "active" && (
-        <div className="space-y-2">
-          {/* Once ended, the visit header carries the one "check out now" message; this is just the action. */}
-          {phase === "ending" && <p className="text-sm font-medium">{t("kciIsLast15Hint", { defaultValue: "Your booked time is almost up. Start check-out when you are finished." })}</p>}
-          {canCheckout && <Button type="button" className={tap} onClick={onStartCheckout}>
-            <LogOut className="h-4 w-4 mr-2 shrink-0" />{phase === "ended" ? t("kciIsCheckOutNow", { defaultValue: "Check out now" }) : t("kciIsStartCheckout", { defaultValue: "Start check-out" })}
-          </Button>}
-          {phase === "ending" && <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
-            moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />}
-        </div>
-      )}
-
-      <div className="space-y-2 border-t pt-4">
-        {canCheckout && phase !== "ended" && <>
-          <Button type="button" variant="outline" className={tap} onClick={onStartCheckout}>
-            <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsLeaveEarly", { defaultValue: "Leave early / check out now" })}
-          </Button>
-          <p className="text-xs text-muted-foreground">{t("kciIsLeaveEarlyNote", { defaultValue: "Leaving early does not refund unused booked time." })}</p>
-        </>}
-        <Button type="button" variant="outline" className={tap} disabled={chatBusy} onClick={() => void openChat()}>
-          <MessageSquare className="h-4 w-4 mr-2 shrink-0" />{chatBusy ? t("kciIsOpeningMessage", { defaultValue: "Opening conversation…" }) : t("kciIsMessageKitchen", { defaultValue: "Message kitchen" })}
-        </Button>
-        {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
-        <Button type="button" variant="outline" className={tap} onClick={() => { setReportSent(false); setReportOpen(true) }}>
-          <ShieldAlert className="h-4 w-4 mr-2 shrink-0" />{t("kciIsReportProblem", { defaultValue: "Report a problem" })}
-        </Button>
-        {reportSent && <p role="status" className="text-sm">{t("kciIsReportSent", { defaultValue: "Report sent. You can follow it on your booking page." })}</p>}
+      {phase === "ending" && <p className="text-sm">{t("kvIsLast15Hint", { defaultValue: "Your booked time is almost up. Check out when you’re finished." })}</p>}
+      {/* One row of actions. Outside the last 15 minutes there is no filled button: nothing is urgent. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        {phase !== "active" && canCheckout && <Button type="button" className={tap} onClick={onStartCheckout}>
+          <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kciIsCheckOutNow", { defaultValue: "Check out now" })}
+        </Button>}
+        {phase !== "ended" && <SessionExtensionRequest bookingId={bookingId} kitchenName={kitchenName} timezone={timezone} className={tap}
+          moreTimeDraft={moreTimeDraft} onMessage={draft => void openChat(draft)} onExtended={() => refresh.current?.()} />}
+        {phase === "active" && canCheckout && <Button type="button" variant="outline" className={tap} onClick={() => setEarlyOpen(true)}>
+          <LogOut className="h-4 w-4 mr-2 shrink-0" />{t("kvIsCheckOutEarly", { defaultValue: "Check out early" })}
+        </Button>}
       </div>
 
-      <details className="rounded-lg border p-3">
-        <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium">
-          <LifeBuoy className="h-4 w-4 shrink-0" />{t("kciIsGetHelp", { defaultValue: "Get help from Local Cooks" })}
-        </summary>
-        <div className="mt-2 space-y-1 text-sm">
-          <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0" />support@localcooks.ca</a>
-          <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0" />+1 (709) 631-8480</a>
-          <p className="text-xs text-muted-foreground">{t("kciIsHelpHours", { defaultValue: "Mon–Fri, 9 AM–5 PM NL time. After hours, we reply within 24 hours." })}</p>
-        </div>
-      </details>
+      <div className="flex flex-wrap items-center gap-x-1 text-sm">
+        <button type="button" className={link} disabled={chatBusy} onClick={() => void openChat()}>
+          {chatBusy ? t("kciIsOpeningMessage", { defaultValue: "Opening conversation…" }) : t("kciIsMessageKitchen", { defaultValue: "Message kitchen" })}
+        </button>
+        <span aria-hidden className="text-muted-foreground">·</span>
+        <button type="button" className={link} onClick={() => { setReportSent(false); setReportOpen(true) }}>{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</button>
+        <span aria-hidden className="text-muted-foreground">·</span>
+        <button type="button" className={link} aria-expanded={helpOpen} onClick={() => setHelpOpen(value => !value)}>{t("kvIsHelp", { defaultValue: "Get help" })}</button>
+      </div>
+      {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
+      {reportSent && <p role="status" className="text-sm">{t("kciIsReportSent", { defaultValue: "Report sent. You can follow it on your booking page." })}</p>}
+      {helpOpen && <div className="space-y-1 rounded-lg bg-muted/40 p-3 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
+        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0" />support@localcooks.ca</a>
+        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0" />+1 (709) 631-8480</a>
+        <p className="text-xs text-muted-foreground">{t("kciIsHelpHours", { defaultValue: "Mon–Fri, 9 AM–5 PM NL time. After hours, we reply within 24 hours." })}</p>
+      </div>}
+
+      <Dialog open={earlyOpen} onOpenChange={setEarlyOpen}>
+        <DialogContent showCloseButton>
+          <DialogTitle>{t("kvIsEarlyTitle", { defaultValue: "Check out early?" })}</DialogTitle>
+          <DialogDescription>{t("kciIsLeaveEarlyNote", { defaultValue: "Leaving early does not refund unused booked time." })}</DialogDescription>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" className="min-h-11" onClick={() => setEarlyOpen(false)}>{t("kvIsKeepGoing", { defaultValue: "Keep going" })}</Button>
+            <Button type="button" className="min-h-11" onClick={() => { setEarlyOpen(false); onStartCheckout() }}>{t("kvIsCheckOutEarly", { defaultValue: "Check out early" })}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <details className="rounded-lg border p-3">
         <summary className="min-h-11 cursor-pointer text-sm font-medium flex items-center">{t("kciIsDeparturePreview", { defaultValue: "Departure instructions and tasks" })}</summary>
@@ -206,12 +201,12 @@ export function InSessionPanel({
         </div>
       </details>
 
-      <Dialog open={reportOpen} onOpenChange={value => { if (!reportBusy) setReportOpen(value) }}>
-        <DialogContent showCloseButton className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</DialogTitle>
-            <DialogDescription>{t("kciIsReportIntro", { defaultValue: "Safety comes first. If anyone is in danger, call 911 before anything else." })}</DialogDescription>
-          </DialogHeader>
+      <Sheet open={reportOpen} onOpenChange={value => { if (!reportBusy) setReportOpen(value) }}>
+        <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-lg space-y-4 overflow-y-auto rounded-t-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <SheetHeader>
+            <SheetTitle>{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</SheetTitle>
+            <SheetDescription>{t("kciIsReportIntro", { defaultValue: "Safety comes first. If anyone is in danger, call 911 before anything else." })}</SheetDescription>
+          </SheetHeader>
           <form className="space-y-4" onSubmit={event => { event.preventDefault(); void sendReport() }}>
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">{t("kciIsCategory", { defaultValue: "What kind of problem is it?" })}</legend>
@@ -230,13 +225,13 @@ export function InSessionPanel({
               <p id="in-session-problem-hint" className="text-xs text-muted-foreground">{t("kciIsDescribeHint", { defaultValue: "Write 10 to 2000 characters. The kitchen manager and Local Cooks will see this." })}</p>
             </div>
             {reportError && <p role="alert" className="text-sm text-destructive">{reportError}</p>}
-            <DialogFooter className="gap-2">
+            <SheetFooter className="gap-2">
               <Button type="button" variant="outline" className="min-h-11" disabled={reportBusy} onClick={() => setReportOpen(false)}>{t("kciIsCancel", { defaultValue: "Cancel" })}</Button>
               <Button type="submit" className="min-h-11" disabled={!canSend}>{reportBusy ? t("kciIsSending", { defaultValue: "Sending…" }) : t("kciIsSendReport", { defaultValue: "Send report" })}</Button>
-            </DialogFooter>
+            </SheetFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={!!chat} onOpenChange={value => { if (!value) setChat(null) }}>
         <DialogContent showCloseButton className="flex h-[85dvh] w-[calc(100%_-_1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0">

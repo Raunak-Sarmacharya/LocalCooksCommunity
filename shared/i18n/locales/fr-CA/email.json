@@ -297,5 +297,20 @@
   "sxEarlyExpiredManagerTitle": "Votre offre de début plus tôt à {chef} est fermée",
   "sxEarlyExpiredManagerBody": "Votre offre pour que {chef} commence à {end} s’est fermée sans réponse. Sa réservation commence toujours à {originalEnd}.",
   "sxGrantedRequestChefTitle": "{kitchen} vous donne jusqu’à {end} sans frais",
-  "sxGrantedRequestChefBody": "{kitchen} a accepté votre demande sans frais. Vous avez jusqu’à {end}, et la retenue sur votre carte a été libérée."
+  "sxGrantedRequestChefBody": "{kitchen} a accepté votre demande sans frais. Vous avez jusqu’à {end}, et la retenue sur votre carte a été libérée.",
+  "ncConfirmedTitle": "Réservation confirmée · {chef} · {date}",
+  "ncConfirmedPayout": "Versement après la visite — dès que vous terminez la vérification, ou automatiquement 24 heures après la fin.",
+  "ncSessionEndingSubject": "Votre réservation se termine à {end} · {kitchen}",
+  "ncSessionEndingBody": "Votre réservation chez {kitchen} se termine à {time} ({zone}). {count, plural, =0 {Ouvrez votre visite pour confirmer votre départ.} one {Terminez 1 tâche de départ, puis confirmez votre départ sur votre page de visite.} other {Terminez # tâches de départ, puis confirmez votre départ sur votre page de visite.}}",
+  "ncVisitCompleteTitle": "Visite terminée · {kitchen}",
+  "ncVisitCompleteGood": "{kitchen} a vérifié les lieux — tout est en ordre.",
+  "ncVisitCompleteInvoice": "Votre facture finale est prête.",
+  "ncCancelledRefundTitle": "Votre réservation est annulée · remboursement de {amount} en cours (5 à 10 jours ouvrables)",
+  "ncCancelledNoRefundTitle": "Votre réservation est annulée · aucun remboursement ne s’applique",
+  "ncPayoutBooking": "Réservation",
+  "ncPayoutExtension": "Temps supplémentaire ({duration})",
+  "ncPayoutCharge": "Frais de temps supplémentaire",
+  "ncDurationMinutes": "{minutes} min",
+  "ncDurationHours": "{hours} h",
+  "ncDurationHoursMinutes": "{hours} h {minutes} min"
 }

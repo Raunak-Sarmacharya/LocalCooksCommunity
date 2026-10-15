@@ -84,6 +84,7 @@ describe('quoted parent cancellation reservation and provider recovery', () => {
     expect(state.parent.status).toBe('cancelled'); expect(state.calls).toHaveLength(1);
     expect(state.calls[0]).toMatchObject({ amount: 11816, options: { reverseTransferAmount: 11116, metadata: { platform_service_fee_returned: '700' } } });
     await cancelChefBooking(10, 3, 'chef-operation-one'); expect(state.calls).toHaveLength(1);
+    expect(state.notices.mock.calls.filter(call => ['cancelled', 'refund_issued'].includes(call[2])).map(call => call[2])).toEqual(['cancelled']);
     await expect(cancelChefBooking(10, 3, 'chef-operation-two')).rejects.toThrow('another operation');
   });
   it('never refunds a paid session extension through the cancellation engine; only the booking payment is refunded', async () => {

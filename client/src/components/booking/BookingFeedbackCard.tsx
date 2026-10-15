@@ -10,8 +10,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { bookingFeedbackTags, feedbackInputForRole, type BookingFeedbackRole, type BookingFeedbackState } from '@shared/booking-feedback';
 
-export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone }: {
+export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone, compact = false }: {
   bookingId: number; role: BookingFeedbackRole; otherPartyName: string; timezone: string;
+  /** Booking page: one calm row (question + stars); the form opens below (desktop) or in a sheet (mobile) on tap. */
+  compact?: boolean;
 }) {
   const { t, i18n } = useTranslation('booking');
   const client = useQueryClient(), mobile = useIsMobile(), noteId = useId(), section = useRef<HTMLElement>(null);
@@ -79,6 +81,25 @@ export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone 
     <Button type="submit" disabled={saving || query.isFetching} className="min-h-11">{t('privateFeedback.send')}</Button>
   </form>;
   const answer = state.response;
+  const mobileSheet = mobile && <Sheet open={editing} onOpenChange={value => { if (!saving) setEditing(value); }}>
+    <SheetContent side="bottom" hideClose className="max-h-[90dvh] overflow-y-auto" aria-describedby={`${noteId}-privacy`}>
+      <SheetClose asChild><Button type="button" variant="ghost" disabled={saving} className="mb-2 min-h-11">{t('privateFeedback.close')}</Button></SheetClose>
+      <SheetHeader className="mb-4"><SheetTitle>{question}</SheetTitle></SheetHeader>{form}
+    </SheetContent>
+  </Sheet>;
+  if (compact) return <section id="feedback" ref={section} className="min-w-0 scroll-mt-6 [overflow-wrap:anywhere]" aria-label={t('privateFeedback.title')} data-testid="feedback-row">
+    <Card className="rounded-2xl border-border/70 p-4 shadow-none sm:px-6 sm:py-4">
+      {answer ? <p className="text-sm" role="status">{t('privateFeedback.thanks')}{' '}
+        <span className="tabular-nums text-muted-foreground" aria-label={t('privateFeedback.star', { count: answer.rating })}>{'★'.repeat(answer.rating)}{'☆'.repeat(5 - answer.rating)}</span></p>
+      : <>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p className="text-sm font-medium">{question}</p>{stars()}
+        </div>
+        {!mobile && editing && <div className="mt-4">{form}</div>}
+        {mobileSheet}
+      </>}
+    </Card>
+  </section>;
   return <section id="feedback" ref={section} className="min-w-0 scroll-mt-6 [overflow-wrap:anywhere]" aria-label={t('privateFeedback.title')}>
     <Card><CardHeader><CardTitle className="text-lg">{t('privateFeedback.title')}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
@@ -90,12 +111,7 @@ export function BookingFeedbackCard({ bookingId, role, otherPartyName, timezone 
         </> : <><p className="font-medium">{question}</p>{stars()}
           {!editing && <p className="text-sm text-muted-foreground">{privacy}</p>}
           {!mobile && editing && form}
-          {mobile && <Sheet open={editing} onOpenChange={value => { if (!saving) setEditing(value); }}>
-            <SheetContent side="bottom" hideClose className="max-h-[90dvh] overflow-y-auto" aria-describedby={`${noteId}-privacy`}>
-              <SheetClose asChild><Button type="button" variant="ghost" disabled={saving} className="mb-2 min-h-11">{t('privateFeedback.close')}</Button></SheetClose>
-              <SheetHeader className="mb-4"><SheetTitle>{question}</SheetTitle></SheetHeader>{form}
-            </SheetContent>
-          </Sheet>}
+          {mobileSheet}
         </>}
       </CardContent>
     </Card>

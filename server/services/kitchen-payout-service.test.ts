@@ -8,17 +8,20 @@ vi.mock('../db', () => {
   const db: any = {
     transaction: async (run: any) => run(db),
     execute: async (query: any) => { const text = new PgDialect().sqlToQuery(query).sql; state.raw.push(text); return { rows: [state.facts] }; },
-    select: (fields?: any) => { let table: any; const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain,
-      where: () => chain, orderBy: () => chain, limit: () => chain, for: () => chain,
+    select: (fields?: any) => { let table: any, condition: any; const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain,
+      where: (value: any) => { condition = value; return chain; }, orderBy: () => chain, limit: () => chain, for: () => chain,
       then: (resolve: any) => { const name = getTableName(table);
         resolve(name === 'kitchen_bookings' ? fields && 'referenceCode' in fields ? [{ id: state.booking.id, referenceCode: state.booking.referenceCode }]
             : [{ booking: state.booking, timezone: 'America/St_Johns', locationId: 3 }]
-          : name === 'kitchen_booking_visits' ? state.visits : name === 'booking_lifecycle_events' ? state.notices
-          : name === 'payment_transactions' ? fields?.bookingId && 'extensionId' in fields ? state.due : state.source ? [state.source, ...state.extensions] : [] : []); } };
+          : name === 'kitchen_booking_visits' ? state.visits : name === 'booking_lifecycle_events' ? state.notices.filter(event => !condition || event.metadata?.releaseTick === new PgDialect().sqlToQuery(condition).params.at(-1))
+          : name === 'payment_transactions' ? fields?.bookingId && 'extensionId' in fields ? state.due : state.source ? [state.source, ...state.extensions].filter(row => { const q = condition && new PgDialect().sqlToQuery(condition); const match = q && /\"payment_transactions\"\.\"id\" = \$(\d+)/.exec(q.sql); return !match || row.id === q.params[Number(match[1]) - 1]; }) : [] : []); } };
       return chain; },
     update: () => ({ set: (values: any) => { if (values.payoutReleasedAt) state.log.push('decision');
-      const apply = () => { state.source = { ...state.source, ...values }; return [state.source]; };
-      const where: any = () => ({ returning: async () => apply(), then: (resolve: any) => resolve(apply()) }); return { where }; } }),
+      return { where: (condition: any) => {
+        const q = new PgDialect().sqlToQuery(condition); const id = q.params[0];
+        const apply = () => { const row = [state.source, ...state.extensions].find(row => row.id === id)!; const updated = { ...row, ...values, ...(values.metadata?.queryChunks ? { metadata: { ...row.metadata, payoutSent: { ...row.metadata.payoutSent, noticeQueued: true } } } : {}) }; if (row.id === state.source.id) state.source = updated; else state.extensions = state.extensions.map(item => item.id === row.id ? updated : item); return [updated]; };
+        return { returning: async () => apply(), then: (resolve: any) => resolve(apply()) };
+      } }; } }),
   };
   return { db };
 });
@@ -31,12 +34,13 @@ vi.mock('./stripe-transfer-service', () => ({ transferToManagerForBooking: state
 vi.mock('./worker-context', () => ({ workerAfter: () => undefined, workerRecord: async () => {}, workerPageEnd: async () => {}, isWorkerBudgetError: () => false }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 import { db } from '../db';
-import { releaseDuePayouts, releaseKitchenPayout, recordReleasedPayout, scheduleKitchenPayout, readKitchenPayout, upcomingKitchenPayouts } from './kitchen-payout-service';
+import { releaseDuePayouts, releaseKitchenPayout, recordReleasedPayout, flushReleasedPayoutNotices, scheduleKitchenPayout, readKitchenPayout, upcomingKitchenPayouts } from './kitchen-payout-service';
 
 const visit = (outcome: string, deadline = '2026-10-15T10:30:00.000Z') => ({ attendance: 'recorded', inspection: { outcome, deadline } });
 const now = new Date('2026-10-15T11:00:00Z');
 beforeEach(() => {
   vi.clearAllMocks(); state.log = []; state.raw = []; state.notices = []; state.due = []; state.visits = []; state.extensions = [];
+  state.queue.mockImplementation(async (_tx, _bookingId, _kind, _title, _message, _actorId, metadata) => { state.notices.push({ id: state.notices.length + 1, metadata }); });
   state.booking = { id: 7, referenceCode: 'KB-7', status: 'completed', visitDuties: {} };
   state.closeout = { serviceEndedAt: '2026-10-14T13:15:00.000Z', serverNow: now.toISOString(), status: 'completed', visits: [visit('manager_cleared')] };
   state.facts = { flag: false, issue: false, resolved: false };
@@ -148,11 +152,82 @@ describe('closeout scheduling, notice and sweep', () => {
     await recordReleasedPayout(11, result, db as any);
     expect(state.source).toMatchObject({ transferId: 'tr_7', managerRevenue: '10942', payoutHoldReason: null });
     expect(state.source.metadata.payoutSent).toMatchObject({ amountCents: 10942 });
-    expect(state.queue).toHaveBeenCalledWith(expect.anything(), 7, 'payout_released', 'You’ve been paid', expect.stringContaining('$109.42'),
-      undefined, expect.objectContaining({ recipientPolicy: 'manager', transactionId: 11, amountCents: 10942 }));
+    expect(state.queue).not.toHaveBeenCalled();
+    await flushReleasedPayoutNotices(7);
+    expect(state.queue).toHaveBeenCalledWith(expect.anything(), 7, 'payout_released', expect.stringContaining('$109.42'), expect.stringContaining('$109.42'),
+      undefined, expect.objectContaining({ recipientPolicy: 'manager', transactionIds: [11], amountCents: 10942 }));
     state.notices = [{ id: 1 }]; state.queue.mockClear();
     await recordReleasedPayout(11, result, db as any);
+    await flushReleasedPayoutNotices(7);
     expect(state.queue).not.toHaveBeenCalled();
+  });
+  it('batches three committed lines in one release tick and never notifies on replay', async () => {
+    state.source.payoutReleasedAt = now;
+    state.extensions = [21, 22].map((id, index) => ({ ...structuredClone(state.source), id, amount: '3000',
+      metadata: { sessionExtensionId: id, extensionKind: index ? 'extra_time' : 'request', minutes: 60 } }));
+    const result = { transferred: true, transferId: 'tr', transferredCents: 2732, originalManagerNetCents: 2732, actualStripeFeeCents: 100, platformCommissionCents: 100 };
+    vi.useFakeTimers(); vi.setSystemTime(now);
+    try {
+      await recordReleasedPayout(11, result, db as any);
+      await recordReleasedPayout(21, result, db as any);
+      await recordReleasedPayout(22, { ...result, transferredCents: 1328 }, db as any);
+      expect(state.queue).not.toHaveBeenCalled();
+      await flushReleasedPayoutNotices(7);
+      expect(state.queue).toHaveBeenCalledTimes(1);
+      expect(state.queue.mock.calls[0][3]).toContain('$67.92');
+      expect(state.queue.mock.calls[0][6]).toMatchObject({ amountCents: 6792, transactionIds: [11, 21, 22], releaseTick: now.toISOString(),
+        lines: [{ kind: 'booking', amountCents: 2732 }, { kind: 'extension', amountCents: 2732 }, { kind: 'charge', amountCents: 1328 }] });
+      state.queue.mockClear();
+      await recordReleasedPayout(21, result, db as any); await flushReleasedPayoutNotices(7);
+      expect(state.queue).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+  it('announces extensions committed after a replay flush already announced their parent tick', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(now);
+    try {
+      state.source.payoutReleasedAt = now;
+      state.extensions = [21, 22].map(id => ({ ...structuredClone(state.source), id,
+        metadata: { sessionExtensionId: id, minutes: 30 } }));
+      const result = { transferred: true, transferId: 'tr', transferredCents: 2000,
+        actualStripeFeeCents: 100, platformCommissionCents: 100 };
+      await recordReleasedPayout(11, result, db as any);
+      // Invocation A has committed its parent; replay B flushes before A's extensions commit.
+      await releaseKitchenPayout(7, 'replay', now);
+      expect(state.notices).toHaveLength(1);
+      expect(state.notices[0].metadata.transactionIds).toEqual([11]);
+      expect(state.extensions.every(row => !row.metadata.payoutSent?.noticeQueued)).toBe(true);
+      await recordReleasedPayout(21, result, db as any);
+      await recordReleasedPayout(22, { ...result, transferredCents: 1000 }, db as any);
+      await flushReleasedPayoutNotices(7);
+      expect(state.notices).toHaveLength(2);
+      expect(state.notices[1].metadata).toMatchObject({ releaseTick: now.toISOString(),
+        noticeKey: `${now.toISOString()}:21,22`, transactionIds: [21, 22], amountCents: 3000 });
+      expect(state.extensions.every(row => row.metadata.payoutSent.noticeQueued)).toBe(true);
+      expect(state.notices.reduce((sum, event) => sum + event.metadata.amountCents, 0)).toBe(5000);
+      await flushReleasedPayoutNotices(7);
+      expect(state.queue).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it('recognizes IDs in every supplemental event on replay and leaves failed supplements retryable', async () => {
+    const tick = now.toISOString();
+    state.source.transferId = 'tr';
+    state.source.metadata.payoutSent = { noticeTick: tick, amountCents: 2000 };
+    state.extensions = [21, 22].map(id => ({ ...structuredClone(state.source), id,
+      metadata: { sessionExtensionId: id, payoutSent: { noticeTick: tick, amountCents: 1000 } } }));
+    state.notices = [{ metadata: { releaseTick: tick, transactionIds: [11] } },
+      { metadata: { releaseTick: tick, noticeKey: `${tick}:21`, transactionIds: [21] } }];
+    state.queue.mockRejectedValueOnce(Error('outbox unavailable'));
+    await expect(flushReleasedPayoutNotices(7)).rejects.toThrow('outbox unavailable');
+    expect(state.extensions[1].metadata.payoutSent.noticeQueued).toBeUndefined();
+    await flushReleasedPayoutNotices(7);
+    expect(state.notices).toHaveLength(3);
+    expect(state.notices[2].metadata).toMatchObject({ noticeKey: `${tick}:22`, transactionIds: [22], amountCents: 1000 });
+    // Stale markers must be acknowledged from both the original and supplemental events without duplicates.
+    for (const row of [state.source, ...state.extensions]) row.metadata.payoutSent.noticeQueued = false;
+    state.queue.mockClear();
+    await flushReleasedPayoutNotices(7);
+    expect(state.queue).not.toHaveBeenCalled();
+    expect([state.source, ...state.extensions].every(row => row.metadata.payoutSent.noticeQueued)).toBe(true);
   });
   it('refuses to record a payout without a durable release decision', async () => {
     await expect(recordReleasedPayout(11, { transferred: true } as any, db as any)).rejects.toThrow('durable payout release decision');

@@ -4,6 +4,17 @@ import { kitchenPayoutNotice, managerNoCheckinNotice, managerRunningLateNotice }
 
 const input = { reference: 'KB-A7K9MX', amountCents: 2732, chef: 'Maya Chen', date: new Date('2026-10-14T00:00:00Z'), timezone: 'UTC' };
 describe('kitchen payout notices (manager only, people language)', () => {
+  it('renders three payout lines and sums fees only once', async () => {
+    const notice = await kitchenPayoutNotice('payout_released', 'en-CA', { ...input, amountCents: 6792,
+      feeCents: 700, processingCents: 358, lines: [{ kind: 'booking', amountCents: 2732 },
+        { kind: 'extension', minutes: 60, amountCents: 2732 }, { kind: 'charge', amountCents: 1328 }] });
+    expect(notice.title).toContain('$67.92');
+    expect(notice.facts).toEqual(expect.arrayContaining([
+      { label: 'Booking', value: '$27.32' }, { label: 'Extra time (1 hr)', value: '$27.32' },
+      { label: 'Extra-time charge', value: '$13.28' }, { label: 'Your payout', value: '$67.92' }]));
+    expect(notice.facts!.filter(fact => fact.value === '$7.00')).toHaveLength(1);
+    expect(notice.facts!.filter(fact => fact.value === '$3.58')).toHaveLength(1);
+  });
   it('says the manager has been paid, when it reaches the bank, and links the payout statement', async () => {
     const notice = await kitchenPayoutNotice('payout_released', 'en-CA', input);
     expect(notice.title).toBe('You’ve been paid $27.32 · KB-A7K9MX');

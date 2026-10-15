@@ -1,4 +1,3 @@
-import { ClockCloseoutSummary } from "./ClockCloseoutSummary";
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { VisitDutyValidationError, type DutyFieldErrors } from '@shared/visit-duties';
 /**
@@ -35,6 +34,9 @@ import { MessageKitchenButton } from "./MessageKitchenButton"
 import { RunningLateCard } from "./RunningLateCard"
 import { SessionExtensionsCard } from "./SessionExtensionsCard"
 import { formatVisitWhen } from "@/lib/visit-when"
+import { visitStatusSentence } from "@/lib/visit-status-sentence"
+import { SmartImage } from "@/components/ui/smart-image"
+import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +47,8 @@ interface KitchenCheckinTrackerProps {
   initialVisitId?: number | null
   bookingId: number
   kitchenName?: string
+  /** Cover photo of the kitchen, when it has one. */
+  kitchenImageUrl?: string | null
   bookingDate?: string
   startTime?: string
   endTime?: string
@@ -72,41 +76,6 @@ const STATUS_CHIPS: Record<KitchenCheckinStatus, { variant: InfoChipVariant; ico
   checkout_claim_filed: { variant: "warning", icon: <FileWarning className="h-3 w-3" />, fallback: "Claim filed" },
 }
 
-/** One plain sentence telling the chef where this visit stands and what to do next. */
-function nextStepMessage(args: {
-  bookingStatus?: string
-  checkinStatus: KitchenCheckinStatus
-  checkinEnabled?: boolean
-  checkoutEnabled?: boolean
-  canCheckin: boolean
-  canCheckout: boolean
-  beforeCheckinOpens: boolean
-}, t: Translate): string {
-  const { bookingStatus, checkinStatus, checkinEnabled, checkoutEnabled, canCheckin, canCheckout, beforeCheckinOpens } = args
-  switch (checkinStatus) {
-    case "checked_in":
-      return canCheckout
-        ? t("kciStatusCheckedIn", "You're checked in. When you're finished, follow the departure instructions and submit checkout below.")
-        : t("kciStatusCheckedInNoAction", "You're checked in.")
-    case "checkout_requested":
-      return t("kciStatusCheckoutRequested", "Checkout submitted. The kitchen manager is reviewing the kitchen.")
-    case "checked_out":
-      return t("kciStatusCheckedOut", "Checkout is closed. Your booking has the full record.")
-    case "checkout_claim_filed":
-      return t("kciStatusClaimFiled", "The kitchen manager reported an issue after this visit. Open your booking to see what was reported.")
-    case "no_show":
-      return t("kciStatusNoShow", "The kitchen reported this visit as a no-show. If that's not right, contact Local Cooks Support.")
-  }
-  if (bookingStatus === "cancelled") return t("kciStatusCancelled", "This booking was cancelled. There's nothing to do for this visit.")
-  if (bookingStatus === "completed") return t("kciStatusCompletedNoCheckin", "This booking is complete. No check-in was recorded for this visit.")
-  if (bookingStatus === "cancellation_requested") return t("kciStatusCancellationRequested", "Check-in isn't available while your cancellation request is open.")
-  if (bookingStatus !== "confirmed") return t("kciStatusAwaitingConfirmation", "Check-in becomes available after the kitchen confirms your booking.")
-  if (canCheckin) return t("kciStatusCheckinOpen", "Check-in is open. Follow the arrival instructions, then confirm check-in below.")
-  return beforeCheckinOpens
-    ? t("kciStatusCheckinLater", "Check-in isn't open yet. Come back to this page when it opens.")
-    : t("kciStatusCheckinClosed", "Check-in for this visit has closed. Contact the kitchen manager if you need your visit recorded.")
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function KitchenCheckinTracker({
@@ -115,6 +84,7 @@ export function KitchenCheckinTracker({
   initialVisitId,
   bookingId,
   kitchenName,
+  kitchenImageUrl,
   bookingDate,
   startTime,
   endTime,
@@ -335,8 +305,15 @@ export function KitchenCheckinTracker({
 
   const timezone = data?.timezone || DEFAULT_TIMEZONE
   const locale = i18n.resolvedLanguage || i18n.language || "en-CA"
-  const formatTime = (ts: string | null | undefined) => formatTimestamp(ts, timezone, locale)
   const visitDate = (data?.bookingDate || bookingDate)?.split("T")[0]
+  // The header already carries the visit date: same-day times show the time only, others drop the year.
+  const formatTime = (ts: string | null | undefined) => {
+    if (!ts) return formatTimestamp(ts, timezone, locale)
+    const at = new Date(ts)
+    const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at)
+    return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit",
+      ...(dayKey === visitDate ? {} : { month: "short", day: "numeric" }) }).format(at)
+  }
   const formatVisit = (start: string, end: string) => {
     if (!visitDate) return `${start}–${end}`
     const begins = createBookingDateTime(calendarDateForBookingTime(visitDate, start, data?.operatingWindowStartTime), start, timezone)
@@ -392,32 +369,17 @@ export function KitchenCheckinTracker({
     ? { variant: "outline" as InfoChipVariant, icon: <Ban className="h-3 w-3" />, label: t("kciCancelled", "Cancelled") }
     : { ...STATUS_CHIPS[checkinStatus], label: t(`visitStatus_${checkinStatus}`, STATUS_CHIPS[checkinStatus].fallback) }
   const overstayEnd = clockVisit ? `${new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(clockVisit.scheduledEndAt))} ${friendlyTimezoneName(timezone, locale)}` : ""
+  const coverUrl = kitchenImageUrl?.trim() ? (getR2ProxyUrl(kitchenImageUrl) || kitchenImageUrl) : null
   const kitchenLabel = kitchenName || t("kitchenDefault", "Kitchen")
-  // The chip already says "Visit finished"; the line below says what that means for this visit, once.
-  const nextStep = lateCheckout
-    ? t("kciOverstayBanner", "Your booking ended at {end}. Please check out now — {kitchen} may charge for the extra time.", { end: overstayEnd, kitchen: kitchenLabel })
-    : clockEnded && checkinStatus === "checked_in" ? t("kciVisitEndedNoCheckout", "Your booked time has ended and your checkout wasn’t recorded. Message {kitchen} if your departure needs to be added.", { kitchen: kitchenLabel })
-    : clockEnded && checkinStatus === "not_checked_in" ? t("kciVisitEnded", "This visit is over. Your booking has the full record.")
-    : data ? nextStepMessage({
-    bookingStatus: data.status, checkinStatus, checkinEnabled: data.checkinEnabled, checkoutEnabled: data.checkoutEnabled,
-    canCheckin, canCheckout, beforeCheckinOpens,
-  }, t) : ""
-  // Kitchen-local times that matter for this visit, in the order they happen.
-  const times: Array<{ label: string; value: string }> = []
-  if (data) {
-    if (data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && checkinOpensAt) {
-      times.push({ label: t("bdCheckinOpens", "Check-in opens"), value: formatTime(checkinOpensAt.toISOString()) })
-    }
-    if (data.checkedInAt) times.push({ label: t("kciTimeCheckedIn", "Check-in time"), value: formatTime(data.checkedInAt) })
-    if (data.checkoutRequestedAt) times.push({ label: t("kciTimeCheckoutSubmitted", "Checkout time"), value: formatTime(data.checkoutRequestedAt) })
-    if (checkinStatus === "checkout_requested" && data.checkoutReviewDeadline) {
-      times.push({ label: t("kciTimeReviewDue", "Review due by"), value: formatTime(data.checkoutReviewDeadline) })
-    }
-    if (checkinStatus === "checked_out" && data.checkoutApprovedAt) times.push({ label: t("kciTimeReviewed", "Checkout closed"), value: formatTime(data.checkoutApprovedAt) })
-    if (checkinStatus === "checkout_claim_filed" && data.checkoutApprovedAt) times.push({ label: t("kciTimeIssueReported", "Issue reported"), value: formatTime(data.checkoutApprovedAt) })
-    if (data.noShowDetectedAt) times.push({ label: t("kciTimeNoShow", "Reported"), value: formatTime(data.noShowDetectedAt) })
+  // The chip already says "Visit finished"; the sentence below says what that means for this visit, once, and carries the time.
+  const clockTime = (ts: string | null | undefined) => {
+    if (!ts) return ""
+    try { return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(ts)) } catch { return "" }
   }
-
+  const sentenceBase = {
+    bookingStatus: data?.status, checkinStatus, canCheckin, canCheckout, beforeCheckinOpens, clockEnded, lateCheckout,
+    inspectionOutcome: clockVisit?.inspection?.outcome, kitchen: kitchenLabel,
+  }
   // Missing = released, so the page keeps working against a server that predates the gate.
   const instructionsReleased = data?.instructionsReleased !== false
   const arrivalMode = codeState ? codeState.mode : "legacy"
@@ -430,6 +392,27 @@ export function KitchenCheckinTracker({
   // Late arrival never moves the end: say so before check-in (once the start has passed) and after it.
   const startedBeforeCheckin = !!visitStartAt && !!bookingEndsText && data?.status === "confirmed" && checkinStatus === "not_checked_in" && liveBooking && Date.now() >= visitStartAt.getTime()
   const checkedInLate = !!visitStartAt && !!bookingEndsText && !!data?.checkedInAt && Date.parse(data.checkedInAt) > visitStartAt.getTime()
+  const checkedInStamp = data?.checkedInAt || arrivedAt
+  const sentence = data ? visitStatusSentence({
+    ...sentenceBase, startedBeforeCheckin, checkedInLate: checkedInLate && !!checkedInStamp,
+    checkedInTime: clockTime(checkedInStamp), checkoutTime: clockTime(data.checkoutRequestedAt),
+    bookingEnds: lateCheckout ? overstayEnd : bookingEndsText,
+  }, t) : { text: "", coversCheckin: false, coversCheckout: false }
+  const nextStep = sentence.text
+  // Kitchen-local times that matter for this visit, in the order they happen. A time the sentence already
+  // states is not repeated, and the kitchen's review deadline is never shown to the chef.
+  const times: Array<{ label: string; value: string }> = []
+  if (data) {
+    if (data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && checkinOpensAt) {
+      times.push({ label: t("bdCheckinOpens", "Check-in opens"), value: formatTime(checkinOpensAt.toISOString()) })
+    }
+    if (data.checkedInAt && !sentence.coversCheckin) times.push({ label: t("kciTimeCheckedIn", "Check-in time"), value: formatTime(data.checkedInAt) })
+    if (data.checkoutRequestedAt && !sentence.coversCheckout) times.push({ label: t("kciTimeCheckoutSubmitted", "Checkout time"), value: formatTime(data.checkoutRequestedAt) })
+    if (checkinStatus === "checked_out" && data.checkoutApprovedAt) times.push({ label: t("kciTimeReviewed", "Checkout closed"), value: formatTime(data.checkoutApprovedAt) })
+    if (checkinStatus === "checkout_claim_filed" && data.checkoutApprovedAt) times.push({ label: t("kciTimeIssueReported", "Issue reported"), value: formatTime(data.checkoutApprovedAt) })
+    if (data.noShowDetectedAt) times.push({ label: t("kciTimeNoShow", "Reported"), value: formatTime(data.noShowDetectedAt) })
+  }
+
   const overviewTasks = [...(checklist?.checkinItems || []), ...(checklist?.checkoutItems || [])].filter(item => item.required !== false).map(item => item.label)
     .concat([...checkinPhotoReqs, ...checkoutPhotoReqs].filter(photo => photo.required).map(photo => photo.label))
   const arrivalInstructions = {
@@ -505,49 +488,48 @@ export function KitchenCheckinTracker({
 
   return (
     <section className="space-y-5" aria-labelledby="kitchen-visit-title">
-        <header className="rounded-2xl border bg-card p-5 sm:p-7">
-          <h1 id="kitchen-visit-title" className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
-            {title}
-          </h1>
-          <p className="mt-2 font-medium">{kitchenName || t("kitchenDefault", "Kitchen")}</p>
-          {/* Wait for the kitchen's timezone so times never flash in a default zone. */}
-          {data && timeLabel && <p className="mt-1 text-sm tabular-nums">{timeLabel}</p>}
-          {data && <p className="mt-1 text-xs text-muted-foreground">
-            {t("bdKitchenLocalTime", `Times are shown in the kitchen’s local time (${timezone}).`, { timezone: friendlyTimezoneName(timezone, locale) })}
-          </p>}
+        <header className="overflow-hidden rounded-2xl border bg-card [@media(hover:hover)]:shadow-sm sm:flex sm:flex-row-reverse">
+          {coverUrl && <SmartImage src={coverUrl} alt="" hideOnError className="h-36 w-full object-cover sm:h-auto sm:w-56 sm:shrink-0" />}
+          <div className="min-w-0 flex-1 p-4 sm:p-6">
+            <div className="flex items-start gap-4">
+              <div className="min-w-0 flex-1">
+                <h1 id="kitchen-visit-title" className="flex items-center gap-2 text-[22px] font-semibold leading-7 tracking-tight">
+                  <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  {title}
+                </h1>
+                <p className="mt-2 text-[15px] font-medium leading-snug">{kitchenName || t("kitchenDefault", "Kitchen")}</p>
+                {/* Wait for the kitchen's timezone so times never flash in a default zone. */}
+                {data && timeLabel && <p className="mt-1 text-[13px] leading-[18px] tabular-nums text-muted-foreground">{timeLabel} · {friendlyTimezoneName(timezone, locale)}</p>}
+              </div>
+            </div>
 
-          {!isLoading && data && (
-            <section aria-label={t("kciVisitStatus", "Visit status")} className="mt-5 border-t pt-5 space-y-3">
-              {!hideIdleChip && <InfoChip variant={chip.variant} icon={chip.icon}>{chip.label}</InfoChip>}
-              <p className={cn("text-sm leading-relaxed", lateCheckout && "font-medium")} data-testid="visit-next-step" role={lateCheckout ? "alert" : undefined}>{nextStep}</p>
-              {arrivedAt && checkinStatus === "checked_in" && <p role="status" className="text-sm font-medium text-emerald-700">
-                {t("kciArrivalConfirmedAt", "Arrival confirmed at {time}", { time: new Intl.DateTimeFormat(locale, { timeZone: timezone, timeStyle: "short" }).format(new Date(data?.checkedInAt || arrivedAt)) })}
-              </p>}
-              {startedBeforeCheckin && <p className="text-sm text-muted-foreground" data-testid="booking-still-ends">{t("kciBookingStillEnds", "Your booking still ends at {end}.", { end: bookingEndsText })}</p>}
-              {arrivedAt && checkinStatus === "checked_in" && checkedInLate && <p className="text-sm text-muted-foreground" data-testid="booking-still-ends-success">{t("kciBookingStillEnds", "Your booking still ends at {end}.", { end: bookingEndsText })}</p>}
-              {times.length > 0 && (
-                <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                  {times.map(time => (
-                    <div key={time.label}>
-                      <dt className="text-xs text-muted-foreground">{time.label}</dt>
-                      <dd className="mt-0.5 text-sm font-medium tabular-nums">{time.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-              {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && (
-                <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
-              )}
-              {data.status === "confirmed" && checkinStatus === "not_checked_in" && (
-                <SessionExtensionsCard bookingId={bookingId} manager={false} chefName="" only="early_start" onChanged={() => void refetch()} />
-              )}
-              {data.status === "confirmed" && liveBooking && (
-                <RunningLateCard bookingId={bookingId} visitId={data.visitId} kitchenName={kitchenName} startAt={visitStartAt} endAt={visitEndAt}
-                  timezone={timezone} status={data.status} checkedIn={checkinStatus !== "not_checked_in"} runningLate={data.runningLate} onChanged={() => void refetch()} />
-              )}
-            </section>
-          )}
+            {!isLoading && data && (
+              <section aria-label={t("kciVisitStatus", "Visit status")} className="mt-5 space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+                {!hideIdleChip && <InfoChip variant={chip.variant} icon={chip.icon}>{chip.label}</InfoChip>}
+                <p className={cn("text-[15px] leading-[22px]", lateCheckout && "font-medium")} data-testid="visit-next-step" role={lateCheckout ? "alert" : undefined}>{nextStep}</p>
+                {times.length > 0 && (
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                    {times.map(time => (
+                      <div key={time.label}>
+                        <dt className="text-[13px] leading-[18px] text-muted-foreground">{time.label}</dt>
+                        <dd className="mt-0.5 text-[15px] font-medium tabular-nums">{time.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && (
+                  <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
+                )}
+                {data.status === "confirmed" && checkinStatus === "not_checked_in" && (
+                  <SessionExtensionsCard bookingId={bookingId} manager={false} chefName="" only="early_start" onChanged={() => void refetch()} />
+                )}
+                {data.status === "confirmed" && liveBooking && (
+                  <RunningLateCard bookingId={bookingId} visitId={data.visitId} kitchenName={kitchenName} startAt={visitStartAt} endAt={visitEndAt}
+                    timezone={timezone} status={data.status} checkedIn={checkinStatus !== "not_checked_in"} runningLate={data.runningLate} onChanged={() => void refetch()} />
+                )}
+              </section>
+            )}
+          </div>
         </header>
         {showInSession && clockVisit && data && (
           <InSessionPanel bookingId={bookingId} chefId={data.chefId} kitchenName={kitchenName || t("kitchenDefault", "Kitchen")}
@@ -555,7 +537,6 @@ export function KitchenCheckinTracker({
             canCheckout={canCheckout && dutiesReady} onStartCheckout={startCheckout} onRefresh={() => void refetch()}
             departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
         )}
-        {(clockEnded || checkinStatus !== "not_checked_in") && <ClockCloseoutSummary closeout={data?.closeout} visit={clockVisit} hideFinished />}
 
         {data?.visits && data.visits.length > 1 && (
           <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
@@ -582,12 +563,12 @@ export function KitchenCheckinTracker({
           <p>{error instanceof Error ? `${error.message} ` : ""}{t("kciStatusLoadFailed", "Anything you've entered is kept. Retry, or contact the kitchen manager.")}</p>
           <Button variant="outline" onClick={() => void refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
         </div>}
-        {!isLoading && liveBooking && !visitFinished && !instructionsReleased && <section className="rounded-2xl border bg-card p-5 sm:p-6" aria-labelledby="visit-instructions-title">
+        {!isLoading && liveBooking && !visitFinished && !instructionsReleased && checkinStatus === "not_checked_in" && <section className="rounded-2xl border bg-card p-5 sm:p-6" aria-labelledby="visit-instructions-title">
           <h2 id="visit-instructions-title" className="sr-only">{t("kciRequiredInstructions", "Visit instructions")}</h2>
           <InstructionsOverview mode={arrivalMode} releaseAt={data?.instructionsReleaseAt} timezone={timezone}
             visitStartAt={visitStartAt} requiredTasks={overviewTasks} />
         </section>}
-        {!isLoading && liveBooking && !visitFinished && instructionsReleased && <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-4" aria-labelledby="visit-instructions-title">
+        {!isLoading && liveBooking && !visitFinished && instructionsReleased && !showInSession && <section className="rounded-2xl border bg-card p-5 sm:p-6 space-y-4" aria-labelledby="visit-instructions-title">
           <h2 id="visit-instructions-title" className="font-semibold">{t("kciRequiredInstructions", "Visit instructions")}</h2>
           {checkinStatus === "not_checked_in" && !codeState?.consumed && <ArrivalModeLine mode={arrivalMode} />}
           {updatedSinceBooking && <p className="text-xs text-muted-foreground">{t("kciInstructionsUpdated", "Updated by the kitchen since you booked")}</p>}
@@ -700,11 +681,7 @@ export function KitchenCheckinTracker({
                   rows={2}
                 />
 
-                <WhatHappensNextInfo items={[
-                  t("kciNextStep1"),
-                  t("kciNextStep2"),
-                  t("kciNextStep3"),
-                ]} />
+                <WhatHappensNextInfo items={[t("kvNextStep", "The kitchen may review the space within 24 hours.")]} />
 
                 <Button
                   className="w-full"

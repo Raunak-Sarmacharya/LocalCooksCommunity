@@ -12,6 +12,8 @@ export async function cancellationNotice(role: 'chef' | 'manager', locale: strin
     : input.cause === 'kitchen' ? `${t('cpKitchenApology', { reason: input.reason, amount: money(input.refundCents) })} ${t('cpBank')}`
     : input.refundCents || input.alreadyRefundedCents ? `${t('cpCancelled')} ${t('cpExact', { refund: money(input.refundCents), fee: money(input.feeCents) })} ${input.alreadyRefundedCents ? `${tLocale(locale, 'bdRefundedLine', { ns: 'chef' })}: ${money(input.alreadyRefundedCents)}.` : ''} ${input.refundCents ? t('cpBank') : ''}`.trim()
     : `${t('cpCancelled')} ${t('cpNoRefund')}`;
-  return { title: personal ? t('cpKitchenCancelledTitle', { kitchen: input.kitchenName }) : t('cpCancelled'), message,
+  const chefTitle = role === 'chef' && input.cause === 'chef' && !input.feePending
+    ? tLocale(locale, input.refundCents ? 'ncCancelledRefundTitle' : 'ncCancelledNoRefundTitle', { ns: 'email', amount: money(input.refundCents) }) : undefined;
+  return { title: chefTitle ?? (personal ? t('cpKitchenCancelledTitle', { kitchen: input.kitchenName }) : t('cpCancelled')), message,
     actionLabel: personal ? t('cpFindAnotherTime') : undefined };
 }

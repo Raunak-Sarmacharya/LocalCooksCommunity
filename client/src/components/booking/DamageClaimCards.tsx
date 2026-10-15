@@ -53,11 +53,14 @@ export function DamageClaimCard({ claim, manager = false, onChanged }: { claim: 
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('dcV2Failed')); } finally { setBusy(false); }
   };
   return <article className="rounded-2xl border bg-card p-5 space-y-4">
-    <div><h3 className="font-semibold">{t('dcV2ClaimTitle', { kitchen, amount })}</h3><p className="mt-1 text-sm">{t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p></div>
+    <div><h3 className="font-semibold">{t(manager ? 'dcV2ClaimTitleOwn' : 'dcV2ClaimTitle', { kitchen, amount })}</h3><p className="mt-1 text-sm">{manager
+      ? t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })
+      : t(`dcV2ChefStatus_${claim.status}`, { defaultValue: t(`dcV2Status_${claim.status}`, { defaultValue: claim.status }) })}</p></div>
     {manager && claim.status === 'in_review' && <p role="status">{t('dcV2FirstReview')}</p>}
     {claim.claimVersion !== 2 && <p>{t('dcV2LegacySupport')} <a className="underline" href={manager ? '/manager/dashboard?view=support' : '/dashboard?view=support'}>{t('dcV2Contact')}</a></p>}
     <p className="whitespace-pre-wrap text-sm">{claim.description}</p>
     <ul className="space-y-2 text-sm">{claim.lines.map((line, index) => <li key={index}>{line.description} · {claimMoney(line.amountCents, i18n.language)} · <a href={line.document.fileUrl} className="underline" target="_blank" rel="noopener noreferrer">{line.document.fileName}</a></li>)}</ul>
+    {claim.amountCents < claim.claimedAmountCents && <p className="text-sm font-medium">{t('dcV2ApprovedOf', { approved: amount, claimed: claimMoney(claim.claimedAmountCents, i18n.language) })}</p>}
     {manager && claim.reviewRequest && claim.status === 'awaiting_kitchen' && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.reviewRequest}</p>}
     {claim.publicMessage && <p className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{claim.publicMessage}</p>}
     {claim.chefResponse && <p className="text-sm whitespace-pre-wrap"><strong>{t('dcV2ChefStatement')}: </strong>{claim.chefResponse}</p>}

@@ -96,9 +96,9 @@ export async function recordKitchenInspection(bookingId: number, managerId: numb
       const { kitchenDuties } = await import('./visit-duties');
       const duties = context.booking.visitDuties || await kitchenDuties(bookingId, tx);
       await tx.update(kitchenBookings).set({ visitDuties: { ...duties as object, clockCloseout: context.saved } }).where(eq(kitchenBookings.id, bookingId));
-      await queueBookingLifecycleEvent(tx, bookingId, 'checkout_cleared', 'Kitchen inspection complete',
+      await queueBookingLifecycleEvent(tx, bookingId, 'visit_closed', 'Visit complete',
         'The kitchen finished its inspection and found no issues. Open the booking to see the kitchen’s note.',
-        managerId, { visitId, recipientPolicy: 'chef', autoClear: false });
+        managerId, { visitId, recipientPolicy: 'chef', emailRecipientPolicy: 'none', inspectionOutcome: 'manager_cleared' });
       const closeout = await persistBookingCloseout(bookingId, tx, now);
       return { success: true, bookingId, visitId, checkinStatus: 'checked_out' as const, bookingCompleted: closeout.projection?.status === 'completed' };
     });
@@ -147,13 +147,16 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
     if (new Date(next.serviceEndedAt ?? projection.serviceEndedAt) >= cutover && row.booking.status !== 'cancellation_requested') {
       if (announcesEnd) await queueBookingLifecycleEvent(tx, bookingId,
         'service_ended', 'Visit finished', `The booked time for ${reference} has ended. Open the booking for the details.`,
-        undefined, { recipientPolicy: 'participants', serviceEndedAt: next.serviceEndedAt,
+        undefined, { recipientPolicy: 'participants', notificationRecipientPolicy: stillCheckedIn ? 'participants' : 'manager', serviceEndedAt: next.serviceEndedAt,
           // A chef still checked in is never told the visit is "complete": they are asked to check out now.
           roleText: stillCheckedIn ? { chef: { title: 'Your booked time has ended', message: `Your booking (${reference}) has ended and you’re still checked in. Please check out now — the kitchen may charge for the extra time.` },
             manager: { title: 'Booked time ended — not checked out', message: `The booked time for ${reference} has ended and the chef hasn’t checked out. Message them, or record when they left; you can then charge for the extra time.` } }
             : { chef: { title: 'Your visit is complete', message: `Your visit (${reference}) is complete. Open the booking for a summary or to report a problem.` },
             manager: { title: 'A visit has ended', message: `The visit for ${reference} has ended. Review the checkout photos and notes before the inspection deadline.` } },
           attendance: projection.visits.map(visit => ({ key: visit.key, visitId: visit.visitId, localDate: visit.localDate, attendance: visit.attendance })) });
+      for (const visit of closedInspections) await queueBookingLifecycleEvent(tx, bookingId, 'visit_closed', 'Visit complete',
+        'Your final invoice is ready.', undefined, { recipientPolicy: 'chef', emailRecipientPolicy: 'none', visitId: visit.visitId,
+          visitKey: visit.key, inspectionOutcome: visit.inspection.outcome });
       // Manager only: the chef is not told an inspection window closed.
       for (const visit of closedInspections) await queueBookingLifecycleEvent(tx, bookingId, 'inspection_auto_closed',
         'Inspection window closed', `The inspection window for ${reference} has ended without a kitchen review. Contact Local Cooks if you have a concern.`,

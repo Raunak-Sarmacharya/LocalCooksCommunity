@@ -1,3 +1,5 @@
+import { SettingChangePreview } from './SettingChangePreview';
+import { useSettingImpact } from '@/lib/setting-impact';
 import { mt } from "@/i18n/manager";
 import { DamageCleaningPolicy } from '@/components/legal/DamageCleaningPolicy';
 /**
@@ -106,6 +108,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
   function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false }, ref) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const impact = useSettingImpact(undefined, location.id);
 
     // Cancellation Policy State
     const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
@@ -220,10 +223,19 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     ]);
 
     const saveRulesAction = useStatusButton(saveRules);
+    const timingChanged = !hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
+      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null));
+    const timingPreview = <SettingChangePreview
+      whatChanges={<>{checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null) && <span className="block">{mt('scpWindowWhat', { minutes: checkinWindow ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore, current: arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore })}</span>}
+        {noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null) && <span className="block">{mt('scpGraceWhat', { minutes: noShowGrace ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes, current: arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes })}</span>}</>}
+      appliesTo={mt('scpTimingWhen', { kitchen: kitchenName || location.name })} impact={impact}
+      rightNow={impact ? mt(impact.upcoming ? 'scpTimingImpact' : 'scpNone', { upcoming: impact.upcoming }) : undefined}
+      undo={mt('scpTimingUndo')} confirm actionLabel={mt('saveChanges')} disabled={saveRulesAction.status === 'loading'} onSave={saveRulesAction.execute} />;
 
     // Used by the unsaved-changes guard to save before leaving.
     useImperativeHandle(ref, () => ({
       saveAllChanges: async () => {
+        if (timingChanged) return false;
         try {
           await saveRules();
           return true;
@@ -231,7 +243,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
           return false;
         }
       },
-    }), [saveRules]);
+    }), [saveRules, timingChanged]);
 
     const uploadTerms = useCallback(async () => {
       if (!termsFile) return;
@@ -281,6 +293,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     return (
       <div className="space-y-6">
         <DamageCleaningPolicy />
+        {timingChanged && timingPreview}
         {!hideHeader && <ChefPageHeader
           title={mt("navBookingRules")}
           description={mt(policyOverrides ? "kitchenPoliciesInheritedDescription" : "configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}
@@ -288,7 +301,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             // One save for the whole page, in a stable spot near the title and
             // only while something is unsaved — the page now spans three cards,
             // so an in-card action would sit next to only one of them.
-            showSaveAction ? (
+            showSaveAction && !timingChanged ? (
               <StatusButton
                 status={saveRulesAction.status}
                 onClick={saveRulesAction.execute}

@@ -20,7 +20,7 @@ export default function KitchenVisitPage() {
   const selectedVisitId = Number(new URLSearchParams(search).get("visitId"));
   const { loading: authLoading } = useFirebaseAuth();
   const { t } = useTranslation("chef");
-  const booking = useQuery<{ kitchen?: { name: string }; kitchenContact?: { phone?: string | null } | null; bookingDate: string; startTime: string; endTime: string }>({
+  const booking = useQuery<{ kitchen?: { name: string; imageUrl?: string | null; galleryImages?: string[] | null; photos?: string[] | null }; kitchenContact?: { phone?: string | null } | null; bookingDate: string; startTime: string; endTime: string }>({
     queryKey: [`/api/chef/bookings/${bookingId}/details`],
     queryFn: () => apiGet(`/chef/bookings/${bookingId}/details`),
     enabled: validId && !authLoading,
@@ -43,8 +43,9 @@ export default function KitchenVisitPage() {
     {!validId || (booking.isError && !booking.data) ? <div role="alert" className="rounded-xl border p-5 space-y-3">
       <p>{booking.error instanceof Error ? booking.error.message : t("bdErrNotFound")}</p>
       {validId && <Button variant="outline" onClick={() => void booking.refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>}
-    </div> : authLoading || !booking.data ? <Skeleton className="h-40 rounded-xl" aria-label={t("kciLoadingVisit", "Loading visit")} /> :
+    </div> : authLoading || !booking.data ? <Skeleton className="h-40 rounded-2xl" aria-label={t("kciLoadingVisit", "Loading visit")} /> :
       <KitchenCheckinTracker key={bookingId} bookingId={bookingId} kitchenName={booking.data.kitchen?.name}
+        kitchenImageUrl={booking.data.kitchen?.imageUrl || booking.data.kitchen?.galleryImages?.[0] || booking.data.kitchen?.photos?.[0] || null}
         bookingDate={booking.data.bookingDate} startTime={booking.data.startTime} endTime={booking.data.endTime}
         initialVisitId={Number.isSafeInteger(selectedVisitId) && selectedVisitId > 0 ? selectedVisitId : null}
         kitchenPhone={booking.data.kitchenContact?.phone}

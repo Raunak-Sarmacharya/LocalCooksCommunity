@@ -25,6 +25,7 @@ function details(): ManagerInspectionDetails {
 }
 let booking: ManagerInspectionDetails;
 let fetcher: ReturnType<typeof vi.fn>;
+let claims: any[] = [];
 let postError: string;
 let readError: boolean;
 let afterPostReadError: boolean;
@@ -51,11 +52,11 @@ async function clearButton() { return screen.findByRole('button', { name: 'Finis
 
 describe('manager inspection with isolated API mocks', () => {
   beforeEach(() => {
-    booking = details(); clients = []; state.role = 'manager'; postError = ''; readError = false; afterPostReadError = false; onRead = undefined;
+    booking = details(); claims = []; clients = []; state.role = 'manager'; postError = ''; readError = false; afterPostReadError = false; onRead = undefined;
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fetcher = vi.fn(async (url: string, options?: RequestInit) => {
       if (url.includes('filing-context')) return new Response(JSON.stringify({ allowed: true, deadline: '2026-10-15T19:07:23Z', endedAt: '2026-10-12T19:07:23Z', timezone: 'America/St_Johns', kitchenName: 'Mock kitchen', before: [], after: [] }));
-      if (url.includes('damage-claims') && options?.method !== 'POST') return new Response(JSON.stringify({ claims: [] }));
+      if (url.includes('damage-claims') && options?.method !== 'POST') return new Response(JSON.stringify({ claims }));
       if (url.includes('commitment-problems')) return new Response(JSON.stringify({ problems: [], reportingAvailable: true }));
       if (options?.method === 'POST') {
         if (postError) return new Response(JSON.stringify({ error: postError }), { status: 400 });
@@ -83,11 +84,13 @@ describe('manager inspection with isolated API mocks', () => {
     expect(screen.getByRole('region', { name: 'Manager shell' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Visit inspection' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByText('Mock kitchen')).toBeInTheDocument();
+    expect(screen.getByText('Mock visitor')).toBeInTheDocument();
+    expect(screen.getByText(/Kitchen session · Mock kitchen/)).toBeInTheDocument();
     expect(screen.getAllByText(/Newfoundland Time/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/America\/St_Johns/)).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Check-in code' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Inspect by:/)).toHaveTextContent('Oct 13, 2026, 1:07');
+    expect(screen.getByTestId('inspection-sentence')).toHaveTextContent('Mock visitor checked out at 4:37 p.m. Inspect by Oct 13, 1:07');
+    expect(document.body.textContent).not.toMatch(/2026/);
     expect(within(screen.getByRole('region', { name: 'About this visit' })).getByText(/Mon, Oct 12 · 11:00\s*p\.m\.\s*[–-]\s*Tue, Oct 13 · 1:00\s*a\.m\./)).toBeInTheDocument();
     expect(screen.getByText('Arrival message')).toBeInTheDocument(); expect(screen.getByText('Departure message')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Get help from Local Cooks' })).toHaveAttribute('href', '/manager/dashboard?view=support');
@@ -113,7 +116,7 @@ describe('manager inspection with isolated API mocks', () => {
     mount(); expect(await screen.findByText(/Choose a visit to see/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Finish inspection — all looks good' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Choose a visit to inspect'), { target: { value: '1002' } });
-    expect(screen.getByText(/Inspect by:/)).toHaveTextContent('Oct 13, 2026, 3:30');
+    expect(screen.getByTestId('inspection-sentence')).toHaveTextContent('Inspect by Oct 13, 3:30');
     fireEvent.change(screen.getByLabelText(/Note to Mock visitor/), { target: { value: 'Kitchen inspected and reset.' } });
     await confirmClear(await clearButton());
     await waitFor(() => expect(posts()).toHaveLength(1));
@@ -313,6 +316,21 @@ describe('manager inspection with isolated API mocks', () => {
     expect(within(screen.getByRole('region', { name: 'Add an arrival or departure' })).getByLabelText('Note to Mock visitor')).toHaveValue('Visitor confirmed departure by phone');
     expect(posts()[0][0]).toBe('/api/manager/bookings/901/assist-visit');
     expect(JSON.parse(posts()[0][1].body)).toMatchObject({ visitId: 1002, action: 'departure', expectedUpdatedAt: booking.updatedAt });
+  });
+
+  it('lists each damage claim as one line that links to the booking page, not as a full claim card', async () => {
+    claims = [{ id: 7, status: 'in_review', claimedAmountCents: 4500, amountCents: 4500, lines: [], history: [], evidence: [] }];
+    mount(); await clearButton();
+    const line = (await screen.findByText(/Damage claim · \$45\.00 · Local Cooks review/)).closest('li') as HTMLElement;
+    expect(within(line).getByRole('link', { name: 'See the claim on the booking page' })).toHaveAttribute('href', '/manager/booking/901');
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
+  it('keeps the inspection explainer behind a How this works toggle', async () => {
+    mount(); await clearButton();
+    const summary = screen.getByText('How this works');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    expect(summary.closest('details')).toHaveTextContent(/Compare arrival and departure photos/);
   });
 
   it('returns to the booking through the explicit back context', async () => {

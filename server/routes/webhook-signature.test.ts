@@ -4,7 +4,7 @@ const effects = vi.hoisted(() => ({ update: vi.fn(), release: vi.fn() }));
 vi.mock('../db', () => ({ db: { update: effects.update }, pool: null }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: (_req: unknown, _res: unknown, next: () => void) => next() }));
 vi.mock('../services/kitchen-checkout-holds', () => ({ releaseKitchenCheckout: effects.release }));
-import router from './webhooks';
+import router, { paymentReceivedNoticeApplies } from './webhooks';
 const handler = (router as any).stack.find((entry: any) => entry.route?.path === '/stripe').route.stack[0].handle;
 const stripe = new Stripe('sk_test_mock');
 const secret = 'whsec_isolated_audit';
@@ -12,6 +12,11 @@ const payload = JSON.stringify({ id: 'evt_signature_audit', type: 'checkout.sess
 const signature = (body = payload) => stripe.webhooks.generateTestHeaderString({ payload: body, secret });
 const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn() });
 describe('actual Stripe webhook signature boundary (no network)', () => {
+  it('keeps legacy capture notices but suppresses extension and booking-decision duplicates', () => {
+    expect(paymentReceivedNoticeApplies({ metadata: { type: 'session_extension' } }, {})).toBe(false);
+    expect(paymentReceivedNoticeApplies({ metadata: { type: 'kitchen_booking' } }, { bookingDecisionId: 'approved:10' })).toBe(false);
+    expect(paymentReceivedNoticeApplies({ metadata: { type: 'kitchen_booking' } }, {})).toBe(true);
+  });
   beforeEach(() => { vi.clearAllMocks(); vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); vi.stubEnv('STRIPE_WEBHOOK_SECRET', secret); });
   afterEach(() => vi.unstubAllEnvs());
   it.each(['production', 'development'])('rejects unsigned input in %s before releasing inventory', async mode => {

@@ -1,3 +1,5 @@
+import { SettingChangePreview } from './SettingChangePreview';
+import { useSettingImpact } from '@/lib/setting-impact';
 /**
  * Kitchen Check-In / Check-Out Unified Editor
  *
@@ -1930,6 +1932,9 @@ export function KitchenCheckinCheckoutEditor({
   onFlowToggleMouseDown,
   onFlowToggleKeyDown,
 }: KitchenCheckinCheckoutEditorProps) {
+  const impact = useSettingImpact(undefined, undefined, { location: setupLocationName, kitchen: previewKitchenName });
+  const consequencePreview = <SettingChangePreview whatChanges={mt("scpInstructionsWhat")} appliesTo={mt("scpInstructionsWhen")}
+    impact={impact} rightNow={impact ? mt("scpInstructionsImpact", { upcoming: impact.upcoming }) : undefined} undo={mt("scpInstructionsUndo")} />;
   const setupUx = coupledStages && setupLocationName !== undefined;
   const hasSavedOptional = useMemo(
     () => !!setupUx && items.some((item) => savedOptionalStages(item).length > 0),
@@ -2143,6 +2148,7 @@ export function KitchenCheckinCheckoutEditor({
         {tasksSection}
 
         {beforeReview}
+        <div className="p-4">{consequencePreview}</div>
 
         <SetupSection
           id="setup-review"

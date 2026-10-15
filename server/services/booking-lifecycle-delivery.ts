@@ -130,6 +130,12 @@ export function bookingEmailRetryDelayMs(failures: number) {
 /** Notifications and durable email/history evidence commit with the decision. */
 export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: number, kind: string, title: string,
   message: string, actorId?: number, metadata: Record<string, unknown> = {}, afterFailedAttempts = false) {
+  if (kind === 'visit_closed') {
+    const [existing] = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents).where(and(
+      eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, kind),
+      sql`COALESCE(${bookingLifecycleEvents.metadata}->>'visitId', 'booking') = ${String(metadata.visitId ?? 'booking')}`)).limit(1);
+    if (existing) return;
+  }
   const arrivalNotice = ['arrival_mode_changed', 'arrival_code_reissued'].includes(kind);
   await ensureServerI18n();
   if (kind === 'instructions_updated') {
@@ -255,7 +261,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     // Manager-only payout notices (payout after closeout); the operating date is a calendar date, read in UTC.
     const payoutCopy: { title: string; message: string; actionLabel: string; emailMessage?: string;
       facts?: Array<{ label: string; value: string; url?: string }>; actions?: Array<{ label: string; url: string }> } | undefined = kind === 'payout_released' || kind === 'payout_on_hold' ? await kitchenPayoutNotice(kind, person.locale,
-      { reference: String(metadata.reference || context.referenceCode || `#${bookingId}`), amountCents: Number(metadata.amountCents || 0),
+      { lines: metadata.lines as Array<{ kind: string; amountCents: number; minutes?: number }> | undefined, reference: String(metadata.reference || context.referenceCode || `#${bookingId}`), amountCents: Number(metadata.amountCents || 0),
         chef: nameOf(context.chefId) || null, date: context.bookingDate, timezone: 'UTC', startTime: context.startTime,
         chefPaidCents: typeof metadata.chefPaidCents === 'number' ? metadata.chefPaidCents : undefined, feeCents: Number(metadata.feeCents || 0),
         processingCents: typeof metadata.processingCents === 'number' ? metadata.processingCents : undefined,
@@ -268,6 +274,12 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         : kind === 'running_late' && !chef && !localCooks ? await managerRunningLateNotice(person.locale, { chef: nameOf(context.chefId) || null,
           minutes: Number(metadata.minutes), end: new Date(String(metadata.endsAt)), timezone: context.timezone || DEFAULT_TIMEZONE,
           note: typeof metadata.note === 'string' ? metadata.note : null }) : undefined;
+    const confirmedCopy = kind === 'confirmed' && !chef && !localCooks ? {
+      title: tEmail(person.locale, 'ncConfirmedTitle', { chef: nameOf(context.chefId) || 'the chef', date: new Intl.DateTimeFormat(person.locale || 'en-CA', { dateStyle: 'medium', timeZone: 'UTC' }).format(context.bookingDate) }),
+      message: confirmation?.payoutAfterCloseout ? tEmail(person.locale, 'ncConfirmedPayout') : message } : undefined;
+    const closedCopy = kind === 'visit_closed' && chef ? {
+      title: tEmail(person.locale, 'ncVisitCompleteTitle', { kitchen: context.kitchenName }),
+      message: tEmail(person.locale, metadata.inspectionOutcome === 'manager_cleared' ? 'ncVisitCompleteGood' : 'ncVisitCompleteInvoice', { kitchen: context.kitchenName }) } : undefined;
     // A producer may word the in-app notice per role; email content is rendered separately.
     const kitchenCaused = metadata.kitchenCaused === true && chef;
     const kitchenPath = kitchenCaused ? `/kitchen-preview/${context.locationId}?kitchenId=${context.kitchenId}` : undefined;
@@ -275,11 +287,11 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
         kitchenName: context.kitchenName, date: new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(context.bookingDate) })
       : (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     const roleActionLabel = (roleText as { actionLabel?: string } | undefined)?.actionLabel;
-    if (!arrivalNotice) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
+    if (!arrivalNotice && (metadata.notificationRecipientPolicy !== 'manager' || person.id === context.managerId)) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
+      title: confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
-    if ((arrivalNotice || person.email && operationalEmailAllowed(person)) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
+    if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
         ...(payoutCopy ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale, recipientName: nameOf(person.id),

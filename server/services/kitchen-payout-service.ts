@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 /**
  * Kitchen payout after closeout (docs/architecture/phase0/build-payout-after-closeout.md).
  *
@@ -28,6 +29,7 @@ export type ReleaseResult = { success: boolean; transferred?: boolean; deferred?
   overrideRecorded?: boolean; transferId?: string | null; reason?: string };
 
 const reference = (booking: { referenceCode: string | null; id: number }) => booking.referenceCode || `#${booking.id}`;
+const payoutNoticeTick = new AsyncLocalStorage<string>();
 const capturedStatuses = ['succeeded', 'partially_refunded', 'refunded'];
 
 /** Live booking facts for the release rules; reads only, never locks. */
@@ -86,7 +88,7 @@ export async function scheduleKitchenPayout(bookingId: number, tx: Tx, now = new
  * while Stripe is called; the transfer engine re-checks eligibility under its own source lock. `override` is the
  * support `release_payout` action: it releases over a reported-issue hold, never over an open support flag.
  */
-export async function releaseKitchenPayout(bookingId: number, reason: string, now = new Date(), options: { override?: boolean } = {}): Promise<ReleaseResult> {
+async function releaseKitchenPayoutInTick(bookingId: number, reason: string, now = new Date(), options: { override?: boolean } = {}): Promise<ReleaseResult> {
   const decided = await db.transaction(async (tx): Promise<{ result?: ReleaseResult; source?: Source }> => {
     // Sources before the parent, matching refund, transfer and support writers.
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, bookingId),
@@ -143,7 +145,7 @@ export async function releaseKitchenPayout(bookingId: number, reason: string, no
   return { success: result.transferred, transferred: result.transferred, transferId: result.transferId, reason: result.reason };
 }
 
-/** Called by transferToManagerForBooking in the same transaction that saved the transfer ID. Queues the notice once. */
+/** Called by transferToManagerForBooking in the same transaction that saved the transfer ID. Saves durable notice data; delivery waits until this transaction commits. */
 export async function recordReleasedPayout(id: number, result: TransferResult, tx: Tx) {
   const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, id)).limit(1);
   if (!source?.payoutReleasedAt) throw Error('A durable payout release decision is required.');
@@ -152,17 +154,53 @@ export async function recordReleasedPayout(id: number, result: TransferResult, t
   await tx.update(paymentTransactions).set({ transferId: result.transferId,
     managerRevenue: String(result.originalManagerNetCents ?? result.transferredCents),
     stripeProcessingFee: String(result.actualStripeFeeCents), serviceFee: String(result.platformCommissionCents), payoutHoldReason: null,
-    metadata: { ...saved, payoutSent: saved.payoutSent || { sentAt, amountCents: result.transferredCents },
+    metadata: { ...saved, payoutSent: saved.payoutSent || { sentAt, amountCents: result.transferredCents, noticeTick: payoutNoticeTick.getStore() || sentAt },
       transfer: { ...saved.transfer, transferred: true, transferredAt: saved.transfer?.transferredAt || sentAt,
         transferId: result.transferId, transferredCents: result.transferredCents } }, updatedAt: new Date() })
     .where(eq(paymentTransactions.id, id));
-  const [notice] = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents)
-    .where(and(eq(bookingLifecycleEvents.bookingId, source.bookingId), eq(bookingLifecycleEvents.kind, 'payout_released'),
-      sql`${bookingLifecycleEvents.metadata}->>'transactionId' = ${String(id)}`)).limit(1);
-  if (!notice) await queueBookingLifecycleEvent(tx, source.bookingId, 'payout_released', 'You’ve been paid',
-    `You’ve been paid $${(result.transferredCents / 100).toFixed(2)} for this booking. It’s on its way to your bank.`,
-    undefined, { recipientPolicy: 'manager', transactionId: id, amountCents: result.transferredCents, chefPaidCents: Number(source.amount),
-      feeCents: result.platformCommissionCents, processingCents: result.actualStripeFeeCents });
+}
+
+/** One release invocation is one tick; all transfer commits finish before its notice is queued. */
+export async function releaseKitchenPayout(bookingId: number, reason: string, now = new Date(), options: { override?: boolean } = {}): Promise<ReleaseResult> {
+  return payoutNoticeTick.run(now.toISOString(), async () => {
+    try { return await releaseKitchenPayoutInTick(bookingId, reason, now, options); }
+    finally { await flushReleasedPayoutNotices(bookingId).catch(error => logger.error('[Payout] Notice will retry from the sweep', { bookingId, error })); }
+  });
+}
+
+/** Durable, post-commit outbox. The booking lock serializes concurrent flushes and replay. */
+export async function flushReleasedPayoutNotices(bookingId: number) {
+  await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(74103, ${bookingId})`);
+    const rows = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, bookingId),
+      sql`${paymentTransactions.transferId} IS NOT NULL AND ${paymentTransactions.metadata}->'payoutSent'->>'noticeTick' IS NOT NULL`))
+      .orderBy(asc(paymentTransactions.id));
+    const pending = rows.filter(row => row.transferId && (row.metadata as any)?.payoutSent?.noticeTick && !(row.metadata as any)?.payoutSent?.noticeQueued);
+    for (const tick of Array.from(new Set(pending.map(row => (row.metadata as any).payoutSent.noticeTick as string)))) {
+      const existing = await tx.select({ metadata: bookingLifecycleEvents.metadata }).from(bookingLifecycleEvents).where(and(
+        eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, 'payout_released'),
+        sql`${bookingLifecycleEvents.metadata}->>'releaseTick' = ${tick}`));
+      const represented = new Set(existing.flatMap(event => (event.metadata as { transactionIds?: number[] }).transactionIds || []));
+      const tickRows = pending.filter(row => (row.metadata as any).payoutSent.noticeTick === tick);
+      const released = tickRows.filter(row => !represented.has(row.id));
+      const noticeKey = `${tick}:${released.map(row => row.id).join(',')}`;
+      const lines = released.map(row => ({ transactionId: row.id,
+        kind: (row.metadata as any)?.sessionExtensionId ? (row.metadata as any)?.extensionKind === 'extra_time' ? 'charge' : 'extension' : 'booking',
+        minutes: Number((row.metadata as any)?.extensionMinutes || (row.metadata as any)?.minutes || 0),
+        amountCents: Number((row.metadata as any).payoutSent.amountCents) }));
+      const sum = (read: (row: Source) => number) => released.reduce((total, row) => total + read(row), 0);
+      const amountCents = lines.reduce((total, line) => total + line.amountCents, 0);
+      if (released.length) await queueBookingLifecycleEvent(tx, bookingId, 'payout_released', `You’ve been paid $${(amountCents / 100).toFixed(2)}`,
+        `You’ve been paid $${(amountCents / 100).toFixed(2)} for this booking. It’s on its way to your bank.`, undefined,
+        { recipientPolicy: 'manager', releaseTick: tick, noticeKey, transactionIds: released.map(row => row.id), lines, amountCents,
+          chefPaidCents: sum(row => Number(row.amount)), feeCents: sum(row => Number(row.serviceFee)), processingCents: sum(row => Number(row.stripeProcessingFee)) });
+      for (const row of tickRows) {
+        // Each row is now represented; preserve concurrent money decisions when setting its marker.
+        await tx.update(paymentTransactions).set({ metadata: sql`jsonb_set(${paymentTransactions.metadata}, '{payoutSent,noticeQueued}', 'true'::jsonb)` })
+          .where(eq(paymentTransactions.id, row.id));
+      }
+    }
+  });
 }
 
 /** Re-checked by the transfer engine under its source lock, so a hold opened after the decision still wins. */
@@ -256,6 +294,10 @@ export async function upcomingKitchenPayouts(managerId: number) {
 export async function releaseDuePayouts(limit = 3) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Payout batch must be between one and three.');
   const now = new Date();
+  const unannounced = await db.select({ bookingId: paymentTransactions.bookingId }).from(paymentTransactions).where(
+    sql`${paymentTransactions.transferId} IS NOT NULL AND ${paymentTransactions.metadata}->'payoutSent'->>'noticeTick' IS NOT NULL
+      AND COALESCE(${paymentTransactions.metadata}->'payoutSent'->>'noticeQueued', 'false') <> 'true'`).orderBy(asc(paymentTransactions.id)).limit(limit);
+  for (const bookingId of Array.from(new Set(unannounced.map(row => row.bookingId)))) await flushReleasedPayoutNotices(bookingId);
   const rows = await db.select({ id: paymentTransactions.id, bookingId: paymentTransactions.bookingId,
     extensionId: sql<string | null>`${paymentTransactions.metadata}->>'sessionExtensionId'` }).from(paymentTransactions)
     .where(and(eq(paymentTransactions.payoutTiming, 'after_closeout'), isNull(paymentTransactions.transferId),
@@ -272,7 +314,7 @@ export async function releaseDuePayouts(limit = 3) {
       // A session-extension charge follows its parent's release; it is never released on its own schedule.
       const result = row.extensionId ? await (await import('./session-extension-payout')).releaseSessionExtensionPayoutForSource(row.id, now)
         : await releaseKitchenPayout(row.bookingId, 'closeout_sweep', now);
-      if (result.transferred) released++;
+      if (result.transferred) { released++; if (row.extensionId) await flushReleasedPayoutNotices(row.bookingId); }
     }
     catch (error) {
       if (isWorkerBudgetError(error)) throw error;

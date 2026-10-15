@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { friendlyDateTime } from '@/lib/friendly-date';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { compareHistoryEvents, type BookingHistoryResponse } from '@shared/booking-history';
@@ -31,7 +32,8 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
     },
   });
   const money = (cents: number) => new Intl.NumberFormat(i18n.resolvedLanguage || 'en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(cents / 100);
-  const when = (value: string, _compact = false) => timezone ? formatVisitTime(value, timezone, i18n.resolvedLanguage) : t('historyTimeUnavailable');
+  // "Oct 15 at 8:00 p.m."; the year only when it isn't this year. Neutral dots: brand red is reserved for the one primary action.
+  const when = (value: string, _compact = false) => timezone ? friendlyDateTime(value, i18n.resolvedLanguage || 'en-CA', timezone) : t('historyTimeUnavailable');
   return <section aria-label={t('historyTitle')} className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-sm font-semibold leading-5">{t('historyTitle')}</h2>
@@ -50,7 +52,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
           <ol className="relative space-y-4 before:pointer-events-none before:absolute before:bottom-0 before:left-[5.5px] before:top-2 before:w-px before:bg-border">
             {events.map((event, index) => <li key={event.key} className="relative min-w-0 space-y-1 pl-5">
               {index === events.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 top-2 w-3 bg-card" />}
-              <span data-testid="booking-history-dot" aria-hidden="true" className="absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full bg-primary" />
+              <span data-testid="booking-history-dot" aria-hidden="true" className={`absolute left-0.5 top-1 z-10 h-2 w-2 rounded-full ${index === events.length - 1 ? 'bg-foreground/70' : 'bg-muted-foreground/40'}`} />
               <div className="grid min-w-0 items-start gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
                 <p className="min-w-0 break-words font-medium leading-4">{event.kind === 'cancelled' && cancelCause && ['declined', 'expired', 'withdrawn'].includes(cancelCause)
                   ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')

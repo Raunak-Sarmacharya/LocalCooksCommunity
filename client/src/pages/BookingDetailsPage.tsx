@@ -1,24 +1,31 @@
 import { ct } from '@/i18n/chef-ns';
 import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus';
-import { ClockCloseoutSummary } from "@/components/booking/ClockCloseoutSummary";
 import { bookingStatusLabel } from "@/components/booking/booking-status-label";
 import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
 import BookingPreparation from "@/components/booking/BookingPreparation";
 import { KitchenBookingChanges } from '@/components/booking/KitchenBookingChanges';
 import { BookingCancellationChooser } from '@/components/booking/BookingCancellationChooser';
-import { CancellationBookingCard } from '@/components/booking/CancellationBookingCard';
+import { BookingCancellationCard } from '@/components/booking/BookingCancellationCard';
 import { KitchenCausedCancellation } from '@/components/booking/KitchenCausedCancellation';
-import { BookingRefundPolicyNotice } from '@/components/booking/BookingRefundPolicyNotice';
 import { BookingHistoryPanel } from '@/components/booking/BookingHistoryPanel';
 import { BookingFeedbackCard } from '@/components/booking/BookingFeedbackCard';
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
-import { BookingDamageClaims } from '@/components/booking/DamageClaimCards';
-import { ManagerDamageClaimEntry } from '@/components/booking/ManagerDamageClaimEntry';
+import { ManagerDamageClaimEntry, claimFilingOpen } from '@/components/booking/ManagerDamageClaimEntry';
+import { BookingNowCard, ClampedBlock, NowClaimRows, chefCanPayClaim, closedClaimLine, closedClaims, nowClaims, type NowSecondaryLink } from '@/components/booking/BookingNowCard';
+import { BookingVisitRecord, type VisitTimelineEvent } from '@/components/booking/BookingVisitRecord';
+import { BookingPaymentCard, paymentStatusSource } from '@/components/booking/BookingPaymentCard';
+import { StorageRows, EquipmentRows } from '@/components/booking/BookingAddOns';
+import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
+import { formatBookedDuration } from '@/lib/booked-duration';
+import { friendlyDate, friendlyDateTime } from '@/lib/friendly-date';
+import { claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
+import { canReportRunningLate } from '@shared/running-late';
+import { cn } from '@/lib/utils';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
-import { StorageIcon as Package, EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
+import { EquipmentIcon as Wrench } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { calendarDateForBookingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
-import { useState, useEffect, useMemo, useRef, type ComponentType } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { formatTime as formatKitchenClock } from "@/lib/formatters";
 import { useLocation, useRoute } from "wouter";
@@ -27,16 +34,15 @@ import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ManagerBookingLayout from "@/layouts/ManagerBookingLayout";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
-import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, Info, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
-import { arrivalRecorded, bookedHours, bookingHeaderPhase, bookingPillTone, bookingPrimaryAction, canCancelOrChange, canMessage, contactVisible, initials, sentence, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
+import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
+import { arrivalRecorded, bookedMinutes, bookingHeaderPhase, canCancelOrChange, canMessage, contactVisible, initials, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
 import { bookingReference } from '@/lib/booking-reference';
 import { bookingStartDateKey, calendarDateKey } from '@/lib/calendar-date';
@@ -45,16 +51,15 @@ import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown 
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
 import { BookingManagementDialog, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementDialog";
 import { BookingAttendancePanel } from "@/components/booking/BookingAttendancePanel";
 import { RunningLateCard } from "@/components/booking/RunningLateCard";
-import { SessionExtensionsCard } from "@/components/booking/SessionExtensionsCard";
+import { SessionExtensionsCard, type ExtensionTool } from "@/components/booking/SessionExtensionsCard";
 import type { RunningLateState } from "@shared/running-late";
-import { VisitCodePanel } from "@/components/manager/bookings/VisitCodePanel";
-import { ManagerInSessionBadge, inSessionEnds } from "@/components/manager/bookings/ManagerInSessionBadge";
+import { VisitCodePanel, POLL_LEAD_MINUTES } from "@/components/manager/bookings/VisitCodePanel";
 import { bookingResponseDeadline, formatResponseDeadline } from '@/lib/booking-response-deadline';
 import { createBookingDateTime, friendlyTimezoneName } from '@shared/timezone-utils';
 import { lateCheckoutOpen } from '@shared/clock-closeout';
@@ -64,8 +69,25 @@ import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
-import { CheckinPolicyTimesCard } from "@/components/booking/CheckinPolicyTimesCard";
 import { RefundRequestStatus, type FullRefundRequest } from "@/components/booking/RefundRequestStatus";
+
+// The map preview is optional and heavy (Leaflet): loaded only when a kitchen has coordinates.
+const LocationMap = lazy(() => import("@/components/ui/location-map"));
+
+/** Media-query state; false where matchMedia is unavailable (tests, SSR). */
+function useMedia(query: string) {
+  const read = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+  const [matches, setMatches] = useState(read);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const list = window.matchMedia(query);
+    const update = () => setMatches(list.matches);
+    update();
+    list.addEventListener?.("change", update);
+    return () => list.removeEventListener?.("change", update);
+  }, [query]);
+  return matches;
+}
 
 interface BookingDetails {
   payout?: import('@shared/kitchen-payout').KitchenPayout;
@@ -117,6 +139,9 @@ interface BookingDetails {
     instructionsReleaseAt?: string;
     timezone?: string;
     cancellationPolicyHours?: number;
+    /** Present when the server sends them; the chef's map preview needs both. */
+    latitude?: number | null;
+    longitude?: number | null;
   };
   arrivalMode?: 'staffed' | 'self' | 'mixed' | 'legacy';
   chef?: {
@@ -193,6 +218,9 @@ interface BookingDetails {
   checkoutEnabled?: boolean;
   checkinWindowMinutesBefore?: number;
   noShowGraceMinutes?: number;
+  /** Extra time and claim payments on this booking (their own payment rows). `kitchenShareCents` only in the manager view. */
+  additionalCharges?: Array<{ id: number; kind: 'extension' | 'extra_time' | 'damage_claim'; minutes: number | null; amountCents: number;
+    kitchenShareCents?: number; refundedCents: number; paidAt: string | null; status: string }>;
   /** The chef's latest "running late" heads-up to the kitchen. */
   runningLate?: RunningLateState | null;
   visits?: Array<{ id: number; updatedAt: string; blockIndex: number; startTime: string; endTime: string; checkinStatus: string; checkedInAt: string | null; checkoutRequestedAt: string | null; checkedOutAt: string | null; checkoutApprovedAt: string | null; noShowDetectedAt: string | null; checkoutManagerMessage?: string | null }>;
@@ -263,10 +291,18 @@ export default function BookingDetailsPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [kitchenCancelOpen, setKitchenCancelOpen] = useState(false);
   const { t: policyT } = useTranslation('booking');
+  const bt = policyT as unknown as (key: string, options?: Record<string, unknown>) => string;
   const [fixOpen, setFixOpen] = useState(false);
   // "Record when they left" opens Fix the visit record straight on the departure choice.
   const [fixAction, setFixAction] = useState<'departure' | undefined>();
-  const [codeShowsArrival, setCodeShowsArrival] = useState(false);
+  const [lateOpen, setLateOpen] = useState(false);
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [extTools, setExtTools] = useState<ExtensionTool[]>([]);
+  const [extTool, setExtTool] = useState<ExtensionTool | null>(null);
+  const [payingClaimId, setPayingClaimId] = useState<number | null>(null);
+  // The primary sits in the sticky bar below 640 px and in the card above it, never both (one in the document).
+  const narrow = useMedia("(max-width: 639px)");
+  const wide = useMedia("(min-width: 1024px)");
   const queryClient = useQueryClient();
 
   // When the chef clicks a sidebar tab from this booking-detail sub-page, we
@@ -448,22 +484,14 @@ export default function BookingDetailsPage() {
     });
   };
 
+  // "Oct 15" / "Oct 15 at 8:00 p.m."; the year only when it isn't this year (the when-line already names the zone).
   const formatShortDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T12:00:00Z` : dateStr);
-    return date.toLocaleDateString(i18n.language, {
-      timeZone: booking?.location?.timezone || undefined,
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return friendlyDate(date, i18n.language, booking?.location?.timezone || undefined);
   };
 
-  const formatEventTimestamp = (dateStr: string) => new Intl.DateTimeFormat(i18n.language, {
-    dateStyle: 'medium',
-    timeStyle: 'short', hour12: true,
-    timeZone: booking?.location?.timezone || undefined,
-  }).format(new Date(dateStr));
+  const formatEventTimestamp = (dateStr: string) => friendlyDateTime(dateStr, i18n.language, booking?.location?.timezone || undefined);
 
   const formatCurrency = (cents: number | undefined | null) => {
     if (cents === undefined || cents === null) return "$0.00";
@@ -550,12 +578,17 @@ export default function BookingDetailsPage() {
   };
 
   const responseDeadline = booking ? bookingResponseDeadline(booking) : null;
-  const responseDeadlineText = responseDeadline ? formatResponseDeadline(responseDeadline, i18n.language, booking?.location?.timezone || undefined) : null;
+  const responseDeadlineText = responseDeadline ? friendlyDateTime(responseDeadline, i18n.language, booking?.location?.timezone || undefined) : null;
 
   const paymentMessage = (() => {
     if (!booking) return null;
     if (booking.paymentDecision?.state === 'pending') return { summary: t('bdPaymentRecovery'), detail: t('bdPaymentRecovery') };
     const status = booking.paymentStatus;
+    const captured = ['paid', 'partially_refunded', 'refunded'].includes(status || '');
+    const ended = ['cancelled', 'rejected', 'expired', 'declined'].includes(booking.status);
+    if (!isManagerView && !captured && ended) return { summary: t('bnHoldReleased'), detail: t('bdAuthVoidedChef') };
+    if (!isManagerView && !captured && booking.status === 'pending')
+      return { summary: t('bnChargedOnlyIfAccepts', { kitchen: booking.kitchen?.name || t('bdKitchenBookingFallback') }), detail: t('bdPaymentHeldChef') };
     if (status === 'authorized') return { summary: isManagerView ? t('bdPaymentHeldSummaryManager') : t('bdPaymentHeldSummary', { defaultValue: 'Your payment is on hold.' }), detail: t(isManagerView ? 'bdPaymentHeldManager' : 'bdPaymentHeldChef') };
     if (status === 'failed' && booking.status === 'cancelled') return { summary: isManagerView ? t('bdAuthVoidedSummaryManager') : t('bdAuthVoidedSummary', { defaultValue: 'Your payment hold was released.' }), detail: t(isManagerView ? 'bdAuthVoidedManager' : 'bdAuthVoidedChef') };
     const goodwill = booking.paymentTransaction?.goodwillRefundCents || 0;
@@ -589,7 +622,7 @@ export default function BookingDetailsPage() {
   })();
 
   // The real start–end span of every visit, so an early start or extension always shows (never a stale stored count).
-  const calculateDuration = () => booking ? bookedHours({ closeoutVisits: booking.closeout?.visits, visits: booking.visits,
+  const calculateMinutes = () => booking ? bookedMinutes({ closeoutVisits: booking.closeout?.visits, visits: booking.visits,
     startTime: booking.startTime, endTime: booking.endTime, durationHours: booking.durationHours }) : 0;
 
   // ── Payment state helpers ─────────────────────────────────────────────────
@@ -1136,41 +1169,29 @@ export default function BookingDetailsPage() {
   const payoutTitle = booking?.paymentStatus === 'authorized' ? t('bdEstimatedPayout', { defaultValue: 'Estimated payout' }) : t('bdYourPayout', { defaultValue: 'Your payout' });
   const chefTotalLabel = booking?.paymentStatus === 'authorized' ? t('bdAmountAuthorized') : t('bdAmountCharged');
   // Headline figure reuses the same shared breakdown builders the itemized list renders (display only).
+  const paymentCaptured = ['paid', 'partially_refunded', 'refunded'].includes(booking?.paymentStatus || '');
+  const bookingEnded = ['cancelled', 'rejected', 'expired', 'declined'].includes(booking?.status || '');
+  // Extra time and claim payments are their own charges; the chef's total includes what they paid, the kitchen's its share.
+  const extraCharges = paymentCaptured ? (booking?.additionalCharges || []) : [];
+  const extraCents = (line: NonNullable<BookingDetails['additionalCharges']>[number]) => isManagerView ? (line.kitchenShareCents ?? 0) : line.amountCents;
+  const extraTotalCents = extraCharges.reduce((sum, line) => sum + extraCents(line), 0);
   const paymentHeadline = (() => {
     if (!booking?.paymentTransaction || !pricingBreakdownInput || booking.paymentDecision?.state === 'pending'
-      || (booking.paymentStatus === 'failed' && booking.status === 'cancelled')) return null;
-    if (isManagerView) return { label: payoutTitle, cents: booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents, struck: false };
-    return { label: booking.paymentStatus === 'authorized' ? t('bdhOnHold') : t('bdhTotalPaid'), cents: buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
+      || (!paymentCaptured && bookingEnded)) return null;
+    if (isManagerView) return { label: payoutTitle, struck: false,
+      cents: (booking.payout?.timing === 'after_closeout' ? booking.payout.amountCents : buildKitchenPayoutStatementBreakdown(pricingBreakdownInput).kitchenNetPayoutCents) + extraTotalCents };
+    // Before capture it is only a hold on the card; "Total paid" appears once the money was actually taken.
+    if (!paymentCaptured) return { label: t('bnCardHold'), cents: booking.paymentTransaction.amount || buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents, struck: false };
+    return { label: t('bdhTotalPaid'), cents: buildChefBookingReceiptBreakdown(pricingBreakdownInput).totalPaidCents + extraTotalCents, struck: false };
   })();
-  const renderChefCheckinPolicy = (startTime: string) => {
-    if (!booking || isManagerView || booking.checkinWindowMinutesBefore == null || booking.noShowGraceMinutes == null) return null;
-    return (
-      <CheckinPolicyTimesCard
-        className="border-t pt-4"
-        showIntro={false}
-        layout="responsive"
-        bookingDate={booking.bookingDate}
-        startTime={startTime}
-        operatingWindowStartTime={booking.operatingWindowStartTime || booking.startTime}
-        timezone={booking.location?.timezone}
-        checkinWindowMinutesBefore={booking.checkinWindowMinutesBefore}
-        noShowGraceMinutes={booking.noShowGraceMinutes}
-        earlyAction={canMessage(booking.status) ? (
-          <Button type="button" variant="link" size="sm" className="h-auto p-0" disabled={openingConversation} onClick={() => void openBookingConversation()}>{t('rlArrivedEarly')}</Button>
-        ) : undefined}
-      />
-    );
-  };
-
-  // Main booking content
+  // ── State, times and facts for the Now card (design-booking-consolidation.md §2) ─────────────────────────────
   const hasMultipleVisits = (booking?.visits?.length ?? 0) > 1;
   const tz = booking?.location?.timezone || undefined;
   const lang = i18n.language;
-  const inspectionDue = booking?.closeout?.visits?.[0]?.inspection?.deadline;
+  const closeoutVisits = booking?.closeout?.visits || [];
+  const inspectionDue = closeoutVisits[0]?.inspection?.deadline;
   const inspectionDueText = inspectionDue ? formatEventTimestamp(inspectionDue) : null;
-  const inspectionCanRespond = !!booking?.closeout?.visits?.some(visit => visit.inspection.canRespond);
-  // The kitchen's review window is still open (due or not yet due).
-  const inspectionOpen = !!booking?.closeout?.visits?.some(visit => ['not_due', 'due'].includes(visit.inspection.outcome));
+  const inspectionCanRespond = closeoutVisits.some(visit => visit.inspection.canRespond);
   const visitBounds = (() => {
     if (!booking || !tz) return null;
     try {
@@ -1184,9 +1205,8 @@ export default function BookingDetailsPage() {
     status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
     inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
-  const primary = bookingPrimaryAction(phase, isManagerView, inspectionCanRespond);
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
-  const findAnotherTimeHref = booking && !isManagerView && cancelCause === 'declined' && (booking.location?.id ?? booking.kitchen?.locationId)
+  const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   const chefName = booking?.chef?.fullName || booking?.chef?.username || t('bdhChefFallback');
   const kitchenName = booking?.kitchen?.name || t('bdKitchenBookingFallback');
@@ -1194,15 +1214,13 @@ export default function BookingDetailsPage() {
   const visitStarted = !!booking && (['in_booked_time', 'booked_time_ended', 'ended'].includes(booking.closeout?.phase || '')
     || ![null, undefined, '', 'not_checked_in'].includes(booking.checkinStatus) || booking.status === 'completed'
     || (booking.visits || []).some(visit => visit.checkinStatus !== 'not_checked_in'));
-  const visitOver = ['checkout_review', 'visit_ended', 'completed', 'no_show', 'issue'].includes(phase);
-  const shortWhen = (value: Date | string) => {
-    try { return new Intl.DateTimeFormat(lang, { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value)); }
-    catch { return ''; }
-  };
+  const shortWhen = (value: Date | string) => { try { return friendlyDateTime(value, lang, tz); } catch { return ''; } };
   const clockTime = (value: Date | string) => {
     try { return new Intl.DateTimeFormat(lang, { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value)); }
     catch { return ''; }
   };
+  const zoneName = tz ? friendlyTimezoneName(tz, lang) : '';
+  const withZone = (value: Date | string) => `${clockTime(value)}${zoneName ? ` ${zoneName}` : ''}`;
   const cancellationCutoff = (() => {
     if (!booking) return null;
     try { return kitchenRescheduleCutoff(bookingChangeSchedule(booking), booking.cancellationPolicyHours ?? booking.location?.cancellationPolicyHours ?? 24); } catch { return null; }
@@ -1220,75 +1238,54 @@ export default function BookingDetailsPage() {
   const inspectionVisitId = booking?.visits?.length === 1 ? booking.visits[0].id
     : booking?.visits?.find(visit => visit.checkinStatus === 'checkout_requested')?.id;
   const inspectionHref = booking ? `/manager/booking/${booking.id}/inspection${inspectionVisitId ? `?visitId=${inspectionVisitId}` : ''}` : '';
-
   // The booked end (after any extension) of the visit the chef is still checked in to.
-  const overstayEndAt = booking?.closeout?.visits?.find(visit => visit.arrivalRecorded && lateCheckoutOpen(visit))?.scheduledEndAt ?? visitBounds?.endAt ?? null;
-  const nextStep = (() => {
-    if (!booking) return '';
-    const chef = chefName;
-    switch (phase) {
-      case 'pending':
-        if (responseDeadlineText) return isManagerView ? t('bdManagerRespondBy', { deadline: responseDeadlineText }) : t('bdRequestSentBanner', { kitchen: kitchenName, deadline: responseDeadlineText });
-        return isManagerView ? t('bdhNextManagerPending') : t('bdhNextChefPending', { kitchen: kitchenName });
-      case 'cancellation_requested': return isManagerView ? t('bdhNextManagerCancellationRequested', { chef }) : t('cancelCopy07');
-      case 'cancelled':
-        if (cancelCause === 'declined' || cancelCause === 'expired' || cancelCause === 'withdrawn') {
-          return t(`bdhNext${isManagerView ? 'Manager' : 'Chef'}_${cancelCause}`, { chef, kitchen: kitchenName });
-        }
-        return isManagerView ? t('bdhNextManagerCancelled') : t('bdhNextChefCancelled');
-      case 'confirmed': case 'today': {
-        if (isManagerView) return phase === 'today' && visitBounds ? t('bdhNextManagerToday', { chef, time: clockTime(visitBounds.startAt) }) : t('bdhNextManagerUpcoming', { chef });
-        const releaseAt = booking.location?.instructionsReleaseAt;
-        if (booking.location?.instructionsReleased === false && releaseAt && Date.parse(releaseAt) > Date.now()) return t('bdhNextChefDetailsAt', { time: shortWhen(releaseAt) });
-        return visitBounds ? t('bdhNextChefDetailsReady', { time: shortWhen(visitBounds.opensAt) }) : t('bdhNextChefConfirmed');
-      }
-      case 'checkin_open':
-        if (!isManagerView) return visitBounds && Date.now() >= visitBounds.startAt.getTime()
-          ? `${t('bdhNextChefCheckinOpen')} ${t('kciBookingStillEnds', { end: `${clockTime(visitBounds.endAt)} ${friendlyTimezoneName(tz, lang)}` })}`
-          : t('bdhNextChefCheckinOpen');
-        return visitBounds && Date.now() < visitBounds.startAt.getTime() ? t('bdhNextManagerToday', { chef, time: clockTime(visitBounds.startAt) }) : t('bdhNextManagerNotArrived', { chef });
-      case 'in_session':
-        return isManagerView ? t('bdhNextManagerInSession', { chef, time: visitBounds ? clockTime(visitBounds.endAt) : '' })
-          : t('bdhNextChefInSession', { time: visitBounds ? clockTime(visitBounds.endAt) : '' });
-      case 'time_ended_in_session': {
-        const end = overstayEndAt ? `${clockTime(overstayEndAt)} ${friendlyTimezoneName(tz, lang)}` : '';
-        return isManagerView ? t('bdhNextManagerTimeEnded', { chef, end }) : t('bdhNextChefTimeEnded', { end, kitchen: kitchenName });
-      }
-      case 'checkout_review':
-        if (isManagerView && inspectionCanRespond && booking.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt)
-          return t('bdhNextManagerReviewPayout', { chef, amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) });
-        if (isManagerView) return inspectionDueText ? t('bdhNextManagerReviewBy', { chef, time: inspectionDueText }) : t('bdhNextManagerReview', { chef });
-        return inspectionDueText && inspectionOpen ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete');
-      case 'visit_ended':
-        if (isManagerView) return inspectionCanRespond && inspectionDueText ? t('bdhNextManagerInspectBy', { time: inspectionDueText }) : t('bdhNextManagerMissed');
-        return t('bdhNextChefMissed');
-      case 'completed': return isManagerView ? t('bdhNextManagerCompleted')
-        : inspectionDueText && inspectionOpen && booking.status !== 'completed' ? t('bdVisitCompleteReview', { time: inspectionDueText }) : t('bdVisitComplete');
-      case 'no_show': return isManagerView ? t('bdhNextManagerNoShow') : t('kciStatusNoShow');
-      case 'issue': return isManagerView ? t('bdhNextManagerIssue') : t('bdhNextChefIssue');
-    }
-  })();
-  const pillKey = phase === 'cancelled' && (cancelCause === 'declined' || cancelCause === 'expired') ? `bdhPill_${cancelCause}`
-    : phase === 'checkout_review' && !isManagerView ? 'bdhPill_checkout_submitted'
-    : phase === 'checkin_open' ? 'bdhPill_today' : phase === 'time_ended_in_session' ? 'bdhPill_in_session' : `bdhPill_${phase}`;
-  const pillTone = bookingPillTone(phase);
-  const pillClass: Record<typeof pillTone, string> = {
-    amber: 'border-amber-200 bg-amber-50 text-amber-900', blue: 'border-sky-200 bg-sky-50 text-sky-900',
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-900', purple: 'border-violet-200 bg-violet-50 text-violet-900',
-    neutral: 'border-border bg-muted text-foreground', grey: 'border-border bg-muted text-muted-foreground', red: 'border-red-200 bg-red-50 text-red-900',
-  };
-  const dotClass: Record<typeof pillTone, string> = {
-    amber: 'bg-amber-500', blue: 'bg-sky-500', green: 'bg-emerald-500', purple: 'bg-violet-500', neutral: 'bg-foreground/60', grey: 'bg-muted-foreground', red: 'bg-red-500',
-  };
+  const overstayEndAt = closeoutVisits.find(visit => visit.arrivalRecorded && lateCheckoutOpen(visit))?.scheduledEndAt ?? visitBounds?.endAt ?? null;
+  const nowMs = Date.now();
+  const startPassed = !!visitBounds && nowMs >= visitBounds.startAt.getTime();
+  const runningLateOpen = !isManagerView && !!booking && !!visitBounds
+    && canReportRunningLate({ status: booking.status, checkedIn: visitStarted, start: visitBounds.startAt, end: visitBounds.endAt }, nowMs);
+  const runningLateSent = !!booking?.runningLate && booking.status === 'confirmed' && !visitStarted && !!visitBounds && nowMs < visitBounds.endAt.getTime();
+  const checkoutAt = booking?.checkoutRequestedAt || booking?.visits?.find(visit => visit.checkoutRequestedAt)?.checkoutRequestedAt || null;
+  const inspectionOutcome = closeoutVisits.length && closeoutVisits.every(visit => visit.inspection.outcome === 'manager_cleared') ? 'manager_cleared'
+    : closeoutVisits.some(visit => visit.inspection.outcome === 'auto_closed_uninspected') ? 'auto_closed_uninspected' : null;
+  const inspectedAt = inspectionOutcome === 'manager_cleared' ? closeoutVisits.at(-1)?.inspection.closedAt : null;
+  const releaseAt = booking?.location?.instructionsReleaseAt;
+  const detailsReleaseAt = booking?.location?.instructionsReleased === false && releaseAt && Date.parse(releaseAt) > nowMs ? shortWhen(releaseAt) : null;
+  const bookedEndAt = closeoutVisits.at(-1)?.scheduledEndAt ?? visitBounds?.endAt ?? null;
+  const claimWindowOpen = isManagerView && !!booking && ['confirmed', 'completed'].includes(booking.status) && visitStarted
+    && claimFilingOpen({ bookedEndAt, departure: booking });
+  const upcoming = ['pending', 'confirmed', 'today', 'checkin_open'].includes(phase);
+  const messageAllowed = !!booking && canMessage(booking.status);
 
-  const whenLine = booking ? [
-    visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
-      : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
-    timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
-    t('bdHours', { count: calculateDuration() }),
-    tz ? friendlyTimezoneName(tz, lang) : null,
-  ].filter(Boolean).join(' · ') : '';
-  const mapsHref = booking?.location?.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location.address)}` : null;
+  const now = bookingNowContent({ phase, role: isManagerView ? 'manager' : 'chef', t, facts: {
+    chef: chefName, kitchen: kitchenName, cancelCause, status: booking?.status,
+    responseDeadline: responseDeadlineText, detailsReleaseAt,
+    opensAt: visitBounds ? shortWhen(visitBounds.opensAt) : null,
+    startClock: visitBounds ? clockTime(visitBounds.startAt) : null,
+    endClock: visitBounds ? clockTime(visitBounds.endAt) : null,
+    endWithZone: visitBounds ? withZone(visitBounds.endAt) : null,
+    overstayEndWithZone: overstayEndAt ? withZone(overstayEndAt) : null,
+    startPassed,
+    runningLate: !isManagerView && runningLateSent && booking?.runningLate ? { duration: t(`rlDurationShort${booking.runningLate.minutes}`) } : null,
+    arrivalMode: booking?.arrivalMode,
+    checkedInClock: booking?.checkedInAt ? clockTime(booking.checkedInAt) : null,
+    checkedInMethod: booking?.checkedInMethod,
+    checkoutClock: checkoutAt ? clockTime(checkoutAt) : null,
+    inspectionCanRespond, inspectionDue: inspectionDueText,
+    payoutReview: isManagerView && booking?.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt
+      ? { amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) } : null,
+    inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
+    canCancel: chefCanCancel, canAddToCalendar: !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
+    canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
+  } });
+  const primary = now.primary;
+
+  // Claims (same query the claim cards use); open ones join the Now card, closed ones the visit details.
+  const claimsQuery = useQuery({ queryKey: ['damage-claims', booking?.id ?? 0], enabled: !!booking && ['confirmed', 'completed'].includes(booking.status),
+    queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${booking!.id}/damage-claims`), retry: false });
+  const claims = claimsQuery.data?.claims;
+  const payableClaim = !isManagerView ? nowClaims(claims, false).find(chefCanPayClaim) : undefined;
+  const claimTakesPrimary = !primary && !!payableClaim;
 
   const primaryLabel = primary === 'review_request' ? t('bdTakeAction') : primary === 'review_cancellation' ? t('bdhReviewCancellation')
     : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? (phase === 'in_session' || phase === 'time_ended_in_session' ? t('bdhCheckOut') : t('bdhOpenVisit')) : '';
@@ -1299,62 +1296,91 @@ export default function BookingDetailsPage() {
     else if (primary === 'review_checkout' || primary === 'inspect_visit') navigate(inspectionHref);
     else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit`);
   };
+  const primaryBusy = (primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing);
   const primaryButton = (testId: string, className?: string) => primary && (
-    <Button type="button" className={className} data-testid={testId} data-primary-action="true" onClick={runPrimary}
-      disabled={(primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing)}>
-      {(primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing) ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+    <Button type="button" className={cn('min-h-11', className)} data-testid={testId} data-primary-action="true" onClick={runPrimary} disabled={primaryBusy}>
+      {primaryBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
       {primaryLabel}
     </Button>
   );
-  const messageAllowed = !!booking && canMessage(booking.status);
   const messageLabel = openingConversation ? t('detailsCopy18') : isManagerView ? t('detailsCopy19') : t('detailsCopy20');
   const messageButton = (className?: string) => messageAllowed && (
-    <Button type="button" variant="outline" className={className} onClick={() => void openBookingConversation()} disabled={openingConversation}>
+    <Button type="button" variant="outline" className={cn('min-h-11', className)} onClick={() => void openBookingConversation()} disabled={openingConversation}>
       <MessageSquare className="mr-1.5 h-4 w-4" aria-hidden />{messageLabel}
     </Button>
   );
   const goToHelp = () => document.getElementById('booking-support')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-  const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
-  if (isManagerView && booking?.status === 'confirmed') menuItems.push({ key: 'kitchen-cancel', label: policyT('cpKitchenCancel'), icon: CalendarX, onSelect: () => setKitchenCancelOpen(true) });
-  if (chefCanCancel) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
-  // Whole-booking cancellation is "Cancel as the kitchen" only; "Change booking" is add-on cancellation and partial refunds.
-  if (managerCanManage) menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : booking?.status === 'confirmed' ? t('bdhChangeBooking') : t('bdhReviewCancellation'), icon: CalendarX, onSelect: openManagementDialog });
-  if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
-    if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
-    menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => { setFixAction(undefined); setFixOpen(true); } });
-  }
-  if (canDownload) menuItems.push({ key: 'download', label: isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt'), icon: Download, onSelect: () => void handleDownloadInvoice() });
-  menuItems.push({ key: 'help', label: t('bdhGetHelp'), icon: LifeBuoy, onSelect: goToHelp });
-  const hasBottomBar = !!primary || messageAllowed;
-
   const addToCalendar = () => {
     if (!booking || !visitBounds) return;
     const ics = bookingIcs({ uid: `booking-${booking.id}`, title: t('bdhCalendarTitle', { kitchen: kitchenName }), start: visitBounds.startAt, end: visitBounds.endAt,
       location: [booking.location?.name, booking.location?.address].filter(Boolean).join(', '), description: booking.referenceCode || undefined });
     downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
   };
+  const openFix = (action?: 'departure') => { setFixAction(action); setFixOpen(true); };
+  const downloadLabel = isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
 
-  const renderVisitRows = () => booking && hasMultipleVisits && (booking.status === 'confirmed' || booking.status === 'completed') && (
-    <ul className="divide-y rounded-xl border" aria-label={t('bdhVisitsList')}>
-      {booking.visits?.map(visit => (
-        <li key={visit.id} className="space-y-1 p-3 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-medium">{t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` })}: <span className="tabular-nums">{timeRange(formatTime(visit.startTime), formatTime(visit.endTime))}</span></p>
-            {getCheckinStatusBadge(visit.checkinStatus)}
-          </div>
-          <div className="space-y-0.5 text-xs text-muted-foreground">
-            {visit.checkedInAt && <p>{t('bdCheckedInAt')}: {formatEventTimestamp(visit.checkedInAt)}</p>}
-            {visit.checkoutRequestedAt && <p>{t('bdCheckoutRequested')}: {formatEventTimestamp(visit.checkoutRequestedAt)}</p>}
-            {visit.checkedOutAt && <p>{t('bdCheckedOutCleared')}: {formatEventTimestamp(visit.checkedOutAt)}</p>}
-            {visit.checkinStatus === 'checkout_claim_filed' && visit.checkoutApprovedAt && <p>{t('bdCiClaimFiled')}: {formatEventTimestamp(visit.checkoutApprovedAt)}</p>}
-            {visit.checkoutManagerMessage && <p>{t('bookingAttendanceManagerMessage')}: {visit.checkoutManagerMessage}</p>}
-            {visit.noShowDetectedAt && <p>{t('bdNoShowDetected')}: {formatEventTimestamp(visit.noShowDetectedAt)}</p>}
-          </div>
-          {!isManagerView && visit.checkinStatus === 'not_checked_in' && phase !== 'visit_ended' && renderChefCheckinPolicy(visit.startTime)}
-        </li>
-      ))}
-    </ul>
-  );
+  // Secondary row: at most three links; the rest join the ⋯ menu.
+  const toolLabel = (tool: ExtensionTool) => bt(tool === 'offer' ? 'sxbOfferMore' : tool === 'early_start' ? 'sxbLetStartEarly' : 'sxbChargeExtra');
+  const secondaryLinks: NowSecondaryLink[] = now.secondary.flatMap((key): NowSecondaryLink[] => {
+    switch (key) {
+      case 'cancel_request': return [{ key, label: t('bnCancelRequest'), onSelect: () => setCancelOpen(true) }];
+      case 'see_arrival_details': return booking ? [{ key, label: t('bnSeeArrivalDetails'), onSelect: () => navigate(`/booking/${booking.id}/visit`) }] : [];
+      case 'add_to_calendar': return [{ key, label: t('bdhAddToCalendar'), icon: CalendarPlus, onSelect: addToCalendar }];
+      case 'running_late': return [{ key, label: runningLateSent ? t('bnRunningLateUpdate') : t('rlAction'), onSelect: () => setLateOpen(true), testId: 'running-late-link' }];
+      case 'arrived_early': return [{ key, label: t('bnArrivedEarly', { kitchen: kitchenName }), icon: MessageSquare, onSelect: () => void openBookingConversation() }];
+      case 'need_more_time': return booking ? [{ key, label: t('bnNeedMoreTime'), onSelect: () => navigate(`/booking/${booking.id}/visit`) }] : [];
+      case 'download_invoice': case 'download_payout_statement': return [{ key, label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() }];
+      case 'contact_local_cooks': return [{ key, label: t('bdContactSupport'), onSelect: goToHelp }];
+      case 'find_another_time': return findAnotherTimeHref ? [{ key, label: t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
+      case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
+      case 'change_booking': return [{ key, label: t('bdhChangeBooking'), onSelect: openManagementDialog }];
+      case 'manage_refund': return [{ key, label: t('bdhManageRefund'), onSelect: openManagementDialog }];
+      case 'fix_record': return [{ key, label: t('fixTitle'), onSelect: () => openFix() }];
+      case 'record_left': return [{ key, label: t('bdhOverstayRecordLeft'), icon: LogOut, onSelect: () => openFix('departure') }];
+      case 'report_damage': return [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
+    }
+  });
+  const visibleSecondary = secondaryLinks.slice(0, NOW_SECONDARY_VISIBLE);
+  const overflowSecondary = secondaryLinks.slice(NOW_SECONDARY_VISIBLE);
+  const visibleKeys = new Set(visibleSecondary.map(link => link.key));
+
+  // ⋯ menu: the full action list, minus whatever is already one tap away (the primary and the visible links).
+  const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
+  if (isManagerView && booking?.status === 'confirmed') menuItems.push({ key: 'kitchen-cancel', label: policyT('cpKitchenCancel'), icon: CalendarX, onSelect: () => setKitchenCancelOpen(true) });
+  if (chefCanCancel && !visibleKeys.has('cancel_request')) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
+  if (managerCanManage && primary !== 'review_cancellation' && !visibleKeys.has('change_booking') && !visibleKeys.has('manage_refund'))
+    menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : booking?.status === 'confirmed' ? t('bdhChangeBooking') : t('bdhReviewCancellation'), icon: CalendarX, onSelect: openManagementDialog });
+  if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
+    if (primary !== 'review_checkout' && primary !== 'inspect_visit') menuItems.push({ key: 'inspect', label: t('fixInspection'), icon: ClipboardCheck, onSelect: () => navigate(inspectionHref) });
+    if (!visibleKeys.has('fix_record') && !visibleKeys.has('record_left')) menuItems.push({ key: 'fix', label: t('fixTitle'), icon: Wrench, onSelect: () => openFix() });
+  }
+  if (visitBounds && upcoming && !visibleKeys.has('add_to_calendar')) menuItems.push({ key: 'calendar', label: t('bdhAddToCalendar'), icon: CalendarPlus, onSelect: addToCalendar });
+  if (canDownload && !visibleKeys.has('download_invoice') && !visibleKeys.has('download_payout_statement')) menuItems.push({ key: 'download', label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() });
+  for (const link of overflowSecondary) if (!menuItems.some(item => item.label === link.label)) menuItems.push({ key: `more-${link.key}`, label: link.label, icon: link.icon || MoreHorizontal, onSelect: link.onSelect || (() => { if (link.href) navigate(link.href); }) });
+  menuItems.push({ key: 'help', label: t('bdhGetHelp'), icon: LifeBuoy, onSelect: goToHelp });
+  const hasBottomBar = !!primary || claimTakesPrimary || messageAllowed;
+
+  // ── Visit details (timeline) ─────────────────────────────────────────────────────────────────────────────────
+  const arrivalLabel = (method?: string | null) => !isManagerView ? bt('vrYouCheckedIn')
+    : bt(method === 'code' ? 'vrChefCheckedInCode' : method === 'self' ? 'vrChefCheckedInSelf' : method === 'manager' ? 'vrKitchenAddedArrival' : 'vrChefCheckedIn', { chef: chefName });
+  // Said once: the manager's in-session sentence carries the check-in time, the chef's submitted sentence the checkout time.
+  const omitArrival = isManagerView && phase === 'in_session';
+  const omitDeparture = !isManagerView && phase === 'checkout_review';
+  const timelineEvents: VisitTimelineEvent[] = (() => {
+    if (!booking) return [];
+    const rows = hasMultipleVisits ? booking.visits! : [{ id: 0, blockIndex: 0, checkedInAt: booking.checkedInAt ?? null, checkoutRequestedAt: booking.checkoutRequestedAt ?? null,
+      checkedOutAt: booking.checkedOutAt ?? null, noShowDetectedAt: booking.noShowDetectedAt ?? null }];
+    return rows.flatMap(visit => {
+      const prefix = (label: string) => hasMultipleVisits ? bt('vrVisitPrefix', { number: visit.blockIndex + 1, label }) : label;
+      const out: VisitTimelineEvent[] = [];
+      const left = visit.checkoutRequestedAt || visit.checkedOutAt;
+      if (visit.checkedInAt && !omitArrival) out.push({ key: `in-${visit.id}`, label: prefix(arrivalLabel(hasMultipleVisits ? null : booking.checkedInMethod)), at: shortWhen(visit.checkedInAt) });
+      if (left && !omitDeparture) out.push({ key: `out-${visit.id}`, label: prefix(isManagerView ? bt('vrChefCheckedOut', { chef: chefName }) : bt('vrYouCheckedOut')), at: shortWhen(left) });
+      if (visit.noShowDetectedAt) out.push({ key: `ns-${visit.id}`, label: prefix(bt('vrNoShow')), at: shortWhen(visit.noShowDetectedAt) });
+      return out;
+    });
+  })();
+  const claimLines = closedClaims(claims, isManagerView).map(claim => closedClaimLine(claim, isManagerView, bt, bt, lang, tz || 'America/St_Johns'));
 
   const renderPhotos = (urls: string[], prefix: string, alt: (n: number) => string) => (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -1383,25 +1409,23 @@ export default function BookingDetailsPage() {
       </div>
     </div>
   );
+  // The check-in method is already on the timeline, so it is not repeated here.
   const visitEvidence = booking && !hasMultipleVisits && (
-    booking.checkinNotes || booking.checkoutNotes || booking.checkoutManagerMessage || booking.checkedInMethod
+    booking.checkinNotes || booking.checkoutNotes || booking.checkoutManagerMessage
     || booking.checkinPhotoUrls?.length || booking.checkoutPhotoUrls?.length || booking.checkinChecklistItems?.length || booking.checkoutChecklistItems?.length
   ) ? (
-    <details className="rounded-xl border p-3" data-testid="visit-evidence">
-      <summary className="cursor-pointer text-sm font-medium">{t('bdhVisitDetails')}</summary>
-      <div className="mt-3 space-y-3">
-        {booking.checkedInAt && booking.checkedInMethod && (
-          <p className="text-xs text-muted-foreground">{booking.checkedInMethod === 'self' ? t(isManagerView ? 'bdViaSelfManager' : 'bdViaSelf') : t('bdVia', { method: booking.checkedInMethod })}</p>
-        )}
+    <details className="group rounded-xl bg-muted/30 px-4 py-1" data-testid="visit-evidence">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm font-medium [&::-webkit-details-marker]:hidden">{t('bdhVisitDetails')}</summary>
+      <div className="space-y-3 pb-3">
         {booking.checkinNotes && (
-          <div className="rounded-lg border bg-muted/30 p-3">
+          <div>
             <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkedInMethod === 'self' ? t('bookingAttendanceChefMessage') : t('bookingAttendanceManagerMessage')}</p>
             <p className="whitespace-pre-wrap text-sm">{booking.checkinNotes}</p>
           </div>
         )}
         {booking.checkoutManagerMessage && <div><p className="text-xs text-muted-foreground">{t('bookingAttendanceManagerMessage')}</p><p className="whitespace-pre-wrap text-sm">{booking.checkoutManagerMessage}</p></div>}
         {booking.checkoutNotes && (
-          <div className="rounded-lg border bg-muted/30 p-3">
+          <div>
             <p className="mb-1 text-xs font-medium text-muted-foreground">{booking.checkoutNotes.startsWith('Message from kitchen manager: ') ? t('bookingAttendanceManagerMessage') : t('bookingAttendanceChefMessage')}</p>
             <p className="whitespace-pre-wrap text-sm">{booking.checkoutNotes}</p>
           </div>
@@ -1419,518 +1443,408 @@ export default function BookingDetailsPage() {
       </div>
     </details>
   ) : null;
+  // Several visits: one row each with its status chip; the times are on the timeline.
+  const visitPills = booking && hasMultipleVisits && (booking.status === 'confirmed' || booking.status === 'completed') ? (
+    <ul className="flex flex-wrap gap-2" aria-label={t('bdhVisitsList')}>
+      {booking.visits?.map(visit => <li key={visit.id} className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-1.5 text-[13px]">
+        <span className="tabular-nums">{t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` })} · {timeRange(formatTime(visit.startTime), formatTime(visit.endTime))}</span>
+        {getCheckinStatusBadge(visit.checkinStatus)}
+      </li>)}
+    </ul>
+  ) : null;
+  const chefNoShow = !isManagerView && phase === 'no_show';
+  const showVisitRecord = !!booking && visitStarted && !['pending', 'cancelled'].includes(phase)
+    && (isManagerView || timelineEvents.length > 0 || !!visitEvidence || claimLines.length > 0 || chefNoShow || !!visitPills);
 
-  // Visit card: hidden when it could only hold an empty state (before confirmation, or a cancellation with no visit).
-  const showVisitCard = !!booking && booking.status !== 'pending' && !(booking.status === 'cancelled' && !visitStarted);
-  const chefBeforeArrival = !isManagerView && !!booking && ['confirmed', 'cancellation_requested'].includes(booking.status)
-    && !visitStarted && phase !== 'visit_ended';
-  const chefInSession = !isManagerView && (phase === 'in_session' || phase === 'time_ended_in_session');
-
-  const sectionClass = 'rounded-2xl border bg-card p-5 sm:p-6';
+  // ── Blocks ───────────────────────────────────────────────────────────────────────────────────────────────────
+  const cardClass = 'rounded-2xl border-border/70 p-4 shadow-none sm:p-6';
   const headingClass = 'text-base font-semibold leading-6';
+  const withinCodeLead = !!visitBounds && nowMs >= visitBounds.startAt.getTime() - POLL_LEAD_MINUTES * 60_000;
+  const chefBeforeArrival = !isManagerView && !!booking && ['confirmed', 'cancellation_requested'].includes(booking.status) && !visitStarted && phase !== 'visit_ended';
+  const heroPhoto = !isManagerView ? booking?.kitchen?.photos?.find(Boolean) : null;
+  const heroSrc = heroPhoto ? getR2ProxyUrl(heroPhoto) || heroPhoto : null;
+  const slotText = bookingTimeSlots.length > 1 ? bookingTimeSlots.join(' · ') : null;
+  const whenLine = booking ? [
+    visitBounds ? new Intl.DateTimeFormat(lang, { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(visitBounds.startAt)
+      : new Date(`${bookingStartDateKey(booking) ?? booking.bookingDate.slice(0, 10)}T12:00:00Z`).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }),
+    slotText || timeRange(formatTime(booking.startTime), formatTime(booking.endTime)),
+    formatBookedDuration(calculateMinutes(), lang),
+    zoneName || null,
+  ].filter(Boolean).join(' · ') : '';
+  const mapsHref = booking?.location?.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location.address)}` : null;
+
+  const nowCard = booking && (
+    <BookingNowCard
+      reference={bookingReference(booking.referenceCode, booking.id)}
+      bookedOn={t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}
+      title={isManagerView ? chefName : kitchenName}
+      heroImage={heroSrc}
+      leading={isManagerView ? <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(chefName)}</AvatarFallback></Avatar> : undefined}
+      subtitle={isManagerView ? <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">{t('bdhKitchenSession', { kitchen: kitchenName })}</p>
+        : booking.location && (mapsHref ? (
+          <a href={mapsHref} target="_blank" rel="noopener noreferrer" className="-my-[13px] inline-flex max-w-full items-start gap-1 py-[13px] text-[13px] leading-[18px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+            <MapPin className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{booking.location.address}</span>
+          </a>
+        ) : <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">{booking.location.name}</p>)}
+      actions={<>
+        <div className="hidden items-center gap-2 sm:flex" data-testid="header-actions">
+          {messageButton()}
+          {!narrow && primaryButton('header-primary-action')}
+        </div>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="h-11 w-11" aria-label={t('bdhMoreActions')}>
+              <MoreHorizontal className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            {menuItems.map(item => (
+              <DropdownMenuItem key={item.key} onSelect={item.onSelect} className="min-h-11 gap-2">
+                <item.icon className="h-4 w-4 text-muted-foreground" />{item.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </>}
+      whenLine={whenLine}
+      pill={{ label: t(now.pill.key), tone: now.pill.tone }}
+      sentence={now.sentence}
+      sentenceExtra={isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && visitBounds && nowMs < visitBounds.endAt.getTime() ? (
+        <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
+          {t('rlManagerLine', { chef: chefName, duration: t(`rlDurationShort${booking.runningLate.minutes}`), time: clockTime(booking.runningLate.reportedAt) })}
+          {booking.runningLate.note && <span className="block text-xs font-normal text-muted-foreground">{t('rlManagerNote', { note: booking.runningLate.note })}</span>}
+        </p>
+      ) : undefined}
+      attention={<>
+        {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}`} bookingId={booking.id} manager={isManagerView}
+          onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}
+        {/* A payable claim comes first: unpaid after a final decision, it pauses new bookings. */}
+        {now.attention.includes('claims') && claims && <NowClaimRows claims={claims} manager={isManagerView} chefName={chefName} timezone={tz || 'America/St_Johns'}
+          allowPrimary={claimTakesPrimary && !narrow} payInBarFor={narrow && claimTakesPrimary ? payableClaim?.id : null} payingId={payingClaimId} onPayingChange={setPayingClaimId} onChanged={() => void claimsQuery.refetch()} />}
+        {now.attention.includes('extensions') && ['confirmed', 'completed'].includes(booking.status) && (
+          <SessionExtensionsCard variant="now" key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails}
+            tool={extTool} onToolChange={setExtTool} onToolsChange={setExtTools} allowPrimary={!primary && !claimTakesPrimary && !narrow}
+            refreshKey={[booking.status, booking.checkinStatus, booking.endTime, ...(booking.visits || []).map(visit => visit.checkinStatus)].join('|')} />
+        )}
+      </>}
+      body={<>
+        {now.body === 'preparation' && chefBeforeArrival && booking.location?.instructionsReleased === false && (
+          <p className="rounded-xl bg-muted/30 px-4 py-3 text-sm" data-testid="now-body">{t(booking.arrivalMode === 'self' ? 'bnWhatToExpectSelf' : 'bnWhatToExpect')}</p>
+        )}
+        {now.body === 'preparation' && chefBeforeArrival && booking.location?.instructionsReleased !== false && (
+          <ClampedBlock showAll={t('bnShowAll')} showLess={t('bnShowLess')}>
+            <BookingPreparation bookingStatus={booking.status} arrivalInstructions={booking.location?.arrivalInstructions}
+              instructionsReleased={booking.location?.instructionsReleased}
+              // The sentence already says when arrival details arrive; the overview doesn't repeat it.
+              instructionsReleaseAt={detailsReleaseAt && now.sentence.includes(detailsReleaseAt) ? null : booking.location?.instructionsReleaseAt}
+              arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone} visitStartAt={visitBounds?.startAt ?? null} />
+          </ClampedBlock>
+        )}
+        {now.body === 'code' && booking.status === 'confirmed' && !hasArrival && (
+          // The code panel brings its own frame; no second box around it.
+          <div data-testid="now-body">
+            <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded collapsed={!withinCodeLead}
+              visitEnded={false} customerName={chefName} kitchenName={booking.kitchen?.name}
+              timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
+              startTime={booking.startTime} endTime={booking.endTime} visits={booking.visits} onChanged={reloadBookingDetails} />
+          </div>
+        )}
+        {!isManagerView && (runningLateOpen || runningLateSent) && (
+          <RunningLateCard inline open={lateOpen} onOpenChange={setLateOpen} bookingId={booking.id} kitchenName={kitchenName} startAt={visitBounds?.startAt ?? null} endAt={visitBounds?.endAt ?? null}
+            timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} checkedIn={visitStarted} runningLate={booking.runningLate}
+            onChanged={reloadBookingDetails} />
+        )}
+      </>}
+      secondary={visibleSecondary}
+      footnote={isManagerView && phase === 'time_ended_in_session' ? <p className="-mt-2 text-[13px] leading-[18px] text-muted-foreground" data-testid="overstay-hint">{t('bnOverstayHint')}</p> : undefined}
+      labels={{ header: t('bdhHeaderLabel'), secondary: t('bnMoreForNow') }}
+    />
+  );
+
+  // The manager's Fix dialog lives in the attendance panel inside Visit details (mounted even while collapsed).
+  const visitRecord = showVisitRecord && booking && (
+    <BookingVisitRecord title={bt('vrTitle')} timelineLabel={bt('vrTimeline')} events={timelineEvents} defaultOpen={chefNoShow}
+      extensions={<>{visitPills}{['confirmed', 'completed'].includes(booking.status) && <SessionExtensionsCard variant="record" key={`extra-time-record-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName}
+        refreshKey={[booking.status, booking.checkinStatus, booking.endTime].join('|')} />}</>}
+      claimLines={claimLines}
+      evidence={visitEvidence}
+      attendance={<BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
+        chefName={chefName} closeout={booking.closeout} embedded
+        {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, fixAction } : {})}
+        visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />}
+      fixLabel={isManagerView && !visibleKeys.has('fix_record') && !visibleKeys.has('record_left') ? t('fixTitle') : undefined}
+      onFix={isManagerView ? () => openFix() : undefined} />
+  );
+
+  const feedback = booking && ['completed', 'no_show', 'issue'].includes(phase) && (
+    <BookingFeedbackCard compact bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} otherPartyName={isManagerView ? chefName : kitchenName} timezone={booking.location?.timezone || 'America/St_Johns'} />
+  );
+
+  const latitude = booking?.location?.latitude, longitude = booking?.location?.longitude;
+  const hasCoordinates = typeof latitude === 'number' && typeof longitude === 'number';
+  // Contact card: the hero already shows who (name, photo/initials) and Message, so this holds only the ways to reach them.
+  const contactPhone = booking ? (isManagerView ? booking.chef?.phone : booking.kitchenContact?.phone) : null;
+  const contactEmail = booking ? (isManagerView ? booking.chef?.username : booking.kitchenContact?.email) : null;
+  const locationLine = !isManagerView && booking?.location?.name && booking.location.name !== kitchenName ? booking.location.name : null;
+  const hasContact = (!!contactPhone && !!booking && contactVisible(booking.status)) || !!contactEmail || (!isManagerView && (!!mapsHref || !!locationLine));
+  const personCard = booking && hasContact && (
+    <section aria-labelledby="booking-person-title" data-testid="person-card">
+      <Card className={cardClass}>
+        <h2 id="booking-person-title" className={headingClass}>{isManagerView ? t('bdhChefLabel') : t('bdhKitchenLabel')}</h2>
+        {locationLine && <p className="mt-0.5 text-sm text-muted-foreground">{locationLine}</p>}
+        <div className="mt-2 space-y-1">
+          {(() => {
+            const phone = contactPhone;
+            return phone && contactVisible(booking.status) ? (
+              <div data-testid="contact-phone">
+                <a href={`tel:${phone}`} className="inline-flex min-h-11 items-center text-sm font-medium tabular-nums underline underline-offset-4">{formatContactPhone(phone)}</a>
+                <p className="text-[13px] leading-[18px] text-muted-foreground">{t('bdhSafetyHelper')}</p>
+              </div>
+            ) : null;
+          })()}
+          {(() => {
+            const email = contactEmail;
+            return email ? <a href={`mailto:${email}`} className="flex min-h-11 items-center break-all text-[13px] text-muted-foreground underline-offset-4 hover:underline">{email}</a> : null;
+          })()}
+          {/* Where (chef): a small map when the kitchen's coordinates are known; the address itself is in the Now card. */}
+          {!isManagerView && booking.location?.address && hasCoordinates && (
+            <Suspense fallback={<Skeleton className="h-[140px] w-full rounded-xl" />}>
+              <LocationMap address={booking.location.address} name={kitchenName} latitude={latitude} longitude={longitude} heightClassName="h-[140px]" />
+            </Suspense>
+          )}
+          {!isManagerView && mapsHref && !hasCoordinates && (
+            <a href={mapsHref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium underline-offset-4 hover:underline">
+              <MapPin className="h-4 w-4" aria-hidden />{t('bnGetDirections')}
+            </a>
+          )}
+        </div>
+      </Card>
+    </section>
+  );
+
+  const storageRows = allStorageBookings.map(storage => ({ id: storage.id, name: storage.storageListing?.name || `Storage #${storage.storageListingId}`,
+    detail: storage.startDate ? `${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}` : null,
+    price: formatCurrency(storage.totalPrice), struck: isItemVoided(storage) || isItemRefunded(storage) || storage.status === 'cancelled', chip: itemChip(storage, true) }));
+  const equipmentRows = allEquipmentBookings.map(equipment => ({ id: equipment.id, name: equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`,
+    detail: equipment.equipmentListing?.brand || null, price: formatCurrency(equipment.totalPrice),
+    struck: isItemVoided(equipment) || isItemRefunded(equipment) || equipment.status === 'cancelled', chip: itemChip(equipment, false) }));
+  const addOns = booking && (storageRows.length > 0 || equipmentRows.length > 0) && (
+    <section aria-labelledby="booking-addons-title">
+      <Card className={`${cardClass} space-y-4`}>
+        <h2 id="booking-addons-title" className={headingClass}>{t('bdhAddOns')}</h2>
+        <StorageRows title={t('bdStorageSection')} rows={storageRows} />
+        <EquipmentRows title={t('bdEquipmentSection')} rows={equipmentRows} actions={id => {
+          const equipment = allEquipmentBookings.find(item => item.id === id);
+          return isManagerView && equipment && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
+            <Button variant="outline" size="sm" className="min-h-11" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
+          </div>;
+        }} />
+      </Card>
+    </section>
+  );
+
+  const note = booking?.specialNotes && (
+    <section aria-labelledby="booking-note-title">
+      <Card className={cardClass}>
+        <h2 id="booking-note-title" className={`${headingClass} mb-3`}>{isManagerView ? t('bdhNoteFrom', { name: chefName }) : t('bdhYourNote')}</h2>
+        <blockquote className="whitespace-pre-wrap border-l-2 pl-4 text-sm leading-relaxed text-foreground/80">{booking.specialNotes}</blockquote>
+      </Card>
+    </section>
+  );
+
+  const breakdown = booking && (<>
+    {booking.paymentStatus === 'failed' && booking.status === 'cancelled' ? (
+      <div className="flex justify-between text-sm" data-testid="not-charged-line">
+        <span className="text-muted-foreground">{cap(t('bdStatusNotCharged'))}</span>
+        <span className="tabular-nums text-muted-foreground line-through">{formatCurrency(booking.paymentTransaction?.amount || totals.subtotal)}</span>
+      </div>
+    ) : (<>
+      <div className="flex justify-between text-sm">
+        <span className="text-muted-foreground">{ct('sweepLabel34')}</span>
+        <span className="tabular-nums">{formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}</span>
+      </div>
+      {allStorageTotal > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">{t("bdStorageLine")}</span>
+          <div className="text-right">
+            {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && <span className="mr-2 text-xs tabular-nums text-muted-foreground line-through">{formatCurrency(allStorageTotal)}</span>}
+            <span className={`tabular-nums ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-muted-foreground line-through" : ""}`}>
+              {rejectedStorageTotal === allStorageTotal ? formatCurrency(allStorageTotal) : formatCurrency(totals.storage)}
+            </span>
+          </div>
+        </div>
+      )}
+      {allEquipmentTotal > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">{t("bdEquipmentLine")}</span>
+          <div className="text-right">
+            {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && <span className="mr-2 text-xs tabular-nums text-muted-foreground line-through">{formatCurrency(allEquipmentTotal)}</span>}
+            <span className={`tabular-nums ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-muted-foreground line-through" : ""}`}>
+              {rejectedEquipmentTotal === allEquipmentTotal ? formatCurrency(allEquipmentTotal) : formatCurrency(totals.equipment)}
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="flex justify-between text-sm">
+        <span className="text-muted-foreground">{isRefunded || isPartiallyRefunded ? t("bdAmountCharged") : t("bdSubtotal")}</span>
+        <span className={`tabular-nums ${isRefunded ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(totals.subtotal)}</span>
+      </div>
+      {booking.paymentTransaction && pricingBreakdownInput && (
+        isManagerView ? (
+          <KitchenPayoutStatementBreakdown
+            {...pricingBreakdownInput}
+            currency={booking.currency || "CAD"}
+            title={payoutTitle}
+            showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
+            chargeLabel={t("bdTotalCharged", { defaultValue: "Total charged" })}
+            processingFeeLabel={pricingBreakdownInput.paymentProcessorFeeIsEstimate ? t("bdEstProcessingFee", { defaultValue: "Est. processing fee" }) : t("bdProcessingFee")}
+            platformFeeLabel={t("bdLocalCooksServiceFee", { percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100), defaultValue: "Service fee ({percent}%)" })}
+            platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", { defaultValue: "Service fee" })}
+            platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
+            refundLabel={t("bdRefund")}
+            hstLabel={t("bdHstPercent", { percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0 })}
+            hstCollectedLabel={t("bdHstCollectedLine")}
+          />
+        ) : (
+          <ChefBookingReceiptBreakdown
+            {...pricingBreakdownInput}
+            currency={booking.currency || "CAD"}
+            totalLabel={chefTotalLabel}
+            platformFeeLabel={t("bdLocalCooksServiceFee", { percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100), defaultValue: "Service fee ({percent}%)" })}
+          />
+        )
+      )}
+    </>)}
+    {extraCharges.length > 0 && paymentHeadline && (
+      <div className="space-y-2 border-t pt-3" data-testid="extra-charges">
+        {extraCharges.map(line => (
+          <div key={line.id} className="flex justify-between gap-3 text-sm" data-testid="extra-charge-line">
+            <span className="text-muted-foreground">{line.kind === 'damage_claim' ? t('bnChargeDamage')
+              : line.kind === 'extra_time' ? t('bnChargeExtraTime')
+              : line.minutes ? t('bnChargeExtension', { length: formatBookedDuration(line.minutes, lang) }) : t('bnChargeExtensionNoLength')}
+              {line.refundedCents > 0 && <span className="block text-xs">{t('bnChargeRefunded', { amount: formatCurrency(line.refundedCents) })}</span>}</span>
+            <span className="tabular-nums">{formatCurrency(extraCents(line))}</span>
+          </div>
+        ))}
+        <div className="flex justify-between gap-3 text-sm font-medium" data-testid="extra-charges-total">
+          <span>{isManagerView ? t('bnPayoutAllCharges') : t('bnPaidAllCharges')}</span>
+          <span className="tabular-nums">{formatCurrency(paymentHeadline.cents)}</span>
+        </div>
+        <p className="text-xs text-muted-foreground">{isManagerView ? t('bnExtraStatementNote') : t('bnExtraReceiptsNote')}</p>
+      </div>
+    )}
+    {!isManagerView && goodwillRefund > 0 && (
+      <div className="flex items-center justify-between gap-2 text-sm text-warning" data-testid="goodwill-line">
+        <span>{t("bdGoodwillLine", { amount: formatCurrency(goodwillRefund) })}</span>
+      </div>
+    )}
+    {!isManagerView && refundAmount - goodwillRefund > 0 && (
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span className="inline-flex items-center gap-1 text-warning">
+          {t("bdRefundedLine")}
+          <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
+        </span>
+        <span className="tabular-nums text-warning">−{formatCurrency(refundAmount - goodwillRefund)}</span>
+      </div>
+    )}
+  </>);
+
+  const statusSource = booking ? paymentStatusSource({ manager: isManagerView, payoutAfterVisit: booking.payout?.timing === 'after_closeout', paymentStatus: booking.paymentStatus, bookingStatus: booking.status }) : 'message';
+  const downloadInNow = visibleKeys.has('download_invoice') || visibleKeys.has('download_payout_statement');
+  const paymentCard = booking && (
+    <BookingPaymentCard
+      title={t('bdPaymentSection')}
+      headline={paymentHeadline ? { label: paymentHeadline.label, amount: formatCurrency(paymentHeadline.cents) } : null}
+      refundRequest={isManagerView ? <RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /> : undefined}
+      payoutLine={statusSource === 'payout' && booking.payout ? <KitchenPayoutStatus variant="line" payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} chefName={chefName}
+        stage={['cancelled', 'no_show', 'issue', 'completed', 'pending', 'cancellation_requested'].includes(phase) ? 'closed' : ['checkout_review', 'visit_ended'].includes(phase) ? (inspectionCanRespond ? 'inspect' : 'closed') : 'before_checkout'} /> : undefined}
+      status={paymentMessage}
+      moreInfoLabel={t('bdPaymentMoreInfo', { defaultValue: 'More about payment status' })}
+      pendingDecision={booking.paymentDecision?.state === 'pending' ? <p>{t('bdRecordedDecisionAmount', { amount: formatCurrency(booking.paymentDecision.amount || 0) })}</p> : undefined}
+      breakdown={breakdown}
+      breakdownOpen={!paymentHeadline}
+      breakdownLabels={{ show: t('bdhShowBreakdown'), hide: t('bdhHideBreakdown') }}
+      actions={((canDownload && !downloadInNow) || showRefundReview) ? <>
+        {canDownload && !downloadInNow && (
+          <Button onClick={handleDownloadInvoice} disabled={isDownloading} variant="outline" className="min-h-11 w-full">
+            {isDownloading ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{t("bdGenerating")}</> : <><Download className="mr-1.5 h-4 w-4" />{downloadLabel}</>}
+          </Button>
+        )}
+        {showRefundReview && (
+          <button type="button" className="min-h-11 text-left text-[13px] font-medium underline underline-offset-4" onClick={() => { setCancellationRefundScope(undefined); setCancellationRefundOpen(true); }}>{t('detailsCopy17')}</button>
+        )}
+      </> : undefined}
+    />
+  );
+
+  const cancellationCard = booking && !isManagerView && chefCanCancel && ['pending', 'confirmed'].includes(booking.status) && (
+    <BookingCancellationCard bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
+      deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable} />
+  );
+
+  const history = booking && (
+    <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || booking.chef?.username || null} version={booking.updatedAt || booking.createdAt} limit={3} />
+  );
+
+  const help = booking && (
+    <Card id="booking-support" className={`scroll-mt-24 ${cardClass}`}>
+      <h2 className={`${headingClass} mb-2`}>{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h2>
+      <p className="text-[13px] leading-[18px] text-muted-foreground">{t('bdContactSupportHint', { defaultValue: 'Need help with your booking or payment?' })}</p>
+      <div className="mt-3 space-y-1 text-sm">
+        <a className="flex min-h-11 min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
+        <a className="flex min-h-11 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
+      </div>
+      <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded />
+    </Card>
+  );
+
   const bookingContent = booking && (
     <TooltipProvider>
-    <div className={`mx-auto max-w-5xl min-w-0 ${hasBottomBar ? 'pb-24 sm:pb-0' : ''}`}>
+    <div className={`mx-auto min-w-0 max-w-[1080px] ${hasBottomBar ? 'pb-28 sm:pb-0' : ''}`}>
       <KitchenCausedCancellation bookingId={booking.id} open={kitchenCancelOpen} onOpenChange={setKitchenCancelOpen} onChanged={reloadBookingDetails} />
-      {/* ── Header: who, when, one status, one next step, actions ── */}
-      <header className={`${sectionClass} mb-6`} aria-label={t('bdhHeaderLabel')} data-testid="booking-header">
-        <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-          <span className="font-mono font-medium text-foreground">{bookingReference(booking.referenceCode, booking.id)}</span>
-          <span aria-hidden>·</span>
-          <span>{t('bdBookedOn', { date: formatShortDate(booking.createdAt) })}</span>
-        </p>
-        <div className="mt-3 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            {isManagerView && (
-              <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(chefName)}</AvatarFallback></Avatar>
-            )}
-            <div className="min-w-0">
-              <h1 className="break-words text-2xl font-semibold tracking-tight" data-testid="booking-who">{isManagerView ? chefName : kitchenName}</h1>
-              {isManagerView ? (
-                <p className="mt-0.5 text-sm text-muted-foreground">{t('bdhKitchenSession', { kitchen: kitchenName })}</p>
-              ) : booking.location && (
-                mapsHref ? (
-                  <a href={mapsHref} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex max-w-full items-start gap-1 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{booking.location.address}</span>
-                  </a>
-                ) : <p className="mt-0.5 text-sm text-muted-foreground">{booking.location.name}</p>
-              )}
-            </div>
+      <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
+      {isManagerView && claimWindowOpen && <ManagerDamageClaimEntry mode="secondary" open={claimOpen} onOpenChange={setClaimOpen} bookingId={booking.id} chefName={chefName}
+        visits={booking.visits || []} onFiled={() => void claimsQuery.refetch()} />}
+      {!isManagerView && (
+        <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
+          summary={{ kitchenName, reference: booking.referenceCode || undefined,
+            schedule: `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
+            amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
+          cancellationDeadline={cancellationDeadlineText}
+          decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
+          paidCancellationAvailable={paidCancellationAvailable}
+          items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
+            name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
+            ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
+              name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
+          onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+      )}
+
+      {/* Wide screens: the Now card, then a main column and a sidebar of at most three cards. Narrow: one column in §2.1 order. */}
+      <div className="space-y-5">
+        {nowCard}
+        {wide ? (
+          <div className="grid grid-cols-3 gap-5">
+            <div className="col-span-2 min-w-0 space-y-5">{visitRecord}{feedback}{personCard}{addOns}{note}{history}</div>
+            <div className="min-w-0 space-y-5">{paymentCard}{cancellationCard}{help}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="hidden items-center gap-2 sm:flex" data-testid="header-actions">
-              {messageButton()}
-              {primaryButton('header-primary-action')}
-            </div>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className="h-10 w-10" aria-label={t('bdhMoreActions')}>
-                  <MoreHorizontal className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60">
-                {menuItems.map(item => (
-                  <DropdownMenuItem key={item.key} onSelect={item.onSelect} className="gap-2">
-                    <item.icon className="h-4 w-4 text-muted-foreground" />{item.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-        <p className="mt-4 text-base font-medium tabular-nums sm:text-lg" data-testid="booking-when">{whenLine}</p>
-        <div className="mt-3 flex flex-col items-start gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${pillClass[pillTone]}`} data-testid="booking-status-pill" data-tone={pillTone}>
-            <span className={`h-1.5 w-1.5 rounded-full ${dotClass[pillTone]}`} aria-hidden />{t(pillKey)}
-          </span>
-          <p role="status" className="text-sm leading-relaxed text-foreground/80" data-testid="booking-next-step">{sentence(nextStep)}</p>
-          {isManagerView && phase === 'time_ended_in_session' && (
-            // The chef is still checked in after the booked end: reach them, or record when they left; once a
-            // departure is on the record, "Charge for extra time" appears in Extra time below.
-            <div className="space-y-1.5" data-testid="overstay-actions">
-              <div className="flex flex-wrap gap-2">
-                {messageAllowed && <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => void openBookingConversation()} disabled={openingConversation}>
-                  <MessageSquare className="mr-1.5 h-4 w-4" aria-hidden />{t('bdhOverstayMessage', { chef: chefName })}</Button>}
-                <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => { setFixAction('departure'); setFixOpen(true); }}>
-                  <LogOut className="mr-1.5 h-4 w-4" aria-hidden />{t('bdhOverstayRecordLeft')}</Button>
-              </div>
-              <p className="text-xs text-muted-foreground">{t('bdhOverstayHint')}</p>
-            </div>
-          )}
-          {isManagerView && booking.runningLate && booking.status === 'confirmed' && !visitStarted && !visitOver && visitBounds && Date.now() < visitBounds.endAt.getTime() && (
-            <p className="text-sm font-medium text-sky-900" data-testid="booking-running-late">
-              {t('rlManagerLine', { chef: chefName, duration: t(`rlDurationShort${booking.runningLate.minutes}`), time: clockTime(booking.runningLate.reportedAt) })}
-              {booking.runningLate.note && <span className="block text-xs font-normal text-muted-foreground">{t('rlManagerNote', { note: booking.runningLate.note })}</span>}
-            </p>
-          )}
-          {findAnotherTimeHref && (
-            <a href={findAnotherTimeHref} onClick={(event) => { event.preventDefault(); navigate(findAnotherTimeHref); }} className="text-sm font-medium text-foreground underline underline-offset-4" data-testid="find-another-time">{t('bdhFindAnotherTime')}</a>
-          )}
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-          <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
-          <KitchenBookingChanges timezone={booking.location?.timezone} key={booking.id} bookingId={booking.id} manager={isManagerView} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
-          {['confirmed', 'completed'].includes(booking.status) && (
-            <SessionExtensionsCard key={`extra-time-${booking.id}`} bookingId={booking.id} manager={isManagerView} chefName={chefName} onChanged={reloadBookingDetails}
-              refreshKey={[booking.status, booking.checkinStatus, booking.endTime, ...(booking.visits || []).map(visit => visit.checkinStatus)].join('|')} />
-          )}
-
-          {/* ── Visit ── */}
-          {showVisitCard && (
-            <section className={`${sectionClass} space-y-4`} aria-labelledby="booking-visit-title" data-testid="visit-card">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 id="booking-visit-title" className={headingClass}>{isManagerView ? t('bdhVisitTitle') : t('bdhYourVisitTitle')}</h2>
-                {!isManagerView && primary !== 'open_visit' && ['confirmed', 'cancellation_requested'].includes(booking.status) && !visitOver && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/booking/${booking.id}/visit`)}>{t('bdhOpenVisit')}</Button>
-                )}
-              </div>
-              {isManagerView && inSessionEnds(booking).length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {inSessionEnds(booking).map(session => {
-                    const visit = session.visitId ? booking.visits?.find(row => row.id === session.visitId) : undefined;
-                    return <ManagerInSessionBadge key={session.visitId ?? 'booking'} endsAt={session.endsAt} timezone={booking.location?.timezone}
-                      label={visit && (booking.visits?.length || 0) > 1 ? t('bdVisitNumber', { number: visit.blockIndex + 1, defaultValue: `Visit ${visit.blockIndex + 1}` }) : undefined} />;
-                  })}
-                </div>
-              )}
-              {(visitStarted || isManagerView) && (
-                <BookingAttendancePanel key={`${booking.id}-${isManagerView}`} bookingId={booking.id} manager={isManagerView} onSaved={reloadBookingDetails} timezone={booking.location?.timezone}
-                  chefName={chefName} closeout={booking.closeout} embedded
-                  {...(isManagerView ? { fixOpen, onFixOpenChange: setFixOpen, fixAction, hideArrivalStatus: codeShowsArrival } : {})}
-                  visitDetails={booking.visits?.length ? booking.visits : [{ ...booking, id: undefined }]} />
-              )}
-              {isManagerView && ['confirmed', 'completed'].includes(booking.status) && (
-                <VisitCodePanel key={`visit-code-${booking.id}`} bookingId={booking.id} bookingStatus={booking.status} embedded onArrivalShown={setCodeShowsArrival}
-                  visitEnded={visitOver || booking.closeout?.phase === 'ended'}
-                  customerName={chefName} kitchenName={booking.kitchen?.name}
-                  timezone={booking.location?.timezone} bookingDate={booking.bookingDate} operatingWindowStartTime={booking.operatingWindowStartTime}
-                  startTime={booking.startTime} endTime={booking.endTime} visits={booking.visits} onChanged={reloadBookingDetails} />
-              )}
-              {chefBeforeArrival && (
-                <BookingPreparation bookingStatus={booking.status} arrivalInstructions={booking.location?.arrivalInstructions}
-                  instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt}
-                  arrivalMode={booking.arrivalMode} timezone={booking.location?.timezone}
-                  visitStartAt={visitBounds?.startAt ?? null} />
-              )}
-              {chefInSession && (
-                <BookingPreparation inSession bookingStatus={booking.status} departureInstructions={booking.location?.departureInstructions}
-                  instructionsReleased={booking.location?.instructionsReleased} instructionsReleaseAt={booking.location?.instructionsReleaseAt} />
-              )}
-              {chefBeforeArrival && !hasMultipleVisits && renderChefCheckinPolicy(booking.startTime)}
-              {chefBeforeArrival && (
-                <RunningLateCard bookingId={booking.id} kitchenName={kitchenName} startAt={visitBounds?.startAt ?? null} endAt={visitBounds?.endAt ?? null}
-                  timezone={booking.location?.timezone || 'America/St_Johns'} status={booking.status} checkedIn={visitStarted} runningLate={booking.runningLate}
-                  onChanged={reloadBookingDetails} />
-              )}
-              {visitStarted && <ClockCloseoutSummary closeout={booking.closeout} manager={isManagerView} embedded hideInspectionDeadline hideFinished={chefInSession} />}
-              {renderVisitRows()}
-              {visitEvidence}
-            </section>
-          )}
-
-          <BookingFeedbackCard bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} otherPartyName={isManagerView ? chefName : kitchenName} timezone={booking.location?.timezone || 'America/St_Johns'} />
-          {isManagerView && ['confirmed', 'completed'].includes(booking.status) && ['checkout_review', 'completed', 'issue', 'visit_ended', 'time_ended_in_session', 'no_show'].includes(phase) && <ManagerDamageClaimEntry bookingId={booking.id} chefName={chefName} visits={booking.visits || []} />}
-          <BookingDamageClaims bookingId={booking.id} manager={isManagerView} />
-
-          {/* ── When & where ── */}
-          <section className={sectionClass} aria-labelledby="booking-when-title">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 id="booking-when-title" className={headingClass}>{t('bdhWhenWhere')}</h2>
-              {visitBounds && !['cancelled'].includes(phase) && !visitOver && (
-                <Button type="button" variant="outline" size="sm" onClick={addToCalendar}><CalendarPlus className="mr-1.5 h-4 w-4" aria-hidden />{t('bdhAddToCalendar')}</Button>
-              )}
-            </div>
-            <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-muted-foreground">{t('bdDate')}</dt>
-                <dd className="mt-0.5 font-medium">{formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">{t('bdTime')}</dt>
-                <dd className="mt-0.5 font-medium tabular-nums">
-                  {bookingTimeSlots.slice(0, 2).map((slot, index) => <div key={`${slot}-${index}`}>{slot}</div>)}
-                  {bookingTimeSlots.length > 2 && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button type="button" className="mt-1 text-xs font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                          {t('bdShowAllTimes', { defaultValue: 'Show all times' })}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="max-h-64 w-64 overflow-y-auto text-sm">
-                        <p className="mb-2 font-semibold">{t('bdBookedTimes', { defaultValue: 'Booked times' })}</p>
-                        <div className="space-y-1">{bookingTimeSlots.map((slot, index) => <div key={`${slot}-${index}`} className="whitespace-nowrap">{slot}</div>)}</div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                  <span className="block text-xs font-normal text-muted-foreground">{t('bdHours', { count: calculateDuration() })}</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">{t('bdhPlace')}</dt>
-                <dd className="mt-0.5 font-medium">{kitchenName}{booking.location?.name && booking.location.name !== kitchenName && <span className="block text-xs font-normal text-muted-foreground">{booking.location.name}</span>}</dd>
-              </div>
-              {booking.location?.address && (
-                <div>
-                  <dt className="text-xs text-muted-foreground">{t('bdhAddress')}</dt>
-                  <dd className="mt-0.5">
-                    <a href={mapsHref!} target="_blank" rel="noopener noreferrer" className="break-words font-medium underline underline-offset-4">{booking.location.address}</a>
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </section>
-
-          {/* ── The other party ── */}
-          <section className={sectionClass} aria-labelledby="booking-person-title" data-testid="person-card">
-            <div className="flex items-start gap-3">
-              <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(isManagerView ? chefName : kitchenName)}</AvatarFallback></Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted-foreground">{isManagerView ? t('bdhChefLabel') : t('bdhKitchenLabel')}</p>
-                <h2 id="booking-person-title" className={`${headingClass} break-words`}>{isManagerView ? chefName : kitchenName}</h2>
-                {!isManagerView && booking.location?.name && booking.location.name !== kitchenName && <p className="text-sm text-muted-foreground">{booking.location.name}</p>}
-              </div>
-            </div>
-            <div className="mt-4 space-y-3">
-              {messageButton('w-full sm:w-auto')}
-              {(() => {
-                const phone = isManagerView ? booking.chef?.phone : booking.kitchenContact?.phone;
-                return phone && contactVisible(booking.status) ? (
-                  <div data-testid="contact-phone">
-                    <a href={`tel:${phone}`} className="text-sm font-medium underline underline-offset-4">{formatContactPhone(phone)}</a>
-                    <p className="mt-1 text-xs text-muted-foreground">{t('bdhSafetyHelper')}</p>
-                  </div>
-                ) : null;
-              })()}
-              {(() => {
-                const email = isManagerView ? booking.chef?.username : booking.kitchenContact?.email;
-                return email ? <a href={`mailto:${email}`} className="block break-all text-xs text-muted-foreground underline-offset-4 hover:underline">{email}</a> : null;
-              })()}
-            </div>
-          </section>
-
-          {/* ── Add-ons ── */}
-          {(allStorageBookings.length > 0 || allEquipmentBookings.length > 0) && (
-            <section className={`${sectionClass} space-y-4`} aria-labelledby="booking-addons-title">
-              <h2 id="booking-addons-title" className={headingClass}>{t('bdhAddOns')}</h2>
-              {allStorageBookings.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><Package className="h-3.5 w-3.5 text-muted-foreground" />{t('bdStorageSection')}</h3>
-                  {allStorageBookings.map((storage) => {
-                    const voided = isItemVoided(storage);
-                    const refunded = isItemRefunded(storage);
-                    const cancelled = voided || refunded || storage.status === 'cancelled';
-                    return (
-                      <div key={storage.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-3 ${cancelled ? 'bg-muted/40 opacity-60' : ''}`}>
-                        <div className="min-w-0">
-                          <p className={`text-sm font-medium ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{storage.storageListing?.name || `Storage #${storage.storageListingId}`}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {storage.storageListing?.storageType}
-                            {storage.startDate && ` · ${formatShortDate(storage.pricingModel === 'hourly' ? storage.startDate : storage.startDate.slice(0, 10))} – ${formatShortDate(storage.pricingModel === 'hourly' ? storage.endDate : storage.endDate.slice(0, 10))}`}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <span className={`font-mono text-sm tabular-nums ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(storage.totalPrice)}</span>
-                          {itemChip(storage, true)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {allEquipmentBookings.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="flex items-center gap-1.5 text-sm font-medium"><Wrench className="h-3.5 w-3.5 text-muted-foreground" />{t('bdEquipmentSection')}</h3>
-                  {allEquipmentBookings.map((equipment) => {
-                    const voided = isItemVoided(equipment);
-                    const refunded = isItemRefunded(equipment);
-                    const cancelled = voided || refunded || equipment.status === 'cancelled';
-                    return (
-                      <div key={equipment.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-3 ${cancelled ? 'bg-muted/40 opacity-60' : ''}`}>
-                        <div className="min-w-0">
-                          <p className={`text-sm font-medium ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}</p>
-                          {equipment.equipmentListing?.brand && <p className="text-xs text-muted-foreground">{equipment.equipmentListing.brand}</p>}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                          {isManagerView && booking.paymentDecision?.state !== 'pending' && equipment.status === 'cancellation_requested' && booking.status === 'confirmed' && <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, true)}>{t('bdAcceptCancellation', { defaultValue: 'Accept cancellation' })}</Button>
-                            <Button variant="outline" size="sm" disabled={itemCancellationPending} onClick={() => void reviewEquipmentCancellation(equipment.id, false)}>{t('bdDeclineCancellation', { defaultValue: 'Decline cancellation' })}</Button>
-                          </div>}
-                          <span className={`font-mono text-sm tabular-nums ${cancelled ? 'text-muted-foreground line-through' : ''}`}>{formatCurrency(equipment.totalPrice)}</span>
-                          {itemChip(equipment, false)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* ── Note ── */}
-          {booking.specialNotes && (
-            <section className={sectionClass} aria-labelledby="booking-note-title">
-              <h2 id="booking-note-title" className={`${headingClass} mb-3`}>{isManagerView ? t('bdhNoteFrom', { name: chefName }) : t('bdhYourNote')}</h2>
-              <blockquote className="whitespace-pre-wrap border-l-2 pl-4 text-sm leading-relaxed text-foreground/80">{booking.specialNotes}</blockquote>
-            </section>
-          )}
-        </div>
-
-        {/* ── Sidebar ── */}
-        <div className="min-w-0 space-y-6">
-          <section className={sectionClass} aria-labelledby="booking-payment-title" data-testid="payment-card">
-            {isManagerView && <div className="mb-4"><RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /></div>}
-            <h2 id="booking-payment-title" className={headingClass}>{t('bdPaymentSection')}</h2>
-            {paymentHeadline && (
-              <div className="mt-3">
-                <p className="text-xs text-muted-foreground">{paymentHeadline.label}</p>
-                <p className={`text-2xl font-semibold tabular-nums ${paymentHeadline.struck ? 'text-muted-foreground line-through' : ''}`} data-testid="payment-headline">{formatCurrency(paymentHeadline.cents)}</p>
-              </div>
-            )}
-            {isManagerView && booking.payout?.timing === 'after_closeout' && <KitchenPayoutStatus payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} showAmount={!paymentHeadline} chefName={chefName}
-              stage={['cancelled', 'no_show', 'issue', 'completed', 'pending', 'cancellation_requested'].includes(phase) ? 'closed' : ['checkout_review', 'visit_ended'].includes(phase) ? (inspectionCanRespond ? 'inspect' : 'closed') : 'before_checkout'} />}
-            {paymentMessage && (
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs">
-                <span className="min-w-0 flex-1 text-muted-foreground">{paymentMessage.summary}</span>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button type="button" className="shrink-0 rounded-full p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t('bdPaymentMoreInfo', { defaultValue: 'More about payment status' })}>
-                      <Info className="h-4 w-4" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" side="top" className="w-64 max-w-[calc(100vw-2rem)] text-xs leading-relaxed">{paymentMessage.detail}</PopoverContent>
-                </Popover>
-              </div>
-            )}
-
-            {booking.paymentDecision?.state === 'pending' ? <p className="mt-4 text-sm">{t('bdRecordedDecisionAmount', { amount: formatCurrency(booking.paymentDecision.amount || 0) })}</p> : (
-            <details className="group mt-4" data-testid="payment-breakdown" open={!paymentHeadline || undefined}>
-              <summary className="cursor-pointer list-none text-sm font-medium underline underline-offset-4 [&::-webkit-details-marker]:hidden">
-                <span className="group-open:hidden">{t('bdhShowBreakdown')}</span><span className="hidden group-open:inline">{t('bdhHideBreakdown')}</span>
-              </summary>
-            <div className="mt-3 space-y-2.5">
-              {booking.paymentStatus === 'failed' && booking.status === 'cancelled' ? (
-                <div className="flex justify-between text-sm" data-testid="not-charged-line">
-                  <span className="text-muted-foreground">{cap(t('bdStatusNotCharged'))}</span>
-                  <span className="font-mono tabular-nums text-muted-foreground line-through">{formatCurrency(booking.paymentTransaction?.amount || totals.subtotal)}</span>
-                </div>
-              ) : (<>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{ct('sweepLabel34')}</span>
-                <span className="font-mono tabular-nums">
-                  {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
-                </span>
-              </div>
-
-              {allStorageTotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t("bdStorageLine")}</span>
-                  <div className="text-right">
-                    {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && (
-                      <span className="mr-2 font-mono text-xs text-muted-foreground line-through">{formatCurrency(allStorageTotal)}</span>
-                    )}
-                    <span className={`font-mono tabular-nums ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-muted-foreground line-through" : ""}`}>
-                      {rejectedStorageTotal === allStorageTotal ? formatCurrency(allStorageTotal) : formatCurrency(totals.storage)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {allEquipmentTotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t("bdEquipmentLine")}</span>
-                  <div className="text-right">
-                    {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && (
-                      <span className="mr-2 font-mono text-xs text-muted-foreground line-through">{formatCurrency(allEquipmentTotal)}</span>
-                    )}
-                    <span className={`font-mono tabular-nums ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-muted-foreground line-through" : ""}`}>
-                      {rejectedEquipmentTotal === allEquipmentTotal ? formatCurrency(allEquipmentTotal) : formatCurrency(totals.equipment)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
-                    ? t("bdOriginalQuote")
-                    : isRefunded || isPartiallyRefunded
-                      ? t("bdAmountCharged")
-                      : t("bdSubtotal")}
-                </span>
-                <span className={`font-mono tabular-nums ${
-                  (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
-                    ? 'text-muted-foreground line-through'
-                    : ''
-                }`}>
-                  {formatCurrency(totals.subtotal)}
-                </span>
-              </div>
-
-              {/* Taxes, fees and total continue the same list. Voided authorization: nothing was captured. */}
-              {booking.paymentTransaction && pricingBreakdownInput && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
-                isManagerView ? (
-                  <KitchenPayoutStatementBreakdown
-                    {...pricingBreakdownInput}
-                    currency={booking.currency || "CAD"}
-                    title={payoutTitle}
-                    showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
-                    chargeLabel={t("bdTotalCharged", { defaultValue: "Total charged" })}
-                    processingFeeLabel={
-                      pricingBreakdownInput.paymentProcessorFeeIsEstimate
-                        ? t("bdEstProcessingFee", { defaultValue: "Est. processing fee" })
-                        : t("bdProcessingFee")
-                    }
-                    platformFeeLabel={t("bdLocalCooksServiceFee", {
-                      percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
-                      defaultValue: "Service fee ({percent}%)",
-                    })}
-                    platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", { defaultValue: "Service fee" })}
-                    platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
-                    refundLabel={t("bdRefund")}
-                    hstLabel={t("bdHstPercent", { percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0 })}
-                    hstCollectedLabel={t("bdHstCollectedLine")}
-                  />
-                ) : (
-                  <ChefBookingReceiptBreakdown
-                    {...pricingBreakdownInput}
-                    currency={booking.currency || "CAD"}
-                    totalLabel={chefTotalLabel}
-                    platformFeeLabel={t("bdLocalCooksServiceFee", {
-                      percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
-                      defaultValue: "Service fee ({percent}%)",
-                    })}
-                  />
-                )
-              )}
-
-              </>)}
-
-              {!isManagerView && goodwillRefund > 0 && (
-                <div className="flex items-center justify-between gap-2 text-sm text-warning" data-testid="goodwill-line">
-                  <span>{t("bdGoodwillLine", { amount: formatCurrency(goodwillRefund) })}</span>
-                </div>
-              )}
-              {!isManagerView && refundAmount - goodwillRefund > 0 && (
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="inline-flex items-center gap-1 text-warning">
-                    {t("bdRefundedLine")}
-                    <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" beforeConfirmation={booking.status === 'pending'} />
-                  </span>
-                  <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount - goodwillRefund)}</span>
-                </div>
-              )}
-            </div>
-            </details>
-            )}
-
-            {(canDownload || showRefundReview) && (
-              <div className="mt-5 flex flex-col gap-2">
-                {canDownload && (
-                  <Button onClick={handleDownloadInvoice} disabled={isDownloading} variant="outline" className="w-full" size="sm">
-                    {isDownloading ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t("bdGenerating")}</>
-                      : <><Download className="mr-1.5 h-3.5 w-3.5" />{isManagerView ? t("bdDownloadPayoutStatement") : t(booking.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt')}</>}
-                  </Button>
-                )}
-                {showRefundReview && (
-                  <Button variant="link" size="sm" className="h-auto justify-start px-0 text-foreground underline" onClick={() => { setCancellationRefundScope(undefined); setCancellationRefundOpen(true); }}>{t('detailsCopy17')}</Button>
-                )}
-              </div>
-            )}
-          </section>
-
-          {!isManagerView && chefCanCancel && booking.status === 'confirmed' && <CancellationBookingCard bookingId={booking.id} onCancel={() => setCancelOpen(true)} />}
-          {!isManagerView && booking.status !== 'confirmed' && (chefCanCancel || booking.status === 'cancellation_requested') && (
-            <section className={sectionClass} aria-labelledby="booking-cancellation-title" data-testid="cancellation-card">
-              <h2 id="booking-cancellation-title" className={`${headingClass} mb-2`}>{t('bdhCancellationTitle')}</h2>
-              <div className="text-sm text-muted-foreground">
-                {booking.status === 'pending' ? <BookingRefundPolicyNotice single />
-                  : booking.status === 'cancellation_requested' ? <p>{t('cancelCopy07')}</p>
-                  : paidCancellationAvailable && cancellationDeadlineText ? <p>{sentence(t('bdhCancelUntil', { time: cancellationDeadlineText }))}</p>
-                  : <p>{t('bdhCancelPassed')}</p>}
-              </div>
-              {chefCanCancel && <Button variant="link" size="sm" className="mt-2 h-auto px-0 text-foreground underline" onClick={() => setCancelOpen(true)}>{t('bdhCancelOrChangeShort')}</Button>}
-            </section>
-          )}
-          {!isManagerView && (
-            <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
-              summary={{ kitchenName, reference: booking.referenceCode || undefined,
-                schedule: `${formatDate(bookingStartDateKey(booking) ?? booking.bookingDate)}\n${bookingTimeSlots.join(', ')} · ${friendlyTimezoneName(booking.location?.timezone, i18n.language)}`,
-                amount: booking.paymentTransaction ? formatCurrency(booking.paymentTransaction.amount) : undefined }}
-              cancellationDeadline={cancellationDeadlineText}
-              decisionPending={booking.paymentDecision?.state === 'pending'} declined={!!booking.cancellationRequestDeclinedAt}
-              paidCancellationAvailable={paidCancellationAvailable}
-              items={[...(booking.storageBookings || []).map(item => ({ id: item.id, kind: 'storage' as const,
-                name: item.storageListing?.name || `Storage #${item.id}`, status: item.status, dates: `${formatShortDate(item.startDate)} – ${formatShortDate(item.endDate)}` })),
-                ...(booking.equipmentBookings || []).map(item => ({ id: item.id, kind: 'equipment' as const,
-                  name: item.equipmentListing?.equipmentType || `Equipment #${item.id}`, status: item.status }))]}
-              onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
-          )}
-
-          <BookingHistoryPanel timezone={booking.location?.timezone} id={booking.id} reference={booking.referenceCode} role={isManagerView ? 'manager' : 'chef'} cancelCause={cancelCause} chefName={booking.chef?.fullName || booking.chef?.username || null} version={booking.updatedAt || booking.createdAt} limit={3} />
-
-          <Card id="booking-support" className="scroll-mt-24 rounded-2xl border-border shadow-none">
-            <CardContent className="p-5 sm:p-6">
-              <h2 className={`${headingClass} mb-2`}>{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h2>
-              <p className="text-xs leading-relaxed text-muted-foreground">{t('bdContactSupportHint', { defaultValue: 'Need help with your booking or payment?' })}</p>
-              <div className="mt-4 space-y-3 text-sm">
-                <a className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
-                <a className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
-              </div>
-              <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded />
-            </CardContent>
-          </Card>
-        </div>
+        ) : (
+          <div className="space-y-4">{paymentCard}{visitRecord}{feedback}{personCard}{addOns}{note}{cancellationCard}{history}{help}</div>
+        )}
       </div>
 
-      {/* ── Mobile: primary + Message stay in reach ── */}
+      {/* ── Mobile: primary + Message stay in reach (on narrow screens the primary lives here, not in the card) ── */}
       {hasBottomBar && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur sm:hidden" role="region" aria-label={t('bdhMobileActions')} data-testid="mobile-action-bar">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-md sm:hidden" role="region" aria-label={t('bdhMobileActions')} data-testid="mobile-action-bar">
           <div className="mx-auto flex max-w-md gap-2">
-            {messageButton('min-h-11 flex-1')}
-            {primaryButton('mobile-primary-action', 'min-h-11 flex-1')}
+            {messageButton('flex-1')}
+            {narrow && primaryButton('mobile-primary-action', 'flex-1')}
+            {narrow && claimTakesPrimary && payableClaim && (
+              <Button type="button" className="min-h-11 flex-1" data-testid="mobile-primary-action" data-primary-action="true" onClick={() => setPayingClaimId(payableClaim.id)}>
+                {bt('dcV2Pay', { amount: formatCurrency(payableClaim.amountCents) })}
+              </Button>
+            )}
           </div>
         </div>
       )}

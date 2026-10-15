@@ -297,5 +297,20 @@
   "sxEarlyExpiredManagerTitle": "Вашу пропозицію раннього початку для {chef} закрито",
   "sxEarlyExpiredManagerBody": "Ваша пропозиція для {chef} почати о {end} закрилася без відповіді. Бронювання починається о {originalEnd}.",
   "sxGrantedRequestChefTitle": "{kitchen} дає вам час до {end} безкоштовно",
-  "sxGrantedRequestChefBody": "{kitchen} безкоштовно погодила ваш запит. У вас є час до {end}, блокування на картці знято."
+  "sxGrantedRequestChefBody": "{kitchen} безкоштовно погодила ваш запит. У вас є час до {end}, блокування на картці знято.",
+  "ncConfirmedTitle": "Бронювання підтверджено · {chef} · {date}",
+  "ncConfirmedPayout": "Виплата після візиту — щойно ви завершите перевірку або автоматично через 24 години після завершення.",
+  "ncSessionEndingSubject": "Ваш заброньований час закінчується о {end} · {kitchen}",
+  "ncSessionEndingBody": "Ваш час у {kitchen} закінчується о {time} ({zone}). {count, plural, =0 {Відкрийте візит, щоб підтвердити вихід.} one {Виконайте # завдання перед виходом, потім підтвердьте вихід на сторінці візиту.} few {Виконайте # завдання перед виходом, потім підтвердьте вихід на сторінці візиту.} many {Виконайте # завдань перед виходом, потім підтвердьте вихід на сторінці візиту.} other {Виконайте # завдання перед виходом, потім підтвердьте вихід на сторінці візиту.}}",
+  "ncVisitCompleteTitle": "Візит завершено · {kitchen}",
+  "ncVisitCompleteGood": "{kitchen} перевірила приміщення — усе гаразд.",
+  "ncVisitCompleteInvoice": "Ваш остаточний рахунок готовий.",
+  "ncCancelledRefundTitle": "Ваше бронювання скасовано · повернення {amount} у дорозі (5–10 робочих днів)",
+  "ncCancelledNoRefundTitle": "Ваше бронювання скасовано · повернення коштів не передбачено",
+  "ncPayoutBooking": "Бронювання",
+  "ncPayoutExtension": "Додатковий час ({duration})",
+  "ncPayoutCharge": "Плата за додатковий час",
+  "ncDurationMinutes": "{minutes} хв",
+  "ncDurationHours": "{hours} год",
+  "ncDurationHoursMinutes": "{hours} год {minutes} хв"
 }

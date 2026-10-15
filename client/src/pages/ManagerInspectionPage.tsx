@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
-import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
+import { friendlyTimezoneName } from '@/lib/visit-time';
 import { formatTime } from '@/lib/formatters';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useEffect, useRef, useState } from 'react';
@@ -17,13 +17,14 @@ import { SmartImage } from '@/components/ui/smart-image';
 import { VisitAssistancePanel } from '@/components/booking/VisitAssistancePanel';
 import { ManagerInSessionBadge, inSessionEnds } from '@/components/manager/bookings/ManagerInSessionBadge';
 import { DamageClaimSheet } from '@/components/booking/DamageClaimSheet';
-import { BookingDamageClaims } from '@/components/booking/DamageClaimCards';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import { claimFilingWindow } from '@shared/damage-claims';
 import { recordedDepartureAt } from '@shared/clock-closeout';
 import { calendarDateForOperatingTime, calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime } from '@shared/timezone-utils';
 import { formatVisitWhen } from '@/lib/visit-when';
-import { sentence } from '@/lib/booking-header-state';
+import { initials, sentence } from '@/lib/booking-header-state';
 import { bookingReference } from '@/lib/booking-reference';
 import { readVisitDuties, type DutySection, type VisitDuties } from '@shared/visit-duties';
 
@@ -145,26 +146,40 @@ function InspectionVisits({ booking, refresh, stale }: { booking: ManagerInspect
   try {
     if (!timezone) throw Error(t('inspectCopy32'));
 
-    formatEvent = value => value ? Number.isFinite(Date.parse(value)) ? formatVisitTime(value, timezone, locale) : t('inspectCopy30') : t('inspectCopy31');
+    // Never the year. Time only on the visit day; otherwise "Oct 15, 7:04 p.m.".
+    const dayKey = (at: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+    const visitDay = booking.bookingDate.slice(0, 10);
+    formatEvent = value => {
+      if (!value) return t('inspectCopy31');
+      const at = new Date(value);
+      if (!Number.isFinite(at.getTime())) return t('inspectCopy30');
+      const clock = new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true }).format(at);
+      return dayKey(at) === visitDay ? clock : `${new Intl.DateTimeFormat(locale, { timeZone: timezone, month: 'short', day: 'numeric' }).format(at)}, ${clock}`;
+    };
     if (selected) {
       const day = booking.bookingDate.slice(0, 10);
       const startDay = calendarDateForOperatingTime(day, selected.startTime, booking.operatingWindowStartTime || booking.startTime);
       const endDay = calendarDateForBookingTime(day, selected.endTime, booking.operatingWindowStartTime, booking.startTime);
-      schedule = formatVisitWhen(createBookingDateTime(startDay, selected.startTime, timezone), createBookingDateTime(endDay, selected.endTime, timezone), timezone, locale);
+      schedule = `${formatVisitWhen(createBookingDateTime(startDay, selected.startTime, timezone), createBookingDateTime(endDay, selected.endTime, timezone), timezone, locale)} · ${friendlyTimezoneName(timezone, locale)}`;
     }
   } catch (cause) { contextError = cause instanceof Error ? cause.message : t('inspectCopy33'); }
   return <>
-    <section className="rounded-2xl border bg-card p-5 space-y-2" aria-label={t('inspectCopy34')}>
-      <p className="text-lg font-semibold">{booking.kitchen.name}</p>
-      <p>{bookingReference(booking.referenceCode, booking.id)} · {booking.chef?.fullName || booking.chef?.username || t('inspectCopy35')}</p>
-      <p className="text-sm">{booking.location.name} · {timezone ? friendlyTimezoneName(timezone, locale) : t('fixTimeUnavailable')}</p>
+    <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-2 [@media(hover:hover)]:shadow-sm" aria-label={t('inspectCopy34')}>
+      <div className="flex items-center gap-4">
+        <Avatar className="h-12 w-12 shrink-0"><AvatarFallback className="bg-muted text-sm font-semibold">{initials(booking.chef?.fullName || booking.chef?.username || '')}</AvatarFallback></Avatar>
+        <div className="min-w-0">
+          <p className="text-[22px] font-semibold leading-7 tracking-tight">{booking.chef?.fullName || booking.chef?.username || t('inspectCopy35')}</p>
+          <p className="text-[13px] leading-[18px] text-muted-foreground">{t('inspSessionLine', { kitchen: booking.kitchen.name })} · {bookingReference(booking.referenceCode, booking.id)}</p>
+        </div>
+      </div>
+      {!timezone && <p className="text-[13px] leading-[18px] text-muted-foreground">{t('fixTimeUnavailable')}</p>}
       {booking.visits.length > 1 && <div className="text-sm"><label htmlFor="inspection-visit">{t('inspectCopy36')}</label>
         <select id="inspection-visit" className="ml-2 max-w-full rounded border bg-background p-2" value={visitId} disabled={stale}
           onChange={event => navigate(`/manager/booking/${booking.id}/inspection${event.target.value ? `?visitId=${event.target.value}` : ''}`)}>
           <option value="">{t('inspectCopy37')}</option>{booking.visits.map(visit => <option key={visit.id} value={visit.id}>{t('fixVisitRange', { number: visit.blockIndex + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</option>)}
         </select><span className="mt-1 block text-muted-foreground">{t('inspectCopy38')}</span>
       </div>}
-      {selected && <p className="text-sm">{booking.visits.length ? t('inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
+      {selected && <p className="text-[15px] font-medium leading-[22px] tabular-nums">{booking.visits.length ? t('inspectVisitOf', { number: booking.visits.findIndex(visit => visit.id === selected.id) + 1, total: booking.visits.length }) + ' · ' : ''}{schedule}</p>}
     </section>
     {contextError && <p role="alert">{contextError}</p>}
     {inSessionEnds(booking).length > 0 && <div className="flex flex-wrap gap-2">
@@ -186,6 +201,7 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const { t, i18n } = useTranslation('chef');
   const { t: claimT } = useTranslation('booking');
   const chef = booking.chef?.fullName || booking.chef?.username || t('fixChef');
+  const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
@@ -208,6 +224,10 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
     return { date: new Intl.DateTimeFormat(locale, { timeZone: zone, month: 'short', day: 'numeric' }).format(new Date(at)),
       time: new Intl.DateTimeFormat(locale, { timeZone: zone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(at)) };
   })();
+  // One sentence while the inspection is open: who checked out, the deadline, and (when it applies) the sooner payout.
+  const liveSentence = canClear && !finished && deadline && evidence.checkoutRequestedAt
+    ? t('inspLiveSentence', { chef, time: formatEvent(evidence.checkoutRequestedAt), deadline: formatEvent(deadline) }) + (payoutNow ? ` ${t('inspLivePayoutSooner')}` : '')
+    : '';
   const clear = async () => {
     if (!canClear || blocked || saving || saved) return;
     setSaving(true); setError('');
@@ -254,12 +274,17 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
         <Button asChild><Link href={`/manager/booking/${booking.id}`}>{t('inspectCopy26')}</Link></Button>
         {canReportLater && <button type="button" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" onClick={() => setIssueOpen(true)}>{t('inspectFoundLater')}</button>}
       </div>
-    </section> : <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('inspectCopy46')}>
-      <h2 className="font-semibold">{t('inspectCopy46')}</h2>
-      <p>{clock?.inspection.outcome === 'auto_closed_uninspected' ? t('clockNoInspection') : clock?.inspection.outcome === 'manager_cleared' ? t('clockManagerInspected') : clock?.inspection.outcome === 'issue_filed' ? t('clockIssueOpen') : evidence.checkinStatus === 'checkout_requested' ? t('inspectCopy47') : evidence.checkinStatus === 'checked_out' ? t('inspectCopy48') : evidence.checkinStatus === 'checkout_claim_filed' ? t('inspectCopy49') : t('inspectCopy50')}</p>
-      {evidence.checkoutApprovedAt && <p className="text-sm">{t('inspectClosedAt', { time: formatEvent(evidence.checkoutApprovedAt) })}</p>}
-      <p className="font-medium">{t('inspectDeadline')}: {deadline ? `${formatEvent(deadline)} · ${booking.location.timezone ? friendlyTimezoneName(booking.location.timezone, i18n.resolvedLanguage) : ''}` : evidence.checkoutRequestedAt ? t('inspectCopy51') : t('inspectCopy52')}</p>
-      <p className="text-sm text-muted-foreground">{t('inspectCopy53')}</p>
+    </section> : <section className="rounded-2xl border bg-card p-4 sm:p-6 space-y-3" aria-label={t('inspectCopy46')}>
+      {liveSentence ? <p className="text-[15px] leading-[22px]" data-testid="inspection-sentence">{liveSentence}</p> : <>
+        <h2 className="font-semibold">{t('inspectCopy46')}</h2>
+        <p>{clock?.inspection.outcome === 'auto_closed_uninspected' ? t('clockNoInspection') : clock?.inspection.outcome === 'manager_cleared' ? t('clockManagerInspected') : clock?.inspection.outcome === 'issue_filed' ? t('clockIssueOpen') : evidence.checkinStatus === 'checkout_requested' ? t('inspectCopy47') : evidence.checkinStatus === 'checked_out' ? t('inspectCopy48') : evidence.checkinStatus === 'checkout_claim_filed' ? t('inspectCopy49') : t('inspectCopy50')}</p>
+        {evidence.checkoutApprovedAt && <p className="text-sm">{t('inspectClosedAt', { time: formatEvent(evidence.checkoutApprovedAt) })}</p>}
+        <p className="font-medium">{t('inspectDeadline')}: {deadline ? formatEvent(deadline) : evidence.checkoutRequestedAt ? t('inspectCopy51') : t('inspectCopy52')}</p>
+      </>}
+      <details className="group rounded-lg">
+        <summary className="flex min-h-11 cursor-pointer items-center text-sm text-muted-foreground underline-offset-4 hover:underline">{t('inspHowThisWorks', 'How this works')}</summary>
+        <p className="pb-2 text-sm text-muted-foreground motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">{t('inspectCopy53')}</p>
+      </details>
       {!booking.inspection && <p role="alert">{t('inspectCopy54')}</p>}
       {booking.inspection && !booking.inspection.dutiesSaved && <p>{t('inspectCopy55')}</p>}
       <label className="block text-sm font-medium" htmlFor="inspection-message">{t('fixNoteOptional', { chef })}</label>
@@ -289,7 +314,23 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
         scheduledStart={evidence.checkinStatus === 'checked_in' ? undefined : clock?.scheduledStartAt}
         disabled={blocked || saving || !canAssist} onSaved={async () => { await refresh(); }} />
     </section>}
-    {issueOpen && <DamageClaimSheet bookingId={booking.id} visitId={visitId} chefName={chef} open={issueOpen} hideTrigger onOpenChange={setIssueOpen} onFiled={() => void refresh()} />}
-    <BookingDamageClaims bookingId={booking.id} manager />
+    {issueOpen && <DamageClaimSheet bookingId={booking.id} visitId={visitId} chefName={chef} open={issueOpen} hideTrigger onOpenChange={setIssueOpen} onFiled={() => { void queryClient.invalidateQueries({ queryKey: ['damage-claims', booking.id] }); void refresh(); }} />}
+    <InspectionClaimLines bookingId={booking.id} />
   </>;
+}
+
+/** One line per damage claim. The full claim (status history, evidence, replies) lives on the booking page. */
+function InspectionClaimLines({ bookingId }: { bookingId: number }) {
+  const { t, i18n } = useTranslation('chef');
+  const { t: claimT } = useTranslation('booking');
+  const query = useQuery({ queryKey: ['damage-claims', bookingId], queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${bookingId}/damage-claims`), retry: false });
+  const claims = query.data?.claims ?? [];
+  if (!claims.length) return null;
+  return <ul className="space-y-1" aria-label={claimT('dcV2Report')}>
+    {claims.map(claim => <li key={claim.id} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <span className="tabular-nums">{t('inspClaimLine', { amount: claimMoney(claim.claimedAmountCents || claim.amountCents, i18n.language),
+        status: claimT(`dcV2Status_${claim.status}`, { defaultValue: claim.status }) })}</span>
+      <Link href={`/manager/booking/${bookingId}`} className="text-muted-foreground underline underline-offset-4 hover:text-foreground">{t('inspClaimLink')}</Link>
+    </li>)}
+  </ul>;
 }

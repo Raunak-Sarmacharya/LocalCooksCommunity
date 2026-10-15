@@ -1,5 +1,5 @@
 import { createBookingDateTime } from '@shared/timezone-utils';
-vi.mock('./clock-closeout', () => ({ persistBookingCloseout: vi.fn(async () => ({ changed: false })) }));
+vi.mock('./clock-closeout', () => ({ persistBookingCloseout: vi.fn(async () => ({ changed: false })), projectBookingCloseout: async () => ({ closeout: { visits: [{ inspection: { deadline: '2026-10-16T12:00:00Z' } }] } }) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./visit-duties', async original => ({ ...await original<typeof import('./visit-duties')>(), kitchenDuties: vi.fn(async () => ({
   arrival: { enabled: true, instructions: 'Meet at side entrance', items: [], photos: [] },
@@ -13,7 +13,8 @@ vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn(), ackno
     start: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.startTime, timezone),
     end: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.endTime, timezone) })) }));
 import { scheduleAdvanceReminders, acknowledgeConfirmationReminders } from './advance-reminders';
-const state = vi.hoisted(() => ({ feedbackEmail: vi.fn(), closeoutEmail: vi.fn(), instructionEmail: vi.fn(), notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, activeTargets: [] as any[], noticeRow: null as any, event: null as any, database: null as any, rows: [] as any[][], people: [] as any[] }));
+const state = vi.hoisted(() => ({ payout: null as any, feedbackEmail: vi.fn(), closeoutEmail: vi.fn(), instructionEmail: vi.fn(), notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, activeTargets: [] as any[], noticeRow: null as any, event: null as any, database: null as any, rows: [] as any[][], people: [] as any[] }));
+vi.mock('./kitchen-payout-service', () => ({ readKitchenPayout: async () => state.payout }));
 import { tEmail } from '../i18n/outbound';
 vi.mock('./booking-feedback-service', () => ({ currentBookingFeedbackEmail: state.feedbackEmail,
   bookingFeedbackNoticeCopy: (kind: string, kitchen: string, locale?: string) => ({
@@ -480,5 +481,32 @@ describe('booking email retry policy', () => {
   it('doubles the retry delay from one minute and caps it at six hours', async () => {
     const { bookingEmailRetryDelayMs } = await import('./booking-lifecycle-delivery');
     expect([1, 2, 3, 10, 40].map(bookingEmailRetryDelayMs)).toEqual([60_000, 120_000, 240_000, 21_600_000, 21_600_000]);
+  });
+});
+
+describe('consolidated checkout and closeout notices', () => {
+  const people = [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' },
+    { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' }];
+  const context = { chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC' };
+  beforeEach(() => { vi.clearAllMocks(); state.database = tx; state.payout = null; });
+  it.each([true, false])('selects exactly one manager checkout notice (after closeout: %s)', async afterCloseout => {
+    state.payout = afterCloseout ? { timing: 'after_closeout', status: 'scheduled', amountCents: 2732, expectedAt: '2026-10-16T12:00:00Z' } : { timing: 'at_capture', status: 'sent' };
+    state.rows = [[context], people];
+    await queueBookingLifecycleEvent(tx, 10, 'checkout_requested', 'Checked out', 'Review checkout', 3, { recipientPolicy: 'manager' });
+    expect(state.notify).toHaveBeenCalledTimes(1);
+    expect(state.notify.mock.calls[0][0].title).toContain('checked out');
+    expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
+    expect(state.notify.mock.calls[0][0].message.includes('$27.32')).toBe(afterCloseout);
+  });
+  it('sends one chef Visit complete notice with the outcome and no second email, idempotent per visit', async () => {
+    state.rows = [[], [context], people];
+    await queueBookingLifecycleEvent(tx, 10, 'visit_closed', 'Fallback', 'Fallback', 2,
+      { visitId: 5, recipientPolicy: 'chef', emailRecipientPolicy: 'none', inspectionOutcome: 'manager_cleared' });
+    expect(state.notify).toHaveBeenCalledTimes(1);
+    expect(state.notify.mock.calls[0][0]).toMatchObject({ userId: 3, title: 'Visit complete \u00b7 Harbour Kitchen', message: 'Harbour Kitchen checked the space \u2014 all good.' });
+    expect(state.insert.mock.calls[0][0].emails).toEqual([]);
+    state.rows = [[{ id: 99 }]];
+    await queueBookingLifecycleEvent(tx, 10, 'visit_closed', 'Fallback', 'Fallback', 2, { visitId: 5 });
+    expect(state.notify).toHaveBeenCalledTimes(1);
   });
 });

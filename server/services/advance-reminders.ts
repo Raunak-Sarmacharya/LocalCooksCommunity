@@ -61,7 +61,7 @@ export const selectedReminderPolicy: ReminderPolicy = {
 };
 const category = 'advance_reminder';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-/** In-session screen alert: minutes before the booked end. The 30-minute `departure` reminder is separate. */
+/** The chef’s single departure reminder, minutes before the booked end. */
 export const SESSION_ENDING_MINUTES = 15;
 export const reminderKey = (r: Reminder, channel: 'email' | 'notification') =>
   `advance:${r.source}:${r.reservationId}:${r.resource}:${r.kind}:${r.recipientId}:${channel}:${r.revision}`;
@@ -152,7 +152,7 @@ export function visitReminders(input: Omit<Reminder, 'kind' | 'due' | 'revision'
   // check-in lifecycle event (or the reconciliation sweep), and expired visits yield no reminders, so nothing is backfilled.
   const sessionEnding = input.source === 'booking' && input.state === 'checked_in' && end - start > 30 * 60000;
   const kinds = closed ? [] : ['preparation', ...(input.state === 'checked_in' ? [] : ['arrival', ...(input.checkinWindowMinutesBefore !== undefined ? ['checkin_open'] : [])]),
-    ...(input.departure && input.source === 'booking' ? ['departure'] : []), ...(sessionEnding ? ['session_ending'] : [])] as Reminder['kind'][];
+    ...(sessionEnding ? ['session_ending'] : [])] as Reminder['kind'][];
   return kinds.map(kind => {
     const arrivalLeadHours = timing.arrivalReminderHours ?? lifecycleSettings.arrivalReminderHours.defaultValue;
     const due = kind === 'preparation' ? start - (timing.preparationReminderHours ?? lifecycleSettings.preparationReminderHours.defaultValue) * 3600000
@@ -241,9 +241,9 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
         arrivalNotes: release.instructionsReleased ? duties.arrival.instructions || undefined : undefined,
         departureNotes: release.instructionsReleased ? duties.departure.instructions || undefined : undefined, tasksSummary: tasks,
         departure: true, state: state || 'not_checked_in', locale,
-        sessionEndingMessage: tEmail(locale, 'sessionEndingBody', { kitchen: row.kitchen.name,
+        sessionEndingMessage: tEmail(locale, 'ncSessionEndingBody', { kitchen: row.kitchen.name,
           time: new Intl.DateTimeFormat(locale || 'en-CA', { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(block.end),
-          zone: friendlyTimezoneName(timezone, locale || 'en-CA') }),
+          zone: friendlyTimezoneName(timezone, locale || 'en-CA'), count: duties.departure.items.filter(item => item.required !== false).length + duties.departure.photos.filter(photo => photo.required !== false).length }),
         checkinWindowMinutesBefore: savedDuties?.checkinWindowMinutesBefore,
         requirement: [block.start.toISOString(), block.end.toISOString(), timezone, chef?.username] }, policy).map(reminder => ({ ...reminder,
           message: reminder.kind === 'preparation' ? facts + (release.instructionsReleased
@@ -389,6 +389,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
 }
 
 export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPolicy) {
+  if (r.source === 'booking' && r.kind === 'departure') return 'consolidated';
   if (r.source === 'tour' && (['departure', 'checkin_open'].includes(r.kind) || r.role === 'chef' && r.kind === 'arrival')) return 'obsolete';
   if (r.source === 'tour' ? !policy?.tourEnabled : !policy?.approval) return 'policy_pending';
   if (r.source !== 'tour' && r.shortVisit && r.kind === 'departure' && !policy?.shortVisit) return 'policy_pending';
@@ -399,7 +400,8 @@ export function reminderEligibility(r: Reminder, now: Date, policy?: ReminderPol
 }
 
 function bookingReminderSubject(r: Reminder) {
-  if (r.kind === 'session_ending') return `${tEmail(r.locale, 'sessionEndingSubject')} · ${r.kitchenName || r.title} · ${r.referenceCode || `BOOKING-${r.reservationId}`}`;
+  if (r.kind === 'session_ending') return tEmail(r.locale, 'ncSessionEndingSubject', {
+    end: formatVisitClock(new Date(r.end), r.timezone), kitchen: r.kitchenName || r.title });
   const time = new Intl.DateTimeFormat(r.locale || 'en-CA', { timeZone: r.timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(r.start));
   if (r.kind === 'manager_no_checkin') return tEmail(r.locale, 'managerNoCheckinSubject', { chef: r.visitorName || tEmail(r.locale, 'payoutChefFallback'), kitchen: r.kitchenName || r.title });
   if (r.role === 'manager' && r.kind === 'arrival') return tEmail(r.locale, 'managerArrivalSubject', { chef: r.visitorName || 'The chef', time, kitchen: r.kitchenName || r.title });

@@ -10,7 +10,7 @@ export function DamageClaimReview() {
     {query.isPending && <p role="status">{t('dcV2Loading')}</p>}
     {query.isError && <p role="alert">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>}
     {query.data?.claims.map(claim => <article className="rounded-xl border p-4 flex flex-wrap items-center gap-3" key={claim.id}>
-      <p>{claim.referenceCode || `#${claim.id}`} ? {claimMoney(claim.claimedAmountCents, i18n.language)} ? {t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
+      <p>{claim.referenceCode || `#${claim.id}`} · {claimMoney(claim.claimedAmountCents, i18n.language)} · {t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
       {claim.kitchenBookingId ? <a className="underline" href={`/admin?section=booking-support&booking=${claim.kitchenBookingId}`}>{t('dcV2OpenCase')}</a> : <span>{t('dcV2LegacySupport')}</span>}
     </article>)}
   </section>;

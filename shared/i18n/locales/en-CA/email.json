@@ -297,5 +297,20 @@
   "sxEarlyExpiredManagerTitle": "Your earlier-start offer to {chef} closed",
   "sxEarlyExpiredManagerBody": "Your offer for {chef} to start at {end} closed without an answer. Their booking still starts at {originalEnd}.",
   "sxGrantedRequestChefTitle": "{kitchen} gave you until {end} at no charge",
-  "sxGrantedRequestChefBody": "{kitchen} approved your request at no charge. You have until {end}, and the hold on your card was released."
+  "sxGrantedRequestChefBody": "{kitchen} approved your request at no charge. You have until {end}, and the hold on your card was released.",
+  "ncConfirmedTitle": "Booking confirmed · {chef} · {date}",
+  "ncConfirmedPayout": "Paid after the visit — as soon as you finish the inspection, or automatically 24 hours after it ends.",
+  "ncSessionEndingSubject": "Your booked time ends at {end} · {kitchen}",
+  "ncSessionEndingBody": "Your booked time at {kitchen} ends at {time} ({zone}). {count, plural, =0 {Open your visit to check out.} one {Complete 1 departure task, then check out from your visit page.} other {Complete # departure tasks, then check out from your visit page.}}",
+  "ncVisitCompleteTitle": "Visit complete · {kitchen}",
+  "ncVisitCompleteGood": "{kitchen} checked the space — all good.",
+  "ncVisitCompleteInvoice": "Your final invoice is ready.",
+  "ncCancelledRefundTitle": "Your booking is cancelled · refund of {amount} on its way (5–10 business days)",
+  "ncCancelledNoRefundTitle": "Your booking is cancelled · no refund applies",
+  "ncPayoutBooking": "Booking",
+  "ncPayoutExtension": "Extra time ({duration})",
+  "ncPayoutCharge": "Extra-time charge",
+  "ncDurationMinutes": "{minutes} min",
+  "ncDurationHours": "{hours, plural, one {1 hr} other {# hrs}}",
+  "ncDurationHoursMinutes": "{hours, plural, one {1 hr} other {# hrs}} {minutes} min"
 }

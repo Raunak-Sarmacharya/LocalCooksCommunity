@@ -30,12 +30,12 @@ vi.mock('../db', () => {
           return resolve(table === 'support_actions' ? state.actions : table === 'damage_evidence' ? state.evidence : table === 'damage_claim_history' ? state.history : []);
         } }; return chain; },
     insert: (value: any) => ({ values: (input: any) => {
-      const apply = () => { const table = getTableName(value), row = { id: table === 'support_actions' ? state.actions.length + 1 : 1, ...input };
+      const apply = () => { const table = getTableName(value), row = { createdAt: new Date(), id: table === 'support_actions' ? state.actions.length + 1 : 1, ...input };
         if (table === 'damage_claims') state.claim = row;
         if (table === 'support_actions') state.actions.push(row);
         if (table === 'damage_claim_history') state.history.push(row);
         if (table === 'payment_transactions') state.source = row;
-        if (table === 'damage_evidence') state.evidence.push(...(Array.isArray(input) ? input : [row]));
+        if (table === 'damage_evidence') state.evidence.push(...(Array.isArray(input) ? input.map(item => ({ createdAt: new Date(), ...item })) : [row]));
         state.events.push(`insert:${table}`); return [row]; };
       return { returning: async () => apply(), then: (resolve: any) => resolve(apply()) };
     } }),

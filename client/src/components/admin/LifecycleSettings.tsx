@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import { SettingChangePreview } from '@/components/manager/settings/SettingChangePreview';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { auth } from '@/lib/firebase';
@@ -17,6 +19,7 @@ export async function lifecycleAdminRequest(url: string, body?: unknown) {
   return result;
 }
 export function LifecycleSettings() {
+  const { t } = useTranslation('manager');
   const { data, refetch } = useQuery({ queryKey: ['/api/admin/lifecycle-settings'], queryFn: () => lifecycleAdminRequest('lifecycle-settings') });
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -44,7 +47,8 @@ export function LifecycleSettings() {
           onChange={event => setValues(current => ({ ...current, [field.key]: event.target.checked ? '1' : '0' }))} />
         : <NumericInput id={field.key} suffix={field.unit} min={field.min} max={field.max} value={values[field.key] ?? ''}
           onValueChange={value => setValues(current => ({ ...current, [field.key]: value }))} />}
-      <p className="text-sm text-muted-foreground">{field.help}</p></div>)}
+      {field.key === 'managerNoCheckinMinutes' ? <SettingChangePreview whatChanges={t('scpAlertWhat', { minutes: values[field.key] })}
+        appliesTo="scheduled" rightNow={t('scpAlertImpact')} undo={t('scpAlertUndo')} /> : <p className="text-sm text-muted-foreground">{field.help}</p>}</div>)}
     <Button disabled={!data || saving || timingFields.some(field => !values[field.key]?.trim())} onClick={save}>Save lifecycle timing</Button>
     <CloseoutNotificationCutover />
   </CardContent></Card>;

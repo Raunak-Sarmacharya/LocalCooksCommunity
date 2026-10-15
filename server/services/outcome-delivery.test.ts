@@ -286,9 +286,9 @@ describe('actual producer → persisted intent → worker → admin replay', () 
       expect(state.tables.kitchen_bookings[0].status).toBe('completed');
       expect(state.tables.kitchen_bookings[0]).toMatchObject({ checkinStatus: 'checked_out', checkoutApprovedBy: 2 });
       const [cleared, ended] = state.tables.booking_lifecycle_events;
-      expect(cleared.kind).toBe('checkout_cleared');
-      expect(cleared.emails).toHaveLength(1);
-      expect(cleared.emails[0].to).toBe('chef@example.test');
+      expect(cleared.kind).toBe('visit_closed');
+      expect(cleared.emails).toHaveLength(0);
+      expect(state.alerts.filter(alert => alert.userId === 3)).toHaveLength(1);
       expect(ended.kind).toBe('service_ended');
       expect(ended.emails.map((email: any) => email.to).sort()).toEqual(['chef@example.test', 'manager@example.test']);
       booking.status = 'confirmed'; booking.checkinStatus = 'checkout_requested'; booking.visitDuties = null;

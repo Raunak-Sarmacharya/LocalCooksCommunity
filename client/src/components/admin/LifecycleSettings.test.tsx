@@ -10,11 +10,15 @@ vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: mocks.data, r
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: mocks.token } } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { LifecycleSettings } from './LifecycleSettings';
+vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('saves edited notification leads alongside outcome settings through the existing admin endpoint', async () => {
   mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({}) });
   vi.stubGlobal('fetch', mocks.fetch);
   render(<LifecycleSettings />);
+  expect(screen.getByText(/Kitchens get.*15 minutes after the booked start/)).toBeInTheDocument();
+  expect(screen.getByText('Alerts already scheduled keep their time.')).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Arrival reminder before start'), { target: { value: '4' } });
   fireEvent.change(screen.getByLabelText('Manager inspection reminder through review window'), { target: { value: '25' } });
   fireEvent.change(screen.getByLabelText('Requests expire this long before the start'), { target: { value: '2' } });

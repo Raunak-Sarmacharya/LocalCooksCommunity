@@ -90,7 +90,7 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     ? t(`sxDuration${minutes}`, { defaultValue: minutes === 30 ? "30 more minutes" : minutes === 60 ? "1 more hour" : "2 more hours" })
     : t("sxDurationOther", { defaultValue: "{length} more", length: lengthText(minutes, (key, options) => String(t(key as never, options as never)), "sx") })
   const button = (
-    <Button type="button" className={className} disabled={view.kind === "loading"} onClick={() => void open()}>
+    <Button type="button" variant="outline" className={className} disabled={view.kind === "loading"} onClick={() => void open()}>
       {view.kind === "loading" ? <Loader2 className="h-4 w-4 mr-2 shrink-0 animate-spin" /> : <Clock className="h-4 w-4 mr-2 shrink-0" />}
       {t("kciIsNeedMoreTime", { defaultValue: "Need more time?" })}
     </Button>

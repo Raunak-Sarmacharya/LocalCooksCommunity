@@ -67,7 +67,7 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     expect((await sweepClockCloseout()).changed).toBe(0);
     expect(state.booking).toEqual(before); expect(state.writes).toHaveLength(writes);
     expect(Object.values(state.booking.visitDuties.clockCloseout.inspections)).toEqual([{ outcome: 'auto_closed_uninspected', closedAt: '2026-10-14T13:30:00.000Z' }]);
-    expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(2);
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(3);
   });
   it('requests feedback for attended completion and preserves its original timestamp on later sweeps', async () => {
     state.booking.checkinStatus = 'checked_in'; state.booking.checkedInAt = new Date('2026-10-13T12:30:00Z');
@@ -104,9 +104,9 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     vi.setSystemTime(new Date('2026-10-20T14:00:00Z'));
     expect((await sweepClockCloseout()).changed).toBe(1);
     expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.map(call => [call[2], (call[6] as any).recipientPolicy])).toEqual([
-      ['service_ended', 'participants'], ['inspection_auto_closed', 'manager']]);
+      ['service_ended', 'participants'], ['visit_closed', 'chef'], ['inspection_auto_closed', 'manager']]);
     expect((await sweepClockCloseout()).changed).toBe(0);
-    expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(2);
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(3);
   });
   it('notifies when service ended just after the cutover', async () => {
     // Service ended 13:45Z, after the cutover at 13:00Z.

@@ -1904,6 +1904,8 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             ...chefBooking,
             responseDeadlineAt: await getBookingResponseDeadlineAt(booking, undefined, location?.timezone),
             runningLate: await (await import('../services/running-late')).readRunningLate(booking.id),
+            // Read-only: extra time and claim payments on this booking (own rows), so the page shows the true total paid.
+            additionalCharges: await (await import('../services/booking-additional-charges')).readAdditionalCharges(db, booking.id, 'chef', booking.paymentIntentId).catch(() => []),
             checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
             noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
             kitchenContact: kitchenContact ? {

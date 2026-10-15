@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { addHour, getHourlySlotStarts } from '@shared/operating-hours';
 import type { ChangeQuote, ChangeSchedule, ConfirmedStorageChoice } from '@shared/kitchen-booking-change';
+import { NowAttentionRow } from './BookingNowCard';
 
 type Entry = { id: string; kind: string; state: string; label: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule;
   quote: ChangeQuote; decisionBy: string; paymentBy: string | null; canDecide: boolean; paymentRecorded: boolean;
@@ -31,7 +32,11 @@ export function ChangePrice({ quote }: { quote: ChangeQuote }) {
   </div>;
 }
 
-export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone }: { bookingId: number; manager: boolean; onChanged: () => Promise<void>; timezone?: string | null }) {
+/**
+ * `variant="now"`: the booking page's Now card shows only changes still waiting on someone, as attention rows with no
+ * card heading; finished changes live in the booking history (they are booking events already).
+ */
+export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone, variant = 'card' }: { bookingId: number; manager: boolean; onChanged: () => Promise<void>; timezone?: string | null; variant?: 'card' | 'now' }) {
   const { t, i18n } = useTranslation('chef');
   const locale = i18n?.resolvedLanguage || 'en-CA';
   const time = (value: string) => timezone ? formatVisitTime(value, timezone, locale) : t('fixTimeUnavailable');
@@ -73,11 +78,14 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone 
   };
   const decision = (entry: Entry, action: string) => perform(() => api(`/${entry.id}/decision`, {
     revision: entry.revision, action, ...(action === 'approve' ? { overlapKey: overlaps[entry.id]?.overlapKey, acceptTourOverlap: !!acknowledged[entry.id] } : {}) }));
-  if (!error && (!data || data.changes.length === 0)) return null;
-  return <section className="rounded-2xl border bg-card p-5 space-y-3" aria-label={t('changeCopy05')}>
-    <h2 className="font-semibold">{t('changeCopy06')}</h2>
+  const now = variant === 'now';
+  const shown = (data?.changes || []).filter(entry => !now || pending.includes(entry.state));
+  if (!error && shown.length === 0) return null;
+  const Wrapper = now ? 'div' : 'section';
+  return <Wrapper className={now ? 'space-y-3' : 'rounded-2xl border bg-card p-5 space-y-3'} aria-label={t('changeCopy05')} data-testid={now ? 'now-changes' : undefined}>
+    {!now && <h2 className="font-semibold">{t('changeCopy06')}</h2>}
     {error && <p role="alert" className="text-sm text-destructive">{error} {t('changeOriginalSafe')} <button className="underline" onClick={() => void perform(reload)}>{t('fixRetry')}</button></p>}
-    {data?.changes.map(entry => <article key={entry.id} className="rounded-xl border p-4 space-y-2">
+    {shown.map(entry => <NowAttentionRow key={entry.id} as={now ? undefined : 'plain'} className={now ? undefined : 'rounded-xl border p-4 space-y-2'}>
       <h3 className="font-medium">{entry.kind === 'extend' ? t('changeCopy07') : t('changeCopy08')} · {t(`changeState_${entry.state}`, { defaultValue: t('changeState_requested') })}</h3>
       <p className="text-sm">{t('changeOriginal', { time: range(entry.original) })}<br />{t('changeRequested', { time: range(entry.destination) })}</p>
       {entry.state !== 'applied' && <p className="text-sm">{t('changeCopy09')}</p>}
@@ -93,7 +101,7 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone 
       {entry.state === 'authorized' && <p className="text-sm">{t('changeCopy18')}</p>}
       {['payment_pending', 'capture_pending', 'refund_pending', 'release_pending', 'recovery_required'].includes(entry.state) && <Button variant="outline" disabled={busy} onClick={() => void perform(() => api(`/${entry.id}/sync`, {}))}>{t('changeCopy19')}</Button>}
       <details><summary className="cursor-pointer text-sm">{t('changeCopy20')}</summary><div className="text-sm space-y-2 pt-2">{entry.history.map(event => <p key={event.revision}>{time(event.at)}: {event.message}</p>)}</div></details>
-    </article>)}
+    </NowAttentionRow>)}
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>{t('changeCopy21')}</DialogTitle></DialogHeader>
       <p className="text-sm">{t('changeCopy22')}</p>
       <p className="text-sm">{t('changeCopy23')}</p>
@@ -119,5 +127,5 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone 
           expectedUpdatedAt: preview.expectedUpdatedAt, linkedItems: preview.linkedItems || [], requestKey }); setOpen(false); })}>{t('changeCopy32')}</Button>}
       </div>
     </DialogContent></Dialog>
-  </section>;
+  </Wrapper>;
 }

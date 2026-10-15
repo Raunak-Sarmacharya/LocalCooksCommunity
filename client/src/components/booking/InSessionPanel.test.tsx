@@ -53,22 +53,26 @@ describe("in-session panel", () => {
 
   it("shows kitchen-local end with a friendly zone and a countdown while more than 15 minutes remain", () => {
     mount();
-    expect(screen.getByRole("heading", { name: "Test kitchen" })).toBeInTheDocument();
-    expect(screen.getByText(/In session · ends 2:30\s?p\.m\. Newfoundland Time/)).toBeInTheDocument();
+    // The visit page header already names the kitchen and the zone, so the panel only says when it ends.
+    expect(screen.queryByRole("heading", { name: "Test kitchen" })).not.toBeInTheDocument();
+    expect(screen.getByText(/^Ends at 2:30\s?p\.m\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/In session/)).not.toBeInTheDocument();
     expect(screen.queryByText(/St_Johns/)).not.toBeInTheDocument();
     expect(screen.getByText("2 h 0 min left")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
     expect(screen.getByRole("button", { name: "Need more time?" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start check-out" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check out now" })).not.toBeInTheDocument();
   });
 
-  it("switches to Start check-out in the last 15 minutes and keeps counting locally", async () => {
+  it("switches to one Check out now button in the last 15 minutes and keeps counting locally", async () => {
     mount();
     await advance(105 * MIN);
     expect(screen.getByText("15 min left")).toBeInTheDocument();
     // Extra time stays available until the booked end (build-session-extensions.md); it loads only when tapped.
     expect(screen.getByRole("button", { name: "Need more time?" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Start check-out" }));
+    expect(screen.queryByRole("button", { name: "Check out early" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Check out now" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Check out now" }));
     expect(onStartCheckout).toHaveBeenCalledTimes(1);
     await advance(10 * MIN);
     expect(screen.getByText("5 min left")).toBeInTheDocument();
@@ -80,8 +84,10 @@ describe("in-session panel", () => {
     await advance(121 * MIN);
     // One message lives in the visit header; the panel counts the time past the booking and offers checkout.
     expect(screen.getByText(/min past your booking/)).toBeInTheDocument();
+    expect(screen.getByText(/^Ended at 2:30\s?p\.m\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/In session/)).not.toBeInTheDocument();
     expect(screen.queryByText("Check out now to close your visit.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Leave early / check out now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check out early" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check out now" }));
     expect(onStartCheckout).toHaveBeenCalled();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
@@ -107,20 +113,25 @@ describe("in-session panel", () => {
 
   it("states that leaving early gives no refund and goes to the departure flow", () => {
     mount();
+    // The no-refund note lives in the confirm, not on the page.
+    expect(screen.queryByText("Leaving early does not refund unused booked time.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check out early" }));
     expect(screen.getByText("Leaving early does not refund unused booked time.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Leave early / check out now" }));
+    expect(onStartCheckout).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Check out early" }));
     expect(onStartCheckout).toHaveBeenCalledTimes(1);
   });
 
   it("hides check-out actions when the departure flow cannot accept them", () => {
     mount({ canCheckout: false });
-    expect(screen.queryByRole("button", { name: "Leave early / check out now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check out early" })).not.toBeInTheDocument();
   });
 
   it("previews departure instructions and required tasks, and lists Local Cooks help", () => {
     mount();
     expect(screen.getByText("Lock the side entrance.")).toBeInTheDocument();
     expect(screen.getByText("Required tasks before check-out: 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Get help" }));
     expect(screen.getByRole("link", { name: /support@localcooks.ca/ })).toHaveAttribute("href", "mailto:support@localcooks.ca");
   });
 
@@ -172,8 +183,17 @@ describe("in-session panel", () => {
 
   it("uses 44px minimum tap targets for its actions", () => {
     mount();
-    for (const name of ["Need more time?", "Leave early / check out now", "Message kitchen", "Report a problem"]) {
+    for (const name of ["Need more time?", "Check out early", "Message kitchen", "Report a problem", "Get help"]) {
       expect(screen.getByRole("button", { name }).className).toContain("min-h-11");
     }
+  });
+});
+
+describe("in-session panel restraint", () => {
+  it("has no filled button while active, a neutral progress bar and one end-time label", () => {
+    mount();
+    expect(screen.getByRole("button", { name: "Need more time?" }).className).toContain("border");
+    expect(screen.getByRole("progressbar").firstElementChild?.className).not.toContain("bg-primary");
+    expect(screen.getAllByText(/2:30\s?p\.m\./)).toHaveLength(1);
   });
 });

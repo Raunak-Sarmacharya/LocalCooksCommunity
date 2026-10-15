@@ -1768,6 +1768,11 @@ async function reconcileSessionExtensionEvent(intent: Stripe.PaymentIntent) {
   await handleSessionExtensionWebhook(new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' }), intent);
 }
 
+/** A confirmation or extra-time notice already explains these captures to the kitchen. */
+export function paymentReceivedNoticeApplies(intent: { metadata: Record<string, string> }, metadata: unknown) {
+  return intent.metadata.type !== 'session_extension' && !(metadata as { bookingDecisionId?: string } | null)?.bookingDecisionId;
+}
+
 async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
@@ -2123,7 +2128,7 @@ async function handlePaymentIntentSucceeded(
             .where(eq(locations.id, kitchen.locationId))
             .limit(1);
 
-          if (location && location.managerId) {
+          if (location && location.managerId && paymentReceivedNoticeApplies(paymentIntent, transaction?.metadata)) {
             // Display name only; never show the chef's email address as a name.
             const { getUserDisplayName } = await import("../utils/user-display");
             const displayName = booking.chefId ? await getUserDisplayName(booking.chefId, "chef").catch(() => "") : "";

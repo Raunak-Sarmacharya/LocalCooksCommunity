@@ -22,7 +22,7 @@ describe('claim recipient privacy and notices', () => {
   it('alerts kitchen + admins, never the chef, for first review', async () => {
     await queueDamageClaimNotice(tx, claim('in_review'), history('submitted'));
     expect(state.notices.map(item => item.userId).sort()).toEqual([2, 99]);
-    expect(state.emails.map(item => item.recipientUserId).sort()).toEqual([2, 99]);
+    expect(state.emails.map(item => item.recipientUserId).sort()).toEqual([99]);
     expect(state.notices[0].message).toContain('2 business days');
     expect(state.notices[1].actionUrl).toBe('/admin?section=booking-support&booking=7');
   });

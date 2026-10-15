@@ -317,7 +317,7 @@ export async function cancelChefBooking(bookingId: number, chefId: number, opera
     for (const money of quoted.sources) {
       const source = ctx.sources.find(item => item.id === money.transactionId)!;
       const operation = { ...money, id: `chef-cancel-${bookingId}-${source.id}-${operationKey}`, bookingId, managerId: ctx.managerId, policyEngine: true,
-        managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents,
+        managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents, cancellationNoticeIncludesRefund: true,
         status: money.chefRefundCents ? 'pending' : 'succeeded', acceptedAt: cancelAt.toISOString(), supportOperationKey: actorId !== chefId ? operationKey : undefined };
       await tx.update(paymentTransactions).set({ stripeProcessingFee: String(money.processingCost), managerRevenue: String(money.capturedCents - money.processingCost - money.serviceFee),
         metadata: { ...metadata(source), refunds: money.receipts, cancellationRefundOperation: operation }, updatedAt: cancelAt }).where(eq(paymentTransactions.id, source.id));
@@ -523,7 +523,7 @@ export async function retryCancellationRefund(bookingId: number, managerId: numb
         if (['kitchen', 'bundle'].includes(source.bookingType)) await tx.update(kitchenBookings).set({ paymentStatus: status, updatedAt: new Date() })
           .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.paymentIntentId, source.paymentIntentId!)));
         await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: status, eventType: 'cancellation_refund_verified', description: 'Stripe verified the reserved cancellation refund; bank receipt is not confirmed', metadata: { ...operation, refundId: result.refundId }, createdBy: managerId }, tx);
-        await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', 'Refund sent',
+        if (!operation.cancellationNoticeIncludesRefund) await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', 'Refund sent',
           `A refund of ${(customerRefund / 100).toFixed(2)} ${source.currency} has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`, managerId, { transactionId: source.id, refundId: result.refundId });
       });
     } catch (error) {

@@ -149,7 +149,9 @@ describe("booking page: extra time", () => {
       { match: /\/decision$/, method: "POST", body: { extension: { ...charge, status: "disputed" } } });
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="" />);
     const card = await screen.findByTestId("extension-charge");
-    expect(card).toHaveTextContent("You stayed 40 minutes past your booking at Harbour Kitchen. They’ve asked for $15.01 for 30 minutes of extra time.");
+    expect(card).toHaveTextContent("You stayed 40 minutes past your booking at Harbour Kitchen. They’ve asked for $15.01 for the extra time.");
+    // D4: a lowered amount is never paired with a length, so it can't read as a rate.
+    expect(card).not.toHaveTextContent("30 minutes of extra time");
     expect(within(card).getByRole("button", { name: "Pay $15.01" })).toBeInTheDocument();
     fireEvent.click(within(card).getByRole("button", { name: "This isn’t right" }));
     const send = within(card).getByRole("button", { name: "Send to Local Cooks" });

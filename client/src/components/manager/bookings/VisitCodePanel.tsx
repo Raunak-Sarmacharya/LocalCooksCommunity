@@ -1,3 +1,4 @@
+import { SettingChangePreview } from '../settings/SettingChangePreview'
 /**
  * VisitCodePanel
  *
@@ -42,6 +43,8 @@ interface VisitCodePanelProps {
    * (the page header shows them), and a sentence instead of an empty block.
    */
   embedded?: boolean
+  /** Hide the code behind a compact summary before the arrival window. */
+  collapsed?: boolean
   /** Tells the page whether this panel already states when the chef checked in, so it is said once. */
   onArrivalShown?: (shown: boolean) => void
   /** The visit is over: only the arrival method/time is shown, never a code. */
@@ -64,13 +67,15 @@ async function readError(response: Response, fallback: string) {
 }
 
 export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone, bookingDate, operatingWindowStartTime, startTime, endTime,
-  visits = [], bookingStatus, onChanged, embedded = false, visitEnded = false, onArrivalShown }: VisitCodePanelProps) {
+  visits = [], bookingStatus, onChanged, embedded = false, collapsed = false, visitEnded = false, onArrivalShown }: VisitCodePanelProps) {
   const { t, i18n } = useTranslation("manager")
   const locale = i18n?.resolvedLanguage || i18n?.language || "en-CA"
   const queryClient = useQueryClient()
   const [action, setAction] = useState<Action | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const [reason, setReason] = useState("")
   const [allVisits, setAllVisits] = useState(false)
+  const [acknowledged, setAcknowledged] = useState(false)
   const [reasonTouched, setReasonTouched] = useState(false)
   const [dialogError, setDialogError] = useState("")
 
@@ -161,14 +166,14 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   }
 
   const open = (kind: Action["kind"], target: ManagerVisitCodeState) => {
-    setAction({ kind, target }); setReason(""); setAllVisits(false); setReasonTouched(false); setDialogError("")
+    setAction({ kind, target }); setReason(""); setAllVisits(false); setAcknowledged(false); setReasonTouched(false); setDialogError("")
   }
   const close = () => { if (!mutation.isPending) setAction(null) }
   const trimmed = reason.trim()
   const reasonValid = trimmed.length >= SELF_REASON_MIN && trimmed.length <= SELF_REASON_MAX
 
   const confirm = async () => {
-    if (!action || mutation.isPending) return
+    if (!action || mutation.isPending || action.kind !== 'issue' && !acknowledged) return
     setDialogError("")
     try {
       if (action.kind === "issue") {
@@ -225,9 +230,13 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
   }
 
   const modeSelf = action?.kind === "self"
+  if (collapsed && !expanded) return <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+    <span>{t("scpCodeCollapsed", { defaultValue: "Check-in code · shared in person when they arrive" })}</span>
+    <Button variant="link" className="h-auto min-h-11 px-0 font-medium text-foreground underline underline-offset-4" onClick={() => setExpanded(true)}>{t("scpShowCode", { defaultValue: "Show code" })}</Button>
+  </div>
   const multiple = targets.filter(target => !target.consumed && !target.revoked).length > 1
   const dialogTitle = !action ? "" : action.kind === "issue" ? t("visitCodeIssueTitle", { defaultValue: "Get a new check-in code?" })
-    : modeSelf ? t("visitCodeSelfTitle", { defaultValue: "Set up self check-in?" })
+    : modeSelf ? t("scpSelfTitle", { chef: chefName })
       : t("visitCodeStaffedTitle", { defaultValue: "Switch back to staffed check-in?" })
   const dialogBody = !action ? "" : action.kind === "issue"
     ? t("visitCodeIssueBody", { defaultValue: "The current code stops working immediately. Share the new code with the chef when they arrive." })
@@ -247,13 +256,11 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
           const staffed = target.mode === "staffed"
           return (
             <article key={target.targetKey} className="rounded-xl border p-4 space-y-3" data-testid={`visit-code-${target.targetKey}`}>
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm empty:hidden sm:grid-cols-2">
                 {name && <div><dt className="text-xs text-muted-foreground">{t("visitCodeVisit", { defaultValue: "Visit" })}</dt><dd className="font-medium">{name}</dd></div>}
                 {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeCustomer", { defaultValue: "Chef" })}</dt><dd className="font-medium">{customerName || t("visitCodeNameUnavailable", { defaultValue: "Name unavailable" })}</dd></div>}
                 {!embedded && <div><dt className="text-xs text-muted-foreground">{t("visitCodeKitchen", { defaultValue: "Kitchen" })}</dt><dd className="font-medium">{kitchenName || "—"}</dd></div>}
                 {when && (!embedded || name) && <div><dt className="text-xs text-muted-foreground">{t("visitCodeWhen", { defaultValue: "Visit time (kitchen local)" })}</dt><dd className="font-medium tabular-nums">{when}</dd></div>}
-                <div><dt className="text-xs text-muted-foreground">{t("visitCodeMode", { defaultValue: "How {chef} checks in", chef: chefName })}</dt>
-                  <dd className="font-medium">{staffed ? t("visitCodeModeStaffed", { defaultValue: "You share this code in person" }) : t("visitCodeModeSelf", { defaultValue: "{chef} checks in on their own, no code needed", chef: chefName })}</dd></div>
               </dl>
 
               {target.consumed ? (
@@ -267,7 +274,7 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                       {target.code ? (
                         <div>
                           <h3 className="text-sm font-semibold">{t("visitCodeHeading", { defaultValue: "Check-in code for {chef}", chef: chefName })}</h3>
-                          <p className="mt-0.5 text-sm text-muted-foreground">{t("visitCodeGiveHint", { defaultValue: "Share this code with {chef} when they arrive. They enter it in Local Cooks to check in.", chef: chefName })}</p>
+                          <p className="mt-0.5 text-sm text-muted-foreground">{t("visitCodeGiveHint", { defaultValue: "Share it in person when they arrive." })}</p>
                           <p className="mt-1 text-4xl font-semibold tabular-nums tracking-[0.2em] sm:text-5xl" data-testid="visit-code-value"
                             aria-label={t("visitCodeA11y", { defaultValue: "Check-in code {digits}", digits: target.code.split("").join(" ") })}>{groupVisitCode(target.code)}</p>
                         </div>
@@ -312,14 +319,18 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
         <DialogContent showCloseButton className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
-            <DialogDescription>{dialogBody}</DialogDescription>
+            <DialogDescription>{action?.kind === "issue" ? dialogBody : undefined}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={event => { event.preventDefault(); void confirm() }}>
+            {action && action.kind !== 'issue' && <SettingChangePreview
+              whatChanges={t(modeSelf ? 'scpSelfWhat' : 'scpStaffedWhat', { chef: chefName })}
+              appliesTo={t(modeSelf ? allVisits ? 'scpSelfAllWhen' : 'scpSelfWhen' : 'scpStaffedWhen', { n: targets.length })}
+              rightNow={t('scpSelfImpact', { chef: chefName })} undo={t(modeSelf ? 'scpSelfUndo' : 'scpStaffedUndo')} />}
             {modeSelf && (
               <>
                 <div className="space-y-2">
                   <label htmlFor={`visit-code-reason-${bookingId}`} className="block text-sm font-medium">
-                    {t("visitCodeReasonLabel", { defaultValue: "Reason (required)" })}
+                    {t("scpSelfReason")}
                   </label>
                   <Textarea id={`visit-code-reason-${bookingId}`} value={reason} rows={3} maxLength={SELF_REASON_MAX} disabled={mutation.isPending}
                     aria-invalid={reasonTouched && !reasonValid} aria-describedby={`visit-code-reason-help-${bookingId}`}
@@ -336,13 +347,17 @@ export function VisitCodePanel({ bookingId, customerName, kitchenName, timezone,
                 )}
               </>
             )}
+            {action && action.kind !== 'issue' && <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input type="checkbox" checked={acknowledged} disabled={mutation.isPending} onChange={event => setAcknowledged(event.target.checked)} />
+              {t('scpAcknowledgeNotice')}
+            </label>}
             <div aria-live="polite">
               {modeSelf && reasonTouched && !reasonValid && <p className="text-sm text-destructive">{t("visitCodeReasonInvalid", { defaultValue: "Enter a reason of at least {min} characters.", min: SELF_REASON_MIN })}</p>}
               {dialogError && <p role="alert" className="text-sm text-destructive">{dialogError}</p>}
             </div>
             <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" className="min-h-11" disabled={mutation.isPending} onClick={close}>{t("visitCodeCancel", { defaultValue: "Cancel" })}</Button>
-              <Button type="submit" className="min-h-11" disabled={mutation.isPending || (modeSelf && !reasonValid)}>
+              <Button type="button" variant="outline" className="min-h-11" disabled={mutation.isPending} onClick={close}>{t(action?.kind === "self" ? "scpKeepCode" : "scpKeep")}</Button>
+              <Button type="submit" className="min-h-11" disabled={mutation.isPending || (modeSelf && !reasonValid) || action?.kind !== 'issue' && !acknowledged}>
                 {mutation.isPending ? t("visitCodeSaving", { defaultValue: "Saving…" })
                   : action?.kind === "issue" ? t("visitCodeIssueConfirm", { defaultValue: "Get a new code" })
                     : modeSelf ? t("visitCodeSelfConfirm", { defaultValue: "Turn on self check-in" })

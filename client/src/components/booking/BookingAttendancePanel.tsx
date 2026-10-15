@@ -26,7 +26,7 @@ type VisitDetails = Parameters<typeof hasBookingAttendanceEvidence>[0] & { id?: 
 export function BookingAttendancePanel({ bookingId, manager, localCooks = false, onSaved, timezone, chefName, closeout, visitDetails = [], embedded = false, hideArrivalStatus = false, fixOpen, onFixOpenChange, fixAction }: {
   bookingId: number; manager: boolean; localCooks?: boolean; onSaved: () => Promise<void>; managerVisitHref?: string;
   timezone?: string | null; chefName?: string; closeout?: BookingCloseout; visitDetails?: VisitDetails[];
-  /** Inside the booking page's Visit card: no card chrome, heading, zone line or extra Message button (the page header has them). */
+  /** Inside the booking page's Visit details: no card chrome, heading, zone line, status text or extra Message button (the Now card has them). */
   embedded?: boolean;
   /** Another line already says when they checked in (manager, visit code), so skip the arrival-only status. */
   hideArrivalStatus?: boolean;
@@ -157,9 +157,10 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     {query.error && <p role="alert">{t('bookingAttendanceUnavailable')} <Button variant="link" onClick={() => void query.refetch()}>{t('fixRetry')}</Button></p>}
     {data && <>
       {visitPicker}
-      {chosen && missed && manager && !localCooks && <p className="text-sm" data-testid="visit-no-checkin">{t('fixMissedManager', { chef })}{' '}
+      {/* Embedded in the booking page: the Now card sentence and the visit timeline already say what happened. */}
+      {!embedded && chosen && missed && manager && !localCooks && <p className="text-sm" data-testid="visit-no-checkin">{t('fixMissedManager', { chef })}{' '}
         <button type="button" className="underline underline-offset-2" onClick={() => setOpen(true)}>{t('fixMissedManagerLink')}</button></p>}
-      {chosen && !missed && !(hideArrivalStatus && arrival && !departure && !noShow && latest?.action !== 'report_attended') && <p className="text-sm" data-testid="visit-record-status">{noShow ? latest?.action === 'report_no_show' ? t('fixNoShowStatus', { time: when(latest.createdAt) }) : t('bookingAttendanceLegacy')
+      {!embedded && chosen && !missed && !(hideArrivalStatus && arrival && !departure && !noShow && latest?.action !== 'report_attended') && <p className="text-sm" data-testid="visit-record-status">{noShow ? latest?.action === 'report_no_show' ? t('fixNoShowStatus', { time: when(latest.createdAt) }) : t('bookingAttendanceLegacy')
         : latest?.action === 'report_attended' ? t('fixAttendedStatus') : arrival ? departure ? t('fixArrivalDepartureStatus', { arrival: when(arrival, false), departure: when(departure, false) }) : t('fixArrivalStatus', { time: when(arrival, false) })
           : arrived ? t('fixArrivedStatus') : t('fixNoArrival')}</p>}
       {zone && !embedded && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(zone, locale)}</p>}

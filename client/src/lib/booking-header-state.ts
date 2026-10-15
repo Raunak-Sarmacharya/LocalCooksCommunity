@@ -130,14 +130,18 @@ const clockMinutes = (value: string) => { const [h, m] = value.split(':').map(Nu
  * Hours shown in the header: the real start–end span of every visit (saved clocks first, then the visit rows, then the
  * booking's own start/end), so extensions and early starts always show. `durationHours` is only a last resort.
  */
-export function bookedHours(input: { closeoutVisits?: Array<{ scheduledStartAt: string; scheduledEndAt: string }> | null;
-  visits?: Array<{ startTime: string; endTime: string }> | null; startTime?: string | null; endTime?: string | null; durationHours?: number | string | null }) {
-  const round = (minutes: number) => Math.round(minutes / 60 * 100) / 100;
+type BookedSpanInput = { closeoutVisits?: Array<{ scheduledStartAt: string; scheduledEndAt: string }> | null;
+  visits?: Array<{ startTime: string; endTime: string }> | null; startTime?: string | null; endTime?: string | null; durationHours?: number | string | null };
+/** Exact booked minutes (same sources and order as `bookedHours`); feeds `formatBookedDuration`. */
+export function bookedMinutes(input: BookedSpanInput): number {
   const saved = (input.closeoutVisits || []).map(visit => Date.parse(visit.scheduledEndAt) - Date.parse(visit.scheduledStartAt));
-  if (saved.length && saved.every(span => Number.isFinite(span) && span > 0)) return round(saved.reduce((a, b) => a + b, 0) / 60_000);
+  if (saved.length && saved.every(span => Number.isFinite(span) && span > 0)) return Math.round(saved.reduce((a, b) => a + b, 0) / 60_000);
   const span = (start: string, end: string) => { const diff = clockMinutes(end) - clockMinutes(start); return diff > 0 ? diff : diff + 1440; };
   const rows = (input.visits || []).filter(visit => visit.startTime && visit.endTime);
-  if (rows.length) return round(rows.reduce((sum, visit) => sum + span(visit.startTime, visit.endTime), 0));
-  if (input.startTime && input.endTime) return round(span(input.startTime, input.endTime));
-  return Number(input.durationHours) || 0;
+  if (rows.length) return rows.reduce((sum, visit) => sum + span(visit.startTime, visit.endTime), 0);
+  if (input.startTime && input.endTime) return span(input.startTime, input.endTime);
+  return Math.round((Number(input.durationHours) || 0) * 60);
+}
+export function bookedHours(input: BookedSpanInput) {
+  return Math.round(bookedMinutes(input) / 60 * 100) / 100;
 }

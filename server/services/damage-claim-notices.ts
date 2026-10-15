@@ -4,7 +4,7 @@ import { ensureServerI18n, tLocale } from '../i18n';
 import { notificationService } from './notification.service';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { getAppBaseUrl } from '../config';
-import { chefCanSeeClaim, type Claim, type ClaimTx } from './damage-claims-v2';
+import { chefCanSeeClaim, kitchenOnlyClaimActions, type Claim, type ClaimTx } from './damage-claims-v2';
 
 /** Both participants receive the same public decision. Internal notes and provider details stay in support_actions. */
 export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history: typeof damageClaimHistory.$inferSelect) {
@@ -27,13 +27,16 @@ export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history:
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(claim.chefResponseDeadline);
     const title = t('NoticeTitle', { kitchen, amount });
     const debt = claim.fundedBy === 'local_cooks' ? t(claim.chefOwes ? 'ChefOwes' : 'WriteOff') : '';
-    const message = `${t(`Notice_${event}`, { kitchen, amount, deadline })} ${debt} ${publicMessage}`.trim();
+    // First-review messages are for the kitchen; the chef only hears Local Cooks' final decisions.
+    const shared = chef && kitchenOnlyClaimActions.includes(history.action) ? '' : publicMessage;
+    const message = `${t(`Notice_${event}`, { kitchen, amount, deadline })} ${debt} ${shared}`.trim();
     const path = person.role === 'admin' ? `/admin?section=booking-support&booking=${claim.kitchenBookingId}`
       : chef ? `/booking/${claim.kitchenBookingId}` : `/manager/booking/${claim.kitchenBookingId}`;
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement',
       priority: review ? 'high' : 'normal', title, message, actionUrl: path, actionLabel: t('View'),
       metadata: { damageClaimId: claim.id, historyId: history.id } }, tx);
-    if (!operationalEmailAllowed(person)) continue;
+    // Filing is the kitchen’s own action; admins retain both channels.
+    if (person.id === claim.managerId && history.action === 'submitted' || !operationalEmailAllowed(person)) continue;
     await tx.insert(emailLogs).values({ recipientEmail: person.username, recipientUserId: person.id, recipientRole: chef ? 'chef' : person.role || 'manager',
       subject: title, previewText: message, category: 'lifecycle_outcome', status: 'queued',
       trackingId: `claim-outcome:${claim.id}:${history.id}:${person.id}`, textBody: `${message}\n\n${getAppBaseUrl(chef ? 'chef' : person.role === 'admin' ? 'admin' : 'kitchen')}${path}` });
