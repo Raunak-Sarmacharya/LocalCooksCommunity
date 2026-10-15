@@ -1894,6 +1894,13 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         const detailVisits = await (await import('../services/kitchen-booking-visits')).readKitchenBookingVisits(id);
         const derived = await projectBookingCloseout(booking, location!.timezone!, detailVisits);
         const chefBooking = await chefBookingInstructions(derived, location?.timezone, detailVisits);
+        // Map preview on the booking page (same cached geocoder as the kitchen listing); no map if it can't resolve.
+        if (location?.address) {
+            // Never hold the page for the map: a slow first lookup finishes in the background and is cached for next time.
+            const lookup = (await import('../services/geocoding-service')).geocodeAddress(location.address).catch(() => null);
+            const point = await Promise.race([lookup, new Promise<null>(resolve => setTimeout(() => resolve(null), 1500))]);
+            if (point) Object.assign(location, { latitude: point.lat, longitude: point.lng });
+        }
         if (location) Object.assign(location, { instructionsReleased: chefBooking.instructionsReleased,
             instructionsReleaseAt: chefBooking.instructionsReleaseAt,
             checkinInstructions: chefBooking.instructionsReleased ? location.arrivalInstructions : null,

@@ -362,7 +362,8 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     expect(emails[0].content.text).toContain('Total paid: CAD $12.20');
     expect(emails[0].content.text).toContain('2026-10-07–2026-10-10');
     expect(emails[0].content.text).not.toContain('Check in for each visit');
-    expect(emails[1].content.text).toContain('Estimated payout: CAD $10.80');
+    // No Stripe fee recorded yet: the staff estimate subtracts the display estimate (2.9% + $0.30 of $12.20 = $0.65), as the kitchen page does.
+    expect(emails[1].content.text).toContain('Estimated payout: CAD $10.15');
     expect(emails[0].content.text).not.toMatch(/^Service fee:|tax CAD|America\//im);
     expect(emails[0].content.text).toContain('Hi Sam Taylor,');
     expect(emails[0].content.text).not.toContain('Hi Chef,');

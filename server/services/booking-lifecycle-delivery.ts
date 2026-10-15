@@ -199,7 +199,10 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       durationHours: row.booking.durationHours == null ? undefined : Number(row.booking.durationHours),
       kitchenName: row.kitchen.name, locationName: row.location.name, locationAddress: row.location.address || '',
       referenceCode: row.booking.referenceCode, reservationChefName: nameOf(context.chefId) || 'the chef',
-      payoutAfterCloseout: payment.payoutTiming === 'after_closeout', totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout), processingFeeCents: Number(payment.processingFee ?? 0),
+      payoutAfterCloseout: payment.payoutTiming === 'after_closeout', totalCents: Number(payment.amount), payoutCents: payment.payout == null ? undefined : Number(payment.payout), processingFeeCents: Number(payment.processingFee ?? 0) > 0 ? Number(payment.processingFee)
+        // Stripe reports the actual fee after capture; until then use the same display estimate the kitchen sees.
+        : await (async () => { const fees = await (await import('./stripe-checkout-fee-service')).getFeeConfig();
+          return Math.round(Number(payment.amount) * fees.stripePercentageFee + fees.stripeFlatFeeCents); })(),
       cancellationPolicyHours: row.booking.cancellationPolicyHours ?? 24,
       cancellationDeadline: new Date(Math.min(...(await import('./advance-reminders')).reminderVisitTimes(row.booking, row.location.timezone || DEFAULT_TIMEZONE).map(visit => visit.start.getTime())) - (row.booking.cancellationPolicyHours ?? 24) * 3600000).toISOString(),
       specialNotes: row.booking.specialNotes || undefined,

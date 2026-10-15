@@ -1622,16 +1622,24 @@ export default function BookingDetailsPage() {
             const email = contactEmail;
             return email ? <a href={`mailto:${email}`} className="flex min-h-11 items-center break-all text-[13px] text-muted-foreground underline-offset-4 hover:underline">{email}</a> : null;
           })()}
-          {/* Where (chef): a small map when the kitchen's coordinates are known; the address itself is in the Now card. */}
-          {!isManagerView && booking.location?.address && hasCoordinates && (
-            <Suspense fallback={<Skeleton className="h-[140px] w-full rounded-xl" />}>
-              <LocationMap address={booking.location.address} name={kitchenName} latitude={latitude} longitude={longitude} heightClassName="h-[140px]" />
-            </Suspense>
-          )}
-          {!isManagerView && mapsHref && !hasCoordinates && (
-            <a href={mapsHref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium underline-offset-4 hover:underline">
-              <MapPin className="h-4 w-4" aria-hidden />{t('bnGetDirections')}
-            </a>
+          {/* Where (chef, Airbnb pattern): the full address, a small map when the kitchen can be placed, and directions. */}
+          {!isManagerView && booking.location?.address && (
+            <div className="space-y-2 pt-1" data-testid="kitchen-where">
+              <p className="flex items-start gap-1.5 text-sm"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="select-all">{booking.location.address}</span></p>
+              {hasCoordinates && (
+                <Suspense fallback={<Skeleton className="h-[140px] w-full rounded-xl" />}>
+                  <div className="overflow-hidden rounded-xl border">
+                    <LocationMap address={booking.location.address} name={kitchenName} latitude={latitude} longitude={longitude} heightClassName="h-[140px]" />
+                  </div>
+                </Suspense>
+              )}
+              {mapsHref && (
+                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(booking.location.address)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-[13px] font-medium underline underline-offset-4">
+                  {t('bnGetDirections')}
+                </a>
+              )}
+            </div>
           )}
         </div>
       </Card>
