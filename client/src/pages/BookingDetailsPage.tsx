@@ -1622,22 +1622,21 @@ export default function BookingDetailsPage() {
             const email = contactEmail;
             return email ? <a href={`mailto:${email}`} className="flex min-h-11 items-center break-all text-[13px] text-muted-foreground underline-offset-4 hover:underline">{email}</a> : null;
           })()}
-          {/* Where (chef, Airbnb pattern): the full address, a small map when the kitchen can be placed, and directions. */}
+          {/* Where (chef, Airbnb pattern): the map card (address + Get directions in its footer) when the kitchen can be
+              placed — the same component as the listing; otherwise the full address and a directions link. */}
           {!isManagerView && booking.location?.address && (
-            <div className="space-y-2 pt-1" data-testid="kitchen-where">
-              <p className="flex items-start gap-1.5 text-sm"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="select-all">{booking.location.address}</span></p>
-              {hasCoordinates && (
-                <Suspense fallback={<Skeleton className="h-[140px] w-full rounded-xl" />}>
-                  <div className="overflow-hidden rounded-xl border">
-                    <LocationMap address={booking.location.address} name={kitchenName} latitude={latitude} longitude={longitude} heightClassName="h-[140px]" />
-                  </div>
+            <div className="pt-1" data-testid="kitchen-where">
+              {hasCoordinates ? (
+                <Suspense fallback={<Skeleton className="h-[188px] w-full rounded-xl" />}>
+                  <LocationMap address={booking.location.address} name={kitchenName} latitude={latitude} longitude={longitude} heightClassName="h-[140px]" />
                 </Suspense>
-              )}
-              {mapsHref && (
-                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(booking.location.address)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-[13px] font-medium underline underline-offset-4">
-                  {t('bnGetDirections')}
-                </a>
+              ) : (
+                <div className="space-y-1">
+                  <p className="flex items-start gap-1.5 text-sm"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="select-all">{booking.location.address}</span></p>
+                  <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(booking.location.address)}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex min-h-11 items-center text-[13px] font-medium underline underline-offset-4">{t('bnGetDirections')}</a>
+                </div>
               )}
             </div>
           )}
