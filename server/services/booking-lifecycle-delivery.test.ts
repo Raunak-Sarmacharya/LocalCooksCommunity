@@ -353,7 +353,15 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     [confirmed()], [{ amount: '1220', tax: '150', fee: '70', payout: '1080' }],
     [{ name: 'Approved cold storage', item: { totalPrice: '500', startDate: new Date('2026-10-07'), endDate: new Date('2026-10-10') } }],
     [{ name: 'Approved oven', item: { totalPrice: '200' } }],
+    [], [], // declined equipment / storage at approval (none here)
   ]; state.people = state.rows[1]; });
+  it('names a requested add-on the kitchen declined in the confirmation (live #169: oven declined, chef not told)', async () => {
+    state.rows[6] = [{ name: 'Commercial Oven' }];
+    await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');
+    const emails = state.insert.mock.calls[0][0].emails;
+    expect(emails[0].content.text).toContain('Not included: Commercial Oven — the kitchen couldn’t provide it, so you weren’t charged for it.');
+    expect(emails[1].content.text).toContain('Commercial Oven — declined at approval; the chef wasn’t charged for it.');
+  });
   it('persists actual captured money, approved linked items, separate visits and role-specific destinations', async () => {
     state.rows[1][0].profile = { fullName: 'Sam Taylor' };
     await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');

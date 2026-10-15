@@ -312,5 +312,8 @@
   "ncPayoutCharge": "Extra-time charge",
   "ncDurationMinutes": "{minutes} min",
   "ncDurationHours": "{hours, plural, one {1 hr} other {# hrs}}",
-  "ncDurationHoursMinutes": "{hours, plural, one {1 hr} other {# hrs}} {minutes} min"
+  "ncDurationHoursMinutes": "{hours, plural, one {1 hr} other {# hrs}} {minutes} min",
+  "bookingNotIncluded": "Not included",
+  "bookingNotIncludedChef": "{items} — the kitchen couldn’t provide it, so you weren’t charged for it.",
+  "bookingNotIncludedStaff": "{items} — declined at approval; the chef wasn’t charged for it."
 }

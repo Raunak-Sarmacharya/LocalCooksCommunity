@@ -190,6 +190,13 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const equipment = await tx.select({ item: equipmentBookings, name: equipmentListings.equipmentType }).from(equipmentBookings)
       .innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId))
       .where(and(eq(equipmentBookings.kitchenBookingId, bookingId), eq(equipmentBookings.status, 'confirmed')));
+    // Requested add-ons the kitchen declined at approval (not charged) — named in the chef's confirmation.
+    const declined = [
+      ...(await tx.select({ name: equipmentListings.equipmentType }).from(equipmentBookings).innerJoin(equipmentListings, eq(equipmentListings.id, equipmentBookings.equipmentListingId))
+        .where(and(eq(equipmentBookings.kitchenBookingId, bookingId), eq(equipmentBookings.status, 'cancelled')))),
+      ...(await tx.select({ name: storageListings.name }).from(storageBookings).innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+        .where(and(eq(storageBookings.kitchenBookingId, bookingId), eq(storageBookings.status, 'cancelled')))),
+    ].map(row => row.name).filter(Boolean);
     for (const { item } of storage) await storageDuties(item.id, tx, 'confirmation');
     const date = (value: Date) => value.toISOString().slice(0, 10);
     const manager = recipients.find(person => person.id === context.managerId);
@@ -211,6 +218,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       departureInstructions: confirmedDuties.departure.instructions || undefined,
       contactEmail: manager?.email || undefined,
 
+      ...(declined.length ? { declinedAddons: declined.join(', ') } : {}),
       addons: [...equipment.map(({ name }) => name),
         ...storage.map(({ item, name }) => `${name}: ${date(item.startDate)}–${date(item.endDate)}. Storage removal is separate from kitchen checkout.`)].join('; '),
     };
@@ -313,7 +321,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       holdReason: typeof metadata.holdReason === 'string' ? metadata.holdReason : null }) : undefined;
     if (!arrivalNotice && (adminCopy || metadata.notificationRecipientPolicy !== 'manager' || person.id === context.managerId)) await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager',
       type: kind === 'confirmed' ? 'booking_confirmed' : kind === 'cancelled' ? 'booking_cancelled' : 'system_announcement',
-      title: adminCopy?.title ?? confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: adminCopy?.message ?? confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
+      title: adminCopy?.title ?? confirmedCopy?.title ?? closedCopy?.title ?? payoutCopy?.title ?? feedbackCopy?.title ?? roleText?.title ?? title, message: adminCopy?.message ?? confirmedCopy?.message ?? closedCopy?.message ?? payoutCopy?.message ?? feedbackCopy?.message ?? (chef && arrivalDetails ? `${message}${confirmation?.declinedAddons ? `\n${tEmail(person.locale, 'bookingNotIncludedChef', { items: confirmation.declinedAddons })}` : ''}\n${arrivalDetails.visitGuidance}` : roleText?.message ?? message), actionUrl: metadata.requestExpired && chef ? String(metadata.kitchenPath) : kitchenPath ?? path, actionLabel: metadata.requestExpired && chef ? 'Find another time' : roleActionLabel ? roleActionLabel : payoutCopy?.actionLabel ?? feedbackCopy?.actionLabel ?? 'View booking', metadata: kind === 'feedback_requested' ? { bookingId } : { bookingId, ...metadata } }, tx);
     if (chef && arrivalDetails) await (await import('./advance-reminders')).acknowledgeConfirmationReminders(tx, bookingId, person.id, 'notification', confirmationTime);
     if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (adminCopy || metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;

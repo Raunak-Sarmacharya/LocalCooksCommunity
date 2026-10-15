@@ -124,6 +124,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
         // Snapshot at capture: only this env opt-in defers the kitchen transfer until the visit closes.
         payoutTiming: kitchenPayoutTiming(process.env.KITCHEN_PAYOUT_TIMING),
         baseAmount: String(subtotal + next.tax), taxAmount: String(next.tax), serviceFee: String(next.commission),
+        // Kitchen share of what is actually captured (approved items + their HST); a declined add-on must not inflate it.
+        managerRevenue: String(subtotal + next.tax),
         metadata: { ...(transaction.metadata as object || {}), partialCapture: next.amount < terms.authorizedAmount,
           approvedSubtotal: subtotal, approvedTax: next.tax, taxRatePercent: terms.rate, platformCommission: next.commission,
           bookingDecisionId: next.id, capturedComponentAllocations: allocations, componentAllocationVersion: 'original-tax-largest-remainder-v1' } }).where(eq(paymentTransactions.id, transaction.id));

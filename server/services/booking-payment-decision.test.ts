@@ -104,7 +104,8 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       const [payment] = await tx.select().from(paymentTransactions);
       const [storage] = await tx.select().from(storageBookings);
       expect(booking).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', paymentDecision: { state: 'complete', amount: 1220 } });
-      expect(payment).toMatchObject({ status: 'succeeded', amount: '1220' });
+      // A declined add-on never inflates the kitchen share (live #169: $57.50 shown for a $30.50 capture).
+      expect(payment).toMatchObject({ status: 'succeeded', amount: '1220', managerRevenue: '1150' });
       expect(storage).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
     });
     await decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }]);

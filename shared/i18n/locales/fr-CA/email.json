@@ -312,5 +312,8 @@
   "ncPayoutCharge": "Frais de temps supplémentaire",
   "ncDurationMinutes": "{minutes} min",
   "ncDurationHours": "{hours} h",
-  "ncDurationHoursMinutes": "{hours} h {minutes} min"
+  "ncDurationHoursMinutes": "{hours} h {minutes} min",
+  "bookingNotIncluded": "Non inclus",
+  "bookingNotIncludedChef": "{items} — la cuisine ne pouvait pas le fournir, il ne vous a donc pas été facturé.",
+  "bookingNotIncludedStaff": "{items} — refusé lors de l’approbation; le chef n’a pas été facturé."
 }

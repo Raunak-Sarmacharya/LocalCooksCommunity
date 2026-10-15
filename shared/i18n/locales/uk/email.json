@@ -312,5 +312,8 @@
   "ncPayoutCharge": "Плата за додатковий час",
   "ncDurationMinutes": "{minutes} хв",
   "ncDurationHours": "{hours} год",
-  "ncDurationHoursMinutes": "{hours} год {minutes} хв"
+  "ncDurationHoursMinutes": "{hours} год {minutes} хв",
+  "bookingNotIncluded": "Не включено",
+  "bookingNotIncludedChef": "{items} — кухня не змогла це надати, тому з вас за це не стягнули оплату.",
+  "bookingNotIncludedStaff": "{items} — відхилено під час підтвердження; з шефа за це не стягнули оплату."
 }
