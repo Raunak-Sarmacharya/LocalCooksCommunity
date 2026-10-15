@@ -18,7 +18,7 @@ export function SessionExtensionSettingsCard({ kitchenId, admin = false }: { kit
   const { t } = useTranslation("manager")
   const path = `/${admin ? "admin" : "manager"}/kitchens/${kitchenId}/session-extension-settings`
   const { data, isError, refetch } = useQuery<Settings>({ queryKey: ["session-extension-settings", admin, kitchenId], queryFn: () => apiGet(path) })
-  const impact = useSettingImpact(kitchenId)
+  const { impact, impactFetching, impactError } = useSettingImpact(kitchenId)
   const [draft, setDraft] = useState(false)
   useEffect(() => { if (data) setDraft(data.effectiveAutoApprove) }, [data])
   const [override, setOverride] = useState<"follow" | "on" | "off">("follow")
@@ -49,7 +49,7 @@ export function SessionExtensionSettingsCard({ kitchenId, admin = false }: { kit
               onCheckedChange={setDraft} />
           </div>
           {!admin && <SettingChangePreview whatChanges={t(draft ? 'scpAutoOnWhat' : 'scpAutoOffWhat', { kitchen: data?.kitchenName })}
-            appliesTo={t(draft ? 'scpAutoWhen' : 'scpNow')} impact={impact}
+            appliesTo={t(draft ? 'scpAutoWhen' : 'scpNow')} impact={impact} impactFetching={impactFetching} impactError={impactError}
             rightNow={impact ? t(draft ? 'scpAutoImpact' : 'scpAutoOffImpact', { ...impact }) : undefined}
             undo={t('scpAutoUndo')} confirm={draft} actionLabel={t(draft ? 'scpApproveAuto' : 'scpSave')}
             cancelLabel={t('scpKeepManual')} disabled={!data || busy || locked || draft === data.effectiveAutoApprove}
@@ -68,7 +68,7 @@ export function SessionExtensionSettingsCard({ kitchenId, admin = false }: { kit
             <label className="block text-sm">{t("sxsReason", { defaultValue: "Reason (required)" })}
               <textarea className="mt-1 block w-full rounded border p-2" value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} /></label>
             <SettingChangePreview whatChanges={t(nextAutoApprove ? 'scpAutoOnWhat' : 'scpAutoOffWhat', { kitchen: data.kitchenName })}
-              appliesTo={t('scpAutoWhen')} impact={impact} undo={t('scpAutoUndo')}
+              appliesTo={t('scpAutoWhen')} impact={impact} impactFetching={impactFetching} impactError={impactError} undo={t('scpAutoUndo')}
               confirm={nextAutoApprove && !data.effectiveAutoApprove} actionLabel={t('scpSaveOverride')} disabled={busy || !reason.trim()}
               onSave={() => save({ override: override === 'follow' ? null : override === 'on', reason: reason.trim() })} />
           </fieldset>}

@@ -1,3 +1,4 @@
+import { friendlyDate } from "@/lib/friendly-date";
 import { ct } from '@/i18n/chef-ns';
 import { BookingRefundPolicyNotice } from "./BookingRefundPolicyNotice";
 import { StorageIcon as Package } from "@/components/ui/inventory-icons";
@@ -160,7 +161,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 const formatDate = (dateStr: string) =>
-  formatCalendarDate(dateStr, i18n.language, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) || 'Invalid Date'
+  friendlyDate(`${calendarDateKey(dateStr)}T12:00:00Z`, i18n.language, "UTC") || 'Invalid Date'
 
 const formatTime = (timeString: string) => formatKitchenClock(timeString, i18n.language)
 

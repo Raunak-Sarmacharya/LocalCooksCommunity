@@ -12,10 +12,10 @@ import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 
 type Quote = { quoteReady: boolean; chefRefundCents: number; alreadyRefundedCents?: number; feeRetainedCents: number; snapshot?: CancellationPolicySnapshot };
 
-export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, deadlineText, deadlinePassed }: {
+export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, deadlineText, deadlinePassed, createdAt }: {
   bookingId: number; status: string; canCancel: boolean; onCancel: () => void;
   /** Fallback when the booking has no saved policy snapshot (older bookings). */
-  deadlineText?: string; deadlinePassed?: boolean;
+  deadlineText?: string; deadlinePassed?: boolean; createdAt?: string | Date | null;
 }) {
   const { t: tbStrict, i18n } = useTranslation('booking');
   const tb = tbStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
@@ -30,7 +30,8 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
       const deadline = friendlyDateTime(new Date(deadlineAt), i18n.language, snapshot.timezone);
       const noRefund = snapshot.lateChargePercent === 100, charge = tb(snapshot.lateChargePercent === 50 ? 'cpHalf' : 'cpFull');
       const fee = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format((data?.feeRetainedCents ?? 0) / 100);
-      const key = Date.now() >= deadlineAt ? (noRefund ? 'cpDeadlinePastNoRefund' : 'cpDeadlinePast')
+      const bookedInside = createdAt && new Date(createdAt).getTime() > deadlineAt;
+      const key = bookedInside ? (noRefund ? 'cpBookedInsideNoRefund' : 'cpBookedInsideHalf') : Date.now() >= deadlineAt ? (noRefund ? 'cpDeadlinePastNoRefund' : 'cpDeadlinePast')
         : data?.quoteReady ? (noRefund ? 'cpDeadlineKnownNoRefund' : 'cpDeadlineKnown') : (noRefund ? 'cpDeadlineNoRefund' : 'cpDeadline');
       return collapseDoublePeriods(tb(key, { deadline, charge, fee, hours: snapshot.noticeHours }));
     })()}</p>

@@ -1,3 +1,4 @@
+vi.mock('@/lib/manager-bookings-query', () => ({ fetchManagerBookings: async () => [] }));
 import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';

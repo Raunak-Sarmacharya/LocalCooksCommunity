@@ -1,3 +1,4 @@
+import { fetchManagerBookings } from './manager-bookings-query';
 import { useQuery } from '@tanstack/react-query';
 import { createBookingDateTime } from '@shared/timezone-utils';
 import { bookingStartDateKey } from './calendar-date';
@@ -25,9 +26,10 @@ export function settingImpact(bookings: ImpactBooking[], kitchenId?: number, now
   return impact;
 }
 
-/** Subscribe to the list the manager shell already loads; never issue another request. */
+/** Share the manager list cache, fetching it when settings are opened first. */
 export function useSettingImpact(kitchenId?: number, locationId?: number, names?: { location?: string; kitchen?: string }) {
-  const { data } = useQuery<ImpactBooking[]>({ queryKey: ['managerBookings'], enabled: false });
-  return data ? settingImpact(data.filter(row => (locationId == null || (row.locationId ?? row.location?.id ?? row.kitchen?.locationId) === locationId)
+  const { data, isFetching, isError } = useQuery<ImpactBooking[]>({ queryKey: ['managerBookings'], queryFn: fetchManagerBookings });
+  const impact = data ? settingImpact(data.filter(row => (locationId == null || (row.locationId ?? row.location?.id ?? row.kitchen?.locationId) === locationId)
     && (!names?.location || row.locationName === names.location) && (!names?.kitchen || row.kitchenName === names.kitchen)), kitchenId) : undefined;
+  return { impact, impactFetching: isFetching, impactError: isError };
 }

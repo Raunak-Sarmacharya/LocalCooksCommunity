@@ -8,6 +8,8 @@ export interface SettingChangePreviewProps {
   whatChanges: ReactNode;
   appliesTo: 'now' | 'new_bookings' | 'scheduled' | ReactNode;
   impact?: SettingImpact;
+  impactFetching?: boolean;
+  impactError?: boolean;
   rightNow?: ReactNode;
   undo: ReactNode;
   confirm?: boolean;
@@ -24,10 +26,9 @@ export function SettingChangePreview(props: SettingChangePreviewProps) {
   const { t } = useTranslation('manager');
   const [open, setOpen] = useState(false), [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const loading = !props.impact && props.rightNow == null;
   const when = props.appliesTo === 'now' ? t('scpNow') : props.appliesTo === 'new_bookings' ? t('scpNewBookings')
     : props.appliesTo === 'scheduled' ? t('scpScheduled') : props.appliesTo;
-  const rightNow = props.rightNow ?? (loading ? t('scpChecking') : props.impact!.upcoming === 0 ? t('scpNone')
+  const rightNow = props.impactError ? t('scpCountFailed') : props.rightNow ?? (props.impactFetching ? t('scpChecking') : !props.impact ? t('scpCountFailed') : props.impact.upcoming === 0 ? t('scpNone')
     : t(props.notifiesChefs ? 'scpImpactNotified' : 'scpImpact', { upcoming: props.impact!.upcoming }));
   const lines = <dl className="space-y-2 rounded-lg bg-muted/40 p-3 text-sm" data-testid="setting-change-preview">
     {[[t('scpWhat'), props.whatChanges], [t('scpWhen'), when], [t('scpRightNow'), rightNow], [t('scpUndo'), props.undo]].map(([label, value], index) =>
@@ -43,7 +44,7 @@ export function SettingChangePreview(props: SettingChangePreviewProps) {
   return <div className="space-y-3">
     {lines}
     {!open && error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    {props.onSave && <Button className="min-h-11" disabled={props.disabled || loading || busy} onClick={() => {
+    {props.onSave && <Button className="min-h-11" disabled={props.disabled || busy} onClick={() => {
       if (props.confirm) { setAcknowledged(false); setOpen(true); } else void save();
     }}>{props.actionLabel}</Button>}
     {props.confirm && props.onSave && <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
@@ -54,7 +55,7 @@ export function SettingChangePreview(props: SettingChangePreviewProps) {
           {t(props.notifiesChefs ? 'scpAcknowledgeNotice' : 'scpAcknowledge')}</label>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter><Button className="min-h-11" variant="outline" disabled={busy} onClick={() => setOpen(false)}>{props.cancelLabel || t('scpKeep')}</Button>
-          <Button className="min-h-11" disabled={props.disabled || loading || busy || !acknowledged} onClick={() => void save()}>{props.actionLabel}</Button></DialogFooter>
+          <Button className="min-h-11" disabled={props.disabled || busy || !acknowledged} onClick={() => void save()}>{props.actionLabel}</Button></DialogFooter>
       </DialogContent>
     </Dialog>}
   </div>;

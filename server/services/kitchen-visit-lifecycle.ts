@@ -107,7 +107,8 @@ export async function checkinKitchenVisit(
   if (!photoCheck.valid) return { success: false, error: photoCheck.error, fieldErrors: photoCheck.fieldErrors };
   const checklistCheck = { valid: true, error: undefined };
   if (!checklistCheck.valid) return { success: false, error: checklistCheck.error };
-  try { await verifyArrivalCode(arrival); }
+  let arrivalMethod: 'code' | 'self' = 'self';
+  try { const gate = await verifyArrivalCode(arrival); if (gate.kind === 'ok') arrivalMethod = gate.method; }
   catch (error) {
     if (error instanceof VisitCodeError) return { success: false, error: error.message, code: error.code, attemptsLeft: error.attemptsLeft };
     throw error;
@@ -115,7 +116,7 @@ export async function checkinKitchenVisit(
   let updated;
   try {
     [updated] = await updateConfirmedVisit(bookingId, visitId, 'not_checked_in', {
-    checkinStatus: 'checked_in', checkedInAt: now, checkedInMethod: 'self',
+    checkinStatus: 'checked_in', checkedInAt: now, checkedInMethod: arrivalMethod,
     checkinNotes: notes || null, checkinPhotoUrls: photos || [], checkinChecklistItems: checklist || [],
     actualStartTime: new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now),
     updatedAt: now,

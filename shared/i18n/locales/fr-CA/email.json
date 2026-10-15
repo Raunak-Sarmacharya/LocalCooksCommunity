@@ -133,7 +133,7 @@
   "bookingManagerSelfBody": "L’arrivée autonome est activée pour {chef}. Assurez-vous que le chef peut entrer et vous joindre.",
   "bookingAdminConfirmedBody": "Le paiement est enregistré et la réservation est confirmée. Ouvrez la réservation pour consulter l’horaire actuel.",
   "bookingReleaseOnPage": "Consultez la réservation pour connaître la date de publication des instructions.",
-  "bookingCancellationPolicy": "Annulation gratuite jusqu’à {deadline}; ensuite, toute annulation nécessite l’examen de la cuisine selon votre politique enregistrée de {hours} heures. Consultez le remboursement applicable avant d’annuler.",
+  "bookingCancellationPolicy": "L’annulation suit votre politique enregistrée de {hours} heures. Les frais d’annulation tardive s’appliquent au montant total de la réservation, y compris l’équipement, l’entreposage, la TVH et les frais de service. Pour une annulation anticipée après confirmation, les frais réels de traitement de carte sont retenus. Ouvrez la réservation pour consulter votre politique et le remboursement exact avant d’annuler.",
   "bookingChefChanges": "Ouvrez la réservation pour demander une annulation. Pour modifier la date ou l’heure, contactez {contact}. Les dates confirmées restent en vigueur jusqu’à l’accord sur une modification.",
   "bookingStaffChanges": "Ouvrez la réservation pour consulter son état actuel et les demandes d’annulation. Coordonnez toute modification de date ou d’heure avec le contact de réservation et Local Cooks.",
   "bookingCancelledHeading": "Réservation de cuisine annulée",

@@ -133,7 +133,7 @@
   "bookingManagerSelfBody": "Self check-in is on for {chef}. Make sure the chef can get in and reach you.",
   "bookingAdminConfirmedBody": "Payment is recorded and the booking is confirmed. Open the booking to review the current itinerary.",
   "bookingReleaseOnPage": "Open your booking for the instruction release time.",
-  "bookingCancellationPolicy": "Cancellation: free until {deadline}; after that, cancellation needs kitchen review under your saved {hours}-hour policy. Open the booking to review the applicable refund before cancelling.",
+  "bookingCancellationPolicy": "Cancellation follows your saved {hours}-hour policy. Late cancellation charges apply to the booking total, including equipment, storage, HST and the service fee. For early cancellation after confirmation, the actual card processing fee is kept. Open the booking to review your policy and exact refund before cancelling.",
   "bookingChefChanges": "Open the booking to request cancellation. For a date/time change, contact {contact}. Your confirmed dates remain in place until a change is agreed.",
   "bookingStaffChanges": "Open the booking to review its current status and cancellation requests. Coordinate a date/time change with the booking contact and Local Cooks.",
   "bookingCancelledHeading": "Kitchen booking cancelled",

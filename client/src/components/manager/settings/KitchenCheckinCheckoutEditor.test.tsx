@@ -5,7 +5,7 @@ import { KitchenCheckinCheckoutEditor, findUnifiedItemProblems, itemsToStorage, 
 
 vi.mock("@/i18n/manager", () => ({ mt: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }));
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
-vi.mock("@/lib/setting-impact", () => ({ useSettingImpact: () => ({ upcoming: 3, inSession: 0, pending: 0 }) }));
+vi.mock("@/lib/setting-impact", () => ({ useSettingImpact: () => ({ impact: { upcoming: 3, inSession: 0, pending: 0 } }) }));
 afterEach(cleanup);
 function Editor({ coupled = false, kitchen = false, initial = [], onChange = () => {} }: {
   coupled?: boolean; kitchen?: boolean; initial?: UnifiedChecklistItem[]; onChange?: (items: UnifiedChecklistItem[]) => void;

@@ -46,3 +46,14 @@ describe("chef dashboard overview loading", () => {
     expect(screen.getByText("ovNotStarted")).toBeInTheDocument();
   });
 });
+
+it('labels booking 138 with its overnight calendar date and localized clock', () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
+  try {
+    render(<OverviewTabContent {...props()} enrichedBookings={[{ id: 138, kitchenId: 1, kitchenName: 'Overnight kitchen', status: 'confirmed',
+      bookingDate: '2026-10-15T00:00:00Z', startTime: '04:45', endTime: '05:45', operatingWindowStartTime: '06:00' }]} />);
+    expect(screen.getAllByText(/Oct 16/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/2026/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/4:45 a\.m\./).length).toBeGreaterThan(0);
+  } finally { vi.useRealTimers(); }
+});

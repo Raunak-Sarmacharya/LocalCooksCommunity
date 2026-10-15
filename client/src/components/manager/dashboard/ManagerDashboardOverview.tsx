@@ -1,3 +1,6 @@
+import { bookingStartDateKey } from "@/lib/calendar-date";
+import { friendlyDate, friendlyTime } from "@/lib/friendly-date";
+import { fetchManagerBookings } from "@/lib/manager-bookings-query";
 import { ct } from '@/i18n/chef-ns';
 import { StorageIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
@@ -115,34 +118,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
     // Use the same query as ManagerBookingsPanel for consistency and real-time updates
     const { data: bookings = [], isLoading: isLoadingBookings } = useQuery<Booking[]>({
         queryKey: ['managerBookings'],
-        queryFn: async () => {
-            // Get Firebase token for authentication
-            const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) {
-                throw new Error(tt("firebaseUserNotAvailable"));
-            }
-
-            const token = await currentFirebaseUser.getIdToken();
-            const headers: HeadersInit = {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            };
-
-            const response = await fetch('/api/manager/bookings', {
-                headers,
-                credentials: "include",
-            });
-
-            if (!response.ok) {
-                throw new Error(tt("failedToFetchBookings"));
-            }
-
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                return await response.json();
-            }
-            return [];
-        },
+        queryFn: fetchManagerBookings,
         // Real-time polling
         refetchInterval: (data) => {
             if (!data || !Array.isArray(data)) return 10000;
@@ -208,7 +184,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
         const grouped: { [key: string]: Booking[] } = {};
         bookings.forEach((booking) => {
             if (!booking.bookingDate) return;
-            const dateStr = normalizeDate(booking.bookingDate);
+            const dateStr = bookingStartDateKey(booking);
             if (!dateStr) return;
 
             if (!grouped[dateStr]) {
@@ -441,7 +417,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                 <Card className="animate-in fade-in slide-in-from-bottom-5 duration-300">
                     <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-4 gap-4">
                         <CardTitle className="text-lg leading-tight">
-                            {ct('sweepBookingsFor', { date: selectedDate.toLocaleDateString(i18n.language, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) })}
+                            {ct('sweepBookingsFor', { date: friendlyDate(selectedDate, i18n.language) })}
                         </CardTitle>
                         <Button
                             variant="ghost"
@@ -557,9 +533,9 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                     const formatTime = (isoString: string, durationMins: number) => {
                                         if (!isoString) return '';
                                         const d = new Date(isoString);
-                                        const startTimeStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                                        const startTimeStr = friendlyTime(d, i18n.language);
                                         const dEnd = new Date(d.getTime() + durationMins * 60000);
-                                        const endTimeStr = dEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                                        const endTimeStr = friendlyTime(dEnd, i18n.language);
                                         return `${startTimeStr} - ${endTimeStr}`;
                                     };
 

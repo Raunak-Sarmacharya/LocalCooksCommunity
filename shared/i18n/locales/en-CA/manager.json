@@ -873,7 +873,7 @@
   "configureRequirementsFor": "Configure requirements for",
   "configureWhatInformationChefsNeedToProvideWhenApplyingToYour": "Choose what chefs need to provide for kitchen access.",
   "configureWhenChefsCanCancelTheirBookings": "Set when chefs may cancel. Refund amounts are set by Local Cooks, not this window.",
-  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Set the cancellation window for all kitchens at this location. Refund amounts follow Local Cooks platform rules: full release before you approve; after approval, almost full except Stripe processing fees.",
+  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Set the cancellation window for kitchens at this location. Before confirmation, the card hold is released in full. After confirmation, early cancellations refund the booking total minus the actual card processing fee; late cancellations follow the saved policy and charge 50% or the full booking total.",
   "configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif": "Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.",
   "configureYourLocationPreferencesBookingRulesApplicationRequi": "Configure your location preferences, booking rules, access requirements, and notifications.",
   "confirm": "Confirm",
@@ -3862,5 +3862,6 @@
   "scpPauseUndo": "Turn it back on here.",
   "scpResumeWhat": "Chefs can ask for more time, and kitchens can offer it or charge for extra time again.",
   "scpSaveFailed": "Couldn’t save this change. Try again.",
-  "scpShowCode": "Show code"
+  "scpShowCode": "Show code",
+  "scpCountFailed": "We couldn't count your upcoming bookings."
 }

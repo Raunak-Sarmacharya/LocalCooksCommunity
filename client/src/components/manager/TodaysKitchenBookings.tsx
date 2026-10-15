@@ -1,3 +1,5 @@
+import { bookingStartDateKey } from "@/lib/calendar-date";
+import { friendlyDate, friendlyTime } from "@/lib/friendly-date";
 /**
  * TodaysKitchenBookings
  *
@@ -282,7 +284,7 @@ export function TodaysKitchenBookings() {
             <div className="space-y-3 md:hidden">
               {bookings.map((booking) => <article key={`${booking.id}-${booking.visitId ?? 'single'}`} className="min-w-0 space-y-3 rounded-xl border bg-card p-4">
                 <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0"><p className="break-words font-semibold">{booking.kitchenName}</p><p className="text-sm text-muted-foreground">{format(new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`), "MMM d, yyyy")} · {formatTime(booking.startTime)} – {formatTime(booking.endTime)}</p></div>
+                  <div className="min-w-0"><p className="break-words font-semibold">{booking.kitchenName}</p><p className="text-sm text-muted-foreground">{friendlyDate(`${bookingStartDateKey(booking)}T12:00:00Z`, i18n.language, "UTC")} · {formatTime(booking.startTime)} – {formatTime(booking.endTime)}</p></div>
                   {booking.status === 'pending' ? <Badge variant="outline">{mt("awaitingApproval")}</Badge> : getCheckinBadge(booking.checkinStatus)}
                 </div>
                 {booking.timezone && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(booking.timezone, i18n.language)}</p>}
@@ -318,7 +320,7 @@ export function TodaysKitchenBookings() {
                       )}
                     >
                       <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
-                        <div>{format(new Date(`${booking.bookingDate.slice(0, 10)}T12:00:00Z`), "MMM d, yyyy")}</div>
+                        <div>{friendlyDate(`${bookingStartDateKey(booking)}T12:00:00Z`, i18n.language, "UTC")}</div>
                         <div className="text-muted-foreground mb-1">
                           {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
                         </div>
@@ -425,7 +427,7 @@ export function TodaysKitchenBookings() {
                   return <article key={viewingRec.viewing.id} className="min-w-0 rounded-xl border bg-card p-4">
                     <p className="break-words font-semibold">{viewingRec.kitchenName}</p>
                     {viewingRec.locationName && <p className="text-xs text-muted-foreground">{viewingRec.locationName}</p>}
-                    <p className="mt-1 text-sm text-muted-foreground">{format(start, "MMM d, yyyy")} · {start.toLocaleTimeString([], { timeZone: 'America/St_Johns', hour: "2-digit", minute: "2-digit" })} – {new Date(start.getTime() + viewingRec.viewing.durationMinutes * 60000).toLocaleTimeString([], { timeZone: 'America/St_Johns', hour: "2-digit", minute: "2-digit" })}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{friendlyDate(start, i18n.language, 'America/St_Johns')} · {friendlyTime(start, i18n.language, 'America/St_Johns')} – {friendlyTime(new Date(start.getTime() + viewingRec.viewing.durationMinutes * 60000), i18n.language, 'America/St_Johns')}</p>
                     <p className="mt-2 break-words text-sm">{viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Chef #${viewingRec.viewing.chefId}`}</p>
                     <Badge className="mt-3" variant={viewingRec.viewing.status === "pending" ? "outline" : "secondary"}>{viewingRec.viewing.status}</Badge>
                   </article>;
@@ -448,8 +450,8 @@ export function TodaysKitchenBookings() {
                     return (
                       <TableRow key={`viewing-${viewingRec.viewing.id}`}>
                         <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
-                          <div>{format(d, "MMM d, yyyy")}</div>
-                          <div className="text-muted-foreground mb-1">{d.toLocaleTimeString([], { timeZone: 'America/St_Johns',hour: '2-digit', minute:'2-digit'})} – {dEnd.toLocaleTimeString([], { timeZone: 'America/St_Johns',hour: '2-digit', minute:'2-digit'})}</div>
+                          <div>{friendlyDate(d, i18n.language, 'America/St_Johns')}</div>
+                          <div className="text-muted-foreground mb-1">{friendlyTime(d, i18n.language, 'America/St_Johns')} – {friendlyTime(dEnd, i18n.language, 'America/St_Johns')}</div>
                           <div className="whitespace-nowrap">
                             <Badge
                               variant={

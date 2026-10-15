@@ -10,7 +10,7 @@ import type { PolicyResponse } from '@/components/booking/CancellationPolicySumm
 export function CancellationPolicyEditor({ kitchenId, admin = false }: { kitchenId: number; admin?: boolean }) {
   const { t } = useTranslation('booking');
   const { t: mt } = useTranslation('manager');
-  const impact = useSettingImpact(kitchenId);
+  const { impact, impactFetching, impactError } = useSettingImpact(kitchenId);
   const { data, isError, refetch } = useQuery<PolicyResponse>({ queryKey: ['managed-cancellation-policy', admin, kitchenId], queryFn: () => apiGet(`/${admin ? 'admin' : 'manager'}/kitchens/${kitchenId}/cancellation-policy`) });
   const [noticeHours, setNotice] = useState(24), [lateChargePercent, setCharge] = useState(100), [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
@@ -29,7 +29,7 @@ export function CancellationPolicyEditor({ kitchenId, admin = false }: { kitchen
       {data?.policy?.adminOverrideReason && <p className="text-sm">{t('cpOverride', { reason: data.policy.adminOverrideReason })}</p>}
       {admin && <label className="block text-sm">{t('cpOverrideReason')}<textarea className="mt-1 block w-full rounded border p-2" value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} /></label>}
       <SettingChangePreview whatChanges={mt('scpCancellationWhat', { summary: t(lateChargePercent === 100 ? 'cpSummaryNoRefund' : 'cpSummary', { hours: noticeHours, charge: t('cpHalf') }) })}
-        appliesTo="new_bookings" impact={impact} rightNow={impact ? mt('scpCancellationImpact', { upcoming: impact.upcoming }) : undefined}
+        appliesTo="new_bookings" impact={impact} impactFetching={impactFetching} impactError={impactError} rightNow={impact ? mt('scpCancellationImpact', { upcoming: impact.upcoming }) : undefined}
         undo={mt('scpCancellationUndo')} confirm actionLabel={mt(admin ? 'scpSaveOverride' : 'scpSaveCancellation')}
         cancelLabel={mt('scpKeepPolicy')} disabled={!data || busy || overridden || admin && !reason.trim()} onSave={save} />
     </>}{message && <p role="status" className="text-sm">{message}</p>}

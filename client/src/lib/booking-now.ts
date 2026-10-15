@@ -43,6 +43,8 @@ export interface BookingNowFacts {
   inspectionCanRespond?: boolean;
   inspectionDue?: string | null;
   payoutReview?: { amount: string; date: string } | null;
+  settledClaim?: { outcome: 'chef_paid' | 'local_cooks_paid' | 'closed'; amount: string } | null;
+  hasClaim?: boolean;
   inspectionOutcome?: string | null;
   inspectedOn?: string | null;
   /** Booking status, for the few rules that depend on it beyond the phase. */
@@ -104,7 +106,10 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
     case 'checkout_review':
       return f.checkoutClock ? t('bnChefCheckoutSubmitted', { time: f.checkoutClock }) : t('bnChefCheckoutSubmittedNoTime');
     case 'completed':
-      return f.inspectionOutcome === 'manager_cleared' ? t('bnChefCompletedCleared', { kitchen }) : t('bnChefCompleted');
+      if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
+      if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
+      // Hidden claims are omitted from the chef response, so a cleared inspection cannot promise “all good”.
+      return t('booking:bnVisitComplete');
     case 'visit_ended': return t('bdhNextChefMissed');
     case 'no_show': return t('kciStatusNoShow');
     case 'issue': return t('bnChefIssue', { kitchen });
@@ -138,6 +143,8 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
     case 'visit_ended':
       return f.inspectionCanRespond && f.inspectionDue ? t('bdhNextManagerInspectBy', { time: f.inspectionDue }) : t('bnManagerMissed', { chef });
     case 'completed':
+      if (f.settledClaim) return t(`booking:bnManagerClaim_${f.settledClaim.outcome}`, { chef, amount: f.settledClaim.amount });
+      if (f.hasClaim) return t('booking:bnVisitComplete');
       if (f.inspectionOutcome === 'manager_cleared' && f.inspectedOn) return t('bnManagerCompletedInspected', { date: f.inspectedOn });
       if (f.inspectionOutcome === 'auto_closed_uninspected') return t('bnManagerCompletedNoInspection');
       return t('bdhNextManagerCompleted');

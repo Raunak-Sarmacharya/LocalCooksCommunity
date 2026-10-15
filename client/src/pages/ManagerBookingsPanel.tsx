@@ -1,3 +1,4 @@
+import { fetchManagerBookings } from "@/lib/manager-bookings-query";
 import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
@@ -87,59 +88,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
   // Fetch all bookings for this manager with real-time polling
   const { data: bookings = [], isLoading, error: bookingsError, refetch: refetchBookings } = useQuery({
     queryKey: ['managerBookings'],
-    queryFn: async () => {
-      try {
-        const headers = await getAuthHeaders();
-        const headersObj = headers as Record<string, string>;
-        logger.info('📋 ManagerBookingsPanel: Fetching bookings', {
-          hasAuth: !!headersObj.Authorization
-        });
-
-        const response = await fetch('/api/manager/bookings', {
-          headers,
-          credentials: "include",
-        });
-
-        logger.info('📋 ManagerBookingsPanel: Response status:', response.status);
-
-        if (!response.ok) {
-          let errorMessage = tt("failedToFetchBookings");
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorData.error || errorMessage;
-            logger.error('❌ ManagerBookingsPanel: Error response:', errorData);
-          } catch (jsonError) {
-            try {
-              const text = await response.text();
-              errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
-              logger.error('❌ ManagerBookingsPanel: Error text:', text);
-            } catch (textError) {
-              errorMessage = `Server returned ${response.status} ${response.statusText}`;
-            }
-          }
-          throw new Error(errorMessage);
-        }
-
-        const contentType = response.headers.get('content-type');
-        let data;
-        if (contentType && contentType.includes('application/json')) {
-          data = await response.json();
-        } else {
-          const text = await response.text();
-          data = text ? JSON.parse(text) : [];
-        }
-
-        logger.info(`✅ ManagerBookingsPanel: Received ${Array.isArray(data) ? data.length : 0} bookings`);
-        if (Array.isArray(data) && data.length > 0) {
-          logger.info('📋 ManagerBookingsPanel: Sample booking:', data[0]);
-        }
-
-        return data;
-      } catch (error) {
-        logger.error('❌ ManagerBookingsPanel: Fetch error:', error);
-        throw error;
-      }
-    },
+    queryFn: fetchManagerBookings,
     // Real-time polling - check frequently for new bookings or changes
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) return 10000; // 10 seconds if no data

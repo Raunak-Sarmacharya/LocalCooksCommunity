@@ -34,3 +34,7 @@ describe('bookingStartDateKey', () => {
     expect(bookingStartDateKey({ bookingDate: null, startTime: '10:00' })).toBeNull();
   });
 });
+
+it('shifts walkthrough booking 138 to Oct 16', () => {
+  expect(bookingStartDateKey({ bookingDate: '2026-10-15', startTime: '04:45', operatingWindowStartTime: '06:00' })).toBe('2026-10-16');
+});

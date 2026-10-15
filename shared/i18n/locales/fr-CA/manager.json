@@ -875,7 +875,7 @@
   "configureRequirementsFor": "Configurer les exigences pour",
   "configureWhatInformationChefsNeedToProvideWhenApplyingToYour": "Choisissez ce que les chefs doivent fournir pour accéder à la cuisine.",
   "configureWhenChefsCanCancelTheirBookings": "Définissez quand les chefs peuvent annuler. Les montants de remboursement sont fixés par Local Cooks, pas par cette fenêtre.",
-  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Définissez le délai d’annulation pour toutes les cuisines de cet emplacement. Les remboursements suivent Local Cooks : libération complète avant votre approbation; après, presque intégral sauf les frais Stripe.",
+  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Définissez le délai d’annulation pour les cuisines de cet emplacement. Avant confirmation, la retenue sur la carte est entièrement libérée. Après confirmation, une annulation anticipée rembourse le montant total moins les frais réels de traitement de carte; une annulation tardive suit la politique enregistrée et coûte 50 % ou la totalité de la réservation.",
   "configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif": "Configurez où les notifications de réservation seront envoyées. Si laissé vide, les notifications seront envoyées à l'adresse courriel du compte du gestionnaire.",
   "configureYourLocationPreferencesBookingRulesApplicationRequi": "Configurez les préférences de votre emplacement, les règles de réservation, les conditions d’accès et les notifications.",
   "confirm": "Confirmer",
@@ -3862,5 +3862,6 @@
   "scpPauseUndo": "Réactivez-le ici.",
   "scpResumeWhat": "Les chefs peuvent de nouveau demander du temps supplémentaire, et les cuisines peuvent en offrir ou le facturer.",
   "scpSaveFailed": "Impossible d’enregistrer ce changement. Réessayez.",
-  "scpShowCode": "Afficher le code"
+  "scpShowCode": "Afficher le code",
+  "scpCountFailed": "Nous n’avons pas pu compter vos réservations à venir."
 }

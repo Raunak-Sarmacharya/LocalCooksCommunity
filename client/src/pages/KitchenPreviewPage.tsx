@@ -34,7 +34,6 @@ import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
-import { KitchenPreviewWalkthrough } from "@/components/kitchen-application/KitchenPreviewWalkthrough";
 import { getAuthHeaders } from "@/lib/api";
 import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
@@ -3843,10 +3842,6 @@ export default function KitchenPreviewPage() {
           kitchenTermsUrl={location.kitchenTermsUrl}
         />
 
-        <KitchenPreviewWalkthrough
-          key={identifier ?? location.id}
-          enabled={!!user}
-        />
       </div>
     );
   };

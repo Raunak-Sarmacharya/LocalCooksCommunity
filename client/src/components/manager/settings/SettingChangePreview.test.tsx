@@ -4,10 +4,10 @@ import { SettingChangePreview } from './SettingChangePreview';
 vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 afterEach(cleanup);
 const props = { whatChanges: 'A new arrival time.', appliesTo: 'now', undo: 'Change it back.', actionLabel: 'Save changes' };
-it('shows four lines, waits for counts, and never promises a notification by default', () => {
-  const save = vi.fn(); const { rerender } = render(<SettingChangePreview {...props} onSave={save} />);
+it('shows four lines without blocking save while fetching counts', () => {
+  const save = vi.fn(); const { rerender } = render(<SettingChangePreview {...props} onSave={save} impactFetching />);
   expect(screen.getByText('Checking your upcoming bookings…')).toBeInTheDocument();
-  expect(screen.getByRole('button')).toBeDisabled();
+  expect(screen.getByRole('button')).toBeEnabled();
   rerender(<SettingChangePreview {...props} onSave={save} impact={{ upcoming: 3, inSession: 1, pending: 0 }} />);
   expect(screen.getByText(/Affects 3 upcoming bookings/)).toHaveTextContent('Chefs see the new time');
   expect(screen.getAllByRole('term')).toHaveLength(4);
@@ -23,4 +23,11 @@ it('requires confirmation, repeats the preview, and cancellation changes nothing
   fireEvent.click(within(dialog).getByRole('button', { name: 'Keep as is' })); expect(save).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button')); fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save changes' })); expect(save).toHaveBeenCalledOnce();
+});
+
+it('keeps Save enabled when the impact count fails', () => {
+  const save = vi.fn(); render(<SettingChangePreview {...props} onSave={save} impactError />);
+  expect(screen.getByText("We couldn't count your upcoming bookings.")).toBeInTheDocument();
+  expect(screen.queryByText('Checking your upcoming bookings…')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button')); expect(save).toHaveBeenCalledOnce();
 });

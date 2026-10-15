@@ -108,7 +108,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
   function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false }, ref) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    const impact = useSettingImpact(undefined, location.id);
+    const { impact, impactFetching, impactError } = useSettingImpact(undefined, location.id);
 
     // Cancellation Policy State
     const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
@@ -228,7 +228,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const timingPreview = <SettingChangePreview
       whatChanges={<>{checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null) && <span className="block">{mt('scpWindowWhat', { minutes: checkinWindow ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore, current: arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore })}</span>}
         {noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null) && <span className="block">{mt('scpGraceWhat', { minutes: noShowGrace ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes, current: arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes })}</span>}</>}
-      appliesTo={mt('scpTimingWhen', { kitchen: kitchenName || location.name })} impact={impact}
+      appliesTo={mt('scpTimingWhen', { kitchen: kitchenName || location.name })} impact={impact} impactFetching={impactFetching} impactError={impactError}
       rightNow={impact ? mt(impact.upcoming ? 'scpTimingImpact' : 'scpNone', { upcoming: impact.upcoming }) : undefined}
       undo={mt('scpTimingUndo')} confirm actionLabel={mt('saveChanges')} disabled={saveRulesAction.status === 'loading'} onSave={saveRulesAction.execute} />;
 
@@ -292,7 +292,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
 
     return (
       <div className="space-y-6">
-        <DamageCleaningPolicy />
+        <DamageCleaningPolicy manager />
         {timingChanged && timingPreview}
         {!hideHeader && <ChefPageHeader
           title={mt("navBookingRules")}

@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+vi.mock('./manager-bookings-query', () => ({ fetchManagerBookings: async () => [] }));
+import { describe, it, expect, vi } from 'vitest';
 import { settingImpact, type ImpactBooking } from './setting-impact';
 const row: ImpactBooking = { kitchenId: 1, status: 'confirmed', bookingDate: '2026-10-14', startTime: '10:00', timezone: 'America/St_Johns' };
 describe('settingImpact', () => {

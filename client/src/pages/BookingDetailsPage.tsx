@@ -18,7 +18,7 @@ import { StorageRows, EquipmentRows } from '@/components/booking/BookingAddOns';
 import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
 import { formatBookedDuration } from '@/lib/booked-duration';
 import { friendlyDate, friendlyDateTime } from '@/lib/friendly-date';
-import { claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import { canReportRunningLate } from '@shared/running-late';
 import { cn } from '@/lib/utils';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
@@ -1257,6 +1257,17 @@ export default function BookingDetailsPage() {
   const upcoming = ['pending', 'confirmed', 'today', 'checkin_open'].includes(phase);
   const messageAllowed = !!booking && canMessage(booking.status);
 
+  // Claims (same query the claim cards use); open ones join the Now card, closed ones the visit details.
+  const claimsQuery = useQuery({ queryKey: ['damage-claims', booking?.id ?? 0], enabled: !!booking && ['confirmed', 'completed'].includes(booking.status),
+    queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${booking!.id}/damage-claims`), retry: false });
+  const claims = claimsQuery.data?.claims;
+  const visibleClaims = claims?.filter(claim => claim.claimVersion === 2 && claim.status !== 'draft' && (isManagerView || claim.chefVisible));
+  const latestClaim = visibleClaims?.reduce<DamageClaimCardData | undefined>((latest, claim) => !latest || claim.id > latest.id ? claim : latest, undefined);
+  const settledClaim = latestClaim?.status === 'charge_succeeded' ? { outcome: 'chef_paid' as const, amount: claimMoney(latestClaim.amountCents, i18n.language) }
+    : latestClaim?.status === 'resolved' && latestClaim.kitchenPaid && ['closed', 'write_off'].includes(latestClaim.resolutionType || '') && latestClaim.fundedBy === 'local_cooks'
+      ? isManagerView ? { outcome: 'local_cooks_paid' as const, amount: claimMoney(latestClaim.amountCents, i18n.language) } : null
+      : latestClaim && ['rejected', 'resolved'].includes(latestClaim.status) ? { outcome: 'closed' as const, amount: '' } : null;
+
   const now = bookingNowContent({ phase, role: isManagerView ? 'manager' : 'chef', t, facts: {
     chef: chefName, kitchen: kitchenName, cancelCause, status: booking?.status,
     responseDeadline: responseDeadlineText, detailsReleaseAt,
@@ -1274,16 +1285,13 @@ export default function BookingDetailsPage() {
     inspectionCanRespond, inspectionDue: inspectionDueText,
     payoutReview: isManagerView && booking?.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt
       ? { amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) } : null,
+    settledClaim, hasClaim: claimsQuery.isPending || claimsQuery.isError || !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft'),
     inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
     canCancel: chefCanCancel, canAddToCalendar: !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
     canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
   } });
   const primary = now.primary;
 
-  // Claims (same query the claim cards use); open ones join the Now card, closed ones the visit details.
-  const claimsQuery = useQuery({ queryKey: ['damage-claims', booking?.id ?? 0], enabled: !!booking && ['confirmed', 'completed'].includes(booking.status),
-    queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/bookings/${booking!.id}/damage-claims`), retry: false });
-  const claims = claimsQuery.data?.claims;
   const payableClaim = !isManagerView ? nowClaims(claims, false).find(chefCanPayClaim) : undefined;
   const claimTakesPrimary = !primary && !!payableClaim;
 
@@ -1779,7 +1787,7 @@ export default function BookingDetailsPage() {
   );
 
   const cancellationCard = booking && !isManagerView && chefCanCancel && ['pending', 'confirmed'].includes(booking.status) && (
-    <BookingCancellationCard bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
+    <BookingCancellationCard createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
       deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable} />
   );
 

@@ -31,11 +31,12 @@ const mount = () => render(<QueryClientProvider client={new QueryClient()}><Chef
 describe('chef bookings list', () => {
   it('writes each booking on its calendar day, never the day before', () => {
     mount();
-    expect(screen.getByText(/Fri, Oct 16, 2026/)).toBeInTheDocument();
-    expect(screen.queryByText(/Thu, Oct 15/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Oct 16/)).toBeInTheDocument();
+    expect(screen.queryByText(/2026/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Oct 15$/)).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Past/ }), { button: 0 });
-    expect(screen.getAllByText(/Wed, Oct 14, 2026/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Tue, Oct 13/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Oct 14/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Oct 13/)).not.toBeInTheDocument();
   });
 
   it('keeps finished visits out of Upcoming', () => {
@@ -56,8 +57,8 @@ describe('chef bookings list', () => {
     const overnight = [row({ id: 139, bookingDate: '2026-10-14T00:00:00.000Z', startTime: '00:15', endTime: '01:15', operatingWindowStartTime: '06:00' })];
     render(<QueryClientProvider client={new QueryClient()}><ChefBookingsView bookings={overnight as never} isLoading={false} onCancelBooking={vi.fn()} kitchens={[]} /></QueryClientProvider>);
     // The slot is Thu Oct 15 00:15 NDT (still ahead of "now"), so it is Upcoming and carries Thursday's date.
-    expect(within(screen.getByRole('table')).getByText(/Thu, Oct 15, 2026/)).toBeInTheDocument();
-    expect(screen.queryByText(/Wed, Oct 14/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText(/Oct 15/)).toBeInTheDocument();
+    expect(screen.queryByText(/Oct 14/)).not.toBeInTheDocument();
   });
 
   it('words the confirmed row action like the booking page', () => {

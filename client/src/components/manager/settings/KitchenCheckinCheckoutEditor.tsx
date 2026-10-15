@@ -1932,9 +1932,9 @@ export function KitchenCheckinCheckoutEditor({
   onFlowToggleMouseDown,
   onFlowToggleKeyDown,
 }: KitchenCheckinCheckoutEditorProps) {
-  const impact = useSettingImpact(undefined, undefined, { location: setupLocationName, kitchen: previewKitchenName });
+  const { impact, impactFetching, impactError } = useSettingImpact(undefined, undefined, { location: setupLocationName, kitchen: previewKitchenName });
   const consequencePreview = <SettingChangePreview whatChanges={mt("scpInstructionsWhat")} appliesTo={mt("scpInstructionsWhen")}
-    impact={impact} rightNow={impact ? mt("scpInstructionsImpact", { upcoming: impact.upcoming }) : undefined} undo={mt("scpInstructionsUndo")} />;
+    impact={impact} impactFetching={impactFetching} impactError={impactError} rightNow={impact ? mt("scpInstructionsImpact", { upcoming: impact.upcoming }) : undefined} undo={mt("scpInstructionsUndo")} />;
   const setupUx = coupledStages && setupLocationName !== undefined;
   const hasSavedOptional = useMemo(
     () => !!setupUx && items.some((item) => savedOptionalStages(item).length > 0),

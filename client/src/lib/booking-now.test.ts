@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { IntlMessageFormat } from 'intl-messageformat';
+import booking from '@shared/i18n/locales/en-CA/booking.json';
 import chef from '@shared/i18n/locales/en-CA/chef.json';
 import { bookingNowContent, type BookingNowFacts, type NowRole } from './booking-now';
 import type { BookingHeaderPhase } from './booking-header-state';
 
 const t = (key: string, options?: Record<string, unknown>) => {
-  const value = (chef as Record<string, string>)[key];
+  const value = key.startsWith('booking:') ? (booking as Record<string, string>)[key.slice(8)] : (chef as Record<string, string>)[key];
   if (value === undefined) throw Error(`missing en-CA chef key ${key}`);
   return new IntlMessageFormat(value, 'en-CA').format(options || {}) as string;
 };
@@ -48,8 +49,8 @@ describe.each(['chef', 'manager'] as const)('Now card content (%s)', role => {
 describe('copy per moment', () => {
   const sentence = (phase: BookingHeaderPhase, role: NowRole, extra: Partial<BookingNowFacts> = {}) => bookingNowContent({ phase, role, facts: { ...facts, ...extra }, t }).sentence;
   it('chef completion never mentions the kitchen review deadline', () => {
-    expect(sentence('completed', 'chef')).toBe('Visit complete. Thanks for leaving the kitchen ready.');
-    expect(sentence('completed', 'chef', { inspectionOutcome: 'manager_cleared' })).toBe('Visit complete. Harbour Kitchen checked the space — all good.');
+    expect(sentence('completed', 'chef')).toBe('Visit complete.');
+    expect(sentence('completed', 'chef', { inspectionOutcome: 'manager_cleared' })).toBe('Visit complete.');
     expect(sentence('checkout_review', 'chef')).toBe('Checkout submitted at 11:50 a.m. You’re all set — we’ll let you know if the kitchen reports anything.');
   });
   it('manager in session: the check-in method is said once, inside the sentence', () => {
@@ -87,5 +88,27 @@ describe('copy per moment', () => {
     expect(bookingNowContent({ phase: 'confirmed', role: 'chef', facts, t }).attention).toContain('changes');
     expect(bookingNowContent({ phase: 'completed', role: 'chef', facts, t }).attention).not.toContain('changes');
     expect(bookingNowContent({ phase: 'pending', role: 'manager', facts, t }).attention).toEqual([]);
+  });
+});
+
+describe('completed claims', () => {
+  const sentence = (role: NowRole, extra: Partial<BookingNowFacts>) => bookingNowContent({ phase: 'completed', role, t,
+    facts: { ...facts, inspectionOutcome: 'manager_cleared', inspectedOn: 'Oct 15', ...extra } }).sentence;
+  it('reflects a chef payment for both viewers', () => {
+    const settledClaim = { outcome: 'chef_paid' as const, amount: '$90.00' };
+    expect(sentence('chef', { settledClaim })).toBe('Visit complete. You paid $90.00 for damage or extra cleaning.');
+    expect(sentence('manager', { settledClaim })).toBe('Visit complete. Ada Lovelace paid your $90.00 claim.');
+  });
+  it('shows a closed report without a charge', () => {
+    const settledClaim = { outcome: 'closed' as const, amount: '' };
+    expect(sentence('chef', { settledClaim })).toBe('Visit complete. A damage report was closed — nothing to pay.');
+    expect(sentence('manager', { settledClaim })).toBe('Visit complete. Your damage report was closed with no charge.');
+  });
+  it('keeps compensation private and avoids all-good copy for open or hidden claims', () => {
+    const settledClaim = { outcome: 'local_cooks_paid' as const, amount: '$90.00' };
+    expect(sentence('manager', { settledClaim })).toBe('Visit complete. Local Cooks paid your $90.00 claim.');
+    expect(sentence('chef', { settledClaim })).toBe('Visit complete.');
+    expect(sentence('chef', { hasClaim: true })).toBe('Visit complete.');
+    expect(sentence('manager', { hasClaim: true })).toBe('Visit complete.');
   });
 });

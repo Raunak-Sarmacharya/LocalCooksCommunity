@@ -1,3 +1,5 @@
+import { bookingStartDateKey } from "@/lib/calendar-date";
+import { friendlyDate } from "@/lib/friendly-date";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -11,7 +13,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatBookingDate, formatDate, formatTime } from "@/lib/formatters";
+import { formatDate, formatTime } from "@/lib/formatters";
 import { ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { openChefShopHome, useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
@@ -272,7 +274,7 @@ export default function OverviewTabContent({
         const other = b.status === "pending" ? 0 : 1;
         if (priority !== other) return priority - other;
         return (
-          (a.bookingDate || "").localeCompare(b.bookingDate || "") ||
+          (bookingStartDateKey(a) || "").localeCompare(bookingStartDateKey(b) || "") ||
           (a.startTime || "").localeCompare(b.startTime || "")
         );
       });
@@ -291,7 +293,7 @@ export default function OverviewTabContent({
   }, [kitchenDisplays, kitchenApplications.length, t]);
 
   const bookingsHint = nextBooking
-    ? `${formatBookingWhen(nextBooking, t, i18n.language)}${nextBooking.startTime ? ` · ${formatTime(nextBooking.startTime)}` : ""}`
+    ? `${formatBookingWhen(nextBooking, t, i18n.language)}${nextBooking.startTime ? ` · ${formatTime(nextBooking.startTime, i18n.language)}` : ""}`
     : enrichedBookings?.length
       ? t("ovNoUpcomingSessions")
       : t("ovNoSessionsBooked");
@@ -749,16 +751,15 @@ function formatBookingWhen(
   t: import("i18next").TFunction<"chef", undefined>,
   locale?: string
 ): string {
-  const bookingDateObj = booking.bookingDate
-    ? new Date(booking.bookingDate + "T00:00:00")
-    : null;
+  const day = bookingStartDateKey(booking);
+  const bookingDateObj = day ? new Date(day + "T00:00:00") : null;
   if (!bookingDateObj) return t("ovScheduled");
 
   const today = new Date();
   const tomorrow = new Date(Date.now() + 86400000);
   if (today.toDateString() === bookingDateObj.toDateString()) return t("ovToday");
   if (tomorrow.toDateString() === bookingDateObj.toDateString()) return t("ovTomorrow");
-  return formatBookingDate(booking.bookingDate, locale);
+  return friendlyDate(`${day}T12:00:00Z`, locale || "en-CA", "UTC");
 }
 
 const bookingStatusConfig: Record<
@@ -793,7 +794,7 @@ function UpcomingBookings({
     const pb = priority[b.status] ?? 4;
     if (pa !== pb) return pa - pb;
     return (
-      (a.bookingDate || "").localeCompare(b.bookingDate || "") ||
+      (bookingStartDateKey(a) || "").localeCompare(bookingStartDateKey(b) || "") ||
       (a.startTime || "").localeCompare(b.startTime || "")
     );
   });
@@ -835,7 +836,7 @@ function UpcomingBookings({
             const timeLabel =
               booking.startTime && booking.endTime
                 ? kitchenBookingBlocks(booking).map(block =>
-                    `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')
+                    `${formatTime(block.startTime, locale)} – ${formatTime(block.endTime, locale)}`).join(', ')
                 : "";
 
             return (
@@ -851,7 +852,7 @@ function UpcomingBookings({
                   </p>
                   {booking.startTime && (
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {formatTime(booking.startTime)}
+                      {formatTime(booking.startTime, locale)}
                     </p>
                   )}
                 </div>
