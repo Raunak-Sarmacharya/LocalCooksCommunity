@@ -163,7 +163,7 @@ export async function transferToManagerForBooking(
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
-    await assertBookingMoneyWritable({ paymentTransactionId: params.paymentTransactionId, paymentIntentId: params.paymentIntentId }, tx);
+    await assertBookingMoneyWritable({ paymentTransactionId: params.paymentTransactionId, paymentIntentId: params.paymentIntentId, payout: true }, tx);
     const [timing] = await tx.select({ payoutTiming: paymentTransactions.payoutTiming }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
     const result = await transferLockedSource(params, tx);
@@ -173,6 +173,8 @@ export async function transferToManagerForBooking(
     // The release command's transfer (or a webhook/sync recovery of it) records the payout and queues its notice once.
     if (timing?.payoutTiming === 'after_closeout' && result.transferred)
       await (await import('./kitchen-payout-service')).recordReleasedPayout(params.paymentTransactionId, result, tx);
+    if (timing?.payoutTiming === 'storage_term' && result.transferred)
+      await (await import('./storage-payouts')).recordReleasedStoragePayout(params.paymentTransactionId, result, tx);
     return result;
   });
 }

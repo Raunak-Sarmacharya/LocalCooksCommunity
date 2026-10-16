@@ -13,6 +13,7 @@ import { hasChefUnpaidPenalties } from './overstay-penalty-service';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { publishedCancellationPolicy, cancellationSnapshotMetadata } from './cancellation-policy-settings';
 import { queueStorageRentalNotice } from './storage-rental-notices';
+import { scheduleStorageTermPayout } from './storage-payouts';
 import { scheduleDeadlineTimer } from './deadline-timer';
 import { registerKitchenCheckout, resolveCheckoutConflict, updateCheckoutIncident } from './kitchen-checkout-incidents';
 import { generateReferenceCode } from '../reference-code';
@@ -306,6 +307,7 @@ export async function decideRental(id: number, target: DecisionTarget, actor?: R
       await tx.update(paymentTransactions).set({ status: captured ? 'succeeded' : 'canceled', stripeStatus: intent.status, paidAt,
         payoutTiming: 'storage_term', payoutEligibleAt: paidAt ? termPayoutEligibleAt({ endsOn: decision.paidThrough, paidAt }, { timezone: current.timezone! }) : null,
         updatedAt: new Date() }).where(eq(paymentTransactions.id, term.paymentTransactionId!));
+      if (captured) await scheduleStorageTermPayout(id, tx);
       await queueStorageRentalNotice(tx, id, captured ? 'approved' : state === 'expired' && (target === 'reserved' || decision.reason === 'authorization_lapsed') ? 'authorization_lapsed'
         : state === 'expired' ? 'expired' : state === 'withdrawn' ? 'withdrawn' : 'declined', {
         eventKey: decision.key, startOn: decision.termStart, endOn: decision.paidThrough, unitLabel: String(decision.unitIndex),
@@ -335,8 +337,7 @@ export async function rentalIntentCanceled(intent: Stripe.PaymentIntent, stripe 
   const op = term.operation as Decision | null;
   return decideRental(term.rentalId, op?.action ?? 'expired', undefined, op ? {} : { reason: 'authorization_lapsed' }, stripe);
 }
-/** Storage release is deliberately closed until WP-ST6 supplies term eligibility and release accounting. */
-export async function storageTermStillEligible(_rentalId: number, _reader: Reader): Promise<boolean> { return false; }
+export { storageTermStillEligible } from './storage-payouts';
 
 export async function sweepStorageRentalRequests(limit = 3, now = new Date(), stripe = storageRentalStripe()) {
   const key = 'storageRequests', size = Math.min(3, limit);

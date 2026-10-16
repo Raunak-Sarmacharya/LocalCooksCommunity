@@ -27,7 +27,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type StorageNoticeEvent = 'requested' | 'approved' | 'declined' | 'expired' | 'withdrawn' | 'authorization_lapsed' | 'move_in_due' | 'moved_in'
   | 'ending' | 'extended' | 'grace_started' | 'holdover_started' | 'holdover_charge' | 'reclaim'
   | 'move_out_requested' | 'cleared' | 'reopened' | 'removal_review' | 'final_notice' | 'refund_issued'
-  | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'kitchen_debt' | 'offer_extension';
+  | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'payout_overdue' | 'kitchen_debt' | 'offer_extension' | 'support_flag';
 
 export type StorageNoticeFacts = {
   /** Stable key for this occurrence (a date, term id or variant) so retries never queue a second email. */
@@ -52,6 +52,10 @@ export type StorageNoticeFacts = {
   amountCents?: number;
   dailyCents?: number;
   holdReason?: string | null;
+  /** Local Cooks-only detail (support flags). */
+  message?: string;
+  /** Narrows the event's audiences for this call (e.g. a refund the kitchen didn't fund). */
+  only?: Array<'chef' | 'manager' | 'admins'>;
   reference?: string;
 };
 
@@ -77,6 +81,7 @@ export function storageNoticeAudiences(event: StorageNoticeEvent): Array<'chef' 
     case 'refund_issued': return ['chef', 'manager', 'admins'];
     case 'payout_scheduled': return ['manager'];
     case 'payout_released': case 'payout_on_hold': return ['manager', 'admins'];
+    case 'payout_overdue': case 'support_flag': return ['admins'];
     case 'kitchen_debt': return ['manager', 'admins'];
     case 'offer_extension': return ['chef'];
   }
@@ -87,7 +92,7 @@ const ADMIN_EVENT_KIND: Partial<Record<StorageNoticeEvent, string>> = {
   requested: 'storage_requested', expired: 'storage_expired', approved: 'storage_confirmed',
   authorization_lapsed: 'storage_payment_recovery',
   extended: 'storage_extension_paid', refund_issued: 'storage_refund_issued',
-  payout_released: 'storage_payout_released', payout_on_hold: 'storage_payout_on_hold',
+  payout_released: 'storage_payout_released', payout_on_hold: 'storage_payout_on_hold', payout_overdue: 'storage_payout_on_hold', support_flag: 'storage_payment_recovery',
   holdover_charge: 'storage_holdover_raised', reclaim: 'storage_reclaim_served',
   removal_review: 'storage_removal_review', final_notice: 'storage_removal_review',
   kitchen_debt: 'storage_kitchen_debt',
@@ -99,7 +104,7 @@ export function storageAdminKind(event: StorageNoticeEvent): string | undefined 
 }
 
 const HIGH_PRIORITY = new Set<StorageNoticeEvent>([
-  'holdover_started', 'holdover_charge', 'reclaim', 'removal_review', 'final_notice', 'payout_on_hold', 'kitchen_debt',
+  'holdover_started', 'holdover_charge', 'reclaim', 'removal_review', 'final_notice', 'payout_on_hold', 'kitchen_debt', 'support_flag',
 ]);
 
 const pascal = (event: string) => event.split('_').map(part => part[0].toUpperCase() + part.slice(1)).join('');
@@ -139,7 +144,7 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
     const chef = person.id === row.rental.chefId;
     const localCooks = person.role === 'admin';
     const audience = chef ? 'chef' : localCooks ? 'admins' : 'manager';
-    if (!audiences.includes(audience)) continue;
+    if (!audiences.includes(audience) || facts.only && !facts.only.includes(audience)) continue;
     const role = chef ? 'chef' : localCooks ? 'admin' : 'manager';
     const locale = person.preferredLocale || 'en-CA';
     const timezone = facts.timezone || row.timezone || DEFAULT_TIMEZONE;
@@ -178,7 +183,7 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
       ? (adminKind ? adminStorageNotice(adminKind, { chef: values.chef, kitchen: row.kitchenName, listing: listingName,
           reference, when: [values.start, values.end].filter(Boolean).join('–'), locale, amountCents: facts.amountCents,
           days: facts.days, paidThrough: values.paidThrough, byDate: values.byDate, deadline: values.deadline,
-          holdReason: facts.holdReason ?? null }) : undefined)
+          holdReason: facts.holdReason ?? null, message: facts.message }) : undefined)
       : { title: tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Title`, { ns: 'storage', ...values }),
           message: tLocale(locale, `${prefix}_${chef ? 'Chef' : 'Kitchen'}_Body`, { ns: 'storage', ...values }) };
     if (!copy) continue;

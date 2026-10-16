@@ -16,7 +16,9 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
     const facts = evidence ?? await getCancellationPaymentFacts(intentId);
     const reversalFacts = reversals ?? await getCancellationReversalEvidence(intentId);
     const result = await db.transaction(tx => reconcilePaymentRefundReceipts(intentId, tx, facts, reversalFacts));
-    if (result.operation?.status === 'succeeded') await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(result.operation.bookingId, 'cancellation refund reconciled')).catch(() => undefined);
+    if (result.operation?.status === 'succeeded') await import('./booking-documents').then(documents => result.operation.storageRentalId
+      ? documents.issueStorageDocumentsSafely(result.operation.storageRentalId, 'storage refund reconciled')
+      : documents.issueBookingDocumentsSafely(result.operation.bookingId, 'cancellation refund reconciled')).catch(() => undefined);
     return result;
   }
   const facts = evidence ?? await getCancellationPaymentFacts(intentId);
