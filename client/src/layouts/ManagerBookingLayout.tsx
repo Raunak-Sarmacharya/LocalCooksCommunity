@@ -14,12 +14,15 @@ interface ManagerBookingLayoutProps {
     breadcrumbs?: Array<{ label: string; href?: string; onClick?: () => void }>
     /** Location of the booking currently being viewed — preselects sidebar location */
     bookingLocationId?: number | null
+    /** Which sidebar destination this page belongs under. */
+    activeView?: string
 }
 
 export default function ManagerBookingLayout({
     children,
     breadcrumbs,
     bookingLocationId = null,
+    activeView = "bookings",
 }: ManagerBookingLayoutProps) {
     const { t } = useTranslation("manager")
     const [, navigate] = useLocation()
@@ -46,7 +49,7 @@ export default function ManagerBookingLayout({
     return (
         <SidebarProvider>
             <AppSidebar
-                activeView="bookings"
+                activeView={activeView}
                 onViewChange={handleViewChange}
                 locations={locations}
                 selectedLocation={selectedLocation}

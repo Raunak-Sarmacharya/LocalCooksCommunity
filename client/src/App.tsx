@@ -74,6 +74,7 @@ const RequestTourPage = lazy(() => import("@/pages/RequestTourPage"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
+const ManagerCustomerPage = lazy(() => import("@/pages/ManagerCustomerPage"));
 const ManagerSetupPage = lazy(() => import("@/pages/ManagerSetupPage")); // [NEW]
 const ChefSetupPage = lazy(() => import("@/pages/ChefSetupPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
@@ -387,6 +388,13 @@ function Router() {
           ) : null}
         </Route>
         
+        <Route path="/manager/customers/:chefId">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerCustomerPage />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
         <Route path="/manager/booking/:id/inspection">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>

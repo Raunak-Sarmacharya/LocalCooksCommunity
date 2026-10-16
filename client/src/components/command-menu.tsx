@@ -451,6 +451,10 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                             </CommandGroup>
                             <CommandSeparator />
                             <CommandGroup heading={mt("cmdBusiness")}>
+                                {!hiddenItems.includes("applications") && <CommandItem onSelect={() => runCommand(() => onViewChange?.("customers"))}>
+                                    <managerNavIcons.customers className="mr-2 h-4 w-4" />
+                                    <span>{mt("navCustomers")}</span>
+                                </CommandItem>}
                                 {!hiddenItems.includes("applications") && <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
                                     <managerNavIcons.applications className="mr-2 h-4 w-4" />
                                     <span>{mt("navApplications")}</span>
