@@ -1,6 +1,29 @@
 import { sql, type SQL } from "drizzle-orm";
 import { logger } from "../../logger";
 
+/** Invitations this account sent, received, or that sit on a kitchen or location they own. */
+function invitationOwnership(id: number): SQL {
+  const locationIds = sql`SELECT id FROM locations WHERE manager_id = ${id}`;
+  const kitchenIds = sql`SELECT id FROM kitchens WHERE location_id IN (${locationIds})`;
+  return sql`manager_id = ${id} OR chef_id = ${id} OR kitchen_id IN (${kitchenIds}) OR location_id IN (${locationIds})`;
+}
+
+/**
+ * Open invitations, and invitations whose only booking is a manager block.
+ * An invitation linked to any other booking stays with that booking.
+ */
+function invitationRemovableWithHistory(id: number): SQL {
+  return sql`(${invitationOwnership(id)}) AND NOT EXISTS (
+    SELECT 1 FROM kitchen_bookings kb
+    WHERE kb.id = kitchen_invitations.booking_id AND kb.booking_type <> 'manager_blocked')`;
+}
+
+async function clearInvitationReplacements(tx: any, predicate: SQL) {
+  // replaces_id is ON DELETE RESTRICT, including a self-reference inside one DELETE.
+  await tx.execute(sql`UPDATE kitchen_invitations SET replaces_id = NULL
+    WHERE replaces_id IN (SELECT id FROM kitchen_invitations WHERE ${predicate})`);
+}
+
 /** The same ownership predicates drive cleanup and the admin's impact preview. */
 export function userDeletionTargets(id: number): Array<{ table: string; where: SQL }> {
   const locationIds = sql`SELECT id FROM locations WHERE manager_id = ${id}`;
@@ -42,6 +65,9 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "storage_bookings", where: sql`id IN (${storageIds})` },
     { table: "equipment_bookings", where: sql`id IN (${equipmentIds})` },
     { table: "kitchen_booking_visits", where: sql`booking_id IN (${bookingIds})` },
+    // Invitations restrict kitchens, locations and users. Events go before the invitation they reference.
+    { table: "kitchen_invitation_events", where: sql`invitation_id IN (SELECT id FROM kitchen_invitations WHERE ${invitationOwnership(id)})` },
+    { table: "kitchen_invitations", where: invitationOwnership(id) },
     { table: "kitchen_bookings", where: sql`id IN (${bookingIds})` },
     { table: "kitchen_checkout_holds", where: sql`chef_id = ${id} OR kitchen_id IN (${kitchenIds})` },
     { table: "chef_kitchen_access", where: sql`chef_id = ${id} OR granted_by = ${id} OR kitchen_id IN (${kitchenIds})` },
@@ -85,7 +111,13 @@ export async function deleteUserDependents(tx: any, id: number, options: { keepH
   for (const { table, where } of userDeletionTargets(id)) {
     if (options.keepHistory && HISTORY_TABLES.has(table)) continue;
     // Only manager blocks (no money) may be removed with their kitchens; real bookings stop the delete at the RESTRICT FK.
-    const effective = options.keepHistory && table === "kitchen_bookings" ? sql`(${where}) AND booking_type = 'manager_blocked'` : where;
+    // Open invitations must not block deletion. One linked to a real booking follows that booking and stays.
+    const effective = options.keepHistory && table === "kitchen_bookings" ? sql`(${where}) AND booking_type = 'manager_blocked'`
+      : options.keepHistory && table === "kitchen_invitations" ? invitationRemovableWithHistory(id)
+      : options.keepHistory && table === "kitchen_invitation_events"
+        ? sql`invitation_id IN (SELECT id FROM kitchen_invitations WHERE ${invitationRemovableWithHistory(id)})`
+      : where;
+    if (table === "kitchen_invitations") await clearInvitationReplacements(tx, effective);
     const result = await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ${effective} RETURNING 1`);
     if (result.rows.length) counts[table] = result.rows.length;
   }
@@ -104,6 +136,7 @@ export async function deleteUserDependents(tx: any, id: number, options: { keepH
     ["damage_evidence", "uploaded_by"], ["storage_overstay_history", "created_by"],
     ["storage_overstay_records", "penalty_approved_by"], ["storage_overstay_records", "dispute_reviewed_by"],
     ["payment_history", "created_by"], ["commitment_problems", "claimed_by"], ["platform_settings", "updated_by"],
+    ["kitchen_invitation_events", "actor_id"],
   ];
   for (const [table, column] of auditColumns) {
     await tx.execute(sql`UPDATE ${sql.identifier(table)} SET ${sql.identifier(column)} = NULL WHERE ${sql.identifier(column)} = ${id}`);
@@ -135,7 +168,12 @@ export async function anonymizeUserAccount(tx: any, id: number): Promise<{ archi
     pending_email = NULL, pending_email_token_hash = NULL, pending_email_expires_at = NULL, pending_email_sent_at = NULL,
     email_verified_at = NULL, is_verified = false, manager_profile_data = '{}'::jsonb, updated_at = now() WHERE id = ${id}`);
   const emails = addresses.length ? sql.join(addresses.map(a => sql`${a}`), sql`, `) : sql`NULL`;
+  // Every booking row stays, so only an invitation with no booking is still a live offer. A linked one stays with its booking.
+  const openInvitations = sql`(${invitationOwnership(id)}) AND booking_id IS NULL`;
+  await clearInvitationReplacements(tx, openInvitations);
   const own: Array<{ table: string; where: SQL }> = [
+    { table: "kitchen_invitation_events", where: sql`invitation_id IN (SELECT id FROM kitchen_invitations WHERE ${openInvitations})` },
+    { table: "kitchen_invitations", where: openInvitations },
     { table: "chef_notifications", where: sql`chef_id = ${id}` },
     { table: "manager_notifications", where: sql`manager_id = ${id}` },
     { table: "email_logs", where: sql`recipient_user_id = ${id} OR lower(recipient_email) IN (${emails})` },
