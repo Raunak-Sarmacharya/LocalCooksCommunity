@@ -1262,5 +1262,8 @@
   "checkoutViewBooking": "Voir votre réservation",
   "invChooseDateFirst": "Choisissez d’abord une date",
   "invClosedDay": "La cuisine est fermée ce jour-là",
-  "invSlotTaken": "{time} · réservé"
+  "invSlotTaken": "{time} · réservé",
+  "bssAccess_kitchen_hours": "Pendant les heures de la cuisine",
+  "bssAccess_anytime": "En tout temps",
+  "bssAccess_by_arrangement": "Sur entente avec la cuisine"
 }

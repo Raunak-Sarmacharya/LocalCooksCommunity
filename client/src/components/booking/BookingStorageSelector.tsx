@@ -19,6 +19,8 @@ interface StorageListing {
   description?: string;
   basePrice: number;
   minimumBookingDuration: number;
+  sizeLabel?: string | null;
+  accessType?: string | null;
   climateControl?: boolean;
   isActive?: boolean;
 }
@@ -236,7 +238,7 @@ export function BookingStorageSelector({
                       {listingLabel(storage.storageType)} · {formatCents(storage.basePrice)}{t("storageSelPerDay")}
                     </span>
                     <span className="mt-1 block text-sm text-muted-foreground">
-                      {t("bssMinDaysShortLabel", { count: storage.minimumBookingDuration || 1 })}
+                      {[storage.sizeLabel, storage.accessType === "kitchen_hours" ? t("bssAccess_kitchen_hours") : storage.accessType === "anytime" ? t("bssAccess_anytime") : storage.accessType === "by_arrangement" ? t("bssAccess_by_arrangement") : null].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                 </button>

@@ -57,11 +57,14 @@ describe("storage workspace", () => {
     render(<StorageListingContent selectedLocationId={33} selectedKitchenId={10} />);
     await screen.findByText("noStorageListedYet");
     fireEvent.click(screen.getByRole("button", { name: "addStorage" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "storageName" }), { target: { value: "Dry shelf" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "slName" }), { target: { value: "Dry shelf" } });
     fireEvent.change(screen.getByRole("textbox", { name: "storagePricePerDay" }), { target: { value: "5" } });
     fireEvent.change(screen.getByRole("textbox", { name: "storageUnitCount" }), { target: { value: "3" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "storageMaxTermDays" }), { target: { value: "7" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "slMaxTerm" }), { target: { value: "7" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "slSize" }), { target: { value: "One shelf" } });
     fireEvent.click(screen.getAllByRole("button", { name: "listThisStorage" })[0]);
-    await waitFor(() => expect(state.post).toHaveBeenCalledWith("/manager/storage-listings", expect.objectContaining({ unitCount: 3, dailyPriceCents: 500, maxTermDays: 7, pricingModel: "daily" })));
+    await waitFor(() => expect(state.post).toHaveBeenCalledWith("/manager/storage-listings", expect.objectContaining({ unitCount: 3, dailyPriceCents: 500, maxTermDays: 7, sizeLabel: "One shelf", accessType: "kitchen_hours" })));
+    const body = state.post.mock.calls[0][1];
+    for (const gone of ["minimumBookingDuration", "totalVolume", "overstayGracePeriodDays", "overstayPenaltyRate"]) expect(body).not.toHaveProperty(gone);
   });
 });

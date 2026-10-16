@@ -1262,5 +1262,8 @@
   "checkoutViewBooking": "Переглянути бронювання",
   "invChooseDateFirst": "Спершу виберіть дату",
   "invClosedDay": "Цього дня кухня зачинена",
-  "invSlotTaken": "{time} · заброньовано"
+  "invSlotTaken": "{time} · заброньовано",
+  "bssAccess_kitchen_hours": "У робочий час кухні",
+  "bssAccess_anytime": "У будь-який час",
+  "bssAccess_by_arrangement": "За домовленістю з кухнею"
 }
