@@ -16,7 +16,8 @@ vi.mock('pg', () => ({ Pool: class {
   }
 } }));
 vi.mock('drizzle-orm/node-postgres', () => ({ drizzle: (client: any) => ({ execute: (query: any) => client.query(query) }) }));
-const task = async (name: string) => { state.calls.push(name); state.clock += 800; if (state.fail === name) throw Error('isolated failure'); return { count: 1 }; };
+// ~2x the real per-task cost (dev run Oct 16: all ~33 tasks in 10.1 s), so the 30 s budget check stays meaningful.
+const task = async (name: string) => { state.calls.push(name); state.clock += 600; if (state.fail === name) throw Error('isolated failure'); return { count: 1 }; };
 vi.mock('./reminder-reconciliation', () => ({ reminderSources: ['booking', 'tour'], reconcileRecurringSource: (source: string) => task(`reconcile:${source}`) }));
 vi.mock('./advance-reminders', () => ({ dispatchAdvanceReminders: () => task('advance') }));
 vi.mock('./booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: () => task('booking') }));
@@ -40,6 +41,8 @@ vi.mock('./chef-document-expiry', () => ({ sweepChefDocumentExpiry: () => task('
 vi.mock('./location-access-notices', () => ({ dispatchAccessNotices: () => task('access') }));
 vi.mock('./tour-outcome-service', () => ({ remindUnrecordedTourOutcomes: () => task('tourOutcomes') }));
 vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChanges: () => task('kitchenChanges') }));
+vi.mock('./booking-replacement', () => ({ retryStuckReplacements: () => task('replacementRetry') }));
+vi.mock('./kitchen-invitations', () => ({ sweepKitchenInvitationExpiry: () => task('invitationExpiry'), deliverKitchenInvitationEvents: () => task('invitations') }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
 import { configuredInvocationMs, runRecurringWorker, runFairTasks, workerSafetyReserveMs, workerDatabaseUrl, assertWorkerSessionConnection } from './recurring-worker';
 import { assertWorkerTime, workerContext, workerAfter, workerRecord, workerPageEnd } from './worker-context';
@@ -73,7 +76,7 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     expect(configuredInvocationMs).toBe(30_000); expect(workerSafetyReserveMs).toBe(4_000);
     expect(result).toMatchObject({ taskFailures: [], deferred: false });
     expect(state.calls).toEqual(expect.arrayContaining(['advance', 'booking', 'tour', 'outcome', 'chat', 'reconcile:booking', 'reconcile:tour',
-      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'addonRefundRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
+      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'addonRefundRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges', 'replacementRetry', 'invitationExpiry', 'invitations']));
     expect(state.calls.filter(name => name === 'clockCloseout')).toHaveLength(1);
     expect(state.calls.filter(name => name === 'closeoutPayouts')).toHaveLength(1);
     expect(state.calls).not.toContain('kitchenCheckout'); expect(state.calls).not.toContain('visitCheckout');
