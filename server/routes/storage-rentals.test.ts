@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const h = vi.hoisted(() => ({ quote: vi.fn(), checkout: vi.fn(), read: vi.fn(), list: vi.fn(), decide: vi.fn(), withdraw: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
+const h = vi.hoisted(() => ({ quote: vi.fn(), checkout: vi.fn(), read: vi.fn(), list: vi.fn(), decide: vi.fn(), withdraw: vi.fn(),
+  extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
+vi.mock('../services/storage-extensions', () => ({ quoteExtension: h.extensionQuote, payExtension: h.extensionPay, syncStorageTerm: h.extensionSync }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
 vi.mock('../services/storage-rental-lifecycle', () => ({ raiseHoldoverCharge: h.raise, waiveHoldover: h.waive, recordRemoval: h.record, sendFinalNotice: h.notice, openRemovalReview: h.open }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn() }));
@@ -14,11 +16,25 @@ const body = { ...details, requestKey: 'request_123', expectedTotalCents: 7000, 
 async function call(method: string, path: string, data: unknown = body, param = '7') {
   const route = (router as any).stack.find((r: any) => r.route?.path === path && r.route.methods[method]).route;
   const res: any = { json: vi.fn(), status: vi.fn().mockReturnThis() };
-  await route.stack[0].handle({ body: data, params: { id: param }, neonUser: user, path }, res);
+  await route.stack[0].handle({ body: data, params: { id: param, termId: '9' }, neonUser: user, path }, res);
   return res;
 }
 beforeEach(() => { vi.resetAllMocks(); h.read.mockResolvedValue({ id: 7, actions: [] }); });
 describe('storage rental API contract', () => {
+  it('extends for the authenticated chef without an unpaid-penalty gate, and syncs a validated term', async () => {
+    h.extensionPay.mockResolvedValue({ requiresAction: true, clientSecret: 'secret_fixture', termId: 9 });
+    const extension = { days: 3, expectedTotalCents: 3550, requestKey: 'extension_key', useSavedCard: true };
+    await call('post', '/chef/storage-rentals/:id/extend/quote', { days: 3 });
+    expect(h.extensionQuote).toHaveBeenCalledWith(7, 3, 3);
+    const result = await call('post', '/chef/storage-rentals/:id/extend', { ...extension, chefId: 99 });
+    expect(h.extensionPay).toHaveBeenCalledWith(7, 3, extension, undefined, undefined, 'fr-CA');
+    expect(result.json).toHaveBeenCalledWith({ requiresAction: true, clientSecret: 'secret_fixture', termId: 9 });
+    await call('post', '/chef/storage-rentals/:id/extend/:termId/sync', {});
+    expect(h.extensionSync).toHaveBeenCalledWith(7, 9, 3);
+    expect((await call('post', '/chef/storage-rentals/:id/extend', { ...extension, useSavedCard: 'yes' })).status).toHaveBeenCalledWith(400);
+    const route = (router as any).stack.find((r: any) => r.route?.path === '/chef/storage-rentals/:id/extend').route;
+    expect(route.stack).toHaveLength(1);
+  });
   it('passes only the validated quote/checkout inputs and authenticated locale', async () => {
     h.quote.mockResolvedValue({ totalCents: 7000 }); h.checkout.mockResolvedValue({ checkoutUrl: 'https://checkout.stripe.test' });
     expect((await call('post', '/chef/storage-rentals/quote')).json).toHaveBeenCalledWith({ totalCents: 7000 });
