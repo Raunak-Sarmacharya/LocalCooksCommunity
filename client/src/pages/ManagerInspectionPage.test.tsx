@@ -42,13 +42,16 @@ function mount(path = '/manager/booking/901/inspection') {
   </Switch></Router></QueryClientProvider>);
   return navigation;
 }
-async function confirmClear(button: HTMLElement) { fireEvent.click(button); fireEvent.click(screen.getByRole('button', { name: 'Finish inspection', exact: true })); }
+async function confirmClear(button: HTMLElement) {
+  await waitFor(() => expect(button).toBeEnabled()); fireEvent.click(button);
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finish inspection', exact: true }));
+}
 // The page refetches when the window regains focus; there is no Refresh button.
 function refreshByFocus() {
   Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
   document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
 }
-async function clearButton() { return screen.findByRole('button', { name: 'Finish inspection — all looks good' }); }
+async function clearButton() { return screen.findByRole('button', { name: 'Finish inspection' }); }
 
 describe('manager inspection with isolated API mocks', () => {
   beforeEach(() => {
@@ -114,7 +117,7 @@ describe('manager inspection with isolated API mocks', () => {
       startTime: index ? '00:00' : '19:00', endTime: index ? '01:00' : '20:00',
       checkoutReviewDeadline: index ? '2026-10-13T06:00:00Z' : '2026-10-12T23:00:00Z' }));
     mount(); expect(await screen.findByText(/Choose a visit to see/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Finish inspection — all looks good' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish inspection' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Choose a visit to inspect'), { target: { value: '1002' } });
     expect(screen.getByTestId('inspection-sentence')).toHaveTextContent('Inspect by Oct 13, 3:30');
     fireEvent.change(screen.getByLabelText(/Note to Mock visitor/), { target: { value: 'Kitchen inspected and reset.' } });
@@ -228,7 +231,7 @@ describe('manager inspection with isolated API mocks', () => {
     const done = await screen.findByTestId('inspection-done');
     expect(done).toHaveTextContent(/You finished this inspection on Oct 12 at 4:59\s*p\.m\. Mock visitor was notified\./);
     expect(within(done).getByRole('link', { name: 'Back to booking' })).toHaveAttribute('href', '/manager/booking/901');
-    for (const gone of ['Finish inspection — all looks good', 'Report a cleaning or damage concern']) {
+    for (const gone of ['Finish inspection', 'Report a cleaning or damage concern']) {
       expect(screen.queryByRole('button', { name: gone })).not.toBeInTheDocument();
     }
     expect(screen.queryByLabelText(/Note to Mock visitor/)).not.toBeInTheDocument();
@@ -266,7 +269,7 @@ describe('manager inspection with isolated API mocks', () => {
   it('reports an incomplete booking identity contract without exposing actions', async () => {
     booking.id = 999; mount();
     expect(await screen.findByRole('alert')).toHaveTextContent('Some visit details are missing');
-    expect(screen.queryByRole('button', { name: 'Finish inspection — all looks good' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish inspection' })).not.toBeInTheDocument();
   });
 
   it('keeps a saved clear locked when the subsequent read fails, retaining the note for recovery', async () => {
@@ -275,7 +278,7 @@ describe('manager inspection with isolated API mocks', () => {
     await waitFor(() => expect(screen.getAllByRole('alert').some(alert => alert.textContent?.includes('Your inspection is saved'))).toBe(true));
     // The server accepted it, so the page shows the done state (never the live form) and cannot send it twice.
     expect(screen.getByTestId('inspection-done')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Finish inspection — all looks good' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish inspection' })).not.toBeInTheDocument();
     expect(posts()).toHaveLength(1);
     readError = false; refreshByFocus();
     await screen.findByText('Inspection finished'); expect(posts()).toHaveLength(1);
@@ -291,7 +294,7 @@ describe('manager inspection with isolated API mocks', () => {
   it('does not fall back to booking-level clearance for an unknown selected visit', async () => {
     mount('/manager/booking/901/inspection?visitId=999');
     expect(await screen.findByText(/visit is no longer available/)).toBeInTheDocument(); expect(posts()).toHaveLength(0);
-    expect(screen.queryByRole('button', { name: 'Finish inspection — all looks good' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish inspection' })).not.toBeInTheDocument();
   });
 
   it('distinguishes missing evidence, submitted empty evidence and required/optional saved photo duties', async () => {
@@ -312,8 +315,10 @@ describe('manager inspection with isolated API mocks', () => {
   it.each(['submitted', 'charge_succeeded', 'resolved'])('a %s claim changes Finish copy and replaces Report with support', async status => {
     claims = [{ id: 77, claimVersion: 2, visitId: null, status, amountCents: 7000, resolutionType: null }];
     mount();
-    const button = await screen.findByRole('button', { name: 'Finish inspection and send my payout' });
+    const button = await screen.findByRole('button', { name: 'Finish inspection' });
     await waitFor(() => expect(button).toBeEnabled());
+    // Neutral button (no verdict); the line below says the claim carries on.
+    expect(screen.getByTestId('inspection-finish-hint')).toHaveTextContent('Finishing closes the inspection. Your damage claim continues separately.');
     expect(screen.queryByRole('button', { name: 'Report damage or extra cleaning' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'You reported this visit · Contact Local Cooks to add costs' })).toHaveAttribute('href', '/manager/dashboard?view=support');
     fireEvent.click(button);

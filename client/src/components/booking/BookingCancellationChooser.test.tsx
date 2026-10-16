@@ -31,7 +31,9 @@ describe('one parent cancellation chooser', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
     expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByText(/Already using storage/)).toBeInTheDocument();
-    expect(await screen.findByText(/Refund: .*98\.00 \(your payment minus the .* card processing fee\)/)).toBeInTheDocument();
+    // Headline first; the card fee is in the breakdown (still shown before the chef confirms).
+    expect(await screen.findByTestId('cancel-refund-headline')).toHaveTextContent(/You’ll get .*98\.00 back/);
+    expect(screen.getByTestId('cancel-breakdown')).toHaveTextContent(/Card processing fee \(not refundable\)−\$2\.00/);
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Your booking is cancelled');
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -45,7 +47,7 @@ describe('one parent cancellation chooser', () => {
       .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Mixer cutoff passed' }) } as any);
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    await screen.findByText(/Refund: .*98\.00 \(your payment minus the .* card processing fee\)/);
+    await screen.findByTestId('cancel-refund-headline');
     fireEvent.click(screen.getByLabelText(/Selected add-ons/));
     fireEvent.click(screen.getByLabelText(/Cold storage/)); fireEvent.click(screen.getByLabelText(/Mixer/));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' }));
@@ -59,8 +61,10 @@ describe('one parent cancellation chooser', () => {
     vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 2000, alreadyRefundedCents: 5000, feeRetainedCents: 200, retainedCents: 3000 }) } as any);
     render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="partially_refunded" items={[]} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    expect(await screen.findByText('Refunded: $50.00')).toBeInTheDocument();
-    expect(screen.getByText(/Refund: .*20.00/)).toBeInTheDocument(); expect(screen.queryByText(/Amount kept/)).not.toBeInTheDocument(); expect(screen.getByText('Review what happens before you cancel.')).toBeInTheDocument(); expect(screen.queryByText(/Unstarted equipment/)).not.toBeInTheDocument();
+    expect(await screen.findByTestId('cancel-refund-headline')).toHaveTextContent(/You’ll get .*20\.00 back/);
+    // Paid $100 = already refunded $50 + kept under the policy $28 + card fee $2 + this refund $20.
+    const lines = [...screen.getByTestId('cancel-breakdown').querySelectorAll('dl > div')].map(row => row.textContent);
+    expect(lines).toEqual(['You paid$100.00', 'Already refunded−$50.00', 'Kept under the cancellation policy−$28.00', 'Card processing fee (not refundable)−$2.00', 'Your refund$20.00']); expect(screen.queryByText(/Amount kept/)).not.toBeInTheDocument(); expect(screen.getByText('Review what happens before you cancel.')).toBeInTheDocument(); expect(screen.queryByText(/Unstarted equipment/)).not.toBeInTheDocument();
   });
   it('uncaptured requests have an explicit confirm action and Escape exits without submitting', async () => {
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" items={items} onChanged={async () => {}} />);

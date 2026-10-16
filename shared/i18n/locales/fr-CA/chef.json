@@ -3638,5 +3638,9 @@
   "bnIWasThereTitle": "Dites-nous que vous étiez là",
   "bnIWasThereHint": "Indiquez à quelle heure vous êtes arrivé à {kitchen} et qui vous avez vu ou à qui vous avez parlé. Local Cooks l’examine avec le signalement de la cuisine.",
   "bdContactSupport": "Contacter Local Cooks",
-  "fixIntroPreset": "{chef} reçoit une notification et l’historique de la réservation en garde une trace."
+  "fixIntroPreset": "{chef} reçoit une notification et l’historique de la réservation en garde une trace.",
+  "inspectFinish": "Terminer l’inspection",
+  "inspectFinishHintPayout": "Rien à signaler ? Terminer envoie votre versement de {amount} dès maintenant.",
+  "inspectFinishHintClaim": "Terminer clôt l’inspection. Votre réclamation pour dommages se poursuit séparément.",
+  "bnChangeRequest": "Modifier la demande"
 }

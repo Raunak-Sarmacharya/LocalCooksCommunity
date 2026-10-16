@@ -3638,5 +3638,9 @@
   "bnIWasThereTitle": "Tell us you were there",
   "bnIWasThereHint": "Say when you arrived at {kitchen} and who you saw or spoke to. Local Cooks reviews it alongside the kitchen’s report.",
   "bdContactSupport": "Contact Local Cooks",
-  "fixIntroPreset": "{chef} gets a notification, and the booking history keeps a record."
+  "fixIntroPreset": "{chef} gets a notification, and the booking history keeps a record.",
+  "inspectFinish": "Finish inspection",
+  "inspectFinishHintPayout": "Nothing to report? Finishing sends your {amount} payout now.",
+  "inspectFinishHintClaim": "Finishing closes the inspection. Your damage claim continues separately.",
+  "bnChangeRequest": "Change request"
 }

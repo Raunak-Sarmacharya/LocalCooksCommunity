@@ -308,10 +308,13 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
         : inspectionClosed ? (canReportLater && reportWindow && !alreadyReported ? t('inspectWindowClosedReport', { date: formatEvent(reportWindow.deadline.toISOString()) }) : t('inspectWindowClosed'))
         : t('inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
-        {!(inspectionClosed && !canClear) && <Button disabled={!canClear || blocked || saving || saved || !booking.inspection || !claimStateReady} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(continuingClaim ? 'wfdFinishClaim' : payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>}
+        {!(inspectionClosed && !canClear) && <Button disabled={!canClear || blocked || saving || saved || !booking.inspection || !claimStateReady} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t('inspectFinish')}</Button>}
         {alreadyReported ? reportedLink : <Button variant="outline" disabled={saving || !claimsQuery.data} onClick={() => setIssueOpen(true)}>{claimT('dcV2Report')}</Button>}
         {canAssist && <Button variant="outline" disabled={saving || blocked} onClick={() => { setAssistanceOpen(true); assistanceRef.current?.focus(); }}>{t('inspectCopy62')}</Button>}
       </div>
+      {canClear && !blocked && !saved && booking.inspection && (continuingClaim || payoutNow) && (
+        <p className="text-sm text-muted-foreground" data-testid="inspection-finish-hint">{continuingClaim ? t('inspectFinishHintClaim') : t('inspectFinishHintPayout', { amount: payoutAmount })}</p>
+      )}
     </section>}
     <div className="grid gap-5 md:grid-cols-2">
       <EvidenceSummary chef={chef} title={t('inspectArrival')} section={booking.inspection?.duties.arrival} timestamp={evidence.checkedInAt}

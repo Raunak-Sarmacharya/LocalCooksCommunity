@@ -8,7 +8,8 @@ import { CheckCircle2, Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { CancellationPolicySummary } from './CancellationPolicySummary';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
-type ExactQuote = { quoteReady: boolean; chefRefundCents?: number; alreadyRefundedCents?: number; feeRetainedCents?: number; retainedCents?: number; snapshot?: CancellationPolicySnapshot };
+type ExactQuote = { quoteReady: boolean; chefRefundCents?: number; alreadyRefundedCents?: number; feeRetainedCents?: number; retainedCents?: number; snapshot?: CancellationPolicySnapshot;
+  sources?: { capturedCents?: number }[] };
 
 type Item = { id: number; kind: 'storage' | 'equipment'; name: string; status: string; dates?: string };
 export function BookingCancellationChooser({ bookingId, status, paymentStatus, items, onChanged, decisionPending = false, declined = false, summary, cancellationDeadline, visitActive = false, open: controlledOpen, onOpenChange, hideTrigger = false }: {
@@ -34,6 +35,17 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const [quote, setQuote] = useState<ExactQuote | null>(null);
   const money = (cents = 0) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const [outcomeRefundCents, setOutcomeRefundCents] = useState<number | null>(null);
+  const breakdown = (() => {
+    if (!quote?.quoteReady) return [];
+    const refund = quote.chefRefundCents ?? 0, fee = quote.feeRetainedCents ?? 0, already = quote.alreadyRefundedCents ?? 0;
+    const policyKept = Math.max(0, (quote.retainedCents ?? 0) - fee);
+    const paid = quote.sources?.reduce((sum, source) => sum + (source.capturedCents ?? 0), 0) || refund + (quote.retainedCents ?? 0) + already;
+    return [{ key: 'paid', label: policyT('cpPaidLine'), cents: paid },
+      ...(already ? [{ key: 'already', label: policyT('cpAlreadyRefundedLine'), cents: -already }] : []),
+      ...(policyKept ? [{ key: 'kept', label: policyT('cpPolicyKeptLine'), cents: -policyKept }] : []),
+      ...(fee ? [{ key: 'fee', label: policyT('cpFeeLine'), cents: -fee }] : []),
+      { key: 'refund', label: policyT('cpRefundLine'), cents: refund, total: true }];
+  })();
   const lateCancel = !!quote?.snapshot?.sessions[0] && Date.now() >= Date.parse(quote.snapshot.sessions[0].startAt) - quote.snapshot.noticeHours * 3600000;
   const beforeConfirmation = status === 'pending';
   const unpaid = beforeConfirmation && ['pending', 'authorized', 'failed'].includes(paymentStatus || '');
@@ -112,9 +124,18 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
             <h3 className="text-sm font-medium">{t('cancelCopy15')}</h3>
             {beforeConfirmation && scope === 'entire' ? <p className="rounded-xl border bg-muted/30 p-3 text-sm">{policyT('cpHold')}</p> : scope === 'entire' ? <div className="space-y-2 rounded-xl border bg-muted/30 p-3 text-sm" aria-live="polite">
               {quote ? quote.quoteReady ? <>
-                <p>{lateCancel ? quote.chefRefundCents ? policyT('cpLateExact', { charge: policyT(quote.snapshot?.lateChargePercent === 50 ? 'cpHalf' : 'cpFull'), refund: money(quote.chefRefundCents), kept: money(quote.retainedCents) }) : policyT('cpNoRefundLate') : quote.chefRefundCents || quote.alreadyRefundedCents ? policyT('cpExact', { refund: money(quote.chefRefundCents), fee: money(quote.feeRetainedCents) }) : policyT('cpNoRefund')}</p>
-                {!!quote.alreadyRefundedCents && <p>{t('bdRefundedLine')}: {money(quote.alreadyRefundedCents)}</p>}
-                {quote.snapshot && !lateCancel && <><p className="text-xs">{policyT(quote.snapshot.version === 0 ? 'cpOriginal' : 'cpFrozen')}</p><CancellationPolicySummary policy={quote.snapshot} timezone={quote.snapshot.timezone} startAt={quote.snapshot.sessions[0]?.startAt} processingFeeCents={quote.feeRetainedCents} /></>}
+                {/* Airbnb pattern: lead with what comes back; the deductions sit one tap away, still shown before consent. */}
+                {quote.chefRefundCents ? <p className="text-lg font-semibold" data-testid="cancel-refund-headline">{policyT('cpRefundHeadline', { refund: money(quote.chefRefundCents) })}</p>
+                  : <p>{policyT(lateCancel ? 'cpNoRefundLate' : 'cpNoRefund')}</p>}
+                {lateCancel && !!quote.chefRefundCents && <p>{policyT('cpLateKept', { charge: policyT(quote.snapshot?.lateChargePercent === 50 ? 'cpHalf' : 'cpFull') })}</p>}
+                <details className="group" data-testid="cancel-breakdown">
+                  <summary className="cursor-pointer text-sm font-medium underline-offset-4 hover:underline">{policyT('cpSeeBreakdown')}</summary>
+                  <dl className="mt-2 space-y-1">
+                    {breakdown.map(line => <div key={line.key} className={'flex justify-between gap-3' + (line.total ? ' border-t pt-1 font-medium' : '')}>
+                      <dt>{line.label}</dt><dd className="tabular-nums">{line.cents < 0 ? '−' : ''}{money(Math.abs(line.cents))}</dd></div>)}
+                  </dl>
+                  {quote.snapshot && !lateCancel && <div className="mt-3 border-t pt-2"><p className="text-xs font-medium">{policyT(quote.snapshot.version === 0 ? 'cpOriginal' : 'cpFrozen')}</p><CancellationPolicySummary policy={quote.snapshot} timezone={quote.snapshot.timezone} startAt={quote.snapshot.sessions[0]?.startAt} processingFeeCents={quote.feeRetainedCents} /></div>}
+                </details>
               </> : <p>{policyT('cpFeePending')}</p> : <Loader2 className="h-4 w-4 animate-spin" aria-label={t('cancelCopy40')} />}
               {items.length > 0 && <p className="text-xs text-muted-foreground">{policyT('cpAddons')}</p>}
             </div> : <div className="rounded-xl border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
