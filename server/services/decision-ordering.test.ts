@@ -78,11 +78,14 @@ describe('actual guarded decision dispatchers and owned escalation', () => {
     expect(state.alerts[0].metadata.recoveryOwnerId).toBe(1);
     expect(state.queries.some(q => q.includes("earlier.metadata->'deliveryRecoveryOwnerIds'"))).toBe(true);
   });
-  it('does not bypass a booking event without a real recovery owner', async () => {
+  // Lead decision (#144, Oct 16): a later booking notice (e.g. "cancelled") is never held indefinitely behind an earlier
+  // undeliverable one when nobody can recover it; production always has a recovery admin, so the hold path applies there.
+  it('delivers a later booking event even when the earlier failure has no recovery owner', async () => {
     state.owners = []; state.bookings = [booking(1, 'confirmed', 'bad@example.test'), booking(2, 'cancelled')];
     await deliverBookingLifecycleEvents(1);
-    expect((await deliverBookingLifecycleEvents(1, 20_000, undefined, 2)).completed).toBe(0);
-    expect(state.bookings[0].completedAt).toBeNull();
+    expect((await deliverBookingLifecycleEvents(1, 20_000, undefined, 2)).completed).toBe(1);
+    // The earlier notice is closed as undeliverable (recorded, not retried forever); the later one went out.
+    expect(state.bookings[0].completedAt).toBeInstanceOf(Date);
   });
   it('dispatches a later urgent tour cancellation after failing an earlier genuine confirmed decision; accepted host channels stay acknowledged', async () => {
     const earlier = tour(1, 'confirmed', 'bad@example.test'), later = tour(2, 'cancelled', 'visitor@example.test');

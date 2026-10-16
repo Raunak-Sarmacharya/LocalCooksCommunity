@@ -60,13 +60,21 @@ describe('deletion guard queries', () => {
     ]);
     const blockers = await getDeletionBlockers(db, { kind: 'kitchens', kitchenIds: [7] });
     expect(blockers.blocked).toBe(true);
-    expect(blockers.upcomingBookings).toEqual({ total: 4, refs: [{ ref: 'KB-AAA111', detail: '2026-11-02' }] });
+    expect(blockers.upcomingBookings).toEqual({ total: 4, refs: [{ ref: 'KB-AAA111', detail: 'Nov 2, 2026' }] });
     expect(blockers.openClaims.refs).toEqual([{ ref: 'DC-9', detail: undefined }].map(r => ({ ref: r.ref })));
     expect(blockers.pendingMoney.refs).toEqual([{ ref: 'KB-AAA111' }].map(r => ({ ref: r.ref, detail: undefined })));
     // Never counts manager blocks, drafts or finished claims.
     expect(db.statements[0]).toContain("kb.booking_type <> 'manager_blocked'");
     expect(db.statements[0]).toContain("kb.status IN ('pending', 'confirmed', 'cancellation_requested')");
     expect(db.statements[1]).toContain('NOT IN');
+  });
+
+  it('never shows a payment-provider id or an internal payment id', async () => {
+    const db = exec([[], [], [{ id: 110, reference_code: null, kb_id: null, total: 1 }], [], [{ id: 4, operating_date: '2026-10-24', total: 1 }]]);
+    const blockers = await getDeletionBlockers(db, { kind: 'user', userId: 380 });
+    expect(blockers.pendingMoney.refs).toEqual([{ ref: 'a payment without a booking' }]);
+    expect(blockers.checkoutIncidents.refs).toEqual([{ ref: 'Checkout for Oct 24, 2026' }]);
+    expect(JSON.stringify(blockers)).not.toMatch(/cs_|payment 110/);
   });
 
   it('is not blocked when only history is left', async () => {

@@ -55,9 +55,14 @@ function toBucket(rows: any[], refOf: (row: any) => DeletionRef) {
   return { total: Number(rows[0].total ?? rows.length), refs: rows.slice(0, REF_LIMIT).map(refOf) };
 }
 
+/** "Oct 16, 2026": booking dates are stored at the operating day's noon UTC. */
+const friendlyDate = (value: unknown) => {
+  const date = value instanceof Date ? value : typeof value === 'string' ? new Date(value.length === 10 ? `${value}T12:00:00Z` : value) : null;
+  return date && Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).format(date) : undefined;
+};
 const bookingRef = (row: any): DeletionRef => ({
   ref: row.reference_code || `KB-${row.id}`,
-  detail: row.booking_date ? new Date(row.booking_date).toISOString().slice(0, 10) : undefined,
+  detail: friendlyDate(row.booking_date),
 });
 
 /** One round-trip per category; `exec` is `db` or a transaction. */
@@ -104,20 +109,22 @@ export async function getDeletionBlockers(exec: { execute: (q: SQL) => Promise<{
     FROM support_actions a JOIN kitchen_bookings kb ON kb.id = a.booking_id
     WHERE (${bw}) AND a.status IN ('executing', 'recovery_required') ORDER BY a.id LIMIT ${REF_LIMIT}`);
   const incidents = await exec.execute(sql`
-    SELECT i.id, i.session_id, COUNT(*) OVER()::int AS total
+    SELECT i.id, i.operating_date, COUNT(*) OVER()::int AS total
     FROM kitchen_checkout_incidents i
     WHERE (${incidentScope}) AND i.outcome IN ('inventory_conflict', 'needs_support', 'verifying')
       AND i.money_status IN ('unverified', 'refund_pending') ORDER BY i.id LIMIT ${REF_LIMIT}`);
 
   const upcomingBookings = toBucket(upcoming.rows, bookingRef);
   const openClaims = toBucket(claims.rows, row => ({ ref: row.reference_code || `DC-${row.id}` }));
-  const moneyBucket = toBucket(money.rows, row => ({ ref: row.reference_code || `payment ${row.id}` }));
-  const actionBucket = toBucket(actions.rows, row => ({ ref: row.reference_code || `case ${row.id}` }));
+  // Booking references only: internal payment/case ids mean nothing to a kitchen or chef.
+  const moneyBucket = toBucket(money.rows, row => ({ ref: row.reference_code || (row.kb_id ? `KB-${row.kb_id}` : 'a payment without a booking') }));
+  const actionBucket = toBucket(actions.rows, row => ({ ref: row.reference_code || 'a support case' }));
   const pendingMoney = {
     total: moneyBucket.total + actionBucket.total,
     refs: [...moneyBucket.refs, ...actionBucket.refs].filter((r, i, all) => all.findIndex(o => o.ref === r.ref) === i).slice(0, REF_LIMIT),
   };
-  const checkoutIncidents = toBucket(incidents.rows, row => ({ ref: row.session_id || `checkout ${row.id}` }));
+  // Never a payment-provider session id: the checkout's day is what people recognise.
+  const checkoutIncidents = toBucket(incidents.rows, row => ({ ref: friendlyDate(row.operating_date) ? `Checkout for ${friendlyDate(row.operating_date)}` : 'A checkout' }));
   const blocked = upcomingBookings.total + openClaims.total + pendingMoney.total + checkoutIncidents.total > 0;
   return { upcomingBookings, openClaims, pendingMoney, checkoutIncidents, blocked };
 }
