@@ -3666,5 +3666,7 @@
   "bnIWasThereLabel": "Quand êtes-vous arrivé et que s’est-il passé ?",
   "sxNoTimeClosing": "{kitchen} ferme à la fin de votre réservation; impossible d’ajouter du temps. Écrivez-leur si vous avez besoin de quelques minutes.",
   "sxNoTimeMaxLength": "Vous avez atteint la durée maximale de réservation pour une journée chez {kitchen}. Écrivez-leur si vous avez besoin de plus de temps.",
-  "sxNoTimeTurnover": "{kitchen} a besoin du temps après votre réservation pour se préparer pour le prochain chef. Écrivez-leur si vous avez besoin de quelques minutes."
+  "sxNoTimeTurnover": "{kitchen} a besoin du temps après votre réservation pour se préparer pour le prochain chef. Écrivez-leur si vous avez besoin de quelques minutes.",
+  "shellMyStorage": "Mon entreposage",
+  "blMyStorage": "Vous louez de l’entreposage? Voir Mon entreposage"
 }

@@ -63,7 +63,8 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-export function PendingOverstayPenalties() {
+/** `title` relabels the card where the same charges read as storage "Holdover". */
+export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
   const [disputeId, setDisputeId] = useState<number | null>(null);
   const [disputeReason, setDisputeReason] = useState('');
   const { t, i18n } = useTranslation("chef");
@@ -153,7 +154,7 @@ export function PendingOverstayPenalties() {
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-destructive" />
           <CardTitle className="text-lg">
-            {t("overstayPenaltiesTitle", "Outstanding Overstay Penalties")}
+            {title ?? t("overstayPenaltiesTitle", "Outstanding Overstay Penalties")}
           </CardTitle>
           <InfoChip variant="destructive">
             {t("overstayPaymentRequired", "Payment required")}

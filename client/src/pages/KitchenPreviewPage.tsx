@@ -40,6 +40,7 @@ import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
 import { CancellationPolicyDialog, KitchenTermsDialog, cancellationPolicyFirstLine } from "@/components/booking/CancellationPolicyDialog";
 import { PublishedCancellationPolicySummary } from '@/components/booking/CancellationPolicySummary';
+import { StorageRentCta } from "@/components/storage/StorageRentCta";
 import { KitchenInventoryModals, KitchenEquipmentSections, KitchenStorageSections, InventoryModal, InventoryShowAllButton } from "@/components/kitchen-application/KitchenInventory";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
@@ -840,10 +841,13 @@ function KitchenInventoryPair({
   openModal: controlledOpen,
   onOpenModalChange,
   kitchenTermsUrl,
+  storageCta,
 }: {
   kitchen: PublicKitchen;
   hasEquipment: boolean;
   hasStorage: boolean;
+  /** "Rent storage" / "Apply to this kitchen first" under the storage list (compact in the overview card). */
+  storageCta?: (compact: boolean) => ReactNode;
   openModal?: "equipment" | "storage" | null;
   onOpenModalChange?: (modal: "equipment" | "storage" | null) => void;
   kitchenTermsUrl?: string | null;
@@ -949,6 +953,7 @@ function KitchenInventoryPair({
             <div className="min-h-0 flex-1 overflow-hidden">
               <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
             </div>
+            {storageCta?.(true)}
             {storage.length > CARD_PREVIEW_COUNT && (
               <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
                 <InventoryShowAllButton
@@ -1121,7 +1126,7 @@ function KitchenInventoryPair({
             <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
               {t(
                 "storageExplainBody",
-                "After selecting your date, time, and equipment, you can add optional storage to your booking. Storage is priced separately from your kitchen session."
+                "Rent storage on its own, by the day, once you are approved at this kitchen. It is priced separately from kitchen sessions and never charged automatically."
               )}
             </DialogDescription>
           </DialogHeader>
@@ -2238,6 +2243,7 @@ interface KitchenDetailsSectionProps {
   cancellationPolicyHours?: number | null;
   cancellationPolicyMessage?: string | null;
   kitchenTermsUrl?: string | null;
+  storageCta?: (compact: boolean) => ReactNode;
 }
 
 function KitchenDetailsSection({
@@ -2253,6 +2259,7 @@ function KitchenDetailsSection({
   cancellationPolicyHours,
   cancellationPolicyMessage,
   kitchenTermsUrl,
+  storageCta,
 }: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const isStacked = layout === "stacked";
@@ -2317,6 +2324,7 @@ function KitchenDetailsSection({
               openModal={inventoryModal}
               onOpenModalChange={onInventoryModalChange}
               kitchenTermsUrl={kitchenTermsUrl}
+              storageCta={storageCta}
             />
           )}
 
@@ -2448,6 +2456,7 @@ function KitchenDetailsSection({
                     transition={{ duration: 0.2 }}
                   >
                     <KitchenStorageSections kitchen={kitchen} />
+                    {storageCta?.(false)}
                   </motion.div>
                 </TabsContent>
               )}
@@ -3806,6 +3815,7 @@ export default function KitchenPreviewPage() {
                   cancellationPolicyHours={selectedKitchen.cancellationPolicyHours ?? location.cancellationPolicyHours}
                   cancellationPolicyMessage={location.cancellationPolicyMessage}
                   kitchenTermsUrl={location.kitchenTermsUrl}
+                  storageCta={compact => !applicationLoading && <StorageRentCta kitchenId={selectedKitchen.id} canBook={canBook} onApply={handleApplyClick} compact={compact} />}
                 />
               ) : (
                 <motion.div

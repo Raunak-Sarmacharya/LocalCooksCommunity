@@ -6,6 +6,7 @@ import { getAuthHeaders } from '@/lib/api';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { ContactLocalCooks } from '@/components/support/ContactLocalCooks';
 import type { CheckoutOutcome } from '@shared/checkout-outcome';
+import { StorageAddPrompt } from '@/components/storage/StorageRentCta';
 
 /** "Change request": how the earlier request ended, in plain words, with a way to both bookings when there are two. */
 function ReplacementResult({ replacement, t }: { replacement: NonNullable<CheckoutOutcome['replacement']>; t: (key: string, options?: Record<string, unknown>) => string }) {
@@ -78,6 +79,7 @@ export default function PaymentSuccessPage() {
         <Button variant="outline" onClick={() => setRefresh(value => value + 1)}>{t('checkoutCheckAgain')}</Button>
         <ContactLocalCooks role="chef" situation={description} checkoutReference={sessionId} paymentReference={outcome?.paymentIntentId} />
       </div>}
+      {state === 'request_created' && outcome?.kitchenId && <StorageAddPrompt kitchenId={outcome.kitchenId} />}
       <p><Link className="text-sm underline" href="/dashboard">{t('checkoutDashboard')}</Link></p>
     </section>
   </main>;

@@ -16,8 +16,6 @@ import { KitchenIcon } from "@/components/ui/kitchen-icon"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatusPill } from "@/components/booking/BookingNowCard"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
-import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
-import { ChefStorageBookings } from "./ChefStorageBookings"
 import { sentence } from "@/lib/booking-header-state"
 import { bookingCancelCause } from "@/lib/booking-cancel-cause"
 import { bookingResponseDeadline, formatResponseDeadline } from "@/lib/booking-response-deadline"
@@ -209,7 +207,6 @@ export default function ChefBookingsView({ bookings, isLoading, kitchens = [], o
   return (
     <div className="w-full max-w-[880px] space-y-5">
       <PendingOverstayPenalties />
-      <ExpiringStorageNotification />
 
       {isLoading ? (
         <div className="space-y-3" role="status" aria-label={t("bkLoadingBookings")}>
@@ -264,7 +261,8 @@ export default function ChefBookingsView({ bookings, isLoading, kitchens = [], o
         </section>
       )}
 
-      <ChefStorageBookings kitchenBookings={rows.map(row => ({ id: row.id, status: row.status, paymentStatus: row.paymentStatus }))} />
+      {/* Storage is rented on its own now; the old add-on list moved to "My storage". */}
+      <p className="text-sm"><Link className="font-medium underline underline-offset-2" href="/storage">{t("blMyStorage")}</Link></p>
     </div>
   )
 }

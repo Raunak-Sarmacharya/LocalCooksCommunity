@@ -16,6 +16,7 @@ export type ChefNavItemId =
   | "discover-kitchens"
   | "viewings"
   | "bookings"
+  | "storage"
   | "messages"
   | "notifications"
   | "issues-refunds";
@@ -51,6 +52,7 @@ export const chefNavSections: ChefNavSection[] = [
       { id: "applications", labelKey: "shellMyApplication", icon: CHEF_APPLICATION_ICON },
       { id: "training", labelKey: "shellTraining", icon: "mdi:school-outline" },
       { id: "bookings", labelKey: "shellMyBookings", icon: "mdi:calendar-month-outline" },
+      { id: "storage", labelKey: "shellMyStorage", icon: "mdi:warehouse" },
     ],
   },
   {

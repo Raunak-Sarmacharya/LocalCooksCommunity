@@ -3666,5 +3666,7 @@
   "bnIWasThereLabel": "When did you arrive, and what happened?",
   "sxNoTimeClosing": "{kitchen} closes when your booking ends, so there’s no extra time to add. Message them if you need a few minutes.",
   "sxNoTimeMaxLength": "You’ve reached {kitchen}’s longest booking for one day. Message them if you need more time.",
-  "sxNoTimeTurnover": "{kitchen} needs the time after your booking to get ready for the next chef. Message them if you need a few minutes."
+  "sxNoTimeTurnover": "{kitchen} needs the time after your booking to get ready for the next chef. Message them if you need a few minutes.",
+  "shellMyStorage": "My storage",
+  "blMyStorage": "Renting storage? See My storage"
 }

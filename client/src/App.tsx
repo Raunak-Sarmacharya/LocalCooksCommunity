@@ -69,6 +69,9 @@ const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
 const ManagerInvitationNewPage = lazy(() => import("@/pages/ManagerInvitationNewPage"));
 const ChefInvitationPage = lazy(() => import("@/pages/ChefInvitationPage"));
 const KitchenVisitPage = lazy(() => import("@/pages/KitchenVisitPage"));
+const ChefStoragePage = lazy(() => import("@/pages/ChefStoragePage"));
+const ChefStorageRequestPage = lazy(() => import("@/pages/ChefStorageRequestPage"));
+const ChefStorageRentalPage = lazy(() => import("@/pages/ChefStorageRentalPage"));
 const ManagerInspectionPage = lazy(() => import("@/pages/ManagerInspectionPage"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 const RequestTourPage = lazy(() => import("@/pages/RequestTourPage"));
@@ -285,6 +288,10 @@ function Router() {
         <SubdomainRoute path="/book-kitchen" component={LegacyKitchenBookingRedirect} subdomain={subdomain} />
         <SubdomainRoute path="/book-kitchen/confirm" component={LegacyKitchenBookingRedirect} subdomain={subdomain} />
         <SubdomainRoute path="/payment-success" component={PaymentSuccessPage} subdomain={subdomain} />
+        {/* Standalone storage rentals (chef) */}
+        <ProtectedRoute path="/storage/new" component={ChefStorageRequestPage} />
+        <ProtectedRoute path="/storage/:id" component={ChefStorageRentalPage} />
+        <ProtectedRoute path="/storage" component={ChefStoragePage} />
         <SubdomainRoute path="/booking/:id/visit" subdomain={subdomain}>
           <ProtectedRoute path="/booking/:id/visit" component={KitchenVisitPage} />
         </SubdomainRoute>
