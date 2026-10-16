@@ -237,6 +237,9 @@ describe('manager inspection with isolated API mocks', () => {
   });
 
   it('keeps reporting open for 72 hours after departure, independent of the shorter inspection window', async () => {
+    // The 72-hour window is measured from the real clock: pin it to the moment this fixture describes (was a time bomb after Oct 15).
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T20:00:00Z'));
+    try {
     const closeout = (deadline: string) => ({ phase: 'ended', timezone: 'America/St_Johns', serviceEndedAt: '2026-10-12T19:00:00Z', status: 'confirmed', serverNow: '2026-10-12T20:00:00Z', nextDueAt: null,
       visits: [{ key: 'v', phase: 'ended', arrivalRecorded: true, scheduledStartAt: '2026-10-12T18:00:00Z', scheduledEndAt: '2026-10-12T19:00:00Z',
         inspection: { outcome: 'manager_cleared', dueAt: '2026-10-12T19:00:00Z', deadline, closedAt: '2026-10-12T19:29:00Z', canRespond: false } }] }) as any;
@@ -250,6 +253,14 @@ describe('manager inspection with isolated API mocks', () => {
     mount();
     await screen.findByTestId('inspection-done');
     expect(screen.queryByRole('button', { name: /Found a problem later/ })).not.toBeInTheDocument();
+      // Auto-closed without a review: say what is still possible, no dead "Finish" button.
+      cleanup(); clients.forEach(value => value.clear());
+      booking.closeout = closeout('2999-01-01T00:00:00Z'); booking.closeout.visits[0].inspection.outcome = 'auto_closed_uninspected';
+      booking.checkoutApprovedAt = null; booking.checkoutRequestedAt = '2026-10-12T19:00:00Z';
+      mount();
+      expect(await screen.findByText(/You can still report damage or extra cleaning until/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Finish inspection/ })).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
   });
 
   it('reports an incomplete booking identity contract without exposing actions', async () => {

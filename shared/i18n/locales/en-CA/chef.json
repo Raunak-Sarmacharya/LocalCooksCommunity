@@ -3629,5 +3629,6 @@
   "sxLapsed": "{kitchen} didn’t answer in time. Your {amount} hold is being released — you won’t be charged.",
   "sxAskAgain": "Ask again",
   "bdViewReceipts": "View receipts",
-  "bdViewPayoutDocuments": "View payout statements"
+  "bdViewPayoutDocuments": "View payout statements",
+  "inspectWindowClosedReport": "The inspection window has closed. You can still report damage or extra cleaning until {date}."
 }

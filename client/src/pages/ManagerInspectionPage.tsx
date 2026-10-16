@@ -224,7 +224,10 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
   const canAssist = booking.status === 'confirmed' && [null, undefined, 'not_checked_in', 'checked_in'].includes(evidence.checkinStatus);
   // Inspection and the separate 72-hour claim filing window have independent deadlines.
   const finished = saved || (clock ? clock.inspection.outcome === 'manager_cleared' : evidence.checkinStatus === 'checked_out' && !!evidence.checkoutApprovedAt);
-  const canReportLater = !!clock && claimFilingWindow(new Date(clock.scheduledEndAt), recordedDepartureAt(evidence)).allowed;
+  const reportWindow = clock ? claimFilingWindow(new Date(clock.scheduledEndAt), recordedDepartureAt(evidence)) : null;
+  const canReportLater = !!reportWindow?.allowed;
+  // Inspection closed (auto or done): the Finish button and its note are gone; the page says what is still possible.
+  const inspectionClosed = !!clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome);
   const finishedAt = (() => {
     const at = evidence.checkoutApprovedAt, zone = booking.location.timezone;
     if (!at || !zone || !Number.isFinite(Date.parse(at))) return null;
@@ -295,13 +298,17 @@ function InspectionTask({ booking, evidence, visitId, formatEvent, refresh, bloc
       </details>
       {!booking.inspection && <p role="alert">{t('inspectCopy54')}</p>}
       {booking.inspection && !booking.inspection.dutiesSaved && <p>{t('inspectCopy55')}</p>}
+      {!(inspectionClosed && !canClear) && <>
       <label className="block text-sm font-medium" htmlFor="inspection-message">{t('fixNoteOptional', { chef })}</label>
       <Textarea id="inspection-message" value={note} maxLength={2000} disabled={saving} onChange={event => onNoteChange(event.target.value)} />
+      </>}
       {error && !confirmOpen && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {evidence.checkoutManagerMessage && <p className="whitespace-pre-wrap text-sm">{evidence.checkoutManagerMessage}</p>}
-      {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{t(blocked ? 'inspectRefreshFirst' : clock && ['auto_closed_uninspected', 'legacy_closed', 'manager_cleared', 'issue_filed'].includes(clock.inspection.outcome) ? 'inspectWindowClosed' : 'inspectNotReady')}</p>}
+      {(!canClear || blocked || !booking.inspection) && <p className="text-sm text-muted-foreground">{blocked ? t('inspectRefreshFirst')
+        : inspectionClosed ? (canReportLater && reportWindow && !alreadyReported ? t('inspectWindowClosedReport', { date: formatEvent(reportWindow.deadline.toISOString()) }) : t('inspectWindowClosed'))
+        : t('inspectNotReady')}</p>}
       <div className="flex flex-wrap gap-3">
-        <Button disabled={!canClear || blocked || saving || saved || !booking.inspection || !claimStateReady} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(continuingClaim ? 'wfdFinishClaim' : payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>
+        {!(inspectionClosed && !canClear) && <Button disabled={!canClear || blocked || saving || saved || !booking.inspection || !claimStateReady} onClick={() => setConfirmOpen(true)}><CheckCircle2 className="mr-2 h-4 w-4" />{saving ? t('inspectCopy59') : t(continuingClaim ? 'wfdFinishClaim' : payoutNow ? 'inspectFinishAndPay' : 'inspectCopy60')}</Button>}
         {alreadyReported ? reportedLink : <Button variant="outline" disabled={saving || !claimsQuery.data} onClick={() => setIssueOpen(true)}>{claimT('dcV2Report')}</Button>}
         {canAssist && <Button variant="outline" disabled={saving || blocked} onClick={() => { setAssistanceOpen(true); assistanceRef.current?.focus(); }}>{t('inspectCopy62')}</Button>}
       </div>
