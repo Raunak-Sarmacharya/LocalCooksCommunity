@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { formatVisitTime } from '@/lib/visit-time';
+import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { formatTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,7 +16,9 @@ import { NowAttentionRow } from './BookingNowCard';
 type Money = { oldTotalCents: number; newTotalCents: number; payCents: number; refundCents: number; feeKeptCents: number; currency: string };
 type Change = { id: string; state: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule; money: Money;
   decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean };
-type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; until?: string }; open?: Change; timezone: string | null };
+type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; until?: string }; open?: Change; timezone: string | null;
+  /** The kitchen's booking length limits (hours), same as new bookings. */ limits?: { minHours: number; maxHours: number };
+  /** The current refund deadline, to say whether a change moves it. */ freeCancelUntil?: string };
 type Preview = { destination: ChangeSchedule; money: Money; decisionBy: string; freeCancelAfter?: string; quoteHash: string };
 type Slot = { time: string; available: number; isFullyBooked: boolean };
 
@@ -36,7 +39,8 @@ function useFormat(timezone?: string | null) {
   const money = (cents: number, currency = 'CAD') => new Intl.NumberFormat(locale, { style: 'currency', currency }).format(cents / 100);
   const day = (date: string) => new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
   const schedule = (value: ChangeSchedule) => `${day(value.date)} · ${formatTime(value.slots[0]?.startTime || '', locale)}–${formatTime(value.slots.at(-1)?.endTime || '', locale)}`;
-  const when = (iso: string) => timezone ? formatVisitTime(iso, timezone, locale) : new Date(iso).toLocaleString(locale);
+  // Deadlines always name the kitchen's zone ("Oct 17, 2026, 12:10 p.m. Newfoundland Time").
+  const when = (iso: string) => timezone ? `${formatVisitTime(iso, timezone, locale)} ${friendlyTimezoneName(timezone, locale)}` : new Date(iso).toLocaleString(locale);
   return { money, schedule, when, locale };
 }
 
@@ -120,10 +124,12 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
   }, [open, date, kitchenId, bookingId, data?.canRequest.allowed]);
   const free = useMemo(() => new Set((slots || []).filter(slot => !slot.isFullyBooked && slot.available > 0).map(slot => slot.time)), [slots]);
   // Longest run of free hours from the chosen start (consecutive hours only, like booking).
-  const maxHours = useMemo(() => { let n = 0, at = start; while (at && free.has(at) && n < 12) { n++; at = addHour(at); } return n; }, [free, start]);
+  const minHours = data?.limits?.minHours ?? 1, lengthCap = data?.limits?.maxHours ?? 12;
+  // Free consecutive hours from the chosen start, never beyond the kitchen's longest booking.
+  const maxHours = useMemo(() => { let n = 0, at = start; while (at && free.has(at) && n < lengthCap) { n++; at = addHour(at); } return n; }, [free, start, lengthCap]);
   const chosen = useMemo(() => { const out: ChangeSchedule['slots'] = []; let at = start;
     for (let i = 0; i < hours && at; i++) { const end = addHour(at); out.push({ startTime: at, endTime: end }); at = end; } return out; }, [start, hours]);
-  const ready = !!data?.canRequest.allowed && !!date && chosen.length > 0 && hours <= maxHours;
+  const ready = !!data?.canRequest.allowed && !!date && chosen.length > 0 && hours <= maxHours && hours >= minHours;
   const unchanged = !!data && date === data.original.date && chosen.length === data.original.slots.length && chosen[0]?.startTime === data.original.slots[0]?.startTime;
   useEffect(() => {
     if (!open || !ready || unchanged) { setPreview(null); return; }
@@ -159,7 +165,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
             </label>
             <label className="text-sm font-medium">{t('chgHours')}
               <select className="mt-1 block min-h-11 w-full rounded-md border bg-background px-3" value={hours} disabled={busy} onChange={event => setHours(Number(event.target.value))}>
-                {Array.from({ length: Math.max(maxHours, 1, hours) }, (_, i) => i + 1).map(n => <option key={n} value={n} disabled={n > maxHours}>{t('chgHoursOption', { count: n })}</option>)}
+                {Array.from({ length: lengthCap - minHours + 1 }, (_, i) => i + minHours).map(n => <option key={n} value={n} disabled={n > maxHours}>{t('chgHoursOption', { count: n })}</option>)}
               </select>
             </label>
           </div>
@@ -182,7 +188,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
                 {m.feeKeptCents > 0 && <div className="flex justify-between gap-3"><dt>{t('chgFeeKept')}</dt><dd className="tabular-nums">−{f.money(m.feeKeptCents, m.currency)}</dd></div>}
               </dl>
             </details>
-            {preview.freeCancelAfter && <p>{t('chgDeadlineChef', { when: f.when(preview.freeCancelAfter) })}</p>}
+            {preview.freeCancelAfter && <p>{t(data?.freeCancelUntil && Date.parse(data.freeCancelUntil) === Date.parse(preview.freeCancelAfter) ? 'chgDeadlineChefSame' : 'chgDeadlineChef', { when: f.when(preview.freeCancelAfter) })}</p>}
             <p className="text-muted-foreground">{t(m.payCents > 0 ? 'chgHowItWorksHold' : 'chgHowItWorks', { kitchen: kitchenName, by: f.when(preview.decisionBy) })}</p>
           </section>}
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

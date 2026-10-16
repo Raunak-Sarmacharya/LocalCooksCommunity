@@ -1056,5 +1056,6 @@
   "refundReviewChefRefund": "Remboursement au chef",
   "refundReviewKitchenShare": "Prélevé sur le versement à la cuisine",
   "refundReviewServiceFeeShare": "Prélevé sur les frais de service de Local Cooks",
-  "refundReviewCardFee": "Frais de traitement de carte conservés"
+  "refundReviewCardFee": "Frais de traitement de carte conservés",
+  "chgDeadlineChefSame": "Votre date limite de remboursement reste le {when}."
 }

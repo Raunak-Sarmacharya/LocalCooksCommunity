@@ -94,7 +94,8 @@ const retire = (change: Change): ChangeOperation['retired'] => {
 // Context and locks
 // ---------------------------------------------------------------------------------------------------------------------------
 async function context(connection: typeof db | Tx, bookingId: number, actor?: ChangeActor) {
-  const [row] = await connection.select({ booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone })
+  const [row] = await connection.select({ booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone,
+    locationDailyLimit: locations.defaultDailyBookingLimit })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
     .innerJoin(locations, eq(kitchens.locationId, locations.id)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!row || actor && !(actor.role === 'admin' || actor.role === 'chef' && actor.id === row.booking.chefId
@@ -188,6 +189,12 @@ async function eligibility(tx: Tx, row: Context, now: Date, openChange: boolean)
 }
 
 /** The destination as the kitchen's real schedule allows it: free, within hours, buffers respected. */
+/** Hourly length limits, the same rule as new bookings (kitchen minimum; kitchen, else location, daily limit, else 2). */
+function changeLengthLimits(row: Context) {
+  const maxHours = Math.max(1, Number(row.kitchen.defaultDailyBookingLimit ?? row.locationDailyLimit ?? 2));
+  return { minHours: Math.min(maxHours, Math.max(1, Number(row.kitchen.minimumBookingHours || 1))), maxHours };
+}
+
 async function validateDestination(tx: Tx, row: Context, destination: ChangeSchedule, now: Date, holdId?: string | null) {
   const booking = row.booking, daily = booking.pricingMode === 'daily';
   if (!destination.slots?.length) throw new KitchenChangeError('Choose the new date and hours.');
@@ -198,6 +205,12 @@ async function validateDestination(tx: Tx, row: Context, destination: ChangeSche
       excludeBookingId: booking.id, excludeHoldId: holdId || undefined, keepAdvanceWindow: true });
   if (!result.valid || !result.windowStartTime) throw new KitchenChangeError(result.error || 'That time is no longer available. Pick another.');
   const normalized: ChangeSchedule = { date: destination.date, slots: result.slots!, windowStart: result.windowStartTime, ...(daily ? { pricingMode: 'daily' as const } : { pricingMode: 'hourly' as const }) };
+  // The kitchen's own length limits apply to a change exactly as to a new booking.
+  const limits = changeLengthLimits(row);
+  if (!daily && (normalized.slots.length < limits.minHours || normalized.slots.length > limits.maxHours))
+    throw new KitchenChangeError(limits.minHours > 1
+      ? `${row.kitchen.name} takes bookings of ${limits.minHours} to ${limits.maxHours} hours. Choose a length in that range.`
+      : `${row.kitchen.name} takes bookings of up to ${limits.maxHours} hours. Choose a shorter length.`);
   await validateEquipment(tx, row, normalized);
   if (!row.kitchen.isActive || row.kitchen.listingStatus !== 'active') throw new KitchenChangeError('This kitchen is unavailable for a new schedule.');
   const original = bookingChangeSchedule(booking);
@@ -384,7 +397,7 @@ export async function readKitchenChanges(bookingId: number, actor: ChangeActor, 
     if (actor.role === 'chef') canRequest = { allowed: el.allowed, ...(el.reason ? { reason: el.reason } : {}), ...(el.until ? { until: el.until } : {}) };
     else if (el.until) canRequest = { allowed: false, reason: canRequest.reason, until: el.until };
   } catch (error) { if (!(error instanceof KitchenChangeError)) throw error; if (actor.role === 'chef') canRequest = { allowed: false, reason: error.message }; }
-  return { original, canRequest, ...(open ? { open: changeDto(open, viewer) } : {}),
+  return { original, canRequest, limits: changeLengthLimits(row), ...(open ? { open: changeDto(open, viewer) } : {}),
     history: all.filter(change => change !== open).map(change => changeDto(change, viewer)),
     ...(freeCancelUntil ? { freeCancelUntil } : {}), timezone: row.timezone };
 }

@@ -166,7 +166,7 @@ async function reset() {
     { id: 3, username: 'chef@example.test', password: 'x', role: 'chef', preferredLocale: 'en-CA' }, { id: 8, username: 'chef2@example.test', password: 'x', role: 'chef' },
     { id: 9, username: 'host2@example.test', password: 'x', role: 'manager' }]);
   await h.db.insert(locations).values({ id: 5, name: 'Test location', address: '1 Test St', managerId: 2, timezone: TZ });
-  await h.db.insert(kitchens).values({ id: 4, name: 'Test Kitchen', locationId: 5, isActive: true, listingStatus: 'active', hourlyRate: '4000', dailyRate: '30000', taxRatePercent: '15' });
+  await h.db.insert(kitchens).values({ id: 4, name: 'Test Kitchen', locationId: 5, isActive: true, listingStatus: 'active', hourlyRate: '4000', dailyRate: '30000', taxRatePercent: '15', defaultDailyBookingLimit: 12 });
   ORIGINAL_DATE = dayFromNow(10); NEW_DATE = dayFromNow(12);
   await h.db.insert(kitchenBookings).values({ id: 10, referenceCode: 'KB-TEST10', chefId: 3, kitchenId: 4, bookingDate: new Date(`${ORIGINAL_DATE}T12:00:00Z`), startTime: '09:00', endTime: '11:00',
     operatingWindowStartTime: '08:00', pricingMode: 'hourly', selectedSlots: [hour(9), hour(10)], status: 'confirmed', totalPrice: '8000', serviceFee: '400', hourlyRate: '4000',
@@ -301,6 +301,13 @@ describe('eligibility and the preview', () => {
   it('only the chef who booked can preview or request', async () => {
     await expect(engine.previewKitchenChange(10, manager, { destination: dest(NEW_DATE, 9, 2) })).rejects.toThrow('Only the chef who booked');
     await expect(engine.previewKitchenChange(10, otherChef, { destination: dest(NEW_DATE, 9, 2) })).rejects.toThrow('Booking not found');
+  });
+  it("a change respects the kitchen's booking length limits, like a new booking", async () => {
+    await h.db.update(kitchens).set({ defaultDailyBookingLimit: 4, minimumBookingHours: 2 });
+    await expect(preview(dest(NEW_DATE, 9, 6))).rejects.toThrow('Test Kitchen takes bookings of 2 to 4 hours');
+    await expect(preview(dest(NEW_DATE, 9, 1))).rejects.toThrow('Test Kitchen takes bookings of 2 to 4 hours');
+    await expect(preview(dest(NEW_DATE, 9, 4))).resolves.toMatchObject({ destination: { date: NEW_DATE } });
+    expect((await engine.readKitchenChanges(10, chef)).limits).toEqual({ minHours: 2, maxHours: 4 });
   });
 
   it('turns an unavailable, busy or unchanged time into a plain message', async () => {
