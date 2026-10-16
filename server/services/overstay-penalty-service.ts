@@ -26,7 +26,7 @@ import {
   type StorageOverstayRecord,
   type OverstayStatus
 } from "@shared/schema";
-import { eq, and, lt, not, inArray, desc, asc, sql } from "drizzle-orm";
+import { eq, and, lt, not, inArray, desc, asc, sql, isNull } from "drizzle-orm";
 import { logger } from "../logger";
 import Stripe from "stripe";
 import { getOverstayPlatformDefaults, getEffectivePenaltyConfig, getOverstayDisputeWindowHours, isOverstayMonetaryEnforcementEnabled } from "./overstay-defaults-service";
@@ -153,6 +153,7 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
     .innerJoin(locations, eq(kitchens.locationId, locations.id))
     .where(and(
       workerAfter('overstays', storageBookings.id),
+      isNull(storageBookings.rentalState), // storage-v1 rentals have grace/holdover rules of their own
       lt(storageBookings.endDate, now),
       not(eq(storageBookings.status, 'cancelled')),
       inArray(storageBookings.status, ['confirmed', 'completed'])
@@ -587,6 +588,9 @@ export async function getAllOverstayRecords(locationId?: number): Promise<Pendin
 /**
  * Get a single overstay record by ID
  */
+/** Holdover requests of standalone storage (storage-v1) are keyed `holdover:{rentalId}:...` by the lifecycle service. */
+export const isHoldoverRecord = (record: { idempotencyKey: string }) => record.idempotencyKey.startsWith('holdover:');
+
 export async function getOverstayRecord(overstayId: number): Promise<StorageOverstayRecord | null> {
   const [record] = await db
     .select()
@@ -633,7 +637,8 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
   }
 
   const previousStatus=record.status as OverstayStatus;
-  if(!record.itemsRemovedAt) {
+  // A holdover charge is for days the chef was still there, so no removal is recorded first.
+  if(!record.itemsRemovedAt&&!isHoldoverRecord(record)) {
     return { success: false,error: 'Confirm that the items were removed before reviewing the final penalty' };
   }
   let newStatus: OverstayStatus;
@@ -757,6 +762,11 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
  * Charge the chef for an approved penalty using their saved payment method
  */
 export async function chargeApprovedPenalty(overstayRecordId: number): Promise<ChargeResult> {
+  // Storage-v1 holdover is paid by the chef on-session only; it is never charged off-session.
+  const [storageV1]=await db.select({ id: storageBookings.id }).from(storageOverstayRecords)
+    .innerJoin(storageBookings,eq(storageBookings.id,storageOverstayRecords.storageBookingId))
+    .where(and(eq(storageOverstayRecords.id,overstayRecordId),sql`${storageBookings.rentalTerms}->>'version' = 'storage-v1'`)).limit(1);
+  if(storageV1) return { success: false,error: 'Storage holdover is paid by the chef; it is never charged off-session' };
   if(!(await isOverstayMonetaryEnforcementEnabled())) return { success: false,error: 'Overstay monetary enforcement is disabled by an admin' };
   if(!stripe) {
     return { success: false,error: 'Stripe not configured' };
@@ -1782,11 +1792,17 @@ export async function createPenaltyPaymentCheckout(
     }
 
     // Step 3: Get storage listing for name
-    if (!isStorageOverstayTerms(booking.overstayTerms) || booking.overstayTerms.pricingModel !== 'daily' || !booking.overstayTerms.acceptedAt) {
-      return { error: 'Manual review required: accepted daily overstay terms are unavailable' };
+    const storageV1 = (booking.rentalTerms as { version?: string } | null)?.version === 'storage-v1';
+    if (storageV1) {
+      // The chef may pay a holdover request at once; only an unreviewed dispute pauses it.
+      if (overstayRecord.chefDisputedAt && !overstayRecord.disputeReviewedAt) return { error: 'Collection is paused for admin review of the chef dispute' };
+    } else {
+      if (!isStorageOverstayTerms(booking.overstayTerms) || booking.overstayTerms.pricingModel !== 'daily' || !booking.overstayTerms.acceptedAt) {
+        return { error: 'Manual review required: accepted daily overstay terms are unavailable' };
+      }
+      const collectionError = overstayCollectionError(overstayRecord);
+      if (collectionError) return { error: collectionError };
     }
-    const collectionError = overstayCollectionError(overstayRecord);
-    if (collectionError) return { error: collectionError };
     const [listing] = await db
       .select()
       .from(storageListings)
@@ -1819,7 +1835,8 @@ export async function createPenaltyPaymentCheckout(
     }
 
     const penaltyAmountCents = overstayRecord.finalPenaltyCents ?? overstayRecord.calculatedPenaltyCents ?? 0;
-    const taxRatePercent = Number(kitchen?.taxRatePercent || 0);
+    // Storage-v1 holdover uses the HST rate frozen when the rental was approved, like its paid terms.
+    const taxRatePercent = storageV1 ? Number((booking.rentalTerms as { taxRatePercent?: number }).taxRatePercent || 0) : Number(kitchen?.taxRatePercent || 0);
     const penaltyTaxCents = Math.round(penaltyAmountCents * taxRatePercent / 100);
     const storageName = listing?.name || 'Storage';
     const kitchenName = kitchen?.name || 'Kitchen';

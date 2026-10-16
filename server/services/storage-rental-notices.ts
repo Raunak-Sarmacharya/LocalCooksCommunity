@@ -25,7 +25,7 @@ import { ADMIN_STORAGE_KINDS, adminStorageNotice } from './admin-booking-notice'
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type StorageNoticeEvent = 'requested' | 'approved' | 'declined' | 'expired' | 'withdrawn' | 'authorization_lapsed' | 'move_in_due' | 'moved_in'
-  | 'ending' | 'extended' | 'grace_started' | 'holdover_started' | 'holdover_charge' | 'reclaim'
+  | 'ending' | 'extended' | 'grace_started' | 'holdover_started' | 'holdover_charge' | 'holdover_waived' | 'not_moved_in' | 'removal_recorded' | 'reclaim'
   | 'move_out_requested' | 'cleared' | 'reopened' | 'removal_review' | 'final_notice' | 'refund_issued'
   | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'kitchen_debt' | 'offer_extension';
 
@@ -70,10 +70,12 @@ export function storageNoticeAudiences(event: StorageNoticeEvent): Array<'chef' 
     case 'extended': return ['chef', 'manager', 'admins'];
     case 'grace_started': return ['chef', 'manager'];
     case 'holdover_started': return ['chef', 'manager'];
-    case 'holdover_charge': return ['chef', 'admins'];
+    case 'holdover_charge': case 'holdover_waived': return ['chef', 'admins'];
+    case 'not_moved_in': return ['manager'];
     case 'reclaim': return ['chef', 'manager', 'admins'];
     case 'move_out_requested': case 'cleared': case 'reopened': return ['chef', 'manager'];
     case 'removal_review': case 'final_notice': return ['chef', 'manager', 'admins'];
+    case 'removal_recorded': return ['chef', 'manager'];
     case 'refund_issued': return ['chef', 'manager', 'admins'];
     case 'payout_scheduled': return ['manager'];
     case 'payout_released': case 'payout_on_hold': return ['manager', 'admins'];
@@ -88,7 +90,7 @@ const ADMIN_EVENT_KIND: Partial<Record<StorageNoticeEvent, string>> = {
   authorization_lapsed: 'storage_payment_recovery',
   extended: 'storage_extension_paid', refund_issued: 'storage_refund_issued',
   payout_released: 'storage_payout_released', payout_on_hold: 'storage_payout_on_hold',
-  holdover_charge: 'storage_holdover_raised', reclaim: 'storage_reclaim_served',
+  holdover_charge: 'storage_holdover_raised', holdover_waived: 'storage_holdover_waived', reclaim: 'storage_reclaim_served',
   removal_review: 'storage_removal_review', final_notice: 'storage_removal_review',
   kitchen_debt: 'storage_kitchen_debt',
 };
@@ -169,8 +171,8 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
       byDate: date(facts.byDate),
       graceEndsOn: date(facts.graceEndsOn),
       payoutDate: date(facts.payoutDate),
-      perishableDate: date(facts.perishablesAfter),
-      otherDate: date(facts.othersAfter),
+      perishableDate: deadline(facts.perishablesAfter),
+      otherDate: deadline(facts.othersAfter),
       date: date(facts.date),
       deadline: deadline(facts.deadline),
     };

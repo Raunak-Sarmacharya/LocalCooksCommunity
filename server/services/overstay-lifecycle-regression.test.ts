@@ -63,7 +63,7 @@ describe('real overstay lifecycle with a mocked database', () => {
     expect((await detectOverstays())[0].calculatedPenaltyCents).toBe(66000);
   });
   it('rejects final approval before physical removal is confirmed', async () => {
-    state.rows.push([{ id: 1, storageBookingId: 10, status: 'pending_review', itemsRemovedAt: null }]);
+    state.rows.push([{ id: 1, storageBookingId: 10, status: 'pending_review', itemsRemovedAt: null, idempotencyKey: 'overstay:10:1' }]);
     expect(await processManagerDecision({ overstayRecordId: 1, managerId: 5, action: 'approve' }))
       .toMatchObject({ success: false, error: expect.stringMatching(/Confirm.*removed/) });
     expect(state.writes).toEqual([]);

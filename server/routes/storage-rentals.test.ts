@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ quote: vi.fn(), checkout: vi.fn(), read: vi.fn(), list: vi.fn(), decide: vi.fn(), withdraw: vi.fn(),
-  extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn() }));
+  extensionQuote: vi.fn(), extensionPay: vi.fn(), extensionSync: vi.fn(), raise: vi.fn(), waive: vi.fn(), record: vi.fn(), notice: vi.fn(), open: vi.fn() }));
 vi.mock('../services/storage-extensions', () => ({ quoteExtension: h.extensionQuote, payExtension: h.extensionPay, syncStorageTerm: h.extensionSync }));
-vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn() }));
+vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn(), requireAdmin: vi.fn() }));
+vi.mock('../services/storage-rental-lifecycle', () => ({ raiseHoldoverCharge: h.raise, waiveHoldover: h.waive, recordRemoval: h.record, sendFinalNotice: h.notice, openRemovalReview: h.open }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn() }));
 vi.mock('../services/storage-rentals', () => ({ quoteRental: h.quote, createRentalCheckout: h.checkout, readRental: h.read,
   listRentals: h.list, decideRental: h.decide, withdrawRental: h.withdraw,
@@ -64,5 +65,28 @@ describe('storage rental API contract', () => {
     await call('post', '/chef/storage-rentals/:id/withdraw', {});
     expect(h.withdraw).toHaveBeenCalledWith(7, 3);
     expect(h.read).toHaveBeenLastCalledWith(7, { id: 3, role: 'chef' });
+  });
+  it('validates and forwards the holdover, final-notice and removal inputs', async () => {
+    await call('post', '/manager/storage-rentals/:id/holdover-charge', { amountCents: 500, note: ' late ', extra: 1 });
+    expect(h.raise).toHaveBeenCalledWith(7, 3, { amountCents: 500, note: 'late' });
+    await call('post', '/manager/storage-rentals/:id/holdover-waive', { reason: ' kind ' });
+    expect(h.waive).toHaveBeenCalledWith(7, 3, { reason: 'kind' });
+    await call('post', '/manager/storage-rentals/:id/removal/record', { all: true });
+    expect(h.record).toHaveBeenCalledWith(7, { id: 3, role: 'manager' }, { all: true });
+    const notice = { photos: ['https://img.test/a.jpg'], items: [{ name: 'Flour', qty: 2, perishable: false }] };
+    await call('post', '/admin/storage-rentals/:id/final-notice', notice);
+    expect(h.notice).toHaveBeenCalledWith(7, 3, notice);
+    await call('post', '/admin/storage-rentals/:id/open-removal-review', {});
+    expect(h.open).toHaveBeenCalledWith(7);
+    for (const [path, data] of [['/manager/storage-rentals/:id/holdover-charge', { amountCents: 1.5 }], ['/manager/storage-rentals/:id/holdover-charge', {}],
+      ['/manager/storage-rentals/:id/holdover-waive', { reason: ' ' }], ['/admin/storage-rentals/:id/final-notice', { photos: [], items: notice.items }],
+      ['/admin/storage-rentals/:id/final-notice', { photos: notice.photos, items: [] }]] as const)
+      expect((await call('post', path, data)).status).toHaveBeenCalledWith(400);
+  });
+  it('returns a localized 400 when a holdover charge exceeds what has built up', async () => {
+    h.raise.mockRejectedValue(new StorageRentalError('exceeds_accrued', 400));
+    const res = await call('post', '/manager/storage-rentals/:id/holdover-charge', { amountCents: 99999 });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ code: 'exceeds_accrued', error: expect.not.stringContaining('stError_') });
   });
 });
