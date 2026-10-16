@@ -1,86 +1,90 @@
 vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n')).useBookingTranslation('chef').t }));
 vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'fixture-token' } } }));
-import { KitchenBookingChanges, ChangePrice } from './KitchenBookingChanges';
-const original = { date: '2026-11-10', windowStart: '08:00', slots: [{ startTime: '09:00', endTime: '10:00' }, { startTime: '10:00', endTime: '11:00' }] };
-const quote = { originalKitchenCents: 10000, currentKitchenCents: 8000, retainedKitchenCents: 8000, addedKitchenCents: 0,
-  taxCents: 0, feeCents: 0, payableCents: 0, currency: 'CAD', refundKitchenCents: 2000, refundTaxCents: 300, refundableCents: 2300 };
-let data: any;
-const entry = (state = 'requested') => ({ id: 'change-fixture', kind: 'move', state, label: state === 'applied' ? 'Change confirmed' : 'Awaiting manager decision',
-  revision: 1, original, destination: { ...original, date: '2026-11-15' }, quote, decisionBy: '2026-11-09T12:00:00Z', paymentBy: null,
-  canDecide: true, history: [{ revision: 1, state, message: 'Original booking remains reserved while awaiting approval.', at: '2026-11-08T12:00:00Z' }] });
-describe('reservation-context kitchen change consumer', () => {
-  beforeEach(() => {
-    data = { original, policyReady: true, policyMessage: null, changes: [] };
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => data })));
+import { ChangeBookingDialog, KitchenBookingChanges } from './KitchenBookingChanges';
+
+const original = { date: '2030-11-10', windowStart: '06:00', slots: [{ startTime: '10:00', endTime: '11:00' }] };
+const destination = { date: '2030-11-12', windowStart: '06:00', slots: [{ startTime: '14:00', endTime: '15:00' }, { startTime: '15:00', endTime: '16:00' }] };
+const money = (over: Partial<Record<string, number>> = {}) => ({ oldTotalCents: 3050, newTotalCents: 6100, payCents: 3050, refundCents: 0, feeKeptCents: 0, currency: 'CAD', ...over });
+const open = (over: Record<string, unknown> = {}) => ({ id: 'chg-1', state: 'authorized', revision: 2, original, destination, money: money(),
+  decisionBy: '2030-11-09T12:00:00Z', freeCancelAfter: '2030-11-11T18:30:00Z', canDecide: false, canWithdraw: true, ...over });
+let routes: Record<string, unknown>;
+const calls: Array<{ url: string; body?: any }> = [];
+beforeEach(() => {
+  calls.length = 0;
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    const key = Object.keys(routes).find(pattern => url.includes(pattern));
+    return { ok: true, json: async () => key ? routes[key] : {} };
+  }));
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe('open change on the booking page', () => {
+  it('nothing when no change is open', async () => {
+    routes = { '/changes': { original, canRequest: { allowed: true }, timezone: 'America/St_Johns' } };
+    const { container } = render(<KitchenBookingChanges bookingId={10} manager={false} counterpart="PHASE0 Main Kitchen" onChanged={async () => {}} />);
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(container).toBeEmptyDOMElement();
   });
-  it('shows the current cheaper price and refund including original tax', () => {
-    render(<ChangePrice quote={quote} />);
-    expect(screen.getByText(/Original kitchen price/)).toHaveTextContent('100.00');
-    expect(screen.getByText(/Current price for these hours/)).toHaveTextContent('80.00');
-    expect(screen.getByText(/Kitchen price after change/)).toHaveTextContent('80.00');
-    expect(screen.getByText(/^Refund if accepted:/)).toHaveTextContent('23.00');
+  it('chef: what was asked, until when, the hold, and a way to withdraw', async () => {
+    routes = { '/changes': { original, canRequest: { allowed: false }, open: open(), timezone: 'America/St_Johns' } };
+    render(<KitchenBookingChanges bookingId={10} manager={false} counterpart="PHASE0 Main Kitchen" onChanged={async () => {}} />);
+    const row = await screen.findByTestId('booking-change-open');
+    expect(row).toHaveTextContent(/You asked to move this booking to/);
+    expect(row).toHaveTextContent(/PHASE0 Main Kitchen has until .* to answer\. Until then your booking stays/);
+    expect(row).toHaveTextContent(/\$30\.50 is on hold on your card and charged only if they approve\./);
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw request' }));
+    await waitFor(() => expect(calls.find(call => call.url.endsWith('/changes/chg-1/decision'))?.body).toEqual({ action: 'withdraw', revision: 2 }));
   });
-  it('does not expose a new rescheduling form for confirmed bookings', async () => {
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect(screen.queryByRole('region', { name: 'Booking changes' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Booking changes')).not.toBeInTheDocument();
-    expect(screen.queryByText(/use the action at the top right/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Review a change')).not.toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(vi.mocked(fetch).mock.calls.every(call => call[1]?.method === 'GET')).toBe(true);
+  it('chef: a declined saved card offers another card, never a dead end', async () => {
+    routes = { '/changes': { original, canRequest: { allowed: false }, open: open({ state: 'awaiting_payment', cardDeclined: true }), timezone: 'America/St_Johns' } };
+    render(<KitchenBookingChanges bookingId={10} manager={false} counterpart="PHASE0 Main Kitchen" onChanged={async () => {}} />);
+    expect(await screen.findByText(/Your saved card was declined, so the request wasn’t sent\. Nothing was charged\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pay with another card · $30.50' })).toBeInTheDocument();
   });
-  it('does not present a pending paid schedule as confirmed; history and withdrawal are visible', async () => {
-    data.changes = [entry()];
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByText(/new time isn’t confirmed yet/)).toBeInTheDocument();
-    expect(screen.getByText('Withdraw request')).toBeInTheDocument();
-    expect(screen.getByText('Show earlier updates')).toBeInTheDocument();
-    expect(screen.queryByText('Review a change')).not.toBeInTheDocument();
+  it('kitchen: who asked, the money, the refund deadline it would move, Approve / Decline with an optional note', async () => {
+    routes = { '/changes': { original, canRequest: { allowed: false }, open: open({ canDecide: true, canWithdraw: false }), timezone: 'America/St_Johns' } };
+    render(<KitchenBookingChanges bookingId={10} manager counterpart="Sam Chef" onChanged={async () => {}} />);
+    const row = await screen.findByTestId('booking-change-open');
+    expect(row).toHaveTextContent(/Sam Chef asked to move this booking to/);
+    expect(row).toHaveTextContent(/The chef pays \$30\.50 more if you approve\./);
+    expect(row).toHaveTextContent(/Their refund deadline would move to/);
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    fireEvent.change(screen.getByLabelText('Message to Sam Chef (optional)'), { target: { value: 'Closed that day.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Decline change' }));
+    await waitFor(() => expect(calls.find(call => call.url.endsWith('/decision'))?.body).toEqual({ action: 'decline', revision: 2, message: 'Closed that day.' }));
   });
-  it('retires consent and authorization while preserving withdrawal and history', async () => {
-    data.changes = [entry('awaiting_consent')];
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByText('Withdraw request')).toBeInTheDocument();
-    expect(screen.queryByText('Accept updated quote for manager review')).not.toBeInTheDocument();
-    expect(screen.queryByText('Authorize additional amount')).not.toBeInTheDocument();
+});
+
+describe('Change date or time dialog', () => {
+  it('explains why when the booking can no longer be changed', async () => {
+    routes = { '/changes': { original, canRequest: { allowed: false, reason: 'Changes close at your refund deadline.' }, timezone: 'America/St_Johns' } };
+    render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={() => {}} onChanged={async () => {}} />);
+    expect(await screen.findByText('Changes close at your refund deadline.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send change request' })).not.toBeInTheDocument();
   });
-  it('ordinary read failures offer refresh without inventing uncertain payment', async () => {
-    vi.mocked(fetch).mockResolvedValue({ ok: false, json: async () => ({ error: 'Source unavailable' }) } as any);
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Source unavailable');
-    expect(screen.queryByText(/Please don’t pay again/)).not.toBeInTheDocument();
-    expect(screen.getByText('Try again')).toBeInTheDocument();
-  });
-  it('shows Local Cooks recovery with no second-pay or withdrawal action', async () => {
-    data.changes = [{ ...entry('recovery_required'), paymentRecorded: true }];
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByText(/Please don’t pay again/)).toHaveTextContent('Your additional payment or card hold has been confirmed');
-    expect(screen.queryByText('Authorize additional amount')).not.toBeInTheDocument();
-    expect(screen.queryByText('Withdraw request')).not.toBeInTheDocument();
-    expect(screen.getByText('Check payment and booking')).toBeInTheDocument();
-  });
-  it('reports a recorded refund while keeping the schedule in Local Cooks recovery', async () => {
-    data.changes = [{ ...entry('recovery_required'), refundRecorded: true }];
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByText(/Please don’t pay again/)).toHaveTextContent('Your refund has been confirmed');
-    expect(screen.getByText(/new time isn’t confirmed yet/)).toBeInTheDocument();
-    expect(screen.queryByText('Withdraw request')).not.toBeInTheDocument();
-  });
-  it('retires manager approval while preserving decline', async () => {
-    data.changes = [entry()];
-    render(<KitchenBookingChanges bookingId={10} manager onChanged={async () => {}} />);
-    expect(await screen.findByText('Decline request')).toBeInTheDocument();
-    expect(screen.queryByText('Approve and refund quoted amount')).not.toBeInTheDocument();
-    expect(screen.queryByText('Review destination availability and tours')).not.toBeInTheDocument();
-  });
-  it('does not fabricate an empty result on an unavailable source', async () => {
-    vi.mocked(fetch).mockResolvedValue({ ok: false, json: async () => ({ error: 'Change source unavailable' }) } as any);
-    render(<KitchenBookingChanges bookingId={10} manager={false} onChanged={async () => {}} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Change source unavailable');
-    expect(screen.queryByText('Review a change')).not.toBeInTheDocument();
+  it('shows the exact money and the new refund deadline before sending, then sends the previewed request', async () => {
+    const slots = ['10:00', '11:00', '14:00', '15:00', '16:00'].map(time => ({ time, available: 1, capacity: 1, isFullyBooked: false }));
+    routes = { '/changes/preview': { destination, money: money(), decisionBy: '2030-11-09T12:00:00Z', freeCancelAfter: '2030-11-11T18:30:00Z', quoteHash: 'a'.repeat(64) },
+      '/slots': slots, '/changes': { original, canRequest: { allowed: true }, timezone: 'America/St_Johns' } };
+    const onOpenChange = vi.fn();
+    render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={onOpenChange} onChanged={async () => {}} />);
+    await screen.findByRole('button', { name: /2:00/ });
+    // The chef's own booking doesn't block its own hours.
+    expect(calls.some(call => call.url.includes('/api/chef/kitchens/54/slots?date=2030-11-10&changing=10'))).toBe(true);
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-11-12' } });
+    fireEvent.click(await screen.findByRole('button', { name: /2:00/ }));
+    fireEvent.change(screen.getByLabelText('Length'), { target: { value: '2' } });
+    const preview = await screen.findByTestId('change-preview');
+    expect(preview).toHaveTextContent('You’ll pay $30.50 more');
+    expect(preview).toHaveTextContent(/Your refund deadline would move to/);
+    expect(preview).toHaveTextContent(/The extra amount is held on your card and charged only if they approve\./);
+    fireEvent.click(screen.getByRole('button', { name: 'Send change request' }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    const sent = calls.find(call => call.url.endsWith('/api/bookings/10/changes') && call.body);
+    expect(sent?.body).toMatchObject({ destination, quoteHash: 'a'.repeat(64) });
   });
 });

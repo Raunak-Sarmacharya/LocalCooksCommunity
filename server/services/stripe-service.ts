@@ -851,8 +851,14 @@ export async function reverseTransferAndRefund(
     transferMetadata?: Record<string, string>;
     sourceConnection?: Parameters<Parameters<typeof import('../db').db.transaction>[0]>[0];
     supportOperationKey?: string;
+    /** Caller has committed the exclusive booking-change money decision. */
+    providerOnly?: boolean;
+    /** Explicit support retry reuses the original reversal, only the failed refund gets a new key. */
+    reversalOperationKey?: string;
   }
 ): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string | null }> {
+  if (options?.providerOnly && options.sourceConnection) throw new Error('Provider-only refunds cannot use a transaction');
+  if (options?.providerOnly) options = { ...options, sourceConnection: (await import('../db')).db as any };
   if (!options?.sourceConnection) {
     const { db } = await import('../db');
     const { paymentTransactions } = await import('@shared/schema');
@@ -898,9 +904,9 @@ export async function reverseTransferAndRefund(
         receipt = candidate;
       }
       if (receipt) {
-        if (receipt.status !== 'succeeded') throw new Error(`Refund ${receipt.id} is not verified as complete (${receipt.status || 'unknown'}). Verify this original operation; do not issue another refund.`);
-        await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.idempotencyKey);
-        return { refundId: receipt.id, refundAmount: receipt.amount, refundStatus: receipt.status, chargeId, transferReversalId: null };
+        if (receipt.status !== 'succeeded' && !options.providerOnly) throw new Error(`Refund ${receipt.id} is not verified as complete (${receipt.status || 'unknown'}). Verify this original operation; do not issue another refund.`);
+        await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.reversalOperationKey || options.idempotencyKey, undefined, undefined, options.providerOnly);
+        return { refundId: receipt.id, refundAmount: receipt.amount, refundStatus: receipt.status || 'unknown', chargeId, transferReversalId: null };
       }
     }
 
@@ -973,7 +979,7 @@ export async function reverseTransferAndRefund(
     if (transferId && options?.reverseTransferAmount !== undefined && options.reverseTransferAmount > 0) {
       const transfer = await stripe.transfers.retrieve(transferId);
       const reversalAmount = Math.max(0, options.reverseTransferAmount);
-      const operationId = options.idempotencyKey;
+      const operationId = options.reversalOperationKey || options.idempotencyKey;
       let recoveredReversal: Stripe.TransferReversal | undefined;
       if (operationId) {
         for await (const reversal of stripe.transfers.listReversals(transferId, { limit: 100 })) {
@@ -988,7 +994,7 @@ export async function reverseTransferAndRefund(
         const reversal = recoveredReversal || await stripe.transfers.createReversal(transferId, {
           amount: reversalAmount,
           metadata: { ...(options?.transferMetadata || options?.metadata), ...(operationId ? { refund_operation_id: operationId } : {}) },
-        }, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-reversal` } : undefined);
+        }, options?.idempotencyKey ? { idempotencyKey: `${operationId}-reversal` } : undefined);
         transferReversalId = reversal.id;
       }
     } else if (transferId && transferredAmount > 0 && options?.reverseTransferAmount === undefined) {
@@ -1034,12 +1040,12 @@ export async function reverseTransferAndRefund(
     if (!refund.status || typeof refund.status !== 'string') {
       throw new Error('Refund created but status is missing');
     }
-    if (refund.status !== 'succeeded') {
+    if (refund.status !== 'succeeded' && !options.providerOnly) {
       throw new Error(`Refund ${refund.id} is not verified as complete (${refund.status}). Verify this original operation; do not issue another refund.`);
     }
 
     if (transferReversalId && transferId)
-      await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, refund.id, options.idempotencyKey, transferId, transferReversalId);
+      await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, refund.id, options.reversalOperationKey || options.idempotencyKey, transferId, transferReversalId, options.providerOnly);
 
     return {
       refundId: refund.id,
@@ -1055,7 +1061,7 @@ export async function reverseTransferAndRefund(
 }
 
 async function recordRefundPayoutEvidence(provider: Stripe, tx: NonNullable<Parameters<typeof reverseTransferAndRefund>[3]>['sourceConnection'],
-  intentId: string, refundId: string, operationKey?: string, knownTransferId?: string, reversalId?: string) {
+  intentId: string, refundId: string, operationKey?: string, knownTransferId?: string, reversalId?: string, providerOnly = false) {
   if (!tx) throw Error('A locked source is required for payout evidence');
   const { paymentTransactions } = await import('@shared/schema');
   const { eq } = await import('drizzle-orm');
@@ -1065,11 +1071,18 @@ async function recordRefundPayoutEvidence(provider: Stripe, tx: NonNullable<Para
   if (!transferId) return;
   const transfer = await provider.transfers.retrieve(transferId);
   const { recordPayoutTransferEvidence } = await import('./payout-document-evidence');
+  const evidence: Array<import('./payout-document-evidence').PayoutTransferEvidence> = [];
   for await (const reversal of provider.transfers.listReversals(transferId, { limit: 100 })) {
     if (reversal.id !== reversalId && (!operationKey || reversal.metadata?.refund_operation_id !== operationKey)) continue;
-    await recordPayoutTransferEvidence(tx, intentId, { transferId, originalAmountCents: transfer.amount, reversedCents: transfer.amount_reversed,
+    evidence.push({ transferId, originalAmountCents: transfer.amount, reversedCents: transfer.amount_reversed,
       refund: { refundId, reversalId: reversal.id, amountCents: reversal.amount } });
   }
+  const save = async (connection: NonNullable<typeof tx>) => { for (const item of evidence) await recordPayoutTransferEvidence(connection, intentId, item); };
+  if (providerOnly) await (await import('../db')).db.transaction(async connection => {
+    await connection.select({ id: paymentTransactions.id }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intentId)).for('update');
+    await save(connection);
+  });
+  else await save(tx);
 }
 
 /**

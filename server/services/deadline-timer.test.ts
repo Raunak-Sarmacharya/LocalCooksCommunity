@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   send: vi.fn(async (_event: unknown) => ({ ids: ['evt'] })),
   expireExtension: vi.fn(async (..._args: unknown[]) => ({ expired: true })),
   lazyExpire: vi.fn(async (..._args: unknown[]) => true),
+  expireChange: vi.fn(async (..._args: unknown[]) => ({ expired: true })),
   persist: vi.fn(async (..._args: unknown[]) => ({ changed: true })),
   release: vi.fn(async (..._args: unknown[]) => ({ success: true })),
   rows: [] as Array<Record<string, unknown>>,
@@ -17,6 +18,7 @@ vi.mock('../logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.
 vi.mock('../lifecycle-inngest', () => ({ inngest: { send: state.send } }));
 vi.mock('stripe', () => ({ default: class { paymentIntents = {}; } }));
 vi.mock('./session-extensions', () => ({ expireSessionExtension: state.expireExtension }));
+vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChangeForBooking: state.expireChange, changeProviderStripe: async () => ({ paymentIntents: {} }) }));
 vi.mock('./auth-expiry-service', () => ({ lazyExpireKitchenBookingAuth: state.lazyExpire }));
 vi.mock('./clock-closeout', () => ({ persistBookingCloseout: state.persist }));
 vi.mock('./kitchen-payout-service', () => ({ releaseKitchenPayout: state.release }));
@@ -110,6 +112,18 @@ describe('runDeadlineExpiry: the same idempotent per-item expiry the worker uses
   it('closeout: a payout outage never undoes the saved closeout', async () => {
     state.release.mockRejectedValueOnce(new Error('stripe down'));
     await expect(runDeadlineExpiry('closeout', 33)).resolves.toEqual({ kind: 'closeout', changed: true });
+  });
+  it('kitchen_change: expires the overdue change request of that booking with the supplied clock (the id is the booking id)', async () => {
+    const now = new Date('2026-10-15T20:31:01Z');
+    await expect(runDeadlineExpiry('kitchen_change', 10, now)).resolves.toEqual({ kind: 'kitchen_change', expired: true });
+    expect(state.expireChange).toHaveBeenCalledWith(expect.anything(), 10, now);
+    state.expireChange.mockResolvedValueOnce({ expired: false });
+    await expect(runDeadlineExpiry('kitchen_change', 10, now)).resolves.toEqual({ kind: 'kitchen_change', expired: false });
+  });
+  it('kitchen_change: timers for it are armed like any other deadline', async () => {
+    scheduleDeadlineTimer('kitchen_change', 10, new Date('2026-10-15T21:30:00Z'), NOW);
+    await vi.waitFor(() => expect(state.send).toHaveBeenCalledTimes(1));
+    expect(state.send.mock.calls[0][0]).toMatchObject({ name: deadlineScheduledEvent, data: { kind: 'kitchen_change', id: 10, dueAt: '2026-10-15T21:30:00.000Z' } });
   });
   it('an unknown kind is rejected', async () => {
     await expect(runDeadlineExpiry('mystery' as never, 1)).rejects.toThrow('Unknown');

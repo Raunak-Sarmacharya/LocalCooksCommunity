@@ -73,8 +73,8 @@ async function parentPayment(tx: Tx, row: Context) {
     throw new SessionExtensionError('The original booking payment needs Local Cooks review');
   return source;
 }
-/** Tax and service-fee ratios come from the parent's captured split, so the extension is priced like the booking. */
-async function priceTerms(tx: Tx, row: Context) {
+/** Use the latest approved booking terms; the parent's captured split remains the legacy fallback. */
+export async function priceTerms(tx: Tx, row: Context) {
   const source = await parentPayment(tx, row), metadata = source.metadata as Record<string, unknown> | null;
   const subtotalCents = Number(metadata?.approvedSubtotal ?? Number(source.baseAmount) - Number(source.taxAmount || 0));
   const taxCents = Number(metadata?.approvedTax ?? source.taxAmount ?? 0), commissionCents = Number(metadata?.platformCommission ?? source.serviceFee ?? 0);
@@ -83,7 +83,8 @@ async function priceTerms(tx: Tx, row: Context) {
     throw new SessionExtensionError('The original price split needs Local Cooks review');
   const hourlyRateCents = Number(row.booking.hourlyRate);
   if (!Number.isSafeInteger(hourlyRateCents) || hourlyRateCents <= 0) throw new SessionExtensionError('This booking has no hourly price, so extra time needs the kitchen. Message them.');
-  return { hourlyRateCents, ratios: { subtotalCents, taxCents, commissionCents } };
+  const latest = (row.booking.visitDuties as any)?.reschedulePricing;
+  return { hourlyRateCents, ratios: latest ?? { subtotalCents, taxCents, commissionCents } };
 }
 async function clocks(tx: Tx, row: Context, now: Date) {
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, row.booking.id)).orderBy(asc(kitchenBookingVisits.blockIndex));

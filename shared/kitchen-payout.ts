@@ -83,9 +83,10 @@ export const isSessionExtensionPayment = (source: Pick<PayoutSource, 'metadata'>
 export function extensionPayoutShares(extensions: PayoutSource[]) {
   let pendingCents = 0, sentCents = 0;
   for (const source of extensions) {
-    if (!isSessionExtensionPayment(source)) continue;
+    if (!isSessionExtensionPayment(source) && typeof (source.metadata as any)?.kitchenChangeId !== 'string') continue;
     const saved = meta(source);
-    if (source.transferId) sentCents += saved.payoutSent?.amountCents ?? saved.transfer?.transferredCents ?? unpaidKitchenEntitlement(source);
+    if (source.transferId) sentCents += typeof (source.metadata as any)?.kitchenChangeId === 'string' ? unpaidKitchenEntitlement(source)
+      : saved.payoutSent?.amountCents ?? saved.transfer?.transferredCents ?? unpaidKitchenEntitlement(source);
     else if (!saved.payoutNoEntitlement) pendingCents += unpaidKitchenEntitlement(source);
   }
   return { pendingCents, sentCents };

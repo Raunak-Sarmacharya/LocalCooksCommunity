@@ -8,13 +8,14 @@ vi.mock('../db', () => {
   const db: any = {
     transaction: async (run: any) => run(db),
     execute: async (query: any) => { const text = new PgDialect().sqlToQuery(query).sql; state.raw.push(text); return { rows: [state.facts] }; },
-    select: (fields?: any) => { let table: any, condition: any; const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain,
-      where: (value: any) => { condition = value; return chain; }, orderBy: () => chain, limit: () => chain, for: () => chain,
+    select: (fields?: any) => { let table: any, condition: any, rowLimit: number | undefined; const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain,
+      where: (value: any) => { condition = value; return chain; }, orderBy: () => chain, limit: (value: number) => { rowLimit = value; return chain; }, for: () => chain,
       then: (resolve: any) => { const name = getTableName(table);
-        resolve(name === 'kitchen_bookings' ? fields && 'referenceCode' in fields ? [{ id: state.booking.id, referenceCode: state.booking.referenceCode }]
+        const rows = name === 'kitchen_bookings' ? fields && 'referenceCode' in fields ? [{ id: state.booking.id, referenceCode: state.booking.referenceCode }]
             : [{ booking: state.booking, timezone: 'America/St_Johns', locationId: 3 }]
           : name === 'kitchen_booking_visits' ? state.visits : name === 'booking_lifecycle_events' ? state.notices.filter(event => !condition || event.metadata?.releaseTick === new PgDialect().sqlToQuery(condition).params.at(-1))
-          : name === 'payment_transactions' ? fields?.bookingId && 'extensionId' in fields ? state.due : state.source ? [state.source, ...state.extensions].filter(row => { const q = condition && new PgDialect().sqlToQuery(condition); const match = q && /\"payment_transactions\"\.\"id\" = \$(\d+)/.exec(q.sql); return !match || row.id === q.params[Number(match[1]) - 1]; }) : [] : []); } };
+          : name === 'payment_transactions' ? fields?.bookingId && 'extensionId' in fields ? state.due : state.source ? [state.source, ...state.extensions].filter(row => { const q = condition && new PgDialect().sqlToQuery(condition); const match = q && /\"payment_transactions\"\.\"id\" = \$(\d+)/.exec(q.sql); return !match || row.id === q.params[Number(match[1]) - 1]; }) : [] : [];
+        resolve(rowLimit === undefined ? rows : rows.slice(0, rowLimit)); } };
       return chain; },
     update: () => ({ set: (values: any) => { if (values.payoutReleasedAt) state.log.push('decision');
       return { where: (condition: any) => {
@@ -269,5 +270,11 @@ describe('session-extension charges in payout totals', () => {
     state.extensions = [extension({ transferId: 'tr_ext', metadata: { ...extension().metadata, payoutSent: { amountCents: 2708 } } })];
     expect(await readKitchenPayout(7)).toMatchObject({ status: 'sent', amountCents: 10942 + 2708 });
     expect(await upcomingKitchenPayouts(2)).toEqual({ totalCents: 0, payouts: [] });
+  });
+  it('counts all 21 adjustment sources for one booking', async () => {
+    state.extensions = Array.from({ length: 21 }, (_, index) => extension({ id: 20 + index, paymentIntentId: `pi_adjustment_${index}` }));
+    const each = 2708;
+    expect(await readKitchenPayout(7)).toMatchObject({ amountCents: 10942 + 21 * each });
+    expect(await upcomingKitchenPayouts(2)).toMatchObject({ totalCents: 10942 + 21 * each });
   });
 });

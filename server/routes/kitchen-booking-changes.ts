@@ -3,23 +3,32 @@ import Stripe from 'stripe';
 import { z } from 'zod';
 import { requireFirebaseAuthWithUser } from '../firebase-auth-middleware';
 import { getAppBaseUrl } from '../config';
-import { checkoutKitchenChange, decideKitchenChange, KitchenChangeError, kitchenChangeDecisionContext,
-  previewKitchenChange, readKitchenChanges, requestKitchenChange, syncKitchenChange } from '../services/kitchen-booking-changes';
+import { checkoutKitchenChange, decideKitchenChange, KitchenChangeError, previewKitchenChange, readKitchenChanges,
+  requestKitchenChange, resolveKitchenChange, syncKitchenChange } from '../services/kitchen-booking-changes';
 
 const router = Router();
 router.use(requireFirebaseAuthWithUser);
-const destination = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), windowStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), pricingMode: z.enum(['hourly', 'daily']).optional(),
-  slots: z.array(z.object({ startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).strict()).min(1).max(24) }).strict();
-const linkedItems = z.array(z.object({ kind: z.literal('storage'), id: z.number().int().positive(), action: z.literal('retain'),
-  updatedAt: z.string().datetime(), startDate: z.string().datetime(), endDate: z.string().datetime() }).strict()).max(100).default([]);
-const preview = z.object({ kind: z.enum(['move', 'extend']), destination, linkedItems }).strict();
-const cents = z.number().int().nonnegative();
-const quote = z.object({ originalKitchenCents: cents, currentKitchenCents: cents, retainedKitchenCents: cents,
-  addedKitchenCents: cents, taxCents: cents.nullable(), feeCents: cents.nullable(), payableCents: cents.nullable(), currency: z.string(),
-  refundKitchenCents: cents, refundTaxCents: cents.nullable(), refundableCents: cents.nullable() }).strict();
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const destination = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), windowStart: time, pricingMode: z.enum(['hourly', 'daily']).optional(),
+  slots: z.array(z.object({ startTime: time, endTime: time }).strict()).min(1).max(24) }).strict();
+const preview = z.object({ destination }).strict();
+const request = z.object({ destination, quoteHash: z.string().regex(/^[0-9a-f]{64}$/), requestKey: z.string().uuid() }).strict();
+const decision = z.object({ action: z.enum(['approve', 'decline', 'withdraw']), revision: z.number().int().positive(), message: z.string().trim().max(500).optional() }).strict();
+const checkout = z.object({ returnPath: z.string().max(2000).optional() }).strict();
+
 function stripeClient() {
   if (!process.env.STRIPE_SECRET_KEY) throw new KitchenChangeError('Payment provider is unavailable. No payment was started.', 503);
   return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
+}
+const optionalStripe = () => process.env.STRIPE_SECRET_KEY ? stripeClient() : null;
+/** A same-origin booking page only: the chef comes back to the booking after paying. */
+function returnUrl(path: string | undefined, bookingId: number) {
+  const origin = getAppBaseUrl('chef');
+  const url = new URL(path ?? `/booking/${bookingId}`, origin);
+  if (path && !path.startsWith('/') || url.origin !== origin || !/^\/booking\/\d+(?:\/visit)?\/?$/.test(url.pathname))
+    throw new KitchenChangeError('Choose a booking page to return to.', 400);
+  url.search = ''; url.hash = '';
+  return url.toString();
 }
 function handler(work: (req: Request, id: number) => Promise<unknown>) {
   return async (req: Request, res: Response) => {
@@ -35,18 +44,20 @@ function handler(work: (req: Request, id: number) => Promise<unknown>) {
   };
 }
 router.get('/:id/changes', handler((req, id) => readKitchenChanges(id, req.neonUser!)));
-router.post('/:id/changes/preview', handler((req, id) => {
-  const input = preview.parse(req.body); return previewKitchenChange(id, req.neonUser!, input.kind, input.destination, input.linkedItems);
+router.post('/:id/changes/preview', handler((req, id) => previewKitchenChange(id, req.neonUser!, preview.parse(req.body))));
+router.post('/:id/changes', handler(async (req, id) => {
+  const input = request.parse(req.body);
+  const result = await requestKitchenChange(optionalStripe(), id, req.neonUser!, input);
+  // The Change itself is the contract; the saved-card state rides along as extra fields (the client offers "Pay with another card").
+  const { change, ...extra } = result as { change: unknown } & Record<string, unknown>;
+  return { ...(change as object), ...extra };
 }));
-router.post('/:id/changes', handler((req, id) => requestKitchenChange(id, req.neonUser!, preview.extend({
-  requestKey: z.string().uuid(), expectedUpdatedAt: z.string().datetime(), quote }).parse(req.body))));
-router.get('/:id/changes/:changeId/decision-context', handler((req, id) => kitchenChangeDecisionContext(id, req.params.changeId, req.neonUser!)));
-router.post('/:id/changes/:changeId/decision', handler((req, id) => decideKitchenChange(id, req.params.changeId, req.neonUser!, z.object({
-  revision: z.number().int().positive(), action: z.enum(['approve', 'decline', 'withdraw', 'consent']),
-  overlapKey: z.string().optional(), acceptTourOverlap: z.boolean().optional() }).strict().parse(req.body))));
+router.post('/:id/changes/:changeId/decision', handler((req, id) => decideKitchenChange(optionalStripe(), id, req.params.changeId, req.neonUser!, decision.parse(req.body))));
 router.post('/:id/changes/:changeId/checkout', handler(async (req, id) => {
-  const session = await checkoutKitchenChange(stripeClient(), id, req.params.changeId, req.neonUser!, getAppBaseUrl('chef'));
-  return { url: session.url, sessionId: session.id };
+  const input = checkout.parse(req.body ?? {});
+  return checkoutKitchenChange(stripeClient(), id, req.params.changeId, req.neonUser!, returnUrl(input.returnPath, id));
 }));
 router.post('/:id/changes/:changeId/sync', handler((req, id) => syncKitchenChange(stripeClient(), id, req.params.changeId, req.neonUser!)));
 export default router;
+
+router.post('/:id/changes/:changeId/recovery', handler((req, id) => resolveKitchenChange(stripeClient(), id, req.params.changeId, req.neonUser!, z.object({ action: z.enum(['finish', 'compensate', 'close_keep_refund']), revision: z.number().int().positive() }).strict().parse(req.body))));

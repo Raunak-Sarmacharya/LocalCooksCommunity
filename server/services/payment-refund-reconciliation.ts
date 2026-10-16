@@ -8,14 +8,16 @@ import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Recover component receipts when a provider callback precedes the route commit. */
-export async function reconcilePaymentRefundReceipts(intentId: string, connection?: Tx): Promise<{
+export async function reconcilePaymentRefundReceipts(intentId: string, connection?: Tx, providerFacts?: Awaited<ReturnType<typeof getCancellationPaymentFacts>>): Promise<{
   sourceId: number; status: typeof paymentTransactions.$inferSelect.status; money: ReturnType<typeof cancellationSourceQuote>; operation: any;
 }> {
-  if (!connection) return db.transaction(tx => reconcilePaymentRefundReceipts(intentId, tx));
+  const facts = providerFacts ?? await getCancellationPaymentFacts(intentId);
+  if (!connection) return db.transaction(tx => reconcilePaymentRefundReceipts(intentId, tx, facts));
   const [source] = await connection.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intentId)).for('update');
   if (!source) throw new Error('Refund source is missing');
+  if (facts.captured !== Number(source.amount) || facts.currency?.toLowerCase() !== source.currency.toLowerCase() || facts.refunded < Number(source.refundAmount || 0))
+    throw new Error('Refund facts changed while waiting for the source lock; reload provider evidence.');
   const saved = (source.metadata || {}) as Record<string, any>;
-  const facts = await getCancellationPaymentFacts(intentId);
   const localReceipts = (saved.refunds || []).map((item: any) => ({ ...item, id: item.id || item.refundId }));
   const money = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts });
   const operation = saved.cancellationRefundOperation;

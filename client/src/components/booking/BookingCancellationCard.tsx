@@ -12,8 +12,10 @@ import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 
 type Quote = { quoteReady: boolean; chefRefundCents: number; alreadyRefundedCents?: number; feeRetainedCents: number; snapshot?: CancellationPolicySnapshot };
 
-export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, deadlineText, deadlinePassed, createdAt }: {
+export function BookingCancellationCard({ bookingId, status, canCancel, onCancel, onChange, deadlineText, deadlinePassed, createdAt }: {
   bookingId: number; status: string; canCancel: boolean; onCancel: () => void;
+  /** Confirmed, not started: "Change date or time" sits next to "Cancel booking" (separate actions, like Airbnb). */
+  onChange?: () => void;
   /** Fallback when the booking has no saved policy snapshot (older bookings). */
   deadlineText?: string; deadlinePassed?: boolean; createdAt?: string | Date | null;
 }) {
@@ -40,7 +42,10 @@ export function BookingCancellationCard({ bookingId, status, canCancel, onCancel
     <Card className="rounded-2xl border-border/70 p-4 shadow-none sm:p-6">
       <h2 id="booking-cancellation-title" className="mb-2 text-base font-semibold leading-6">{t('bdhCancellationTitle')}</h2>
       <div className="text-muted-foreground [&_p]:text-sm">{sentence}{confirmed && <p className="mt-1" data-testid="cancel-no-show">{tb('cpNoShow')}</p>}</div>
-      {canCancel && status !== 'pending' && <button type="button" className="mt-1 min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onCancel}>{t('bdhCancelOrChangeShort')}</button>}
+      {canCancel && status !== 'pending' && <div className="mt-1 flex flex-wrap gap-x-5">
+        {onChange && <button type="button" className="min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onChange} data-testid="change-booking">{tb('chgDialogTitle')}</button>}
+        <button type="button" className="min-h-11 text-[13px] font-medium underline underline-offset-4" onClick={onCancel}>{tb('chgCancelBooking')}</button>
+      </div>}
     </Card>
   </section>;
 }

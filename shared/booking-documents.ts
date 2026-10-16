@@ -121,8 +121,11 @@ export interface RefundFact {
   reason: string;
   refundedAt: string | null;
   reversedCents?: number;
+  /** The approved destination that caused a booking-change refund. */
+  bookingSchedule?: BookingFacts;
 }
 export interface PaymentFact {
+  bookingSchedule?: BookingFacts;
   paymentIntentId: string;
   chargeId: string | null;
   purpose: PaymentPurpose;

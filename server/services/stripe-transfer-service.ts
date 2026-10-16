@@ -34,7 +34,7 @@ import Stripe from 'stripe';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 import { logger } from '../logger';
 import { db } from '../db';
-import { eq, ne, and } from 'drizzle-orm';
+import { eq, ne, and, sql } from 'drizzle-orm';
 import { users, paymentTransactions, kitchenBookingChanges } from '@shared/schema';
 import { recordPayoutTransferEvidence } from './payout-document-evidence';
 
@@ -158,6 +158,8 @@ export async function transferToManagerForBooking(
     return { transferred: !!result.transferId, transferId: result.transferId, actualStripeFeeCents: params.actualStripeFeeCents,
       platformCommissionCents: 0, feeWithheldCents: 0, transferredCents: result.transferId ? params.chargeAmountCents : 0 };
   }
+  const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
+  if ((source?.metadata as any)?.kitchenChangeId) return transferKitchenChangeSource(params);
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
@@ -175,10 +177,50 @@ export async function transferToManagerForBooking(
   });
 }
 
+/** Reserve locally, run provider I/O without a transaction, then lock and record the same operation. */
+async function transferKitchenChangeSource(params: TransferToManagerParams): Promise<TransferResult> {
+  const key = `transfer:${params.paymentIntentId}`;
+  const prepared = await db.transaction(async tx => {
+    const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).for('update');
+    await assertBookingMoneyWritable({ paymentTransactionId: source.id, operationKey: key }, tx);
+    const saved = (source.metadata || {}) as Record<string, any>;
+    const [change] = await tx.select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, saved.kitchenChangeId)).limit(1);
+    if (change?.state !== 'applied') throw new Error('The booking change must finish before its kitchen payout.');
+    const previous = saved.changeTransferOperation;
+    const { changeTransferOperation: _previous, ...paymentMeta } = saved;
+    const frozen = previous?.state === 'pending' ? previous.params : { ...params, existingMetadata: paymentMeta };
+    await tx.update(paymentTransactions).set({ metadata: { ...saved, changeTransferOperation: { key, state: 'pending', params: frozen } } })
+      .where(eq(paymentTransactions.id, source.id));
+    return frozen as TransferToManagerParams;
+  });
+  // The marker blocks concurrent refunds/support money until this exact transfer is reconciled.
+  const result = await transferLockedSource(prepared, db as unknown as Parameters<Parameters<typeof db.transaction>[0]>[0], true);
+  await db.transaction(async tx => {
+    const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).for('update');
+    const saved = (source.metadata || {}) as Record<string, any>;
+    if (saved.changeTransferOperation?.key !== key) throw new Error('The kitchen payout decision changed.');
+    if (result.transferred && result.transferId && result.originalTransferAmountCents !== undefined) {
+      await tx.update(paymentTransactions).set({ transferId: result.transferId, stripeProcessingFee: String(result.actualStripeFeeCents),
+        managerRevenue: String(result.originalManagerNetCents ?? result.transferredCents), updatedAt: new Date(),
+        metadata: { ...saved, transfer: { ...saved.transfer, transferred: true, transferId: result.transferId,
+          transferredCents: result.transferredCents, transferredAt: saved.transfer?.transferredAt || new Date().toISOString() } } }).where(eq(paymentTransactions.id, source.id));
+      await recordPayoutTransferEvidence(tx, params.paymentIntentId, { transferId: result.transferId,
+        originalAmountCents: result.originalTransferAmountCents, reversedCents: result.reversedCents || 0 });
+      if (source.payoutTiming === 'after_closeout') await (await import('./kitchen-payout-service')).recordReleasedPayout(source.id, result, tx);
+    }
+    await tx.update(paymentTransactions).set({ metadata: sql`jsonb_set(${paymentTransactions.metadata}, '{changeTransferOperation,state}', '"done"'::jsonb)` })
+      .where(eq(paymentTransactions.id, source.id));
+  });
+  return result;
+}
+
 /** Reason prefix for an after-closeout kitchen charge that has no release decision yet. Not an error. */
 export const PAYOUT_DEFERRED_REASON = 'deferred: the kitchen payout is sent after the visit closes';
 
-async function transferLockedSource(params: TransferToManagerParams, connection: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<TransferResult> {
+async function transferLockedSource(params: TransferToManagerParams, connection: Parameters<Parameters<typeof db.transaction>[0]>[0], deferWrites = false): Promise<TransferResult> {
+  const saveTransfer = async (transferId: string) => {
+    if (!deferWrites) await connection.update(paymentTransactions).set({ transferId, updatedAt: new Date() }).where(eq(paymentTransactions.id, params.paymentTransactionId));
+  };
   const baseResult: TransferResult = {
     transferred: false,
     transferId: null,
@@ -289,8 +331,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
           }
           if (!replacement) return { ...baseResult, transferredCents: 0, transferId: existing.transferId,
             reason: 'Reversed payout correction needs provider reconciliation; no replacement transfer was created' };
-          await connection.update(paymentTransactions).set({ transferId: replacement.id, updatedAt: new Date() })
-            .where(eq(paymentTransactions.id, params.paymentTransactionId));
+          await saveTransfer(replacement.id);
           return { transferred: true, transferId: replacement.id, transferredCents: replacement.amount - replacement.amount_reversed,
             originalTransferAmountCents: replacement.amount, reversedCents: replacement.amount_reversed,
             originalManagerNetCents: split.managerGrossCents - params.actualStripeFeeCents,
@@ -339,10 +380,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
             { idempotencyKey: `transfer-reconcile-create:${params.paymentIntentId}:${expectedTransferCents}` },
           );
 
-          await connection
-            .update(paymentTransactions)
-            .set({ transferId: correctedTransfer.id, updatedAt: new Date() })
-            .where(eq(paymentTransactions.id, params.paymentTransactionId));
+          await saveTransfer(correctedTransfer.id);
 
           return {
             transferred: true,
@@ -428,8 +466,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
       recoveredTransfer = candidate;
     }
     if (recoveredTransfer) {
-      await connection.update(paymentTransactions).set({ transferId: recoveredTransfer.id, updatedAt: new Date() })
-        .where(eq(paymentTransactions.id, params.paymentTransactionId));
+      await saveTransfer(recoveredTransfer.id);
       return { ...baseResult, transferred: true, transferId: recoveredTransfer.id, platformCommissionCents,
         originalTransferAmountCents: recoveredTransfer.amount, reversedCents: recoveredTransfer.amount_reversed,
         feeWithheldCents, transferredCents: recoveredTransfer.amount - recoveredTransfer.amount_reversed,
@@ -466,10 +503,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
 
     // Persist transfer_id on payment_transactions (best-effort; webhook also updates)
     try {
-      await connection
-        .update(paymentTransactions)
-        .set({ transferId: transfer.id, updatedAt: new Date() })
-        .where(eq(paymentTransactions.id, params.paymentTransactionId));
+      await saveTransfer(transfer.id);
     } catch (err) {
       logger.warn(
         `[StripeTransferService] Could not persist transfer_id ${transfer.id} on PT ${params.paymentTransactionId}:`,

@@ -1,5 +1,5 @@
 export type RefundReceipt = { id: string; customerReceived: number; managerDebited: number; platformServiceFeeReturned: number;
-  platformGoodwillCents?: number; platformProcessingCostCents?: number };
+  kitchenChangeId?: string; platformGoodwillCents?: number; platformProcessingCostCents?: number };
 
 export function isCancellationReservationSource(source: { paymentIntentId: string | null; metadata: unknown }, originalIntentIds: Array<string | null>,
   extensionIntentIds: Array<string | null>, parentIntent: string | null) {
@@ -25,10 +25,18 @@ export function cancellationSourceQuote(input: { captured: number; processingCos
   if (processingCost + serviceFee > captured) throw new Error('Captured source cannot fund its retained fees');
   const receipts: RefundReceipt[] = [];
   for (const refund of input.refunds) {
+    // A terminal failed change refund is closed only by its verified support-authorized replacement.
+    if (['failed', 'canceled'].includes(refund.status || '') && input.refunds.some(other => other.status === 'succeeded'
+      && other.metadata?.refund_replaces_id === refund.id && other.metadata?.type === 'kitchen_booking_change'
+      && other.metadata?.kitchen_change_id && other.metadata.kitchen_change_id === refund.metadata?.kitchen_change_id
+      && other.amount === refund.amount && ['customer_receives', 'manager_debited', 'platform_service_fee_returned']
+        .every(key => other.metadata?.[key] === refund.metadata?.[key]))) continue;
     if (refund.status !== 'succeeded') throw new Error('A prior refund is pending or failed; reconcile that source before accepting cancellation');
     const local = input.localReceipts?.find(item => item.id === refund.id);
     const hasProviderAllocation = refund.metadata?.customer_receives !== undefined;
-    const receipt = hasProviderAllocation ? { id: refund.id, customerReceived: cents(refund.metadata?.customer_receives),
+    const changeId = refund.metadata?.kitchen_change_id;
+    if (changeId !== undefined && (!/^[a-zA-Z0-9_-]{1,128}$/.test(changeId) || refund.metadata?.type !== 'kitchen_booking_change')) throw new Error('Invalid booking change refund evidence');
+    const receipt = hasProviderAllocation ? { id: refund.id, ...(changeId ? { kitchenChangeId: changeId } : {}), customerReceived: cents(refund.metadata?.customer_receives),
       managerDebited: cents(refund.metadata?.manager_debited), platformServiceFeeReturned: cents(refund.metadata?.platform_service_fee_returned),
       ...(refund.metadata?.platform_goodwill_cents !== undefined ? { platformGoodwillCents: cents(refund.metadata.platform_goodwill_cents) } : {}),
       ...(refund.metadata?.platform_processing_cost_cents !== undefined ? { platformProcessingCostCents: cents(refund.metadata.platform_processing_cost_cents) } : {}) }

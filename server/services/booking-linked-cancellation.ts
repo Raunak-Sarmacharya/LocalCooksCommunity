@@ -22,6 +22,8 @@ export const storageListingAwaitingRemoval = sql<boolean>`EXISTS (SELECT 1 FROM 
 export async function cancelLinkedBookingDates(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], bookingId: number) {
   // Every cancellation path passes through here; an unconsumed arrival code must stop working.
   await revokeForBooking(tx, bookingId, 'booking_cancelled');
+  // A chef's open change request closes with the booking; its time hold is released here, its card hold by the worker.
+  await (await import('./kitchen-booking-changes')).withdrawOpenKitchenChangesInTx(tx, bookingId);
   const storage = await tx.update(storageBookings).set({ status: cancelledStorageStatus, cancellationAcceptedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(storageBookings.kitchenBookingId, bookingId), ne(storageBookings.status, 'completed'))).returning();
   await tx.update(equipmentBookings).set({ status: 'cancelled', updatedAt: new Date() })

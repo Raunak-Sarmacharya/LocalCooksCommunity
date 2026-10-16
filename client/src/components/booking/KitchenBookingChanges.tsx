@@ -1,132 +1,196 @@
-import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
-import { formatTime } from '@/lib/formatters';
+import { Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
+import { formatVisitTime } from '@/lib/visit-time';
+import { formatTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { addHour, getHourlySlotStarts } from '@shared/operating-hours';
-import type { ChangeQuote, ChangeSchedule, ConfirmedStorageChoice } from '@shared/kitchen-booking-change';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { addHour } from '@shared/operating-hours';
+import type { ChangeSchedule } from '@shared/kitchen-booking-change';
 import { NowAttentionRow } from './BookingNowCard';
 
-type Entry = { id: string; kind: string; state: string; label: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule;
-  quote: ChangeQuote; decisionBy: string; paymentBy: string | null; canDecide: boolean; paymentRecorded: boolean;
-  refundRecorded?: boolean;
-  history: Array<{ revision: number; state: string; message: string; at: string }> };
-type Context = { original: ChangeSchedule; policyReady: boolean; policyMessage: string | null; changes: Entry[];
-  linkedItems?: ConfirmedStorageChoice[]; equipmentChangeUnavailable?: boolean; availablePricingModes?: Array<'hourly' | 'daily'> };
-const pending = ['requested', 'awaiting_consent', 'awaiting_payment', 'payment_pending', 'authorized', 'capture_pending', 'refund_pending', 'release_pending', 'recovery_required'];
-export function ChangePrice({ quote }: { quote: ChangeQuote }) {
-  const { t, i18n } = useTranslation('chef');
-  const money = (value: number | null) => value === null ? t('changeCopy00') : new Intl.NumberFormat(i18n.resolvedLanguage, { style: 'currency', currency: quote.currency }).format(value / 100);
-  return <div className="text-sm space-y-1" aria-label={t('changeCopy01')}>
-    <p>{t('changeOriginalSubtotal')}: {money(quote.originalKitchenCents)}</p>
-    <p>{t('changeCurrentPrice')}: {money(quote.currentKitchenCents)}</p>
-    <p>{t('changeNewSubtotal')}: {money(quote.retainedKitchenCents)}</p>
-    <p>{t('changeAdditional')}: {money(quote.addedKitchenCents)}</p>
-    <p>{t('changeTax')}: {money(quote.taxCents)} · {t('changeFee')}: {money(quote.feeCents)}</p>
-    <p className="font-semibold">{t('changePay')}: {money(quote.payableCents)}</p>
-    <p>{t('changeKitchenRefund')}: {money(quote.refundKitchenCents)} · {t('changeTaxRefund')}: {money(quote.refundTaxCents)}</p>
-    <p className="font-semibold">{t('changeRefund')}: {money(quote.refundableCents)}</p>
-    <p>{t('changeCopy02')}</p>
-  </div>;
+/** Chef changes a confirmed booking (owner, Oct 16): request → kitchen approves → difference charged or refunded. Server: WP-RS. */
+type Money = { oldTotalCents: number; newTotalCents: number; payCents: number; refundCents: number; feeKeptCents: number; currency: string };
+type Change = { id: string; state: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule; money: Money;
+  decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean };
+type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; until?: string }; open?: Change; timezone: string | null };
+type Preview = { destination: ChangeSchedule; money: Money; decisionBy: string; freeCancelAfter?: string; quoteHash: string };
+type Slot = { time: string; available: number; isFullyBooked: boolean };
+
+const SETTLING = ['capture_pending', 'refund_pending', 'release_pending'];
+
+async function api<T>(path: string, body?: unknown): Promise<T> {
+  const token = await auth.currentUser?.getIdToken();
+  const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Something went wrong. Try again.');
+  return result as T;
 }
 
-/**
- * `variant="now"`: the booking page's Now card shows only changes still waiting on someone, as attention rows with no
- * card heading; finished changes live in the booking history (they are booking events already).
- */
-export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone, variant = 'card' }: { bookingId: number; manager: boolean; onChanged: () => Promise<void>; timezone?: string | null; variant?: 'card' | 'now' }) {
-  const { t, i18n } = useTranslation('chef');
-  const locale = i18n?.resolvedLanguage || 'en-CA';
-  const time = (value: string) => timezone ? formatVisitTime(value, timezone, locale) : t('fixTimeUnavailable');
-  const range = (value: ChangeSchedule) => `${new Intl.DateTimeFormat(locale, { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(value.date + 'T12:00:00Z'))}, ${formatTime(value.slots[0]?.startTime || '', locale)}–${formatTime(value.slots.at(-1)?.endTime || '', locale)} ${timezone ? friendlyTimezoneName(timezone, locale) : ''}`;
-  const [data, setData] = useState<Context | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false), [kind, setKind] = useState<'move' | 'extend'>('move'), [date, setDate] = useState(''), [start, setStart] = useState(''), [hours, setHours] = useState('');
-  const [preview, setPreview] = useState<any>(null), [requestKey, setRequestKey] = useState('');
-  const [storageChoices, setStorageChoices] = useState<number[]>([]);
-  const [pricingMode, setPricingMode] = useState<'hourly' | 'daily'>('hourly');
-  const [overlaps, setOverlaps] = useState<Record<string, any>>({}), [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
-  const api = async (path = '', body?: unknown) => {
-    const token = await auth.currentUser?.getIdToken();
-    const response = await fetch(`/api/bookings/${bookingId}/changes${path}`, { method: body === undefined ? 'GET' : 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const result = await response.json();
-    if (!response.ok) throw Error(result.error || t('changeCopy03'));
-    return result;
-  };
-  const reload = async () => setData(await api());
-  useEffect(() => {
-    let active = true;
-    setData(null); setError(''); setOpen(false); setPreview(null); setOverlaps({}); setAcknowledged({});
-    void api().then(result => { if (active) setData(result); }).catch(cause => { if (active) setError(cause.message); });
-    const timer = setInterval(() => { if (active) void api().then(result => { if (active) setData(result); }).catch(() => {}); }, 30_000);
-    return () => { active = false; clearInterval(timer); };
-  }, [bookingId]);
-  const perform = async (work: () => Promise<unknown>) => {
+function useFormat(timezone?: string | null) {
+  const { i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage || 'en-CA';
+  const money = (cents: number, currency = 'CAD') => new Intl.NumberFormat(locale, { style: 'currency', currency }).format(cents / 100);
+  const day = (date: string) => new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
+  const schedule = (value: ChangeSchedule) => `${day(value.date)} · ${formatTime(value.slots[0]?.startTime || '', locale)}–${formatTime(value.slots.at(-1)?.endTime || '', locale)}`;
+  const when = (iso: string) => timezone ? formatVisitTime(iso, timezone, locale) : new Date(iso).toLocaleString(locale);
+  return { money, schedule, when, locale };
+}
+
+/** The open change on the booking page's Now card: one row for whoever has to act or is waiting. Nothing when there's none. */
+export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone, counterpart }: { bookingId: number; manager: boolean;
+  onChanged: () => Promise<void>; timezone?: string | null; counterpart: string; variant?: 'now' | 'card' }) {
+  const { t } = useTranslation('booking');
+  const f = useFormat(timezone);
+  const [data, setData] = useState<Changes | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [declining, setDeclining] = useState(false), [message, setMessage] = useState('');
+  const load = () => api<Changes>(`/api/bookings/${bookingId}/changes`).then(setData).catch(() => {});
+  useEffect(() => { void load(); const timer = setInterval(() => void load(), 30_000); return () => clearInterval(timer); }, [bookingId]);
+  const open = data?.open;
+  if (!open) return null;
+  const act = async (work: () => Promise<unknown>) => {
     setBusy(true); setError('');
-    try { await work(); await reload(); await onChanged(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t('changeCopy04')); }
+    try { await work(); await load(); await onChanged(); setDeclining(false); setMessage(''); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : t('chgError')); }
     finally { setBusy(false); }
   };
-  const edit = () => setPreview(null);
-  const begin = () => {
-    if (!data) return;
-    setKind('move'); setDate(data.original.date); setStart(data.original.slots[0].startTime); setHours(String(data.original.slots.length));
-    setPricingMode(data.original.pricingMode || 'hourly');
-    setPreview(null); setStorageChoices([]); setError(''); setRequestKey(crypto.randomUUID()); setOpen(true);
-  };
-  const decision = (entry: Entry, action: string) => perform(() => api(`/${entry.id}/decision`, {
-    revision: entry.revision, action, ...(action === 'approve' ? { overlapKey: overlaps[entry.id]?.overlapKey, acceptTourOverlap: !!acknowledged[entry.id] } : {}) }));
-  const now = variant === 'now';
-  const shown = (data?.changes || []).filter(entry => !now || pending.includes(entry.state));
-  if (!error && shown.length === 0) return null;
-  const Wrapper = now ? 'div' : 'section';
-  return <Wrapper className={now ? 'space-y-3' : 'rounded-2xl border bg-card p-5 space-y-3'} aria-label={t('changeCopy05')} data-testid={now ? 'now-changes' : undefined}>
-    {!now && <h2 className="font-semibold">{t('changeCopy06')}</h2>}
-    {error && <p role="alert" className="text-sm text-destructive">{error} {t('changeOriginalSafe')} <button className="underline" onClick={() => void perform(reload)}>{t('fixRetry')}</button></p>}
-    {shown.map(entry => <NowAttentionRow key={entry.id} as={now ? undefined : 'plain'} className={now ? undefined : 'rounded-xl border p-4 space-y-2'}>
-      <h3 className="font-medium">{entry.kind === 'extend' ? t('changeCopy07') : t('changeCopy08')} · {t(`changeState_${entry.state}`, { defaultValue: t('changeState_requested') })}</h3>
-      <p className="text-sm">{t('changeOriginal', { time: range(entry.original) })}<br />{t('changeRequested', { time: range(entry.destination) })}</p>
-      {entry.state !== 'applied' && <p className="text-sm">{t('changeCopy09')}</p>}
-      {pending.includes(entry.state) && <p className="text-sm">{entry.paymentBy ? t('changeCopy10') : t('changeCopy11')}: {time(entry.paymentBy || entry.decisionBy)}.</p>}
-      <details><summary className="cursor-pointer text-sm">{t('changeCopy12')}</summary><div className="pt-2"><ChangePrice quote={entry.quote} /></div></details>
-      {entry.state === 'recovery_required' && <p className="text-sm">{t('changeSupport')} {entry.refundRecorded ? t('changeCopy13') : entry.paymentRecorded ? t('changeCopy14') : t('changeCopy15')} {t('changeDoNotPay')} <a className="underline" href={localCooksSupportHref({ bookingId, role: manager ? "manager" : "chef", changeId: entry.id, situation: "Booking change payment recovery" })}>support@localcooks.ca</a>.</p>}
-      {manager && entry.canDecide && ['requested', 'authorized'].includes(entry.state) && <div className="space-y-2">
-        <Button variant="outline" disabled={busy} onClick={() => void decision(entry, 'decline')}>{t('changeCopy16')}</Button>
-      </div>}
-      {!manager && ['requested', 'awaiting_consent', 'awaiting_payment', 'authorized'].includes(entry.state) && <div className="flex flex-wrap gap-2">
-        <Button variant="outline" disabled={busy} onClick={() => void decision(entry, 'withdraw')}>{t('changeCopy17')}</Button>
-      </div>}
-      {entry.state === 'authorized' && <p className="text-sm">{t('changeCopy18')}</p>}
-      {['payment_pending', 'capture_pending', 'refund_pending', 'release_pending', 'recovery_required'].includes(entry.state) && <Button variant="outline" disabled={busy} onClick={() => void perform(() => api(`/${entry.id}/sync`, {}))}>{t('changeCopy19')}</Button>}
-      <details><summary className="cursor-pointer text-sm">{t('changeCopy20')}</summary><div className="text-sm space-y-2 pt-2">{entry.history.map(event => <p key={event.revision}>{time(event.at)}: {event.message}</p>)}</div></details>
-    </NowAttentionRow>)}
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>{t('changeCopy21')}</DialogTitle></DialogHeader>
-      <p className="text-sm">{t('changeCopy22')}</p>
-      <p className="text-sm">{t('changeCopy23')}</p>
-      <label className="text-sm">{t('changeChoice')} <select className="w-full rounded border p-2 bg-background" value={kind} disabled={busy} onChange={event => { const value = event.target.value as 'move' | 'extend'; setKind(value); if (value === 'extend' && data) { setDate(data.original.date); setStart(data.original.slots[0].startTime); } edit(); }}><option value="move">{t('changeCopy24')}</option><option value="extend">{t('changeCopy25')}</option></select></label>
-      <label className="text-sm">{t('changeDate')} <input className="w-full rounded border p-2 bg-background" type="date" value={date} disabled={busy || kind === 'extend'} onChange={event => { setDate(event.target.value); edit(); }} /></label>
-      <label className="text-sm">{t('changeStart', { zone: timezone ? friendlyTimezoneName(timezone, locale) : t('fixTimeUnavailable') })} <input className="w-full rounded border p-2 bg-background" type="time" value={start} disabled={busy || kind === 'extend'} onChange={event => { setStart(event.target.value); edit(); }} /></label>
-      {data?.availablePricingModes?.length === 2 && kind === 'move' && <label className="text-sm">{t('changePricing')} <select className="w-full rounded border p-2 bg-background" value={pricingMode} disabled={busy}
-        onChange={event => { setPricingMode(event.target.value as 'daily' | 'hourly'); if (event.target.value === 'daily') setHours(String(data.original.slots.length)); edit(); }}><option value="daily">{t('changeCopy26')}</option><option value="hourly">{t('changeCopy27')}</option></select></label>}
-      <label className="text-sm">{t('changeHours')} <input className="w-full rounded border p-2 bg-background" type="number" min={1} max={24} value={hours} disabled={busy || pricingMode === 'daily'} onChange={event => { setHours(event.target.value); edit(); }} /></label>
-      {data?.equipmentChangeUnavailable && <p role="alert" className="text-sm">{t('changeCopy28')}</p>}
-      {(data?.linkedItems || []).map(item => <label key={item.id} className="text-sm flex gap-2"><input type="checkbox" checked={storageChoices.includes(item.id)} disabled={busy}
-        onChange={event => { setStorageChoices(current => event.target.checked ? [...current, item.id] : current.filter(id => id !== item.id)); edit(); }} />
-        {t('changeKeepStorage', { id: item.id, start: time(item.startDate), end: time(item.endDate) })}</label>)}
-      {error && <p role="alert" className="text-sm text-destructive">{error} {t('assistRetained')}</p>}
-      {preview && <><p className="text-sm">{t('changeOriginal', { time: range(preview.original) })}<br />{t('changeRequested', { time: range(preview.destination) })}</p><ChangePrice quote={preview.quote} />{!preview.policyReady && <p>{t('changeCopy29')}</p>}</>}
-      <div className="flex gap-2"><Button variant="outline" onClick={() => setOpen(false)}>{t('changeCopy30')}</Button>
-        <Button disabled={busy || !data || !Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 24} onClick={() => void perform(async () => {
-          let end = start; for (let index = 0; index < Number(hours); index++) end = addHour(end);
-          const slots = getHourlySlotStarts(start, end).map(startTime => ({ startTime, endTime: addHour(startTime) }));
-          setPreview(await api('/preview', { kind, destination: { date, slots, windowStart: data!.original.windowStart, pricingMode }, linkedItems: (data!.linkedItems || []).filter(item => storageChoices.includes(item.id)) }));
-        })}>{t('changeCopy31')}</Button>
-        {preview?.policyReady && <Button disabled={busy} onClick={() => void perform(async () => { await api('', { kind, destination: preview.destination, quote: preview.quote,
-          expectedUpdatedAt: preview.expectedUpdatedAt, linkedItems: preview.linkedItems || [], requestKey }); setOpen(false); })}>{t('changeCopy32')}</Button>}
+  const decide = (action: 'approve' | 'decline' | 'withdraw') => act(() => api(`/api/bookings/${bookingId}/changes/${open.id}/decision`,
+    { action, revision: open.revision, ...(action === 'decline' && message.trim() ? { message: message.trim() } : {}) }));
+  const payAnotherCard = () => act(async () => {
+    const result = await api<{ url: string }>(`/api/bookings/${bookingId}/changes/${open.id}/checkout`, { returnPath: `/booking/${bookingId}` });
+    window.location.assign(result.url);
+  });
+  const m = open.money, now = f.schedule(open.destination), was = f.schedule(open.original);
+  const priceLine = m.payCents > 0 ? t(manager ? 'chgPriceUpKitchen' : 'chgHoldChef', { amount: f.money(m.payCents, m.currency) })
+    : m.refundCents > 0 ? t(manager ? 'chgPriceDownKitchen' : 'chgRefundIfApproved', { amount: f.money(m.refundCents, m.currency) })
+    : t('chgSamePrice');
+  return <NowAttentionRow data-testid="booking-change-open" tone={manager && open.canDecide ? 'warning' : 'info'}>
+    <p className="font-medium">{t(manager ? 'chgKitchenTitle' : 'chgChefTitle', { chef: counterpart, when: now })}</p>
+    {SETTLING.includes(open.state) ? <p className="text-sm">{t('chgSettling')}</p>
+      : open.state === 'recovery_required' ? <p className="text-sm">{t('chgRecovery', { when: was })}</p>
+      : <>
+        <p className="text-sm">{manager ? t('chgKitchenBody', { was, by: f.when(open.decisionBy) }) : t('chgChefBody', { kitchen: counterpart, by: f.when(open.decisionBy), was })}</p>
+        <p className="text-sm">{priceLine}</p>
+        {open.freeCancelAfter && <p className="text-sm text-muted-foreground">{t(manager ? 'chgDeadlineKitchen' : 'chgDeadlineChef', { when: f.when(open.freeCancelAfter) })}</p>}
+      </>}
+    {open.cardDeclined && !manager && <p className="text-sm font-medium">{t('chgCardDeclined')}</p>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {manager && open.canDecide && (declining ? <div className="space-y-2">
+      <label className="block text-sm" htmlFor={`decline-${open.id}`}>{t('chgDeclineNote', { chef: counterpart })}</label>
+      <Textarea id={`decline-${open.id}`} maxLength={500} value={message} disabled={busy} onChange={event => setMessage(event.target.value)} />
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => void decide('decline')}>{t('chgDeclineConfirm')}</Button>
+        <Button variant="ghost" className="min-h-11" disabled={busy} onClick={() => setDeclining(false)}>{t('chgBack')}</Button>
       </div>
-    </DialogContent></Dialog>
-  </Wrapper>;
+    </div> : <div className="flex flex-wrap gap-2">
+      <Button className="min-h-11" disabled={busy} onClick={() => void decide('approve')}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{t('chgApprove')}</Button>
+      <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => setDeclining(true)}>{t('chgDecline')}</Button>
+    </div>)}
+    {!manager && (open.cardDeclined || open.canWithdraw) && <div className="flex flex-wrap gap-2">
+      {open.cardDeclined && <Button className="min-h-11" disabled={busy} onClick={() => void payAnotherCard()}>{t('chgPayAnotherCard', { amount: f.money(m.payCents, m.currency) })}</Button>}
+      {open.canWithdraw && <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => void decide('withdraw')}>{t('chgWithdraw')}</Button>}
+    </div>}
+  </NowAttentionRow>;
+}
+
+/** Chef's "Change date or time": pick a new day and hours, see the exact money first, then send it to the kitchen. */
+export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezone, open, onOpenChange, onChanged }: { bookingId: number; kitchenId: number;
+  kitchenName: string; timezone?: string | null; open: boolean; onOpenChange: (open: boolean) => void; onChanged: () => Promise<void> }) {
+  const { t } = useTranslation('booking');
+  const f = useFormat(timezone);
+  const [data, setData] = useState<Changes | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [date, setDate] = useState(''), [start, setStart] = useState(''), [hours, setHours] = useState(1);
+  const [slots, setSlots] = useState<Slot[] | null>(null), [preview, setPreview] = useState<Preview | null>(null);
+  const [requestKey, setRequestKey] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setData(null); setError(''); setPreview(null); setSlots(null); setRequestKey(crypto.randomUUID());
+    api<Changes>(`/api/bookings/${bookingId}/changes`).then(result => {
+      setData(result); setDate(result.original.date); setStart(result.original.slots[0]?.startTime || ''); setHours(result.original.slots.length || 1);
+    }).catch(cause => setError(cause.message));
+  }, [open, bookingId]);
+  useEffect(() => {
+    if (!open || !date || !data?.canRequest.allowed) return;
+    setSlots(null); setPreview(null);
+    api<Slot[]>(`/api/chef/kitchens/${kitchenId}/slots?date=${date}&changing=${bookingId}`)
+      .then(result => setSlots(Array.isArray(result) ? result : [])).catch(() => setSlots([]));
+  }, [open, date, kitchenId, bookingId, data?.canRequest.allowed]);
+  const free = useMemo(() => new Set((slots || []).filter(slot => !slot.isFullyBooked && slot.available > 0).map(slot => slot.time)), [slots]);
+  // Longest run of free hours from the chosen start (consecutive hours only, like booking).
+  const maxHours = useMemo(() => { let n = 0, at = start; while (at && free.has(at) && n < 12) { n++; at = addHour(at); } return n; }, [free, start]);
+  const chosen = useMemo(() => { const out: ChangeSchedule['slots'] = []; let at = start;
+    for (let i = 0; i < hours && at; i++) { const end = addHour(at); out.push({ startTime: at, endTime: end }); at = end; } return out; }, [start, hours]);
+  const ready = !!data?.canRequest.allowed && !!date && chosen.length > 0 && hours <= maxHours;
+  const unchanged = !!data && date === data.original.date && chosen.length === data.original.slots.length && chosen[0]?.startTime === data.original.slots[0]?.startTime;
+  useEffect(() => {
+    if (!open || !ready || unchanged) { setPreview(null); return; }
+    let live = true; setError('');
+    api<Preview>(`/api/bookings/${bookingId}/changes/preview`, { destination: { date, windowStart: chosen[0].startTime, slots: chosen } })
+      .then(result => { if (live) setPreview(result); }).catch(cause => { if (live) { setPreview(null); setError(cause.message); } });
+    return () => { live = false; };
+  }, [open, ready, unchanged, date, chosen, bookingId]);
+  const send = async () => {
+    if (!preview) return;
+    setBusy(true); setError('');
+    try {
+      await api(`/api/bookings/${bookingId}/changes`, { destination: preview.destination, quoteHash: preview.quoteHash, requestKey });
+      await onChanged(); onOpenChange(false);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : t('chgError')); }
+    finally { setBusy(false); }
+  };
+  const m = preview?.money;
+  const headline = m ? m.payCents > 0 ? t('chgYouPay', { amount: f.money(m.payCents, m.currency) }) : m.refundCents > 0 ? t('chgYouGetBack', { amount: f.money(m.refundCents, m.currency) }) : t('chgSamePrice') : '';
+  return <Dialog open={open} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
+    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogHeader><DialogTitle>{t('chgDialogTitle')}</DialogTitle>
+        <DialogDescription>{data ? t('chgCurrent', { kitchen: kitchenName, when: f.schedule(data.original) }) : t('chgLoading')}</DialogDescription></DialogHeader>
+      {!data ? (error ? <p role="alert" className="text-sm text-destructive">{error}</p> : <Loader2 className="h-5 w-5 animate-spin" aria-label={t('chgLoading')} />)
+        : !data.canRequest.allowed ? <div className="space-y-3">
+          <p className="text-sm">{data.canRequest.reason || t('chgNotAllowed')}</p>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('chgClose')}</Button>
+        </div>
+        : <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <label className="text-sm font-medium">{t('chgDate')}
+              <input type="date" className="mt-1 block min-h-11 w-full rounded-md border bg-background px-3" value={date} disabled={busy} onChange={event => setDate(event.target.value)} />
+            </label>
+            <label className="text-sm font-medium">{t('chgHours')}
+              <select className="mt-1 block min-h-11 w-full rounded-md border bg-background px-3" value={hours} disabled={busy} onChange={event => setHours(Number(event.target.value))}>
+                {Array.from({ length: Math.max(maxHours, 1, hours) }, (_, i) => i + 1).map(n => <option key={n} value={n} disabled={n > maxHours}>{t('chgHoursOption', { count: n })}</option>)}
+              </select>
+            </label>
+          </div>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">{t('chgStart')}</legend>
+            {slots === null ? <Loader2 className="h-4 w-4 animate-spin" aria-label={t('chgLoading')} />
+              : !slots.some(slot => free.has(slot.time)) ? <p className="text-sm text-muted-foreground">{t('chgNoTimes')}</p>
+              : <div className="flex flex-wrap gap-2">{slots.map(slot => <Button key={slot.time} type="button" size="sm" className="min-h-11"
+                  variant={slot.time === start ? 'default' : 'outline'} disabled={busy || !free.has(slot.time)} aria-pressed={slot.time === start}
+                  onClick={() => setStart(slot.time)}>{formatTime(slot.time, f.locale)}</Button>)}</div>}
+          </fieldset>
+          {unchanged && <p className="text-sm text-muted-foreground">{t('chgPickDifferent')}</p>}
+          {preview && m && <section className="space-y-2 rounded-xl border bg-muted/30 p-4 text-sm" aria-live="polite" data-testid="change-preview">
+            <p>{t('chgNewTime', { when: f.schedule(preview.destination) })}</p>
+            <p className="text-lg font-semibold">{headline}</p>
+            <details><summary className="cursor-pointer font-medium underline-offset-4 hover:underline">{t('chgSeeBreakdown')}</summary>
+              <dl className="mt-2 space-y-1">
+                <div className="flex justify-between gap-3"><dt>{t('chgCurrentTotal')}</dt><dd className="tabular-nums">{f.money(m.oldTotalCents, m.currency)}</dd></div>
+                <div className="flex justify-between gap-3"><dt>{t('chgNewTotal')}</dt><dd className="tabular-nums">{f.money(m.newTotalCents, m.currency)}</dd></div>
+                {m.feeKeptCents > 0 && <div className="flex justify-between gap-3"><dt>{t('chgFeeKept')}</dt><dd className="tabular-nums">−{f.money(m.feeKeptCents, m.currency)}</dd></div>}
+              </dl>
+            </details>
+            {preview.freeCancelAfter && <p>{t('chgDeadlineChef', { when: f.when(preview.freeCancelAfter) })}</p>}
+            <p className="text-muted-foreground">{t(m.payCents > 0 ? 'chgHowItWorksHold' : 'chgHowItWorks', { kitchen: kitchenName, by: f.when(preview.decisionBy) })}</p>
+          </section>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => onOpenChange(false)}>{t('chgKeep')}</Button>
+            <Button className="min-h-11" disabled={busy || !preview} onClick={() => void send()}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{t('chgSend')}</Button>
+          </div>
+        </div>}
+    </DialogContent>
+  </Dialog>;
 }

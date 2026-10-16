@@ -232,8 +232,8 @@ async function extensionSources(bookingIds: number[], tx: Tx = db as unknown as 
   if (!bookingIds.length) return [] as Source[];
   const rows = await tx.select().from(paymentTransactions).where(and(inArray(paymentTransactions.bookingId, bookingIds),
     inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), inArray(paymentTransactions.status, capturedStatuses as Source['status'][]),
-    sql`${paymentTransactions.metadata} ? 'sessionExtensionId'`)).orderBy(asc(paymentTransactions.id)).limit(bookingIds.length * 20);
-  return (rows as Source[]).filter(isSessionExtensionPayment);
+    sql`(${paymentTransactions.metadata} ? 'sessionExtensionId' OR EXISTS (SELECT 1 FROM kitchen_booking_changes c WHERE c.id = ${paymentTransactions.metadata}->>'kitchenChangeId' AND c.state = 'applied'))`)).orderBy(asc(paymentTransactions.id));
+  return (rows as Source[]).filter(row => isSessionExtensionPayment(row) || typeof (row.metadata as any)?.kitchenChangeId === 'string');
 }
 
 /** Fixed query count for manager lists; issue/flag holds are current even before the next sweep. */

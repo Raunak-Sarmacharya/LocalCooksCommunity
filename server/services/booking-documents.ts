@@ -11,7 +11,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { logger } from '../logger';
-import { damageClaims, kitchenBookings, kitchens, locations, paymentTransactions, platformSettings, users,
+import { damageClaims, kitchenBookingChanges, kitchenBookings, kitchens, locations, paymentTransactions, platformSettings, users,
   storageBookings, storageListings, equipmentBookings, equipmentListings } from '@shared/schema';
 import { bookingDocuments, type BookingDocumentRow } from '@shared/booking-documents-schema';
 import { LOCAL_COOKS_SUPPLIER, bookingSettled, buildCompensationRemittance, buildPaymentReceipt, buildPayoutReversal, buildRefundReceipt,
@@ -40,6 +40,7 @@ export interface MoneyRows {
   kitchenName: string; locationName: string | null; locationAddress: string | null; timezone: string;
   chefName: string; chefEmail: string | null;
   payments: PaymentRow[]; extensions: ExtensionRow[]; claims: ClaimRow[];
+  changes?: Array<{ id: string; destination: unknown }>;
   addonNames: { storage: Record<number, string>; equipment: Record<number, string> };
 }
 
@@ -97,13 +98,16 @@ function refundReason(row: PaymentRow, receipt: Record<string, any>) {
   if (purposeOf(row, null) === 'claim') return 'Claim refund';
   return 'Refund';
 }
-function refundsOf(row: PaymentRow): RefundFact[] {
+function refundsOf(row: PaymentRow, booking: BookingFacts, changes: MoneyRows['changes']): RefundFact[] {
   const receipts = Array.isArray(meta(row).refunds) ? meta(row).refunds as Array<Record<string, any>> : [];
   const facts = receipts.flatMap(receipt => {
     const id = String(receipt.id || receipt.refundId || '');
     const amount = cents(receipt.customerReceived);
+    const destination = changes?.find(change => change.id === receipt.kitchenChangeId)?.destination as { date?: string; slots?: Slot[]; pricingMode?: string } | undefined;
+    const bookingSchedule = destination?.date && destination.slots?.length ? { ...booking, bookingDate: destination.date,
+      pricingMode: destination.pricingMode === 'daily' ? 'daily' as const : booking.pricingMode, originalSlots: destination.slots } : undefined;
     return id && amount > 0 ? [{ refundId: id, amountCents: amount, managerDebitedCents: cents(receipt.managerDebited ?? receipt.customerReceived),
-      reason: refundReason(row, { ...receipt, id }), refundedAt: iso(row.refundedAt) }] : [];
+      reason: refundReason(row, { ...receipt, id }), refundedAt: iso(row.refundedAt), ...(bookingSchedule ? { bookingSchedule } : {}) }] : [];
   });
   // Legacy rows: an aggregate refund without per-refund receipts still gets one refund receipt.
   const missing = cents(row.refundAmount) - facts.reduce((total, fact) => total + fact.amountCents, 0);
@@ -117,17 +121,21 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
   const parentIntent = rows.booking.paymentIntentId;
   const parent = rows.payments.find(row => row.paymentIntentId && row.paymentIntentId === parentIntent);
   const changed = parent ? meta(parent).originalBookingSchedule as { date?: string; slots?: Slot[]; pricingMode?: string } | undefined : undefined;
-  const bookingDate = changed?.date || dateOnly(rows.booking.bookingDate);
-  const slots = changed?.slots?.length ? changed.slots : originalSlots(rows);
-  const pricingMode = (changed?.pricingMode || rows.booking.pricingMode) === 'daily' ? 'daily' : 'hourly';
+  const bookingDate = dateOnly(rows.booking.bookingDate);
+  const slots = originalSlots(rows);
+  const pricingMode = rows.booking.pricingMode === 'daily' ? 'daily' : 'hourly';
   const booking: BookingFacts = { bookingId: rows.booking.id, reference: rows.booking.referenceCode || `#${rows.booking.id}`, kitchenName: rows.kitchenName,
     locationName: rows.locationName, locationAddress: rows.locationAddress, timezone: rows.timezone, chefName: rows.chefName, chefEmail: rows.chefEmail,
     bookingDate, pricingMode, originalSlots: slots };
-  const session = pricingMode === 'daily' ? { label: 'Kitchen day', detail: formatDay(bookingDate) }
-    : { label: 'Kitchen session', detail: `${formatDay(bookingDate)} · ${slots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')} (${formatMinutes(slotMinutes(slots))})` };
+  const historical = { ...booking, bookingDate: changed?.date || bookingDate, originalSlots: changed?.slots?.length ? changed.slots : slots };
+  const session = pricingMode === 'daily' ? { label: 'Kitchen day', detail: formatDay(historical.bookingDate) }
+    : { label: 'Kitchen session', detail: `${formatDay(historical.bookingDate)} · ${historical.originalSlots.map(slot => formatTimeRange(slot.startTime, slot.endTime)).join(', ')} (${formatMinutes(slotMinutes(historical.originalSlots))})` };
 
   const payments = rows.payments.filter(row => PAID.includes(row.status) && row.paymentIntentId).map((row): PaymentFact => {
     const m = meta(row), purpose = purposeOf(row, parentIntent), amount = cents(row.amount);
+    const schedule = m.bookingSchedule;
+    const paymentBooking = purpose === 'booking' ? historical : schedule?.date && schedule?.slots?.length
+      ? { ...booking, bookingDate: schedule.date, originalSlots: schedule.slots } : booking;
     const claim = purpose === 'claim' ? rows.claims.find(item => item.paymentTransactionId === row.id || item.stripePaymentIntentId === row.paymentIntentId) : undefined;
     let items: PaymentFact['items'], kitchenItems: PaymentFact['kitchenItems'], tax = cents(row.taxAmount) || cents(m.approvedTax);
     if (purpose === 'claim') { items = [{ label: 'Damage claim', detail: claim?.claimTitle, subtotalCents: amount }]; tax = 0; }
@@ -147,7 +155,7 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
     } else {
       const subtotal = cents(m.approvedSubtotal) || cents(row.baseAmount) - tax;
       items = [purpose === 'booking' ? { ...session, subtotalCents: subtotal }
-        : purpose === 'change' ? { label: 'Booking change', detail: formatDay(bookingDate), subtotalCents: subtotal }
+        : purpose === 'change' ? { label: 'Booking change', detail: `${formatDay(paymentBooking.bookingDate)} - ${paymentBooking.originalSlots.map((slot: Slot) => formatTimeRange(slot.startTime, slot.endTime)).join(', ')}`, subtotalCents: subtotal }
         : { label: 'Payment', subtotalCents: subtotal }];
     }
     const subtotal = items.reduce((total, item) => total + item.subtotalCents, 0);
@@ -163,9 +171,9 @@ export function deriveBookingMoney(rows: MoneyRows): BookingMoney {
       : evidence ? evidence.originalAmountCents
       : m.payoutSent?.amountCents != null ? cents(m.payoutSent.amountCents)
       : transferId ? cents(row.managerRevenue) : null;
-    return { paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose, paidAt: iso(row.paidAt), items, ...(kitchenItems ? { kitchenItems } : {}),
+    return { bookingSchedule: paymentBooking, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose, paidAt: iso(row.paidAt), items, ...(kitchenItems ? { kitchenItems } : {}),
       taxCents: tax, taxRatePercent: m.taxRatePercent != null ? Number(m.taxRatePercent) : subtotal && tax ? Math.round(tax * 1000 / subtotal) / 10 : null,
-      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row).map(refund => ({ ...refund,
+      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds: refundsOf(row, booking, rows.changes).map(refund => ({ ...refund,
         ...(evidence?.refunds && Object.keys(evidence.refunds).length ? { reversedCents: evidence.refunds[refund.refundId]?.amountCents || 0 } : {}) })), ...(problem ? { problem } : {}),
       kitchen: { noShare: purpose === 'claim' && (claim?.fundedBy === 'local_cooks' || m.platformRecovery === true),
         processingAbsorbed: purpose === 'claim',
@@ -255,17 +263,17 @@ export function planBookingDocuments(money: BookingMoney, settled: boolean): Pla
     const receiptKey = sourceKeys.payment(payment.paymentIntentId);
     plan.push({ sourceKey: receiptKey, kind: 'payment', audience: 'chef', chargeId: payment.chargeId,
       stripe: { paymentIntentId: payment.paymentIntentId, chargeId: payment.chargeId },
-      build: ctx => { if (payment.problem) throw Error(payment.problem); return buildPaymentReceipt(booking, payment, { ...ctx, card: ctx.card }); } });
+      build: ctx => { if (payment.problem) throw Error(payment.problem); return buildPaymentReceipt(payment.bookingSchedule || booking, payment, { ...ctx, card: ctx.card }); } });
     for (const refund of payment.refunds) plan.push({ sourceKey: sourceKeys.refund('chef', refund.refundId), kind: 'refund', audience: 'chef', chargeId: payment.chargeId,
       stripe: { paymentIntentId: payment.paymentIntentId, chargeId: payment.chargeId, refundId: refund.refundId }, referencesSourceKey: receiptKey,
-      build: ctx => buildRefundReceipt(booking, payment, refund, { number: ctx.referenced!.number }, { ...ctx, card: ctx.card }) });
+      build: ctx => buildRefundReceipt(refund.bookingSchedule || payment.bookingSchedule || booking, payment, refund, { number: ctx.referenced!.number }, { ...ctx, card: ctx.card }) });
   }
   for (const payment of money.payments) {
     if (payment.kitchen.noShare || !payment.kitchen.transferId || payment.kitchen.transferredCents == null) continue;
     const remittanceKey = sourceKeys.remittance(payment.kitchen.transferId);
     plan.push({ sourceKey: remittanceKey, kind: 'remittance', audience: 'manager', chargeId: null,
       stripe: { paymentIntentId: payment.paymentIntentId, chargeId: payment.chargeId, transferId: payment.kitchen.transferId },
-      build: ctx => buildRemittance(booking, payment, ctx) });
+      build: ctx => buildRemittance(payment.bookingSchedule || booking, payment, ctx) });
     // Refunds taken back after the payout went out: whatever the transfer did not already withhold.
     const gross = (payment.kitchenItems || payment.items).reduce((total, item) => total + item.subtotalCents, 0) + payment.taxCents;
     let toReverse = payment.kitchen.reversedCents ?? Math.max(0, payment.refunds.reduce((total, refund) => total + refund.managerDebitedCents, 0)
@@ -356,6 +364,8 @@ export async function loadMoneyRows(bookingId: number, reader: Conn = db): Promi
     applied_at AS "appliedAt", paid_at AS "paidAt", payment_intent_id AS "paymentIntentId", amount_cents AS "amountCents", quote,
     refund_id AS "refundId", refunded_at AS "refundedAt", operation
     FROM kitchen_booking_extensions WHERE booking_id = ${bookingId} ORDER BY id LIMIT 100`)).rows as unknown as ExtensionRow[];
+  const changes = await reader.select({ id: kitchenBookingChanges.id, destination: kitchenBookingChanges.destination }).from(kitchenBookingChanges)
+    .where(eq(kitchenBookingChanges.bookingId, bookingId)).orderBy(asc(kitchenBookingChanges.createdAt));
   const transfers = (await reader.execute(sql`SELECT DISTINCT ON (ph.transaction_id, ph.metadata->>'transferId')
     ph.transaction_id AS "transactionId", ph.metadata FROM payment_history ph JOIN payment_transactions pt ON pt.id = ph.transaction_id
     WHERE pt.booking_id = ${bookingId} AND pt.booking_type IN ('kitchen', 'bundle') AND ph.event_type = 'payout_transfer_verified'
@@ -379,7 +389,7 @@ export async function loadMoneyRows(bookingId: number, reader: Conn = db): Promi
       selectedSlots: row.selectedSlots, pricingMode: row.pricingMode, paymentIntentId: row.paymentIntentId, status: row.status },
     kitchenName: row.kitchenName, locationName: row.locationName, locationAddress: row.locationAddress, timezone: row.timezone || 'America/St_Johns',
     chefName, chefEmail: chef?.email?.includes('@') ? chef.email : null,
-    payments: payments as PaymentRow[], extensions, claims: claims as ClaimRow[],
+    payments: payments as PaymentRow[], extensions, claims: claims as ClaimRow[], changes,
     addonNames: { storage: Object.fromEntries(storage.map(item => [item.id, item.name])),
       equipment: Object.fromEntries(equipment.map(item => [item.id, [item.brand, item.type].filter(Boolean).join(' ')])) } };
 }

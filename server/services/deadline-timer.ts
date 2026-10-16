@@ -12,8 +12,8 @@ import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
  * the backstop. Sending twice (or the worker winning the race) is harmless: each expiry re-checks its row under lock.
  */
 export const deadlineScheduledEvent = 'localcooks/deadline.scheduled';
-export type DeadlineKind = 'extension' | 'booking_request' | 'closeout';
-export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout'];
+export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change';
+export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change'];
 /** Runs just after the deadline so "now >= deadline" holds even with small clock differences. */
 export const deadlineGraceMs = 5_000;
 /** Inngest sleeps are bounded (plan limits); anything further out is picked up by the tick, then re-armed. */
@@ -78,6 +78,11 @@ export async function runDeadlineExpiry(kind: DeadlineKind, id: number, now = ne
     if (result.changed) await (await import('./kitchen-payout-service')).releaseKitchenPayout(id, 'closeout_timer', now)
       .catch(error => logger.error('[Payout] Closeout saved; payout will retry from the sweep', { bookingId: id, error }));
     return { kind, changed: result.changed };
+  }
+  if (kind === 'kitchen_change') {
+    // The id is the booking id: one change is open per booking, so the expiry re-reads whichever one is overdue.
+    const changes = await import('./kitchen-booking-changes');
+    return { kind, ...await changes.expireKitchenChangeForBooking(await changes.changeProviderStripe(), id, now) };
   }
   throw Error('Unknown deadline kind');
 }

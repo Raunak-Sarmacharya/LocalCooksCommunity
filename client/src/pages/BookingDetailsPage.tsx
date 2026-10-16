@@ -4,7 +4,7 @@ import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus';
 import { bookingStatusLabel } from "@/components/booking/booking-status-label";
 import { CancellationRefundReview } from '@/components/booking/CancellationRefundReview';
 import BookingPreparation from "@/components/booking/BookingPreparation";
-import { KitchenBookingChanges } from '@/components/booking/KitchenBookingChanges';
+import { ChangeBookingDialog, KitchenBookingChanges } from '@/components/booking/KitchenBookingChanges';
 import { BookingCancellationChooser } from '@/components/booking/BookingCancellationChooser';
 import { BookingCancellationCard } from '@/components/booking/BookingCancellationCard';
 import { KitchenCausedCancellation } from '@/components/booking/KitchenCausedCancellation';
@@ -298,6 +298,7 @@ export default function BookingDetailsPage() {
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const [itemCancellationPending, setItemCancellationPending] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
   const [kitchenCancelOpen, setKitchenCancelOpen] = useState(false);
   const { t: policyT } = useTranslation('booking');
   const bt = policyT as unknown as (key: string, options?: Record<string, unknown>) => string;
@@ -1230,10 +1231,10 @@ export default function BookingDetailsPage() {
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
-  // "Change request" (pending only): rebook first; the earlier request closes once the new one is sent.
   // A request the chef changed: its replacement is where things continue.
   const replacedBy = cancelCause === 'replaced' ? booking?.paymentDecision?.replacedBy : null;
   const newRequestHref = replacedBy?.bookingId ? `${isManagerView ? '/manager' : ''}/booking/${replacedBy.bookingId}` : null;
+  // "Change request" (pending only): rebook first; the earlier request closes once the new one is sent.
   const changeRequestLink = booking && !isManagerView && booking.status === 'pending' && booking.paymentStatus === 'authorized' && !booking.paymentDecision
     ? changeRequestHref({ ...booking, locationId: booking.location?.id ?? booking.kitchen?.locationId }) : null;
   const chefName = booking?.chef?.fullName || booking?.chef?.username || t('bdhChefFallback');
@@ -1384,8 +1385,8 @@ export default function BookingDetailsPage() {
       case 'download_invoice': case 'download_payout_statement': return [{ key, label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() }];
       case 'contact_local_cooks': return [{ key, label: t('bdContactSupport', { defaultValue: 'Contact Local Cooks' }), onSelect: goToHelp }];
       case 'find_another_time': return findAnotherTimeHref ? [{ key, label: t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
-      case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
       case 'view_new_request': return newRequestHref ? [{ key, label: t('bnViewNewRequest'), href: newRequestHref, onSelect: () => navigate(newRequestHref), testId: 'view-new-request' }] : [];
+      case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
       case 'change_booking': return [{ key, label: t('bdhChangeBooking'), onSelect: openManagementDialog }];
       case 'manage_refund': return [{ key, label: t('bdhManageRefund'), onSelect: openManagementDialog }];
       case 'fix_record': return [{ key, label: t('fixTitle'), onSelect: () => openFix() }];
@@ -1405,7 +1406,8 @@ export default function BookingDetailsPage() {
   // ⋯ menu: the full action list, minus whatever is already one tap away (the primary and the visible links).
   const menuItems: Array<{ key: string; label: string; onSelect: () => void; icon: ComponentType<{ className?: string }> }> = [];
   if (isManagerView && booking?.status === 'confirmed') menuItems.push({ key: 'kitchen-cancel', label: policyT('cpKitchenCancel'), icon: CalendarX, onSelect: () => setKitchenCancelOpen(true) });
-  if (chefCanCancel && booking?.status !== 'pending' && !visibleKeys.has('cancel_request')) menuItems.push({ key: 'cancel', label: t('bdhCancelOrChange'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
+  if (chefCanCancel && booking?.status === 'confirmed' && !visitStarted) menuItems.push({ key: 'change', label: policyT('chgDialogTitle'), icon: CalendarPlus, onSelect: () => setChangeOpen(true) });
+  if (chefCanCancel && booking?.status !== 'pending' && !visibleKeys.has('cancel_request')) menuItems.push({ key: 'cancel', label: policyT('chgCancelBooking'), icon: CalendarX, onSelect: () => setCancelOpen(true) });
   if (managerCanManage && primary !== 'review_cancellation' && !visibleKeys.has('change_booking') && !visibleKeys.has('manage_refund'))
     menuItems.push({ key: 'manage', label: booking?.status === 'cancelled' ? t('bdhManageRefund') : booking?.status === 'confirmed' ? t('bdhChangeBooking') : t('bdhReviewCancellation'), icon: CalendarX, onSelect: openManagementDialog });
   if (isManagerView && visitStarted && ['confirmed', 'completed'].includes(booking?.status || '')) {
@@ -1578,7 +1580,7 @@ export default function BookingDetailsPage() {
         <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
           timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
           checkedIn={!!booking.checkinStatus && booking.checkinStatus !== 'not_checked_in'} messageButton={messageButton()} onViewReport={goToHelp} />
-        {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}`} bookingId={booking.id} manager={isManagerView}
+        {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}`} bookingId={booking.id} manager={isManagerView} counterpart={isManagerView ? chefName : kitchenName}
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}
         {/* A payable claim comes first: unpaid after a final decision, it pauses new bookings. */}
         {now.attention.includes('claims') && claims && <NowClaimRows claims={claims} manager={isManagerView} chefName={chefName} timezone={tz || 'America/St_Johns'}
@@ -1857,6 +1859,7 @@ export default function BookingDetailsPage() {
 
   const cancellationCard = booking && !isManagerView && chefCanCancel && ['pending', 'confirmed'].includes(booking.status) && (
     <BookingCancellationCard createdAt={booking.createdAt} bookingId={booking.id} status={booking.status} canCancel={chefCanCancel} onCancel={() => setCancelOpen(true)}
+      onChange={booking.status === 'confirmed' && !visitStarted ? () => setChangeOpen(true) : undefined}
       deadlineText={cancellationDeadlineText} deadlinePassed={!paidCancellationAvailable} />
   );
 
@@ -1884,6 +1887,10 @@ export default function BookingDetailsPage() {
       <CancellationRefundReview bookingId={booking.id} manager={isManagerView} scope={cancellationRefundScope} open={cancellationRefundOpen} onOpenChange={setCancellationRefundOpen} onChanged={reloadBookingDetails} />
       {isManagerView && claimWindowOpen && <ManagerDamageClaimEntry mode="secondary" open={claimOpen} onOpenChange={setClaimOpen} bookingId={booking.id} chefName={chefName}
         visits={unreportedVisits} onFiled={() => void claimsQuery.refetch()} />}
+      {!isManagerView && booking.status === 'confirmed' && (
+        <ChangeBookingDialog bookingId={booking.id} kitchenId={booking.kitchenId} kitchenName={kitchenName} timezone={booking.location?.timezone}
+          open={changeOpen} onOpenChange={setChangeOpen} onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />
+      )}
       {!isManagerView && (
         <BookingCancellationChooser hideTrigger open={cancelOpen} onOpenChange={setCancelOpen} visitActive={visitActive} bookingId={booking.id} status={booking.status} paymentStatus={booking.paymentStatus}
           summary={{ kitchenName, reference: booking.referenceCode || undefined,

@@ -141,6 +141,27 @@ describe('issuing documents', () => {
     expect(of(after, 'statement', 'chef')).toEqual(of(before, 'statement', 'chef'));
   });
 
+  it('uses one approved change destination on every source refund receipt and leaves source receipts unchanged', async () => {
+    let rows = booking175();
+    rows.changes = [{ id: 'change_final', destination: { date: '2026-10-20', pricingMode: 'hourly',
+      slots: [{ startTime: '10:00', endTime: '11:00' }] } }];
+    const d = deps(() => rows, SETTLED);
+    const before = (await ensureBookingDocuments(175, d)).documents;
+    rows = structuredClone(rows);
+    rows.payments = rows.payments.map((payment, index) => ({ ...payment, status: 'partially_refunded', refundAmount: index ? '500' : '1000',
+      refundedAt: '2026-10-17T15:00:00Z', metadata: { ...(payment.metadata as object), refunds: [{ id: `re_change_${index + 1}`,
+        kitchenChangeId: 'change_final', customerReceived: index ? 500 : 1000, managerDebited: index ? 450 : 900,
+        platformServiceFeeReturned: index ? 50 : 100 }] } }));
+    const after = (await ensureBookingDocuments(175, d)).documents;
+    for (const receipt of of(before, 'payment', 'chef')) expect(after.find(item => item.id === receipt.id)).toEqual(receipt);
+    const refunds = of(after, 'refund', 'chef');
+    expect(refunds).toHaveLength(2);
+    for (const refund of refunds) {
+      expect(refund.snapshot.meta.find(item => item.label === 'Visit date')?.value).toContain('Oct 20');
+      expect(refund.snapshot.meta.find(item => item.label === 'Booked time')?.value).toContain('10:00');
+    }
+  });
+
   it('renders the stored snapshot to identical bytes every time', async () => {
     const { documents } = await ensureBookingDocuments(175, deps(booking175, SETTLED));
     for (const doc of documents) {
