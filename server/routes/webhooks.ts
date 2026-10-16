@@ -149,6 +149,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
         if (expiredSession.metadata?.type === 'kitchen_booking' && expiredSession.metadata.hold_id) {
           const { releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
           await releaseKitchenCheckout(expiredSession.metadata.hold_id);
+          const { releaseInvitationCheckout } = await import('../services/kitchen-invitations');
+          await releaseInvitationCheckout(expiredSession.metadata.invitation_id, Number(expiredSession.metadata.invitation_version));
         }
         break;
       }

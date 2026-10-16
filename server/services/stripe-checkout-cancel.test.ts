@@ -62,7 +62,7 @@ describe('abandoned kitchen checkout', () => {
     stripeSessions.retrieve.mockResolvedValue({ status: 'open' });
     stripeSessions.expire.mockResolvedValue({ status: 'expired' });
     expect(await expireAbandonedCheckoutSession('cs_open')).toBe(true);
-    expect(stripeSessions.expire).toHaveBeenCalledWith('cs_open');
+    expect(stripeSessions.expire).toHaveBeenCalledWith('cs_open', { idempotencyKey: 'expire-checkout:cs_open' });
   });
 
   it('keeps inventory reserved when payment completed first', async () => {

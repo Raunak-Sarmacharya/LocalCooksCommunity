@@ -852,7 +852,7 @@ export default function NotificationCenter({
           )} />
           {unreadCount > 0 && (
             <Badge 
-              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500 animate-in fade-in zoom-in duration-200 rounded-full"
+              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-600 text-white hover:bg-red-600 animate-in fade-in zoom-in duration-200 rounded-full"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>

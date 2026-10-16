@@ -302,7 +302,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
           note: typeof metadata.note === 'string' ? metadata.note : null }) : undefined;
     const confirmedCopy = kind === 'confirmed' && !chef && !localCooks ? {
       title: tEmail(person.locale, 'ncConfirmedTitle', { chef: nameOf(context.chefId) || 'the chef', date: new Intl.DateTimeFormat(person.locale || 'en-CA', { dateStyle: 'medium', timeZone: 'UTC' }).format(context.bookingDate) }),
-      message: confirmation?.payoutAfterCloseout ? tEmail(person.locale, 'ncConfirmedPayout') : message } : undefined;
+      // An invitation is paid by the chef, not approved by the kitchen: say so.
+      message: [metadata.invitation ? tLocale(person.locale, 'invAcceptedManager', { ns: 'booking', chef: nameOf(context.chefId) || 'The chef' }) : '',
+        confirmation?.payoutAfterCloseout ? tEmail(person.locale, 'ncConfirmedPayout') : metadata.invitation ? '' : message].filter(Boolean).join(' ') } : undefined;
     const closedCopy = kind === 'visit_closed' && chef ? {
       title: tEmail(person.locale, 'ncVisitCompleteTitle', { kitchen: context.kitchenName }),
       message: closeoutClaim ? tLocale(person.locale, closeoutClaim.status === 'charge_succeeded' ? 'bnChefClaimPaid'
@@ -331,6 +333,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
       cancellation: metadata.cancellationNotice as CancellationNotice | undefined, addon: metadata.addonRemoval as AdminBookingFacts['addon'], requestExpired: metadata.requestExpired === true,
       requestOutcome: ['declined', 'withdrawn', 'support', 'replaced'].includes(String(metadata.requestOutcome)) ? metadata.requestOutcome as 'declined' | 'withdrawn' | 'support' | 'replaced' : undefined,
       replacesRef: typeof metadata.replacesRef === 'string' ? metadata.replacesRef : undefined,
+      invitation: metadata.invitation as AdminBookingFacts['invitation'],
       replacedByRef: (metadata.replacementNotice as ReplacementNotice | undefined)?.newRef,
       payoutCents: typeof metadata.amountCents === 'number' ? metadata.amountCents : undefined,
       holdReason: typeof metadata.holdReason === 'string' ? metadata.holdReason : null }) : undefined;

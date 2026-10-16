@@ -547,6 +547,66 @@ export const kitchenCheckoutHolds = pgTable("kitchen_checkout_holds", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const kitchenInvitations = pgTable("kitchen_invitations", {
+  id: text("id").primaryKey(),
+  workerId: serial("worker_id").notNull().unique(),
+  requestKey: text("request_key").notNull().unique(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "restrict" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "restrict" }).notNull(),
+  managerId: integer("manager_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  status: text("status").notNull().default("sent"),
+  version: integer("version").notNull().default(1),
+  replacesId: text("replaces_id").references((): AnyPgColumn => kitchenInvitations.id, { onDelete: "restrict" }),
+  date: text("date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  operatingWindowStartTime: text("operating_window_start_time").notNull(),
+  timezone: text("timezone").notNull(),
+  pricingMode: text("pricing_mode").notNull(),
+  selectedSlots: jsonb("selected_slots").notNull(),
+  listSubtotalCents: integer("list_subtotal_cents").notNull(),
+  offeredSubtotalCents: integer("offered_subtotal_cents").notNull(),
+  discountType: text("discount_type"),
+  discountValue: integer("discount_value"),
+  taxCents: integer("tax_cents").notNull(),
+  serviceFeeCents: integer("service_fee_cents").notNull(),
+  totalCents: integer("total_cents").notNull(),
+  managerEstimatedPayoutCents: integer("manager_estimated_payout_cents").notNull(),
+  cancellationPolicyHours: integer("cancellation_policy_hours").notNull(),
+  cancellationChargePercent: integer("cancellation_charge_percent").notNull(),
+  note: text("note"),
+  expiresInHours: integer("expires_in_hours").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+  expiryNotifiedAt: timestamp("expiry_notified_at", { withTimezone: true }),
+  holdId: text("hold_id"),
+  stripeSessionId: text("stripe_session_id").unique(),
+  // The SQL migration owns this FK to avoid a circular TypeScript table initializer.
+  bookingId: integer("booking_id"),
+  unavailableReason: text("unavailable_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  index("kitchen_invitations_manager_idx").on(table.managerId, table.createdAt),
+  index("kitchen_invitations_chef_idx").on(table.chefId, table.createdAt),
+  index("kitchen_invitations_expiry_idx").on(table.expiresAt, table.id),
+]);
+
+export const kitchenInvitationEvents = pgTable("kitchen_invitation_events", {
+  id: serial("id").primaryKey(),
+  invitationId: text("invitation_id").references(() => kitchenInvitations.id, { onDelete: "cascade" }).notNull(),
+  kind: text("kind").notNull(),
+  version: integer("version").notNull(),
+  actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorRole: text("actor_role"),
+  reason: text("reason"),
+  metadata: jsonb("metadata").default({}).notNull(),
+  noticeKey: text("notice_key").unique(),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [index("kitchen_invitation_events_invitation_idx").on(table.invitationId, table.id)]);
+
 // Session-bound checkout evidence survives expired inventory holds and missing bookings.
 export const kitchenCheckoutIncidents = pgTable("kitchen_checkout_incidents", {
   id: serial("id").primaryKey(),
@@ -578,6 +638,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   visitDuties: jsonb('visit_duties'), // v1 confirmation snapshot; null legacy captures at first action
   assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
+  invitationId: text("invitation_id").references(() => kitchenInvitations.id, { onDelete: "set null" }),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. KB-A7K9MX
   chefId: integer("chef_id").references(() => users.id, { onDelete: "restrict" }), // Nullable for external/third-party bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "restrict" }).notNull(),

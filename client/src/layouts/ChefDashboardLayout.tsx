@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
 import { Link } from "wouter"
 import { DamageClaimBookingHoldBanner } from '@/components/booking/DamageClaimCards'
+import { ChefInvitationsBanner } from '@/components/booking/ChefInvitationsBanner'
 import { findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
 import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
 import { SCROLL_AREA_FLUID_CONTENT } from "@/lib/scroll-area-classes"
@@ -136,6 +137,7 @@ export default function ChefDashboardLayout({
                             variant="outline"
                             className="relative h-9 w-9 sm:w-full justify-center sm:justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
                             onClick={() => setIsCommandOpen(true)}
+                            aria-label={t("shellSearch")}
                         >
                             <span className="hidden sm:inline-flex">{t("shellSearch")}</span>
                             <Command className="h-4 w-4 sm:hidden" />
@@ -168,6 +170,7 @@ export default function ChefDashboardLayout({
                 <main className="min-w-0 p-4 md:p-6 lg:p-8">
                     <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6">
                         <DamageClaimBookingHoldBanner />
+                        <ChefInvitationsBanner />
                         {children}
                     </div>
                 </main>

@@ -726,7 +726,8 @@ export default function ChefNotificationCenter({
           {unreadCount > 0 && (
             <Badge 
               variant="destructive"
-              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs animate-in fade-in zoom-in duration-200"
+              // red-600 keeps white digits at ≥ 4.5:1 contrast (red-500 was 3.6:1).
+              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-600 text-white hover:bg-red-600 animate-in fade-in zoom-in duration-200"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>

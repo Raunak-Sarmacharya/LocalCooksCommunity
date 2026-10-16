@@ -66,6 +66,8 @@ const KitchenCheckoutCancelPage = lazy(() => import("@/pages/KitchenCheckoutCanc
 const KitchenBookingPage = lazy(() => import("@/pages/KitchenBookingPage"));
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage"));
 const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
+const ManagerInvitationNewPage = lazy(() => import("@/pages/ManagerInvitationNewPage"));
+const ChefInvitationPage = lazy(() => import("@/pages/ChefInvitationPage"));
 const KitchenVisitPage = lazy(() => import("@/pages/KitchenVisitPage"));
 const ManagerInspectionPage = lazy(() => import("@/pages/ManagerInspectionPage"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
@@ -285,6 +287,9 @@ function Router() {
         <SubdomainRoute path="/booking/:id/visit" subdomain={subdomain}>
           <ProtectedRoute path="/booking/:id/visit" component={KitchenVisitPage} />
         </SubdomainRoute>
+        <SubdomainRoute path="/invitation/:id" subdomain={subdomain}>
+          <ProtectedRoute path="/invitation/:id" component={ChefInvitationPage} />
+        </SubdomainRoute>
         <SubdomainRoute path="/booking/:id" subdomain={subdomain}>
           <ProtectedRoute path="/booking/:id" component={BookingDetailsPage} />
         </SubdomainRoute>
@@ -391,6 +396,13 @@ function Router() {
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
               <ManagerInspectionPage />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
+        <Route path="/manager/invitations/new">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerInvitationNewPage />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

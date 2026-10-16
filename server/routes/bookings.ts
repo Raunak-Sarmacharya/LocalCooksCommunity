@@ -3142,6 +3142,7 @@ router.post("/chef/bookings/checkout/cancel", requireChef, async (req: Request, 
             const { expireAbandonedCheckoutSession } = await import('../services/stripe-checkout-service');
             if (!await expireAbandonedCheckoutSession(hold.stripeSessionId)) return false;
             await releaseKitchenCheckout(holdId);
+            await import('../services/kitchen-invitations').then(service => service.releaseInvitationCheckoutByHold(holdId));
             return true;
         });
         return released ? res.sendStatus(204) : res.status(409).json({ error: 'Checkout has completed or is still being prepared' });

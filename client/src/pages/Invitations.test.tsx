@@ -1,0 +1,117 @@
+vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
+vi.mock('@/layouts/ManagerBookingLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+vi.mock('@/layouts/ChefDashboardLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+vi.mock('@/layouts/chef-shell-context', () => ({ useChefShellChrome: () => false }));
+vi.mock('@/lib/api', () => ({ getAuthHeaders: async () => ({ Authorization: 'Bearer fixture' }) }));
+const route = { search: '?chefId=380&locationId=47', id: 'inv-1' };
+vi.mock('wouter', () => ({
+  Link: ({ href, children, ...rest }: any) => <a href={href} {...rest}>{children}</a>,
+  useSearch: () => route.search, useRoute: () => [true, { id: route.id }], useLocation: () => ['/', vi.fn()],
+}));
+import type React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import ManagerInvitationNewPage from './ManagerInvitationNewPage';
+import ChefInvitationPage from './ChefInvitationPage';
+import { ChefInvitationsBanner } from '@/components/booking/ChefInvitationsBanner';
+
+const pricing = { listSubtotalCents: 5000, offeredSubtotalCents: 4000, discount: { type: 'amount', value: 1000 }, taxCents: 600, serviceFeeCents: 280, totalCents: 4880, managerEstimatedPayoutCents: 4459 };
+const invitation = (over: Record<string, unknown> = {}) => ({ id: 'inv-1', version: 1, status: 'sent', kitchen: { id: 54, name: 'Harbour Kitchen', locationId: 47, locationName: 'Water St', photoUrl: null },
+  chef: null, date: '2026-10-27', startTime: '10:00', endTime: '12:00', timezone: 'America/St_Johns', pricing, note: 'Tuesday mornings are quiet.',
+  expiresAt: '2026-10-18T13:00:00Z', createdAt: '2026-10-16T13:00:00Z', bookingId: null, startAt: '2026-10-27T12:30:00.000Z',
+  canPay: true, canDecline: true, ...over });
+let routes: Array<[RegExp, unknown]>;
+const calls: Array<{ url: string; method: string; body?: any }> = [];
+beforeEach(() => {
+  calls.length = 0;
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    const hit = routes.find(([pattern]) => pattern.test(url));
+    return { ok: !!hit, json: async () => hit ? hit[1] : { error: 'not found' } };
+  }));
+});
+afterEach(() => vi.unstubAllGlobals());
+const mount = (node: React.ReactNode) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
+
+describe('kitchen: invite to book', () => {
+  it('previews the exact price the chef will see (list price struck through), then sends it once', async () => {
+    routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
+      [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
+      [/\/api\/manager\/invitations\?/, { invitations: [] }], [/\/api\/manager\/invitations$/, invitation()]];
+    mount(<ManagerInvitationNewPage />);
+    expect(await screen.findByRole('option', { name: 'Sam Chef' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-27' } });
+    fireEvent.click(screen.getByRole('radio', { name: '$ off' }));
+    fireEvent.change(screen.getByLabelText('Dollars off the kitchen time'), { target: { value: '10' } });
+    const preview = screen.getByTestId('invitation-preview');
+    await waitFor(() => expect(preview).toHaveTextContent('Sam Chef pays$48.80'));
+    expect(preview).toHaveTextContent('$50.00$40.00');
+    expect(preview).toHaveTextContent('You receive about$44.59');
+    const sent = calls.filter(call => call.url.includes('/preview')).at(-1)!.body;
+    expect(sent).toMatchObject({ chefId: 380, kitchenId: 54, date: '2026-10-27', startTime: '10:00', endTime: '12:00', expiresInHours: 48, discount: { type: 'amount', value: 1000 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    expect(await screen.findByTestId('invitation-sent')).toHaveTextContent('Invitation sent to Sam Chef');
+    expect(calls.filter(call => call.url.endsWith('/api/manager/invitations') && call.method === 'POST')).toHaveLength(1);
+  });
+  it('an unavailable time explains why and cannot be sent', async () => {
+    routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
+      [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
+      [/\/api\/manager\/invitations\?/, { invitations: [] }]];
+    mount(<ManagerInvitationNewPage />);
+    await screen.findByRole('option', { name: 'Sam Chef' });
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-27' } });
+    expect(await screen.findByText('Sam Chef already has a request for this time.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled();
+  });
+});
+
+describe('chef: an invitation', () => {
+  it('shows who, when, the note and the full price, and pays through checkout', async () => {
+    routes = [[/\/api\/chef\/invitations\/inv-1\/checkout/, { url: 'https://checkout.stripe.test/s' }], [/\/api\/chef\/invitations\/inv-1$/, invitation()]];
+    const assign = vi.fn(); vi.stubGlobal('location', { ...window.location, assign });
+    mount(<ChefInvitationPage />);
+    const page = await screen.findByTestId('chef-invitation');
+    expect(page).toHaveTextContent('Harbour Kitchen invited you to book');
+    expect(page).toHaveTextContent('Tuesday mornings are quiet.');
+    expect(page).toHaveTextContent('You save $10.00 on the kitchen time.');
+    expect(page).toHaveTextContent('your booking is confirmed as soon as you pay');
+    fireEvent.click(screen.getByRole('button', { name: 'Review and pay $48.80' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/s'));
+  });
+  it("adds the kitchen's rental equipment at its listed price and pays for it in the same checkout", async () => {
+    routes = [[/\/quote/, { subtotalCents: 6500, taxCents: 975, serviceFeeCents: 455, totalCents: 7930 }],
+      [/equipment-listings/, { rental: [{ id: 7, equipmentType: 'Convection oven', brand: 'Rational', sessionRate: 2500 }] }],
+      [/cancellation-policy/, { policy: { noticeHours: 24, lateChargePercent: 100 }, timezone: 'America/St_Johns' }],
+      [/\/checkout/, { url: 'https://checkout.stripe.test/s' }], [/\/api\/chef\/invitations\/inv-1$/, invitation()]];
+    const assign = vi.fn(); vi.stubGlobal('location', { ...window.location, assign });
+    mount(<ChefInvitationPage />);
+    fireEvent.click(await screen.findByRole('checkbox'));
+    const pay = await screen.findByRole('button', { name: 'Review and pay $79.30' });
+    expect(screen.getByTestId('chef-invitation')).toHaveTextContent('Rational Convection oven$25.00');
+    expect(calls.find(call => call.url.endsWith('/quote'))?.body).toEqual({ equipmentIds: [7] });
+    fireEvent.click(pay);
+    await waitFor(() => expect(calls.find(call => call.url.endsWith('/checkout'))?.body).toEqual({ equipmentIds: [7] }));
+  });
+  it('declines with an optional reason', async () => {
+    routes = [[/decline/, invitation({ status: 'declined' })], [/\/api\/chef\/invitations\/inv-1$/, invitation()]];
+    mount(<ChefInvitationPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Decline' }));
+    fireEvent.change(screen.getByLabelText('Tell Harbour Kitchen why (optional)'), { target: { value: 'Booked elsewhere.' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Decline' }).at(-1)!);
+    await waitFor(() => expect(calls.find(call => call.url.endsWith('/decline'))?.body).toEqual({ reason: 'Booked elsewhere.' }));
+  });
+  it('a closed invitation says why and offers another time', async () => {
+    routes = [[/\/api\/chef\/invitations\/inv-1$/, invitation({ status: 'withdrawn' })]];
+    mount(<ChefInvitationPage />);
+    expect(await screen.findByText('Harbour Kitchen withdrew this invitation.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Review and pay/ })).not.toBeInTheDocument();
+  });
+  it('the dashboard banner lists only open invitations', async () => {
+    routes = [[/\/api\/chef\/invitations$/, { invitations: [invitation(), invitation({ id: 'inv-2', status: 'expired' })] }]];
+    mount(<ChefInvitationsBanner />);
+    const banner = await screen.findByTestId('chef-invitations');
+    expect(banner).toHaveTextContent('Harbour Kitchen invited you to book Tue, Oct 27 at 10:00 a.m. · $48.80');
+    expect(screen.getAllByRole('link', { name: 'Review' })).toHaveLength(1);
+  });
+});

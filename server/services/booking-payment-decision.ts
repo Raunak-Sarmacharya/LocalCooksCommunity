@@ -1,7 +1,7 @@
 import { workerAfter, workerBatch, workerRecord, workerPageEnd } from './worker-context';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { kitchenBookings, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents, users, kitchens } from '@shared/schema';
+import { kitchenBookings, kitchenInvitations, storageBookings, equipmentBookings, paymentTransactions, bookingLifecycleEvents, users, kitchens } from '@shared/schema';
 import { approvedBookingCapture, bookingCaptureTerms, BookingTermsReviewRequired } from '@shared/booking-capture-terms';
 import { db } from '../db';
 import { capturePaymentIntent, cancelPaymentIntent, getBookingCheckoutSession, getBookingPaymentIntent } from './stripe-service';
@@ -307,7 +307,8 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
       decision!.target === 'confirmed' ? `The kitchen confirmed your booking. Arrival details will be in your booking.`
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
-      decision!.actorId, { decisionId: decision!.id,
+      decision!.actorId, { decisionId: decision!.id, ...(booking!.invitationId ? { invitation: (await tx.select({ listCents: kitchenInvitations.listSubtotalCents, offeredCents: kitchenInvitations.offeredSubtotalCents })
+        .from(kitchenInvitations).where(eq(kitchenInvitations.id, booking!.invitationId)).limit(1))[0] ?? {} } : {}),
         ...(replaced ? { recipientPolicy: 'chef', requestOutcome: 'replaced', replacementNotice: { variant: 'updated', oldRef: booking!.referenceCode ?? undefined,
           newRef: replaced.reference ?? undefined, holdCents: decision!.authorizedAmount, deadlineAt: replaced.deadlineAt,
           newBookingId: replaced.bookingId, newHoldCents: replaced.holdCents, next: replaced.next } } : {}),
@@ -317,7 +318,14 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     }
   });
   // The chef's receipt is issued from the captured payment row, after it committed (idempotent; never fails the decision).
-  if (decision.target === 'confirmed') await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(bookingId, 'booking_captured')).catch(() => undefined);
+  if (decision.target === 'confirmed') {
+    await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(bookingId, 'booking_captured')).catch(() => undefined);
+    const [confirmed] = await db.select({ invitationId: kitchenBookings.invitationId }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+    if (confirmed?.invitationId) {
+      const { recordFulfilledInvitation } = await import('./kitchen-invitations');
+      await recordFulfilledInvitation(confirmed.invitationId, bookingId);
+    }
+  }
   return { success: true, status: decision.target,
     authorizationVoided: decision.target === 'cancelled', recovered: false };
 }

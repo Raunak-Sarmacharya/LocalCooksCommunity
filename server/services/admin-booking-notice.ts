@@ -17,6 +17,7 @@ export type AdminBookingFacts = {
   chef: string; kitchen: string; reference: string; when: string; message: string; locale?: string | null;
   cancellation?: Cancellation; addon?: Addon; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support' | 'replaced'; payoutCents?: number;
   /** A new request that replaces an earlier one of the same chef ("Change request"). */ replacesRef?: string; replacedByRef?: string; holdReason?: string | null;
+  /** Paid through a kitchen's invitation: its kitchen-time price and the listed price. */ invitation?: { listCents?: number; offeredCents?: number };
 };
 
 export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { title: string; message: string } | undefined {
@@ -27,6 +28,7 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
     case 'requested':
       return { title: `New booking request · ${facts.chef}`, message: `${who}. The chef's card is on hold until the kitchen responds.${facts.replacesRef ? ` (replaces ${facts.replacesRef})` : ''}` };
     case 'confirmed':
+      if (facts.invitation) return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. Booked through the kitchen's invitation (kitchen time ${money(facts.invitation.offeredCents)}${facts.invitation.listCents && facts.invitation.listCents !== facts.invitation.offeredCents ? `, listed ${money(facts.invitation.listCents)}` : ''}); the chef paid and their card was charged.` };
       return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. The kitchen accepted and the chef's card was charged.` };
     case 'cancelled': {
       if (facts.requestExpired) return { title: `Request expired · ${facts.chef}`, message: `${who}. The kitchen didn't respond in time; the card hold was released.` };
