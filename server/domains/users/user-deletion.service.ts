@@ -59,6 +59,8 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "tour_repeat_authorizations", where: sql`granted_by = ${id} OR revoked_by = ${id} OR source_tour_id IN (${viewingIds}) OR used_by_tour_id IN (${viewingIds})` },
     { table: "damage_claims", where: sql`chef_id = ${id} OR manager_id = ${id} OR location_id IN (${locationIds}) OR kitchen_booking_id IN (${bookingIds}) OR storage_booking_id IN (${storageIds}) OR kitchen_booking_visit_id IN (SELECT id FROM kitchen_booking_visits WHERE booking_id IN (${bookingIds}))` },
     { table: "storage_overstay_records", where: sql`storage_booking_id IN (${storageIds})` },
+    // A rental term points at its payment. Remove the term first on a full purge; history keeps both.
+    { table: "storage_rental_terms", where: sql`rental_id IN (${storageIds}) OR payment_transaction_id IN (SELECT id FROM payment_transactions WHERE chef_id = ${id} OR manager_id = ${id} OR (booking_type IN ('kitchen', 'bundle') AND booking_id IN (${bookingIds})) OR (booking_type = 'storage' AND booking_id IN (${storageIds})) OR (booking_type = 'equipment' AND booking_id IN (${equipmentIds})))` },
     // booking_id on the payment ledger is polymorphic, not a foreign key.
     { table: "payment_transactions", where: sql`chef_id = ${id} OR manager_id = ${id} OR (booking_type IN ('kitchen', 'bundle') AND booking_id IN (${bookingIds})) OR (booking_type = 'storage' AND booking_id IN (${storageIds})) OR (booking_type = 'equipment' AND booking_id IN (${equipmentIds}))` },
     { table: "pending_storage_extensions", where: sql`manager_id = ${id} OR storage_booking_id IN (${storageIds})` },
@@ -88,6 +90,8 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "storage_listings", where: sql`kitchen_id IN (${kitchenIds})` },
     { table: "equipment_listings", where: sql`kitchen_id IN (${kitchenIds})` },
     { table: "kitchens", where: sql`id IN (${kitchenIds})` },
+    // Location-owned notes about this person. A full purge deletes them with the profiles; anonymizing keeps them.
+    { table: "customer_notes", where: sql`chef_id = ${id} OR location_id IN (${locationIds})` },
     { table: "locations", where: sql`id IN (${locationIds})` },
   ];
 }
@@ -100,7 +104,7 @@ export async function getUserDeletionImpact(tx: any, id: number): Promise<Record
 }
 
 /** Money and booking history is never purged by the account flow; it is kept and the identity is anonymized instead. */
-const HISTORY_TABLES = new Set(["payment_transactions", "damage_claims", "storage_bookings", "equipment_bookings", "storage_overstay_records", "kitchen_booking_visits"]);
+const HISTORY_TABLES = new Set(["payment_transactions", "damage_claims", "storage_bookings", "equipment_bookings", "storage_overstay_records", "kitchen_booking_visits", "storage_rental_terms"]);
 
 /** Run inside the user's deletion transaction. Migration 0071 is required. */
 export async function deleteUserDependents(tx: any, id: number, options: { keepHistory?: boolean } = {}): Promise<Record<string, number>> {
@@ -130,7 +134,8 @@ export async function deleteUserDependents(tx: any, id: number, options: { keepH
     ["portal_user_applications", "reviewed_by"], ["kitchen_viewings", "manager_id"],
     ["kitchen_viewings", "admin_reviewer_id"], ["kitchen_viewings", "outcome_recorded_by"],
     ["storage_listings", "approved_by"], ["storage_bookings", "checkout_approved_by"],
-    ["storage_bookings", "checkout_denied_by"], ["kitchen_bookings", "checkout_approved_by"],
+    ["storage_bookings", "checkout_denied_by"], ["storage_bookings", "decided_by"],
+    ["customer_notes", "author_id"], ["kitchen_bookings", "checkout_approved_by"],
     ["kitchen_booking_visits", "checkout_approved_by"], ["damage_claims", "resolved_by"],
     ["damage_claims", "admin_reviewer_id"], ["damage_claim_history", "action_by_user_id"],
     ["damage_evidence", "uploaded_by"], ["storage_overstay_history", "created_by"],
@@ -169,6 +174,7 @@ export async function anonymizeUserAccount(tx: any, id: number): Promise<{ archi
     email_verified_at = NULL, is_verified = false, manager_profile_data = '{}'::jsonb, updated_at = now() WHERE id = ${id}`);
   const emails = addresses.length ? sql.join(addresses.map(a => sql`${a}`), sql`, `) : sql`NULL`;
   // Every booking row stays, so only an invitation with no booking is still a live offer. A linked one stays with its booking.
+  // Notes stay too: they belong to the location, and this account row remains as the anonymized customer.
   const openInvitations = sql`(${invitationOwnership(id)}) AND booking_id IS NULL`;
   await clearInvitationReplacements(tx, openInvitations);
   const own: Array<{ table: string; where: SQL }> = [
