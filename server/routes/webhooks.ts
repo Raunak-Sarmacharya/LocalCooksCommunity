@@ -125,6 +125,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
       }
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
+        if ((event.data.object as Stripe.Checkout.Session).metadata?.type === 'storage_term') {
+          const { handleStorageTermWebhook } = await import('../services/storage-extensions');
+          await handleStorageTermWebhook(stripe, event.data.object as Stripe.Checkout.Session);
+          break;
+        }
         if ((event.data.object as Stripe.Checkout.Session).metadata?.type === 'storage_rental') {
           const { fulfillRentalCheckout } = await import('../services/storage-rentals');
           await fulfillRentalCheckout(event.data.object as Stripe.Checkout.Session);
@@ -142,6 +147,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
         break;
       case "checkout.session.expired": {
         const expiredSession = event.data.object as Stripe.Checkout.Session;
+        if (expiredSession.metadata?.type === 'storage_term') {
+          const { handleStorageTermWebhook } = await import('../services/storage-extensions');
+          await handleStorageTermWebhook(stripe, expiredSession);
+          break;
+        }
         if (expiredSession.metadata?.type === 'session_extension') {
           const { handleSessionExtensionCheckout } = await import('../services/session-extensions');
           await handleSessionExtensionCheckout(stripe, expiredSession);
@@ -161,18 +171,33 @@ router.post("/stripe", async (req: Request, res: Response) => {
         break;
       }
       case "payment_intent.succeeded":
+        if ((event.data.object as Stripe.PaymentIntent).metadata?.type === 'storage_term') {
+          const { handleStorageTermWebhook } = await import('../services/storage-extensions');
+          await handleStorageTermWebhook(stripe, event.data.object as Stripe.PaymentIntent);
+          break;
+        }
         await handlePaymentIntentSucceeded(
           event.data.object as Stripe.PaymentIntent,
           webhookEventId,
         );
         break;
       case "payment_intent.payment_failed":
+        if ((event.data.object as Stripe.PaymentIntent).metadata?.type === 'storage_term') {
+          const { handleStorageTermWebhook } = await import('../services/storage-extensions');
+          await handleStorageTermWebhook(stripe, event.data.object as Stripe.PaymentIntent);
+          break;
+        }
         await handlePaymentIntentFailed(
           event.data.object as Stripe.PaymentIntent,
           webhookEventId,
         );
         break;
       case "payment_intent.canceled":
+        if ((event.data.object as Stripe.PaymentIntent).metadata?.type === 'storage_term') {
+          const { handleStorageTermWebhook } = await import('../services/storage-extensions');
+          await handleStorageTermWebhook(stripe, event.data.object as Stripe.PaymentIntent);
+          break;
+        }
         if ((event.data.object as Stripe.PaymentIntent).metadata?.type === 'storage_rental') {
           const { rentalIntentCanceled } = await import('../services/storage-rentals');
           await rentalIntentCanceled(event.data.object as Stripe.PaymentIntent);
