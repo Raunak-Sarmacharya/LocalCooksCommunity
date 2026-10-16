@@ -1,4 +1,4 @@
-import { boolean, date, integer, smallint, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { boolean, customType, date, integer, smallint, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from 'drizzle-orm';
@@ -1426,6 +1426,10 @@ export const storageListings = pgTable("storage_listings", {
   overstayMaxPenaltyDays: integer("overstay_max_penalty_days"),
   overstayPolicyText: text("overstay_policy_text"), // Custom policy text shown to chefs
 
+  // Standalone storage rentals (migration 0093): identical units of this listing; NULL max = platform max
+  unitCount: integer("unit_count").default(1).notNull(),
+  maxTermDays: integer("max_term_days"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1583,8 +1587,11 @@ export type UpdateEquipmentListing = z.infer<typeof updateEquipmentListingSchema
 export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListingStatusSchema>;
 
 // ===== STORAGE BOOKINGS TABLE =====
-// CRITICAL: Storage can ONLY be booked as part of a kitchen booking (not standalone)
-// Must include kitchen_booking_id foreign key - no standalone storage booking endpoints
+// Legacy rows hang off a kitchen booking (kitchen_booking_id); storage-v1 rentals (migration 0093) are standalone and
+// driven by rental_state + paid_through. See shared/storage-rental.ts for the rules.
+
+/** Postgres daterange as its text form, e.g. '[2026-10-16,2026-10-22)'. */
+const dateRange = customType<{ data: string }>({ dataType: () => 'daterange' });
 
 export const bookingLifecycleEvents = pgTable('booking_lifecycle_events', {
   id: serial('id').primaryKey(),
@@ -1652,10 +1659,58 @@ export const storageBookings = pgTable("storage_bookings", {
   cancellationRequestReason: text("cancellation_request_reason"),
   cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
   cancellationAcceptedAt: timestamp('cancellation_accepted_at'),
-  
+
+  // Standalone rental (migration 0093). Dates are kitchen-local days; paid_through is inclusive.
+  rentalState: text("rental_state").$type<'requested' | 'declined' | 'expired' | 'withdrawn' | 'reserved' | 'active' | 'move_out_requested' | 'removal_review' | 'ended'>(),
+  endReason: text("end_reason").$type<'cleared' | 'auto_cleared' | 'claim' | 'cancelled' | 'kitchen_reclaim' | 'admin_ended' | 'unit_released' | 'legacy'>(),
+  unitIndex: integer("unit_index"),
+  termStart: date("term_start"),
+  paidThrough: date("paid_through"),
+  timezone: text("timezone"),
+  rentalTerms: jsonb("rental_terms"),
+  responseDeadline: timestamp("response_deadline", { withTimezone: true }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  decidedBy: integer("decided_by").references(() => users.id),
+  declineReason: text("decline_reason"),
+  handoverPhotoUrls: jsonb("handover_photo_urls").default([]).notNull(),
+  handoverAt: timestamp("handover_at", { withTimezone: true }),
+  reclaimEndOn: date("reclaim_end_on"),
+  reclaim: jsonb("reclaim"),
+  removalReview: jsonb("removal_review"),
+  releasedOn: date("released_on"),
+  needsCleaning: boolean("needs_cleaning").default(false).notNull(),
+  occupancy: dateRange("occupancy"),
+  reopenedFrom: timestamp("reopened_from", { withTimezone: true }),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/** One row per paid (or pending) storage term; a rental's paid days are the union of its paid terms. */
+export const storageRentalTerms = pgTable('storage_rental_terms', {
+  id: serial('id').primaryKey(),
+  rentalId: integer('rental_id').references(() => storageBookings.id, { onDelete: "restrict" }).notNull(),
+  seq: integer('seq').notNull(),
+  kind: text('kind').$type<'first' | 'extension'>().notNull(),
+  startsOn: date('starts_on').notNull(),
+  endsOn: date('ends_on').notNull(),
+  days: integer('days').notNull(),
+  dailyPriceCents: integer('daily_price_cents').notNull(),
+  subtotalCents: integer('subtotal_cents').notNull(),
+  taxCents: integer('tax_cents').notNull(),
+  serviceFeeCents: integer('service_fee_cents').notNull(),
+  totalCents: integer('total_cents').notNull(),
+  status: text('status').$type<'awaiting_payment' | 'authorized' | 'paid' | 'failed' | 'cancelled'>().notNull(),
+  requestKey: text('request_key').notNull().unique(),
+  operation: jsonb('operation'),
+  checkoutSessionId: text('checkout_session_id'),
+  paymentIntentId: text('payment_intent_id').unique(),
+  paymentTransactionId: integer('payment_transaction_id').references(() => paymentTransactions.id),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => [uniqueIndex('storage_rental_terms_rental_id_seq_key').on(table.rentalId, table.seq),
+  uniqueIndex('storage_terms_one_open').on(table.rentalId).where(sql`${table.status} IN ('awaiting_payment','authorized')`)]);
+export type StorageRentalTerm = typeof storageRentalTerms.$inferSelect;
 
 export const storageOverstayQuotes = pgTable('storage_overstay_quotes', {
   id: text('id').primaryKey(),
@@ -2727,6 +2782,7 @@ export const commitmentProblems = pgTable('commitment_problems', {
   kind: text('kind').notNull(), // live | schedule
   bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: "cascade" }),
   viewingId: integer('viewing_id').references(() => kitchenViewings.id, { onDelete: "cascade" }),
+  storageBookingId: integer('storage_booking_id').references(() => storageBookings.id),
   kitchenId: integer('kitchen_id').references(() => kitchens.id, { onDelete: "cascade" }),
   reportedBy: integer('reported_by').references(() => users.id, { onDelete: "cascade" }).notNull(),
   owner: text('owner').notNull().default('local_cooks'),
@@ -2766,7 +2822,9 @@ export type InsertEmailLog = typeof emailLogs.$inferInsert;
 
 export const supportActions = pgTable('support_actions', {
   id: serial('id').primaryKey(),
-  bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  // Exactly one of booking_id / storage_booking_id (migration 0093 CHECK).
+  bookingId: integer('booking_id').references(() => kitchenBookings.id),
+  storageBookingId: integer('storage_booking_id').references(() => storageBookings.id),
   caseRef: text('case_ref').notNull(), actionType: text('action_type').notNull(),
   actorUserId: integer('actor_user_id').references(() => users.id).notNull(),
   actingFor: text('acting_for').notNull(), requestSource: text('request_source').notNull(), sourceRef: text('source_ref'),
@@ -2781,13 +2839,17 @@ export const supportActions = pgTable('support_actions', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
 }, table => [index('support_actions_booking_idx').on(table.bookingId, table.id)]);
 export const bookingFlags = pgTable('booking_flags', {
-  id: serial('id').primaryKey(), bookingId: integer('booking_id').references(() => kitchenBookings.id).notNull(),
+  // Exactly one of booking_id / storage_booking_id (migration 0093 CHECK).
+  id: serial('id').primaryKey(), bookingId: integer('booking_id').references(() => kitchenBookings.id),
+  storageBookingId: integer('storage_booking_id').references(() => storageBookings.id),
   kind: text('kind').notNull(), providerRef: text('provider_ref'),
   openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }), resolvedBy: integer('resolved_by').references(() => users.id),
   note: text('note'),
 }, table => [index('booking_flags_booking_idx').on(table.bookingId),
-  uniqueIndex('booking_flags_provider_unique').on(table.bookingId, table.kind, table.providerRef).where(sql`${table.providerRef} IS NOT NULL`)]);
+  uniqueIndex('booking_flags_provider_unique').on(table.bookingId, table.kind, table.providerRef).where(sql`${table.providerRef} IS NOT NULL`),
+  uniqueIndex('booking_flags_storage_provider_unique').on(table.storageBookingId, table.kind, table.providerRef)
+    .where(sql`${table.providerRef} IS NOT NULL AND ${table.storageBookingId} IS NOT NULL`)]);
 
 export const tourDeliveryEvents = pgTable("tour_delivery_events", {
   id: serial("id").primaryKey(),

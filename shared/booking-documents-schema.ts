@@ -9,6 +9,8 @@ export const bookingDocuments = pgTable('booking_documents', {
   id: serial('id').primaryKey(),
   number: text('number').notNull(),
   bookingId: integer('booking_id').notNull(),
+  /** Which table booking_id points at (migration 0093); there is no FK. */
+  bookingType: text('booking_type').$type<'kitchen' | 'storage'>().default('kitchen').notNull(),
   kind: text('kind').$type<DocumentKind>().notNull(),
   audience: text('audience').$type<DocumentAudience>().notNull(),
   /** Idempotency key: payment:chef:<pi>, refund:chef:<re>, refund:manager:<re>, remittance:manager:<tr>, statement:<audience>:<booking>. */
