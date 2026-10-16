@@ -5,6 +5,7 @@ import { requireChef } from './middleware';
 import { ensureServerI18n, tLocale } from '../i18n';
 import { logger } from '../logger';
 import { createRentalCheckout, decideRental, listRentals, quoteRental, readRental, StorageRentalError, withdrawRental } from '../services/storage-rentals';
+import { payExtension, quoteExtension, syncStorageTerm } from '../services/storage-extensions';
 
 const router = Router();
 const id = z.coerce.number().int().positive().safe();
@@ -13,6 +14,9 @@ const checkout = details.extend({ requestKey: z.string().min(8).max(100).regex(/
   acceptedTermsVersion: z.string().max(50), cancellationPolicyVersion: z.number().int().positive(), disclosureVersion: z.string().max(50), quotedAt: z.string().datetime() });
 const approve = z.object({ unitIndex: z.number().int().min(1).max(200).optional() });
 const decline = z.object({ reason: z.string().trim().min(1).max(500) });
+const extensionQuote = z.object({ days: z.number().int().min(1).max(30) });
+const extensionPayment = extensionQuote.extend({ expectedTotalCents: z.number().int().nonnegative().safe(),
+  requestKey: z.string().min(8).max(100).regex(/^[a-zA-Z0-9_-]+$/), useSavedCard: z.boolean() });
 
 function endpoint(run: (req: Request) => Promise<unknown>) {
   return async (req: Request, res: Response) => {
@@ -33,6 +37,10 @@ router.post('/chef/storage-rentals/quote', endpoint(req => quoteRental(req.neonU
 router.post('/chef/storage-rentals', endpoint(req => createRentalCheckout(req.neonUser!.id, checkout.parse(req.body), undefined, undefined, req.neonUser!.preferredLocale ?? 'en-CA')));
 router.get('/chef/storage-rentals', endpoint(req => listRentals({ id: req.neonUser!.id, role: 'chef' })));
 router.get('/chef/storage-rentals/:id', endpoint(req => readRental(id.parse(req.params.id), { id: req.neonUser!.id, role: 'chef' })));
+router.post('/chef/storage-rentals/:id/extend/quote', endpoint(req => quoteExtension(id.parse(req.params.id), req.neonUser!.id, extensionQuote.parse(req.body).days)));
+router.post('/chef/storage-rentals/:id/extend', endpoint(req => payExtension(id.parse(req.params.id), req.neonUser!.id,
+  extensionPayment.parse(req.body), undefined, undefined, req.neonUser!.preferredLocale ?? 'en-CA')));
+router.post('/chef/storage-rentals/:id/extend/:termId/sync', endpoint(req => syncStorageTerm(id.parse(req.params.id), id.parse(req.params.termId), req.neonUser!.id)));
 router.post('/chef/storage-rentals/:id/withdraw', endpoint(async req => {
   const rentalId = id.parse(req.params.id);
   await withdrawRental(rentalId, req.neonUser!.id);

@@ -5,7 +5,7 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['shared/storage-rental.pglite.check.ts', 'server/services/storage-rentals.test.ts'],
+    include: ['shared/storage-rental.pglite.check.ts', 'server/services/storage-rentals.test.ts', 'server/services/storage-extensions.test.ts'],
     testTimeout: 60000,
     hookTimeout: 120000,
   },
