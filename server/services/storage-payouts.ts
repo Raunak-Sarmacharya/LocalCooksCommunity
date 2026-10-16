@@ -57,7 +57,10 @@ export function storageClearedAt(rental: Pick<Rental, 'endReason' | 'checkoutApp
 /** Pure: the term's payout date and the hold that stops it. */
 export function storageTermPayout(term: Pick<Term, 'endsOn' | 'paidAt'>, rental: Parameters<typeof storageClearedAt>[0], facts: StoragePayoutFacts) {
   if (!term.paidAt || !rental.timezone) throw Error('A paid term with a timezone is required for its payout.');
-  const eligibleAt = termPayoutEligibleAt({ endsOn: term.endsOn, paidAt: term.paidAt }, { timezone: rental.timezone, clearedAt: storageClearedAt(rental) });
+  const termDate = termPayoutEligibleAt({ endsOn: term.endsOn, paidAt: term.paidAt }, { timezone: rental.timezone, clearedAt: storageClearedAt(rental) });
+  // A term ending during move-out review must leave the kitchen its full damage-claim window.
+  const claimWindowEnd = rental.endReason !== 'cleared' && rental.checkoutRequestedAt ? rental.checkoutRequestedAt.getTime() + CLAIM_WINDOW_MS : 0;
+  const eligibleAt = new Date(Math.max(termDate.getTime(), claimWindowEnd));
   const holdReason: StorageHoldReason | null = facts.openFlag ? 'support_flag' : facts.openClaim ? 'damage_claim' : facts.openProblem ? 'reported_issue' : null;
   return { eligibleAt, holdReason };
 }
@@ -103,8 +106,9 @@ export async function scheduleStorageTermPayout(rentalId: number, tx: Tx, now = 
 
 /** Re-checked by the transfer engine under its source lock (signature kept from the WP-ST4 stub). */
 export async function storageTermStillEligible(rentalId: number, reader: Reader): Promise<boolean> {
-  const [rental] = await reader.select({ state: storageBookings.rentalState }).from(storageBookings).where(eq(storageBookings.id, rentalId));
-  if (!rental?.state || UNAPPROVED.includes(rental.state)) return false;
+  const [rental] = await reader.select().from(storageBookings).where(eq(storageBookings.id, rentalId));
+  if (!rental?.rentalState || UNAPPROVED.includes(rental.rentalState)) return false;
+  if (rental.endReason !== 'cleared' && rental.checkoutRequestedAt && Date.now() < rental.checkoutRequestedAt.getTime() + CLAIM_WINDOW_MS) return false;
   const facts = await storageTermPayoutFacts(rentalId, reader);
   return !facts.openFlag && !facts.openClaim && !facts.openProblem;
 }
@@ -123,6 +127,7 @@ export async function releaseStorageTermPayout(paymentTransactionId: number, rea
     const { source, term } = row;
     if (source.transferId) return { result: { success: true, transferred: true, transferId: source.transferId, reason: 'Already sent' } };
     if (meta(source).payoutNoEntitlement) return { result: { success: true, notApplicable: true, reason: 'No kitchen share is owed' } };
+    if (!rental.rentalState || UNAPPROVED.includes(rental.rentalState)) return { result: { success: false, deferred: true, reason: 'The rental is not approved' } };
     if (!CAPTURED.includes(source.status) || !term.paidAt) return { result: { success: false, deferred: true, reason: 'Payment is not captured' } };
     const { eligibleAt, holdReason } = await saveTermEligibility(tx, rental, source, term, await storageTermPayoutFacts(rental.id, tx), now);
     if (holdReason) return { result: { success: false, deferred: true, reason: `On hold: ${holdReason}` } };
@@ -133,7 +138,7 @@ export async function releaseStorageTermPayout(paymentTransactionId: number, rea
       || saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded')
       return { result: { success: false, deferred: true, reason: 'A refund needs review before the payout' } };
     const [released] = await tx.update(paymentTransactions).set({ payoutReleasedAt: source.payoutReleasedAt || now, payoutHoldReason: null, updatedAt: now,
-      metadata: { ...saved, payoutRelease: { reason: saved.payoutRelease?.reason || reason, decidedAt: saved.payoutRelease?.decidedAt || now.toISOString() } } })
+      metadata: sql`COALESCE(${paymentTransactions.metadata}, '{}'::jsonb) || ${JSON.stringify({ payoutRelease: { reason: saved.payoutRelease?.reason || reason, decidedAt: saved.payoutRelease?.decidedAt || now.toISOString() } })}::jsonb` })
       .where(eq(paymentTransactions.id, source.id)).returning();
     return { source: released };
   });
@@ -180,7 +185,7 @@ export async function releaseDueStoragePayouts(limit = 3, now = new Date()) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Payout batch must be between one and three.');
   const pending = and(eq(paymentTransactions.payoutTiming, 'storage_term'), isNull(paymentTransactions.transferId),
     inArray(paymentTransactions.status, CAPTURED), sql`COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`);
-  const rows = await db.select({ id: paymentTransactions.id }).from(paymentTransactions).where(and(pending, workerAfter('storagePayouts', paymentTransactions.id),
+  const rows = await db.select({ id: paymentTransactions.id, eligibleAt: paymentTransactions.payoutEligibleAt }).from(paymentTransactions).where(and(pending, workerAfter('storagePayouts', paymentTransactions.id),
     or(lte(paymentTransactions.payoutEligibleAt, now), isNotNull(paymentTransactions.payoutReleasedAt),
       sql`EXISTS (SELECT 1 FROM storage_bookings s WHERE s.id = ${paymentTransactions.bookingId} AND s.end_reason IN ('cleared', 'auto_cleared', 'claim'))`)))
     .orderBy(asc(paymentTransactions.id)).limit(limit);
@@ -194,15 +199,22 @@ export async function releaseDueStoragePayouts(limit = 3, now = new Date()) {
       errors++; logger.error('[StoragePayout] Release needs Local Cooks review; it will retry', { transactionId: row.id, error });
     }
   }
-  const overdue = await db.select({ id: paymentTransactions.id }).from(paymentTransactions).where(and(pending,
-    lte(paymentTransactions.payoutEligibleAt, new Date(now.getTime() - PAYOUT_HOLD_ALERT_DAYS * 86400000)),
-    sql`NOT (COALESCE(${paymentTransactions.metadata}, '{}'::jsonb) ? 'payoutOverdueAlertedAt')`)).orderBy(asc(paymentTransactions.id)).limit(limit);
+  // Alert only this page's rentals so the whole task stays within its three-item worker budget.
+  const overdue = rows.filter(row => row.eligibleAt && now.getTime() - row.eligibleAt.getTime() >= PAYOUT_HOLD_ALERT_DAYS * 86400000);
+  let alerted = 0;
   for (const { id } of overdue) await db.transaction(async tx => {
+    const [peek] = await tx.select({ rentalId: paymentTransactions.bookingId }).from(paymentTransactions).where(eq(paymentTransactions.id, id));
+    const [rental] = await tx.select().from(storageBookings).where(eq(storageBookings.id, peek.rentalId)).for('update');
     const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, id)).for('update');
     if (!source || source.transferId || meta(source).payoutOverdueAlertedAt) return;
-    await tx.update(paymentTransactions).set({ metadata: { ...meta(source), payoutOverdueAlertedAt: now.toISOString() } }).where(eq(paymentTransactions.id, id));
+    const row = (await termRows(source.bookingId, tx)).find(item => item.source.id === id);
+    if (!row || !rental?.timezone || !row.term.paidAt) return;
+    const { eligibleAt } = await saveTermEligibility(tx, rental, source, row.term, await storageTermPayoutFacts(rental.id, tx), now);
+    if (now.getTime() - eligibleAt.getTime() < PAYOUT_HOLD_ALERT_DAYS * 86400000) return;
+    await tx.update(paymentTransactions).set({ metadata: sql`COALESCE(${paymentTransactions.metadata}, '{}'::jsonb) || ${JSON.stringify({ payoutOverdueAlertedAt: now.toISOString() })}::jsonb` }).where(eq(paymentTransactions.id, id));
     await queueStorageRentalNotice(tx, source.bookingId, 'payout_overdue', { eventKey: `payment:${id}`, amountCents: expectedStoragePayoutCents(source),
-      payoutDate: source.payoutEligibleAt!, holdReason: `Not paid ${PAYOUT_HOLD_ALERT_DAYS} days after it was due${source.payoutHoldReason ? ` (on hold: ${source.payoutHoldReason.replace(/_/g, ' ')})` : ''}. Check the hold or the kitchen's payment setup.` });
+      payoutDate: eligibleAt, holdReason: `Not paid ${PAYOUT_HOLD_ALERT_DAYS} days after it was due${source.payoutHoldReason ? ` (on hold: ${source.payoutHoldReason.replace(/_/g, ' ')})` : ''}. Check the hold or the kitchen's payment setup.` });
+    alerted++;
   });
-  return { processed: rows.length, released, errors, alerted: overdue.length };
+  return { processed: rows.length, released, errors, alerted };
 }

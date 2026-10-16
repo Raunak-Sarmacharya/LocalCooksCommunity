@@ -11,7 +11,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { paymentTransactions, storageBookings, storageRentalTerms } from '@shared/schema';
-import { beforeStartRefund, unusedRefundSplit } from '@shared/storage-rental';
+import { addDays, beforeStartRefund, localDayStart, unusedRefundSplit } from '@shared/storage-rental';
 import { cancellationSourceQuote } from '@shared/cancellation-refund';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { assertBookingMoneyWritable } from './booking-money-guard';
@@ -31,41 +31,43 @@ export class StorageRefundError extends Error { constructor(public code: string,
 
 /** Pure: what each paid term's payment row refunds and who funds it, before the per-source ceilings. */
 export function storageRefundShares(terms: Array<{ id: number; startsOn: string; endsOn: string; days: number; subtotalCents: number; taxCents: number;
-  serviceFeeCents: number; totalCents: number; paidAt: Date | null; processingFeeCents: number | null; refundedCents: number; remainingKitchenCents: number }>,
+  serviceFeeCents: number; totalCents: number; paidAt: Date | null; processingFeeCents: number | null; refundedCents: number; remainingKitchenCents: number; kitchenDebitedCents?: number; platformReturnedCents?: number }>,
   input: Pick<StorageRefundInput, 'cause' | 'fromDate' | 'amountCents' | 'now'> & { snapshot?: CancellationPolicySnapshot; approvedAt?: Date | null }) {
   const shares = new Map<number, Share>();
   const add = (id: number, share: Share) => share.customer > 0 && shares.set(id, share);
   if (input.cause === 'kitchen' || input.cause === 'local_cooks') {
     if (!input.fromDate) throw new StorageRefundError('invalid_details', 400);
+    try { addDays(input.fromDate, 0); } catch { throw new StorageRefundError('invalid_details', 400); }
     for (const part of unusedRefundSplit(terms, input.fromDate)) add(part.termId, input.cause === 'kitchen'
       ? { customer: part.customer, managerDebited: part.managerDebited, feeReturned: part.platformServiceFeeReturned, goodwill: 0, processing: 0 }
       : { customer: part.customer, managerDebited: 0, feeReturned: part.platformServiceFeeReturned, goodwill: part.managerDebited, processing: 0 });
   } else if (input.cause === 'before_start') {
-    if (!input.snapshot || !input.approvedAt) throw new StorageRefundError('not_cancellable');
+    if (!input.snapshot || !input.approvedAt || !input.snapshot.sessions[0]?.startAt
+      || (input.now ?? new Date()).getTime() >= new Date(input.snapshot.sessions[0].startAt).getTime()) throw new StorageRefundError('not_cancellable');
     for (const term of terms) {
       const quote = beforeStartRefund(input.snapshot, { cancelAt: input.now ?? new Date(), approvedAt: input.approvedAt, term, processingFeeCents: term.processingFeeCents,
-        alreadyRefundedCents: term.refundedCents });
+        alreadyRefundedCents: term.refundedCents, alreadyKitchenRefundedCents: term.kitchenDebitedCents, alreadyPlatformRefundedCents: term.platformReturnedCents });
       if (!quote.quoteReady) throw new StorageRefundError('fee_pending');
       add(term.id, { customer: quote.chefRefundCents, managerDebited: quote.kitchenRefundCents, feeReturned: quote.platformRefundCents, goodwill: 0, processing: 0 });
     }
-  } else {
+  } else if (input.cause === 'goodwill_kitchen' || input.cause === 'goodwill_lc') {
     let left = input.amountCents ?? 0;
     if (!Number.isSafeInteger(left) || left <= 0) throw new StorageRefundError('invalid_details', 400);
     for (const term of [...terms].sort((a, b) => (a.startsOn < b.startsOn ? 1 : -1))) {
-      const room = input.cause === 'goodwill_kitchen' ? term.remainingKitchenCents : term.totalCents - term.refundedCents;
+      const room = input.cause === 'goodwill_kitchen' ? Math.min(term.remainingKitchenCents, term.totalCents - term.refundedCents) : term.totalCents - term.refundedCents;
       const take = Math.min(left, Math.max(0, room));
       left -= take;
       add(term.id, input.cause === 'goodwill_kitchen' ? { customer: take, managerDebited: take, feeReturned: 0, goodwill: 0, processing: 0 }
         : { customer: take, managerDebited: 0, feeReturned: 0, goodwill: take, processing: 0 });
     }
     if (left > 0) throw new StorageRefundError('refund_too_large');
-  }
+  } else throw new StorageRefundError('invalid_details', 400);
   return shares;
 }
 
 /** Plans (provider reads first), reserves under the rental lock, then sends every reserved refund. */
 export async function refundRentalUnused(rentalId: number, input: StorageRefundInput) {
-  if (!/^[\w:-]{1,128}$/.test(input.operationKey)) throw new StorageRefundError('invalid_details', 400);
+  if (!Number.isSafeInteger(input.actorId) || input.actorId <= 0 || !/^[\w:-]{1,128}$/.test(input.operationKey)) throw new StorageRefundError('invalid_details', 400);
   const opId = (sourceId: number) => `storage-refund-${rentalId}-${sourceId}-${input.operationKey}`;
   const [rental] = await db.select().from(storageBookings).where(eq(storageBookings.id, rentalId));
   if (!rental?.rentalTerms) throw new StorageRefundError('not_found', 404);
@@ -73,7 +75,12 @@ export async function refundRentalUnused(rentalId: number, input: StorageRefundI
     .innerJoin(paymentTransactions, eq(paymentTransactions.id, storageRentalTerms.paymentTransactionId))
     .where(and(eq(storageRentalTerms.rentalId, rentalId), eq(storageRentalTerms.status, 'paid'), inArray(paymentTransactions.status, [...CAPTURED, 'refunded'])))
     .orderBy(desc(storageRentalTerms.startsOn));
-  const resumed = rows.some(row => meta(row.source).cancellationRefundOperation?.id === opId(row.source.id));
+  const fingerprint = JSON.stringify({ cause: input.cause, fromDate: input.fromDate ?? null, amountCents: input.amountCents ?? null });
+  const matchingOperation = (source: Source) => [meta(source).cancellationRefundOperation, ...(meta(source).cancellationRefundOperations || [])]
+    .find(operation => operation?.id === opId(source.id));
+  const resumed = rows.some(row => matchingOperation(row.source));
+  if (rows.some(row => { const operation = matchingOperation(row.source); return operation && operation.requestFingerprint !== fingerprint; }))
+    throw new StorageRefundError('operation_changed');
   if (!resumed) {
     const facts = new Map<number, Awaited<ReturnType<typeof getCancellationPaymentFacts>>>();
     const money = new Map<number, ReturnType<typeof cancellationSourceQuote>>();
@@ -84,11 +91,25 @@ export async function refundRentalUnused(rentalId: number, input: StorageRefundI
     }
     const shares = storageRefundShares(rows.filter(row => money.has(row.source.id)).map(({ term, source }) => ({ ...term,
       processingFeeCents: facts.get(source.id)!.processingCost, refundedCents: money.get(source.id)!.alreadyRefunded,
-      remainingKitchenCents: money.get(source.id)!.managerRefund })), { ...input, snapshot: (rental.rentalTerms as { cancellationPolicySnapshot?: CancellationPolicySnapshot }).cancellationPolicySnapshot,
+      remainingKitchenCents: money.get(source.id)!.managerRefund,
+      kitchenDebitedCents: money.get(source.id)!.receipts.reduce((sum, receipt) => sum + receipt.managerDebited, 0),
+      platformReturnedCents: money.get(source.id)!.receipts.reduce((sum, receipt) => sum + receipt.platformServiceFeeReturned, 0) })), { ...input, snapshot: (rental.rentalTerms as { cancellationPolicySnapshot?: CancellationPolicySnapshot }).cancellationPolicySnapshot,
       approvedAt: rental.approvedAt });
     if (!shares.size) throw new StorageRefundError('nothing_to_refund');
     await db.transaction(async tx => {
-      await tx.select({ id: storageBookings.id }).from(storageBookings).where(eq(storageBookings.id, rentalId)).for('update');
+      const [lockedRental] = await tx.select().from(storageBookings).where(eq(storageBookings.id, rentalId)).for('update');
+      if (input.cause === 'before_start' && (!lockedRental.termStart || !lockedRental.timezone || (input.now ?? new Date()) >= localDayStart(lockedRental.termStart, lockedRental.timezone)))
+        throw new StorageRefundError('not_cancellable');
+      // A rental-wide reservation prevents a second request interleaving refunds across different terms.
+      const lockedSources = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingType, 'storage'), eq(paymentTransactions.bookingId, rentalId)))
+        .orderBy(desc(paymentTransactions.id)).for('update');
+      for (const source of lockedSources) {
+        const current = meta(source).cancellationRefundOperation, previous = matchingOperation(source);
+        if (previous && previous.requestFingerprint !== fingerprint) throw new StorageRefundError('operation_changed');
+        if (current && current.status !== 'succeeded' && current.id !== opId(source.id) || meta(source).refundRecovery && meta(source).refundRecovery.status !== 'succeeded')
+          throw new StorageRefundError('refund_pending');
+      }
+      if (lockedSources.some(source => matchingOperation(source))) return;
       await assertBookingMoneyWritable({ storageRentalId: rentalId, operationKey: input.operationKey }, tx);
       for (const { term, source: planned } of rows) {
         const share = shares.get(term.id);
@@ -106,7 +127,7 @@ export async function refundRentalUnused(rentalId: number, input: StorageRefundI
         const goodwill = Math.min(share.goodwill, customer - managerDebited - feeReturned);
         const processing = customer - managerDebited - feeReturned - goodwill;
         if (customer <= 0) continue;
-        const operation = { id: opId(source.id), storageRentalId: rentalId, cause: input.cause, actorId: input.actorId, managerId: source.managerId,
+        const operation = { id: opId(source.id), requestFingerprint: fingerprint, storageRentalId: rentalId, cause: input.cause, actorId: input.actorId, managerId: source.managerId,
           intentId: source.paymentIntentId, termId: term.id, customerRefund: customer, managerRefund: managerDebited, platformRefund: feeReturned,
           platformGoodwillCents: goodwill, platformProcessingCostCents: processing, status: 'pending', acceptedAt: (input.now ?? new Date()).toISOString() };
         await tx.update(paymentTransactions).set({ stripeProcessingFee: String(m.processingCost), updatedAt: new Date(), metadata: { ...saved, refunds: m.receipts,
@@ -125,8 +146,8 @@ export async function refundRentalUnused(rentalId: number, input: StorageRefundI
 /** Provider work for one reserved row; the funding decision is persisted before any money moves. */
 async function sendReservedStorageRefund(sourceId: number, operationId: string, supportOperationKey: string) {
   let [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.id, sourceId));
-  let operation = meta(source).cancellationRefundOperation;
-  if (operation?.id !== operationId) return [];
+  let operation = [meta(source).cancellationRefundOperation, ...(meta(source).cancellationRefundOperations || [])].find(item => item?.id === operationId);
+  if (!operation) return [];
   if (operation.status === 'succeeded') return [{ sourceId, status: 'succeeded', customerRefund: operation.customerRefund, kitchenDebtCents: operation.kitchenDebtCents || 0 }];
   try {
     const send = (reverseTransferAmount: number) => reverseTransferAndRefund(operation.intentId, operation.customerRefund, 'requested_by_customer', {

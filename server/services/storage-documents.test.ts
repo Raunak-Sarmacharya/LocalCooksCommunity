@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('../db', () => ({ db: {} }));
+const h = vi.hoisted(() => ({ selects: [] as any[], execute: vi.fn() }));
+vi.mock('../db', () => ({ db: {
+  select: () => { let table: any; const query: any = { from: (value: any) => { table = value; return query; }, innerJoin: () => query,
+    where: (condition: any) => { h.selects.push(condition); return query; }, orderBy: () => query, limit: () => query,
+    then: (resolve: any) => resolve(table[Symbol.for('drizzle:Name')] === 'storage_bookings'
+      ? [{ id: 7, chefId: null, referenceCode: 'SB-7', termStart: '2026-10-17', timezone: 'America/St_Johns', listingName: 'Shelf', kitchenName: 'Harbour' }] : []) }; return query; },
+  execute: h.execute
+} }));
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Sam' }));
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { deriveStorageMoney, ensureStorageDocuments, type DocumentStore, type StoredDocument } from './booking-documents';
 
 const booking = { bookingId: 7, reference: 'SB-7', kitchenName: 'Harbour', locationName: null, locationAddress: null, timezone: 'America/St_Johns',
@@ -24,4 +33,24 @@ describe('storage documents', () => {
       ['storage:remittance:manager:tr_1', 2167]]);
     expect(JSON.stringify(stored.find(doc => doc.kind === 'remittance')!.snapshot)).toContain('Card processing');
   });
+  it('uses storage rows and the storage document store with the production defaults', async () => {
+    h.selects = []; h.execute.mockResolvedValue({ rows: [] });
+    await ensureStorageDocuments(7);
+    const conditions = h.selects.map(condition => new PgDialect().sqlToQuery(condition));
+    expect(conditions.some(condition => condition.sql.includes('booking_type') && condition.params.includes('storage'))).toBe(true);
+    expect(conditions.some(condition => condition.params.includes('kitchen'))).toBe(false);
+  });
+  it.each([0, 1150])('issues a kitchen refund receipt only for a verified reversal (%i cents)', async reversedCents => {
+    const paidRows = { ...rows, terms: [{ ...rows.terms[0], payment: payment({
+      payoutTransfers: { tr_1: { originalAmountCents: 3317, reversedCents, refunds: { re_1: { amountCents: reversedCents } } } },
+      metadata: { refunds: [{ id: 're_1', customerReceived: 1183, managerDebited: 1150, platformServiceFeeReturned: 33 }], payoutSent: { amountCents: 3317 } }
+    }) }] };
+    const stored: StoredDocument[] = [];
+    const store: DocumentStore = { locked: (_id, fn) => fn(store), list: async () => [...stored], nextSequence: async () => stored.length + 1,
+      insert: async doc => { const row = { ...doc, id: stored.length + 1 }; stored.push(row); return row; } };
+    await ensureStorageDocuments(7, { store, loadRows: async () => paidRows, cardLookup: async () => null, taxNumber: async () => null, now: () => new Date() });
+    expect(stored.find(doc => doc.kind === 'remittance')!.amountCents).toBe(3317);
+    expect(stored.filter(doc => doc.kind === 'refund' && doc.audience === 'manager').map(doc => doc.amountCents)).toEqual(reversedCents ? [-1150] : []);
+  });
+
 });

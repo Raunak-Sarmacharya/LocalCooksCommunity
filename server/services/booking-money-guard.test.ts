@@ -3,7 +3,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 vi.mock('../db', () => ({ db: { execute: vi.fn() } }));
 import { assertBookingMoneyWritable } from './booking-money-guard';
 describe('booking money freeze lookup', () => {
-  it.each([{ bookingId: 4 }, { paymentIntentId: 'pi_one' }, { paymentTransactionId: 9 }, { transferId: 'tr_one' }])('refuses open flags for %j', async target => {
+  it.each([{ storageRentalId: 7 }, { bookingId: 4 }, { paymentIntentId: 'pi_one' }, { paymentTransactionId: 9 }, { transferId: 'tr_one' }])('refuses open flags for %j', async target => {
     const connection = { execute: vi.fn().mockResolvedValue({ rows: [{ id: 1 }] }) };
     await expect(assertBookingMoneyWritable(target, connection as any)).rejects.toThrow('paused');
     const query = new PgDialect().sqlToQuery(connection.execute.mock.calls[0][0]);

@@ -32,7 +32,7 @@ export async function assertBookingMoneyWritable(target: {
       AND NOT (${target.payout === true} AND f.kind = 'chargeback')
     UNION ALL SELECT a.id FROM support_actions a WHERE (a.booking_id IN (SELECT booking_id FROM linked_bookings)
         OR a.storage_booking_id IN (SELECT storage_booking_id FROM linked_storage))
-      AND a.status IN ('executing','recovery_required') AND a.action_type IN ('goodwill_refund','cancel_kitchen_caused','refund_captured_request','accept_cancellation_for_manager','claim_compensate','claim_withdraw','retry_refund','mark_refunded')
+      AND a.status IN ('executing','recovery_required') AND a.action_type IN ('goodwill_refund','cancel_kitchen_caused','refund_captured_request','accept_cancellation_for_manager','claim_compensate','claim_withdraw','retry_refund','mark_refunded','end_rental')
       AND (a.action_type NOT IN ('retry_refund','mark_refunded') OR a.status = 'executing')
       AND a.operation_key <> COALESCE(${target.operationKey ?? null}, '')
     UNION ALL SELECT c.booking_id FROM kitchen_booking_changes c

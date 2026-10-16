@@ -7,7 +7,7 @@ import * as schema from '@shared/schema';
 
 // Real payout service, refund module, money guard, support flags and transfer engine on in-memory Postgres; Stripe is simulated.
 const h = vi.hoisted(() => ({ db: null as any, notices: vi.fn(), refunds: [] as any[], amountRefunded: 0, transfer: null as any, insufficient: false,
-  createTransfer: vi.fn(), reverse: vi.fn() }));
+  createTransfer: vi.fn(), reverse: vi.fn(), lostRefundResponse: false }));
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => typeof h.db[key] === 'function' ? h.db[key].bind(h.db) : h.db[key] }) }));
 vi.mock('./storage-rental-notices', () => ({ queueStorageRentalNotice: h.notices }));
 vi.mock('./booking-documents', () => ({ issueStorageDocumentsSafely: vi.fn(), issueBookingDocumentsSafely: vi.fn() }));
@@ -26,18 +26,21 @@ vi.mock('./stripe-service', () => ({
   getCancellationPaymentFacts: async () => ({ captured: 3550, processingCost: 133, currency: 'cad', chargeId: 'ch_1', refunded: h.amountRefunded, refunds: h.refunds }),
   getCancellationReversalEvidence: async () => [],
   reverseTransferAndRefund: async (intentId: string, amount: number, _reason: string, options: any) => {
+    const existing = h.refunds.find(refund => refund.metadata.refund_operation_id === options.idempotencyKey);
+    if (existing) return { refundId: existing.id };
     h.reverse(options.reverseTransferAmount);
     if (h.transfer && options.reverseTransferAmount > 0 && h.insufficient) throw Error('Failed to reverse transfer and refund: The kitchen transfer reversal has insufficient balance.');
     const refund = { id: `re_${h.refunds.length + 1}`, amount, status: 'succeeded', currency: 'cad', charge: 'ch_1', payment_intent: intentId,
       metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
     h.refunds.push(refund); h.amountRefunded += amount;
+    if (h.lostRefundResponse) throw Error('Provider response lost');
     return { refundId: refund.id };
   } }));
 
 import { releaseDueStoragePayouts, releaseStorageTermPayout, scheduleStorageTermPayout, storageTermPayout } from './storage-payouts';
 import { refundRentalUnused, storageRefundShares } from './storage-rental-money';
 import { assertBookingMoneyWritable } from './booking-money-guard';
-import { changeStorageFlag } from './booking-support-flags';
+import { changeStorageFlag, handleBookingSupportWebhook } from './booking-support-flags';
 
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems, damageClaims,
   bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings } = schema;
@@ -66,7 +69,7 @@ beforeAll(async () => {
 }, 120000);
 afterAll(async () => { await pg?.close(); vi.unstubAllEnvs(); });
 beforeEach(async () => {
-  vi.clearAllMocks(); h.refunds = []; h.amountRefunded = 0; h.transfer = null; h.insufficient = false;
+  vi.clearAllMocks(); h.refunds = []; h.amountRefunded = 0; h.transfer = null; h.insufficient = false; h.lostRefundResponse = false;
   h.createTransfer.mockImplementation(async (params: any) => { h.transfer = { id: 'tr_1', amount: params.amount }; return h.transfer; });
   for (const table of tables) await h.db.delete(table);
   await h.db.insert(users).values([{ id: 2, username: 'kitchen@example.invalid', role: 'manager', stripeConnectAccountId: 'acct_kitchen' },
@@ -95,6 +98,16 @@ describe('storage term payout date', () => {
       checkoutApprovedAt: new Date('2026-10-19T12:00:00Z') }, none).eligibleAt.toISOString()).toBe('2026-10-21T12:00:00.000Z');
     expect(storageTermPayout(term, rental, { ...none, openFlag: true, openProblem: true }).holdReason).toBe('support_flag');
     expect(storageTermPayout(term, rental, { ...none, openClaim: true }).holdReason).toBe('damage_claim');
+  });
+  it('keeps the claim window even when the term ends before that window, including an uncleared move-out', () => {
+    const short = { ...term, endsOn: '2026-10-19' };
+    const movedOut = { ...rental, checkoutRequestedAt: new Date('2026-10-19T12:00:00Z') };
+    expect(storageTermPayout(short, movedOut, none).eligibleAt.toISOString()).toBe('2026-10-22T12:00:00.000Z');
+    expect(storageTermPayout(short, { ...movedOut, endReason: 'auto_cleared', checkoutApprovedAt: new Date('2026-10-20T12:00:00Z') }, none).eligibleAt.toISOString()).toBe('2026-10-22T12:00:00.000Z');
+    expect(storageTermPayout(short, { ...movedOut, endReason: 'cleared', checkoutApprovedAt: new Date('2026-10-19T13:00:00Z') }, none).eligibleAt.toISOString()).toBe('2026-10-19T13:00:00.000Z');
+  });
+  it('uses kitchen-local midnight across the fall DST change', () => {
+    expect(storageTermPayout({ ...term, endsOn: '2026-11-01' }, rental, none).eligibleAt.toISOString()).toBe('2026-11-02T03:30:00.000Z');
   });
 });
 
@@ -132,15 +145,35 @@ describe('storage payout release', () => {
     await expect(assertBookingMoneyWritable({ paymentIntentId: 'pi_1' })).rejects.toThrow('paused');
     await expect(refundRentalUnused(7, { cause: 'goodwill_lc', amountCents: 500, actorId: 9, operationKey: 'gw' })).rejects.toThrow('paused');
     expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ transferred: true });
+    stripe.disputes.retrieve = async () => ({ id: 'du_1', payment_intent: 'pi_1', charge: 'ch_1', amount: 3550, currency: 'cad', status: 'lost' });
+    await handleBookingSupportWebhook({ ...event, type: 'charge.dispute.closed' }, stripe);
+    await expect(assertBookingMoneyWritable({ storageRentalId: 7 })).resolves.toBeUndefined();
+    expect((await payment()).metadata.kitchenRefundDebts).toBeUndefined();
 
     await h.db.update(paymentTransactions).set({ transferId: null, payoutReleasedAt: null, metadata: { storageTermId: 1, platformCommission: 100 } });
     await changeStorageFlag(7, 'manual_hold', 'hold_1');
     expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ deferred: true, reason: 'On hold: support_flag' });
   });
+  it('a pending storage support action blocks money except its own operation', async () => {
+    await h.db.insert(supportActions).values({ id: 1, storageBookingId: 7, actionType: 'end_rental', status: 'executing', operationKey: 'ending' });
+    await expect(assertBookingMoneyWritable({ storageRentalId: 7 })).rejects.toThrow('paused');
+    await expect(assertBookingMoneyWritable({ storageRentalId: 7, operationKey: 'ending' })).resolves.toBeUndefined();
+  });
+  it('defers move-out review past term end until the full claim window closes', async () => {
+    const movedOut = new Date('2026-10-19T12:00:00Z');
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-22T12:00:00Z').getTime());
+    try {
+      await h.db.update(storageBookings).set({ rentalState: 'move_out_requested', checkoutRequestedAt: movedOut });
+      expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ deferred: true });
+      expect(h.createTransfer).not.toHaveBeenCalled();
+      expect(await releaseStorageTermPayout(1, 'test', new Date('2026-10-22T12:00:00Z'))).toMatchObject({ transferred: true });
+    } finally { vi.restoreAllMocks(); }
+  });
   it('alerts Local Cooks once when a payout is unpaid 10 days after its date', async () => {
     await h.db.insert(damageClaims).values({ id: 1, bookingType: 'storage', storageBookingId: 7, chefId: 3, managerId: 2, locationId: 1, status: 'submitted',
       claimTitle: 'x', claimDescription: 'x', damageDate: '2026-10-19', claimedAmountCents: 100, chefResponseDeadline: new Date() });
-    const later = new Date(endOfTerm.getTime() + 11 * 86400000);
+    expect((await releaseDueStoragePayouts(3, new Date(endOfTerm.getTime() + 10 * 86400000 - 1))).alerted).toBe(0);
+    const later = new Date(endOfTerm.getTime() + 10 * 86400000);
     expect((await releaseDueStoragePayouts(3, later)).alerted).toBe(1);
     expect((await releaseDueStoragePayouts(3, later)).alerted).toBe(0);
     expect(h.notices.mock.calls.filter(call => call[2] === 'payout_overdue')).toHaveLength(1);
@@ -154,6 +187,15 @@ describe('storage refunds', () => {
     const shares = storageRefundShares([{ id: 1, startsOn: '2026-10-17', endsOn: '2026-10-19', days: 3, subtotalCents: 3000, taxCents: 450, serviceFeeCents: 100,
       totalCents: 3550, paidAt: null, processingFeeCents: 133, refundedCents: 0, remainingKitchenCents: 3317 }], reclaim);
     expect(shares.get(1)).toEqual({ customer: 1183, managerDebited: 1150, feeReturned: 33, goodwill: 0, processing: 0 });
+  });
+  it('allocates unused days latest-term first and never refunds an earlier used term', () => {
+    const base = { days: 3, subtotalCents: 3000, taxCents: 450, serviceFeeCents: 100, totalCents: 3550, paidAt: null, processingFeeCents: 133, refundedCents: 0, remainingKitchenCents: 3317 };
+    const shares = storageRefundShares([{ ...base, id: 1, startsOn: '2026-10-17', endsOn: '2026-10-19' },
+      { ...base, id: 2, startsOn: '2026-10-20', endsOn: '2026-10-22' }], reclaim);
+    expect([...shares.keys()]).toEqual([2, 1]);
+    expect(shares.get(2)).toMatchObject({ customer: 3550, managerDebited: 3450, feeReturned: 100 });
+    expect(shares.get(1)).toMatchObject({ customer: 1183 });
+    expect([...storageRefundShares([{ ...base, id: 1, startsOn: '2026-10-17', endsOn: '2026-10-19' }], { ...reclaim, fromDate: '2026-10-20' })]).toEqual([]);
   });
   it('before the payout lowers the transfer without any reversal', async () => {
     const result = await refundRentalUnused(7, reclaim);
@@ -180,6 +222,44 @@ describe('storage refunds', () => {
     expect(h.reverse.mock.calls.map(call => call[0])).toEqual([1150, 0]);
     expect((await payment()).metadata.kitchenRefundDebts).toEqual([expect.objectContaining({ amountCents: 1150, status: 'open', storageRentalId: 7 })]);
     expect(h.notices.mock.calls.find(call => call[2] === 'kitchen_debt')![3]).toMatchObject({ amountCents: 1150 });
+  });
+  it('resumes a refund after a lost response and emits its completion once', async () => {
+    h.lostRefundResponse = true;
+    expect((await refundRentalUnused(7, reclaim)).refunds[0].status).toBe('recovery_required');
+    h.lostRefundResponse = false;
+    expect((await refundRentalUnused(7, reclaim)).refunds[0].status).toBe('succeeded');
+    expect(h.refunds).toHaveLength(1);
+    expect(events().filter(event => event === 'refund_issued')).toHaveLength(2); // chef/admin, kitchen
+  });
+  it('recognizes an older successful key after another refund, and rejects changes to that key', async () => {
+    const first = { cause: 'goodwill_lc' as const, amountCents: 100, actorId: 9, operationKey: 'first' };
+    await refundRentalUnused(7, first);
+    await refundRentalUnused(7, { ...first, operationKey: 'second' });
+    expect((await refundRentalUnused(7, first)).refunds[0].status).toBe('succeeded');
+    expect(h.refunds).toHaveLength(2);
+    await expect(refundRentalUnused(7, { ...first, amountCents: 200 })).rejects.toThrow('operation_changed');
+  });
+  it('reserves at rental scope so a pending refund on another term blocks a new request', async () => {
+    await h.db.insert(paymentTransactions).values({ ...(await payment()), id: 2, paymentIntentId: 'pi_2', metadata: { cancellationRefundOperation: { id: 'other', status: 'pending' } } });
+    await expect(refundRentalUnused(7, reclaim)).rejects.toThrow('refund_pending');
+    expect(h.refunds).toHaveLength(0);
+  });
+  it('refunds the whole unused charge including its fee share, absorbing the unrecoverable card cost', async () => {
+    const result = await refundRentalUnused(7, { ...reclaim, fromDate: '2026-10-17' });
+    expect(result.refunds[0]).toMatchObject({ customerRefund: 3550, status: 'succeeded' });
+    expect((await payment()).metadata.refunds[0]).toMatchObject({ customerReceived: 3550, managerDebited: 3317, platformServiceFeeReturned: 100, platformProcessingCostCents: 133 });
+    expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ notApplicable: true });
+    expect(h.createTransfer).not.toHaveBeenCalled();
+  });
+  it('before-start cancellation follows the frozen kitchen policy and keeps the actual card fee', async () => {
+    const snapshot = { policyId: 1, version: 1, noticeHours: 24, lateChargePercent: 50,
+      tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], timezone: 'America/St_Johns',
+      sessions: [{ startAt: '2026-10-17T02:30:00Z' }], disclosureVersion: 'storage-v1', acceptedAt: null };
+    await h.db.update(storageBookings).set({ approvedAt: new Date('2026-10-15T12:00:00Z'), rentalTerms: { version: 'storage-v1', cancellationPolicySnapshot: snapshot } });
+    const result = await refundRentalUnused(7, { cause: 'before_start', actorId: 3, operationKey: 'cancel', now: new Date('2026-10-16T02:30:00Z') });
+    expect(result.refunds[0]).toMatchObject({ status: 'succeeded', customerRefund: 3417 });
+    expect((await payment()).metadata.refunds[0]).toMatchObject({ managerDebited: 3317, platformServiceFeeReturned: 100 });
+    await expect(refundRentalUnused(7, { cause: 'before_start', actorId: 3, operationKey: 'too-late', now: new Date('2026-10-17T02:30:00Z') })).rejects.toThrow('not_cancellable');
   });
   it('Local Cooks goodwill leaves the kitchen share and its payout untouched', async () => {
     await refundRentalUnused(7, { cause: 'goodwill_lc', amountCents: 500, actorId: 9, operationKey: 'gw' });

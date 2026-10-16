@@ -250,7 +250,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
   // Storage holds every paid term until its own release engine commits a decision (WP-ST6).
   if (payout?.payoutTiming === 'storage_term') {
     if (!payout.payoutReleasedAt || payout.payoutHoldReason
-      || !await (await import('./storage-rentals')).storageTermStillEligible(payout.bookingId, connection))
+      || !await (await import('./storage-payouts')).storageTermStillEligible(payout.bookingId, connection))
       return { ...baseResult, transferredCents: 0, reason: 'deferred: storage is paid out at the end of each paid term' };
   }
 

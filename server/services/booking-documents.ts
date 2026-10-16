@@ -586,7 +586,7 @@ export async function loadStorageMoneyRows(rentalId: number, reader: Conn = db):
 }
 
 /** Receipts, refund receipts, remittances and payout adjustments per paid term (no statement: a rental has no single close). */
-export async function ensureStorageDocuments(rentalId: number, deps: Pick<IssueDeps, 'cardLookup' | 'taxNumber' | 'now'> & { store?: DocumentStore; loadRows?: typeof loadStorageMoneyRows } = defaultIssueDeps()) {
+export async function ensureStorageDocuments(rentalId: number, deps: Pick<IssueDeps, 'cardLookup' | 'taxNumber' | 'now'> & { store?: DocumentStore; loadRows?: typeof loadStorageMoneyRows } = { cardLookup: stripeCardLookup, taxNumber: () => readTaxNumber(), now: () => new Date() }) {
   const rows = await (deps.loadRows ?? loadStorageMoneyRows)(rentalId);
   if (!rows) throw Error('Storage rental not found');
   const store = deps.store ?? drizzleDocumentStore(db, 'storage');
