@@ -63,7 +63,7 @@ export function BookingReceipts({ data, role, timezone, formatCurrency, onError 
   const rows = data.documents.filter(doc => doc.kind !== 'statement');
   return <div className="space-y-1" data-testid="booking-receipts">
     <h3 className="text-[13px] font-medium text-muted-foreground">{t('bdReceiptsTitle')}</h3>
-    {rows.length === 0 && <p className="text-sm text-muted-foreground">{t('bdReceiptsEmpty')}</p>}
+    {rows.length === 0 && <p className="text-sm text-muted-foreground">{t(role === 'manager' ? 'bdPayoutDocsEmpty' : 'bdReceiptsEmpty')}</p>}
     <ul className="divide-y divide-border/60">
       {[...rows, ...(statement ? [statement] : [])].map(doc => (
         <li key={doc.id} data-testid={doc.kind === 'statement' ? 'booking-statement-row' : 'booking-receipt-row'}>

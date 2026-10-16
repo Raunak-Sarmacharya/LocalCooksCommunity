@@ -232,18 +232,44 @@ export async function queuePaymentOutcome(tx: Transaction, historyId: number, re
     : record.deliveryKind === 'full_refund_rejected' ? 'refund request declined'
     : record.deliveryKind === 'refund_recovery_required' ? 'refund outcome needs Local Cooks reconciliation' : String(record.status).replaceAll('_', ' ');
   const title = `Payment #${record.id}: ${outcome}`;
+  // A kitchen sending its chef a refund on a booking: plain words for both sides (the ledger text stays for admins/failures).
+  const human = await kitchenRefundText(tx, record);
   const message = `${title}. Recorded amount: ${record.currency} $${(Number(record.amount) / 100).toFixed(2)}. Recorded refund amount: ${record.currency} $${(Number(record.refund_amount || 0) / 100).toFixed(2)}. Provider payment reference: ${record.payment_intent_id || 'not recorded'}. Refund reference: ${record.refund_id || 'not recorded'}. ${record.deliveryKind === 'refund_recovery_required' ? 'The request was interrupted; this does not prove the provider refund failed. Local Cooks must inspect the original provider outcome before retrying any money movement.' : record.deliveryKind ? 'A request or decision is separate from a completed provider refund.' : 'This records the financial outcome.'} Open your current records for available actions.`;
   for (const person of people) {
     const chef = person.id === record.chef_id;
-    const path = chef ? '/dashboard?view=transactions' : person.role === 'admin' ? '/admin?section=transactions' : '/manager/dashboard?view=revenue';
+    const role = human && person.role !== 'admin' ? human[chef ? 'chef' : 'manager'] : null;
+    const path = role ? role.path : chef ? '/dashboard?view=transactions' : person.role === 'admin' ? '/admin?section=transactions' : '/manager/dashboard?view=revenue';
+    const shownTitle = role?.title ?? title, shownMessage = role?.message ?? message;
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement',
-      title, message, actionUrl: path, actionLabel: 'View financial records', metadata: { transactionId: record.id, paymentHistoryId: historyId } }, tx);
+      title: shownTitle, message: shownMessage, actionUrl: path, actionLabel: role ? 'Open booking' : 'View financial records', metadata: { transactionId: record.id, paymentHistoryId: historyId } }, tx);
     if (!operationalEmailAllowed(person)) continue;
     await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id,
       recipientRole: chef ? 'chef' : person.role === 'admin' ? 'admin' : 'manager', category: 'lifecycle_outcome',
-      status: 'queued', subject: title, previewText: message, trackingId: `payment-outcome:${record.id}:${historyId}:${person.id}`,
-      textBody: `${message}\n\n${getAppBaseUrl(chef ? 'chef' : person.role === 'admin' ? 'admin' : 'kitchen')}${path}` });
+      status: 'queued', subject: shownTitle, previewText: shownMessage, trackingId: `payment-outcome:${record.id}:${historyId}:${person.id}`,
+      textBody: `${shownMessage}\n\n${getAppBaseUrl(chef ? 'chef' : person.role === 'admin' ? 'admin' : 'kitchen')}${path}` });
   }
+}
+
+const DEFAULT_KITCHEN_REFUND_REASON = 'Refund sent by the kitchen';
+/** Role copy for a completed refund a kitchen sent on its own booking; null for anything else (failures, admin flows, storage). */
+async function kitchenRefundText(tx: Transaction, record: any) {
+  const delta = Number(record.refundDeltaCents);
+  if (!(delta > 0) || record.deliveryKind || record.status === 'failed' || !['kitchen', 'bundle'].includes(record.booking_type) || !record.booking_id) return null;
+  const rows = await tx.execute(sql`SELECT b.id, b.reference_code, k.name AS kitchen_name FROM kitchen_bookings b JOIN kitchens k ON k.id = b.kitchen_id WHERE b.id = ${record.booking_id} LIMIT 1`);
+  const booking = rows.rows[0] as { id: number; reference_code: string | null; kitchen_name: string } | undefined;
+  if (!booking) return null;
+  const { getUserDisplayName } = await import('../utils/user-display');
+  const shown = record.chef_id ? await getUserDisplayName(record.chef_id, 'chef').catch(() => '') : '';
+  const chefName = shown && shown !== 'A chef' ? shown : 'the chef';
+  const amount = new Intl.NumberFormat('en-CA', { style: 'currency', currency: String(record.currency || 'CAD').toUpperCase() }).format(delta / 100);
+  const reference = booking.reference_code || `KB-${booking.id}`;
+  const note = typeof record.refundNote === 'string' && record.refundNote.trim() && record.refundNote.trim() !== DEFAULT_KITCHEN_REFUND_REASON ? record.refundNote.trim() : '';
+  return {
+    chef: { title: `${booking.kitchen_name} refunded you ${amount} · ${reference}`, path: `/booking/${booking.id}`,
+      message: `${booking.kitchen_name} sent you a refund of ${amount} for booking ${reference}.${note ? ` Note from the kitchen: "${note}"` : ''} Banks usually show it within 5–10 business days.` },
+    manager: { title: `You refunded ${chefName} ${amount} · ${reference}`, path: `/manager/booking/${booking.id}`,
+      message: `You sent ${chefName} a refund of ${amount} for booking ${reference}. It comes out of your payout for this booking.` },
+  };
 }
 
 /** After the caller's transaction rolled back, preserve an owned uncertain refund task. */

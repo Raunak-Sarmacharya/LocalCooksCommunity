@@ -509,7 +509,8 @@ export async function updatePaymentTransaction(
       params.status === 'failed' && ['succeeded', 'partially_refunded'].includes(previousStatus)) {
     const history = await db.execute(sql`SELECT id FROM payment_history WHERE transaction_id = ${transactionId} ORDER BY id DESC LIMIT 1`);
     if (!history.rows[0]) throw new Error('Payment outcome history missing');
-    await queuePaymentOutcome(db, history.rows[0].id, updated);
+    await queuePaymentOutcome(db, history.rows[0].id, { ...updated,
+      refundDeltaCents: params.refundAmount !== undefined ? params.refundAmount - currentRefundAmount : undefined, refundNote: params.refundReason });
   }
   return updated;
 }

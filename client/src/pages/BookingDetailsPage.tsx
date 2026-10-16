@@ -613,8 +613,10 @@ export default function BookingDetailsPage() {
       };
     }
     if (status === 'refunded' || status === 'partially_refunded') return {
-      summary: status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
-      detail: `${booking.paymentTransaction?.refundAmount ? (isManagerView ? t('bdRefundedToChef', { amount: formatCurrency(booking.paymentTransaction.refundAmount) }) : t('bdRefundedYou', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
+      // The kitchen didn't pay: it reads what happened to the chef's payment, never "your payment".
+      summary: isManagerView && booking.paymentTransaction?.refundAmount ? t('bdRefundedToChef', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })
+        : status === 'refunded' ? t('bdRefundedSummary', { defaultValue: 'Your payment was refunded.' }) : t('bdPartialRefundSummary', { defaultValue: 'Part of your payment was refunded.' }),
+      detail: `${booking.paymentTransaction?.refundAmount ? (isManagerView ? '' : t('bdRefundedYou', { amount: formatCurrency(booking.paymentTransaction.refundAmount) })) : t('bdRefundAmountUnavailable', { defaultValue: 'The refund amount is not yet available.' })}${booking.paymentTransaction?.refundedAt ? ` ${t('bdRefundedOn', { date: formatShortDate(booking.paymentTransaction.refundedAt) })}` : ''}${booking.paymentTransaction?.refundReason && isManagerView ? ` ${t('bdRefundReason', { reason: booking.paymentTransaction.refundReason })}` : ''}`,
     };
     if (status === 'paid' && booking.status === 'cancelled') return { summary: t('bdCancelledPaidSummary', { defaultValue: 'Your booking was cancelled after payment.' }), detail: t(isManagerView ? 'bdBookingCancelledManager' : 'bdBookingCancelledChef') };
     // Payout after closeout: the chef has paid, but the kitchen's share is not the kitchen's money until it is sent.

@@ -3631,5 +3631,6 @@
   "bdViewReceipts": "View receipts",
   "bdViewPayoutDocuments": "View payout statements",
   "inspectWindowClosedReport": "The inspection window has closed. You can still report damage or extra cleaning until {date}.",
-  "sxOfferOpen": "{kitchen} already offered you more time. Accept or decline that offer above."
+  "sxOfferOpen": "{kitchen} already offered you more time. Accept or decline that offer above.",
+  "bdPayoutDocsEmpty": "Payout statements appear here once your payout is sent."
 }
