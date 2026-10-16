@@ -4440,6 +4440,14 @@ router.put('/cancellation-settings', requireFirebaseAuthWithUser, requireAdmin, 
     try { res.json(await (await import('../services/cancellation-policy-settings')).saveCancellationSettings(req.body, req.neonUser!.id)); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Settings could not be saved' }); }
 });
+router.get('/storage-settings', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { res.json(await (await import('../services/storage-settings')).storageSettings()); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Settings unavailable' }); }
+});
+router.put('/storage-settings', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try { res.json(await (await import('../services/storage-settings')).saveStorageSettings(req.body, req.neonUser!.id)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Settings could not be saved' }); }
+});
 router.put('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
     try { res.json(await (await import('../services/cancellation-policy-settings')).publishCancellationPolicy(Number(req.params.id), req.neonUser!.id, req.body, true)); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Override could not be saved' }); }

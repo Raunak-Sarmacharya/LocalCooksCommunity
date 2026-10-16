@@ -24,6 +24,9 @@ export function CancellationPolicyEditor({ kitchenId, admin = false }: { kitchen
   const { t: mt } = useTranslation('manager');
   const { impact, impactFetching, impactError } = useSettingImpact(kitchenId);
   const { data, isError, refetch } = useQuery<PolicyResponse>({ queryKey: ['managed-cancellation-policy', admin, kitchenId], queryFn: () => apiGet(`/${admin ? 'admin' : 'manager'}/kitchens/${kitchenId}/cancellation-policy`) });
+  // The same policy governs storage rentals, so the line shows only when this kitchen has a storage listing.
+  const { data: storageListings } = useQuery<unknown[]>({ queryKey: ['kitchen-storage-listings', kitchenId], queryFn: () => apiGet(`/manager/kitchens/${kitchenId}/storage-listings`), enabled: !admin });
+  const hasStorageListing = Array.isArray(storageListings) && storageListings.length > 0;
   const [noticeHours, setNotice] = useState(24), [lateChargePercent, setCharge] = useState(100), [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   useEffect(() => { if (data?.policy) { setNotice(data.policy.noticeHours); setCharge(data.policy.lateChargePercent); } }, [data]);
@@ -65,6 +68,7 @@ export function CancellationPolicyEditor({ kitchenId, admin = false }: { kitchen
         </select>
       </SettingsRow>
       {/* At rest: the sentence chefs see. While editing, the preview below says it (once) with the new values. */}
+      {hasStorageListing && <p className="px-4 py-3 text-xs text-muted-foreground">{mt('scpStorageApplies')}</p>}
       {(!live || data?.policy?.adminOverrideReason) && <div className="space-y-1 px-4 py-3 text-sm">
         {!live && <p><span className="text-muted-foreground">{mt('bpChefsSee')} </span>{summary}</p>}
         {!live && <p className="text-xs text-muted-foreground">{t('cpNewOnly')}</p>}

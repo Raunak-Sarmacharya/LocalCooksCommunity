@@ -6,8 +6,42 @@ import { requireChef } from "./middleware";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
+import { listingMaxTermDays, storageSettings } from "../services/storage-settings";
+import { availabilityToday, listingAvailability, occupancyByListing } from "../services/storage-availability";
 
 const router = Router();
+
+const UNIT_COUNT_MIN = 1;
+const UNIT_COUNT_MAX = 200;
+
+/**
+ * Storage-v1 listing input: identical units, a daily price, and a term no longer than the platform maximum.
+ * `dailyPriceCents` maps onto `base_price` (the daily price in cents) and the pricing model is always daily —
+ * per-cubic-foot, hourly and monthly pricing are not offered.
+ */
+export function validateStorageListingInput(data: Record<string, unknown>, platformMaxDays: number, partial = false): { error?: string; value?: Record<string, unknown> } {
+    const value: Record<string, unknown> = { ...data };
+    if (value.unitCount == null) {
+        if (!partial) value.unitCount = 1;
+    } else if (!Number.isSafeInteger(value.unitCount) || Number(value.unitCount) < UNIT_COUNT_MIN || Number(value.unitCount) > UNIT_COUNT_MAX) {
+        return { error: `How many units must be a whole number from ${UNIT_COUNT_MIN} to ${UNIT_COUNT_MAX}` };
+    }
+    if (value.maxTermDays != null && (!Number.isSafeInteger(value.maxTermDays) || Number(value.maxTermDays) < 1 || Number(value.maxTermDays) > platformMaxDays)) {
+        return { error: `The longest term must be a whole number of days from 1 to ${platformMaxDays}, or empty to use the platform maximum` };
+    }
+    const dailyPrice = value.dailyPriceCents ?? value.basePrice;
+    if (dailyPrice == null) {
+        if (!partial) return { error: 'Price per day is required' };
+    } else if (!Number.isSafeInteger(dailyPrice) || Number(dailyPrice) <= 0) {
+        return { error: 'Price per day must be a whole number of cents greater than zero' };
+    } else {
+        value.basePrice = dailyPrice;
+    }
+    delete value.dailyPriceCents;
+    delete value.pricePerCubicFoot;
+    value.pricingModel = 'daily';
+    return { value };
+}
 
 function validateOverstayOverrides(data: Record<string, unknown>): string | undefined {
     for (const [key, min, max] of [['overstayGracePeriodDays', 0, 14], ['overstayMaxPenaltyDays', 1, 90]] as const) {
@@ -43,8 +77,14 @@ router.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthW
             return res.status(403).json({ error: "Access denied to this kitchen" });
         }
 
-        const listings = await inventoryService.getStorageListingsByKitchen(kitchenId);
-        res.json(listings);
+        const [listings, settings] = await Promise.all([inventoryService.getStorageListingsByKitchen(kitchenId), storageSettings()]);
+        res.json(listings.map((listing: any) => ({
+            ...listing,
+            // A lower platform maximum caps every listing on read; the kitchen sees what it originally set.
+            maxTermDays: listingMaxTermDays(settings.maxTermDays, listing.maxTermDays),
+            storedMaxTermDays: listing.maxTermDays ?? null,
+            platformMaxTermDays: settings.maxTermDays,
+        })));
     } catch (error: any) {
         logger.error("Error getting storage listings:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
@@ -106,13 +146,17 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             return res.status(403).json({ error: "Access denied to this kitchen" });
         }
 
-        if (!listingData.name || !listingData.storageType || !listingData.pricingModel || !listingData.basePrice) {
-            return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
+        if (!listingData.name || !listingData.storageType) {
+            return res.status(400).json({ error: "Name and storage type are required" });
         }
+
+        const { maxTermDays: platformMaxDays } = await storageSettings();
+        const validated = validateStorageListingInput(listingData, platformMaxDays);
+        if (validated.error) return res.status(400).json({ error: validated.error });
 
         // Null overrides inherit live defaults until the booking terms are accepted.
         const listingDataWithDefaults = {
-            ...listingData,
+            ...validated.value,
             // Only apply location defaults if listing data doesn't already include these values
             overstayGracePeriodDays: listingData.overstayGracePeriodDays !== undefined 
                 ? listingData.overstayGracePeriodDays 
@@ -175,7 +219,10 @@ router.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
         if (req.body.kitchenId !== undefined && Number(req.body.kitchenId) !== existingListing.kitchenId) {
             return res.status(400).json({ error: 'A storage listing cannot be moved to another kitchen' });
         }
-        const updated = await inventoryService.updateStorageListing(listingId, req.body);
+        const { maxTermDays: platformMaxDays } = await storageSettings();
+        const validated = validateStorageListingInput(req.body, platformMaxDays, true);
+        if (validated.error) return res.status(400).json({ error: validated.error });
+        const updated = await inventoryService.updateStorageListing(listingId, validated.value);
 
         logger.info(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
@@ -244,19 +291,65 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
         // Get all storage listings for this kitchen
         const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
 
-        // Filter to only show approved/active listings to chefs
-        // Listings with status 'approved' or 'active' AND isActive=true are visible
+        // Visibility is status + active only. A full or removal-review listing stays visible and reads as unavailable.
         const visibleListings = allListings.filter((listing: any) =>
             (listing.status === 'approved' || listing.status === 'active') &&
-            listing.isActive === true && !listing.awaitingRemoval
+            listing.isActive === true
         );
+
+        const settings = await storageSettings();
+        const location = await locationService.getLocationById(kitchen.locationId);
+        const today = availabilityToday(location?.timezone);
+        const occupied = await occupancyByListing(visibleListings.map((listing: any) => listing.id), today);
 
         logger.info(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
 
-        res.json(visibleListings);
+        res.json(visibleListings.map((listing: any) => ({
+            ...listing,
+            maxTermDays: listingMaxTermDays(settings.maxTermDays, listing.maxTermDays),
+            availability: listingAvailability(listing.unitCount ?? 1, occupied.get(listing.id) ?? [], today),
+        })));
     } catch (error: any) {
         logger.error("Error getting storage listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
+    }
+});
+
+/**
+ * Free-unit availability for every visible listing at a kitchen: what a chef can actually rent now.
+ * Returns one row per listing with the daily price, the effective term cap, and the availability phrase.
+ */
+router.get("/chef/kitchens/:kitchenId/storage-availability", requireChef, async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const [allListings, settings] = await Promise.all([inventoryService.getStorageListingsByKitchen(kitchenId), storageSettings()]);
+        const visibleListings = allListings.filter((listing: any) =>
+            (listing.status === 'approved' || listing.status === 'active') && listing.isActive === true
+        );
+        const location = await locationService.getLocationById(kitchen.locationId);
+        const today = availabilityToday(location?.timezone);
+        const occupied = await occupancyByListing(visibleListings.map((listing: any) => listing.id), today);
+
+        res.json(visibleListings.map((listing: any) => ({
+            listingId: listing.id,
+            name: listing.name,
+            storageType: listing.storageType,
+            dailyPriceCents: listing.basePrice != null ? Number(listing.basePrice) : 0,
+            maxTermDays: listingMaxTermDays(settings.maxTermDays, listing.maxTermDays),
+            availability: listingAvailability(listing.unitCount ?? 1, occupied.get(listing.id) ?? [], today),
+        })));
+    } catch (error: any) {
+        logger.error("Error getting storage availability:", error);
+        res.status(500).json({ error: error.message || "Failed to get storage availability" });
     }
 });
 
@@ -279,8 +372,13 @@ router.get("/public/kitchens/:kitchenId/storage-listings", async (req: Request, 
         const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
         const visibleListings = allListings.filter((listing: any) =>
             (listing.status === "approved" || listing.status === "active") &&
-            listing.isActive === true && !listing.awaitingRemoval
+            listing.isActive === true
         );
+
+        const settings = await storageSettings();
+        const location = await locationService.getLocationById(kitchen.locationId);
+        const today = availabilityToday(location?.timezone);
+        const occupied = await occupancyByListing(visibleListings.map((s: any) => s.id), today);
 
         const sanitized = visibleListings.map((s: any) => ({
             id: s.id,
@@ -296,6 +394,9 @@ router.get("/public/kitchens/:kitchenId/storage-listings", async (req: Request, 
             totalVolume: s.totalVolume ?? null,
             climateControl: !!s.climateControl,
             currency: s.currency || "CAD",
+            unitCount: s.unitCount ?? 1,
+            maxTermDays: listingMaxTermDays(settings.maxTermDays, s.maxTermDays),
+            availability: listingAvailability(s.unitCount ?? 1, occupied.get(s.id) ?? [], today),
         }));
 
         res.json(sanitized);

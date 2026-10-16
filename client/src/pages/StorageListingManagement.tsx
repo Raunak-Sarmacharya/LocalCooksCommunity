@@ -36,6 +36,7 @@ import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { FormLegend } from "@/components/ui/form-legend";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, ACCESS_TYPE_LABELS, getDefaultTemperatureRange } from "@/lib/storage-templates";
+import { PLATFORM_MAX_TERM_DAYS } from "@shared/storage-rental";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { Ref } from "react";
@@ -84,6 +85,14 @@ interface StorageListing {
   temperatureRange?: string;
   isActive?: boolean;
   minimumBookingDuration?: number;
+  /** Identical units of this listing a chef can rent (migration 0093). */
+  unitCount?: number;
+  /** Effective longest term, clamped to the platform maximum on read. */
+  maxTermDays?: number | null;
+  /** What the kitchen set; higher than `maxTermDays` when the platform maximum was lowered. */
+  storedMaxTermDays?: number | null;
+  /** The platform maximum, sent with every listing so the form can bound the term. */
+  platformMaxTermDays?: number;
   inheritOverstayDefaults?: boolean;
   overstayGracePeriodDays?: number | null;
   overstayPenaltyRate?: string | null;
@@ -100,6 +109,8 @@ interface StorageFormValues {
   totalVolume: number;
   temperatureRange: string;
   basePrice: number;
+  unitCount: number;
+  maxTermDays: number;
   inheritOverstayDefaults: boolean;
   overstayGracePeriodDays: number;
   overstayPenaltyRate: string;
@@ -138,9 +149,15 @@ const ACCESS_OTHER = "__other__";
 function StorageFields({
   values,
   onChange,
+  platformMaxTermDays,
+  maxTermNote,
 }: {
   values: StorageFormValues;
   onChange: (updates: Partial<StorageFormValues>) => void;
+  /** The platform maximum; the term field never goes above it. */
+  platformMaxTermDays: number;
+  /** Shown when the platform maximum was lowered below what the kitchen set. */
+  maxTermNote?: string;
 }) {
   /**
    * `access_type` is a plain text column and is never validated server-side, so a
@@ -246,6 +263,16 @@ function StorageFields({
           </div>
         </SettingsRow>
 
+        <SettingsRow id="sf-units" label={mt("storageUnitCount")} help={mt("storageUnitCountHelp")}>
+          <NumericInput
+            id="sf-units"
+            className="w-28"
+            suffix={mt("unitsUnit")}
+            value={String(values.unitCount || 1)}
+            onValueChange={(v) => onChange({ unitCount: parseInt(v) || 1 })}
+          />
+        </SettingsRow>
+
         <SettingsRow id="sf-min" label={mt("minimumBookingDays")} help={mt("helpMinBooking")}>
           <NumericInput
             id="sf-min"
@@ -280,7 +307,7 @@ function StorageFields({
 
         <SectionBand label={mt("groupPricing")} />
 
-        <SettingsRow id="sf-rate" label={mt("dailyRateDollars")} hint={mt("currencyCadHint")} required>
+        <SettingsRow id="sf-rate" label={mt("storagePricePerDay")} hint={mt("currencyCadHint")} required>
           <NumericInput
             id="sf-rate"
             className="w-32"
@@ -288,6 +315,16 @@ function StorageFields({
             allowDecimals
             value={values.basePrice ? String(values.basePrice) : ''}
             onValueChange={(v) => onChange({ basePrice: parseFloat(v) || 0 })}
+          />
+        </SettingsRow>
+
+        <SettingsRow id="sf-term" label={mt("storageMaxTermDays", { max: platformMaxTermDays })} help={maxTermNote ?? mt("storageMaxTermDaysHelp")}>
+          <NumericInput
+            id="sf-term"
+            className="w-28"
+            suffix={mt("daysUnit")}
+            value={String(values.maxTermDays || platformMaxTermDays)}
+            onValueChange={(v) => onChange({ maxTermDays: Math.min(parseInt(v) || platformMaxTermDays, platformMaxTermDays) })}
           />
         </SettingsRow>
 
@@ -640,6 +677,15 @@ export function StorageListingContent({
     [listings],
   );
 
+  /**
+   * The platform maximum term (days), read from the listings the API clamps. Falls back to the shipped
+   * default when this kitchen has no listings yet, so the form still has an upper bound.
+   */
+  const platformMaxTermDays = useMemo(
+    () => listings.reduce((max, listing) => Math.max(max, listing.platformMaxTermDays ?? 0), 0) || PLATFORM_MAX_TERM_DAYS,
+    [listings],
+  );
+
   /** Sensible starting values, seeded from the location's overstay defaults. */
   const blankEntry = (overrides: Partial<StorageFormValues> = {}): StorageFormValues => ({
     name: '',
@@ -649,6 +695,8 @@ export function StorageListingContent({
     totalVolume: 0,
     temperatureRange: getDefaultTemperatureRange('dry') || '',
     basePrice: 0,
+    unitCount: 1,
+    maxTermDays: platformMaxTermDays,
     inheritOverstayDefaults: true,
     overstayGracePeriodDays: locationDefaults?.gracePeriodDays ?? 3,
     overstayPenaltyRate: (locationDefaults?.penaltyRate ?? 0.10).toString(),
@@ -679,6 +727,8 @@ export function StorageListingContent({
     totalVolume: listing.totalVolume ?? 0,
     temperatureRange: listing.temperatureRange || '',
     basePrice: listing.basePrice || 0,
+    unitCount: listing.unitCount ?? 1,
+    maxTermDays: listing.maxTermDays ?? platformMaxTermDays,
     inheritOverstayDefaults: listing.inheritOverstayDefaults ?? (listing.overstayGracePeriodDays == null && listing.overstayPenaltyRate == null && listing.overstayMaxPenaltyDays == null),
     overstayGracePeriodDays: listing.overstayGracePeriodDays ?? locationDefaults?.gracePeriodDays ?? 3,
     overstayPenaltyRate: listing.overstayPenaltyRate ?? String(locationDefaults?.penaltyRate ?? 0.10),
@@ -795,11 +845,14 @@ export function StorageListingContent({
   };
 
   /** Mirrors the server's own rules so the button can be disabled rather than failing. */
-  const canSubmitAdd = Boolean(form && form.name.trim().length >= 3 && form.basePrice > 0);
+  const canSubmitAdd = Boolean(form && form.name.trim().length >= 3 && form.basePrice > 0
+    && form.unitCount >= 1 && form.unitCount <= 200 && form.maxTermDays >= 1 && form.maxTermDays <= platformMaxTermDays);
 
   /** Same rules for the edit page, used to explain a save that cannot succeed. */
   const editIncomplete = Boolean(
-    draft && (draft.name.trim().length < 3 || !draft.basePrice),
+    draft && (draft.name.trim().length < 3 || !draft.basePrice
+      || (draft.unitCount ?? 1) < 1 || (draft.unitCount ?? 1) > 200
+      || (draft.maxTermDays ?? platformMaxTermDays) < 1 || (draft.maxTermDays ?? platformMaxTermDays) > platformMaxTermDays),
   );
 
   /** Fields the server accepts for a new listing. `kitchenId` is added per target. */
@@ -807,10 +860,12 @@ export function StorageListingContent({
     name: storage.name.trim(),
     storageType: storage.storageType,
     description: storage.description || undefined,
-    basePrice: Math.round(storage.basePrice * 100), // Convert to cents
+    dailyPriceCents: Math.round(storage.basePrice * 100), // Daily price in cents
     totalVolume: storage.totalVolume || undefined,
     accessType: storage.accessType || undefined,
     temperatureRange: storage.temperatureRange || undefined,
+    unitCount: storage.unitCount || 1,
+    maxTermDays: storage.maxTermDays || null,
     pricingModel: 'daily',
     minimumBookingDuration: storage.minimumBookingDuration || 1,
     bookingDurationUnit: 'daily',
@@ -882,10 +937,12 @@ export function StorageListingContent({
     name: listing.name,
     storageType: listing.storageType,
     description: listing.description || undefined,
-    basePrice: Math.round((listing.basePrice || 0) * 100), // Convert to cents
+    dailyPriceCents: Math.round((listing.basePrice || 0) * 100), // Daily price in cents
     totalVolume: listing.totalVolume || undefined,
     accessType: listing.accessType || undefined,
     temperatureRange: listing.temperatureRange || undefined,
+    unitCount: listing.unitCount ?? 1,
+    maxTermDays: listing.maxTermDays ?? null,
     minimumBookingDuration: listing.minimumBookingDuration || 1,
     overstayGracePeriodDays: listing.inheritOverstayDefaults ? null : listing.overstayGracePeriodDays,
     overstayPenaltyRate: listing.inheritOverstayDefaults ? null : listing.overstayPenaltyRate,
@@ -1132,12 +1189,14 @@ export function StorageListingContent({
                 />
               </div>
               <div className="p-4 lg:p-6">
-                {form && <StorageFields values={form} onChange={updateForm} />}
+                {form && <StorageFields values={form} onChange={updateForm} platformMaxTermDays={platformMaxTermDays} />}
               </div>
             </div>
           ) : (
             <div className="p-4 lg:p-6">
-              {draft && <StorageFields values={toFormValues(draft)} onChange={updateDraft} />}
+              {draft && <StorageFields values={toFormValues(draft)} onChange={updateDraft} platformMaxTermDays={platformMaxTermDays}
+                maxTermNote={draft.storedMaxTermDays != null && draft.storedMaxTermDays > (draft.maxTermDays ?? platformMaxTermDays)
+                  ? mt("storageMaxTermDaysCapped", { max: platformMaxTermDays }) : undefined} />}
             </div>
           )}
         </div>
@@ -1271,6 +1330,8 @@ export function StorageListingContent({
                             <span className="font-medium text-foreground">
                               ${(listing.basePrice || 0).toFixed(2)}{mt("perDay")}
                             </span>
+                            <span>{mt("storageUnitsCount", { count: listing.unitCount ?? 1 })}</span>
+                            <span>{mt("storageMaxTermShort", { max: listing.maxTermDays ?? platformMaxTermDays })}</span>
                             {listing.totalVolume ? <span>{listing.totalVolume} cu ft</span> : null}
                             {/* Falls back to the stored value so a manager's own
                                 access-type label still shows in the list. */}

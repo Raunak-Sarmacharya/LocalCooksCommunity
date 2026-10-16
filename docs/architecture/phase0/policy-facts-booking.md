@@ -84,6 +84,7 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
 - Service fee (owner, Oct 15): the page says Local Cooks "may charge a service fee", always shown before paying; no percentage on the
   page (it may be $0 during the pilot and will likely depend on the kitchen's subscription tier).
 - Storage: separate policy section after the storage rebuild.
+- **Production deploy check (storage):** storage listings' `base_price` now means a DAILY price in cents (WP-ST2). Before deploying to production, read every existing production storage listing's price and pricing model and convert monthly prices (or confirm there are none) with the owner — never change prod data without the owner's go-ahead.
 - Current Terms/Privacy (Sept 7, 2025) are meal-marketplace only and conflict in places — see `policy-gap-review.md`.
 - Legal review (owner confirmed, Oct 15): the drafted page will be reviewed by a lawyer familiar with Newfoundland and Labrador consumer protection
   (the Consumer Protection and Business Practices Act) and Canadian e-commerce disclosure rules before publishing — the lead
