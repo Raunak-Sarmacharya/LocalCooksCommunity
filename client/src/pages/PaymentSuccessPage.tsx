@@ -56,7 +56,8 @@ export default function PaymentSuccessPage() {
       <p className="text-sm text-muted-foreground">{description}</p>
       {amount && <p className="text-sm font-medium">{amount}</p>}
       {outcome?.operatingDate && <p className="text-sm">{t('checkoutDate', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${outcome.operatingDate}T12:00:00Z`)) })}</p>}
-      {sessionId && <p className="text-sm break-all">{t('checkoutReference', { reference: sessionId })}</p>}
+      {outcome?.referenceCode ? <p className="text-sm">{t('checkoutBookingReference', { reference: outcome.referenceCode })}</p>
+        : sessionId && state !== 'request_created' && <p className="text-sm break-all">{t('checkoutReference', { reference: sessionId })}</p>}
       {state === 'request_created' && outcome?.bookingId && <Button asChild><Link href={`/booking/${outcome.bookingId}`}>{t('checkoutViewRequest')}</Link></Button>}
       {state !== 'request_created' && <div className="flex flex-wrap items-center gap-4">
         <Button variant="outline" onClick={() => setRefresh(value => value + 1)}>{t('checkoutCheckAgain')}</Button>

@@ -892,5 +892,6 @@
   "cpConsentPolicy": "politique d’annulation",
   "cpConsentTerms": "conditions de Local Cooks",
   "cpRefundReference": "Référence {reference}. Des questions? Contactez Local Cooks.",
-  "sxbBilledAs": "Facturé comme {minutes} minutes (le temps supplémentaire est facturé par tranches de 30 minutes)."
+  "sxbBilledAs": "Facturé comme {minutes} minutes (le temps supplémentaire est facturé par tranches de 30 minutes).",
+  "checkoutBookingReference": "Référence de réservation : {reference}"
 }

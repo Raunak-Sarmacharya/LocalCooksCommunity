@@ -3630,5 +3630,6 @@
   "sxAskAgain": "Redemander",
   "bdViewReceipts": "Voir les reçus",
   "bdViewPayoutDocuments": "Voir les relevés de paiement",
-  "inspectWindowClosedReport": "La période d’inspection est terminée. Vous pouvez encore signaler des dommages ou un nettoyage supplémentaire jusqu’au {date}."
+  "inspectWindowClosedReport": "La période d’inspection est terminée. Vous pouvez encore signaler des dommages ou un nettoyage supplémentaire jusqu’au {date}.",
+  "sxOfferOpen": "{kitchen} vous a déjà offert plus de temps. Acceptez ou refusez cette offre ci-dessus."
 }

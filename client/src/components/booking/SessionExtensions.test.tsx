@@ -63,6 +63,14 @@ describe("chef: Need more time?", () => {
     expect(posts()[0].body).toMatchObject({ kind: "request", minutes: 60, expectedEndAt: END, expectedAmountCents: 3000 });
     expect(posts()[0].body.requestKey).toMatch(/^[0-9a-f-]{36}$/);
   });
+  it("with a kitchen offer open, asking again points to that offer instead of 'booked right after' (live #180)", async () => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ options: [], history: [item({ kind: "offer", status: "offered", expiresAt: "2026-10-14T18:30:00.000Z" })] }) });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
+    expect(await screen.findByTestId("extension-offer-open")).toHaveTextContent("Harbour Kitchen already offered you more time. Accept or decline that offer above.");
+    expect(screen.queryByTestId("extension-booked")).not.toBeInTheDocument();
+    expect(posts()).toHaveLength(0);
+  });
   it('a failed request offers another card and keeps Message kitchen available', async () => {
     responses.push({ match: /\/extensions$/, method: 'GET', body: state() },
       { match: /\/extensions$/, method: 'POST', body: { cardFailed: true, extension: item({ status: 'cancelled', authorized: false, cardFailedAt: END }) } },

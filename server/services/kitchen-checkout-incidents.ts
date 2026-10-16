@@ -195,7 +195,11 @@ export async function readKitchenCheckoutResult(sessionId: string, chefId: numbe
     row = await updateCheckoutIncident(sessionId, { paymentIntentId: intentId || null,
       ...(booking ? { outcome: 'booking_created', bookingId: booking.id } : {}), lastCheckedAt: new Date() });
   }
-  return row ? publicCheckoutOutcome(row) : null;
+  if (!row) return null;
+  // The chef sees our booking reference (KB-…) once the request exists; the Stripe id is kept only for support cases.
+  const [booking] = row.bookingId ? await db.select({ referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings)
+    .where(and(eq(kitchenBookings.id, row.bookingId), eq(kitchenBookings.chefId, chefId))).limit(1) : [];
+  return { ...publicCheckoutOutcome(row), referenceCode: booking?.referenceCode ?? null };
 }
 
 export async function retryCheckoutIncidentForAdmin(sessionId: string, actorId: number, note: string) {

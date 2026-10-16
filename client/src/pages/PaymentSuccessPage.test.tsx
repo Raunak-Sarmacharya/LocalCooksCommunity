@@ -24,6 +24,11 @@ describe('checkout return states', () => {
     await act(async () => { vi.advanceTimersByTime(60_000); });
     expect(fetcher).toHaveBeenCalledTimes(1); expect(window.location.pathname).toBe('/payment-success');
   });
+  it('shows our booking reference, not the Stripe checkout id, once the request exists (live #181)', async () => {
+    await mount({ state: 'request_created', bookingId: 42, referenceCode: 'KB-ABC123' });
+    expect(screen.getByText('Booking reference: KB-ABC123')).toBeInTheDocument();
+    expect(screen.queryByText(/cs_requested/)).not.toBeInTheDocument();
+  });
   it('stops polling in an honest verifying state, with next steps and contextual support', async () => {
     await mount(); await act(async () => { await vi.advanceTimersByTimeAsync(40_000); });
     expect(screen.getByText(en.checkoutVerifyingDetail)).toBeInTheDocument(); expect(fetcher).toHaveBeenCalledTimes(16);

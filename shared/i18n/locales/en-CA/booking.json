@@ -892,5 +892,6 @@
   "cpConsentPolicy": "cancellation policy",
   "cpConsentTerms": "Local Cooks terms",
   "cpRefundReference": "Reference {reference}. Questions? Contact Local Cooks.",
-  "sxbBilledAs": "Billed as {minutes} minutes (extra time is billed in 30-minute blocks)."
+  "sxbBilledAs": "Billed as {minutes} minutes (extra time is billed in 30-minute blocks).",
+  "checkoutBookingReference": "Booking reference: {reference}"
 }

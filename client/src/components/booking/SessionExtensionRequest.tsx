@@ -18,6 +18,8 @@ type View = { kind: "unavailable"; state: ExtensionState | null } | { kind: "idl
   // The kitchen's deadline passed before it answered; the server is releasing the hold. Never flips back to "Need more time?".
   | { kind: "lapsed"; item: ExtensionItem; state: ExtensionState }
   | { kind: "declined"; state: ExtensionState } | { kind: "booked"; state: ExtensionState }
+  // The kitchen already offered more time: answer that offer (shown above) instead of starting a competing request.
+  | { kind: "offer_open"; state: ExtensionState }
   | { kind: "card_failed"; item: ExtensionItem; state: ExtensionState }
 
 export function SessionExtensionRequest({ bookingId, kitchenName, timezone, className, moreTimeDraft, onMessage, onExtended }: {
@@ -59,6 +61,8 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     if (!state || !state.enabled || !state.canRequest || state.unavailableReason) {
       return setView({ kind: "unavailable", state })
     }
+    const offerOpen = state.history.some(item => ["offer", "early_start"].includes(item.kind) && item.status === "offered" && Date.parse(item.expiresAt) > Date.parse(state.serverNow))
+    if (offerOpen) return setView({ kind: "offer_open", state })
     if (state.noTimeFree || !state.options.length) return setView({ kind: "booked", state })
     setView({ kind: "options", state })
   }
@@ -175,6 +179,11 @@ export function SessionExtensionRequest({ bookingId, kitchenName, timezone, clas
     <div className="space-y-2 rounded-lg border p-3" role="status" data-testid="extension-declined">
       <p className="text-sm">{t("sxDeclined", { defaultValue: "{kitchen} couldn’t extend this time. Your card wasn’t charged.", kitchen: kitchenName })}</p>
       {messageInstead}
+    </div>
+  )
+  if (view.kind === "offer_open") return (
+    <div className="space-y-2 rounded-lg border p-3" role="status" data-testid="extension-offer-open">
+      <p className="text-sm">{t("sxOfferOpen", { defaultValue: "{kitchen} already offered you more time. Accept or decline that offer above.", kitchen: kitchenName })}</p>
     </div>
   )
   if (view.kind === "booked") return (
