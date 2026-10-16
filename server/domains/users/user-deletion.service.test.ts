@@ -23,6 +23,9 @@ describe('complete user deletion', () => {
     expect(position('tour_repeat_authorizations')).toBeLessThan(position('kitchen_viewings'));
     expect(position('tour_feedback_responses')).toBeLessThan(position('kitchen_viewings'));
     expect(position('storage_overstay_quotes')).toBeLessThan(position('storage_listings'));
+    expect(position('kitchen_invitation_events')).toBeLessThan(position('kitchen_invitations'));
+    expect(position('kitchen_invitations')).toBeLessThan(position('kitchen_bookings'));
+    expect(position('kitchen_invitations')).toBeLessThan(position('kitchens'));
     expect(position('kitchens')).toBeLessThan(position('locations'));
   });
 
@@ -35,6 +38,8 @@ describe('complete user deletion', () => {
     expect(booking.sql).not.toContain('checkout_approved_by');
     expect(targets.map(t => t.table)).toContain('locations');
     expect(targets.map(t => t.table)).toContain('payment_transactions');
+    expect(targets.map(t => t.table)).toContain('kitchen_invitations');
+    expect(targets.map(t => t.table)).toContain('kitchen_invitation_events');
   });
 
   it('uses bound parameters, real RETURNING rows, and preserves global settings', async () => {
@@ -75,6 +80,9 @@ describe('history-safe account deletion', () => {
     for (const table of ['payment_transactions', 'damage_claims', 'storage_bookings', 'equipment_bookings', 'storage_overstay_records', 'kitchen_booking_visits'])
       expect(deleted.some(sql => sql.startsWith(`DELETE FROM "${table}"`))).toBe(false);
     expect(deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_bookings"'))).toContain("booking_type = 'manager_blocked'");
+    const invitations = deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_invitations"'));
+    expect(invitations).toContain("booking_type <> 'manager_blocked'");
+    expect(deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_invitation_events"'))).toContain('invitation_id IN');
   });
 
   it('anonymizes the person, archives owned locations and kitchens, and keeps every booking row', async () => {
@@ -89,6 +97,9 @@ describe('history-safe account deletion', () => {
     expect(userUpdate.params).toContain(anonymizedUsername(42));
     for (const table of ['kitchen_bookings', 'payment_transactions', 'damage_claims', 'users', 'kitchens', 'locations', 'storage_bookings', 'equipment_bookings'])
       expect(sqls.some(s => s.startsWith(`DELETE FROM "${table}"`))).toBe(false);
+    const openInvitations = statements.find(s => s.sql.startsWith('DELETE FROM "kitchen_invitations"'))!;
+    expect(openInvitations.sql).toContain('booking_id IS NULL');
+    expect(statements.some(s => s.sql.startsWith('DELETE FROM "kitchen_invitation_events"'))).toBe(true);
     expect(isAnonymizedUsername(anonymizedUsername(42))).toBe(true);
     expect(isAnonymizedUsername('chef@example.com')).toBe(false);
   });

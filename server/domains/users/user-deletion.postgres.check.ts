@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, afterEach, afterAll, it, expect, vi } from 'vite
 import { Client } from 'pg';
 import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { deleteUserDependents, getUserDeletionImpact } from './user-deletion.service';
+import { anonymizedUsername, deleteUserDependents, getUserDeletionImpact } from './user-deletion.service';
 import { UserService } from './user.service';
 
 vi.mock('../../logger', () => ({ logger: { info: vi.fn() } }));
@@ -53,6 +53,11 @@ beforeAll(async () => {
       column.default_value = null;
     }
     setup.push(`ALTER TABLE ${quote(table)} ADD PRIMARY KEY (${table === 'session' ? 'sid' : table === 'user_deletion_jobs' ? 'user_id' : 'id'})`);
+  }
+  // The service inserts this audit row without an id. A private sequence replaces the cloned public one.
+  if (tables.includes('account_deletion_audit')) {
+    setup.push('CREATE TEMP SEQUENCE account_deletion_audit_id_seq');
+    setup.push(`ALTER TABLE account_deletion_audit ALTER COLUMN id SET DEFAULT nextval('account_deletion_audit_id_seq')`);
   }
   await client.query(setup.join(';'));
   await client.query(fks.map(fk => `ALTER TABLE ${quote(fk.child.replace(/^public\./,''))} ADD CONSTRAINT ${quote(fk.conname)} ${fk.definition.replaceAll('public.','')}`).join(';'));
@@ -114,6 +119,19 @@ async function seed() {
   await insert('kitchen_viewings',{id:210,location_id:20,chef_id:3});
 }
 const count = async (table: string, where='true') => Number((await client.query(`SELECT count(*) FROM ${quote(table)} WHERE ${where}`)).rows[0].count);
+
+async function invitation(values: Record<string, any>) {
+  return insert('kitchen_invitations', {
+    request_key: `req-${values.id}`, date: '2026-10-20', start_time: '09:00', end_time: '10:00',
+    operating_window_start_time: '09:00', timezone: 'America/St_Johns', pricing_mode: 'hourly', selected_slots: [],
+    list_subtotal_cents: 1000, offered_subtotal_cents: 800, tax_cents: 0, service_fee_cents: 0, total_cents: 800,
+    manager_estimated_payout_cents: 800, cancellation_policy_hours: 24, cancellation_charge_percent: 0,
+    expires_in_hours: 48, expires_at: '2026-10-22T12:00:00Z', status: 'sent', ...values,
+  });
+}
+async function invitationEvent(invitationId: string, actorId: number) {
+  return insert('kitchen_invitation_events', { invitation_id: invitationId, kind: 'sent', version: 1, actor_id: actorId, actor_role: 'manager' });
+}
 
 it('replays the migration and removes manager resources plus all new blockers while preserving other businesses', async () => {
   await seed();
@@ -182,24 +200,101 @@ it('database cascades can remove an owned location with repeat permissions witho
   expect(await count('tour_repeat_authorizations')).toBe(0); expect(await count('kitchens')).toBe(1);
 });
 
-it('the real user service commits retry context with the database purge', async () => {
+it('an account with booking history is anonymized, and retry context commits with the kept records', async () => {
   await seed();
+  await invitation({ id: 'inv-open', kitchen_id: 11, location_id: 10, manager_id: 1, chef_id: 3 });
+  await invitationEvent('inv-open', 1);
+  await invitation({ id: 'inv-booked', kitchen_id: 11, location_id: 10, manager_id: 1, chef_id: 3, booking_id: 100, status: 'confirmed' });
+  await invitationEvent('inv-booked', 1);
+  await client.query('UPDATE kitchen_bookings SET invitation_id=$1 WHERE id=100', ['inv-booked']);
+  await invitation({ id: 'inv-other', kitchen_id: 21, location_id: 20, manager_id: 2, chef_id: 3 });
+  await invitationEvent('inv-other', 4);
   await service.deleteUser(1,{enforceObligations:false});
-  expect(await count('users','id=1')).toBe(0);
-  expect(await count('locations','id=10')).toBe(0);
+  expect((await client.query('SELECT username,firebase_uid FROM users WHERE id=1')).rows[0])
+    .toEqual({ username: anonymizedUsername(1), firebase_uid: null });
+  expect((await client.query('SELECT archived_at IS NOT NULL AS archived FROM locations WHERE id=10')).rows[0].archived).toBe(true);
+  expect((await client.query('SELECT listing_status, archived_at IS NOT NULL AS archived FROM kitchens WHERE id=11')).rows[0])
+    .toEqual({ listing_status: 'draft', archived: true });
+  expect(await count('kitchen_bookings','id=100')).toBe(1);
+  expect((await client.query('SELECT invitation_id FROM kitchen_bookings WHERE id=100')).rows[0].invitation_id).toBe('inv-booked');
+  expect(await count('kitchen_invitations',"id='inv-booked'")).toBe(1);
+  expect(await count('kitchen_invitation_events',"invitation_id='inv-booked'")).toBe(1);
+  expect(await count('kitchen_invitations',"id='inv-open'")).toBe(0);
+  expect(await count('kitchen_invitation_events',"invitation_id='inv-open'")).toBe(0);
+  expect(await count('kitchen_invitations',"id='inv-other'")).toBe(1);
+  expect((await client.query("SELECT actor_id FROM kitchen_invitation_events WHERE invitation_id='inv-other'")).rows[0].actor_id).toBe(4);
   expect((await client.query('SELECT user_id,firebase_uid,location_ids FROM user_deletion_jobs')).rows[0])
-    .toEqual({user_id:1,firebase_uid:'uid-1',location_ids:[10]});
+    .toEqual({user_id:1,firebase_uid:'uid-1',location_ids:[]});
+  expect((await client.query('SELECT outcome FROM account_deletion_audit WHERE user_id=1')).rows[0].outcome).toBe('anonymized');
   await client.query('SAVEPOINT registration');
   await expect(insert('users',{id:5,username:'new@fixture.invalid',password:'fixture',firebase_uid:'uid-1'}))
     .rejects.toThrow('Account deletion is still in progress');
   await client.query('ROLLBACK TO SAVEPOINT registration');
 });
 
+it('open invitations and manager-block invitations do not block deletion, and a kept event only loses its actor', async () => {
+  await seed();
+  await insert('users',{id:6,role:'chef',username:'user6@fixture.invalid',password:'fixture',firebase_uid:'uid-6'});
+  await invitation({ id: 'inv-chef', kitchen_id: 21, location_id: 20, manager_id: 2, chef_id: 6 });
+  await invitationEvent('inv-chef', 2);
+  await insert('users',{id:7,role:'manager',username:'user7@fixture.invalid',password:'fixture',firebase_uid:'uid-7'});
+  await insert('locations',{id:70,manager_id:7,name:'Blocked business',address:'Fixture'});
+  await insert('kitchens',{id:71,location_id:70,name:'Blocked kitchen'});
+  await insert('kitchen_bookings',{id:700,kitchen_id:71,chef_id:3,created_by:7,booking_type:'manager_blocked',start_time:'09:00',end_time:'10:00'});
+  await invitation({ id: 'inv-block', kitchen_id: 71, location_id: 70, manager_id: 7, chef_id: 3, booking_id: 700 });
+  await invitationEvent('inv-block', 7);
+  await invitation({ id: 'inv-actor', kitchen_id: 21, location_id: 20, manager_id: 2, chef_id: 3, booking_id: 200, status: 'confirmed' });
+  await invitationEvent('inv-actor', 4);
+  await client.query('UPDATE kitchen_bookings SET invitation_id=$1 WHERE id=200', ['inv-actor']);
+
+  await service.deleteUser(6,{enforceObligations:false});
+  expect(await count('users','id=6')).toBe(0);
+  expect(await count('kitchen_invitations',"id='inv-chef'")).toBe(0);
+  expect(await count('kitchen_invitation_events',"invitation_id='inv-chef'")).toBe(0);
+  expect(await count('kitchens','id=21')).toBe(1);
+  expect(await count('kitchen_bookings','id=200')).toBe(1);
+  expect((await client.query('SELECT user_id,location_ids FROM user_deletion_jobs WHERE user_id=6')).rows[0])
+    .toEqual({ user_id: 6, location_ids: [] });
+
+  await service.deleteUser(7,{enforceObligations:false});
+  expect(await count('users','id=7')).toBe(0);
+  expect(await count('locations','id=70')).toBe(0);
+  expect(await count('kitchens','id=71')).toBe(0);
+  expect(await count('kitchen_bookings','id=700')).toBe(0);
+  expect(await count('kitchen_invitations',"id='inv-block'")).toBe(0);
+  expect(await count('kitchen_invitation_events',"invitation_id='inv-block'")).toBe(0);
+  expect((await client.query('SELECT location_ids FROM user_deletion_jobs WHERE user_id=7')).rows[0].location_ids).toEqual([70]);
+
+  await service.deleteUser(4,{enforceObligations:false});
+  expect(await count('users','id=4')).toBe(0);
+  expect(await count('kitchen_invitations',"id='inv-actor'")).toBe(1);
+  expect((await client.query("SELECT actor_id FROM kitchen_invitation_events WHERE invitation_id='inv-actor'")).rows[0].actor_id).toBeNull();
+  expect((await client.query('SELECT invitation_id FROM kitchen_bookings WHERE id=200')).rows[0].invitation_id).toBe('inv-actor');
+});
+
+it('a full dependent purge still removes an invitation linked to a booking it deletes', async () => {
+  await seed();
+  await invitation({ id: 'inv-open', kitchen_id: 11, location_id: 10, manager_id: 1, chef_id: 3 });
+  await invitation({ id: 'inv-booked', kitchen_id: 11, location_id: 10, manager_id: 1, chef_id: 3, booking_id: 100 });
+  await invitationEvent('inv-booked', 1);
+  await invitation({ id: 'inv-other', kitchen_id: 21, location_id: 20, manager_id: 2, chef_id: 3 });
+  await deleteUserDependents(database, 1);
+  expect(await count('kitchen_invitations',"id IN ('inv-open','inv-booked')")).toBe(0);
+  expect(await count('kitchen_invitation_events',"invitation_id='inv-booked'")).toBe(0);
+  expect(await count('kitchen_bookings','id=100')).toBe(0);
+  expect(await count('kitchen_invitations',"id='inv-other'")).toBe(1);
+});
+
 it('a final FK failure rolls back resources and retry context together', async () => {
   await seed();
+  await insert('users',{id:8,role:'manager',username:'user8@fixture.invalid',password:'fixture',firebase_uid:'uid-8'});
+  await insert('locations',{id:80,manager_id:8,name:'Rolled back business',address:'Fixture'});
+  await insert('kitchens',{id:81,location_id:80,name:'Rolled back kitchen'});
   await client.query('CREATE TEMP TABLE unexpected_child(id integer PRIMARY KEY,user_id integer REFERENCES users(id)) ON COMMIT DROP');
-  await client.query('INSERT INTO unexpected_child VALUES(1,1)');
-  await expect(service.deleteUser(1,{enforceObligations:false})).rejects.toThrow();
-  expect(await count('users','id=1')).toBe(1); expect(await count('locations','id=10')).toBe(1);
-  expect(await count('kitchen_bookings','id=100')).toBe(1); expect(await count('user_deletion_jobs')).toBe(0);
+  await client.query('INSERT INTO unexpected_child VALUES(1,8)');
+  await expect(service.deleteUser(8,{enforceObligations:false})).rejects.toThrow();
+  expect(await count('users','id=8')).toBe(1); expect(await count('locations','id=80')).toBe(1);
+  expect(await count('kitchens','id=81')).toBe(1); expect(await count('user_deletion_jobs')).toBe(0);
+  expect(await count('account_deletion_audit')).toBe(0);
+  expect(await count('kitchen_bookings','id=100')).toBe(1);
 });
