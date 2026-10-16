@@ -28,6 +28,11 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
 | Booking inside the window: shown before paying ("once the kitchen confirms, you pay …"); no grace period after confirmation (owner, Oct 15; matches The Food Corridor). | `cpShort`, `cpNearDeadline` | verified copy (A); near-deadline built |
 | Kitchen cancels: the chef gets a full refund, including the processing fee. | `cause: 'kitchen'` remedy | verified (earlier, #158) |
 | Refund timing: issued immediately; banks usually show it in 5–10 business days. | notices | verified |
+| Wording (owner, Oct 16): "Cancel by {deadline} for a refund, minus the {fee} card processing fee. After that, this booking isn't refundable." The cancel dialog leads with "You'll get $X back" and a breakdown (paid · already refunded · kept under the policy · card fee · refund). Never "free" when a fee is deducted. | `booking.json` cp*, `BookingCancellationChooser.tsx` | verified (Oct 16, #185: $30.50 → $29.07) |
+| **No-shows** aren't refunded at any kitchen, whatever its late charge (owner, Oct 15); disclosed at checkout. The kitchen answers "Did they come?" within the inspection window; its answer never moves money. The chef can contest with "I was there", which goes to Local Cooks as a problem report. Admins are told about no-show reports. | WP-N, `booking-attendance-service.ts` | verified (Oct 16, #182) |
+| **Removing an add-on** (owner, Oct 16, decided — to build): instant under the booking's own policy. Before the refund deadline the chef sees the refund for that part first and is refunded at once, minus the card processing fee on that part; included (free) equipment is removed with no money. After the deadline add-ons aren't refundable, like the booking. Kitchen is told; payout adjusts. Today it waits for the kitchen's Accept/Decline and shows no amount (finding #177). | cancellation engine | open → build |
+| **Changing a confirmed booking** (owner, Oct 16, decided — building): the chef can request a new date/time/length until the refund deadline; the kitchen always approves; it answers within the new-request rule (≤24 h, ≥1 h before the chef's refund deadline); declined/expired = unchanged. Price up: the difference is charged (card hold at request, captured on approval). Price down: the difference is refunded minus the card fee on it. The refund deadline follows the new time. Single-visit bookings only at launch. | WP-RS | open → building |
+| **Changing a pending request** (owner, Oct 16): rebook first; the old request is withdrawn automatically (hold released) only once the new one is sent. | WP-RB | open → building |
 
 ## 3. Arrival, extra time, departure
 
@@ -47,7 +52,7 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
 | The kitchen can report damage or extra cleaning within 72 hours of the chef's departure (or the booked end), once per visit, up to $250 in-app, with a receipt, invoice or quote for each cost. No fines or lost revenue. Larger amounts: Local Cooks helps directly. | `damage-claims-v2.ts` | verified (Oct 15: one-per-visit 409) |
 | Local Cooks reviews every claim before the chef is contacted; it may ask the kitchen for more information, reduce, close, or pay the kitchen itself at no cost to the chef. What the kitchen tells Local Cooks during review is never shown to the chef. | `damage-claims-v2.ts` (privacy) | verified (Oct 15: page + API) |
 | The chef has 72 hours to pay (saved or new card, confirmed by the chef) or dispute; disputes and unanswered claims return to Local Cooks for a final decision. Cards are never charged automatically for a claim. | claim payment | verified (Oct 15, $70) |
-| If an upheld claim is still unpaid 7 days after the final decision, the chef can't make new bookings until it's paid or resolved; existing bookings are unaffected. | booking hold | verified (earlier) |
+| If an upheld claim is still unpaid 7 days after the final decision, the chef can't make new bookings until it's paid or resolved; existing bookings are unaffected. Paying lifts the pause at once. | booking hold | verified (Oct 16, claim #11: checkout 403 while held, released on payment) |
 | The kitchen receives the full approved amount; Local Cooks absorbs the processing fee. Claims never hold the booking payout. | claim transfer | verified (Oct 15, $70 transfer) |
 
 ## 5. Payouts (kitchens)
@@ -61,6 +66,7 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
 ## 6. Open items before the policy page
 
 - Re-verify every `built` row live after the next deploy.
+- Exceptions after the refund deadline: owner chose not to advertise an exception path in the terms (Oct 16); chefs still have "Contact Local Cooks" on every booking. Decide with counsel whether the page needs an extenuating-circumstances clause (Airbnb has one).
 - Service fee (owner, Oct 15): the page says Local Cooks "may charge a service fee", always shown before paying; no percentage on the
   page (it may be $0 during the pilot and will likely depend on the kitchen's subscription tier).
 - Storage: separate policy section after the storage rebuild.

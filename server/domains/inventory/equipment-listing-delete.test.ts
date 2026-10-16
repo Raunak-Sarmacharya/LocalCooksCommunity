@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../db', () => {
   const chain: any = {
-    from: () => chain, where: (condition: unknown) => { h.captured.wheres.push(condition); return chain; }, orderBy: () => chain,
+    from: () => chain, leftJoin: () => chain, where: (condition: unknown) => { h.captured.wheres.push(condition); return chain; }, orderBy: () => chain,
     returning: async () => [{ id: 5, kitchenId: 1, equipmentType: 'oven', isActive: true }],
     then: (resolve: (rows: unknown[]) => void) => resolve([{ id: 5, kitchenId: 1, isActive: true, archivedAt: new Date('2026-10-01') }]),
   };
@@ -83,6 +83,15 @@ describe('equipment repository archive rules', () => {
     await repo.getEquipmentBookingUsage(5);
     const where = dialect.sqlToQuery(h.captured.wheres[0] as any);
     expect(where.sql).toMatch(/"equipment_listing_id" = \$1/);
+  });
+  it('counts a booking as open only while its visit is live (equipment rows stay "confirmed" after a completed visit)', async () => {
+    const select = vi.spyOn((await import('../../db')).db, 'select');
+    await repo.getEquipmentBookingUsage(5);
+    const fields = select.mock.calls.at(-1)![0] as Record<string, any>;
+    const open = dialect.sqlToQuery(fields.open).sql;
+    const text = open.toLowerCase().replace(/\s+/g, ' ');
+    expect(text).toContain(`"equipment_bookings"."status" in ('pending', 'confirmed', 'cancellation_requested')`);
+    expect(text).toContain(`"kitchen_bookings"."status" in ('pending', 'confirmed', 'cancellation_requested')`);
   });
 });
 

@@ -21,10 +21,10 @@ it('normal booking: one calm line, full terms behind Details, no checkbox', () =
   expect(screen.getByRole('button', { name: 'Hide details' })).toHaveAttribute('aria-expanded', 'true');
 });
 
-it('full late charge: details say there is no refund after the deadline', () => {
+it('full late charge: details say there is no refund after the deadline (calm wording, owner Oct 16)', () => {
   render(<CheckoutCancellationDisclosure policy={{ ...policy, policy: { ...policy.policy, lateChargePercent: 100 } }} startAt={inHours(5 * 24)} />);
   openDetails();
-  expect(screen.getByTestId('cancel-details')).toHaveTextContent(/After that, there’s no refund\./);
+  expect(screen.getByTestId('cancel-details')).toHaveTextContent(/After that, this booking isn’t refundable\./);
   expect(screen.getByTestId('cancel-no-show')).toBeInTheDocument();
 });
 

@@ -3,7 +3,8 @@ import { db } from "../../db";
 import {
     storageListings,
     equipmentListings,
-    equipmentBookings
+    equipmentBookings,
+    kitchenBookings
 } from "@shared/schema";
 import { and, asc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
 import { storageListingAwaitingRemoval } from '../../services/booking-linked-cancellation';
@@ -146,14 +147,18 @@ export class InventoryRepository {
         return db.delete(equipmentListings).where(eq(equipmentListings.id, id));
     }
 
-    /** `open` counts bookings that are still live (not cancelled or completed), whatever their date. */
+    /** `open` counts bookings that are still live, whatever their date. Equipment rows keep `confirmed` after the visit, so the
+     *  parent kitchen booking decides: a completed or cancelled visit is history (archive), not an open booking. */
     async getEquipmentBookingUsage(listingId: number) {
+        const live = sql`('pending', 'confirmed', 'cancellation_requested')`;
         const [row] = await db
             .select({
                 total: sql<number>`count(*)::int`,
-                open: sql<number>`(count(*) FILTER (WHERE ${equipmentBookings.status} IN ('pending', 'confirmed', 'cancellation_requested')))::int`,
+                open: sql<number>`(count(*) FILTER (WHERE ${equipmentBookings.status} IN ${live}
+                    AND (${kitchenBookings.id} IS NULL OR ${kitchenBookings.status} IN ${live})))::int`,
             })
             .from(equipmentBookings)
+            .leftJoin(kitchenBookings, eq(kitchenBookings.id, equipmentBookings.kitchenBookingId))
             .where(eq(equipmentBookings.equipmentListingId, listingId));
         return { total: row?.total ?? 0, open: row?.open ?? 0 };
     }
