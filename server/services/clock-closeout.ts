@@ -214,9 +214,11 @@ export async function sweepClockCloseout(limit = 3) {
   const now = new Date();
   // Anchor the notification cutover at the first run, before any old booking is closed.
   await getCloseoutNotificationsFrom(db, now);
+  // Due work only: a deadline that merely entered the timer horizon must never take a slot from a booking that is due now
+  // (live Oct 15: 18 not-yet-due bookings shared the 3-per-tick page with 3 due ones, delaying them by hours).
   const rows = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(and(
     workerAfter('clockCloseout', kitchenBookings.id), inArray(kitchenBookings.status, ['confirmed', 'completed', 'cancellation_requested']),
-    sql`(((${kitchenBookings.visitDuties}->'clockCloseout'->>'nextDueAt') <= ${new Date(now.getTime() + deadlineHorizonMs).toISOString()}) OR
+    sql`(((${kitchenBookings.visitDuties}->'clockCloseout'->>'nextDueAt') <= ${now.toISOString()}) OR
       (${kitchenBookings.visitDuties}->'clockCloseout' IS NULL AND ${kitchenBookings.status} <> 'completed'
         AND ${kitchenBookings.bookingDate} < ${new Date(now.getTime() + 2 * 86_400_000)}))`))
     .orderBy(kitchenBookings.id).limit(limit);
@@ -230,7 +232,17 @@ export async function sweepClockCloseout(limit = 3) {
       errors++; logger.error('[Closeout] Booking needs Local Cooks review', { bookingId: row.id, error });
     }
   }
-  return { processed: rows.length, changed, errors };
+  // Arm exact timers for saved deadlines that have entered the horizon (no writes; Inngest dedupes the same deadline).
+  const ARM_PAGE = 25;
+  const arm = await db.select({ id: kitchenBookings.id, dueAt: sql<string>`${kitchenBookings.visitDuties}->'clockCloseout'->>'nextDueAt'` })
+    .from(kitchenBookings).where(and(workerAfter('closeoutArm', kitchenBookings.id),
+      inArray(kitchenBookings.status, ['confirmed', 'completed', 'cancellation_requested']),
+      sql`(${kitchenBookings.visitDuties}->'clockCloseout'->>'nextDueAt') > ${now.toISOString()}`,
+      sql`(${kitchenBookings.visitDuties}->'clockCloseout'->>'nextDueAt') <= ${new Date(now.getTime() + deadlineHorizonMs).toISOString()}`))
+    .orderBy(kitchenBookings.id).limit(ARM_PAGE);
+  await workerPageEnd('closeoutArm', arm.length, ARM_PAGE);
+  for (const row of arm) { await workerRecord('closeoutArm', row.id); scheduleDeadlineTimer('closeout', row.id, row.dueAt, now.getTime()); }
+  return { processed: rows.length, changed, errors, armed: arm.length };
 }
 
 /** Kitchen-local "Thu, Oct 15, 2:30 p.m." (weekday optional). */

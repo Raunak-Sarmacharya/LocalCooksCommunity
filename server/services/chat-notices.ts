@@ -115,13 +115,19 @@ async function deliverChatEpisode(tx: Transaction, intent: typeof emailLogs.$inf
   assertWorkerTime(deliveryReserve());
   if (deadline - Date.now() < deliveryReserve()) throw new WorkerBudgetExhausted();
   const sent = await sendEmail(content, { trackingId: intent.trackingId!, emailType: 'chat_digest_attempt', retryOfId: intent.id, durableDelivery: true });
-  await tx.update(emailLogs).set({ status: sent ? 'sent' : 'failed', recipientEmail: context.recipientEmail,
-    retryCount: intent.retryCount + 1, retriedAt: now, errorMessage: sent ? null : 'Not accepted; Local Cooks owns delivery recovery.' }).where(eq(emailLogs.id, intent.id));
-  return { id: intent.id, sent, failed: !sent };
+  const exhausted = !sent && intent.retryCount + 1 >= CHAT_DIGEST_MAX_ATTEMPTS;
+  await tx.update(emailLogs).set({ status: sent ? 'sent' : exhausted ? 'suppressed' : 'failed', recipientEmail: context.recipientEmail,
+    retryCount: intent.retryCount + 1, retriedAt: now, errorMessage: sent ? null : exhausted
+      ? `Undeliverable after ${CHAT_DIGEST_MAX_ATTEMPTS} attempts; the message stays in the in-app inbox.`
+      : 'Not accepted; Local Cooks owns delivery recovery.' }).where(eq(emailLogs.id, intent.id));
+  return { id: intent.id, sent, failed: !sent && !exhausted };
 }
 
 /** Row locks and per-message keys reuse the existing durable mail contract.
  * One due run groups currently due messages for the same recipient/thread. */
+/** Email digests for unread chat: at most 5 attempts, backing off 5, 10, 20, 40 minutes between them. */
+export const CHAT_DIGEST_MAX_ATTEMPTS = 5;
+export const chatDigestBackoffMs = (retryCount: number) => Math.min(2 ** Math.max(0, retryCount - 1), 8) * 5 * 60_000;
 export async function dispatchChatDigests(limit = 1, budgetMs = 20000, onlyLogId?: number, now = new Date()) {
   if (isE2eOutboundSuppressed()) return { completed: 0, errors: 0 };
   const deadline = Date.now() + budgetMs;
@@ -151,6 +157,8 @@ export async function dispatchChatDigests(limit = 1, budgetMs = 20000, onlyLogId
           await tx.update(emailLogs).set({ status: 'suppressed', errorMessage: 'Malformed historical chat intent' }).where(eq(emailLogs.id, row.id));
           continue;
         }
+        // A rejected email is retried with exponential backoff (5, 10, 20, 40 min), never every tick.
+        if (row.status === 'failed' && row.retriedAt && now.getTime() - row.retriedAt.getTime() < chatDigestBackoffMs(row.retryCount)) continue;
         if (Date.parse(saved.dueAt) <= now.getTime()) {
           intent = row; break;
         }
@@ -213,9 +221,14 @@ export async function dispatchChatDigests(limit = 1, budgetMs = 20000, onlyLogId
       const emailContent = generateChatDigestEmail(recipientEmail, unread.length, Array.from(senders).join(' and '), locationName, primaryUrl, Array.from(bookings));
       const sent = await sendEmail(emailContent,
         { trackingId: first.trackingId!, emailType: 'chat_digest_attempt', retryOfId: first.id, durableDelivery: true });
-      for (const row of unread) await tx.update(emailLogs).set({ status: sent ? 'sent' : 'failed', recipientEmail,
-        retryCount: row.retryCount + 1, retriedAt: now, errorMessage: sent ? null : 'Not accepted; Local Cooks owns delivery recovery.' }).where(eq(emailLogs.id, row.id));
-      return { id: intent.id, sent, failed: !sent };
+      // After the last attempt the address is treated as undeliverable: recorded, no more retries, no worker failure.
+      // The message itself is already in the in-app inbox; only this email digest is given up.
+      const exhausted = !sent && unread.every(row => row.retryCount + 1 >= CHAT_DIGEST_MAX_ATTEMPTS);
+      for (const row of unread) await tx.update(emailLogs).set({ status: sent ? 'sent' : exhausted ? 'suppressed' : 'failed', recipientEmail,
+        retryCount: row.retryCount + 1, retriedAt: now, errorMessage: sent ? null : exhausted
+          ? `Undeliverable after ${CHAT_DIGEST_MAX_ATTEMPTS} attempts; the message stays in the in-app inbox.`
+          : 'Not accepted; Local Cooks owns delivery recovery.' }).where(eq(emailLogs.id, row.id));
+      return { id: intent.id, sent, failed: !sent && !exhausted };
     }); } catch (error) {
       if (isWorkerBudgetError(error)) throw error;
       if (!selectedId) throw error;

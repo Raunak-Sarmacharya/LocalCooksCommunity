@@ -139,7 +139,7 @@ describe('actual durable unread dispatcher with controlled Firestore/SMTP sinks'
     await dispatchChatDigests(1, 20000, undefined, now); expect(state.send).not.toHaveBeenCalled();
     episode(); state.send.mockResolvedValueOnce(false);
     await dispatchChatDigests(1, 20000, undefined, now);
-    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 61000));
+    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 5 * 60_000 + 1000));
     expect(state.send).toHaveBeenCalledTimes(2); expect(state.logs[0].status).toBe('sent');
     expect(state.send.mock.calls[0][1].trackingId).toBe(state.send.mock.calls[1][1].trackingId);
   });
@@ -195,10 +195,29 @@ describe('actual durable unread dispatcher with controlled Firestore/SMTP sinks'
     expect(state.logs.every(row => row.status === 'failed')).toBe(true);
     await dispatchChatDigests(1, 20000, undefined, now);
     expect(state.send).toHaveBeenCalledTimes(1);
-    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 61000));
+    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 5 * 60_000 + 1000));
     expect(state.send).toHaveBeenCalledTimes(2);
     expect(state.send.mock.calls[0][1].trackingId).toBe(state.send.mock.calls[1][1].trackingId);
     expect(state.logs.every(row => row.status === 'sent' && row.retryCount === 2)).toBe(true);
+  });
+  it('backs off a rejected address and gives up after 5 attempts without failing the worker (live: @localcooks.test, hourly FAILED runs)', async () => {
+    state.send.mockResolvedValue(false);
+    let at = now.getTime(), last: any;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      last = await dispatchChatDigests(1, 20000, undefined, new Date(at));
+      at += 41 * 60_000; // past the longest backoff
+    }
+    expect(state.send).toHaveBeenCalledTimes(5);
+    expect(state.logs.every(row => row.status === 'suppressed' && /Undeliverable after 5 attempts/.test(row.errorMessage))).toBe(true);
+    expect(last).toMatchObject({ errors: 0 }); // the final give-up is recorded, not a task failure
+    await dispatchChatDigests(1, 20000, undefined, new Date(at));
+    expect(state.send).toHaveBeenCalledTimes(5);
+  });
+  it('waits for the backoff before retrying a rejected email (no retry every tick)', async () => {
+    state.send.mockResolvedValue(false);
+    await dispatchChatDigests(1, 20000, undefined, now);
+    await dispatchChatDigests(1, 20000, undefined, new Date(now.getTime() + 2 * 60_000));
+    expect(state.send).toHaveBeenCalledTimes(1);
   });
   it('does not resend a durable SMTP acceptance after an interrupted acknowledgment', async () => {
     state.logs = [log(1)]; state.accepted.add(state.logs[0].trackingId);

@@ -11,8 +11,8 @@ vi.mock('../db', () => {
         : table === 'users' || table === 'applications' || table === 'chef_kitchen_applications' ? [] : fields?.booking
         ? [{ booking: state.booking, timezone: 'America/St_Johns', managerId: 7, locationId: 4, kitchenName: 'Harbour Kitchen' }] : state.due.slice(0, state.limit);
       const q: any = { from: (value: any) => { table = value[Symbol.for('drizzle:Name')]; return q; },
-        innerJoin: () => q, where: (query: any) => { state.query = query; return q; },
-        orderBy: () => q, limit: (limit: number) => { state.limit = limit; return q; },
+        innerJoin: () => q, where: (query: any) => { state.queries = [...(state.queries || []), query]; state.query = query; return q; },
+        orderBy: () => q, limit: (limit: number) => { state.limits = [...(state.limits || []), limit]; state.limit = limit; return q; },
         then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
       return q;
     },
@@ -235,13 +235,19 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
   });
   it('caps the batch, saves the keyset checkpoint and wraps an empty page', async () => {
     const checkpoints: any[] = [];
-    state.due = [];
+    state.due = []; state.queries = []; state.limits = [];
     const context: any = { database: db, deadline: Infinity, taskDeadline: Infinity, cursors: { clockCloseout: 123 },
       checkpoint: async (key: string, id: number) => checkpoints.push([key, id]) };
     await workerContext.run(context, () => sweepClockCloseout());
-    expect(state.limit).toBe(3); expect(checkpoints).toEqual([['clockCloseout', 0]]);
-    const query = new PgDialect().sqlToQuery(state.query);
+    // Due work: 3 per tick on its own cursor; timer arming: a separate write-free page that never takes a due slot.
+    expect(state.limits).toEqual([3, 25]);
+    expect(checkpoints).toEqual([['clockCloseout', 0], ['closeoutArm', 0]]);
+    const query = new PgDialect().sqlToQuery(state.queries[0]);
     expect(query.params).toContain(123); expect(query.sql).toContain('nextDueAt');
+    // The due page selects only deadlines that have passed (no horizon bound mixed in).
+    expect(query.sql).toContain('<=');
+    const arm = new PgDialect().sqlToQuery(state.queries[1]);
+    expect(arm.sql).toContain('>'); expect(arm.sql).toContain('<=');
     await expect(sweepClockCloseout(4)).rejects.toThrow('three');
   });
 });
