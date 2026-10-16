@@ -145,6 +145,7 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'cancellations', run: cancellations },
         { name: 'clockCloseout', run: async () => (await import('./clock-closeout')).sweepClockCloseout(3) },
         { name: 'closeoutPayouts', run: async () => (await import('./kitchen-payout-service')).releaseDuePayouts(3) },
+        { name: 'storagePayouts', run: async () => (await import('./storage-payouts')).releaseDueStoragePayouts(3) },
         { name: 'bookingFeedback', run: async () => (await import('./booking-feedback-service')).sweepBookingFeedback(3) },
         { name: 'invitationExpiry', run: async () => (await import('./kitchen-invitations')).sweepKitchenInvitationExpiry(3) },
         // Expiry reminders (30/7/0 days); the new-booking block itself is enforced at read time.

@@ -113,6 +113,21 @@ describe('per-reader wording', () => {
     expect(notice(5)!.message).toContain('30,00');
     expect(notice(2)!.message).toContain('Maya Chen');
   });
+  it('keeps support details admin-only and limits a platform-funded refund to chef/admin readers', async () => {
+    await queueStorageRentalNotice(tx(), 5, 'support_flag', { ...facts, message: 'Respond to the dispute in Stripe. The kitchen is still paid.' });
+    expect(state.notices.map(row => row.userId).sort()).toEqual([1, 4]);
+    expect(notice(1)!.message).toContain('The kitchen is still paid');
+    state.notices = []; state.emails = [];
+    await queueStorageRentalNotice(tx(), 5, 'refund_issued', { ...facts, only: ['chef', 'admins'] });
+    expect(state.notices.map(row => row.userId).sort()).toEqual([1, 4, 5]);
+    expect(state.emails.map(row => row.recipientUserId).sort()).toEqual([1, 5]);
+  });
+  it('routes the overdue payout alert to every admin, emailing only opted-in admins', async () => {
+    await queueStorageRentalNotice(tx(), 5, 'payout_overdue', { ...facts, holdReason: 'Unpaid 10 days after its eligible date.' });
+    expect(state.notices.map(row => row.userId).sort()).toEqual([1, 4]);
+    expect(state.emails.map(row => row.recipientUserId)).toEqual([1]);
+    expect(notice(1)!.message).toContain('10 days');
+  });
   it('reads naturally on the last paid day, when no extension length is suggested', async () => {
     await queueStorageRentalNotice(tx(), 5, 'ending', { ...facts, eventKey: 'd0', days: 0, amountCents: 1000 });
     expect(notice(5)!.message).toBe('Extend now · $10.00.');

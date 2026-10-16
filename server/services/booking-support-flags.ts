@@ -41,15 +41,43 @@ export async function changeBookingFlag(bookingId: number, kind: Kind, providerR
   });
 }
 const ref = (value: string | { id: string } | null | undefined) => typeof value === 'string' ? value : value?.id;
+/** Kitchen bookings (incl. linked add-ons) and standalone storage rentals behind the matching payment sources. */
 async function bookingsForSources(where: ReturnType<typeof eq>) {
   const rows = await db.select({ bookingId: paymentTransactions.bookingId, bookingType: paymentTransactions.bookingType }).from(paymentTransactions).where(where);
-  const ids: number[] = [];
+  const kitchen: number[] = [], storage: number[] = [];
   for (const row of rows) {
-    if (['kitchen', 'bundle'].includes(row.bookingType)) ids.push(row.bookingId);
-    if (row.bookingType === 'storage') { const [item] = await db.select({ bookingId: storageBookings.kitchenBookingId }).from(storageBookings).where(eq(storageBookings.id, row.bookingId)); if (item?.bookingId) ids.push(item.bookingId); }
-    if (row.bookingType === 'equipment') { const [item] = await db.select({ bookingId: equipmentBookings.kitchenBookingId }).from(equipmentBookings).where(eq(equipmentBookings.id, row.bookingId)); if (item?.bookingId) ids.push(item.bookingId); }
+    if (['kitchen', 'bundle'].includes(row.bookingType)) kitchen.push(row.bookingId);
+    if (row.bookingType === 'storage') storage.push(row.bookingId);
+    if (row.bookingType === 'equipment') { const [item] = await db.select({ bookingId: equipmentBookings.kitchenBookingId }).from(equipmentBookings).where(eq(equipmentBookings.id, row.bookingId)); if (item?.bookingId) kitchen.push(item.bookingId); }
   }
-  return Array.from(new Set(ids));
+  return { kitchen: Array.from(new Set(kitchen)), storage: Array.from(new Set(storage)) };
+}
+/** Storage twin of changeBookingFlag: Local Cooks hears through the storage notice outbox. */
+export async function changeStorageFlag(rentalId: number, kind: Kind, providerRef: string, resolved = false, actorId?: number, note?: string,
+  copy?: { title: string; message: string }) {
+  return db.transaction(async tx => {
+    // Storage lock order: rental, then its payment sources.
+    const [rental] = await tx.select({ id: storageBookings.id, referenceCode: storageBookings.referenceCode }).from(storageBookings).where(eq(storageBookings.id, rentalId)).for('update');
+    if (!rental) throw Error('Linked storage rental not found.');
+    await tx.execute(sql`SELECT id FROM payment_transactions WHERE booking_type = 'storage' AND booking_id = ${rentalId} ORDER BY id FOR UPDATE`);
+    const [existing] = await tx.select().from(bookingFlags).where(and(eq(bookingFlags.storageBookingId, rentalId), eq(bookingFlags.kind, kind), eq(bookingFlags.providerRef, providerRef))).limit(1);
+    if (existing && (!resolved || existing.resolvedAt)) return { changed: false, id: existing.id };
+    let flagId = existing?.id;
+    if (existing) await tx.update(bookingFlags).set({ resolvedAt: new Date(), resolvedBy: actorId }).where(eq(bookingFlags.id, existing.id));
+    else {
+      const [created] = await tx.insert(bookingFlags).values({ storageBookingId: rentalId, kind, providerRef, note,
+        ...(resolved ? { resolvedAt: new Date(), resolvedBy: actorId } : {}) }).returning({ id: bookingFlags.id });
+      flagId = created.id;
+    }
+    const reference = rental.referenceCode || `SB-${rentalId}`;
+    const title = copy?.title.replace('{reference}', reference) ?? (resolved ? 'Storage payment flag resolved' : 'Storage payment needs review');
+    const message = copy?.message ?? (resolved ? 'The payment flag has been resolved.' : 'A payment issue needs your review. Refunds and kitchen payments are paused for this rental.');
+    const { queueStorageRentalNotice } = await import('./storage-rental-notices');
+    await queueStorageRentalNotice(tx, rentalId, 'support_flag', { eventKey: `flag:${flagId}:${resolved ? 'resolved' : 'opened'}`, message: `${title}. ${message}` });
+    // A flag opened or closed changes the payout hold.
+    await (await import('./storage-payouts')).scheduleStorageTermPayout(rentalId, tx);
+    return { changed: true, id: flagId };
+  });
 }
 /** Admin-only wording: what happened, the money, and when to answer in Stripe (admins may see Stripe links). */
 export function chargebackCopy(dispute: Stripe.Dispute) {
@@ -74,8 +102,9 @@ export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: S
     const ids = await bookingsForSources(or(eq(paymentTransactions.paymentIntentId, intentId || ''), eq(paymentTransactions.chargeId, chargeId || ''))!);
     // Pilot policy (Oct 16): Local Cooks answers in the Stripe Dashboard and absorbs a lost dispute, so any close ends the flag.
     const closed = ['won', 'lost', 'warning_closed'].includes(dispute.status);
-    for (const id of ids) await changeBookingFlag(id, 'chargeback', dispute.id, closed, undefined, undefined, chargebackCopy(dispute));
-    return { handled: true, linkedBookings: ids.length };
+    for (const id of ids.kitchen) await changeBookingFlag(id, 'chargeback', dispute.id, closed, undefined, undefined, chargebackCopy(dispute));
+    for (const id of ids.storage) await changeStorageFlag(id, 'chargeback', dispute.id, closed, undefined, undefined, chargebackCopy(dispute));
+    return { handled: true, linkedBookings: ids.kitchen.length + ids.storage.length };
   }
   if (event.type === 'transfer.reversed') {
     const transfer = event.data.object as Stripe.Transfer;
@@ -86,8 +115,9 @@ export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: S
     const source = await stripe.charges.retrieve(sourceId);
     if (source.status !== 'failed' || source.paid) return { handled: true, linkedBookings: 0 };
     const ids = await bookingsForSources(eq(paymentTransactions.transferId, transfer.id));
-    for (const id of ids) await changeBookingFlag(id, 'transfer_failed', transfer.id);
-    return { handled: true, linkedBookings: ids.length };
+    for (const id of ids.kitchen) await changeBookingFlag(id, 'transfer_failed', transfer.id);
+    for (const id of ids.storage) await changeStorageFlag(id, 'transfer_failed', transfer.id);
+    return { handled: true, linkedBookings: ids.kitchen.length + ids.storage.length };
   }
   if (event.type === 'payout.failed') {
     if (!event.account) return { handled: true, linkedBookings: 0 };
@@ -104,9 +134,10 @@ export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: S
       const transferId = ref(charge.source_transfer);
       if (transferId) transferIds.push(transferId);
     }
-    const ids = transferIds.length ? await bookingsForSources(and(eq(paymentTransactions.managerId, owner.id), inArray(paymentTransactions.transferId, transferIds))!) : [];
-    for (const id of ids) await changeBookingFlag(id, 'payout_failed', payout.id);
-    if (!ids.length) {
+    const ids = transferIds.length ? await bookingsForSources(and(eq(paymentTransactions.managerId, owner.id), inArray(paymentTransactions.transferId, transferIds))!) : { kitchen: [], storage: [] };
+    for (const id of ids.kitchen) await changeBookingFlag(id, 'payout_failed', payout.id);
+    for (const id of ids.storage) await changeStorageFlag(id, 'payout_failed', payout.id);
+    if (!ids.kitchen.length && !ids.storage.length) {
       // Do not label unrelated bookings as failed: use the existing admin notification path.
       const { notificationService } = await import('./notification.service');
       const { sendAdminNotificationEmail } = await import('./admin-email-preferences');
@@ -122,7 +153,7 @@ export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: S
           actionLabel: 'Open booking support', actionUrl: `${getAppBaseUrl('admin')}/admin?section=booking-support` }), { trackingId: `support-payout:${payout.id}:${admin.id}` });
       }
     }
-    return { handled: true, linkedBookings: ids.length };
+    return { handled: true, linkedBookings: ids.kitchen.length + ids.storage.length };
   }
   return { handled: false, linkedBookings: 0 };
 }

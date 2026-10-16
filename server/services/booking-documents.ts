@@ -12,7 +12,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { logger } from '../logger';
 import { damageClaims, kitchenBookingChanges, kitchenBookings, kitchens, locations, paymentTransactions, platformSettings, users,
-  storageBookings, storageListings, equipmentBookings, equipmentListings } from '@shared/schema';
+  storageBookings, storageListings, storageRentalTerms, equipmentBookings, equipmentListings } from '@shared/schema';
 import { bookingDocuments, type BookingDocumentRow } from '@shared/booking-documents-schema';
 import { LOCAL_COOKS_SUPPLIER, bookingSettled, buildCompensationRemittance, buildPaymentReceipt, buildPayoutReversal, buildRefundReceipt,
   buildRemittance, buildStatement, documentNumber, formatDay, formatMinutes, formatTimeRange,
@@ -313,17 +313,19 @@ const fromRow = (row: BookingDocumentRow): StoredDocument => ({ id: row.id, numb
   sourceKey: row.sourceKey, amountCents: row.amountCents, issuedAt: new Date(row.issuedAt).toISOString(), snapshot: row.lines, referencesDocumentId: row.referencesDocumentId });
 
 type Conn = Pick<typeof db, 'select' | 'insert' | 'execute'>;
-export function drizzleDocumentStore(connection: Conn = db): DocumentStore {
+/** `bookingType` says which table booking_id points at: kitchen bookings and storage rentals share the id space. */
+export function drizzleDocumentStore(connection: Conn = db, bookingType: 'kitchen' | 'storage' = 'kitchen'): DocumentStore {
   const store: DocumentStore = {
     async locked(bookingId, fn) {
       if (connection !== db) return fn(store);
       return db.transaction(async tx => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('booking_documents'), ${bookingId})`);
-        return fn(drizzleDocumentStore(tx as unknown as Conn));
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${bookingType === 'kitchen' ? 'booking_documents' : 'storage_documents'}), ${bookingId})`);
+        return fn(drizzleDocumentStore(tx as unknown as Conn, bookingType));
       });
     },
     async list(bookingId) {
-      const rows = await connection.select().from(bookingDocuments).where(eq(bookingDocuments.bookingId, bookingId)).orderBy(asc(bookingDocuments.id));
+      const rows = await connection.select().from(bookingDocuments).where(and(eq(bookingDocuments.bookingId, bookingId), eq(bookingDocuments.bookingType, bookingType)))
+        .orderBy(asc(bookingDocuments.id));
       return rows.map(fromRow);
     },
     async nextSequence() {
@@ -331,7 +333,7 @@ export function drizzleDocumentStore(connection: Conn = db): DocumentStore {
       return Number((result.rows[0] as { value: string | number }).value);
     },
     async insert(doc) {
-      const [row] = await connection.insert(bookingDocuments).values({ number: doc.number, bookingId: doc.bookingId, kind: doc.kind, audience: doc.audience,
+      const [row] = await connection.insert(bookingDocuments).values({ number: doc.number, bookingId: doc.bookingId, bookingType, kind: doc.kind, audience: doc.audience,
         sourceKey: doc.sourceKey, stripePaymentIntentId: doc.stripe.paymentIntentId ?? null, stripeChargeId: doc.stripe.chargeId ?? null,
         stripeRefundId: doc.stripe.refundId ?? null, stripeTransferId: doc.stripe.transferId ?? null, amountCents: doc.amountCents, currency: 'CAD',
         lines: doc.snapshot, referencesDocumentId: doc.referencesDocumentId, issuedAt: new Date(doc.issuedAt) })
@@ -474,15 +476,20 @@ export async function ensureBookingDocuments(bookingId: number, deps: IssueDeps 
     // Legacy net transfer metadata can change; an issued remittance is an immutable original payout fact.
     if (remittance) payment.kitchen.transferredCents = remittance.amountCents;
   }
-  const plan = planBookingDocuments(money, settled);
+  const documents = await issuePlanned(bookingId, planBookingDocuments(money, settled), existing, deps);
+  return { documents, settled, blockers };
+}
+
+/** Issues the planned documents not stored yet, under the issuance lock; returns all of them. */
+async function issuePlanned(bookingId: number, plan: PlannedDocument[], existing: StoredDocument[], deps: Pick<IssueDeps, 'store' | 'cardLookup' | 'taxNumber' | 'now'>) {
   const missing = plan.filter(item => !existing.some(doc => doc.sourceKey === item.sourceKey));
-  if (!missing.length) return { documents: existing, settled, blockers };
+  if (!missing.length) return existing;
   // Provider reads happen before the lock and only for documents about to be issued.
   const cards = new Map<string, Card>();
   for (const chargeId of Array.from(new Set(missing.filter(item => item.audience === 'chef' && item.chargeId).map(item => item.chargeId!))))
     cards.set(chargeId, await deps.cardLookup(chargeId));
   const supplier: DocumentSupplier = { ...LOCAL_COOKS_SUPPLIER, taxNumber: await deps.taxNumber() };
-  const documents = await deps.store.locked(bookingId, async store => {
+  return deps.store.locked(bookingId, async store => {
     const issued = await store.list(bookingId);
     const failed = new Set<DocumentAudience>();
     for (const item of plan) {
@@ -506,7 +513,6 @@ export async function ensureBookingDocuments(bookingId: number, deps: IssueDeps 
     }
     return issued;
   });
-  return { documents, settled, blockers };
 }
 
 /** Post-commit hook for money paths: never throws, never blocks the caller's outcome. */
@@ -523,4 +529,85 @@ export async function issueBookingDocumentsSafely(bookingId: number | null | und
 export function documentsFor(documents: StoredDocument[], audience: DocumentAudience) {
   return documents.filter(doc => doc.audience === audience).map(doc => ({ id: doc.id, number: doc.number, kind: doc.kind, title: doc.snapshot.title,
     issuedAt: doc.issuedAt, amountCents: doc.amountCents, summary: doc.snapshot.sections[0]?.lines[0]?.label ?? doc.snapshot.title }));
+}
+
+// ── Standalone storage rentals (booking_type 'storage') ─────────────────────────────────────────────────────────
+export const storageTermLabel = (listing: string, startsOn: string, endsOn: string, days: number) =>
+  `Storage · ${listing} · ${formatDay(startsOn)}–${formatDay(endsOn)} (${days} ${days === 1 ? 'day' : 'days'})`;
+export type StorageMoneyRows = { booking: BookingFacts; listingName: string;
+  terms: Array<{ startsOn: string; endsOn: string; days: number; subtotalCents: number; taxCents: number; payment: PaymentRow }> };
+
+/** Pure: one payment per paid term. The kitchen's remittance is subtotal + tax − card processing (− refunds already taken). */
+export function deriveStorageMoney(rows: StorageMoneyRows): BookingMoney {
+  const payments = rows.terms.filter(term => PAID.includes(term.payment.status) && term.payment.paymentIntentId).map(({ payment: row, ...term }): PaymentFact => {
+    const m = meta(row), amount = cents(row.amount), serviceFee = amount - term.subtotalCents - term.taxCents;
+    const transfer = m.transfer as Record<string, any> | undefined;
+    const transferId = row.transferId || transfer?.transferId || null;
+    const evidence = transferId ? row.payoutTransfers?.[transferId] : undefined;
+    const refunds = refundsOf(row, rows.booking, []).map(refund => ({ ...refund,
+      reason: refund.reason.startsWith('Goodwill') ? refund.reason : 'Storage refund',
+      ...(evidence?.refunds && Object.keys(evidence.refunds).length ? { reversedCents: evidence.refunds[refund.refundId]?.amountCents || 0 } : {}) }));
+    return { bookingSchedule: { ...rows.booking, bookingDate: term.startsOn }, paymentIntentId: row.paymentIntentId!, chargeId: row.chargeId, purpose: 'other',
+      paidAt: iso(row.paidAt), items: [{ label: storageTermLabel(rows.listingName, term.startsOn, term.endsOn, term.days), subtotalCents: term.subtotalCents }],
+      taxCents: term.taxCents, taxRatePercent: term.subtotalCents && term.taxCents ? Math.round(term.taxCents * 1000 / term.subtotalCents) / 10 : null,
+      serviceFeeCents: Math.max(0, serviceFee), amountCents: amount, refunds,
+      ...(serviceFee < 0 ? { problem: `Payment ${row.id} records more than was charged; Local Cooks must review it before a receipt is issued` } : {}),
+      kitchen: { noShare: false, processingAbsorbed: false, processingFeeCents: cents(row.stripeProcessingFee), transferId,
+        transferredCents: transferId ? evidence ? evidence.originalAmountCents : m.payoutSent?.amountCents != null ? cents(m.payoutSent.amountCents) : cents(row.managerRevenue) : null,
+        ...(evidence ? { reversedCents: evidence.reversedCents } : {}),
+        transferredAt: transferId ? (transfer?.transferredAt || m.payoutSent?.sentAt || null) : null } };
+  });
+  return { booking: rows.booking, payments, compensations: [], freeTime: [] };
+}
+
+export async function loadStorageMoneyRows(rentalId: number, reader: Conn = db): Promise<StorageMoneyRows | null> {
+  const [row] = await reader.select({ id: storageBookings.id, chefId: storageBookings.chefId, referenceCode: storageBookings.referenceCode, termStart: storageBookings.termStart,
+    timezone: storageBookings.timezone, listingName: storageListings.name, kitchenName: kitchens.name, locationName: locations.name, locationAddress: locations.address })
+    .from(storageBookings).innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId)).innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+    .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(storageBookings.id, rentalId)).limit(1);
+  if (!row?.termStart) return null;
+  const terms = await reader.select({ term: storageRentalTerms, payment: paymentTransactions }).from(storageRentalTerms)
+    .innerJoin(paymentTransactions, eq(paymentTransactions.id, storageRentalTerms.paymentTransactionId))
+    .where(eq(storageRentalTerms.rentalId, rentalId)).orderBy(asc(storageRentalTerms.seq));
+  const transfers = (await reader.execute(sql`SELECT DISTINCT ON (ph.transaction_id, ph.metadata->>'transferId')
+    ph.transaction_id AS "transactionId", ph.metadata FROM payment_history ph JOIN payment_transactions pt ON pt.id = ph.transaction_id
+    WHERE pt.booking_id = ${rentalId} AND pt.booking_type = 'storage' AND ph.event_type = 'payout_transfer_verified'
+    ORDER BY ph.transaction_id, ph.metadata->>'transferId', ph.id DESC`)).rows as Array<{ transactionId: number; metadata: any }>;
+  for (const transfer of transfers) {
+    const source = terms.find(item => item.payment.id === transfer.transactionId)?.payment as PaymentRow | undefined;
+    if (source) source.payoutTransfers = { ...source.payoutTransfers, [transfer.metadata.transferId]: transfer.metadata };
+  }
+  const [chef] = row.chefId ? await reader.select({ email: users.username }).from(users).where(eq(users.id, row.chefId)).limit(1) : [];
+  const { getUserDisplayName } = await import('../utils/user-display');
+  const booking: BookingFacts = { bookingId: row.id, reference: row.referenceCode || `#${row.id}`, kitchenName: row.kitchenName, locationName: row.locationName,
+    locationAddress: row.locationAddress, timezone: row.timezone || 'America/St_Johns', chefName: row.chefId ? await getUserDisplayName(row.chefId, 'chef') : 'Chef',
+    chefEmail: chef?.email?.includes('@') ? chef.email : null, bookingDate: row.termStart, pricingMode: 'daily', originalSlots: [] };
+  return { booking, listingName: row.listingName, terms: terms.map(({ term, payment }) => ({ ...term, payment: payment as PaymentRow })) };
+}
+
+/** Receipts, refund receipts, remittances and payout adjustments per paid term (no statement: a rental has no single close). */
+export async function ensureStorageDocuments(rentalId: number, deps: Pick<IssueDeps, 'cardLookup' | 'taxNumber' | 'now'> & { store?: DocumentStore; loadRows?: typeof loadStorageMoneyRows } = { cardLookup: stripeCardLookup, taxNumber: () => readTaxNumber(), now: () => new Date() }) {
+  const rows = await (deps.loadRows ?? loadStorageMoneyRows)(rentalId);
+  if (!rows) throw Error('Storage rental not found');
+  const store = deps.store ?? drizzleDocumentStore(db, 'storage');
+  let existing: StoredDocument[];
+  try { existing = await store.list(rentalId); } catch (error) { if (missingTable(error)) throw new DocumentsUnavailable(); throw error; }
+  const money = deriveStorageMoney(rows);
+  for (const payment of money.payments) {
+    const remittance = payment.kitchen.transferId && existing.find(doc => doc.sourceKey === `storage:${sourceKeys.remittance(payment.kitchen.transferId!)}`);
+    if (remittance) payment.kitchen.transferredCents = remittance.amountCents;
+  }
+  // Source keys are global: the storage prefix keeps a rental's documents apart from a kitchen booking with the same id.
+  const plan = planBookingDocuments(money, false).map(item => ({ ...item, sourceKey: `storage:${item.sourceKey}`,
+    ...(item.referencesSourceKey ? { referencesSourceKey: `storage:${item.referencesSourceKey}` } : {}) }));
+  return { documents: await issuePlanned(rentalId, plan, existing, { ...deps, store }) };
+}
+
+export async function issueStorageDocumentsSafely(rentalId: number | null | undefined, reason: string) {
+  if (!rentalId) return;
+  try { await ensureStorageDocuments(rentalId); }
+  catch (error) {
+    if (error instanceof DocumentsUnavailable) return;
+    logger.warn('[Documents] Storage documents will retry on next read', { rentalId, reason, error });
+  }
 }

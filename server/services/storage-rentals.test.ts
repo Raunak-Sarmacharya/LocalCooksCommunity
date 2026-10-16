@@ -21,6 +21,7 @@ vi.mock('../email', () => ({ renderTransactionalEmail: vi.fn() }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `SB-${randomUUID()}` }));
 vi.mock('../config', () => ({ getAppBaseUrl: () => 'https://example.invalid' }));
 vi.mock('./booking-money-guard', () => ({ assertBookingMoneyWritable: vi.fn() }));
+vi.mock('./storage-payouts', () => ({ storageTermStillEligible: async () => false, scheduleStorageTermPayout: vi.fn() }));
 
 import { assertRentalAcceptance, createRentalCheckout, decideRental, expireRental, fulfillRentalCheckout, quoteRental,
   readRental, rentalIntentCanceled, storageRentalStripe, storageTermStillEligible, sweepStorageRentalRequests, withdrawRental } from './storage-rentals';

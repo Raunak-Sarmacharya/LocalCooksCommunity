@@ -703,6 +703,7 @@ async function finishAddonRemoval(bookingId: number, chefId: number, scope: Addo
 
 /** Successful receipt completion shared by webhook, retry and support reconciliation. */
 export async function finalizeCancellationRefund(tx: Tx, source: Source, operation: Record<string, any>) {
+  if (operation.storageRentalId) return (await import('./storage-rental-money')).finalizeStorageRefund(tx, source, operation);
   if (operation.chefInitiated) await finalizeAddonRemoval(tx, operation.bookingId, source, operation, operation.scope.id);
   else if (!operation.cancellationNoticeIncludesRefund) await queueBookingLifecycleEvent(tx, operation.bookingId, 'refund_issued', 'Refund sent',
     `A refund of $${(Number(operation.customerRefund ?? operation.managerRefund) / 100).toFixed(2)} has been sent.`, undefined,
@@ -723,7 +724,7 @@ async function reportAddonRefundProblem(tx: Tx, bookingId: number, source: Sourc
 }
 
 /** The kitchen's share couldn't be pulled back from its payout: the chef is still refunded from Local Cooks' balance and Local Cooks hears about the debt. */
-const kitchenFundingShortfall = (error: unknown) => /exceeds the verified unreversed|kitchen transfer reversal has insufficient balance/i.test(error instanceof Error ? error.message : String(error));
+export const kitchenFundingShortfall = (error: unknown) => /exceeds the verified unreversed|kitchen transfer reversal has insufficient balance/i.test(error instanceof Error ? error.message : String(error));
 async function reportKitchenDebt(tx: Tx, bookingId: number, source: Source, operation: Record<string, any>) {
   const [parent] = await tx.select({ referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'A kitchen owes Local Cooks for a removed add-on',

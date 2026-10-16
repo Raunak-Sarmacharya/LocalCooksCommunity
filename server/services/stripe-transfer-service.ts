@@ -89,9 +89,9 @@ export interface TransferResult {
 // Internal helpers
 // ============================================================================
 
-async function fetchManagerConnectAccount(paymentTransactionId: number): Promise<string | null> {
+async function fetchManagerConnectAccount(paymentTransactionId: number, connection: Pick<typeof db, 'select'>): Promise<string | null> {
   try {
-    const [row] = await db
+    const [row] = await connection
       .select({
         managerId: paymentTransactions.managerId,
       })
@@ -103,7 +103,7 @@ async function fetchManagerConnectAccount(paymentTransactionId: number): Promise
       return null;
     }
 
-    const [manager] = await db
+    const [manager] = await connection
       .select({ stripeConnectAccountId: users.stripeConnectAccountId })
       .from(users)
       .where(
@@ -121,10 +121,10 @@ async function fetchManagerConnectAccount(paymentTransactionId: number): Promise
   }
 }
 
-async function fetchPlatformCommission(): Promise<number> {
+async function fetchPlatformCommission(connection: Pick<typeof db, 'select'>): Promise<number> {
   try {
     const { getFeeConfig } = await import('./stripe-checkout-fee-service');
-    const config = await getFeeConfig();
+    const config = await getFeeConfig(connection);
     return config.platformCommissionRate;
   } catch (err) {
     logger.warn('[StripeTransferService] Could not load platform commission rate, defaulting to 0:', err as Error);
@@ -163,7 +163,7 @@ export async function transferToManagerForBooking(
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1).for('update');
-    await assertBookingMoneyWritable({ paymentTransactionId: params.paymentTransactionId, paymentIntentId: params.paymentIntentId }, tx);
+    await assertBookingMoneyWritable({ paymentTransactionId: params.paymentTransactionId, paymentIntentId: params.paymentIntentId, payout: true }, tx);
     const [timing] = await tx.select({ payoutTiming: paymentTransactions.payoutTiming }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
     const result = await transferLockedSource(params, tx);
@@ -173,6 +173,8 @@ export async function transferToManagerForBooking(
     // The release command's transfer (or a webhook/sync recovery of it) records the payout and queues its notice once.
     if (timing?.payoutTiming === 'after_closeout' && result.transferred)
       await (await import('./kitchen-payout-service')).recordReleasedPayout(params.paymentTransactionId, result, tx);
+    if (timing?.payoutTiming === 'storage_term' && result.transferred)
+      await (await import('./storage-payouts')).recordReleasedStoragePayout(params.paymentTransactionId, result, tx);
     return result;
   });
 }
@@ -248,14 +250,14 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
   // Storage holds every paid term until its own release engine commits a decision (WP-ST6).
   if (payout?.payoutTiming === 'storage_term') {
     if (!payout.payoutReleasedAt || payout.payoutHoldReason
-      || !await (await import('./storage-rentals')).storageTermStillEligible(payout.bookingId, connection))
+      || !await (await import('./storage-payouts')).storageTermStillEligible(payout.bookingId, connection))
       return { ...baseResult, transferredCents: 0, reason: 'deferred: storage is paid out at the end of each paid term' };
   }
 
   // A captured adjustment is not an approved new schedule until inventory commit.
   // Reload durable source on every payment/charge.updated retry, never trust stale metadata.
   if (params.existingMetadata?.kitchenChangeId) {
-    const [change] = await db.select({ state: kitchenBookingChanges.state }).from(kitchenBookingChanges)
+    const [change] = await connection.select({ state: kitchenBookingChanges.state }).from(kitchenBookingChanges)
       .where(eq(kitchenBookingChanges.id, String(params.existingMetadata.kitchenChangeId))).limit(1);
     if (change?.state !== 'applied') return { ...baseResult, reason: 'Kitchen change needs schedule/payment recovery before manager transfer' };
   }
@@ -316,13 +318,13 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
       try {
         const existingTransfer = await stripe.transfers.retrieve(existing.transferId);
         const transferredCents = existingTransfer.amount - existingTransfer.amount_reversed;
-        const platformCommissionRate = await fetchPlatformCommission();
+        const platformCommissionRate = await fetchPlatformCommission(connection);
         const split = await resolveManagerGrossAndCommission({
           paymentTransactionId: params.paymentTransactionId,
           chargeAmountCents: params.chargeAmountCents,
           platformCommissionRate,
           existingMetadata: params.existingMetadata,
-        });
+        }, connection);
         const expectedTransferCents = Math.max(0, split.managerGrossCents - params.actualStripeFeeCents - managerRefundedCents);
 
         // The correction may have reached Stripe before its replacement ID was
@@ -426,7 +428,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
     throw err;
   }
 
-  const managerConnectAccountId = await fetchManagerConnectAccount(params.paymentTransactionId);
+  const managerConnectAccountId = await fetchManagerConnectAccount(params.paymentTransactionId, connection);
   if (!managerConnectAccountId) {
     return {
       ...baseResult,
@@ -434,7 +436,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
     };
   }
 
-  const platformCommissionRate = await fetchPlatformCommission();
+  const platformCommissionRate = await fetchPlatformCommission(connection);
 
   // Prefer capture-engine values (metadata / PT columns) over reverse-engineering.
   // Chef paid: subtotal + tax + serviceFee(on subtotal). Manager keeps (subtotal + tax) − Stripe fee.
@@ -444,7 +446,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
     chargeAmountCents: params.chargeAmountCents,
     platformCommissionRate,
     existingMetadata: params.existingMetadata,
-  });
+  }, connection);
 
   // The manager receives subtotal + tax minus the actual Stripe fee
   const originalManagerNetCents = managerGrossCents - params.actualStripeFeeCents;
@@ -564,13 +566,13 @@ async function resolveManagerGrossAndCommission(params: {
   chargeAmountCents: number;
   platformCommissionRate: number;
   existingMetadata?: Record<string, unknown> | null;
-}): Promise<{ managerGrossCents: number; platformCommissionCents: number }> {
+}, connection: Pick<typeof db, 'select'>): Promise<{ managerGrossCents: number; platformCommissionCents: number }> {
   const meta: Record<string, unknown> = { ...(params.existingMetadata || {}) };
   let storedBaseAmountCents = 0;
   let storedServiceFeeCents = 0;
 
   try {
-    const [pt] = await db
+    const [pt] = await connection
       .select({
         baseAmount: paymentTransactions.baseAmount,
         serviceFee: paymentTransactions.serviceFee,

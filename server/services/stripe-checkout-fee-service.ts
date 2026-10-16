@@ -87,14 +87,14 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Get fee configuration from database with caching
  * Admin-configurable via platform_settings table
  */
-export async function getFeeConfig(): Promise<FeeConfig> {
+export async function getFeeConfig(connection: Pick<typeof db, 'select'> = db): Promise<FeeConfig> {
   // Monetary operations must observe the administrator's current setting.
   // Process-local caches can remain stale across server instances after an
   // update, so the database is the source of truth on every calculation.
 
   try {
     // Fetch all fee-related settings from database
-    const allSettings = await db
+    const allSettings = await connection
       .select({ key: platformSettings.key, value: platformSettings.value })
       .from(platformSettings);
 

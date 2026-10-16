@@ -43,6 +43,7 @@ vi.mock('./tour-outcome-service', () => ({ remindUnrecordedTourOutcomes: () => t
 vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChanges: () => task('kitchenChanges') }));
 vi.mock('./storage-rentals', () => ({ sweepStorageRentalRequests: () => task('storageRequests') }));
 vi.mock('./storage-rental-lifecycle', () => ({ sweepStorageRentals: () => task('storageRentals') }));
+vi.mock('./storage-payouts', () => ({ releaseDueStoragePayouts: () => task('storagePayouts') }));
 vi.mock('./booking-replacement', () => ({ retryStuckReplacements: () => task('replacementRetry') }));
 vi.mock('./kitchen-invitations', () => ({ sweepKitchenInvitationExpiry: () => task('invitationExpiry'), deliverKitchenInvitationEvents: () => task('invitations') }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
@@ -78,7 +79,7 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     expect(configuredInvocationMs).toBe(30_000); expect(workerSafetyReserveMs).toBe(4_000);
     expect(result).toMatchObject({ taskFailures: [], deferred: false });
     expect(state.calls).toEqual(expect.arrayContaining(['advance', 'booking', 'tour', 'outcome', 'chat', 'reconcile:booking', 'reconcile:tour',
-      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'addonRefundRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges', 'storageRequests', 'storageRentals', 'replacementRetry', 'invitationExpiry', 'invitations']));
+      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'addonRefundRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges', 'storageRequests', 'storageRentals', 'storagePayouts', 'replacementRetry', 'invitationExpiry', 'invitations']));
     expect(state.calls.filter(name => name === 'clockCloseout')).toHaveLength(1);
     expect(state.calls.filter(name => name === 'closeoutPayouts')).toHaveLength(1);
     expect(state.calls).not.toContain('kitchenCheckout'); expect(state.calls).not.toContain('visitCheckout');
