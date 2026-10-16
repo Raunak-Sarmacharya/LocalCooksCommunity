@@ -1,6 +1,6 @@
 /** Standalone storage. Lock order: rental -> listing -> term -> payment; provider I/O follows the committed decision. */
 import Stripe from 'stripe';
-import { and, asc, eq, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, platformSettings, kitchenCheckoutIncidents } from '@shared/schema';
 import { addDays, approvedTermDates, GRACE_DAYS, localDayStart, localToday, MAX_LEAD_DAYS, occupancyRange, pickFreeUnit,
@@ -8,6 +8,7 @@ import { addDays, approvedTermDates, GRACE_DAYS, localDayStart, localToday, MAX_
   termPrice, toDateRange, type RentalDates } from '@shared/storage-rental';
 import type { CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { chefService } from '../domains/users/chef.service';
+import { getUserDisplayName } from '../utils/user-display';
 import { readClaimBookingHold } from './damage-claims-v2';
 import { hasChefUnpaidPenalties } from './overstay-penalty-service';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
@@ -355,7 +356,12 @@ export async function sweepStorageRentalRequests(limit = 3, now = new Date(), st
   }
   return { checked: rows.length };
 }
-export async function readRental(id: number, actor: RentalActor, now = new Date()) {
+/**
+ * Kitchen/chef DTO for one rental. `chef` names the occupant (kitchens see the chef's name, chefs see their own),
+ * and each term carries the payout status the kitchen screen shows: eligible date, released date, hold reason.
+ * `resolvedChefName` lets `listRentals` name every occupant with one lookup per chef instead of one per row.
+ */
+export async function readRental(id: number, actor: RentalActor, now = new Date(), resolvedChefName?: string) {
   const rental = await owned(db, id, actor);
   const ctx = await contextForRead(rental.storageListingId);
   const terms = await db.select().from(storageRentalTerms).where(eq(storageRentalTerms.rentalId, id)).orderBy(asc(storageRentalTerms.seq));
@@ -364,13 +370,26 @@ export async function readRental(id: number, actor: RentalActor, now = new Date(
   const pending = terms.some(term => (term.operation as Decision | null)?.state === 'pending');
   const actions = rental.rentalState === 'requested' && !pending
     ? actor.role === 'chef' ? ['withdraw'] : rental.responseDeadline && now < rental.responseDeadline ? ['approve', 'decline'] : ['decline'] : [];
+  const paymentIds = terms.flatMap(term => (typeof term.paymentTransactionId === 'number' ? [term.paymentTransactionId] : []));
+  const payments = paymentIds.length
+    ? await db.select({ id: paymentTransactions.id, payoutEligibleAt: paymentTransactions.payoutEligibleAt,
+        payoutReleasedAt: paymentTransactions.payoutReleasedAt, payoutHoldReason: paymentTransactions.payoutHoldReason })
+        .from(paymentTransactions).where(inArray(paymentTransactions.id, paymentIds))
+    : [];
+  const payoutById = new Map(payments.map(payment => [payment.id, payment]));
+  const chefName = resolvedChefName ?? (rental.chefId ? await getUserDisplayName(rental.chefId) : '');
   return { id, ref: rental.referenceCode, kitchen: { id: ctx.kitchen.id, name: ctx.kitchen.name },
-    listing: { id: ctx.listing.id, name: ctx.listing.name }, unitLabel: String(rental.unitIndex), state: rental.rentalState,
+    listing: { id: ctx.listing.id, name: ctx.listing.name }, chef: { id: rental.chefId ?? null, name: chefName },
+    unitLabel: String(rental.unitIndex), state: rental.rentalState, timezone: rental.timezone,
     phase: phase?.phase ?? null, startOn: rental.termStart, paidThrough: rental.paidThrough,
     graceEndsOn: phase?.graceEndsOn ?? addDays(rental.paidThrough!, GRACE_DAYS), holdoverDays: phase?.holdoverDays ?? 0,
     accruedCents: phase?.accruedCents ?? 0, responseDeadline: rental.responseDeadline, declineReason: rental.declineReason, rentalTerms: frozen, actions,
-    terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt }) =>
-      ({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt })),
+    needsCleaning: rental.needsCleaning, releasedOn: rental.releasedOn,
+    terms: terms.map(({ id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt, paymentTransactionId }) => {
+      const payout = paymentTransactionId ? payoutById.get(paymentTransactionId) : undefined;
+      return { id, seq, kind, startsOn, endsOn, days, dailyPriceCents, subtotalCents, taxCents, serviceFeeCents, totalCents, status, paidAt,
+        payoutEligibleAt: payout?.payoutEligibleAt ?? null, payoutReleasedAt: payout?.payoutReleasedAt ?? null, payoutHoldReason: payout?.payoutHoldReason ?? null };
+    }),
     evidence: { checkinPhotoUrls: rental.checkinPhotoUrls, handoverPhotoUrls: rental.handoverPhotoUrls, checkoutPhotoUrls: rental.checkoutPhotoUrls } };
 }
 async function contextForRead(listingId: number) {
@@ -380,10 +399,12 @@ async function contextForRead(listingId: number) {
   return row;
 }
 export async function listRentals(actor: RentalActor) {
-  const rows = await db.select({ id: storageBookings.id }).from(storageBookings)
+  const rows = await db.select({ id: storageBookings.id, chefId: storageBookings.chefId }).from(storageBookings)
     .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
     .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId)).innerJoin(locations, eq(locations.id, kitchens.locationId))
     .where(and(isNotNull(storageBookings.rentalTerms), actor.role === 'chef' ? eq(storageBookings.chefId, actor.id) : eq(locations.managerId, actor.id)))
     .orderBy(asc(storageBookings.id));
-  return Promise.all(rows.map(row => readRental(row.id, actor)));
+  const names = new Map<number, string>();
+  for (const chefId of Array.from(new Set(rows.flatMap(row => (row.chefId ? [row.chefId] : []))))) names.set(chefId, await getUserDisplayName(chefId));
+  return Promise.all(rows.map(row => readRental(row.id, actor, new Date(), row.chefId ? names.get(row.chefId) : '')));
 }

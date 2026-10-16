@@ -21,6 +21,7 @@ import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransa
 import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
 import { BookingSupportSection } from "@/components/admin/booking-support/BookingSupportSection";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
+import { AdminStorageRentalsSection } from "@/components/admin/sections/AdminStorageRentalsSection";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
 import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
@@ -99,7 +100,7 @@ function AdminDashboard() {
     "chef-kitchen-access", "kitchen-management", "user-management", "promos", "manager-revenues",
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
-    "overstay-penalties-history", "damage-claims-history",
+    "overstay-penalties-history", "damage-claims-history", "storage-rentals",
     "security-settings", "password-reset", "email-log", "live-problems", "booking-support",
   ], []);
 
@@ -1206,6 +1207,13 @@ function AdminDashboard() {
         return (
           <ErrorBoundary>
             <AdminDamageClaimsHistory getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
+
+      case "storage-rentals":
+        return (
+          <ErrorBoundary>
+            <AdminStorageRentalsSection />
           </ErrorBoundary>
         );
 

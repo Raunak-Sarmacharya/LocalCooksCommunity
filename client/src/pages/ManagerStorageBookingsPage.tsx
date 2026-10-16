@@ -1,231 +1,168 @@
-import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
-import { useMemo, useState, useEffect } from "react";
+/**
+ * Kitchen Storage board (WP-ST11).
+ *
+ * The kitchen's home for standalone storage rentals: a glance strip, the requests that need an
+ * answer, then every unit grouped by listing — free units included — so the kitchen sees at a
+ * glance what is in use and what needs them now. Actions come from the DTO's `actions[]`; the detail
+ * page (`/manager/storage/:id`) carries the deeper tools.
+ */
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MapPin, Search, User, X } from "@/components/ui/manager-icons";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Package } from "@/components/ui/manager-icons";
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { getAuthHeaders } from "@/lib/api";
-import { filterManagerStorageBookings, inheritStorageChef, type ManagerStorageBooking } from "@/lib/manager-storage-bookings";
-import { mt } from "@/i18n/manager";
-import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
-import { VisitAssistancePanel } from '@/components/booking/VisitAssistancePanel';
-
-const statusClass: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800 border-amber-300",
-  confirmed: "bg-emerald-100 text-emerald-800 border-emerald-300",
-  completed: "bg-blue-100 text-blue-800 border-blue-300",
-  cancelled: "bg-red-100 text-red-800 border-red-300",
-  cancellation_requested: "bg-orange-100 text-orange-800 border-orange-300",
-};
+import {
+  boardSummary, filterUnitRows, groupRowsByListing, pendingRequests, unitRows,
+  type BoardFilter, type StorageListing, type StorageRental,
+} from "@/lib/storage-board";
+import { StorageRequestCard } from "@/components/manager/storage/StorageRequestCard";
+import { StorageUnitCard } from "@/components/manager/storage/StorageUnitCard";
 
 interface ManagerStorageBookingsPageProps {
-  onOpenOverstays: () => void;
-  onOpenInspections: () => void;
+  /** Kept for the dashboard's view contract; the board no longer routes to the legacy queues. */
+  onOpenOverstays?: () => void;
+  onOpenInspections?: () => void;
 }
 
-export default function ManagerStorageBookingsPage({ onOpenOverstays, onOpenInspections }: ManagerStorageBookingsPageProps) {
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [assistanceId, setAssistanceId] = useState<number | null>(null);
-  const [focusedBookingId, setFocusedBookingId] = useState(() => Number(new URLSearchParams(window.location.search).get("storageBooking")) || null);
-  useEffect(() => {
-    const sync = () => setFocusedBookingId(Number(new URLSearchParams(window.location.search).get("storageBooking")) || null);
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-  const { bookings: parentBookings, isLoadingBookings: loadingParents } = useManagerDashboard();
-  const { data: storageRows = [], isLoading, error, refetch } = useQuery<ManagerStorageBooking[]>({
-    queryKey: ["/api/manager/storage-bookings"],
+export default function ManagerStorageBookingsPage(_props: ManagerStorageBookingsPageProps = {}) {
+  const { t } = useTranslation("storage");
+  const { kitchens } = useManagerDashboard();
+  const kitchenIds = useMemo(() => kitchens.map((kitchen) => kitchen.id), [kitchens]);
+  const [filter, setFilter] = useState<BoardFilter>("all");
+
+  const rentalsQuery = useQuery<StorageRental[]>({
+    queryKey: ["/api/manager/storage-rentals"],
     queryFn: async () => {
-      const response = await fetch("/api/manager/storage-bookings", {
-        headers: await getAuthHeaders(),
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error(mt("failedToFetchStorageBookings"));
+      const response = await fetch("/api/manager/storage-rentals", { headers: await getAuthHeaders(), credentials: "include" });
+      if (!response.ok) throw new Error(t("stBoardError"));
       return response.json();
     },
   });
-  const bookings = useMemo(() => inheritStorageChef(storageRows, parentBookings), [storageRows, parentBookings]);
-  const { data: availableActions } = useQuery({
-    queryKey: ["/api/manager/storage-operations-availability"],
+
+  const listingsQuery = useQuery<StorageListing[]>({
+    queryKey: ["/api/manager/storage-listings", kitchenIds],
+    enabled: kitchenIds.length > 0,
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const paths = [
-        "/api/manager/overstays?includeAll=true",
-        "/api/manager/storage-checkouts/pending",
-        "/api/manager/storage-checkouts/history?limit=1",
-        "/api/manager/storage-checkins/history?limit=1",
-      ];
-      const responses = await Promise.all(paths.map((path) => fetch(path, { headers, credentials: "include" })));
-      if (responses.some((response) => !response.ok)) throw new Error("Unable to load storage actions");
-      const [penalties, pending, checkoutHistory, checkinHistory] = await Promise.all(responses.map((response) => response.json()));
-      return {
-        overstays: (penalties.overstays?.length ?? 0) + (penalties.pastOverstays?.length ?? 0) > 0,
-        inspections: (pending.pendingCheckouts?.length ?? 0) + (checkoutHistory.checkoutHistory?.length ?? 0) + (checkinHistory.checkinHistory?.length ?? 0) > 0,
-      };
+      const perKitchen = await Promise.all(kitchenIds.map(async (kitchenId) => {
+        const response = await fetch(`/api/manager/kitchens/${kitchenId}/storage-listings`, { headers, credentials: "include" });
+        if (!response.ok) throw new Error(t("stBoardError"));
+        const rows = (await response.json()) as Array<Record<string, unknown>>;
+        const kitchenName = kitchens.find((kitchen) => kitchen.id === kitchenId)?.name ?? "";
+        return rows.map((row) => ({
+          id: Number(row.id),
+          name: String(row.name ?? ""),
+          kitchenId: Number(row.kitchenId ?? kitchenId),
+          kitchenName,
+          unitCount: Number(row.unitCount ?? 1),
+          visible: Boolean(row.isActive) && ["approved", "active"].includes(String(row.status)),
+        }));
+      }));
+      return perKitchen.flat();
     },
-    staleTime: 30_000,
   });
 
-  const filteredBookings = useMemo(() => {
-    const inStatus = filterManagerStorageBookings(bookings, statusFilter, "all").filter((booking) => !focusedBookingId || booking.id === focusedBookingId);
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return inStatus;
-    return inStatus.filter((booking) => [
-      booking.referenceCode, booking.id, booking.storageName, booking.storageType,
-      booking.kitchenName, booking.locationName, booking.chefName,
-    ].join(" ").toLowerCase().includes(query));
-  }, [bookings, statusFilter, searchQuery, focusedBookingId]);
-  const columns = useMemo<ColumnDef<ManagerStorageBooking>[]>(() => [
-    {
-      accessorKey: "createdAt",
-      header: () => null,
-      cell: () => null,
-    },
-    {
-      accessorKey: "referenceCode",
-      header: mt("ref"),
-      cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">#{row.original.referenceCode || row.original.id}</span>,
-    },
-    {
-      accessorKey: "storageName",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          {mt("navStorage")}<ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => (
-        <div>
-          <div className="font-medium">{row.original.storageName}</div>
-          <div className="text-xs text-muted-foreground">{row.original.storageType}</div>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "locationName",
-      header: mt("location2"),
-      cell: ({ row }) => (
-        <div>
-          <div className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-muted-foreground" />{row.original.locationName}</div>
-          <div className="ml-5 text-xs text-muted-foreground">{row.original.kitchenName}</div>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "chefName",
-      header: mt("chefHeader"),
-      cell: ({ row }) => <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />{row.original.chefName}</span>,
-    },
-    {
-      accessorKey: "startDate",
-      header: mt("rentalPeriod"),
-      cell: ({ row }) => {
-        const formatDate = (value: string) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
-        return <span>{formatDate(row.original.startDate)} – {formatDate(row.original.endDate)}</span>;
-      },
-    },
-    {
-      accessorKey: "status",
-      header: mt("status"),
-      cell: ({ row }) => <Badge variant="outline" className={statusClass[row.original.status]}>{mt(`storageStatus_${row.original.status}`)}</Badge>,
-    },
-    {
-      accessorKey: "totalPrice",
-      header: mt("total"),
-      cell: ({ row }) => new Intl.NumberFormat(undefined, { style: "currency", currency: row.original.currency }).format(Number(row.original.totalPrice) / 100),
-    },
-    { id: 'assistance', header: 'Visit help', cell: ({ row }) => row.original.updatedAt && ['confirmed', 'cancellation_requested', 'completed'].includes(row.original.status)
-      ? <Button variant="outline" size="sm" onClick={() => setAssistanceId(row.original.id)}>Assistance / removal</Button> : null },
-  ], []);
+  const rentals = rentalsQuery.data ?? [];
+  const occupiedListingIds = useMemo(() => new Set(rentals.map((rental) => rental.listing.id)), [rentals]);
+  const listings = useMemo(
+    () => (listingsQuery.data ?? []).filter((listing) => listing.visible !== false || occupiedListingIds.has(listing.id)),
+    [listingsQuery.data, occupiedListingIds],
+  );
+  const rows = useMemo(() => unitRows(rentals, listings), [rentals, listings]);
+  const summary = useMemo(() => boardSummary(rentals, listings), [rentals, listings]);
+  const requests = useMemo(() => pendingRequests(rentals), [rentals]);
+  const visibleRows = useMemo(() => filterUnitRows(rows, filter), [rows, filter]);
+  const groups = useMemo(() => groupRowsByListing(visibleRows), [visibleRows]);
+  const refetch = () => { void rentalsQuery.refetch(); void listingsQuery.refetch(); };
+  const loading = rentalsQuery.isLoading || listingsQuery.isLoading;
+  const error = rentalsQuery.error ?? listingsQuery.error;
+
+  const filters: Array<[BoardFilter, string]> = [
+    ["all", t("stFilterAll")],
+    ["needsAction", t("stFilterNeedsAction")],
+    ["free", t("stFilterFree")],
+  ];
 
   return (
     <div className="space-y-6">
-      {assistanceId && bookings.find(booking => booking.id === assistanceId)?.updatedAt && <VisitAssistancePanel
-        key={assistanceId} storage bookingId={assistanceId} updatedAt={bookings.find(booking => booking.id === assistanceId)!.updatedAt!}
-        history={bookings.find(booking => booking.id === assistanceId)?.assistanceHistory}
-        onSaved={async () => { await refetch(); }} />}
-      {(availableActions?.overstays || availableActions?.inspections) && (
-        <div className="flex flex-wrap gap-2">
-          {availableActions.overstays && <Button variant="outline" size="sm" onClick={onOpenOverstays}>{mt("navOverstayPenalties")}</Button>}
-          {availableActions.inspections && <Button variant="outline" size="sm" onClick={onOpenInspections}>{mt("navStorageInspections")}</Button>}
-        </div>
-      )}
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-        {focusedBookingId && <Button variant="outline" size="sm" onClick={() => {
-          setFocusedBookingId(null);
-          const url = new URL(window.location.href); url.searchParams.delete("storageBooking"); window.history.replaceState({}, "", url);
-        }}>{mt("viewAll")}<X className="ml-2 size-3" /></Button>}
-        <div className="relative w-full sm:max-w-md">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder={mt("searchStorageBookings")}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="pl-9 pr-8"
-          />
-          {searchQuery && <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-0 top-1/2 h-7 w-7 -translate-y-1/2"
-            onClick={() => setSearchQuery("")}
-            aria-label={mt("clearSearch")}
-          ><X className="h-3 w-3" /></Button>}
-        </div>
-      </div>
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          ["all", mt("filterAll")],
-          ["upcoming", mt("upcoming")],
-          ["past", mt("past")],
-          ["pending", mt("pending")],
-          ["cancelled", mt("cancelled")],
-        ].map(([value, label]) => {
-          const isActive = statusFilter === value;
-          return <button
-            key={value}
-            type="button"
-            onClick={() => setStatusFilter(value)}
-            aria-pressed={isActive}
-            className={isActive
-              ? "rounded-xl border border-primary bg-primary/[0.04] p-4 text-left transition-colors"
-              : "rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"}
-          >
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{filterManagerStorageBookings(bookings, value, "all").length}</p>
-          </button>;
-        })}
+          [t("stSummaryOccupied", { occupied: summary.occupied, units: summary.units }), "text-foreground"],
+          [t("stSummaryRequests", { count: summary.requests }), "text-foreground"],
+          [t("stSummaryGrace", { count: summary.grace }), "text-foreground"],
+          [t("stSummaryHoldover", { count: summary.holdover }), "text-foreground"],
+        ].map(([label, className]) => (
+          <div key={label} className="rounded-xl border bg-card p-4">
+            <p className={`text-lg font-semibold tabular-nums ${className}`}>{label}</p>
+          </div>
+        ))}
       </div>
+
       {error ? (
-        <Card className="border-destructive/40"><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-          <p className="text-sm text-destructive">{error.message}</p>
-          <Button variant="outline" size="sm" onClick={() => void refetch()}>{mt("retry")}</Button>
-        </CardContent></Card>
-      ) : isLoading || loadingParents ? (
-        <div className="space-y-3" role="status" aria-label="Loading storage bookings">
+        <Card className="border-destructive/40">
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="text-sm text-destructive">{error.message}</p>
+            <Button variant="outline" size="sm" onClick={refetch}>{t("stRetry")}</Button>
+          </CardContent>
+        </Card>
+      ) : loading ? (
+        <div className="space-y-3" role="status" aria-label={t("stLoading")}>
           <Skeleton className="h-11 w-full rounded-xl" />
-          {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-xl" />)}
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28 w-full rounded-xl" />)}
         </div>
-      ) : bookings.length === 0 ? (
-        <Card><CardContent className="py-10 text-center">
-          <p className="font-medium">{mt("storageBookingsEmptyTitle")}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{mt("storageBookingsEmptyBody")}</p>
-        </CardContent></Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={filteredBookings}
-          defaultSorting={[{ id: "createdAt", desc: true }]}
-          initialColumnVisibility={{ createdAt: false }}
-          pageSize={15}
-        />
+        <>
+          <div role="group" aria-label={t("stUnitsHeading")} className="flex flex-wrap gap-2">
+            {filters.map(([value, label]) => (
+              <Button
+                key={value}
+                aria-pressed={filter === value}
+                variant={filter === value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+
+          {filter !== "free" && (
+            <section className="space-y-3" aria-labelledby="storage-requests-heading">
+              <h2 id="storage-requests-heading" className="text-base font-semibold">{t("stRequestsHeading")}</h2>
+              {requests.length === 0
+                ? <p className="text-sm text-muted-foreground">{t("stRequestsEmpty")}</p>
+                : requests.map((rental) => <StorageRequestCard key={rental.id} rental={rental} onDone={refetch} />)}
+            </section>
+          )}
+
+          <section className="space-y-4" aria-labelledby="storage-units-heading">
+            <h2 id="storage-units-heading" className="text-base font-semibold">{t("stUnitsHeading")}</h2>
+            {groups.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+                  <Package className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                  <p className="font-medium">{t("stUnitsEmptyTitle")}</p>
+                  <p className="text-sm text-muted-foreground">{t("stUnitsEmptyBody")}</p>
+                </CardContent>
+              </Card>
+            ) : groups.map((group) => (
+              <div key={group.listingId} className="space-y-3">
+                <h3 className="text-sm font-medium text-muted-foreground">
+                  {t("stListingUnits", { name: group.listingName, count: group.rows.length })}
+                  {group.kitchenName ? ` · ${group.kitchenName}` : ""}
+                </h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {group.rows.map((row) => <StorageUnitCard key={row.key} row={row} />)}
+                </div>
+              </div>
+            ))}
+          </section>
+        </>
       )}
-      <StorageExtensionApprovals />
     </div>
   );
 }
