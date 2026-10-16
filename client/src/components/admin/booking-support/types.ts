@@ -41,6 +41,8 @@ export type ChronologyEntry =
 export type CloseoutVisit = { key?: string; visitId?: number; blockIndex: number; phase?: string; inspection?: { outcome?: string; dueAt?: string | null } };
 
 export type SupportCase = {
+  refundOperations?: Array<{ transactionId: number; refundOperationId: string; itemName: string; amountCents: number | null; status: string; acceptedAt: string; hasReceipt: boolean }>;
+  kitchenRefundDebts?: Array<{ operationId: string; itemName: string; amountCents: number; status: string; recordedAt: string }>;
   cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
   kitchenRefund?: { status: 'pending' | 'succeeded'; amountCents: number; error: string | null; failedAt: string | null; attempts: number; refundId: string | null } | null;

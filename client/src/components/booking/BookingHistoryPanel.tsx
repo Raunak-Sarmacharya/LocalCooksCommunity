@@ -69,7 +69,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                   ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')
                   : event.kind === 'goodwill_refunded' && event.amountCents
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
-                    : event.kind === 'addon_removed' ? (event.refundedCents ? t('historyAddonRemovedRefund', { item: event.itemName, amount: money(event.refundedCents) }) : t('historyAddonRemoved', { item: event.itemName }))
+                    : event.kind === 'addon_removed' ? (event.refundState === 'fee_pending' ? t('historyAddonRemovedFeePending', { item: event.itemName }) : event.refundState === 'processing' ? t('historyAddonRemovedProcessing', { item: event.itemName, amount: money(event.refundedCents || 0) }) : event.refundedCents ? t('historyAddonRemovedRefund', { item: event.itemName, amount: money(event.refundedCents) }) : t('historyAddonRemoved', { item: event.itemName }))
                     : event.kind.startsWith('ext_') ? extensionText(event)
                     : role === 'chef' && event.kind === 'checkout_requested' ? t('historyYouCheckedOut')
                     : t(`historyEvents.${event.kind}` as const)}</p>

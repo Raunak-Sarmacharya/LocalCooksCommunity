@@ -265,5 +265,15 @@
   "bsFundKitchenRefund": "Local Cooks funds the refund. The kitchen’s balance is not debited. Use this when the kitchen’s share cannot be taken back.",
   "bsKitchenRefundPending": "The kitchen cancelled this booking, but the chef’s full refund of {amount} has not been sent yet.{problem}",
   "bsKitchenRefundProblem": "Problem: {error}",
-  "bsKitchenRefundSent": "The kitchen cancelled this booking and the chef’s full refund of {amount} was sent."
+  "bsKitchenRefundSent": "The kitchen cancelled this booking and the chef’s full refund of {amount} was sent.",
+  "bsAction_retry_refund": "Retry refund",
+  "bsAction_mark_refunded": "Mark refunded after checking Stripe",
+  "bsRefundOperation": "Refund to check",
+  "bsErrRefundOperation": "Choose the original refund operation.",
+  "bsRetryRefundHelp": "Retries the original refund with the same payment reference and amount. A second refund is never created.",
+  "bsMarkRefundHelp": "Records the matching successful provider receipt. This action does not send money.",
+  "bsKitchenDebtTitle": "Kitchen amount owed to Local Cooks",
+  "bsKitchenDebtOpen": "Awaiting repayment",
+  "bsKitchenDebtAwaiting": "Refund still being checked",
+  "bsKitchenDebtHelp": "Record and contact the kitchen to arrange repayment. Future payouts are not reduced automatically."
 }

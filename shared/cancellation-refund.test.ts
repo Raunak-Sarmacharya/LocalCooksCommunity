@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cancellationSourceQuote, isCancellationReservationSource } from './cancellation-refund';
+import { cancellationSourceQuote, isCancellationReservationSource, verifiedReservedRefund } from './cancellation-refund';
 const base = { captured: 12200, processingCost: 384, serviceFee: 700, refunded: 0, refunds: [] };
 const receipt = (id: string, manager: number, platform: number) => ({ id, status: 'succeeded', amount: manager + platform,
   metadata: { customer_receives: String(manager + platform), manager_debited: String(manager), platform_service_fee_returned: String(platform) } });
@@ -47,5 +47,28 @@ describe('captured cancellation allocation', () => {
     expect(isCancellationReservationSource({ paymentIntentId: 'pi_extension', metadata: {} }, ['pi_original'], ['pi_extension'], 'pi_original')).toBe(true);
     expect(isCancellationReservationSource({ paymentIntentId: 'pi_change', metadata: { kitchenChangeId: 'old', originalBookingPaymentIntentId: 'pi_original' } }, ['pi_original'], [], 'pi_original')).toBe(true);
     expect(() => isCancellationReservationSource({ paymentIntentId: 'pi_unknown', metadata: {} }, ['pi_original'], [], 'pi_original')).toThrow('Ambiguous');
+  });
+});
+
+describe('reserved refund receipt evidence', () => {
+  const source = { id: 8, paymentIntentId: 'pi_one', currency: 'CAD', amount: '10000' };
+  const operation = { id: 'chef-addon-original', intentId: 'pi_one', customerRefund: 2055, managerRefund: 1933, platformRefund: 122 };
+  const matching = { id: 're_one', amount: 2055, status: 'succeeded', currency: 'cad', charge: 'ch_one', payment_intent: 'pi_one', metadata: {
+    refund_operation_id: operation.id, transaction_id: '8', customer_receives: '2055', manager_debited: '1933', platform_service_fee_returned: '122' } };
+  const facts = { captured: 10000, currency: 'cad', chargeId: 'ch_one', refunds: [matching] };
+  it('accepts exactly one successful receipt matching identity, source, amount, currency and allocations', () => {
+    expect(verifiedReservedRefund(source, operation, facts)).toBe(matching);
+  });
+  it('accepts one successful retry after a failed attempt under the same reservation', () => {
+    expect(verifiedReservedRefund(source, operation, { ...facts, refunds: [{ ...matching, id: 're_failed', status: 'failed' }, matching] })).toBe(matching);
+  });
+  it.each([
+    { name: 'missing', refunds: [] },
+    { name: 'pending', refunds: [{ ...matching, status: 'pending' }] },
+    { name: 'wrong amount', refunds: [{ ...matching, amount: 2054 }] },
+    { name: 'wrong source', refunds: [{ ...matching, payment_intent: 'pi_other' }] },
+    { name: 'conflicting', refunds: [matching, { ...matching, id: 're_two' }] },
+  ])('rejects $name evidence', ({ refunds }) => {
+    expect(() => verifiedReservedRefund(source, operation, { ...facts, refunds })).toThrow();
   });
 });

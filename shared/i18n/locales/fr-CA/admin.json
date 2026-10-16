@@ -265,5 +265,15 @@
   "bsFundKitchenRefund": "Local Cooks finance le remboursement. Le solde de la cuisine n’est pas débité. À utiliser lorsque la part de la cuisine ne peut pas être récupérée.",
   "bsKitchenRefundPending": "La cuisine a annulé cette réservation, mais le remboursement complet de {amount} au chef n’a pas encore été envoyé.{problem}",
   "bsKitchenRefundProblem": "Problème : {error}",
-  "bsKitchenRefundSent": "La cuisine a annulé cette réservation et le remboursement complet de {amount} au chef a été envoyé."
+  "bsKitchenRefundSent": "La cuisine a annulé cette réservation et le remboursement complet de {amount} au chef a été envoyé.",
+  "bsAction_retry_refund": "Réessayer le remboursement",
+  "bsAction_mark_refunded": "Marquer comme remboursé après vérification dans Stripe",
+  "bsRefundOperation": "Remboursement à vérifier",
+  "bsErrRefundOperation": "Choisissez le remboursement d’origine.",
+  "bsRetryRefundHelp": "Réessaie le remboursement d’origine avec la même référence et le même montant. Aucun deuxième remboursement n’est créé.",
+  "bsMarkRefundHelp": "Enregistre le reçu de remboursement réussi correspondant. Cette action n’envoie pas d’argent.",
+  "bsKitchenDebtTitle": "Montant dû par la cuisine à Local Cooks",
+  "bsKitchenDebtOpen": "En attente de remboursement",
+  "bsKitchenDebtAwaiting": "Remboursement en cours de vérification",
+  "bsKitchenDebtHelp": "Contactez la cuisine pour convenir du remboursement. Les prochains versements ne sont pas réduits automatiquement."
 }

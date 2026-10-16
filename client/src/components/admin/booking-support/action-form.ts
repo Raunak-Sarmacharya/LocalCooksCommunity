@@ -5,7 +5,7 @@ export const REQUEST_SOURCES: RequestSource[] = ["call", "message", "email", "in
 
 export type FieldId =
   | "items" | "quote" | "codeTarget" | "arrival" | "visit" | "actualAt" | "attendance"
-  | "claim" | "amount" | "resend" | "flag" | "message" | "fundKitchenRefund";
+  | "claim" | "amount" | "resend" | "flag" | "message" | "fundKitchenRefund" | "refundOperation";
 
 type Spec = {
   acting: ActingFor[];
@@ -20,6 +20,8 @@ const C: ActingFor[] = ["chef"];
 const ANY: ActingFor[] = ["local_cooks", "manager", "chef"];
 
 export const ACTION_SPECS: Record<SupportActionType, Spec> = {
+  retry_refund: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: ["refundOperation"], notifies: "both" },
+  mark_refunded: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: ["refundOperation"], notifies: "both" },
   confirm_for_manager: { acting: M, reasons: ["manager_asked", "no_response_from_manager", "other"], fields: ["items"], notifies: "both" },
   decline_for_manager: { acting: M, reasons: ["manager_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: "both" },
   release_hold_for_chef: { acting: C, reasons: ["customer_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: "both" },
@@ -46,7 +48,7 @@ export const ACTION_SPECS: Record<SupportActionType, Spec> = {
 export type ActionForm = {
   actingFor: ActingFor; requestSource: RequestSource; sourceRef: string;
   reason: string; reasonOther: string; note: string;
-  amount: string; message: string;
+  amount: string; message: string; refundOperation: string;
   itemDecisions: Record<string, "confirmed" | "cancelled">;
   visitId: string; targetKey: string; allTargets: boolean; mode: "staffed" | "self";
   actualAt: string; attendanceAction: "report_no_show" | "report_attended" | "withdraw_attendance"; confirmsChefAbsent: boolean;
@@ -70,7 +72,7 @@ export function initialForm(type: SupportActionType, c: SupportCase): ActionForm
   const targets = eligibleCodeTargets(c);
   return {
     actingFor: spec.acting[0], requestSource: "call", sourceRef: "", reason: spec.reasons[0], reasonOther: "", note: "",
-    amount: "", message: "",
+    amount: "", message: "", refundOperation: (c.refundOperations || []).find(row => type !== "mark_refunded" || row.hasReceipt)?.refundOperationId || "",
     itemDecisions: Object.fromEntries(pendingItems(c).map((i) => [i.key, "confirmed" as const])),
     visitId: visit ? String(visit.id) : "", targetKey: targets[0]?.targetKey ?? "", allTargets: false, mode: "staffed",
     actualAt: "", attendanceAction: "report_attended", confirmsChefAbsent: false,
@@ -133,6 +135,11 @@ export function buildActionRequest(
   if (spec.fields.includes("visit") && c.visits.length > 0 && !visit) errors.visitId = "bsErrChooseVisit";
 
   for (const field of spec.fields) {
+    if (field === "refundOperation") {
+      const target = c.refundOperations?.find(row => row.refundOperationId === form.refundOperation && (type !== "mark_refunded" || row.hasReceipt));
+      if (!target) errors.form = "bsErrRefundOperation";
+      else { details.transactionId = target.transactionId; details.refundOperationId = target.refundOperationId; }
+    }
     if (field === "items") {
       const decide = (kind: "storage" | "equipment") => pendingItems(c).filter((i) => i.kind === kind)
         .map((i) => ({ id: i.id, action: form.itemDecisions[i.key] ?? ("confirmed" as const) }));

@@ -10,7 +10,7 @@ export function compareHistoryEvents(a: { kind: string; recordedAt: string; key:
   return Date.parse(a.recordedAt) - Date.parse(b.recordedAt) || rank(a.kind) - rank(b.kind) || a.key.localeCompare(b.key);
 }
 export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; recordedAt: string; visitId?: number; itemKind?: 'storage' | 'equipment'; itemId?: number;
-  /** `addon_removed` only: the add-on's name and what was refunded for it (0 when it wasn't charged or isn't refundable). */ itemName?: string; refundedCents?: number;
+  /** `addon_removed` only: the add-on's name and what was refunded for it (0 when it wasn't charged or isn't refundable). */ itemName?: string; refundedCents?: number; refundState?: 'processing' | 'fee_pending' | 'sent';
   /** Cents; on `goodwill_refunded` (a Local Cooks-funded refund; the kitchen payout is unchanged) and extra-time money events. */ amountCents?: number;
   /** Extra-time events only: who started it (`ask` chef request, `offer` kitchen offer, `early` earlier start, `charge` kitchen charge) and the minutes involved. */
   extFlow?: ExtensionFlow; minutes?: number };
@@ -78,7 +78,16 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     if (record.kind === 'goodwill_refunded' && !amount) continue;
     events.push({ key: record.key ?? 'event-' + record.id, kind: record.kind as BookingHistoryEvent['kind'], recordedAt,
       ...(amount ? { amountCents: amount } : {}),
-      ...(record.kind === 'addon_removed' && typeof addon?.itemName === 'string' ? { itemName: addon.itemName, refundedCents: Number.isSafeInteger(addon.refundCents) && Number(addon.refundCents) > 0 && !addon.free && !addon.afterDeadline ? Number(addon.refundCents) : 0 } : {}),
+      ...(record.kind === 'addon_removed' && typeof addon?.itemName === 'string' ? (() => {
+        const completed = records.find(row => {
+          const m = row.metadata as Record<string, any> | undefined;
+          return row.kind === 'refund_issued' && m?.addonRemoval?.state === 'sent' &&
+            (metadata.operationId && m.operationId === metadata.operationId || positiveId(itemId) && m.itemId === itemId && m.itemKind === itemKind);
+        });
+        const outcome = completed ? (completed.metadata as Record<string, any>).addonRemoval : addon;
+        return { itemName: addon.itemName, refundState: outcome.state === 'fee_pending' ? 'fee_pending' as const : outcome.state === 'processing' ? 'processing' as const : 'sent' as const,
+          refundedCents: Number.isSafeInteger(outcome.refundCents) && Number(outcome.refundCents) > 0 && !outcome.free ? Number(outcome.refundCents) : 0 };
+      })() : {}),
       ...(positiveId(metadata.visitId) ? { visitId: metadata.visitId } : {}),
       ...((itemKind === 'storage' || itemKind === 'equipment') && positiveId(itemId)
         ? { itemKind, itemId } : {}) });

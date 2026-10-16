@@ -315,6 +315,26 @@ export async function getCancellationPaymentFacts(paymentIntentId: string) {
     chargeId: charge.id, refunded: charge.amount_refunded, refunds: await getPaymentIntentRefunds(paymentIntentId) };
 }
 
+/** Read reversal receipts before the reconciliation transaction, including receipts recovered after a lost response. */
+export async function getCancellationReversalEvidence(intentId: string) {
+  const provider = decisionStripe();
+  if (!provider) throw new Error('Stripe is not configured');
+  const { db } = await import('../db');
+  const { paymentTransactions } = await import('@shared/schema');
+  const { eq } = await import('drizzle-orm');
+  const [source] = await db.select({ transferId: paymentTransactions.transferId }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intentId));
+  if (!source?.transferId) return [];
+  const transfer = await provider.transfers.retrieve(source.transferId);
+  const refunds = await getPaymentIntentRefunds(intentId);
+  const evidence: import('./payout-document-evidence').PayoutTransferEvidence[] = [];
+  for await (const reversal of provider.transfers.listReversals(transfer.id, { limit: 100 })) {
+    const refund = refunds.find(row => row.status === 'succeeded' && row.metadata?.refund_operation_id && row.metadata.refund_operation_id === reversal.metadata?.refund_operation_id);
+    if (refund) evidence.push({ transferId: transfer.id, originalAmountCents: transfer.amount, reversedCents: transfer.amount_reversed,
+      refund: { refundId: refund.id, reversalId: reversal.id, amountCents: reversal.amount } });
+  }
+  return evidence;
+}
+
 export async function verifyCancellationRefundFunding(paymentIntentId: string, transferId: string | null, managerRefund: number) {
   const provider = decisionStripe();
   if (!provider) throw new Error('Stripe is not configured');
@@ -844,15 +864,26 @@ export async function reverseTransferAndRefund(
   amount: number,
   reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer',
   options?: {
+    /** Stable reservation/evidence identity written to provider metadata. */
     idempotencyKey?: string;
+    /** A failed provider refund needs a fresh key; support-action replay reuses this key. */
+    refundIdempotencyKey?: string;
+    /** Transfer reversal retries must always reuse the original reservation's key. */
+    reversalIdempotencyKey?: string;
     reverseTransferAmount?: number;
     refundApplicationFee?: boolean;
     metadata?: Record<string, string>;
     transferMetadata?: Record<string, string>;
     sourceConnection?: Parameters<Parameters<typeof import('../db').db.transaction>[0]>[0];
     supportOperationKey?: string;
+    /** The caller already committed and locked this immutable cancellation reservation. Provider I/O uses no DB transaction. */
+    reservedOperation?: boolean;
   }
 ): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string | null }> {
+  if (options?.reservedOperation) {
+    const { db } = await import('../db');
+    options = { ...options, sourceConnection: db as unknown as NonNullable<typeof options.sourceConnection> };
+  }
   if (!options?.sourceConnection) {
     const { db } = await import('../db');
     const { paymentTransactions } = await import('@shared/schema');
@@ -894,13 +925,17 @@ export async function reverseTransferAndRefund(
       let receipt: Stripe.Refund | undefined;
       for await (const candidate of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
         if (candidate.metadata?.refund_operation_id !== options.idempotencyKey) continue;
-        if (receipt || candidate.amount !== amount) throw new Error('Conflicting refund receipts require financial review.');
-        receipt = candidate;
+        if (candidate.amount !== amount || candidate.currency !== charge.currency || candidate.charge !== chargeId) throw new Error('Conflicting refund receipts require financial review.');
+        if (candidate.status === 'succeeded') {
+          if (receipt) throw new Error('Conflicting refund receipts require financial review.');
+          receipt = candidate;
+        } else if (!['failed', 'canceled'].includes(candidate.status || '')) {
+          throw new Error(`Refund ${candidate.id} is not verified as complete (${candidate.status || 'unknown'}). Verify this original operation before retrying.`);
+        }
       }
       if (receipt) {
-        if (receipt.status !== 'succeeded') throw new Error(`Refund ${receipt.id} is not verified as complete (${receipt.status || 'unknown'}). Verify this original operation; do not issue another refund.`);
         await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.idempotencyKey);
-        return { refundId: receipt.id, refundAmount: receipt.amount, refundStatus: receipt.status, chargeId, transferReversalId: null };
+        return { refundId: receipt.id, refundAmount: receipt.amount, refundStatus: 'succeeded', chargeId, transferReversalId: null };
       }
     }
 
@@ -985,10 +1020,17 @@ export async function reverseTransferAndRefund(
       if (!recoveredReversal && reversalAmount > transfer.amount - transfer.amount_reversed)
         throw new Error('The required manager reversal exceeds the verified unreversed transfer. Separate funding approval is required.');
       if (reversalAmount > 0) {
-        const reversal = recoveredReversal || await stripe.transfers.createReversal(transferId, {
-          amount: reversalAmount,
-          metadata: { ...(options?.transferMetadata || options?.metadata), ...(operationId ? { refund_operation_id: operationId } : {}) },
-        }, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-reversal` } : undefined);
+        let reversal = recoveredReversal;
+        if (!reversal) try {
+          reversal = await stripe.transfers.createReversal(transferId, {
+            amount: reversalAmount,
+            metadata: { ...(options?.transferMetadata || options?.metadata), ...(operationId ? { refund_operation_id: operationId } : {}) },
+          }, options?.reversalIdempotencyKey || options?.idempotencyKey
+            ? { idempotencyKey: options.reversalIdempotencyKey || `${options.idempotencyKey}-reversal` } : undefined);
+        } catch (error) {
+          if ((error as { code?: string }).code === 'balance_insufficient') throw new Error('The kitchen transfer reversal has insufficient balance.');
+          throw error;
+        }
         transferReversalId = reversal.id;
       }
     } else if (transferId && transferredAmount > 0 && options?.reverseTransferAmount === undefined) {
@@ -1021,11 +1063,17 @@ export async function reverseTransferAndRefund(
       refundParams.metadata = { ...refundParams.metadata, refund_operation_id: options.idempotencyKey };
       for await (const receipt of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
         if (receipt.metadata?.refund_operation_id !== options.idempotencyKey) continue;
-        if (recoveredRefund || receipt.amount !== amount) throw new Error('Conflicting refund receipts require financial review.');
-        recoveredRefund = receipt;
+        if (receipt.amount !== amount || receipt.currency !== charge.currency || receipt.charge !== chargeId) throw new Error('Conflicting refund receipts require financial review.');
+        if (receipt.status === 'succeeded') {
+          if (recoveredRefund) throw new Error('Conflicting refund receipts require financial review.');
+          recoveredRefund = receipt;
+        } else if (!['failed', 'canceled'].includes(receipt.status || '')) {
+          throw new Error(`Refund ${receipt.id} is not verified as complete (${receipt.status || 'unknown'}). Verify this original operation before retrying.`);
+        }
       }
     }
-    const refund = recoveredRefund || await stripe.refunds.create(refundParams, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}-refund` } : undefined);
+    const refundKey = options?.refundIdempotencyKey || (options?.idempotencyKey ? `${options.idempotencyKey}-refund` : undefined);
+    const refund = recoveredRefund || await stripe.refunds.create(refundParams, refundKey ? { idempotencyKey: refundKey } : undefined);
 
     if (!refund.charge || typeof refund.charge !== 'string') {
       throw new Error('Refund created but charge ID is missing');

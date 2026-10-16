@@ -11,11 +11,11 @@ export async function addonRemovalNotice(role: 'chef' | 'manager', locale: strin
   const money = (cents = 0) => new Intl.NumberFormat(locale || 'en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const refund = input.refundCents || 0, item = input.itemName, chef = input.chefName || t('dcV2Chef');
   const common = { item, kitchen: input.kitchenName || '', date: input.date || '', chef, ref: input.reference || '', amount: money(refund) };
-  const refundable = !input.free && !input.afterDeadline && refund > 0;
+  const refundable = !input.free && refund > 0;
   if (role === 'chef') {
     if (input.free) return { title: t('arnChefTitle', common), message: t('arnChefFree', common) };
     if (input.state === 'fee_pending') return { title: t('arnChefTitle', common), message: t('arnChefFeePending', common) };
-    if (input.afterDeadline || !refund) return { title: t('arnChefTitleLate', common), message: t('arnChefLate', common) };
+    if (!refund) return { title: t('arnChefTitleLate', common), message: t('arnChefLate', common) };
     if (input.state === 'sent') return { title: t('arnChefSentTitle', common), message: t('arnChefRefund', common) };
     return { title: t('arnChefTitle', common), message: t(input.state === 'processing' ? 'arnChefProcessing' : 'arnChefRefund', common) };
   }

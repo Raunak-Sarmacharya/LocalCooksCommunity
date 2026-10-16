@@ -47,8 +47,8 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       const a = facts.addon;
       if (!a) return { title: `Add-on removed · ${facts.reference}`, message: `${who}. ${facts.message}` };
       const moneyLine = a.free ? 'It wasn’t charged.' : a.state === 'fee_pending' ? 'Refund waiting for the actual processing fee to be verified.'
-        : a.afterDeadline || !(a.refundCents || 0) ? 'Not refundable: the refund deadline had passed.'
-        : [`Refunded ${money(a.refundCents)}${a.state === 'processing' ? ' (still being processed)' : ''}.`, `Kitchen payout −${money(a.kitchenRefundCents)}.`,
+        : !(a.refundCents || 0) ? 'Not refundable: the refund deadline had passed.'
+        : [`${a.state === 'processing' ? 'Processing refund' : 'Refunded'} ${money(a.refundCents)}.`, `Kitchen payout −${money(a.kitchenRefundCents)}.`,
           (a.feeCents || 0) > 0 ? `Card fee kept: ${money(a.feeCents)}.` : '', (a.kitchenDebtCents || 0) > 0 ? `The kitchen owes Local Cooks ${money(a.kitchenDebtCents)}.` : ''].filter(Boolean).join(' ');
       return { title: `Add-on removed · ${facts.reference}`, message: `${facts.chef} removed ${a.itemName} at ${facts.kitchen} · ${facts.when} · ${facts.reference}. ${moneyLine}` };
     }

@@ -2,15 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableName } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ parent: null as any, sources: [] as any[], storage: [] as any[], equipment: [] as any[], extensions: [] as any[],
-  managerId: 2, receipts: {} as Record<string, any[]>, providerStatus: 'succeeded', secondProviderPending: false, failResponse: false, feePending: false, calls: [] as any[], notices: vi.fn(), history: vi.fn(), goodwill: vi.fn(), frozen: false, failFunding: false, providerDown: false, visits: [] as any[], sweep: [] as any[] }));
-vi.mock('../db', () => ({ db: { transaction: async (work: any) => work(connection), execute: async () => ({ rows: state.sweep }) } }));
+  crashAfterCancel: false, sweepNotices: [] as any[], inTransaction: false, managerId: 2, receipts: {} as Record<string, any[]>, providerStatus: 'succeeded', secondProviderPending: false, failResponse: false, feePending: false, calls: [] as any[], notices: vi.fn(), history: vi.fn(), goodwill: vi.fn(), frozen: false, failFunding: false, genericInsufficient: false, providerDown: false, visits: [] as any[], sweep: [] as any[] }));
+vi.mock('../db', () => ({ db: { select: (...args: any[]) => connection.select(...args), update: (...args: any[]) => connection.update(...args), transaction: async (work: any) => { state.inTransaction = true; try { const result = await work(connection); if (state.crashAfterCancel && state.parent.equipmentItems?.some((row: any) => row.removal?.finalizationPending)) { state.crashAfterCancel = false; throw Error('Process stopped after commit'); } return result; } finally { state.inTransaction = false; } }, execute: async (query: any) => new PgDialect().sqlToQuery(query).sql.includes('FROM kitchen_bookings') ? ({ rows: state.sweepNotices }) : ({ rows: state.frozen ? [{ id: 1 }] : state.sweep }) } }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.notices }));
 vi.mock('./payment-transactions-service', () => ({ addPaymentHistory: state.history }));
 vi.mock('./booking-linked-cancellation', () => ({ cancelledStorageStatus: 'cancelled', cancelLinkedBookingDates: async () => {
   for (const item of state.storage) { item.status = item.checkinStatus === 'checkin_completed' ? 'cancellation_requested' : 'cancelled'; item.cancellationAcceptedAt = new Date(); }
   for (const item of state.equipment) if (item.status !== 'completed') item.status = 'cancelled';
 } }));
-vi.mock('./stripe-service', () => ({ createRefund: state.goodwill, verifyCancellationRefundFunding: async () => ({ transferId: null, available: null }), getCancellationPaymentFacts: async (intent: string) => {
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Alex' }));
+vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
+vi.mock('./stripe-service', () => ({ getCancellationReversalEvidence: async () => [], createRefund: state.goodwill, verifyCancellationRefundFunding: async () => ({ transferId: null, available: null }), getCancellationPaymentFacts: async (intent: string) => {
   if (state.feePending) throw Error('Actual card processing fee is not yet verified');
   const source = state.sources.find(row => row.paymentIntentId === intent);
   const refunds = state.receipts[intent] || [];
@@ -18,14 +20,16 @@ vi.mock('./stripe-service', () => ({ createRefund: state.goodwill, verifyCancell
     refunded: refunds.filter(row => row.status === 'succeeded').reduce((sum, row) => sum + row.amount, 0), refunds };
 }, getPaymentIntentRefunds: async (intent: string) => state.receipts[intent] || [],
 reverseTransferAndRefund: async (intent: string, amount: number, _reason: string, options: any) => {
+  if (options.reservedOperation) expect(state.inTransaction).toBe(false);
   // The committed reservation is present before provider I/O.
   const source = state.sources.find(row => row.paymentIntentId === intent);
   if (source.metadata.cancellationRefundOperation) expect(source.metadata.cancellationRefundOperation.id).toBe(options.idempotencyKey);
   else expect(options.idempotencyKey).toMatch(/^support-/);
   const existing = (state.receipts[intent] || []).find(row => row.metadata.refund_operation_id === options.idempotencyKey);
   if (!existing && state.providerDown) throw Error('Stripe is unavailable');
+  if (!existing && state.genericInsufficient) throw Error('Stripe platform balance is insufficient');
   if (!existing && state.failFunding && options.reverseTransferAmount > 0) throw Error('Failed to reverse transfer and refund: The required manager reversal exceeds the verified unreversed transfer. Separate funding approval is required.');
-  const refund = existing || { id: `re_${source.id}`, amount, status: state.secondProviderPending && source.id === 100 ? 'pending' : state.providerStatus, metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
+  const refund = existing || { id: `re_${source.id}`, amount, currency: 'cad', payment_intent: intent, charge: `ch_${source.id}`, status: state.secondProviderPending && source.id === 100 ? 'pending' : state.providerStatus, metadata: { ...options.metadata, refund_operation_id: options.idempotencyKey } };
   if (!existing) { (state.receipts[intent] ||= []).push(refund); state.calls.push({ intent, amount, options }); }
   if (state.failResponse) { state.failResponse = false; throw Error('Provider response lost'); }
   if (refund.status !== 'succeeded') throw Error(`Original refund ${refund.status}`);
@@ -40,7 +44,7 @@ const connection: any = {
       where: (value: any) => { condition = value; return chain; }, limit: () => chain, for: () => chain, orderBy: () => chain,
       then: (resolve: any) => {
         const name = getTableName(table);
-        if (name === 'kitchen_bookings') return resolve(joined ? [{ booking: state.parent, managerId: state.managerId }] : [state.parent]);
+        if (name === 'kitchen_bookings') return resolve(joined ? [{ booking: state.parent, managerId: state.managerId, kitchenName: 'Harbour kitchen' }] : [state.parent]);
         if (name === 'kitchens') return resolve([{ managerId: state.managerId }]);
         if (name === 'storage_bookings') return resolve(state.storage);
         if (name === 'equipment_bookings') return resolve(state.equipment);
@@ -410,8 +414,16 @@ describe('kitchen-caused add-on cancellation refunds the chef in full (policy R1
     expect(state.calls[0]).toMatchObject({ amount: 2122, options: { reverseTransferAmount: 1933, metadata: { customer_receives: '2122', manager_debited: '1933', platform_service_fee_returned: '122', platform_processing_cost_cents: '67' } } });
     // The kitchen entitlement drops by the kitchen share only; the card fee is never charged to the kitchen.
     expect(state.sources[0].metadata.refunds[0]).toMatchObject({ managerDebited: 1933, platformServiceFeeReturned: 122 });
-    expect(state.sources[0].metadata.kitchenAddonRefunds).toEqual([{ kind: 'equipment', id: 31, operationKey: 'support-addon-key-1' }]);
+    expect(state.sources[0].metadata.kitchenAddonRefunds).toEqual([expect.objectContaining({ kind: 'equipment', id: 31, operationKey: 'support-addon-key-1', refundCents: 2122, kitchenRefundCents: 1933 })]);
     expect(state.parent.paymentStatus).toBe('partially_refunded');
+  });
+  it('freezes a kitchen-caused add-on settlement so a later booking cancellation refunds the untouched kitchen time', async () => {
+    state.parent.cancellationPolicySnapshot = { policyId: 10, version: 1, noticeHours: 24, lateChargePercent: 50,
+      tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], timezone: 'America/St_Johns',
+      sessions: [{ startAt: '2026-11-10T12:30:00Z' }], disclosureVersion: 'food-corridor-v3', acceptedAt: '2026-10-01T00:00:00Z' };
+    await refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-settled', [{ kind: 'equipment', id: 31 }]);
+    const quote = await readChefCancellationQuote(10, 3) as any;
+    expect(quote).toMatchObject({ alreadyRefundedCents: 2122, chefRefundCents: 9761 });
   });
   it('replays without a second refund and refuses to refund the same add-on again', async () => {
     await refundKitchenCausedAddons(10, 2, 2, 'support-addon-key-1', [{ kind: 'equipment', id: 31 }]);
@@ -445,7 +457,7 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
       serviceFee: '700', refundAmount: '0', currency: 'CAD', updatedAt: new Date('2026-11-01T11:00:00Z'),
       metadata: { capturedComponentAllocations: [{ kind: 'kitchen', bookingId: 10, managerGrossCents: 9500 }, { kind: 'equipment', bookingId: 31, managerGrossCents: 2000 }] } }];
     state.storage = []; state.extensions = []; state.visits = []; state.receipts = {}; state.providerStatus = 'succeeded'; state.calls = []; state.managerId = 2; state.frozen = false;
-    state.failResponse = false; state.feePending = false; state.failFunding = false; state.providerDown = false; state.sweep = [];
+    state.failResponse = false; state.feePending = false; state.failFunding = false; state.genericInsufficient = false; state.providerDown = false; state.sweep = []; state.sweepNotices = []; state.crashAfterCancel = false;
     state.equipment = [{ id: 31, kitchenBookingId: 10, chefId: 3, equipmentListingId: 7, paymentIntentId: 'pi_original', status: 'confirmed', totalPrice: '2000', updatedAt: new Date('2026-11-01T11:00:00Z') }];
   });
   afterEach(() => vi.useRealTimers());
@@ -471,7 +483,7 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
     expect(state.sources[0].stripeProcessingFee).toBe('384'); expect(state.sources[0].status).toBe('partially_refunded'); expect(state.parent.paymentStatus).toBe('partially_refunded');
     expect(removalNotices()).toHaveLength(1);
     expect(removalNotices()[0][6].addonRemoval).toMatchObject({ state: 'removed', itemName: 'Commercial Oven', refundCents: 2055, kitchenRefundCents: 1933, afterDeadline: false, free: false });
-    expect(JSON.stringify(removalNotices()[0])).not.toMatch(/#31|#10|pi_|re_/);
+    expect(removalNotices()[0][4]).not.toMatch(/#31|#10|pi_|re_/);
     expect(noticeKinds()).not.toContain('cancelled'); expect(noticeKinds()).not.toContain('refund_issued');
   });
 
@@ -482,6 +494,8 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
 
   it('a $0 or never-charged add-on comes off with no money and no refund wording', async () => {
     state.equipment[0].totalPrice = '0';
+    state.sources[0].metadata.capturedComponentAllocations[0].managerGrossCents = 11500;
+    state.sources[0].metadata.capturedComponentAllocations[1].managerGrossCents = 0;
     const quote = await readChefAddonQuote(10, 3, OVEN) as any;
     expect(quote).toMatchObject({ quoteReady: true, free: true, chefRefundCents: 0, sources: [] });
     const result = await remove('chef-oven-free-1', { expectedRefundCents: 0 }) as any;
@@ -493,7 +507,7 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
 
   it('after the refund deadline it can still come off, but nothing is refunded and the chef is told before and after', async () => {
     vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
-    state.parent.cancellationPolicySnapshot = policy(50); // a 50% late tier on the whole booking does not make an add-on partly refundable
+    state.parent.cancellationPolicySnapshot = policy(100);
     const quote = await readChefAddonQuote(10, 3, OVEN) as any;
     expect(quote).toMatchObject({ quoteReady: true, lateCancel: true, free: false, chefRefundCents: 0, feeRetainedCents: 67 });
     const result = await remove('chef-oven-late-1', { expectedRefundCents: 0 }) as any;
@@ -501,6 +515,18 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
     expect(state.equipment[0].status).toBe('cancelled'); expect(state.parent.status).toBe('confirmed'); expect(state.calls).toHaveLength(0);
     expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ status: 'succeeded', customerRefund: 0, lateCancel: true });
     expect(removalNotices()[0][6].addonRemoval).toMatchObject({ afterDeadline: true, refundCents: 0 });
+  });
+
+  it('uses the frozen 50% late tier instead of replacing every late add-on refund with zero', async () => {
+    vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
+    state.parent.cancellationPolicySnapshot = policy(50);
+    const quote = await readChefAddonQuote(10, 3, OVEN) as any;
+    expect(quote).toMatchObject({ quoteReady: true, lateCancel: true, chefRefundCents: 1027, feeRetainedCents: 67, retainedCents: 1095 });
+    expect(quote.sources[0]).toMatchObject({ kitchenRefundCents: 966, platformRefundCents: 61 });
+    const result = await remove('chef-oven-half-late', { expectedRefundCents: 1027 }) as any;
+    expect(result).toMatchObject({ state: 'removed', lateCancel: true, refundCents: 1027 });
+    expect(state.calls[0]).toMatchObject({ amount: 1027, options: { reverseTransferAmount: 966 } });
+    expect(removalNotices()[0][6].addonRemoval).toMatchObject({ afterDeadline: true, refundCents: 1027, kitchenRefundCents: 966 });
   });
 
   describe('every automatic money step has a way out', () => {
@@ -520,7 +546,7 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
       expect(state.calls).toHaveLength(1); expect(state.calls[0].options.idempotencyKey).toBe(state.sources[0].metadata.cancellationRefundOperation.id);
       expect(state.sources[0].metadata.cancellationRefundOperation.status).toBe('succeeded');
       const sent = state.notices.mock.calls.filter((call: any[]) => call[2] === 'refund_issued');
-      expect(sent).toHaveLength(1); expect(sent[0][6]).toMatchObject({ recipientPolicy: 'chef', addonRemoval: { state: 'sent', refundCents: 2055 } });
+      expect(sent).toHaveLength(1); expect(sent[0][6]).toMatchObject({ itemKind: 'equipment', itemId: 31, addonRemoval: { state: 'sent', refundCents: 2055 } });
       expect(removalNotices()).toHaveLength(1);
     });
 
@@ -530,6 +556,20 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
       expect(state.calls).toHaveLength(1);
       await retryCancellationRefund(10, 2);
       expect(state.calls).toHaveLength(1); expect(state.sources[0].metadata.cancellationRefundOperation.status).toBe('succeeded');
+    });
+
+    it('an admin retry uses a new refund key and the original reversal key', async () => {
+      state.providerDown = true;
+      await remove('chef-oven-admin-retry');
+      const operation = state.sources[0].metadata.cancellationRefundOperation;
+      state.providerDown = false;
+      await retryCancellationRefund(10, 2, { selector: { transactionId: 99, refundOperationId: operation.id },
+        supportOperationKey: 'support-retry-refund-1' });
+      expect(state.calls[0].options).toMatchObject({
+        idempotencyKey: operation.id,
+        refundIdempotencyKey: `${operation.id}-refund-support-retry-refund-1`,
+        reversalIdempotencyKey: `${operation.id}-reversal`,
+      });
     });
 
     it('card fee not known yet: removed now, exact refund sent when the fee is confirmed, at the original removal time', async () => {
@@ -547,15 +587,42 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
       expect(state.notices.mock.calls.filter((call: any[]) => call[2] === 'refund_issued')).toHaveLength(1);
     });
 
+    it('settles fee-pending removal with the original 50% late tier once the card fee is known', async () => {
+      vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
+      state.parent.cancellationPolicySnapshot = policy(50); state.feePending = true;
+      const removed = await remove('chef-oven-half-fee') as any;
+      expect(removed).toMatchObject({ state: 'fee_pending', refundCents: 0 });
+      state.feePending = false;
+      await retryCancellationRefund(10, 2);
+      expect(state.calls[0]).toMatchObject({ amount: 1027, options: { reverseTransferAmount: 966 } });
+      expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ status: 'succeeded', lateCancel: true, customerRefund: 1027 });
+    });
+
     it('the kitchen share can’t be pulled back: the chef is still refunded, the debt is recorded, Local Cooks and the kitchen are told', async () => {
       state.sources[0].transferId = 'tr_kitchen'; state.failFunding = true;
       const result = await remove('chef-oven-debt-1') as any;
       expect(result).toMatchObject({ state: 'removed', refundCents: 2055, kitchenDebtCents: 1933 });
       expect(state.calls).toHaveLength(1); expect(state.calls[0]).toMatchObject({ amount: 2055, options: { reverseTransferAmount: 0, metadata: { manager_debited: '1933' } } });
-      expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ status: 'succeeded', kitchenDebtCents: 1933, kitchenDebt: 'open' });
+      expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ status: 'succeeded', kitchenDebtCents: 1933, platformFunding: true });
       const admin = state.notices.mock.calls.filter((call: any[]) => call[6]?.recipientPolicy === 'admins');
       expect(admin).toHaveLength(1); expect(admin[0][4]).toMatch(/KB-OVEN1.*\$19\.33.*kitchen/);
       expect(removalNotices()[0][6].addonRemoval).toMatchObject({ state: 'removed', kitchenDebtCents: 1933 });
+    });
+
+    it('keeps kitchen debt durable across a lost platform-funded refund response', async () => {
+      state.sources[0].transferId = 'tr_kitchen'; state.failFunding = true; state.failResponse = true;
+      expect(await remove('chef-oven-debt-lost')).toMatchObject({ state: 'processing', kitchenDebtCents: 1933 });
+      expect(state.sources[0].metadata.kitchenRefundDebts).toContainEqual(expect.objectContaining({ amountCents: 1933, status: 'awaiting_refund' }));
+      await retryCancellationRefund(10, 2);
+      expect(state.calls).toHaveLength(1);
+      expect(state.sources[0].metadata.kitchenRefundDebts).toContainEqual(expect.objectContaining({ amountCents: 1933, status: 'open', refundId: 're_99' }));
+    });
+
+    it('does not call an unrelated insufficient-platform error kitchen debt', async () => {
+      state.sources[0].transferId = 'tr_kitchen'; state.genericInsufficient = true;
+      expect(await remove('chef-oven-platform-low')).toMatchObject({ state: 'processing', kitchenDebtCents: 0 });
+      expect(state.sources[0].metadata.cancellationRefundOperation).not.toHaveProperty('platformFunding');
+      expect(state.sources[0].metadata.kitchenRefundDebts).toBeUndefined();
     });
 
     it('two taps, a retry and a webhook replay make one refund, one receipt record and one notice per side', async () => {
@@ -591,7 +658,65 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
       await expect(remove('chef-oven-frozen-2')).rejects.toThrow(ADDON_MONEY_REVIEW);
       state.parent.paymentDecision = null; state.sources[0].metadata.refundRecovery = { attemptKey: 'old', status: 'recovery_required' };
       await expect(remove('chef-oven-frozen-3')).rejects.toThrow(ADDON_MONEY_REVIEW);
-      expect(state.equipment[0].status).toBe('confirmed'); expect(state.calls).toHaveLength(0); expect(state.notices).not.toHaveBeenCalled();
+      expect(state.equipment[0].status).toBe('confirmed'); expect(state.calls).toHaveLength(0);
+      expect(state.notices.mock.calls.filter((call: any[]) => call[2] === 'payment_recovery_needed')).toHaveLength(1);
+    });
+
+    it('never calls a missing source, a missing item payment link, or contradictory frozen money free', async () => {
+      state.sources = [];
+      await expect(readChefAddonQuote(10, 3, OVEN)).rejects.toThrow(ADDON_MONEY_REVIEW);
+      expect(state.equipment[0].status).toBe('confirmed');
+
+      state.parent.equipmentItems[0].paymentReviewNeeded = false;
+      state.sources = [{ id: 99, bookingId: 10, bookingType: 'kitchen', chefId: 3, managerId: 2, paymentIntentId: 'pi_original', status: 'succeeded', amount: '12200', baseAmount: '11500', managerRevenue: '11116',
+        serviceFee: '700', refundAmount: '0', currency: 'CAD', updatedAt: new Date('2026-11-01T11:00:00Z'), metadata: { capturedComponentAllocations: [{ kind: 'kitchen', bookingId: 10, managerGrossCents: 9500 }, { kind: 'equipment', bookingId: 31, managerGrossCents: 2000 }] } }];
+      state.equipment[0].paymentIntentId = null;
+      await expect(readChefAddonQuote(10, 3, OVEN)).rejects.toThrow(ADDON_MONEY_REVIEW);
+
+      state.parent.equipmentItems[0].paymentReviewNeeded = false; state.equipment[0].paymentIntentId = 'pi_original'; state.equipment[0].totalPrice = '0';
+      await expect(readChefAddonQuote(10, 3, OVEN)).rejects.toThrow(ADDON_MONEY_REVIEW);
+      expect(state.notices.mock.calls.filter((call: any[]) => call[2] === 'payment_recovery_needed')).toHaveLength(3);
+      expect(state.calls).toHaveLength(0);
+    });
+
+    it('recovers notices after a process stops immediately after reserving a paid removal', async () => {
+      state.crashAfterCancel = true;
+      await expect(remove('chef-oven-crash-paid')).rejects.toThrow('Process stopped after commit');
+      expect(state.parent.equipmentItems[0].removal).toMatchObject({ finalizationPending: true });
+      expect(state.parent.equipmentItems[0].removal.noticeState).toBeUndefined();
+      expect(removalNotices()).toHaveLength(0);
+      state.sweep = [{ id: 99, booking_id: 10, manager_id: 2 }];
+      state.sweepNotices = [{ id: 10, chef_id: 3, equipment_items: state.parent.equipmentItems }];
+      await recoverChefAddonRefunds();
+      expect(state.calls).toHaveLength(1); expect(removalNotices()).toHaveLength(1);
+      expect(state.parent.equipmentItems[0].removal.finalizationPending).toBe(false);
+    });
+
+    it('recovers a free removal notice without any payment operation after a process stop', async () => {
+      state.equipment[0].totalPrice = '0';
+      state.sources[0].metadata.capturedComponentAllocations[0].managerGrossCents = 11500;
+      state.sources[0].metadata.capturedComponentAllocations[1].managerGrossCents = 0;
+      state.crashAfterCancel = true;
+      await expect(remove('chef-oven-crash-free')).rejects.toThrow('Process stopped after commit');
+      state.sweepNotices = [{ id: 10, chef_id: 3, equipment_items: state.parent.equipmentItems }];
+      await recoverChefAddonRefunds();
+      expect(state.calls).toHaveLength(0); expect(removalNotices()).toHaveLength(1);
+      expect(removalNotices()[0][6].addonRemoval).toMatchObject({ free: true, refundCents: 0 });
+    });
+
+    it('the provider reconciliation path completes the add-on receipt and notices once', async () => {
+      state.providerDown = true;
+      await remove('chef-oven-webhook-path');
+      const operation = state.sources[0].metadata.cancellationRefundOperation;
+      state.providerDown = false;
+      state.receipts.pi_original = [{ id: 're_webhook', amount: 2055, currency: 'cad', payment_intent: 'pi_original', charge: 'ch_99', status: 'succeeded', metadata: {
+        refund_operation_id: operation.id, transaction_id: '99', customer_receives: '2055', manager_debited: '1933', platform_service_fee_returned: '122' } }];
+      const { reconcilePaymentRefundReceipts } = await import('./payment-refund-reconciliation');
+      await reconcilePaymentRefundReceipts('pi_original');
+      expect(state.sources[0].metadata.cancellationRefundOperation).toMatchObject({ status: 'succeeded', refundId: 're_webhook' });
+      expect(state.notices.mock.calls.filter((call: any[]) => call[2] === 'refund_issued')).toHaveLength(1);
+      await reconcilePaymentRefundReceipts('pi_original');
+      expect(state.notices.mock.calls.filter((call: any[]) => call[2] === 'refund_issued')).toHaveLength(1);
     });
   });
 
@@ -629,6 +754,16 @@ describe('chef removes an add-on instantly under the booking’s frozen policy',
     expect(state.sources[0].metadata.addonRemovals.map((row: any) => row.id)).toEqual([31, 32]);
     expect(state.equipment.map(item => item.status)).toEqual(['cancelled', 'cancelled']); expect(state.parent.status).toBe('confirmed');
     expect(removalNotices()).toHaveLength(2);
+  });
+
+  it('a completed new removal does not block legacy kitchen acceptance for another item on the same charge', async () => {
+    state.parent.equipmentItems.push({ equipmentBookingId: 32, status: 'cancellation_requested', totalPrice: 1000 });
+    state.equipment.push({ id: 32, kitchenBookingId: 10, chefId: 3, equipmentListingId: 8, paymentIntentId: 'pi_original', status: 'cancellation_requested', totalPrice: '1000', cancellationRequestedAt: new Date('2026-11-01T11:30:00Z'), updatedAt: new Date('2026-11-01T11:30:00Z') });
+    state.sources[0].metadata.capturedComponentAllocations = [{ kind: 'kitchen', bookingId: 10, managerGrossCents: 8500 }, { kind: 'equipment', bookingId: 31, managerGrossCents: 2000 }, { kind: 'equipment', bookingId: 32, managerGrossCents: 1000 }];
+    await remove('chef-oven-before-legacy');
+    const quote = await readCancellationRefund(10, 2, 'manager', { kind: 'equipment', id: 32 }) as any;
+    expect(quote).toMatchObject({ scope: { kind: 'equipment', id: 32 } });
+    expect(quote.sources[0].managerRefund).toBe(1000);
   });
 
   it('reads as a money review for the support console and blocks goodwill while the add-on refund is unfinished', async () => {

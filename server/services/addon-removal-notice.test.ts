@@ -32,7 +32,9 @@ describe('chef removes an add-on: the notice each side reads', () => {
     expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'removed', free: true })).message).toContain('Your payout doesn’t change.');
     expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'removed', afterDeadline: true, refundCents: 0 })).message).toContain('Your payout doesn’t change.');
     expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'processing', refundCents: 2055, kitchenRefundCents: 1933 })).message).toContain('Their refund is being processed.');
-    expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'removed', refundCents: 2055, kitchenRefundCents: 1933, kitchenDebtCents: 1933 })).message).toContain('$19.33 comes out of your next payout.');
+    expect((await addonRemovalNotice('chef', 'en-CA', { ...base, state: 'removed', afterDeadline: true, refundCents: 1028, kitchenRefundCents: 967 })).message).toContain('$10.28 refund');
+    expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'removed', afterDeadline: true, refundCents: 1028, kitchenRefundCents: 967 })).message).toContain('$9.67');
+    expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'removed', refundCents: 2055, kitchenRefundCents: 1933, kitchenDebtCents: 1933 })).message).toContain('Your kitchen owes Local Cooks $19.33');
     expect((await addonRemovalNotice('manager', 'en-CA', { ...base, state: 'removed', refundCents: 2055, kitchenRefundCents: 1933, reason: 'Menu changed' })).message).toContain('Note from Sam Chef: “Menu changed”');
   });
   it.each(['en-CA', 'fr-CA', 'uk'])('has no raw keys, placeholders or internal ids in any state (%s)', async locale => {
@@ -52,8 +54,9 @@ describe('chef removes an add-on: the notice each side reads', () => {
     expect(paid.message).toBe('Sam Chef removed Commercial Oven at PHASE0 Main Kitchen · Nov 10, 2026, 9:00 a.m. · KB-OVEN1. Refunded $20.55. Kitchen payout −$19.33. Card fee kept: $0.67.');
     expect(adminBookingNotice('addon_removed', { ...facts, addon: { itemName: 'Mixer', free: true } })!.message).toContain('It wasn’t charged.');
     expect(adminBookingNotice('addon_removed', { ...facts, addon: { itemName: 'Mixer', afterDeadline: true, refundCents: 0 } })!.message).toContain('Not refundable');
+    expect(adminBookingNotice('addon_removed', { ...facts, addon: { itemName: 'Mixer', afterDeadline: true, refundCents: 1028, kitchenRefundCents: 967 } })!.message).toMatch(/Refunded \$10\.28.*\$9\.67/);
     expect(adminBookingNotice('addon_removed', { ...facts, addon: { state: 'fee_pending', itemName: 'Mixer' } })!.message).toContain('waiting for the actual processing fee');
     expect(adminBookingNotice('addon_removed', { ...facts, addon: { state: 'processing', itemName: 'Mixer', refundCents: 500, kitchenRefundCents: 400, kitchenDebtCents: 400 } })!.message)
-      .toMatch(/still being processed.*The kitchen owes Local Cooks \$4\.00/);
+      .toMatch(/Processing refund.*The kitchen owes Local Cooks \$4\.00/);
   });
 });

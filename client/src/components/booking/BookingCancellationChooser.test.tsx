@@ -162,10 +162,26 @@ describe('one parent cancellation chooser', () => {
         : url.endsWith('cancellation-quote') ? { quoteReady: true, chefRefundCents: 9800, feeRetainedCents: 200, retainedCents: 200 } : { state: 'removed', lateCancel: true, refundCents: 0, itemName: 'Mixer' } })) as any);
       render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={equipmentOnly} onChanged={async () => {}} />);
       await chooseMixer();
-      expect(await screen.findByTestId('cancel-addon-note')).toHaveTextContent('After the refund deadline add-ons aren’t refundable. Removing Mixer frees the equipment for others; you won’t get money back.');
+      expect(await screen.findByTestId('cancel-addon-note')).toHaveTextContent('Under this booking’s cancellation policy, Mixer isn’t refundable. Removing it makes it available to others.');
       expect(screen.getByRole('dialog')).not.toHaveTextContent(/no refund|free\b/i);
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove selected add-ons' }));
       expect(await screen.findByRole('status')).toHaveTextContent('Removed. Under the cancellation policy it isn’t refundable.');
+    });
+    it('shows a 50% late-tier amount, the retained policy share, card fee and frozen date', async () => {
+      const snapshot = { policyId: 10, version: 1, noticeHours: 24, lateChargePercent: 50,
+        tiers: [{ minHoursBeforeStart: 24, refundPercent: 100 }, { minHoursBeforeStart: 0, refundPercent: 50 }], timezone: 'America/St_Johns',
+        sessions: [{ startAt: '2026-11-10T12:30:00Z' }], disclosureVersion: 'food-corridor-v3', acceptedAt: '2026-10-01T00:00:00Z' };
+      vi.mocked(fetch).mockImplementation((async (url: string) => ({ ok: true, json: async () => url.includes('?scope=equipment:')
+        ? { ...addonQuote, lateCancel: true, chefRefundCents: 1027, retainedCents: 1095, snapshot }
+        : url.endsWith('cancellation-quote') ? { quoteReady: true, chefRefundCents: 9800, feeRetainedCents: 200, retainedCents: 200 }
+        : { state: 'removed', lateCancel: true, refundCents: 1027, itemName: 'Mixer' } })) as any);
+      render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={equipmentOnly} onChanged={async () => {}} />);
+      await chooseMixer();
+      expect(await screen.findByText(/Under your saved policy, \$10\.27 comes back/)).toBeInTheDocument();
+      expect(screen.getByTestId('cancel-refund-headline')).toHaveTextContent('$10.27');
+      expect(screen.getByTestId('cancel-breakdown')).toHaveTextContent(/Kept under the cancellation policy.*\$10\.28/);
+      expect(screen.getByTestId('cancel-breakdown')).toHaveTextContent(/Card processing fee.*\$0\.67/);
+      expect(screen.getByRole('dialog')).toHaveTextContent(/Nov 9, 9:00 a\.m\./i);
     });
     it('a refund still being processed and an unknown card fee are each explained', async () => {
       const respond = (removed: Record<string, unknown>, quote: Record<string, unknown> = addonQuote) => vi.mocked(fetch).mockImplementation((async (url: string) => ({ ok: true,
@@ -186,15 +202,24 @@ describe('one parent cancellation chooser', () => {
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove selected add-ons' }));
       expect(await screen.findByRole('status')).toHaveTextContent('Removed. We’re confirming the card fee before sending your exact refund.');
     });
-    it('shows the server’s plain message when the refund changed, and keeps the add-on selected', async () => {
+    it('reloads a changed refund and succeeds only after the chef confirms the refreshed amount', async () => {
+      let quoteReads = 0, removals = 0;
       vi.mocked(fetch).mockImplementation((async (url: string) => url.endsWith('cancellation-quote') ? { ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 9800, feeRetainedCents: 200, retainedCents: 200 }) }
-        : url.includes('?scope=equipment:') ? { ok: true, json: async () => addonQuote } : { ok: false, json: async () => ({ error: 'The refund changed. Review the new amount.' }) }) as any);
+        : url.includes('?scope=equipment:') ? { ok: true, json: async () => (++quoteReads === 1 ? addonQuote : { ...addonQuote, chefRefundCents: 1028, retainedCents: 1094 }) }
+        : ++removals === 1 ? { ok: false, status: 409, json: async () => ({ error: 'The refund changed. Review the new amount.' }) }
+        : { ok: true, json: async () => ({ state: 'removed', refundCents: 1028, itemName: 'Mixer' }) }) as any);
       render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" items={equipmentOnly} onChanged={async () => {}} />);
       await chooseMixer();
       await screen.findByTestId('cancel-refund-headline');
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove selected add-ons' }));
       expect(await screen.findByRole('alert')).toHaveTextContent('The refund changed. Review the new amount.');
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId('cancel-refund-headline')).toHaveTextContent('$10.28'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove selected add-ons' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('$10.28 refund is on its way');
+      const requests = calls('/equipment-bookings/31/cancel').map(call => JSON.parse(call[1]!.body as string));
+      expect(requests.map(body => body.expectedRefundCents)).toEqual([2055, 1028]);
+      expect(requests[0].operationKey).toBe(requests[1].operationKey);
     });
   });
 });

@@ -54,6 +54,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
   const unpaid = beforeConfirmation && ['pending', 'authorized', 'failed'].includes(paymentStatus || '');
   const eligible = !visitActive && ['pending', 'confirmed'].includes(status);
   const entireAvailable = eligible && !decisionPending && (beforeConfirmation || !!quote);
+  const [quoteRevision, setQuoteRevision] = useState(0);
   useEffect(() => {
     if (!open || beforeConfirmation || decisionPending) return;
     const controller = new AbortController();
@@ -68,7 +69,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
       } catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : policyT('cpError')); }
     })();
     return () => controller.abort();
-  }, [open, beforeConfirmation, bookingId, decisionPending, i18n.language]);
+  }, [open, beforeConfirmation, bookingId, decisionPending, i18n.language, quoteRevision]);
   const key = (item: Item) => `${item.kind}:${item.id}`;
   const itemEligible = (item: Item) => ['pending', 'confirmed'].includes(item.status);
   // Removing equipment is instant under the booking's own policy: price each selected add-on before the chef confirms.
@@ -91,7 +92,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
     }));
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, addonKeys, bookingId, i18n.language]);
+  }, [open, addonKeys, bookingId, i18n.language, quoteRevision]);
   const addonLoaded = equipmentTargets.length > 0 && equipmentTargets.every(item => !!addonQuotes[key(item)]);
   const addonFeePending = addonLoaded && equipmentTargets.some(item => !addonQuotes[key(item)].quoteReady);
   const addonList = equipmentTargets.map(item => item.name).join(', ');
@@ -99,7 +100,7 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
     const all = equipmentTargets.map(item => addonQuotes[key(item)]);
     const sum = (pick: (quote: ExactQuote) => number | undefined) => all.reduce((total, quote) => total + (pick(quote) ?? 0), 0);
     return { quoteReady: true, chefRefundCents: sum(quote => quote.chefRefundCents), feeRetainedCents: sum(quote => quote.feeRetainedCents), retainedCents: sum(quote => quote.retainedCents),
-      alreadyRefundedCents: 0, sources: all.flatMap(quote => quote.sources ?? []), free: all.every(quote => quote.free), lateCancel: all.some(quote => quote.lateCancel) };
+      alreadyRefundedCents: 0, sources: all.flatMap(quote => quote.sources ?? []), free: all.every(quote => quote.free), lateCancel: all.some(quote => quote.lateCancel), snapshot: all[0]?.snapshot };
   })() : null;
   const saved = Object.keys(results).length > 0;
   const complete = scope === 'entire' ? !!results.parent : selected.length > 0 && selected.every(id => !!results[id]);
@@ -124,7 +125,13 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.trim(), operationKey: operationKey.current,
             expectedRefundCents: scope === 'entire' ? quote?.chefRefundCents : 'instant' in target && target.instant ? addonQuotes[target.key]?.chefRefundCents : undefined }) });
         const result = await response.json();
-        if (!response.ok) throw Error(result.error || t('cancelCopy00'));
+        if (!response.ok) {
+          if (response.status === 409 && /refund changed|refund.*changed|new amount|refreshed amounts/i.test(result.error || '')) {
+            if (scope === 'items') setAddonQuotes({}); else setQuote(null);
+            setQuoteRevision(value => value + 1);
+          }
+          throw Error(result.error || t('cancelCopy00'));
+        }
         setResults(current => ({ ...current, [target.key]: 'instant' in target && target.instant ? removedText(result) : result.message || (result.action === 'cancelled' ? policyT('cpCancelled') : t('cancelCopy03')) }));
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('cancelCopy01')); }
@@ -184,6 +191,8 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
               : equipmentTargets.length > 0 || storageSelected ? <div className="space-y-2 rounded-xl border bg-muted/30 p-3 text-sm" aria-live="polite">
                 {equipmentTargets.length > 0 && (addonFeePending ? <p>{policyT('cpAddonFeePending', { items: addonList })}</p>
                   : addonTotal ? <>
+                    {addonTotal.lateCancel && !!addonTotal.chefRefundCents && <p>{policyT('cpAddonLatePartial', { refund: money(addonTotal.chefRefundCents) })}</p>}
+                    {addonTotal.snapshot && <CancellationPolicySummary policy={addonTotal.snapshot} timezone={addonTotal.snapshot.timezone} startAt={addonTotal.snapshot.sessions[0]?.startAt} processingFeeCents={addonTotal.feeRetainedCents} />}
                     {addonTotal.chefRefundCents ? <p className="text-lg font-semibold" data-testid="cancel-refund-headline">{policyT('cpRefundHeadline', { refund: money(addonTotal.chefRefundCents) })}</p>
                       : <p data-testid="cancel-addon-note">{policyT(addonTotal.free ? 'cpAddonFree' : 'cpAddonLate', { items: addonList })}</p>}
                     {!!addonTotal.chefRefundCents && <details className="group" data-testid="cancel-breakdown">
