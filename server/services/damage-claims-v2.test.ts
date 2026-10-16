@@ -4,7 +4,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 
 const state = vi.hoisted(() => ({ claim: null as any, booking: {} as any, visit: {} as any, source: null as any,
   actions: [] as any[], evidence: [] as any[], history: [] as any[], events: [] as string[], queries: [] as string[],
-  due: [] as any[], flag: false, insufficient: false, failTransfer: false, create: vi.fn(), retrieve: vi.fn(), transfer: vi.fn(), balance: vi.fn(), cancel: vi.fn(), refund: vi.fn() }));
+  due: [] as any[], flag: false, insufficient: false, failTransfer: false, create: vi.fn(), retrieve: vi.fn(), list: [] as any[], transfer: vi.fn(), balance: vi.fn(), cancel: vi.fn(), refund: vi.fn() }));
 vi.mock('../db', () => {
   const db: any = {
     transaction: async (run: any) => { const result = await run(db); state.events.push('commit'); return result; },
@@ -52,7 +52,8 @@ vi.mock('../db', () => {
     } }) }),
   }; return { db };
 });
-vi.mock('stripe', () => ({ default: class { paymentIntents = { create: state.create, retrieve: state.retrieve, cancel: state.cancel };
+vi.mock('stripe', () => ({ default: class { paymentIntents = { create: state.create, retrieve: state.retrieve, cancel: state.cancel,
+    list: () => ({ async *[Symbol.asyncIterator]() { for (const item of state.list) yield item; } }) };
   transfers = { create: state.transfer }; balance = { retrieve: state.balance }; refunds = { create: state.refund, retrieve: state.refund }; } }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => 'DC-TEST' }));
 vi.mock('./damage-claim-notices', () => ({ queueDamageClaimNotice: async () => { state.events.push('notice'); } }));
@@ -263,5 +264,28 @@ describe('support decisions and compensation', () => {
   });
   it('recovery exits on an empty bounded page and never confirms a chef payment', async () => {
     await recoverDamageClaimMoney(); expect(state.create).not.toHaveBeenCalled(); expect(state.transfer).not.toHaveBeenCalled();
+  });
+});
+
+describe('support starts a chef claim payment over (stuck attempt held for review)', () => {
+  const held = (error: string) => ({ ...state.claim, chefId: 0, status: 'approved', upheldAt: now, chefOwes: true, finalAmountCents: 4000,
+    paymentOperation: { key: 'claim:1:pay:1', state: 'pending', amountCents: 4000, customerId: 'cus_platform', startedAt: now.toISOString(), error } });
+  it('asks the provider again: no payment found → the chef can pay again; audited', async () => {
+    state.claim = held('The payment provider could not be reached to check the earlier attempt.'); state.list = [];
+    expect(await decideDamageClaim(7, 99, action('claim_restart_payment'))).toMatchObject({ result: 'reset' });
+    expect(state.claim.paymentOperation.state).toBe('cancelled');
+    expect(state.actions.at(-1)).toMatchObject({ actionType: 'claim_restart_payment', status: 'verified' });
+  });
+  it('still undecidable → refuses until Local Cooks confirms it checked the provider, then resets', async () => {
+    const match = { id: 'pi_a', status: 'requires_payment_method', amount: 4000, currency: 'cad', customer: 'cus_platform', metadata: { claim_operation_key: 'claim:1:pay:1' } };
+    state.claim = held('More than one payment matches this attempt.'); state.list = [match, { ...match, id: 'pi_b' }];
+    await expect(decideDamageClaim(7, 99, action('claim_restart_payment'))).rejects.toThrow(/confirm no payment was taken/);
+    expect(state.claim.paymentOperation.state).toBe('pending');
+    expect(await decideDamageClaim(7, 99, action('claim_restart_payment', { verifiedNoPayment: true, operationKey: 'claim:action:restart2' }))).toMatchObject({ result: 'verified_reset' });
+    expect(state.claim.paymentOperation).toMatchObject({ state: 'cancelled', error: expect.stringContaining('no payment was taken') });
+  });
+  it('is refused when nothing is waiting for review', async () => {
+    state.claim = { ...state.claim, paymentOperation: null };
+    await expect(decideDamageClaim(7, 99, action('claim_restart_payment'))).rejects.toThrow(/no payment waiting for review/);
   });
 });

@@ -53,9 +53,11 @@ export function claimKitchenAccounting(metadata: Record<string, unknown>, record
     managerRefundCents: metadata.kitchenRetainsTransfer === true ? 0 : refundCents,
     retainRevenueAfterRefund: metadata.kitchenRetainsTransfer === true };
 }
-export const claimSupportTypes = ['claim_send', 'claim_ask_info', 'claim_uphold', 'claim_reduce', 'claim_reject', 'claim_compensate', 'claim_close', 'claim_withdraw', 'claim_release_hold'] as const;
+export const claimSupportTypes = ['claim_send', 'claim_ask_info', 'claim_uphold', 'claim_reduce', 'claim_reject', 'claim_compensate', 'claim_close', 'claim_withdraw', 'claim_release_hold', 'claim_restart_payment'] as const;
 export const claimSupportInput = z.object({ type: z.enum(claimSupportTypes), claimId: z.number().int().positive(),
   amountCents: z.number().int().positive().max(CLAIM_CAP_CENTS).optional(), chefStillOwes: z.boolean().optional(),
+  /** claim_restart_payment: Local Cooks checked the payment provider and no payment was taken by the stuck attempt. */
+  verifiedNoPayment: z.boolean().optional(),
   reasonCode: z.string().trim().min(1).max(100), note: z.string().trim().min(10).max(2000),
   publicMessage: z.string().trim().min(10).max(2000), requestSource: z.enum(['message', 'call', 'email', 'in_person', 'proactive']),
   operationKey: z.string().min(8).max(128).regex(/^[\w:-]+$/) }).strict().superRefine((value, ctx) => {

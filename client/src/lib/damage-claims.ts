@@ -10,6 +10,8 @@ export type DamageClaimCardData = { id: number; referenceCode: string | null; bo
   holdReleasedAt?: string | null;
   withdrawalPending?: boolean;
   kitchenPaymentPending?: boolean;
+  /** Local Cooks only: why the chef's payment is held for review (start it over from support). */
+  paymentReview?: string | null;
   evidence: Array<{ id: number; evidenceType: string; fileUrl: string; fileName: string | null; uploadedBy: number; description: string | null }>;
   history: Array<{ id: number; action: string; status: string; createdAt: string }> };
 export type FilingContext = { allowed: boolean; deadline: string; endedAt: string; timezone: string; kitchenName: string; before: string[]; after: string[] };

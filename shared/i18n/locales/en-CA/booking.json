@@ -1010,5 +1010,11 @@
   "bnChefClaimPaused": "{amount} is due. New bookings are paused until it’s paid.",
   "cpnAttendanceTitle": "{name} says they were there · {ref}",
   "cpnAttendanceNext": "Reply with what you saw. Local Cooks will review both sides before anything is charged or paid.",
-  "cpnCat_attendance": "Attendance"
+  "cpnCat_attendance": "Attendance",
+  "dcV2Action_claim_restart_payment": "Start the chef’s payment over",
+  "dcV2Consequence_claim_restart_payment": "We check the payment provider again. If the earlier payment exists, it’s attached; if not, the chef can pay {amount} again. Nothing is charged by this action.",
+  "dcV2PaymentReview": "The chef’s payment is held for review: {reason}",
+  "dcV2VerifiedNoPayment": "I checked the payment provider: this attempt took no payment.",
+  "dcV2RestartTitle": "You can pay the claim again",
+  "dcV2RestartFoundTitle": "Your claim payment was found"
 }

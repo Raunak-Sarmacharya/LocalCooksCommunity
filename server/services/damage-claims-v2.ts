@@ -152,7 +152,10 @@ export async function readBookingClaims(bookingId: number, actor: { id: number; 
   }
   const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.kitchenBookingId, bookingId), sql`${damageClaims.status} <> 'draft'`))
     .orderBy(desc(damageClaims.id)).limit(50);
-  return { claims: await Promise.all(claims.filter(claim => kitchenParticipant || chefCanSeeClaim(claim)).map(claim => publicClaim(claim, undefined, kitchenParticipant ? 'kitchen' : 'chef'))) };
+  return { claims: await Promise.all(claims.filter(claim => kitchenParticipant || chefCanSeeClaim(claim)).map(async claim => ({
+    ...await publicClaim(claim, undefined, kitchenParticipant ? 'kitchen' : 'chef'),
+    // Local Cooks only: a chef payment held for review, so support can start it over.
+    ...(actor.role === 'admin' ? { paymentReview: claimPaymentReview(claim) } : {}) }))) };
 }
 export async function readChefClaims(chefId: number) {
   const claims = await db.select().from(damageClaims).where(and(eq(damageClaims.chefId, chefId), sql`${damageClaims.status} <> 'draft'`))
@@ -246,6 +249,7 @@ export async function decideDamageClaim(bookingId: number, adminId: number, raw:
   const parsed = claimSupportInput.safeParse(raw);
   if (!parsed.success) throw new DamageClaimError('Choose the action, reason, internal note and message for both people.', 400);
   const input = parsed.data;
+  if (input.type === 'claim_restart_payment') return restartClaimPayment(bookingId, adminId, input);
   if (input.type === 'claim_compensate') await cancelOpenChefPaymentForCompensation(bookingId, adminId, input);
   const reserved = await db.transaction(async tx => {
     // Serialize support/claim money with flag writers using the same parent lock.
@@ -333,6 +337,61 @@ export async function decideDamageClaim(bookingId: number, adminId: number, raw:
     }
   }
   return { success: true, actionId: reserved.action.id };
+}
+
+/** Why a chef's claim payment is held for Local Cooks (an unmatched creation attempt), or null. Admin view only. */
+export function claimPaymentReview(claim: Claim) {
+  const op = claim.paymentOperation;
+  return op && !op.intentId && op.error && !['cancelled', 'succeeded'].includes(op.state) ? op.error : null;
+}
+
+/**
+ * "Start the payment over" for a chef payment held for review (no payment-provider match could be verified automatically).
+ * The provider is asked again first: a found payment is attached (and settled if paid); a confirmed absence resets it. Only when the
+ * check still can't decide does Local Cooks' own verification (checked in the provider, with a note) reset it. Audited.
+ */
+async function restartClaimPayment(bookingId: number, adminId: number, input: ClaimSupportInput) {
+  const [claim] = await db.select().from(damageClaims).where(eq(damageClaims.id, input.claimId)).limit(1);
+  if (!claim || claim.kitchenBookingId !== bookingId) throw new DamageClaimError('Claim does not belong to this booking.', 404);
+  // A retried submission returns what was already done (never acts twice).
+  const [done] = await db.select().from(supportActions).where(eq(supportActions.operationKey, input.operationKey)).limit(1);
+  if (done) {
+    if (done.actionType !== 'claim_restart_payment' || (done.beforeState as { inputHash?: string })?.inputHash !== hash(input))
+      throw new DamageClaimError('This action key belongs to different details.');
+    return { success: true, result: (done.beforeState as { result?: string }).result };
+  }
+  const op = claim.paymentOperation;
+  if (!op || !claimPaymentReview(claim)) throw new DamageClaimError('This claim has no payment waiting for review.');
+  const money = await import('./damage-claim-money');
+  const outcome = await money.resolveStalledClaimCreation(claim.id, op, claim);
+  let result: 'found' | 'reset' | 'verified_reset';
+  if (outcome.kind !== 'review') result = outcome.kind;
+  else {
+    if (input.verifiedNoPayment !== true) throw new DamageClaimError(`We still can't verify it automatically: ${outcome.reason} Check the payment provider, then confirm no payment was taken.`);
+    await db.transaction(async tx => {
+      const current = await lockClaim(claim.id, tx);
+      if (current.paymentOperation?.key !== op.key || current.paymentOperation.intentId) return;
+      await tx.update(damageClaims).set({ paymentOperation: { ...current.paymentOperation, state: 'cancelled',
+        error: 'Local Cooks checked the payment provider: no payment was taken. A new payment can start.' }, stripePaymentIntentId: null, updatedAt: new Date() })
+        .where(eq(damageClaims.id, claim.id));
+    });
+    result = 'verified_reset';
+  }
+  await db.insert(supportActions).values({ bookingId, caseRef: claim.referenceCode || `#${claim.id}`, actionType: 'claim_restart_payment',
+    actorUserId: adminId, actingFor: 'local_cooks', requestSource: input.requestSource, reasonCode: input.reasonCode, internalNote: input.note,
+    amountCents: op.amountCents, currency: 'CAD', fundedBy: 'none', operationKey: input.operationKey,
+    beforeState: { claimId: claim.id, inputHash: hash(input), operationKey: op.key, result }, status: 'verified', completedAt: new Date() });
+  // The chef hears Local Cooks' message: they can pay again (or that the earlier payment was found).
+  if (claim.chefId) {
+    const [chef] = await db.select({ locale: users.preferredLocale }).from(users).where(eq(users.id, claim.chefId)).limit(1);
+    const { ensureServerI18n, tLocale } = await import('../i18n');
+    await ensureServerI18n();
+    const t = (key: string) => tLocale(chef?.locale, key, { ns: 'booking' });
+    await (await import('./notification.service')).notificationService.create({ userId: claim.chefId, target: 'chef', type: 'system_announcement',
+      title: t(result === 'found' ? 'dcV2RestartFoundTitle' : 'dcV2RestartTitle'), message: input.publicMessage,
+      actionUrl: `/booking/${bookingId}`, actionLabel: t('dcV2View'), metadata: { damageClaimId: claim.id } });
+  }
+  return { success: true, result };
 }
 
 /** A kitchen compensation must not race an already opened chef payment. Reserve and audit cancellation first;

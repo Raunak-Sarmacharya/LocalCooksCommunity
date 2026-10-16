@@ -1010,5 +1010,11 @@
   "bnChefClaimPaused": "{amount} est dû. Les nouvelles réservations sont suspendues jusqu’au paiement.",
   "cpnAttendanceTitle": "{name} indique avoir été présent · {ref}",
   "cpnAttendanceNext": "Répondez en indiquant ce que vous avez constaté. Local Cooks examinera les deux versions avant tout paiement ou débit.",
-  "cpnCat_attendance": "Présence"
+  "cpnCat_attendance": "Présence",
+  "dcV2Action_claim_restart_payment": "Recommencer le paiement du chef",
+  "dcV2Consequence_claim_restart_payment": "Nous vérifions de nouveau auprès du fournisseur de paiement. Si le paiement précédent existe, il est rattaché; sinon, le chef peut payer {amount} de nouveau. Cette action ne débite rien.",
+  "dcV2PaymentReview": "Le paiement du chef est en attente de vérification : {reason}",
+  "dcV2VerifiedNoPayment": "J’ai vérifié auprès du fournisseur de paiement : cette tentative n’a prélevé aucun paiement.",
+  "dcV2RestartTitle": "Vous pouvez de nouveau payer la réclamation",
+  "dcV2RestartFoundTitle": "Votre paiement de réclamation a été retrouvé"
 }

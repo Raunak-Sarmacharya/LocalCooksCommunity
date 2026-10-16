@@ -34,7 +34,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
   const { t, i18n } = useTranslation('booking');
   const [type, setType] = useState<ClaimSupportInput['type'] | ''>(''), [amount, setAmount] = useState(String(claim.amountCents / 100));
   const [reasonCode, setReason] = useState(''), [note, setNote] = useState(''), [publicMessage, setMessage] = useState('');
-  const [source, setSource] = useState<ClaimSupportInput['requestSource']>('proactive'), [chefStillOwes, setChefStillOwes] = useState(false);
+  const [source, setSource] = useState<ClaimSupportInput['requestSource']>('proactive'), [chefStillOwes, setChefStillOwes] = useState(false), [verifiedNoPayment, setVerifiedNoPayment] = useState(false);
   const [operationKey, setKey] = useState(() => crypto.randomUUID()), [busy, setBusy] = useState(false), [error, setError] = useState(''), [retrying, setRetrying] = useState(false);
   const firstReview = !claim.chefVisible;
   const { replyEvidence, otherEvidence } = splitReplyEvidence(claim);
@@ -44,6 +44,8 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
   if (!['resolved', 'rejected', 'charge_succeeded'].includes(claim.status) && !actions.includes('claim_compensate')) actions.push('claim_compensate');
   if (claim.upheldAt && !claim.holdReleasedAt && claim.chefOwes) actions.push('claim_release_hold');
   if (claim.resolutionType !== 'withdrawn') actions.push('claim_withdraw');
+  // A chef payment held for review: the only way forward is to start it over (after checking the payment provider).
+  if (claim.paymentReview) actions.unshift('claim_restart_payment');
   const moneyAction = ['claim_send', 'claim_reduce', 'claim_compensate'].includes(type);
   const amountCents = /^\d+(?:\.\d{1,2})?$/.test(amount) ? Math.round(Number(amount) * 100) : 0;
   const amountInvalid = moneyAction && (amountCents <= 0 || amountCents > claim.claimedAmountCents || amountCents > 25000);
@@ -56,7 +58,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
     setBusy(true); setError('');
     try {
       await claimAction(bookingId, { claimId: claim.id, type, requestSource: source, operationKey, reasonCode, note, publicMessage,
-        ...(moneyAction ? { amountCents } : {}), ...(type === 'claim_compensate' ? { chefStillOwes: firstReview ? false : chefStillOwes } : {}) });
+        ...(moneyAction ? { amountCents } : {}), ...(type === 'claim_compensate' ? { chefStillOwes: firstReview ? false : chefStillOwes } : {}), ...(type === 'claim_restart_payment' ? { verifiedNoPayment } : {}) });
       setType(''); setKey(crypto.randomUUID()); setRetrying(false); onChanged();
     } catch (cause) { setRetrying(true); setError(cause instanceof Error ? cause.message : t('dcV2Failed')); }
     finally { setBusy(false); }
@@ -64,6 +66,7 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
   return <article className="border-t pt-4 space-y-3">
     <h3 className="font-semibold">{claim.referenceCode || `#${claim.id}`} · {claimMoney(claim.amountCents, i18n.language)}</h3>
     <p className="text-sm">{t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
+    {claim.paymentReview && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm" data-testid="claim-payment-review">{t('dcV2PaymentReview', { reason: claim.paymentReview })}</p>}
     <div className="grid gap-4 sm:grid-cols-2"><section><h4 className="text-sm font-medium">{t('dcV2KitchenStatement')}</h4><p className="text-sm whitespace-pre-wrap">{claim.description}</p>{claim.kitchenReply && <p className="text-sm whitespace-pre-wrap">{claim.kitchenReply}</p>}</section>
       <section><h4 className="text-sm font-medium">{t('dcV2ChefStatement')}</h4><p className="text-sm whitespace-pre-wrap">{claim.chefResponse || t(firstReview ? 'dcV2ChefNotContacted' : 'dcV2NoResponse')}</p></section></div>
     <ClaimEvidence claim={{ ...claim, evidence: otherEvidence }} />
@@ -85,6 +88,8 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
       {type === 'claim_compensate' && !firstReview && <label className="block space-y-1"><span>{t('dcV2DebtChoice')}</span><select className="w-full rounded border p-2 bg-background" value={String(chefStillOwes)} disabled={busy || retrying} onChange={event => setChefStillOwes(event.target.value === 'true')}>
         <option value="false">{t('dcV2WriteOff')}</option><option value="true">{t('dcV2ChefOwes')}</option></select></label>}
       {type === 'claim_compensate' && firstReview && <p className="text-sm">{t('dcV2FirstCompensation')}</p>}
+      {type === 'claim_restart_payment' && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={verifiedNoPayment} disabled={busy || retrying} onChange={event => setVerifiedNoPayment(event.target.checked)} />
+        <span>{t('dcV2VerifiedNoPayment')}</span></label>}
       <label className="block space-y-1"><span className={req}>{t('dcV2Reason')}</span><Input required aria-required value={reasonCode} maxLength={100} disabled={busy || retrying} onChange={event => setReason(event.target.value)} /></label>
       <div className="space-y-1"><label className="block space-y-1"><span className={req}>{t('dcV2InternalNote')}</span><Textarea required aria-required value={note} maxLength={2000} disabled={busy || retrying} onChange={event => setNote(event.target.value)} /></label>
         <span className="block text-xs text-muted-foreground">{t('dcV2MinChars', { min: 10, count: note.trim().length })}</span></div>
