@@ -46,7 +46,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Change = typeof kitchenBookingChanges.$inferSelect;
 export type ChangeActor = { id: number; role: string | null };
 export type ChangeStripe = Pick<Stripe, 'paymentIntents'> & Partial<Pick<Stripe, 'checkout' | 'refunds'>>;
-export class KitchenChangeError extends Error { constructor(message: string, public status = 409) { super(message); } }
+/** `code` is a stable identifier the client turns into a `booking` i18n key (`chgErr` + code); `values` fills its ICU placeholders. */
+export class KitchenChangeError extends Error { constructor(message: string, public status = 409, public code?: string, public values?: Record<string, unknown>) { super(message); } }
 
 const retainedHoldUntil = new Date('9999-12-31T00:00:00Z'); // Kept from the kitchen's approval until the change is applied or released.
 /** How long a chef has to finish paying with another card; the time stays held for exactly that long. */
@@ -99,8 +100,8 @@ async function context(connection: typeof db | Tx, bookingId: number, actor?: Ch
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
     .innerJoin(locations, eq(kitchens.locationId, locations.id)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!row || actor && !(actor.role === 'admin' || actor.role === 'chef' && actor.id === row.booking.chefId
-    || actor.role === 'manager' && actor.id === row.managerId)) throw new KitchenChangeError('Booking not found', 404);
-  if (!row.timezone) throw new KitchenChangeError('The kitchen timezone needs Local Cooks review');
+    || actor.role === 'manager' && actor.id === row.managerId)) throw new KitchenChangeError('Booking not found', 404, 'bookingNotFound');
+  if (!row.timezone) throw new KitchenChangeError('The kitchen timezone needs Local Cooks review', 409, 'kitchenTimezoneReview');
   return row as typeof row & { timezone: string };
 }
 type Context = Awaited<ReturnType<typeof context>>;
@@ -119,14 +120,14 @@ async function lockedContext(tx: Tx, bookingId: number, actor?: ChangeActor) {
 async function lockedChange(tx: Tx, bookingId: number, changeId: string, actor?: ChangeActor) {
   const row = await lockedContext(tx, bookingId, actor);
   const [change] = await tx.select().from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.id, changeId), eq(kitchenBookingChanges.bookingId, bookingId))).limit(1).for('update');
-  if (!change) throw new KitchenChangeError('Change request not found', 404);
+  if (!change) throw new KitchenChangeError('Change request not found', 404, 'changeNotFound');
   return { row, change };
 }
 
 const readTx = () => db as unknown as Tx;
 const moneyWritable = async (target: Parameters<typeof assertBookingMoneyWritable>[0], tx: Tx) => {
   try { await assertBookingMoneyWritable(target, tx); }
-  catch (error) { if (error instanceof BookingMoneyFrozen) throw new KitchenChangeError('Payments for this booking are paused while Local Cooks reviews it. Message the kitchen or contact Local Cooks.'); throw error; }
+  catch (error) { if (error instanceof BookingMoneyFrozen) throw new KitchenChangeError('Payments for this booking are paused while Local Cooks reviews it. Message the kitchen or contact Local Cooks.', 409, 'paymentsPaused'); throw error; }
 };
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -159,7 +160,7 @@ async function validateEquipment(tx: Tx, row: Context, destination: ChangeSchedu
         sql`${equipmentBookings.status} <> 'cancelled'`, sql`${kitchenCheckoutHolds.expiresAt} > CURRENT_TIMESTAMP`,
         sql`(${kitchenBookingChanges.policy}->>'newStartAt')::timestamptz < ${end}`,
         sql`(${kitchenBookingChanges.policy}->>'newEndAt')::timestamptz > ${start}`)).limit(1);
-    if (conflicts.length || changes.length) throw new KitchenChangeError(`${name} is not available at the new time. Choose another time.`);
+    if (conflicts.length || changes.length) throw new KitchenChangeError(`${name} is not available at the new time. Choose another time.`, 409, 'equipmentUnavailable', { item: name });
   }
   return items.map(item => item.booking);
 }
@@ -180,7 +181,7 @@ async function eligibility(tx: Tx, row: Context, now: Date, openChange: boolean)
   try { if ((savedCloseout(booking.visitDuties)?.visits.length ?? 1) > 1) multiVisit = true; } catch { multiVisit = true; }
   let startAt: string, endAt: string;
   try { startAt = startInstant(original, original.slots[0].startTime, row.timezone); endAt = startInstant(original, original.slots.at(-1)!.endTime, row.timezone); }
-  catch { throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen); }
+  catch { throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen, 409, 'contactKitchen'); }
   const checkedIn = (booking.checkinStatus ?? 'not_checked_in') !== 'not_checked_in' || !!booking.checkedInAt || !!booking.checkoutRequestedAt || !!booking.checkedOutAt;
   const freeCancelHours = bookingFreeCancelHours(booking);
   const result = rescheduleEligibility({ status: booking.status, checkedIn, startAt, freeCancelHours, now, multiVisit,
@@ -197,26 +198,26 @@ function changeLengthLimits(row: Context) {
 
 async function validateDestination(tx: Tx, row: Context, destination: ChangeSchedule, now: Date, holdId?: string | null) {
   const booking = row.booking, daily = booking.pricingMode === 'daily';
-  if (!destination.slots?.length) throw new KitchenChangeError('Choose the new date and hours.');
-  try { assertConsecutiveBookingSlots(destination.slots, destination.windowStart); } catch (error) { throw new KitchenChangeError((error as Error).message); }
+  if (!destination.slots?.length) throw new KitchenChangeError('Choose the new date and hours.', 409, 'chooseDateHours');
+  try { assertConsecutiveBookingSlots(destination.slots, destination.windowStart); } catch (error) { throw new KitchenChangeError((error as Error).message, 409, 'consecutiveHours'); }
   const result = await bookingService.validateBookingAvailability(booking.kitchenId, new Date(`${destination.date}T12:00:00Z`),
     destination.slots[0].startTime, destination.slots.at(-1)!.endTime, { selectedSlots: destination.slots, fullDay: daily,
       // The booking's own current time never blocks its own move; the chef is still bound by the kitchen's advance-booking window.
       excludeBookingId: booking.id, excludeHoldId: holdId || undefined, keepAdvanceWindow: true });
-  if (!result.valid || !result.windowStartTime) throw new KitchenChangeError(result.error || 'That time is no longer available. Pick another.');
+  if (!result.valid || !result.windowStartTime) throw new KitchenChangeError(result.error || 'That time is no longer available. Pick another.', 409, 'timeUnavailable');
   const normalized: ChangeSchedule = { date: destination.date, slots: result.slots!, windowStart: result.windowStartTime, ...(daily ? { pricingMode: 'daily' as const } : { pricingMode: 'hourly' as const }) };
   // The kitchen's own length limits apply to a change exactly as to a new booking.
   const limits = changeLengthLimits(row);
   if (!daily && (normalized.slots.length < limits.minHours || normalized.slots.length > limits.maxHours))
-    throw new KitchenChangeError(limits.minHours > 1
-      ? `${row.kitchen.name} takes bookings of ${limits.minHours} to ${limits.maxHours} hours. Choose a length in that range.`
-      : `${row.kitchen.name} takes bookings of up to ${limits.maxHours} hours. Choose a shorter length.`);
+    throw limits.minHours > 1
+      ? new KitchenChangeError(`${row.kitchen.name} takes bookings of ${limits.minHours} to ${limits.maxHours} hours. Choose a length in that range.`, 409, 'lengthRange', { kitchen: row.kitchen.name, min: limits.minHours, max: limits.maxHours })
+      : new KitchenChangeError(`${row.kitchen.name} takes bookings of up to ${limits.maxHours} hours. Choose a shorter length.`, 409, 'lengthMax', { kitchen: row.kitchen.name, max: limits.maxHours });
   await validateEquipment(tx, row, normalized);
-  if (!row.kitchen.isActive || row.kitchen.listingStatus !== 'active') throw new KitchenChangeError('This kitchen is unavailable for a new schedule.');
+  if (!row.kitchen.isActive || row.kitchen.listingStatus !== 'active') throw new KitchenChangeError('This kitchen is unavailable for a new schedule.', 409, 'kitchenUnavailable');
   const original = bookingChangeSchedule(booking);
   if (original.date === normalized.date && original.slots.length === normalized.slots.length
     && normalized.slots.every((slot, index) => slot.startTime === original.slots[index].startTime && slot.endTime === original.slots[index].endTime))
-    throw new KitchenChangeError('Choose a different date or time.');
+    throw new KitchenChangeError('Choose a different date or time.', 409, 'chooseDifferentTime');
   const tours = await tx.select().from(kitchenViewings).where(and(eq(kitchenViewings.targetedKitchenId, booking.kitchenId),
     inArray(kitchenViewings.status, ['confirmed', 'pending', 'pending_local_cooks'])));
   const candidate = { ...booking, bookingDate: `${normalized.date}T12:00:00Z`, selectedSlots: normalized.slots,
@@ -239,17 +240,17 @@ async function currentTerms(tx: Tx, row: Context): Promise<{ terms: PriceTerms; 
   const parent = sources.find(source => source.paymentIntentId && source.paymentIntentId === booking.paymentIntentId);
   if (booking.paymentStatus !== 'paid' && booking.paymentStatus !== 'partially_refunded' || !parent || parent.chefId !== booking.chefId || parent.managerId !== row.managerId
     || parent.currency.toLowerCase() !== booking.currency.toLowerCase())
-    throw new KitchenChangeError('The original payment needs Local Cooks to look at it. Message the kitchen or contact Local Cooks.');
+    throw new KitchenChangeError('The original payment needs Local Cooks to look at it. Message the kitchen or contact Local Cooks.', 409, 'originalPaymentReview');
   const saved = (parent.metadata || {}) as Record<string, any>;
   if (Array.isArray(saved.storage_items) && saved.storage_items.length)
-    throw new KitchenChangeError('To change a booking with storage, contact Local Cooks.');
+    throw new KitchenChangeError('To change a booking with storage, contact Local Cooks.', 409, 'storageContactSupport');
   const [latest] = await tx.select().from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.bookingId, booking.id), eq(kitchenBookingChanges.state, 'applied')))
     .orderBy(desc(kitchenBookingChanges.createdAt)).limit(1);
   if (latest) return { terms: quoteOf(latest).newTerms, parent, sources };
   const tax = Number(saved.approvedTax ?? parent.taxAmount ?? 0), fee = Number(saved.platformCommission ?? parent.serviceFee ?? 0);
   const kitchen = Number(saved.approvedSubtotal ?? Number(parent.baseAmount) - tax);
   if (![kitchen, tax, fee].every(wholeCents) || kitchen <= 0 || kitchen + tax + fee !== Number(parent.amount))
-    throw new KitchenChangeError('The original price split needs Local Cooks to look at it. Message the kitchen or contact Local Cooks.');
+    throw new KitchenChangeError('The original price split needs Local Cooks to look at it. Message the kitchen or contact Local Cooks.', 409, 'priceSplitReview');
   return { terms: { kitchenCents: kitchen, taxCents: tax, feeCents: fee }, parent, sources };
 }
 
@@ -257,10 +258,10 @@ async function currentTerms(tx: Tx, row: Context): Promise<{ terms: PriceTerms; 
 async function newTerms(row: Context, destination: ChangeSchedule): Promise<PriceTerms> {
   const daily = row.booking.pricingMode === 'daily';
   const rate = Number(daily ? row.kitchen.dailyRate : row.kitchen.hourlyRate);
-  if (!Number.isSafeInteger(rate) || rate <= 0) throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen);
+  if (!Number.isSafeInteger(rate) || rate <= 0) throw new KitchenChangeError(RESCHEDULE_MESSAGES.contactKitchen, 409, 'contactKitchen');
   const kitchenCents = daily ? rate : rate * destination.slots.length;
   const taxRate = Number(row.kitchen.taxRatePercent || 0);
-  if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) throw new KitchenChangeError('The kitchen’s tax setting needs review. Message the kitchen.');
+  if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) throw new KitchenChangeError('The kitchen’s tax setting needs review. Message the kitchen.', 409, 'taxReview');
   const taxCents = Math.round(kitchenCents * taxRate / 100);
   const feeCents = (await calculateCheckoutFeesAsync(kitchenCents, { taxAmountCents: taxCents })).platformCommissionInCents;
   return { kitchenCents, taxCents, feeCents };
@@ -270,9 +271,9 @@ async function newTerms(row: Context, destination: ChangeSchedule): Promise<Pric
 async function processingFeeOf(source: Payment) {
   const saved = Number(source.stripeProcessingFee);
   if (Number.isSafeInteger(saved) && saved > 0) return saved;
-  if (!source.paymentIntentId) throw new KitchenChangeError('The card processing fee is not known yet. Try again in a few minutes.');
+  if (!source.paymentIntentId) throw new KitchenChangeError('The card processing fee is not known yet. Try again in a few minutes.', 409, 'feeNotKnown');
   const amounts = await (await import('./stripe-service')).getStripePaymentAmounts(source.paymentIntentId);
-  if (!amounts || !(amounts.stripeProcessingFee > 0)) throw new KitchenChangeError('The card processing fee is not known yet. Try again in a few minutes.');
+  if (!amounts || !(amounts.stripeProcessingFee > 0)) throw new KitchenChangeError('The card processing fee is not known yet. Try again in a few minutes.', 409, 'feeNotKnown');
   return amounts.stripeProcessingFee;
 }
 
@@ -311,7 +312,7 @@ async function priceChange(tx: Tx, row: Context, destination: ChangeSchedule, fe
   next.kitchenCents += addon.kitchenCents; next.taxCents += addon.taxCents; next.feeCents += addon.feeCents;
   const deltas = [next.kitchenCents - oldTerms.kitchenCents, next.taxCents - oldTerms.taxCents, next.feeCents - oldTerms.feeCents];
   if (deltas.some(n => n > 0) && deltas.some(n => n < 0))
-    throw new KitchenChangeError('This change needs Local Cooks to price it. Message the kitchen or contact Local Cooks.');
+    throw new KitchenChangeError('This change needs Local Cooks to price it. Message the kitchen or contact Local Cooks.', 409, 'pricingReview');
   const difference = deltas.reduce((a, b) => a + b, 0);
   const money = rescheduleMoney({ oldTerms, newTerms: next, currency, processingFeeCents: 0, capturedCents: 0 });
   money.hourlyRateCents = Number(row.kitchen.hourlyRate);
@@ -322,7 +323,7 @@ async function priceChange(tx: Tx, row: Context, destination: ChangeSchedule, fe
     const candidates = [...sources].sort((a, b) => b.id - a.id).filter(source => source.paymentIntentId && !(source.metadata as any)?.sessionExtensionId);
     for (const source of candidates) {
       const fact = fees.get(source.id);
-      if (!fact || fact.intentId !== source.paymentIntentId || fact.captured !== source.amount) throw new KitchenChangeError(RESCHEDULE_MESSAGES.priceChanged);
+      if (!fact || fact.intentId !== source.paymentIntentId || fact.captured !== source.amount) throw new KitchenChangeError(RESCHEDULE_MESSAGES.priceChanged, 409, 'priceChanged');
       const captured = Number(source.amount), fee = fact.fee;
       const priorGross = Number((source.metadata as any)?.changeGrossRefundedCents || 0);
       const gross = Math.min(remaining, captured - Math.max(priorGross, Number(source.refundAmount || 0)));
@@ -333,13 +334,13 @@ async function priceChange(tx: Tx, row: Context, destination: ChangeSchedule, fe
       const platform = Math.min(feeReturn, platformAvailable, (remaining === gross ? feeReturn : Math.round((oldTerms.feeCents - next.feeCents) * gross / -difference)), refund);
       const kitchen = refund - platform;
       const managerAvailable = captured - fee - Number(source.serviceFee) - receipts.reduce((n: number, r: any) => n + Number(r.managerDebited || 0), 0);
-      if (kitchen > managerAvailable) throw new KitchenChangeError('This change needs Local Cooks to refund it. Message the kitchen or contact Local Cooks.');
+      if (kitchen > managerAvailable) throw new KitchenChangeError('This change needs Local Cooks to refund it. Message the kitchen or contact Local Cooks.', 409, 'refundReview');
       plans.push({ intentId: source.paymentIntentId!, transactionId: source.id, capturedCents: captured, processingFeeCents: fee,
         grossCents: gross, refundCents: refund, kitchenDebitCents: kitchen, platformReturnCents: platform });
       remaining -= gross; feeReturn -= platform;
       if (!remaining) break;
     }
-    if (remaining || feeReturn) throw new KitchenChangeError('This change needs Local Cooks to refund it. Message the kitchen or contact Local Cooks.');
+    if (remaining || feeReturn) throw new KitchenChangeError('This change needs Local Cooks to refund it. Message the kitchen or contact Local Cooks.', 409, 'refundReview');
     money.refundCents = plans.reduce((n, p) => n + p.refundCents!, 0);
     money.feeKeptCents = -difference - money.refundCents;
     money.kitchenDebitCents = plans.reduce((n, p) => n + p.kitchenDebitCents!, 0);
@@ -353,13 +354,13 @@ const hashOf = (fingerprint: string) => createHash('sha256').update(fingerprint)
 
 async function buildQuote(tx: Tx, row: Context, rawDestination: ChangeSchedule, now: Date, options: { holdId?: string | null; openChange?: boolean; fees: FeeFacts } = { fees: new Map() }) {
   const el = await eligibility(tx, row, now, options.openChange ?? false);
-  if (!el.allowed) throw new KitchenChangeError(el.reason!);
+  if (!el.allowed) throw new KitchenChangeError(el.reason!, 409, el.code, el.values);
   const { destination, overlaps } = await validateDestination(tx, row, rawDestination, now, options.holdId);
   let newStartAt: string, newEndAt: string;
   try { newStartAt = startInstant(destination, destination.slots[0].startTime, row.timezone); newEndAt = startInstant(destination, destination.slots.at(-1)!.endTime, row.timezone); }
-  catch { throw new KitchenChangeError('That time is affected by a clock change and can’t be booked here. Pick another.'); }
+  catch { throw new KitchenChangeError('That time is affected by a clock change and can’t be booked here. Pick another.', 409, 'clockChange'); }
   // The new visit can't begin before the kitchen has had its chance to answer.
-  if (Date.parse(newStartAt) <= el.decisionBy!.getTime()) throw new KitchenChangeError('That time is too soon for the kitchen to answer in time. Pick a later start.');
+  if (Date.parse(newStartAt) <= el.decisionBy!.getTime()) throw new KitchenChangeError('That time is too soon for the kitchen to answer in time. Pick a later start.', 409, 'tooSoon');
   const { money, refundSource, refundSources } = await priceChange(tx, row, destination, options.fees);
   const freeCancelAfter = freeCancelDeadline(newStartAt, el.freeCancelHours).toISOString();
   const quoteHash = hashOf(changeQuoteFingerprint({ bookingId: row.booking.id, destination, money }));
@@ -391,21 +392,22 @@ export async function readKitchenChanges(bookingId: number, actor: ChangeActor, 
   const all = await tx.select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.bookingId, bookingId)).orderBy(desc(kitchenBookingChanges.createdAt));
   const open = all.find(change => OPEN_KITCHEN_CHANGE_STATES.includes(change.state as KitchenChangeState));
   const viewer = { actor, managerId: row.managerId, chefId: row.booking.chefId, now };
-  let canRequest: { allowed: boolean; reason?: string; until?: string } = { allowed: false, reason: 'Only the chef who booked can change this booking.' };
+  let canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string } =
+    { allowed: false, reason: 'Only the chef who booked can change this booking.', code: 'onlyChefCanChange' };
   let original = bookingChangeSchedule(row.booking), freeCancelUntil: string | undefined;
   try {
     const el = await eligibility(tx, row, now, !!open);
     freeCancelUntil = el.until;
-    if (actor.role === 'chef') canRequest = { allowed: el.allowed, ...(el.reason ? { reason: el.reason } : {}), ...(el.until ? { until: el.until } : {}) };
-    else if (el.until) canRequest = { allowed: false, reason: canRequest.reason, until: el.until };
-  } catch (error) { if (!(error instanceof KitchenChangeError)) throw error; if (actor.role === 'chef') canRequest = { allowed: false, reason: error.message }; }
+    if (actor.role === 'chef') canRequest = { allowed: el.allowed, ...(el.reason ? { reason: el.reason } : {}), ...(el.code ? { code: el.code } : {}), ...(el.values ? { values: el.values } : {}), ...(el.until ? { until: el.until } : {}) };
+    else if (el.until) canRequest = { allowed: false, reason: canRequest.reason, code: canRequest.code, until: el.until };
+  } catch (error) { if (!(error instanceof KitchenChangeError)) throw error; if (actor.role === 'chef') canRequest = { allowed: false, reason: error.message, ...(error.code ? { code: error.code } : {}), ...(error.values ? { values: error.values } : {}) }; }
   return { original, canRequest, limits: changeLengthLimits(row), ...(open ? { open: changeDto(open, viewer) } : {}),
     history: all.filter(change => change !== open).map(change => changeDto(change, viewer)),
     ...(freeCancelUntil ? { freeCancelUntil } : {}), timezone: row.timezone };
 }
 
 export async function previewKitchenChange(bookingId: number, actor: ChangeActor, input: { destination: ChangeSchedule }, now = new Date()) {
-  if (actor.role !== 'chef') throw new KitchenChangeError('Only the chef who booked can change this booking.', 403);
+  if (actor.role !== 'chef') throw new KitchenChangeError('Only the chef who booked can change this booking.', 403, 'onlyChefCanChange');
   const fees = await quoteFeeFacts(bookingId, actor, input.destination);
   return db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor);
@@ -493,7 +495,7 @@ async function expireOverdueFor(stripe: ChangeStripe | null, bookingId: number, 
 
 export async function requestKitchenChange(stripe: ChangeStripe | null, bookingId: number, actor: ChangeActor,
   input: { destination: ChangeSchedule; quoteHash: string; requestKey: string }, now = new Date()) {
-  if (actor.role !== 'chef') throw new KitchenChangeError('Only the chef who booked can change this booking.', 403);
+  if (actor.role !== 'chef') throw new KitchenChangeError('Only the chef who booked can change this booking.', 403, 'onlyChefCanChange');
   await expireOverdueFor(stripe, bookingId, now);
   const [prior] = await db.select({ id: kitchenBookingChanges.id }).from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.bookingId, bookingId), eq(kitchenBookingChanges.requestKey, input.requestKey))).limit(1);
   const fees: FeeFacts = prior ? new Map() : await quoteFeeFacts(bookingId, actor, input.destination);
@@ -503,15 +505,15 @@ export async function requestKitchenChange(stripe: ChangeStripe | null, bookingI
     if (existing) {
       const wanted = { date: input.destination.date, windowStart: input.destination.windowStart, slots: input.destination.slots };
       const have = scheduleOf(existing.destination);
-      if (!sameChangeValue(wanted, { date: have.date, windowStart: have.windowStart, slots: have.slots })) throw new KitchenChangeError('That request key belongs to a different change.');
+      if (!sameChangeValue(wanted, { date: have.date, windowStart: have.windowStart, slots: have.slots })) throw new KitchenChangeError('That request key belongs to a different change.', 409, 'requestKeyMismatch');
       return { change: existing as Change, row, created: false };
     }
     const open = await openChangeFor(tx, bookingId);
-    if (open) throw new KitchenChangeError(RESCHEDULE_MESSAGES.open);
+    if (open) throw new KitchenChangeError(RESCHEDULE_MESSAGES.open, 409, 'changeAlreadyOpen');
     const quote = await buildQuote(tx, row, input.destination, now, { fees });
-    if (quote.quoteHash !== input.quoteHash) throw new KitchenChangeError(RESCHEDULE_MESSAGES.priceChanged);
+    if (quote.quoteHash !== input.quoteHash) throw new KitchenChangeError(RESCHEDULE_MESSAGES.priceChanged, 409, 'priceChanged');
     // The 7-day card-authorization limit can never be reached: the kitchen's window is at most RESPONSE_WINDOW_HOURS (24).
-    if (quote.decisionBy.getTime() - now.getTime() > Math.min(RESPONSE_WINDOW_HOURS, 7 * 24) * 3_600_000) throw new KitchenChangeError('This request window is too long. Contact Local Cooks.');
+    if (quote.decisionBy.getTime() - now.getTime() > Math.min(RESPONSE_WINDOW_HOURS, 7 * 24) * 3_600_000) throw new KitchenChangeError('This request window is too long. Contact Local Cooks.', 409, 'windowTooLong');
     if (quote.money.payCents > 0 || quote.money.refundCents > 0) await moneyWritable({ bookingId }, tx);
     const hasCard = !!row.booking.stripeCustomerId && !!row.booking.stripePaymentMethodId;
     const id = randomUUID();
@@ -550,7 +552,7 @@ async function saveRelease(tx: Tx, change: Change, target: ClosedTarget, now: Da
   const m = meta(change), op = m.operation;
   // Never reverse an in-flight capture/refund: its money and time must reconcile first.
   if (op?.state === 'pending' && (op.action === 'capture' || op.action === 'refund'))
-    throw new KitchenChangeError('A payment for this change is still being checked. Refresh in a moment.');
+    throw new KitchenChangeError('A payment for this change is still being checked. Refresh in a moment.', 409, 'paymentChecking');
   const createInFlight = op?.state === 'pending' && op.action === 'authorize';
   if (!change.intentId && !createInFlight) { await finalizeClosed(tx, change, target, options); return false; }
   const release = operation(change.id, 'release', now, { target, ...(options.actorId ? { actorId: options.actorId } : {}), message: options.message ?? null,
@@ -568,16 +570,17 @@ export async function decideKitchenChange(stripe: ChangeStripe | null, bookingId
     const { row, change } = await lockedChange(tx, bookingId, changeId, actor);
     const chef = actor.role === 'chef' && actor.id === row.booking.chefId;
     const manager = actor.role === 'manager' && actor.id === row.managerId && change.managerId === row.managerId;
-    if (input.action === 'withdraw' ? !chef : !manager) throw new KitchenChangeError(input.action === 'withdraw'
-      ? 'Only the chef who asked can withdraw this request.' : 'Only the kitchen manager can answer this request.', 403);
+    if (input.action === 'withdraw' ? !chef : !manager) throw input.action === 'withdraw'
+      ? new KitchenChangeError('Only the chef who asked can withdraw this request.', 403, 'onlyChefCanWithdraw')
+      : new KitchenChangeError('Only the kitchen manager can answer this request.', 403, 'onlyManagerCanAnswer');
     const state = change.state as KitchenChangeState, m = meta(change);
     if (input.action === 'approve' && (state === 'applied' || state === 'capture_pending' || state === 'refund_pending')) { provider = state !== 'applied'; return false; }
     if (input.action === 'decline' && state === 'declined' || input.action === 'withdraw' && state === 'withdrawn') return false;
     // A request that already closed (cancelled booking, expired, answered) is "closed" whatever revision the caller saw.
     const open = input.action === 'withdraw' ? [...SENT_OPEN, ...PAYMENT_OPEN] : SENT_OPEN;
-    if (!open.includes(state)) throw new KitchenChangeError(RESCHEDULE_MESSAGES.closed);
+    if (!open.includes(state)) throw new KitchenChangeError(RESCHEDULE_MESSAGES.closed, 409, 'changeClosed');
     if (input.action !== 'withdraw' && now.getTime() >= change.decisionBy.getTime()) return true; // closed by time: expire it (outside, after this transaction)
-    if (change.revision !== input.revision) throw new KitchenChangeError('This request changed. Refresh and try again.');
+    if (change.revision !== input.revision) throw new KitchenChangeError('This request changed. Refresh and try again.', 409, 'requestChanged');
     if (input.action === 'withdraw') {
       provider = await saveRelease(tx, change, 'withdrawn', now, { actorId: actor.id });
       return false;
@@ -593,7 +596,7 @@ export async function decideKitchenChange(stripe: ChangeStripe | null, bookingId
   });
   if (closedExpired) {
     await expireKitchenChangeForBooking(stripe, bookingId, now);
-    throw new KitchenChangeError(RESCHEDULE_MESSAGES.closed);
+    throw new KitchenChangeError(RESCHEDULE_MESSAGES.closed, 409, 'changeClosed');
   }
   // No money moved, so the booking changed inside the decision itself: receipts follow after the commit.
   if (appliedNow) await afterApplied(bookingId, changeId, now);
@@ -606,10 +609,10 @@ export async function decideKitchenChange(stripe: ChangeStripe | null, bookingId
 /** Approve: re-validate, keep the time held for as long as the money takes, and commit the capture / refund decision. */
 async function commitApproval(tx: Tx, row: Context, change: Change, now: Date, actorId: number, m: ChangeMeta): Promise<boolean> {
   const quote = quoteOf(change);
-  if (row.booking.status !== 'confirmed') throw new KitchenChangeError('This booking is no longer confirmed, so it can’t be moved.');
+  if (row.booking.status !== 'confirmed') throw new KitchenChangeError('This booking is no longer confirmed, so it can’t be moved.', 409, 'bookingNotConfirmed');
   await assertStillValid(tx, row, change, now);
   if (quote.payCents > 0 && (!change.intentId || change.state !== 'authorized'))
-    throw new KitchenChangeError('The chef’s card hold isn’t confirmed yet. Try again in a moment.');
+    throw new KitchenChangeError('The chef’s card hold isn’t confirmed yet. Try again in a moment.', 409, 'cardHoldNotConfirmed');
   if (quote.payCents > 0 || quote.refundCents > 0) await moneyWritable({ bookingId: row.booking.id }, tx);
   if (quote.payCents === 0 && quote.refundCents === 0) {
     await applyChange(tx, row, change, now, actorId);
@@ -624,19 +627,19 @@ async function commitApproval(tx: Tx, row: Context, change: Change, now: Date, a
 /** Everything that must still be true at the moment of approval (and again when money has moved). */
 async function assertStillValid(tx: Tx, row: Context, change: Change, now: Date) {
   const booking = row.booking, m = meta(change);
-  if (booking.status !== 'confirmed') throw new KitchenChangeError('This booking is no longer confirmed, so it can’t be moved.');
+  if (booking.status !== 'confirmed') throw new KitchenChangeError('This booking is no longer confirmed, so it can’t be moved.', 409, 'bookingNotConfirmed');
   if ((booking.checkinStatus ?? 'not_checked_in') !== 'not_checked_in' || booking.checkedInAt || booking.checkoutRequestedAt || booking.checkedOutAt || now.getTime() >= Date.parse(m.originalStartAt))
-    throw new KitchenChangeError('This booking has already started, so it can’t be moved.');
-  if (!sameChangeValue(bookingChangeSchedule(booking), scheduleOf(change.original))) throw new KitchenChangeError('The booking changed since this request was sent.');
+    throw new KitchenChangeError('This booking has already started, so it can’t be moved.', 409, 'bookingStarted');
+  if (!sameChangeValue(bookingChangeSchedule(booking), scheduleOf(change.original))) throw new KitchenChangeError('The booking changed since this request was sent.', 409, 'bookingChanged');
   const destination = scheduleOf(change.destination);
-  if (Date.parse(m.newStartAt) <= now.getTime()) throw new KitchenChangeError('The new time has already passed.');
+  if (Date.parse(m.newStartAt) <= now.getTime()) throw new KitchenChangeError('The new time has already passed.', 409, 'newTimePassed');
   // The held time must still exist; if it vanished, someone else may have taken it.
   const [hold] = await tx.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, change.holdId || holdIdFor(change.id))).limit(1).for('update');
-  if (!hold || hold.expiresAt.getTime() <= now.getTime()) throw new KitchenChangeError('That time isn’t held any more, so it can’t be confirmed. Decline the request; the chef can ask again.');
+  if (!hold || hold.expiresAt.getTime() <= now.getTime()) throw new KitchenChangeError('That time isn’t held any more, so it can’t be confirmed. Decline the request; the chef can ask again.', 409, 'holdGone');
   const result = await bookingService.validateBookingAvailability(booking.kitchenId, new Date(`${destination.date}T12:00:00Z`),
     destination.slots[0].startTime, destination.slots.at(-1)!.endTime, { selectedSlots: destination.slots, fullDay: booking.pricingMode === 'daily',
       excludeBookingId: booking.id, excludeHoldId: hold.id, keepAdvanceWindow: false });
-  if (!result.valid) throw new KitchenChangeError(result.error || 'That time is no longer available.');
+  if (!result.valid) throw new KitchenChangeError(result.error || 'That time is no longer available.', 409, 'timeUnavailable');
   await validateEquipment(tx, row, destination);
 }
 
@@ -708,7 +711,7 @@ function verifyIntent(intent: Stripe.PaymentIntent, change: Change, row: Context
   if (intent.amount !== quote.payCents || intent.currency !== row.booking.currency.toLowerCase() || expectedCustomer && customer !== expectedCustomer
     || intent.metadata?.type !== 'kitchen_booking_change' || intent.metadata.kitchen_change_id !== change.id || intent.metadata.booking_id !== String(row.booking.id)
     || intent.metadata.chef_id !== String(row.booking.chefId) || !known || change.intentId && change.intentId !== intent.id)
-    throw new KitchenChangeError('The payment evidence differs from the saved change. Local Cooks needs to look at it.');
+    throw new KitchenChangeError('The payment evidence differs from the saved change. Local Cooks needs to look at it.', 409, 'paymentEvidence');
 }
 
 async function createIntent(stripe: ChangeStripe, change: Change, row: Context, op: ChangeOperation) {
@@ -728,10 +731,10 @@ async function createIntent(stripe: ChangeStripe, change: Change, row: Context, 
 /** Read-only lookup for a create whose result was lost. Never creates anything. */
 async function findIntent(stripe: ChangeStripe, change: Change) {
   const attempt = meta(change).operation?.attemptKey;
-  if (!attempt) throw new KitchenChangeError('The original payment attempt needs Local Cooks to look at it.');
+  if (!attempt) throw new KitchenChangeError('The original payment attempt needs Local Cooks to look at it.', 409, 'originalAttemptReview');
   const found = await stripe.paymentIntents.search({ query: `metadata['kitchen_change_id']:'${change.id}' AND metadata['attempt_key']:'${attempt}'`, limit: 10 });
   const matches = found.data.filter(intent => intent.metadata?.kitchen_change_id === change.id && intent.metadata?.attempt_key === attempt);
-  if (matches.length > 1) throw new KitchenChangeError('More than one payment exists for this change. Local Cooks needs to look at it.');
+  if (matches.length > 1) throw new KitchenChangeError('More than one payment exists for this change. Local Cooks needs to look at it.', 409, 'duplicatePayments');
   return matches[0];
 }
 
@@ -786,7 +789,7 @@ async function applyAfterMoney(tx: Tx, bookingId: number, changeId: string, now:
 
 async function recordCharge(tx: Tx, row: Context, change: Change, intent: Stripe.PaymentIntent, now: Date) {
   const quote = quoteOf(change);
-  if (intent.amount_received !== quote.payCents) throw new KitchenChangeError('The captured amount differs from the approved change. Local Cooks needs to look at it.');
+  if (intent.amount_received !== quote.payCents) throw new KitchenChangeError('The captured amount differs from the approved change. Local Cooks needs to look at it.', 409, 'capturedAmountMismatch');
   const [prior] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1);
   if (prior) return prior as Payment;
   const [parent] = await tx.select().from(paymentTransactions).where(and(eq(paymentTransactions.bookingId, row.booking.id), eq(paymentTransactions.paymentIntentId, row.booking.paymentIntentId || ''))).limit(1);
@@ -805,12 +808,12 @@ async function recordCharge(tx: Tx, row: Context, change: Change, intent: Stripe
 }
 
 async function findCheckoutSession(stripe: ChangeStripe, change: Change, op: ChangeOperation) {
-  if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable.', 503);
+  if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable.', 503, 'paymentsUnavailable');
   const sessions = await stripe.checkout.sessions.list({ ...(op.customerId ? { customer: op.customerId } : {}),
     created: { gte: Math.floor(Date.parse(op.decidedAt) / 1000) - 60 }, limit: 100 });
-  if (sessions.has_more) throw new KitchenChangeError('The payment page needs Local Cooks to verify it.');
+  if (sessions.has_more) throw new KitchenChangeError('The payment page needs Local Cooks to verify it.', 409, 'paymentPageVerify');
   const matches = sessions.data.filter(session => session.metadata?.kitchen_change_id === change.id && session.metadata?.attempt_key === op.attemptKey);
-  if (matches.length > 1) throw new KitchenChangeError('Several payment pages need Local Cooks review.');
+  if (matches.length > 1) throw new KitchenChangeError('Several payment pages need Local Cooks review.', 409, 'paymentPagesReview');
   return matches[0];
 }
 
@@ -821,7 +824,7 @@ async function reconcileRelease(stripe: ChangeStripe, change: Change, row: Conte
     const original = attempt.operation || { ...op, action: 'authorize' as const, attemptKey: attempt.attemptKey };
     let id = attempt.intentId;
     if (original.checkout) {
-      if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable.', 503);
+      if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable.', 503, 'paymentsUnavailable');
       const session = attempt.sessionId ? await stripe.checkout.sessions.retrieve(attempt.sessionId)
         : await findCheckoutSession(stripe, change, original);
       if (!session) {
@@ -865,9 +868,9 @@ async function reconcileRelease(stripe: ChangeStripe, change: Change, row: Conte
 /** Admin recovery keeps the original evidence and never starts another chef charge. */
 export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: number, changeId: string, actor: ChangeActor,
   input: { action: 'finish' | 'compensate' | 'close_keep_refund'; revision: number }, now = new Date()) {
-  if (actor.role !== 'admin') throw new KitchenChangeError('Only Local Cooks can resolve this payment.', 403);
+  if (actor.role !== 'admin') throw new KitchenChangeError('Only Local Cooks can resolve this payment.', 403, 'onlySupportResolve');
   const [initial] = await db.select().from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.id, changeId), eq(kitchenBookingChanges.bookingId, bookingId))).limit(1);
-  if (!initial || initial.state !== 'recovery_required' || initial.revision !== input.revision) throw new KitchenChangeError('This request changed. Refresh and try again.');
+  if (!initial || initial.state !== 'recovery_required' || initial.revision !== input.revision) throw new KitchenChangeError('This request changed. Refresh and try again.', 409, 'requestChanged');
   const retries: Record<string, string> = {}, replaces: Record<string, string> = {};
   const provider = await import('./stripe-service');
   if (input.action === 'finish' && meta(initial).operation?.action === 'refund') {
@@ -892,7 +895,7 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
   if (input.action === 'close_keep_refund') {
     const op = meta(initial).operation;
     const plans = meta(initial).refundSources?.length ? meta(initial).refundSources! : meta(initial).refundSource ? [meta(initial).refundSource!] : [];
-    if (op?.action !== 'refund' || !plans.length) throw new KitchenChangeError('The successful refund needs Local Cooks to verify it before closing this change.');
+    if (op?.action !== 'refund' || !plans.length) throw new KitchenChangeError('The successful refund needs Local Cooks to verify it before closing this change.', 409, 'refundVerify');
     for (const plan of plans) {
       const originalKey = plans.length === 1 ? op.key : `${op.key}:source:${plan.transactionId}`;
       const key = op.refundKeys?.[String(plan.transactionId)] || originalKey;
@@ -906,13 +909,13 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
         || refund.metadata?.manager_debited !== String(plan.kitchenDebitCents)
         || refund.metadata?.platform_service_fee_returned !== String(plan.platformReturnCents)
         || op.refundReplaces?.[String(plan.transactionId)] && refund.metadata?.refund_replaces_id !== op.refundReplaces[String(plan.transactionId)])
-        throw new KitchenChangeError('The successful refund needs Local Cooks to verify it before closing this change.');
+        throw new KitchenChangeError('The successful refund needs Local Cooks to verify it before closing this change.', 409, 'refundVerify');
       verifiedRefunds.set(plan.transactionId, refund.id);
     }
   }
   await db.transaction(async tx => {
     const { row, change } = await lockedChange(tx, bookingId, changeId, actor);
-    if (change.state !== 'recovery_required' || change.revision !== input.revision) throw new KitchenChangeError('This request changed. Refresh and try again.');
+    if (change.state !== 'recovery_required' || change.revision !== input.revision) throw new KitchenChangeError('This request changed. Refresh and try again.', 409, 'requestChanged');
     if (input.action === 'finish') {
       // Old recovery rows may have lost their hold. Reacquire only after checking current inventory.
       if (Object.keys(retries).length) await patchMeta(tx, change, { operation: { ...meta(change).operation!, refundKeys: { ...meta(change).operation?.refundKeys, ...retries }, refundReplaces: { ...meta(change).operation?.refundReplaces, ...replaces } } });
@@ -921,20 +924,20 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
       await assertStillValid(tx, row, { ...change, holdId: holdIdFor(change.id) }, now);
     } else if (input.action === 'compensate') {
       if (!change.intentId || !['authorize', 'release', 'capture', 'compensate'].includes(meta(change).operation?.action || ''))
-        throw new KitchenChangeError('This refund needs Local Cooks to verify the original operation before closing it.');
+        throw new KitchenChangeError('This refund needs Local Cooks to verify the original operation before closing it.', 409, 'refundOriginalOp');
       let op = meta(change).operation?.action === 'compensate' ? meta(change).operation! : operation(change.id, 'compensate', now, { actorId: actor.id });
       if (compensationRetry) op = { ...op, refundKeys: { ...op.refundKeys, compensation: compensationRetry.key },
         refundReplaces: { ...op.refundReplaces, compensation: compensationRetry.replaces } };
       await patchMeta(tx, change, { operation: op });
     } else {
       const m = meta(change), quote = quoteOf(change);
-      if (m.operation?.action !== 'refund' || verifiedRefunds.size === 0) throw new KitchenChangeError('The successful refund needs Local Cooks to verify it before closing this change.');
+      if (m.operation?.action !== 'refund' || verifiedRefunds.size === 0) throw new KitchenChangeError('The successful refund needs Local Cooks to verify it before closing this change.', 409, 'refundVerify');
       for (const plan of m.refundSources?.length ? m.refundSources : m.refundSource ? [m.refundSource] : []) {
         const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, plan.transactionId)).limit(1).for('update');
         const receipt = ((source?.metadata as Record<string, any> | null)?.refunds || []).find((item: any) => item.id === verifiedRefunds.get(plan.transactionId));
         if (!receipt || receipt.kitchenChangeId !== change.id || receipt.customerReceived !== plan.refundCents
           || receipt.managerDebited !== plan.kitchenDebitCents || receipt.platformServiceFeeReturned !== plan.platformReturnCents)
-          throw new KitchenChangeError('The successful refund receipt needs Local Cooks to reconcile it before closing this change.');
+          throw new KitchenChangeError('The successful refund receipt needs Local Cooks to reconcile it before closing this change.', 409, 'refundReceiptReconcile');
       }
       const amount = new Intl.NumberFormat('en-CA', { style: 'currency', currency: quote.currency }).format(quote.refundCents / 100);
       const resolution = { action: 'close_keep_refund' as const, fundedBy: 'local_cooks' as const, amountCents: quote.refundCents,
@@ -953,7 +956,7 @@ export async function resolveKitchenChange(stripe: ChangeStripe, bookingId: numb
 }
 
 async function reconcileCompensation(stripe: ChangeStripe, change: Change, row: Context, op: ChangeOperation, now: Date) {
-  if (!change.intentId) throw new KitchenChangeError('The original payment needs Local Cooks review.');
+  if (!change.intentId) throw new KitchenChangeError('The original payment needs Local Cooks review.', 409, 'originalPaymentReviewSupport');
   const intent = await stripe.paymentIntents.retrieve(change.intentId);
   verifyIntent(intent, change, row);
   if (cancellable.includes(intent.status)) await stripe.paymentIntents.cancel(intent.id, {}, { idempotencyKey: `${op.key}:release` });
@@ -969,7 +972,7 @@ async function reconcileCompensation(stripe: ChangeStripe, change: Change, row: 
     const replaced = op.refundReplaces?.compensation ? refunds.find(refund => refund.id === op.refundReplaces?.compensation) : undefined;
     const processingCost = replaced ? Number(replaced.metadata?.platform_processing_cost_cents) : (await provider.getCancellationPaymentFacts(intent.id)).processingCost;
     if (!Number.isSafeInteger(processingCost) || processingCost < 0 || replaced && !['failed', 'canceled'].includes(replaced.status || ''))
-      throw new KitchenChangeError('The original compensation refund needs Local Cooks review.');
+      throw new KitchenChangeError('The original compensation refund needs Local Cooks review.', 409, 'compensationReview');
     const manager = intent.amount_received - processingCost - fee;
     const result = existing ? { refundId: existing.id, refundAmount: existing.amount, refundStatus: existing.status || '' }
       : await provider.reverseTransferAndRefund(intent.id, intent.amount_received, 'requested_by_customer', {
@@ -997,7 +1000,7 @@ export async function reconcileChange(stripe: ChangeStripe, changeId: string, no
     return { change: changeDto(latest, { actor: { id: row.booking.chefId ?? 0, role: 'chef' }, managerId: row.managerId, chefId: row.booking.chefId, now }), ...(meta(latest).cardDeclined ? { cardDeclined: true } : {}) };
   };
   const [change] = await readTx().select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, changeId)).limit(1);
-  if (!change) throw new KitchenChangeError('Change request not found', 404);
+  if (!change) throw new KitchenChangeError('Change request not found', 404, 'changeNotFound');
   const row = await context(readTx(), change.bookingId), op = meta(change).operation;
   if (!op || op.state === 'done') return read();
   const quote = quoteOf(change);
@@ -1011,7 +1014,7 @@ export async function reconcileChange(stripe: ChangeStripe, changeId: string, no
   // --- resolve the provider's payment for this attempt ---------------------------------------------------------------
   let intent: Stripe.PaymentIntent | undefined, checkoutExpired = false;
   if (op.checkout && op.action === 'authorize') {
-    if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable. Nothing was charged.', 503);
+    if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable. Nothing was charged.', 503, 'paymentsUnavailableNothingCharged');
     let sessionId = change.sessionId || op.sessionId;
     if (!sessionId) {
       const found = await findCheckoutSession(stripe, change, op);
@@ -1058,7 +1061,7 @@ export async function reconcileChange(stripe: ChangeStripe, changeId: string, no
   if (!change.intentId) await db.transaction(async tx => {
     const { change: current } = await lockedChange(tx, change.bookingId, changeId);
     if (meta(current).operation?.key !== op.key || meta(current).operation?.state !== 'pending') return;
-    if (current.intentId && current.intentId !== intent!.id) throw new KitchenChangeError('A different payment already belongs to this request.');
+    if (current.intentId && current.intentId !== intent!.id) throw new KitchenChangeError('A different payment already belongs to this request.', 409, 'differentPayment');
     await tx.update(kitchenBookingChanges).set({ intentId: intent!.id, updatedAt: now }).where(eq(kitchenBookingChanges.id, changeId));
   });
 
@@ -1153,7 +1156,7 @@ async function reconcileRefund(stripe: ChangeStripe, change: Change, row: Contex
   const plans = m.refundSources?.length ? m.refundSources : m.refundSource ? [{ ...m.refundSource,
     refundCents: quote.refundCents, kitchenDebitCents: quote.kitchenDebitCents, platformReturnCents: quote.platformReturnCents }] : [];
   const provider = await import('./stripe-service');
-  if (!plans.length) throw new KitchenChangeError('The refund source needs Local Cooks review.');
+  if (!plans.length) throw new KitchenChangeError('The refund source needs Local Cooks review.', 409, 'refundSourceReview');
   try {
     await moneyWritable({ bookingId: row.booking.id, operationKey: op.key }, readTx());
     const results: Array<{ plan: RefundSource; result: { refundId: string; refundAmount: number; refundStatus: string };
@@ -1162,9 +1165,9 @@ async function reconcileRefund(stripe: ChangeStripe, change: Change, row: Contex
       const originalKey = plans.length === 1 ? op.key : `${op.key}:source:${plan.transactionId}`;
       const key = op.refundKeys?.[String(plan.transactionId)] || originalKey;
       const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.id, plan.transactionId)).limit(1);
-      if (!source || source.paymentIntentId !== plan.intentId) throw new KitchenChangeError('The refund source changed.');
+      if (!source || source.paymentIntentId !== plan.intentId) throw new KitchenChangeError('The refund source changed.', 409, 'refundSourceChanged');
       const existing = (await provider.getPaymentIntentRefunds(plan.intentId)).filter(refund => refund.metadata?.refund_operation_id === key || !refund.metadata?.refund_operation_id && refund.metadata?.kitchen_change_id === change.id);
-      if (existing.length > 1) throw new KitchenChangeError('Several refunds exist for this change.');
+      if (existing.length > 1) throw new KitchenChangeError('Several refunds exist for this change.', 409, 'severalRefunds');
       if (!existing.length && !op.refundKeys?.[String(plan.transactionId)] && plan.kitchenDebitCents! > 0) await provider.verifyCancellationRefundFunding(plan.intentId, source.transferId, plan.kitchenDebitCents!);
       const result = existing[0] ? { refundId: existing[0].id, refundAmount: existing[0].amount, refundStatus: existing[0].status || '' }
         : await provider.reverseTransferAndRefund(plan.intentId, plan.refundCents!, 'requested_by_customer', { providerOnly: true, idempotencyKey: key, reversalOperationKey: originalKey,
@@ -1172,8 +1175,8 @@ async function reconcileRefund(stripe: ChangeStripe, change: Change, row: Contex
             booking_id: String(change.bookingId), transaction_id: String(plan.transactionId),
             ...(op.refundReplaces?.[String(plan.transactionId)] ? { refund_replaces_id: op.refundReplaces[String(plan.transactionId)] } : {}), customer_receives: String(plan.refundCents),
             manager_debited: String(plan.kitchenDebitCents), platform_service_fee_returned: String(plan.platformReturnCents), platform_processing_cost_cents: '0' } });
-      if (result.refundAmount !== plan.refundCents) throw new KitchenChangeError('The refund amount needs Local Cooks review.');
-      if (['failed', 'canceled'].includes(result.refundStatus)) throw new KitchenChangeError('The refund could not be completed.');
+      if (result.refundAmount !== plan.refundCents) throw new KitchenChangeError('The refund amount needs Local Cooks review.', 409, 'refundAmountReview');
+      if (['failed', 'canceled'].includes(result.refundStatus)) throw new KitchenChangeError('The refund could not be completed.', 409, 'refundFailed');
       if (result.refundStatus !== 'succeeded') return read();
       // Read all provider facts before locking; the transaction only validates and writes that evidence.
       const facts = await provider.getCancellationPaymentFacts(plan.intentId);
@@ -1224,13 +1227,13 @@ async function recoverCheckoutSession(stripe: ChangeStripe, change: Change, row:
 }
 
 export async function checkoutKitchenChange(stripe: ChangeStripe, bookingId: number, changeId: string, actor: ChangeActor, returnUrl: string, now = new Date()) {
-  if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable. Nothing was charged.', 503);
+  if (!stripe.checkout) throw new KitchenChangeError('Payments are unavailable. Nothing was charged.', 503, 'paymentsUnavailableNothingCharged');
   const prepared = await db.transaction(async tx => {
     const { row, change } = await lockedChange(tx, bookingId, changeId, actor);
-    if (actor.role !== 'chef' || actor.id !== row.booking.chefId) throw new KitchenChangeError('Only the chef who booked can pay.', 403);
+    if (actor.role !== 'chef' || actor.id !== row.booking.chefId) throw new KitchenChangeError('Only the chef who booked can pay.', 403, 'onlyChefCanPay');
     const m = meta(change), state = change.state as KitchenChangeState;
     if (state === 'payment_pending' && m.operation?.checkout && (change.paymentBy?.getTime() ?? 0) > now.getTime()) return { change, row, op: m.operation };
-    if (state !== 'awaiting_payment' || !m.cardDeclined || (change.paymentBy ?? now).getTime() <= now.getTime()) throw new KitchenChangeError('This request has closed. Nothing was charged.');
+    if (state !== 'awaiting_payment' || !m.cardDeclined || (change.paymentBy ?? now).getTime() <= now.getTime()) throw new KitchenChangeError('This request has closed. Nothing was charged.', 409, 'requestClosedNothingCharged');
     await moneyWritable({ bookingId }, tx);
     const op = operation(change.id, 'authorize', now, { checkout: true, returnUrl, customerId: row.booking.stripeCustomerId, kitchenName: row.kitchen.name, retired: retire(change) });
     const paymentBy = new Date(now.getTime() + CARD_ATTEMPT_MS);
@@ -1240,11 +1243,11 @@ export async function checkoutKitchenChange(stripe: ChangeStripe, bookingId: num
   });
   const { change, row, op } = prepared;
   let session = change.sessionId ? await stripe.checkout.sessions.retrieve(change.sessionId) : null;
-  if (session && session.status !== 'open') { await reconcileChange(stripe, changeId, now); throw new KitchenChangeError('This request has closed. Nothing was charged.'); }
+  if (session && session.status !== 'open') { await reconcileChange(stripe, changeId, now); throw new KitchenChangeError('This request has closed. Nothing was charged.', 409, 'requestClosedNothingCharged'); }
   if (!session) {
     session = await recoverCheckoutSession(stripe, change, row, op);
   }
-  if (!session.url) throw new KitchenChangeError('The payment page is unavailable. Nothing was charged.');
+  if (!session.url) throw new KitchenChangeError('The payment page is unavailable. Nothing was charged.', 409, 'paymentPageUnavailable');
   scheduleDeadlineTimer('kitchen_change', bookingId, change.paymentBy);
   return { url: session.url };
 }
@@ -1283,7 +1286,7 @@ export async function withdrawOpenKitchenChangesInTx(tx: Tx, bookingId: number, 
   if (!change) return false;
   // Cancellation must retry after this committed money operation settles; its refund plan must see the settled sources.
   if (meta(change).operation?.state === 'pending' && ['capture', 'refund', 'compensate'].includes(meta(change).operation!.action))
-    throw new KitchenChangeError('The booking change payment is still being checked. Try cancelling again once it settles.');
+    throw new KitchenChangeError('The booking change payment is still being checked. Try cancelling again once it settles.', 409, 'paymentCheckingCancel');
   return saveRelease(tx, change, 'withdrawn', now, { reason: 'booking_cancelled' });
 }
 
@@ -1326,8 +1329,8 @@ export async function expireKitchenChanges(limit = 3, now = new Date()) {
 async function changeOfIntent(intent: Stripe.PaymentIntent) {
   if (intent.metadata?.type !== 'kitchen_booking_change') return null;
   const [change] = await db.select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, String(intent.metadata.kitchen_change_id))).limit(1);
-  if (!change) throw new KitchenChangeError('Change request not found', 404);
-  if (String(change.bookingId) !== intent.metadata.booking_id) throw new KitchenChangeError('The payment belongs to a different booking.');
+  if (!change) throw new KitchenChangeError('Change request not found', 404, 'changeNotFound');
+  if (String(change.bookingId) !== intent.metadata.booking_id) throw new KitchenChangeError('The payment belongs to a different booking.', 409, 'paymentDifferentBooking');
   return change;
 }
 
@@ -1339,9 +1342,9 @@ async function releaseLateHold(stripe: ChangeStripe, intent: Stripe.PaymentInten
 export async function reconcileKitchenChangeAuthorization(intent: Stripe.PaymentIntent) {
   const change = await changeOfIntent(intent);
   if (!change) return null;
-  if (intent.status !== 'requires_capture') throw new KitchenChangeError('The card hold is not confirmed.');
+  if (intent.status !== 'requires_capture') throw new KitchenChangeError('The card hold is not confirmed.', 409, 'cardHoldNotConfirmed');
   const stripe = await providerStripe();
-  if (!stripe) throw new KitchenChangeError('Payments are unavailable.', 503);
+  if (!stripe) throw new KitchenChangeError('Payments are unavailable.', 503, 'paymentsUnavailable');
   const closed = ['declined', 'withdrawn', 'expired', 'applied'].includes(change.state) && (!change.intentId || change.intentId !== intent.id);
   if (closed) { await releaseLateHold(stripe, intent); return change; }
   if (change.state === 'payment_pending' || change.state === 'capture_pending' || change.state === 'release_pending') await reconcileChange(stripe, change.id, new Date());
@@ -1353,10 +1356,10 @@ export async function reconcileKitchenChangeAuthorization(intent: Stripe.Payment
 export async function reconcileKitchenChangePayment(intent: Stripe.PaymentIntent) {
   const change = await changeOfIntent(intent);
   if (!change) return null;
-  if (intent.status !== 'succeeded') throw new KitchenChangeError('The extra payment has not succeeded.');
+  if (intent.status !== 'succeeded') throw new KitchenChangeError('The extra payment has not succeeded.', 409, 'extraPaymentNotSucceeded');
   if (['capture_pending', 'recovery_required'].includes(change.state)) {
     const stripe = await providerStripe();
-    if (!stripe) throw new KitchenChangeError('Payments are unavailable.', 503);
+    if (!stripe) throw new KitchenChangeError('Payments are unavailable.', 503, 'paymentsUnavailable');
     await reconcileChange(stripe, change.id, new Date());
   }
   const [latest] = await db.select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, change.id)).limit(1);
@@ -1367,7 +1370,7 @@ export async function reconcileKitchenChangeCancellation(intent: Stripe.PaymentI
   const change = await changeOfIntent(intent);
   if (!change || intent.status !== 'canceled') return null;
   const stripe = await providerStripe();
-  if (!stripe) throw new KitchenChangeError('Payments are unavailable.', 503);
+  if (!stripe) throw new KitchenChangeError('Payments are unavailable.', 503, 'paymentsUnavailable');
   if (MONEY_MOVING.includes(change.state as KitchenChangeState) || change.state === 'payment_pending') await reconcileChange(stripe, change.id, new Date());
   const [latest] = await db.select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, change.id)).limit(1);
   return latest;
@@ -1390,7 +1393,7 @@ export async function reconcileKitchenChangeRefundCharge(charge: Stripe.Charge) 
 export async function syncKitchenChange(stripe: ChangeStripe, bookingId: number, changeId: string, actor: ChangeActor) {
   await context(readTx(), bookingId, actor);
   const [change] = await readTx().select().from(kitchenBookingChanges).where(and(eq(kitchenBookingChanges.id, changeId), eq(kitchenBookingChanges.bookingId, bookingId))).limit(1);
-  if (!change) throw new KitchenChangeError('Change request not found', 404);
+  if (!change) throw new KitchenChangeError('Change request not found', 404, 'changeNotFound');
   const result = await reconcileChange(stripe, changeId, new Date(), false);
   const row = await context(readTx(), bookingId);
   const [latest] = await readTx().select().from(kitchenBookingChanges).where(eq(kitchenBookingChanges.id, changeId)).limit(1);

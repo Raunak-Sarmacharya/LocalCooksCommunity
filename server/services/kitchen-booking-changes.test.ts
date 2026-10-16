@@ -199,6 +199,7 @@ const bookingUnchanged = async () => {
 };
 const approve = (stripe: any, change: any, now = new Date()) => engine.decideKitchenChange(stripe, 10, change.id, manager, { action: 'approve', revision: change.revision }, now);
 const messageOf = async (promise: Promise<unknown>) => { try { await promise; return null; } catch (error) { return (error as Error).message; } };
+const codeOf = async (promise: Promise<unknown>) => { try { await promise; return null; } catch (error) { return (error as KitchenChangeError).code; } };
 
 beforeAll(async () => {
   const created = await createTestDatabase([users, locations, kitchens, kitchenBookings, kitchenBookingVisits, kitchenBookingChanges, kitchenCheckoutHolds, paymentTransactions,
@@ -977,6 +978,66 @@ describe('cancellation while a change is open', () => {
 
   it('nothing is open: the hook is a no-op', async () => {
     expect(await cancelBooking(fakeStripe())).toBe(false);
+  });
+});
+
+// =====================================================================================================================
+describe('every reason carries a stable, translatable code', () => {
+  it('eligibility reasons', async () => {
+    await h.db.update(kitchenBookings).set({ status: 'pending' }).where(eq(kitchenBookings.id, 10));
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('eligibilityNotConfirmed');
+    await h.db.update(kitchenBookings).set({ status: 'confirmed', checkinStatus: 'checked_in', checkedInAt: new Date() }).where(eq(kitchenBookings.id, 10));
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('eligibilityStarted');
+    await h.db.update(kitchenBookings).set({ checkinStatus: 'not_checked_in', checkedInAt: null, selectedSlots: [hour(9), hour(14)] }).where(eq(kitchenBookings.id, 10));
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('contactKitchen');
+    await h.db.update(kitchenBookings).set({ selectedSlots: [hour(9), hour(10)] }).where(eq(kitchenBookings.id, 10));
+    const start = startOf(ORIGINAL_DATE).getTime();
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2), new Date(start - 23 * 3_600_000)))).toBe('eligibilityTooClose');
+  });
+
+  it('a storage or equipment attachment is named by code', async () => {
+    await h.db.insert(storageBookings).values({ kitchenBookingId: 10, storageListingId: 1, chefId: 3, startDate: startOf(NEW_DATE), endDate: startOf(dayFromNow(20)), status: 'confirmed', totalPrice: '1000', pricingModel: 'daily' } as any);
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('storageContactSupport');
+    await h.db.delete(storageBookings);
+    await h.db.insert(equipmentListings).values({ id: 40, kitchenId: 4, equipmentType: 'Stand mixer', category: 'food-prep', condition: 'excellent', status: 'active' });
+    await h.db.insert(equipmentBookings).values({ id: 50, equipmentListingId: 40, kitchenBookingId: 10, chefId: 3, startDate: startOf(ORIGINAL_DATE), endDate: startOf(ORIGINAL_DATE, '11:00'), status: 'confirmed', totalPrice: '1000', serviceFee: '50', pricingModel: 'hourly' });
+    await h.db.insert(equipmentBookings).values({ equipmentListingId: 40, kitchenBookingId: 999, startDate: startOf(NEW_DATE), endDate: startOf(NEW_DATE, '12:00'), status: 'confirmed', totalPrice: '1000', pricingModel: 'hourly' });
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('equipmentUnavailable');
+  });
+
+  it('destination reasons', async () => {
+    expect(await codeOf(preview({ date: NEW_DATE, windowStart: '08:00', slots: [] }))).toBe('chooseDateHours');
+    expect(await codeOf(preview({ date: NEW_DATE, windowStart: '08:00', slots: [hour(9), hour(11)] }))).toBe('consecutiveHours');
+    expect(await codeOf(preview({ date: ORIGINAL_DATE, windowStart: '08:00', slots: [hour(9), hour(10)] }))).toBe('chooseDifferentTime');
+    h.unavailable = true;
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('timeUnavailable');
+    h.unavailable = false;
+    await h.db.update(kitchens).set({ defaultDailyBookingLimit: 4, minimumBookingHours: 2 }).where(eq(kitchens.id, 4));
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 6)))).toBe('lengthRange');
+    await h.db.update(kitchens).set({ minimumBookingHours: 1 }).where(eq(kitchens.id, 4));
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 6)))).toBe('lengthMax');
+    await h.db.update(kitchens).set({ defaultDailyBookingLimit: 12 }).where(eq(kitchens.id, 4));
+    await h.db.update(kitchens).set({ isActive: false }).where(eq(kitchens.id, 4));
+    expect(await codeOf(preview(dest(NEW_DATE, 9, 2)))).toBe('kitchenUnavailable');
+  });
+
+  it('an open change and a role or lookup refusal', async () => {
+    await request(fakeStripe(), dest(NEW_DATE, 13, 2));
+    expect(await codeOf(preview(dest(NEW_DATE, 14, 2)))).toBe('changeAlreadyOpen');
+    expect(((await engine.readKitchenChanges(10, chef)) as any).canRequest.code).toBe('changeAlreadyOpen');
+    expect(await codeOf(engine.previewKitchenChange(10, manager, { destination: dest(NEW_DATE, 9, 2) }))).toBe('onlyChefCanChange');
+    expect(await codeOf(engine.previewKitchenChange(10, otherChef, { destination: dest(NEW_DATE, 9, 2) }))).toBe('bookingNotFound');
+    expect(await codeOf(engine.syncKitchenChange(fakeStripe(), 10, 'missing', chef))).toBe('changeNotFound');
+  });
+
+  it('request reasons: a reused key and a price that moved', async () => {
+    const key = requestKey();
+    const first = await request(fakeStripe(), dest(NEW_DATE, 13, 2), new Date(), key);
+    expect(await codeOf(engine.requestKitchenChange(fakeStripe(), 10, chef, { destination: dest(NEW_DATE, 9, 4), quoteHash: first.quote.quoteHash, requestKey: key }))).toBe('requestKeyMismatch');
+    await engine.decideKitchenChange(fakeStripe(), 10, first.change.id, chef, { action: 'withdraw', revision: first.change.revision });
+    const quote = await preview(dest(NEW_DATE, 9, 3));
+    await h.db.update(kitchens).set({ hourlyRate: '4500' }).where(eq(kitchens.id, 4));
+    expect(await codeOf(engine.requestKitchenChange(fakeStripe(), 10, chef, { destination: dest(NEW_DATE, 9, 3), quoteHash: quote.quoteHash, requestKey: requestKey() }))).toBe('priceChanged');
   });
 });
 

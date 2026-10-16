@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { formatVisitTime } from '@/lib/visit-time';
@@ -17,7 +18,7 @@ type Money = { oldTotalCents: number; newTotalCents: number; payCents: number; r
 type Change = { id: string; state: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule; money: Money;
   decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean;
   /** Kitchen view only: its payout change in cents (+ more, − less), before the card processing fee. */ kitchenPayoutChangeCents?: number };
-type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; until?: string }; open?: Change; timezone: string | null;
+type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string }; open?: Change; timezone: string | null;
   /** The kitchen's booking length limits (hours), same as new bookings. */ limits?: { minHours: number; maxHours: number };
   /** The current refund deadline, to say whether a change moves it. */ freeCancelUntil?: string };
 type Preview = { destination: ChangeSchedule; money: Money; decisionBy: string; freeCancelAfter?: string; quoteHash: string };
@@ -25,12 +26,22 @@ type Slot = { time: string; available: number; isFullyBooked: boolean };
 
 const SETTLING = ['capture_pending', 'refund_pending', 'release_pending'];
 
+/** The API's stable error code, kept so the message can be shown in the reader's own language. */
+class ChangeApiError extends Error { constructor(message: string, public code?: string, public values?: Record<string, unknown>) { super(message); } }
+/** `code` → a `booking` i18n key: `chooseDifferentTime` becomes `chgErrChooseDifferentTime`. */
+const errorKey = (code: string) => `chgErr${code.charAt(0).toUpperCase()}${code.slice(1)}`;
+/** Coded errors use their translated copy; anything else falls back to the server's English message. */
+function errorText(t: TFunction<'booking'>, cause: unknown): string {
+  if (cause instanceof ChangeApiError && cause.code) return t(errorKey(cause.code), { ...cause.values, defaultValue: cause.message });
+  return cause instanceof Error ? cause.message : t('chgError');
+}
+
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const token = await auth.currentUser?.getIdToken();
   const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'Something went wrong. Try again.');
+  if (!response.ok) throw new ChangeApiError(result.error || 'Something went wrong. Try again.', result.code, result.values);
   return result as T;
 }
 
@@ -59,7 +70,7 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone,
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true); setError('');
     try { await work(); await load(); await onChanged(); setDeclining(false); setMessage(''); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t('chgError')); }
+    catch (cause) { setError(errorText(t, cause)); }
     finally { setBusy(false); }
   };
   const decide = (action: 'approve' | 'decline' | 'withdraw') => act(() => api(`/api/bookings/${bookingId}/changes/${open.id}/decision`,
@@ -119,7 +130,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
     setData(null); setError(''); setPreview(null); setSlots(null); setRequestKey(crypto.randomUUID());
     api<Changes>(`/api/bookings/${bookingId}/changes`).then(result => {
       setData(result); setDate(result.original.date); setStart(result.original.slots[0]?.startTime || ''); setHours(result.original.slots.length || 1);
-    }).catch(cause => setError(cause.message));
+    }).catch(cause => setError(errorText(t, cause)));
   }, [open, bookingId]);
   useEffect(() => {
     if (!open || !date || !data?.canRequest.allowed) return;
@@ -140,7 +151,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
     if (!open || !ready || unchanged) { setPreview(null); return; }
     let live = true; setError('');
     api<Preview>(`/api/bookings/${bookingId}/changes/preview`, { destination: { date, windowStart: chosen[0].startTime, slots: chosen } })
-      .then(result => { if (live) setPreview(result); }).catch(cause => { if (live) { setPreview(null); setError(cause.message); } });
+      .then(result => { if (live) setPreview(result); }).catch(cause => { if (live) { setPreview(null); setError(errorText(t, cause)); } });
     return () => { live = false; };
   }, [open, ready, unchanged, date, chosen, bookingId]);
   const send = async () => {
@@ -150,7 +161,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
       await api(`/api/bookings/${bookingId}/changes`, { destination: preview.destination, quoteHash: preview.quoteHash, requestKey });
       // Sent: close at once; the page refreshes behind it (waiting on every query kept the dialog open for seconds).
       onOpenChange(false); void onChanged();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t('chgError')); }
+    } catch (cause) { setError(errorText(t, cause)); }
     finally { setBusy(false); }
   };
   const m = preview?.money;
@@ -161,7 +172,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
         <DialogDescription>{data ? t('chgCurrent', { kitchen: kitchenName, when: f.schedule(data.original) }) : t('chgLoading')}</DialogDescription></DialogHeader>
       {!data ? (error ? <p role="alert" className="text-sm text-destructive">{error}</p> : <Loader2 className="h-5 w-5 animate-spin" aria-label={t('chgLoading')} />)
         : !data.canRequest.allowed ? <div className="space-y-3">
-          <p className="text-sm">{data.canRequest.reason || t('chgNotAllowed')}</p>
+          <p className="text-sm">{data.canRequest.code ? t(errorKey(data.canRequest.code), { ...data.canRequest.values, defaultValue: data.canRequest.reason }) : data.canRequest.reason || t('chgNotAllowed')}</p>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('chgClose')}</Button>
         </div>
         : <div className="space-y-4">

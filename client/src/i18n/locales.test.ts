@@ -30,6 +30,13 @@ describe("locale bundles", () => {
     expect(entries.length).toBeGreaterThan(0);
   });
 
+  it("keeps every booking key in all three locales", () => {
+    const keys = (locale: string) => Object.keys(JSON.parse(readFileSync(join(root, locale, "booking.json"), "utf8"))).sort();
+    const en = keys("en-CA");
+    expect(keys("fr-CA")).toEqual(en);
+    expect(keys("uk")).toEqual(en);
+  });
+
   it.each(entries)("%s is a valid ICU message", (_id, message) => {
     expect(() => parse(message)).not.toThrow();
     expect(message).not.toMatch(/\{\{/);

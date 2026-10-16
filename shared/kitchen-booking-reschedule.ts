@@ -98,20 +98,20 @@ export type RescheduleFacts = {
   /** A change is already open. */
   openChange?: boolean;
 };
-export type RescheduleEligibility = { allowed: boolean; reason?: string; until?: string; decisionBy?: Date };
+export type RescheduleEligibility = { allowed: boolean; reason?: string; code?: string; values?: Record<string, unknown>; until?: string; decisionBy?: Date };
 
 /** Can this booking be asked to move right now? `until` is the free-cancellation deadline the chef is bound by. */
 export function rescheduleEligibility(facts: RescheduleFacts): RescheduleEligibility {
   const freeUntil = freeCancelDeadline(facts.startAt, facts.freeCancelHours);
   const until = Number.isFinite(freeUntil.getTime()) ? freeUntil.toISOString() : undefined;
-  if (facts.status !== 'confirmed') return { allowed: false, reason: RESCHEDULE_MESSAGES.notConfirmed, until };
-  if (facts.linkedItems) return { allowed: false, reason: 'To change a booking with storage, contact Local Cooks.', until };
-  if (facts.multiVisit) return { allowed: false, reason: RESCHEDULE_MESSAGES.contactKitchen, until };
-  if (facts.checkedIn || facts.now.getTime() >= new Date(facts.startAt).getTime()) return { allowed: false, reason: RESCHEDULE_MESSAGES.started, until };
-  if (facts.openChange) return { allowed: false, reason: RESCHEDULE_MESSAGES.open, until };
-  if (facts.now.getTime() >= freeUntil.getTime()) return { allowed: false, reason: RESCHEDULE_MESSAGES.tooClose, until };
+  if (facts.status !== 'confirmed') return { allowed: false, reason: RESCHEDULE_MESSAGES.notConfirmed, code: 'eligibilityNotConfirmed', until };
+  if (facts.linkedItems) return { allowed: false, reason: 'To change a booking with storage, contact Local Cooks.', code: 'storageContactSupport', until };
+  if (facts.multiVisit) return { allowed: false, reason: RESCHEDULE_MESSAGES.contactKitchen, code: 'contactKitchen', until };
+  if (facts.checkedIn || facts.now.getTime() >= new Date(facts.startAt).getTime()) return { allowed: false, reason: RESCHEDULE_MESSAGES.started, code: 'eligibilityStarted', until };
+  if (facts.openChange) return { allowed: false, reason: RESCHEDULE_MESSAGES.open, code: 'changeAlreadyOpen', until };
+  if (facts.now.getTime() >= freeUntil.getTime()) return { allowed: false, reason: RESCHEDULE_MESSAGES.tooClose, code: 'eligibilityTooClose', until };
   const decisionBy = changeResponseDeadline(facts);
-  if (!decisionBy) return { allowed: false, reason: RESCHEDULE_MESSAGES.tooClose, until };
+  if (!decisionBy) return { allowed: false, reason: RESCHEDULE_MESSAGES.tooClose, code: 'eligibilityTooClose', until };
   return { allowed: true, until, decisionBy };
 }
 
