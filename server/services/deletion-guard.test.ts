@@ -45,8 +45,14 @@ describe('deletion guard messages', () => {
 
 function exec(rowsByCall: any[][]) {
   const statements: string[] = [];
+  const params: unknown[][] = [];
   let call = 0;
-  return { statements, execute: async (query: any) => { statements.push(new PgDialect().sqlToQuery(query).sql); return { rows: rowsByCall[call++] ?? [] }; } };
+  return { statements, params, execute: async (query: any) => {
+    const compiled = new PgDialect().sqlToQuery(query);
+    statements.push(compiled.sql);
+    params.push(compiled.params);
+    return { rows: rowsByCall[call++] ?? [] };
+  } };
 }
 
 describe('deletion guard queries', () => {
@@ -92,6 +98,20 @@ describe('deletion guard queries', () => {
     const db = exec([[{ has_history: true }]]);
     expect(await hasDeletionHistory(db, { kind: 'user', userId: 4242 })).toBe(true);
     expect(db.statements[0]).not.toContain('4242');
+    expect(db.statements[0]).toContain('sb.chef_id');
+  });
+
+  it('blocks a chef or kitchen while a storage rental is still open', async () => {
+    const db = exec([[], [], [], [], [], [{ id: 4, reference_code: 'SB-RENT1', term_start: '2026-10-20', total: 1 }]]);
+    const blockers = await getDeletionBlockers(db, { kind: 'user', userId: 3 });
+    expect(blockers.blocked).toBe(true);
+    expect(blockers.openRentals).toEqual({ total: 1, refs: [{ ref: 'SB-RENT1', detail: 'Oct 20, 2026' }] });
+    expect(db.statements[5]).toContain('sb.rental_state IN ($3, $4, $5, $6, $7)');
+    expect(db.statements[5]).toContain('sb.chef_id');
+    expect(db.params[5].slice(2, 7)).toEqual(['requested', 'reserved', 'active', 'move_out_requested', 'removal_review']);
+    const message = describeDeletionBlockers('account', blockers);
+    expect(message).toContain('1 open storage rental (SB-RENT1, Oct 20, 2026)');
+    expect(message).toContain('storage rentals');
   });
 });
 

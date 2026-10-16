@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 import { getTableName } from 'drizzle-orm';
-const h = vi.hoisted(() => ({ source: {} as any, create: vi.fn(), charge: vi.fn(), fulfill: vi.fn(), canceled: vi.fn(), claim: vi.fn(), done: vi.fn(), update: vi.fn() }));
+const h = vi.hoisted(() => ({ source: {} as any, create: vi.fn(), charge: vi.fn(), fulfill: vi.fn(), canceled: vi.fn(), claim: vi.fn(), done: vi.fn(), update: vi.fn(), term: vi.fn() }));
+vi.mock('../services/storage-extensions', () => ({ handleStorageTermWebhook: h.term }));
 vi.mock('stripe', async importOriginal => {
   const { default: Base } = await importOriginal<typeof import('stripe')>();
   return { default: class extends Base {
@@ -42,6 +43,17 @@ beforeEach(() => {
     payoutHoldReason: null, status: 'authorized', metadata: { storageTermId: 1 }, transferId: null, paymentIntentId: 'pi_fixture' };
 });
 describe('signed storage webhook dispatch and payout gate', () => {
+  it.each(['payment_intent.succeeded', 'payment_intent.payment_failed', 'payment_intent.canceled', 'checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.expired'])('dispatches %s directly to the term owner', async type => {
+    const object = { id: 'fixture', livemode: false, metadata: { type: 'storage_term', storage_term_id: '9' } };
+    expect((await send(type, object)).json).toHaveBeenCalledWith({ received: true });
+    expect(h.term).toHaveBeenCalledWith(expect.anything(), object);
+    expect(h.update).not.toHaveBeenCalled(); expect(h.create).not.toHaveBeenCalled();
+  });
+  it('retries a term webhook when reconciliation fails', async () => {
+    h.term.mockRejectedValueOnce(Error('database unavailable'));
+    expect((await send('payment_intent.succeeded', { metadata: { type: 'storage_term' } })).status).toHaveBeenCalledWith(500);
+    expect(h.done).not.toHaveBeenCalled();
+  });
   it('routes Checkout completion through storage fulfillment and skips processed replays', async () => {
     const session = { id: 'cs_test_fixture', livemode: false, metadata: { type: 'storage_rental' } };
     expect((await send('checkout.session.completed', session)).json).toHaveBeenCalledWith({ received: true });
