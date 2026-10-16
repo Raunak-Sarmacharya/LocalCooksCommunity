@@ -132,6 +132,7 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         // A changed pending request whose earlier request couldn't be withdrawn yet (hold not released): finish it.
         { name: 'replacementRetry', run: async () => (await import('./booking-replacement')).retryStuckReplacements(3) },
         { name: 'kitchenChanges', run: async () => (await import('./kitchen-booking-changes')).expireKitchenChanges(3) },
+        { name: 'storageRequests', run: async () => (await import('./storage-rentals')).sweepStorageRentalRequests(3) },
         // Session extensions: expire stale requests/offers, escalate unanswered extra-time charges, finish committed payments.
         { name: 'sessionExtensionExpiry', run: async () => { const stripe = await sessionExtensionStripe();
           return stripe ? (await import('./session-extensions')).expireSessionExtensions(stripe, 3) : { skipped: 'stripe_unconfigured' }; } },

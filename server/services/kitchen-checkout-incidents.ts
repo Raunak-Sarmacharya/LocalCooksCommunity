@@ -136,6 +136,11 @@ export async function resolveCheckoutConflict(session: Stripe.Checkout.Session, 
 export async function reconcileKitchenCheckout(sessionId: string, stripe = checkoutRecoveryStripe()) {
   const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
   const row = await checkoutIncident(sessionId);
+  if (row && session.metadata?.type === 'storage_rental') {
+    if (session.metadata.chef_id !== String(row.chefId) || session.metadata.kitchen_id !== String(row.kitchenId))
+      throw Error('Checkout identity needs review');
+    return (await import('./storage-rentals')).fulfillRentalCheckout(session, stripe);
+  }
   if (!row || session.metadata?.type !== 'kitchen_booking' || session.metadata.chef_id !== String(row.chefId)
     || session.metadata.kitchen_id !== String(row.kitchenId)) throw Error('Checkout identity needs review');
   if (session.status !== 'complete') {

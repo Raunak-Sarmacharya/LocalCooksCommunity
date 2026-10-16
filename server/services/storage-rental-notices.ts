@@ -24,7 +24,7 @@ import { ADMIN_STORAGE_KINDS, adminStorageNotice } from './admin-booking-notice'
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export type StorageNoticeEvent = 'requested' | 'approved' | 'declined' | 'expired' | 'move_in_due' | 'moved_in'
+export type StorageNoticeEvent = 'requested' | 'approved' | 'declined' | 'expired' | 'withdrawn' | 'authorization_lapsed' | 'move_in_due' | 'moved_in'
   | 'ending' | 'extended' | 'grace_started' | 'holdover_started' | 'holdover_charge' | 'reclaim'
   | 'move_out_requested' | 'cleared' | 'reopened' | 'removal_review' | 'final_notice' | 'refund_issued'
   | 'payout_scheduled' | 'payout_released' | 'payout_on_hold' | 'kitchen_debt' | 'offer_extension';
@@ -61,6 +61,8 @@ export function storageNoticeAudiences(event: StorageNoticeEvent): Array<'chef' 
     case 'requested': return ['chef', 'manager', 'admins'];
     case 'approved': return ['chef', 'admins'];
     case 'declined': return ['chef'];
+    case 'withdrawn': return ['chef', 'manager'];
+    case 'authorization_lapsed': return ['chef', 'manager', 'admins'];
     case 'expired': return ['chef', 'manager', 'admins'];
     case 'move_in_due': return ['chef'];
     case 'moved_in': return ['manager'];
@@ -83,6 +85,7 @@ export function storageNoticeAudiences(event: StorageNoticeEvent): Array<'chef' 
 /** Local Cooks' tracking kind for an event, when admins should hear about it. */
 const ADMIN_EVENT_KIND: Partial<Record<StorageNoticeEvent, string>> = {
   requested: 'storage_requested', expired: 'storage_expired', approved: 'storage_confirmed',
+  authorization_lapsed: 'storage_payment_recovery',
   extended: 'storage_extension_paid', refund_issued: 'storage_refund_issued',
   payout_released: 'storage_payout_released', payout_on_hold: 'storage_payout_on_hold',
   holdover_charge: 'storage_holdover_raised', reclaim: 'storage_reclaim_served',

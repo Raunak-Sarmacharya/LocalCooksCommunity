@@ -245,6 +245,12 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
       || !await (await import('./kitchen-payout-service')).releasedPayoutStillEligible(payout.bookingId, connection))
       return { ...baseResult, transferredCents: 0, reason: PAYOUT_DEFERRED_REASON };
   }
+  // Storage holds every paid term until its own release engine commits a decision (WP-ST6).
+  if (payout?.payoutTiming === 'storage_term') {
+    if (!payout.payoutReleasedAt || payout.payoutHoldReason
+      || !await (await import('./storage-rentals')).storageTermStillEligible(payout.bookingId, connection))
+      return { ...baseResult, transferredCents: 0, reason: 'deferred: storage is paid out at the end of each paid term' };
+  }
 
   // A captured adjustment is not an approved new schedule until inventory commit.
   // Reload durable source on every payment/charge.updated retry, never trust stale metadata.

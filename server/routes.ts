@@ -1291,6 +1291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mount Storage Listings Router (includes /manager/... and /chef/... paths)
   app.use("/api", (await import("./routes/storage-listings")).default);
+  app.use("/api", (await import("./routes/storage-rentals")).default);
 
   // Kitchen license expiry reminders (daily cron)
   app.use("/api", (await import("./routes/license-expiry")).default);

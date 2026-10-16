@@ -101,7 +101,7 @@ describe('per-reader wording', () => {
   });
   it.each(['fr-CA', 'uk'])('renders every reader in %s without raw keys or placeholders', async (value) => {
     locale(value);
-    const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'move_in_due', 'moved_in', 'ending',
+    const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'withdrawn', 'authorization_lapsed', 'move_in_due', 'moved_in', 'ending',
       'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'reclaim', 'move_out_requested', 'cleared',
       'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
       'payout_on_hold', 'kitchen_debt', 'offer_extension'];
@@ -138,7 +138,7 @@ describe('email gates', () => {
 
 describe('no Stripe identifiers', () => {
   it('never leaks pi_/ch_/tr_/cs_ references into any notice or email', async () => {
-    const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'move_in_due', 'moved_in', 'ending',
+    const events: StorageNoticeEvent[] = ['requested', 'approved', 'declined', 'expired', 'withdrawn', 'authorization_lapsed', 'move_in_due', 'moved_in', 'ending',
       'extended', 'grace_started', 'holdover_started', 'holdover_charge', 'reclaim', 'move_out_requested', 'cleared',
       'reopened', 'removal_review', 'final_notice', 'refund_issued', 'payout_scheduled', 'payout_released',
       'payout_on_hold', 'kitchen_debt', 'offer_extension'];
