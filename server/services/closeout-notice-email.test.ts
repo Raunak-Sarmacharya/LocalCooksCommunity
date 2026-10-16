@@ -24,8 +24,9 @@ function withUser(_id: number, username: string) {
   return { select } as any;
 }
 
+// An attended visit (arrival and checkout recorded); WP-N's no-arrival email has its own tests below.
 const base = { id: 128, chefId: 3, kitchenId: 4, referenceCode: 'KB-A7K9MX', bookingDate: new Date('2026-10-13'), startTime: '10:00', endTime: '11:00',
-  status: 'completed', checkinStatus: 'not_checked_in', selectedSlots: null };
+  status: 'completed', checkinStatus: 'checkout_requested', checkedInAt: new Date('2026-10-13T12:34:00Z'), checkoutRequestedAt: new Date('2026-10-13T13:25:00Z'), selectedSlots: null };
 const send = (kind: any, recipient: number, to: string, metadata: any = {}) => currentCloseoutEmail(128, kind, metadata, recipient, to, withUser(recipient, to));
 
 describe('closeout notice emails (rendered from current state, mocked database)', () => {
@@ -84,7 +85,7 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     state.booking.paymentStatus = 'paid';
     const email = (await send('service_ended', 3, 'maya@example.test'))!;
     for (const text of [email.text!, email.html!]) {
-      expect(text).toContain('Download your final invoice');
+      expect(text).toContain('See your receipts');
       expect(text).toContain('/booking/128#booking-payment-title');
       expect(text).toContain('/booking/128#booking-support');
     }
@@ -94,7 +95,6 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     expect((await send('service_ended', 7, 'sam@example.test'))!.text).not.toContain('final invoice');
   });
   it.each([
-    [undefined, undefined, 'No arrival or departure was recorded.'],
     ['2026-10-13T12:34:00Z', undefined, 'Arrival recorded at 10:04 AM. No departure was recorded.'],
     [undefined, '2026-10-13T13:31:00Z', 'Departure recorded at 11:01 AM. No arrival was recorded.'],
   ])('words missing taps neutrally (%s / %s)', async (arrival, departure, expected) => {
@@ -103,6 +103,36 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     const email = (await send('service_ended', 3, 'maya@example.test'))!;
     expect(email.text).toContain(expected);
     expect(email.text).not.toMatch(/failed|missed|forgot|no-show/i);
+  });
+  it('asks the kitchen and tells the chef plainly when no arrival was recorded (WP-N): no "complete", no rating, no invoice', async () => {
+    state.visits = [{ id: 1, blockIndex: 0, startTime: '10:00', endTime: '11:00', checkinStatus: 'not_checked_in' }];
+    state.booking.paymentStatus = 'paid'; state.booking.feedbackRequestedAt = new Date('2026-10-13T13:45:00Z');
+    const chef = (await send('service_ended', 3, 'maya@example.test'))!;
+    expect(chef.subject).toBe('No check-in recorded · KB-A7K9MX');
+    expect(chef.text).toContain('We didn\u2019t see a check-in for your booking at Harbour Kitchen (Oct 13, 10:00 a.m.). If you were there, let us know.');
+    expect(chef.text).toContain('I was there');
+    expect(chef.text).toContain('/booking/128#booking-support');
+    // No money statement before the kitchen answers (owner, Oct 15).
+    expect(chef.text).not.toMatch(/refund/i);
+    expect(chef.text).not.toMatch(/complete|Rate your session|invoice|#feedback/i);
+    const kitchen = (await send('service_ended', 7, 'sam@example.test'))!;
+    expect(kitchen.subject).toBe('No check-in from Maya Chen · KB-A7K9MX');
+    expect(kitchen.text).toContain('Tue, Oct 13, 10:00 a.m. Did they come? Tell us by Oct 14, 11:00 a.m.');
+    expect(kitchen.text).toContain('/manager/booking/128');
+    expect(kitchen.text).toContain('Nothing changes for your payout');
+  });
+  it('treats a kitchen "They came" statement as attended (WP-N)', async () => {
+    state.visits = [{ id: 1, blockIndex: 0, startTime: '10:00', endTime: '11:00', checkinStatus: 'not_checked_in' }];
+    const reader = withUser(3, 'maya@example.test');
+    const select = reader.select;
+    reader.select = (fields: any) => {
+      const q = select(fields);
+      const from = q.from;
+      q.from = (value: any) => { if (name(value) === 'kitchen_booking_attendance_events') { q.then = (resolve: any) => Promise.resolve([{ bookingId: 128, visitId: 1, action: 'report_attended' }]).then(resolve); } return from(value); };
+      return q;
+    };
+    const email = (await currentCloseoutEmail(128, 'service_ended', {}, 3, 'maya@example.test', reader))!;
+    expect(email.subject).toBe('Your visit at Harbour Kitchen is complete · KB-A7K9MX');
   });
   it('tells the manager the visit ended, when inspection is due, and links to the inspection page', async () => {
     const email = (await send('service_ended', 7, 'sam@example.test'))!;

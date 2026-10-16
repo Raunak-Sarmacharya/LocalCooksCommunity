@@ -6,12 +6,12 @@ import { collapseDoublePeriods } from '@shared/i18n/sentence';
  */
 export type BookingHeaderPhase =
   | 'pending' | 'confirmed' | 'today' | 'checkin_open' | 'in_session' | 'time_ended_in_session'
-  | 'checkout_review' | 'visit_ended' | 'completed' | 'no_show' | 'issue'
+  | 'checkout_review' | 'visit_ended' | 'completed' | 'no_show' | 'no_checkin' | 'issue'
   | 'cancellation_requested' | 'cancelled';
 
 export type BookingPillTone = 'amber' | 'blue' | 'green' | 'purple' | 'neutral' | 'grey' | 'red';
 
-export type BookingPrimaryAction = 'review_request' | 'review_cancellation' | 'review_checkout' | 'inspect_visit' | 'open_visit' | null;
+export type BookingPrimaryAction = 'review_request' | 'review_cancellation' | 'review_checkout' | 'inspect_visit' | 'open_visit' | 'answer_attendance' | null;
 
 export interface BookingHeaderInput {
   status: string;
@@ -21,6 +21,8 @@ export interface BookingHeaderInput {
   closeoutPhase?: string | null;
   /** True while the manager can still inspect/respond for the visit. */
   inspectionCanRespond?: boolean;
+  /** Per-visit attendance from the server's closeout projection (`unknown` | `recorded` | `no_show`). */
+  visitAttendance?: Array<string | null | undefined> | null;
   startAt?: Date | null;
   endAt?: Date | null;
   checkinOpensAt?: Date | null;
@@ -46,6 +48,11 @@ export function bookingHeaderPhase(input: BookingHeaderInput): BookingHeaderPhas
   if (visitStates.includes('checked_in')) return ended ? 'time_ended_in_session' : 'in_session';
   if (visitStates.includes('checkout_claim_filed')) return 'issue';
   if (visitStates.includes('no_show')) return 'no_show';
+  // WP-N: the booked time is over and nobody recorded an arrival for any visit (the kitchen hasn't said "They came"
+  // either). Not "Completed": the kitchen is asked whether the chef came; the chef is told plainly.
+  const attendance = input.visitAttendance || [];
+  if (attendance.length > 0 && attendance.every(value => value === 'unknown') && visitStates.every(value => value === 'not_checked_in')
+    && (status === 'completed' || input.closeoutPhase === 'ended')) return 'no_checkin';
   const checkedOut = visitStates.length > 0 && visitStates.every(value => value === 'checked_out');
   // Checked out but the kitchen can still inspect: the review is the open step.
   if (checkedOut && status !== 'completed' && input.inspectionCanRespond) return 'checkout_review';
@@ -67,7 +74,7 @@ function sameKitchenDay(a: number, b: number, timezone: string) {
 
 export function bookingPillTone(phase: BookingHeaderPhase): BookingPillTone {
   switch (phase) {
-    case 'pending': case 'cancellation_requested': case 'issue': return 'amber';
+    case 'pending': case 'cancellation_requested': case 'issue': case 'no_checkin': return 'amber';
     case 'confirmed': case 'today': case 'checkin_open': return 'blue';
     case 'in_session': return 'green';
     case 'time_ended_in_session': return 'amber';
@@ -85,6 +92,8 @@ export function bookingPrimaryAction(phase: BookingHeaderPhase, manager: boolean
     if (phase === 'cancellation_requested') return 'review_cancellation';
     if (phase === 'checkout_review') return 'review_checkout';
     if (phase === 'visit_ended' && inspectionCanRespond) return 'inspect_visit';
+    // "Did they come?" stays open for the inspection window; afterwards the visit simply reads "No check-in recorded".
+    if (phase === 'no_checkin' && inspectionCanRespond) return 'answer_attendance';
     return null;
   }
   return ['checkin_open', 'in_session', 'time_ended_in_session'].includes(phase) ? 'open_visit' : null;

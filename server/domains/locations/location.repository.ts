@@ -8,7 +8,7 @@ import { logger } from "../../logger";
 
 import { db } from '../../db';
 import { locations, locationRequirements } from '@shared/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO, LocationRequirements, UpdateLocationRequirements } from './location.types';
 import { LocationErrorCodes, DomainError } from '../../shared/errors/domain-error';
 import { previewSlugBase, availablePreviewSlug } from '@shared/preview-slug';
@@ -47,7 +47,7 @@ export class LocationRepository {
       const results = await db
         .select()
         .from(locations)
-        .where(eq(locations.managerId, managerId))
+        .where(and(eq(locations.managerId, managerId), isNull(locations.archivedAt)))
         .orderBy(desc(locations.createdAt));
 
       return results as LocationDTO[];
@@ -81,6 +81,8 @@ export class LocationRepository {
           cancellationPolicyHours: dto.cancellationPolicyHours ?? 24,
           cancellationPolicyMessage: dto.cancellationPolicyMessage || 'Bookings cannot be cancelled within {hours} hours of the scheduled time.',
           defaultDailyBookingLimit: dto.defaultDailyBookingLimit || 2,
+          maxAdvanceBookingDays: dto.maxAdvanceBookingDays,
+          turnoverBufferEnabled: dto.turnoverBufferEnabled,
           minimumBookingWindowHours: dto.minimumBookingWindowHours ?? 1,
           logoUrl: dto.logoUrl || null,
           brandImageUrl: dto.brandImageUrl || null,
@@ -130,6 +132,8 @@ export class LocationRepository {
           cancellationPolicyHours: dto.cancellationPolicyHours,
           cancellationPolicyMessage: dto.cancellationPolicyMessage,
           defaultDailyBookingLimit: dto.defaultDailyBookingLimit,
+          maxAdvanceBookingDays: dto.maxAdvanceBookingDays,
+          turnoverBufferEnabled: dto.turnoverBufferEnabled,
           minimumBookingWindowHours: dto.minimumBookingWindowHours,
           logoUrl: dto.logoUrl,
           brandImageUrl: dto.brandImageUrl,
@@ -217,6 +221,7 @@ export class LocationRepository {
       const results = await db
         .select()
         .from(locations)
+        .where(isNull(locations.archivedAt))
         .orderBy(desc(locations.createdAt));
 
       return results as LocationDTO[];
@@ -330,15 +335,13 @@ export class LocationRepository {
    * Delete location
    */
   async delete(id: number): Promise<void> {
-    try {
-      await db.delete(locations).where(eq(locations.id, id));
-    } catch (error: any) {
-      logger.error(`[LocationRepository] Error deleting location ${id}:`, error);
-      throw new DomainError(
-        LocationErrorCodes.LOCATION_NOT_FOUND,
-        'Failed to delete location',
-        500
-      );
-    }
+    await db.delete(locations).where(eq(locations.id, id));
+  }
+
+  /** Location with history: hidden from every list; bookings, receipts and claims keep resolving it. */
+  async archive(id: number): Promise<void> {
+    await db.update(locations)
+      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(locations.id, id), isNull(locations.archivedAt)));
   }
 }

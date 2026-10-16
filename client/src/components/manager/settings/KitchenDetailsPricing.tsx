@@ -71,7 +71,7 @@ const KitchenDetailsPricing = forwardRef<
   const [pricingDirty, setPricingDirty] = useState(false);
 
   const [showDelete, setShowDelete] = useState(false);
-  const [deleteImpact, setDeleteImpact] = useState<number | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<{ bookings: number; blocked: boolean; message: string | null; willArchive: boolean } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Re-seed the form when the parent switches to a different kitchen.
@@ -178,7 +178,12 @@ const KitchenDetailsPricing = forwardRef<
         if (!response.ok) throw new Error('delete-impact-unavailable');
 
         const data = await response.json();
-        if (!cancelled) setDeleteImpact(Number(data.bookings ?? 0));
+        if (!cancelled) setDeleteImpact({
+          bookings: Number(data.bookings ?? 0),
+          blocked: Boolean(data.blocked),
+          message: typeof data.message === 'string' ? data.message : null,
+          willArchive: Boolean(data.willArchive),
+        });
       } catch (error) {
         logger.error('Kitchen delete impact error:', error);
         if (!cancelled) setDeleteImpact(null);
@@ -208,12 +213,12 @@ const KitchenDetailsPricing = forwardRef<
         throw new Error(errorData.error || tt("failedToDeleteKitchen"));
       }
 
+      const result = await response.json().catch(() => ({}));
       await invalidateKitchenCaches();
       setShowDelete(false);
-      toast({
-        title: mt("kitchenDeleted"),
-        description: mt("kitchenHasBeenSuccessfullyRemoved"),
-      });
+      toast(result.archived
+        ? { title: mt("kitchenArchivedTitle"), description: mt("kitchenArchivedDescription") }
+        : { title: mt("kitchenDeleted"), description: mt("kitchenHasBeenSuccessfullyRemoved") });
     } catch (error: any) {
       logger.error('Kitchen delete error:', error);
       toast({ title: mt("error"), description: error.message, variant: "destructive" });
@@ -222,12 +227,14 @@ const KitchenDetailsPricing = forwardRef<
     }
   };
 
-  const deleteWarning =
-    deleteImpact === null
+  const deleteBlocked = deleteImpact?.blocked === true;
+  const deleteWarning = deleteBlocked
+    ? deleteImpact?.message ?? ""
+    : deleteImpact === null
       ? mt("deleteKitchenWarningUnknown")
-      : deleteImpact === 0
-        ? mt("deleteKitchenWarningNoBookings")
-        : mt("deleteKitchenWarningBookings", { count: deleteImpact });
+      : deleteImpact.willArchive
+        ? mt("deleteKitchenWarningBookings", { count: deleteImpact.bookings })
+        : mt("deleteKitchenWarningNoBookings");
 
   return (
     <div className="space-y-5">
@@ -309,23 +316,27 @@ const KitchenDetailsPricing = forwardRef<
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {mt("deleteKitchenTitle", { name: kitchen.name })}
+              {deleteBlocked
+                ? mt("deleteKitchenBlockedTitle", { name: kitchen.name })
+                : mt("deleteKitchenTitle", { name: kitchen.name })}
             </AlertDialogTitle>
             <AlertDialogDescription>{deleteWarning}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>{mt("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={isDeleting}
-              onClick={(event) => {
-                event.preventDefault();
-                void handleDeleteKitchen();
-              }}
-            >
-              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mt("deleteKitchen")}
-            </AlertDialogAction>
+            {!deleteBlocked && (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={isDeleting}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleDeleteKitchen();
+                }}
+              >
+                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {deleteImpact?.willArchive ? mt("deleteKitchenArchive") : mt("deleteKitchen")}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

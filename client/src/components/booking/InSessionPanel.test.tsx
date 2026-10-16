@@ -132,7 +132,7 @@ describe("in-session panel", () => {
     expect(screen.getByText("Lock the side entrance.")).toBeInTheDocument();
     expect(screen.getByText("Required tasks before check-out: 2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Get help" }));
-    expect(screen.getByRole("link", { name: /support@localcooks.ca/ })).toHaveAttribute("href", "mailto:support@localcooks.ca");
+    expect(screen.getByRole("link", { name: /support@localcooks.ca/ }).getAttribute("href")).toMatch(/^mailto:support@localcooks\.ca\?subject=/);
   });
 
   it("opens the booking conversation with a prefilled request for more time", async () => {

@@ -25,15 +25,16 @@ vi.mock('./outcome-delivery', () => ({ deliverOutcomeEmails: () => task('outcome
 vi.mock('./chat-notices', () => ({ dispatchChatDigests: () => task('chat') }));
 vi.mock('./overstay-penalty-service', () => ({ detectOverstays: () => task('overstays') }));
 vi.mock('./damage-claim-service', () => ({ processExpiredClaims: () => task('claims') }));
-vi.mock('./damage-claim-money', () => ({ recoverDamageClaimMoney: () => task('claimMoney') }));
+vi.mock('./damage-claim-money', () => ({ recoverDamageClaimMoney: () => task('claimMoney'), recoverStalledClaimPayments: () => task('claimPayments') }));
 vi.mock('./damage-claims-v2', () => ({ notifyDamageClaimBookingHolds: () => task('claimHolds') }));
 vi.mock('./booking-payment-decision', () => ({ recoverPendingBookingDecisions: () => task('paymentRecovery') }));
+vi.mock('./kitchen-checkout-incidents', () => ({ recoverKitchenCheckouts: () => task('checkoutRecovery') }));
 vi.mock('./auth-expiry-service', () => ({ processExpiredAuthorizations: () => task('authorizations') }));
 vi.mock('./storage-checkout-service', () => ({ processExpiredCheckoutReviews: () => task('storageCheckout') }));
 vi.mock('./kitchen-checkout-service', () => ({ processExpiredKitchenCheckoutReviews: () => task('kitchenCheckout'), getCheckinSettings: async () => ({ checkoutReviewWindowMinutes: 0 }) }));
 vi.mock('./clock-closeout', () => ({ sweepClockCloseout: () => task('clockCloseout') }));
 vi.mock('./booking-feedback-service', () => ({ sweepBookingFeedback: () => task('bookingFeedback') }));
-vi.mock('./kitchen-payout-service', () => ({ releaseDuePayouts: () => task('closeoutPayouts') }));
+vi.mock('./kitchen-payout-service', () => ({ releaseDuePayouts: () => task('closeoutPayouts'), recoverCaptureTransfers: () => task('captureTransfers') }));
 vi.mock('./chef-document-expiry', () => ({ sweepChefDocumentExpiry: () => task('chefDocumentExpiry') }));
 vi.mock('./location-access-notices', () => ({ dispatchAccessNotices: () => task('access') }));
 vi.mock('./tour-outcome-service', () => ({ remindUnrecordedTourOutcomes: () => task('tourOutcomes') }));
@@ -71,7 +72,7 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     expect(configuredInvocationMs).toBe(30_000); expect(workerSafetyReserveMs).toBe(4_000);
     expect(result).toMatchObject({ taskFailures: [], deferred: false });
     expect(state.calls).toEqual(expect.arrayContaining(['advance', 'booking', 'tour', 'outcome', 'chat', 'reconcile:booking', 'reconcile:tour',
-      'overstays', 'claims', 'paymentRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
+      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
     expect(state.calls.filter(name => name === 'clockCloseout')).toHaveLength(1);
     expect(state.calls.filter(name => name === 'closeoutPayouts')).toHaveLength(1);
     expect(state.calls).not.toContain('kitchenCheckout'); expect(state.calls).not.toContain('visitCheckout');
@@ -126,5 +127,18 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
       await workerPageEnd('claims', 0); expect(cursors.claims).toBe(0);
     });
     expect(saved).toEqual([['claims', 7], ['claims', 0]]);
+  });
+  it('wraps a short page at once, so a record under the cursor is not left waiting a tick on an empty page', async () => {
+    const cursors: Record<string, number> = { closeout: 170 };
+    await workerContext.run({ database: {} as any, deadline: 26_000, taskDeadline: 26_000, cursors,
+      checkpoint: async (key, id) => { cursors[key] = id; } }, async () => {
+      await workerPageEnd('closeout', 2, 3);
+      await workerRecord('closeout', 176); expect(cursors.closeout).toBe(176); // a slow 176 can't hide 177 next tick
+      await workerRecord('closeout', 177); expect(cursors.closeout).toBe(0); // last of the short page: wrap now
+      // Budget ran out after the first record of a short page: the next tick resumes after it, not from the start.
+      await workerPageEnd('recovery', 2, 3); await workerRecord('recovery', 1);
+      expect(cursors.recovery).toBe(1);
+      await workerPageEnd('full', 3, 3); await workerRecord('full', 9); expect(cursors.full).toBe(9);
+    });
   });
 });

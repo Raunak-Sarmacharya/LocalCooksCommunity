@@ -1,3 +1,5 @@
+import { bookingWindowCap } from '../services/booking-policy-settings';
+import { validBookingWindowDays } from '@shared/kitchen-booking-policies';
 import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
 import { readKitchenPayout, attachKitchenPayouts, upcomingKitchenPayouts } from '../services/kitchen-payout-service';
@@ -95,6 +97,7 @@ import { logger } from "../logger";
 import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { DomainError } from "../shared/errors/domain-error";
+import { DeletionBlockedError, describeDeletionBlockers, getDeletionBlockers, hasDeletionHistory } from "../services/deletion-guard";
 import { notificationService } from "../services/notification.service";
 import { getAppBaseUrl } from "../config";
 
@@ -974,7 +977,9 @@ router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireManager,
     if (typeof req.body?.reason !== 'string' || !req.body.reason.trim() || req.body.reason.length > 2000) return res.status(400).json({ error: 'Please explain why the kitchen needs to cancel' });
     if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body.operationKey || '')) return res.status(400).json({ error: 'A cancellation operation key is required' });
     const { cancelKitchenCausedBooking } = await import('../services/booking-cancellation-refund');
-    res.json(await cancelKitchenCausedBooking(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason));
+    const cancelled = await cancelKitchenCausedBooking(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, req.body.reason);
+    await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(Number(req.params.id), 'kitchen_cancelled')).catch(() => undefined);
+    res.json(cancelled);
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Kitchen cancellation needs review' }); }
 });
 // Kitchen-caused add-on cancellation: the chef is refunded in full (card fee absorbed by Local Cooks); the kitchen's payout drops by the item's kitchen share only.
@@ -984,7 +989,9 @@ router.post('/bookings/:id/addon-refund', requireFirebaseAuthWithUser, requireMa
     if (!items.length || items.length > 20 || items.some((item: any) => !['storage', 'equipment'].includes(item?.kind) || !Number.isSafeInteger(item?.id) || item.id <= 0)) return res.status(400).json({ error: 'Choose the add-ons to refund' });
     if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(req.body.operationKey || '')) return res.status(400).json({ error: 'A refund operation key is required' });
     const { refundKitchenCausedAddons } = await import('../services/booking-cancellation-refund');
-    res.json(await refundKitchenCausedAddons(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, items.map((item: any) => ({ kind: item.kind, id: item.id }))));
+    const refunded = await refundKitchenCausedAddons(Number(req.params.id), req.neonUser!.id, req.neonUser!.id, req.body.operationKey, items.map((item: any) => ({ kind: item.kind, id: item.id })));
+    await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(Number(req.params.id), 'addon_refunded')).catch(() => undefined);
+    res.json(refunded);
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'The add-on refund needs review' }); }
 });
 router.put('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, requireManager, async (req, res) => {
@@ -1007,7 +1014,9 @@ router.put(
       const { action } = req.body || {}; // 'accept' or 'decline'
       if (action === 'accept') {
         const { acceptCancellationRefund } = await import('../services/booking-cancellation-refund');
-        return res.json({ success: true, action: 'accepted', refund: await acceptCancellationRefund(bookingId, managerId, req.body.quoteHash) });
+        const refund = await acceptCancellationRefund(bookingId, managerId, req.body.quoteHash);
+        await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(bookingId, 'cancellation_accepted')).catch(() => undefined);
+        return res.json({ success: true, action: 'accepted', refund });
       }
 
       if (isNaN(bookingId) || bookingId <= 0) {
@@ -3182,9 +3191,19 @@ router.get(
       const [row] = await db
         .select({ value: count() })
         .from(kitchenBookings)
-        .where(eq(kitchenBookings.kitchenId, kitchenId));
+        .where(and(eq(kitchenBookings.kitchenId, kitchenId), ne(kitchenBookings.bookingType, "manager_blocked")));
 
-      res.json({ bookings: Number(row?.value ?? 0) });
+      // The same guard the delete itself runs, so the dialog says exactly what will happen.
+      const scope = { kind: "kitchens", kitchenIds: [kitchenId] } as const;
+      const blockers = await getDeletionBlockers(db, scope);
+      const bookings = Number(row?.value ?? 0);
+      res.json({
+        bookings,
+        blocked: blockers.blocked,
+        message: blockers.blocked ? describeDeletionBlockers("kitchen", blockers) : null,
+        blockers,
+        willArchive: !blockers.blocked && (bookings > 0 || (await hasDeletionHistory(db, scope))),
+      });
     } catch (error: any) {
       logger.error("Error computing kitchen delete impact:", error);
       res.status(500).json({
@@ -3220,8 +3239,9 @@ router.delete(
       const imageUrl = kitchen.imageUrl;
       const galleryImages = kitchen.galleryImages || [];
 
-      // Delete from DB first
-      await kitchenService.deleteKitchen(kitchenId);
+      // Blocked while anything is live; archived (photos kept for history pages) when only history exists.
+      const { archived } = await kitchenService.deleteKitchen(kitchenId);
+      if (archived) return res.json({ success: true, archived: true });
 
       // Cleanup images from R2
       const { deleteFromR2 } = await import("../r2-storage");
@@ -3248,8 +3268,11 @@ router.delete(
         );
       }
 
-      res.json({ success: true });
+      res.json({ success: true, archived: false });
     } catch (error: any) {
+      if (error instanceof DeletionBlockedError) {
+        return res.status(409).json({ error: error.message, code: error.code, blockers: error.blockers });
+      }
       logger.error("Error deleting kitchen:", error);
       res
         .status(500)
@@ -3341,18 +3364,24 @@ async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
       .innerJoin(locations, eq(kitchens.locationId, locations.id))
       .where(and(eq(kitchens.id, kitchenId), eq(locations.managerId, req.neonUser!.id))).limit(1);
     if (!owned) return res.status(403).json({ error: "Access denied" });
+    const cap = await bookingWindowCap();
     let kitchen = owned.kitchen;
     if (req.method === "PUT") {
       const patch: Partial<typeof kitchens.$inferInsert> = {};
-      for (const key of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit"] as const) {
+      for (const key of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays"] as const) {
         const value = req.body?.[key];
         if (value === undefined) continue;
-        const min = key === "defaultDailyBookingLimit" ? 1 : 0;
-        const max = key === "defaultDailyBookingLimit" ? 24 : key === "minimumBookingWindowHours" ? 168 : 2147483647;
+        const min = key === "defaultDailyBookingLimit" || key === "maxAdvanceBookingDays" ? 1 : 0;
+        const max = key === "maxAdvanceBookingDays" ? cap : key === "defaultDailyBookingLimit" ? 24 : key === "minimumBookingWindowHours" ? 168 : 2147483647;
         if (value !== null && (!Number.isInteger(value) || value < min || value > max)) {
-          return res.status(400).json({ error: `Invalid ${key}` });
+          return res.status(400).json({ error: key === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.` : `Invalid ${key}` });
         }
         patch[key] = value;
+      }
+      if (req.body?.turnoverBufferEnabled !== undefined) {
+        const value = req.body.turnoverBufferEnabled;
+        if (value !== null && typeof value !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
+        patch.turnoverBufferEnabled = value;
       }
       if (req.body?.minimumBookingHours !== undefined) {
         const value = req.body.minimumBookingHours;
@@ -3371,8 +3400,8 @@ async function handleKitchenWorkspaceSettings(req: Request, res: Response) {
     }
     return res.json({
       kitchen,
-      defaults: resolveKitchenBookingPolicies({}, owned.location),
-      effective: resolveKitchenBookingPolicies(kitchen, owned.location),
+      defaults: resolveKitchenBookingPolicies({}, owned.location, cap),
+      effective: resolveKitchenBookingPolicies(kitchen, owned.location, cap),
     });
   } catch (error) {
     return errorResponse(res, error);
@@ -3390,12 +3419,12 @@ router.put("/locations/:locationId/kitchen-booking-policies", requireFirebaseAut
   if (!Number.isSafeInteger(locationId) || locationId <= 0) return res.status(400).json({ error: "Invalid location ID" });
   const locationPatch: Partial<typeof locations.$inferInsert> = {};
   const kitchenPatch: Partial<typeof kitchens.$inferInsert> = {};
-  for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit"] as const) {
+  for (const field of ["cancellationPolicyHours", "minimumBookingWindowHours", "defaultDailyBookingLimit", "maxAdvanceBookingDays"] as const) {
     const value = req.body?.[field];
     if (value === undefined) continue;
-    const min = field === "defaultDailyBookingLimit" ? 1 : 0;
-    const max = field === "defaultDailyBookingLimit" ? 24 : field === "minimumBookingWindowHours" ? 168 : 2147483647;
-    if (!Number.isInteger(value) || value < min || value > max) return res.status(400).json({ error: `Invalid ${field}` });
+    const min = field === "defaultDailyBookingLimit" || field === "maxAdvanceBookingDays" ? 1 : 0;
+    const max = field === "maxAdvanceBookingDays" ? await bookingWindowCap() : field === "defaultDailyBookingLimit" ? 24 : field === "minimumBookingWindowHours" ? 168 : 2147483647;
+    if (!Number.isInteger(value) || value < min || value > max) return res.status(400).json({ error: field === "maxAdvanceBookingDays" ? `Booking window must be a whole number from 1 to ${max} days.` : `Invalid ${field}` });
     locationPatch[field] = value;
     kitchenPatch[field] = null;
   }
@@ -3403,6 +3432,11 @@ router.put("/locations/:locationId/kitchen-booking-policies", requireFirebaseAut
     const value = req.body.minimumBookingHours;
     if (!Number.isInteger(value) || value < 0 || value > 24) return res.status(400).json({ error: "Invalid minimum booking duration" });
     kitchenPatch.minimumBookingHours = value;
+  }
+  if (req.body?.turnoverBufferEnabled !== undefined) {
+    if (typeof req.body.turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
+    locationPatch.turnoverBufferEnabled = req.body.turnoverBufferEnabled;
+    kitchenPatch.turnoverBufferEnabled = null;
   }
   if (!Object.keys(kitchenPatch).length) return res.status(400).json({ error: "No booking policy changes provided" });
   try {
@@ -3460,6 +3494,10 @@ router.post(
       const location = await locationService.getLocationById(kitchen.locationId);
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "Access denied" });
+      }
+
+      if ((kitchen as any).archivedAt) {
+        return res.status(409).json({ error: "This kitchen was removed from your account. Its booking history is kept." });
       }
 
       if (status === "active") {
@@ -4391,6 +4429,11 @@ router.get(
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "Access denied" });
       }
+      // A request past its response deadline expires when viewed (the scheduled sweep is only the backstop).
+      if (booking.status === 'pending' && booking.paymentStatus === 'authorized'
+        && await (await import('../services/auth-expiry-service')).lazyExpireKitchenBookingAuth(booking as never).catch(() => false)) {
+        Object.assign(booking, (await bookingService.getBookingById(id)) ?? {});
+      }
 
       Object.assign(booking, await getKitchenTrackingState(kitchen.id, booking.checkinStatus, booking.id));
 
@@ -4731,6 +4774,8 @@ router.put(
       const user = req.neonUser!;
       const id = parseInt(req.params.id);
       const { status, storageActions, equipmentActions } = req.body;
+      // Optional note to the chef when declining (Airbnb-style reason); trimmed and capped.
+      const declineMessage = typeof req.body.message === 'string' ? req.body.message.trim().slice(0, 500) : '';
       let checkoutTerms: ReturnType<typeof bookingCaptureTerms> | undefined;
 
       // Child logger: every log in this handler automatically includes booking/manager context
@@ -4773,7 +4818,7 @@ router.put(
       const recordedDecision = (booking as any).paymentDecision;
       if (recordedDecision?.state === 'pending') {
         const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
-        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id);
+        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined });
         return res.json(result);
       }
 
@@ -4843,7 +4888,7 @@ router.put(
 
       if (booking.status === 'pending' && booking.paymentStatus === 'authorized' && ['confirmed', 'cancelled'].includes(status)) {
         const { decideAuthorizedBooking } = await import('../services/booking-payment-decision');
-        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id);
+        const result = await decideAuthorizedBooking(id, status, storageActions, equipmentActions, user.id, undefined, { message: status === 'cancelled' ? declineMessage : undefined });
         const { deliverBookingLifecycleEvents } = await import('../services/booking-lifecycle-delivery');
         await deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Booking email delivery pending retry', error));
         return res.json(result);
@@ -5271,6 +5316,8 @@ router.put(
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
         minimumBookingWindowHours,
+        maxAdvanceBookingDays,
+        turnoverBufferEnabled,
         // Arrival timings. These live on the locations table alongside the other
         // time-based rules and are also written by the check-in/check-out
         // endpoint; managers edit them on the Booking Policies page.
@@ -5441,6 +5488,15 @@ router.put(
       }
       if (defaultDailyBookingLimit !== undefined) {
         (updates as any).defaultDailyBookingLimit = defaultDailyBookingLimit;
+      }
+      if (maxAdvanceBookingDays !== undefined) {
+        const cap = await bookingWindowCap();
+        if (!validBookingWindowDays(maxAdvanceBookingDays, cap)) return res.status(400).json({ error: `Booking window must be a whole number from 1 to ${cap} days.` });
+        (updates as any).maxAdvanceBookingDays = maxAdvanceBookingDays;
+      }
+      if (turnoverBufferEnabled !== undefined) {
+        if (typeof turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
+        (updates as any).turnoverBufferEnabled = turnoverBufferEnabled;
       }
       if (minimumBookingWindowHours !== undefined) {
         (updates as any).minimumBookingWindowHours = minimumBookingWindowHours;
@@ -5695,6 +5751,9 @@ router.put(
         defaultDailyBookingLimit:
           (updated as any).defaultDailyBookingLimit ||
           (updated as any).default_daily_booking_limit,
+        maxAdvanceBookingDays: (updated as any).maxAdvanceBookingDays ?? 30,
+        turnoverBufferEnabled: (updated as any).turnoverBufferEnabled ?? false,
+        maxAdvanceBookingDaysCap: await bookingWindowCap(),
         minimumBookingWindowHours:
           (updated as any).minimumBookingWindowHours ??
           (updated as any).minimum_booking_window_hours ??
@@ -5770,6 +5829,7 @@ router.get(
       );
 
       // Map snake_case fields to camelCase for the frontend
+      const maxAdvanceBookingDaysCap = await bookingWindowCap();
       const mappedLocations = locations.map((loc) => ({
         ...loc,
         notificationEmail:
@@ -5798,6 +5858,9 @@ router.get(
         defaultDailyBookingLimit:
           (loc as any).defaultDailyBookingLimit ||
           (loc as any).default_daily_booking_limit,
+        maxAdvanceBookingDays: (loc as any).maxAdvanceBookingDays ?? 30,
+        turnoverBufferEnabled: (loc as any).turnoverBufferEnabled ?? false,
+        maxAdvanceBookingDaysCap,
         minimumBookingWindowHours:
           (loc as any).minimumBookingWindowHours ??
           (loc as any).minimum_booking_window_hours ??
@@ -6110,6 +6173,15 @@ router.put(
       } = req.body;
 
       const updates: any = {};
+      const cap = await bookingWindowCap();
+      if (req.body.maxAdvanceBookingDays !== undefined) {
+        if (!validBookingWindowDays(req.body.maxAdvanceBookingDays, cap)) return res.status(400).json({ error: `Booking window must be a whole number from 1 to ${cap} days.` });
+        updates.maxAdvanceBookingDays = req.body.maxAdvanceBookingDays;
+      }
+      if (req.body.turnoverBufferEnabled !== undefined) {
+        if (typeof req.body.turnoverBufferEnabled !== 'boolean') return res.status(400).json({ error: 'Invalid turnoverBufferEnabled' });
+        updates.turnoverBufferEnabled = req.body.turnoverBufferEnabled;
+      }
       if (name !== undefined) updates.name = name;
       if (address !== undefined) updates.address = address;
       if (logoUrl !== undefined) updates.logoUrl = logoUrl || null;
@@ -6355,6 +6427,9 @@ router.put(
       // Map snake_case to camelCase for consistent API response
       const mappedLocation = {
         ...updated,
+        maxAdvanceBookingDays: updated.maxAdvanceBookingDays ?? 30,
+        turnoverBufferEnabled: updated.turnoverBufferEnabled ?? false,
+        maxAdvanceBookingDaysCap: cap,
         managerId:
           (updated as any).managerId || (updated as any).manager_id || null,
         notificationEmail:

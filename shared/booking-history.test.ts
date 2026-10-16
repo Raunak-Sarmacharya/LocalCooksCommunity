@@ -26,6 +26,16 @@ describe('public booking history from recorded evidence', () => {
     expect(history.events[0]).toMatchObject({ kind: 'cancellation_reviewed', itemKind: 'storage', itemId: 6 });
     expect(JSON.stringify(history)).not.toMatch(/managerId|private-intent|sources|quote/);
   });
+  it('adds extra-time events from the extensions table without payment identifiers', () => {
+    const history = buildBookingHistory({ createdAt: '2026-10-01T12:00:00Z' }, [], [], [
+      { id: 1, kind: 'request', status: 'paid', minutes: 30, amountCents: 1500, createdAt: '2026-10-02T12:00:00Z', authorizedAt: '2026-10-02T12:05:00Z', paidAt: '2026-10-02T12:06:00Z', refundedAt: '2026-10-03T12:00:00Z' },
+      { id: 2, kind: 'offer', status: 'declined', minutes: 60, amountCents: 3000, createdAt: '2026-10-02T13:00:00Z', updatedAt: '2026-10-02T13:10:00Z' },
+      { id: 3, kind: 'request', status: 'paid', minutes: 30, amountCents: 1500, autoApprove: true, createdAt: '2026-10-04T12:00:00Z', paidAt: '2026-10-04T12:01:00Z' },
+    ]);
+    expect(history.events.map(event => event.kind)).toEqual(['requested', 'ext_requested', 'ext_approved', 'ext_paid', 'ext_offered', 'ext_declined', 'ext_refunded', 'ext_requested', 'ext_paid']);
+    expect(history.events.find(event => event.key === 'ext-1-ext_paid')).toMatchObject({ amountCents: 1500, extFlow: 'ask', minutes: 30 });
+    expect(JSON.stringify(history)).not.toMatch(/intent|checkout|customerId|returnUrl/);
+  });
   it('retains separate visits and avoids duplicating check-in evidence already in the ledger', () => {
     const history = buildBookingHistory({}, [
       { id: 1, kind: 'checkin_recorded', createdAt: '2026-10-02T12:01:00Z', metadata: { visitId: 7 } },

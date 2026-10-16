@@ -86,6 +86,7 @@ export function AdminUserManagement() {
   const [deletingUser, setDeletingUser] = useState<any | null>(null);
   const [impact, setImpact] = useState<any | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const getAuthHeaders = async (): Promise<HeadersInit> => {
     const headers: HeadersInit = {
@@ -195,12 +196,16 @@ export function AdminUserManagement() {
         method: "DELETE",
         credentials: "include",
         headers,
+        body: JSON.stringify(overrideReason.trim() ? { overrideReason: overrideReason.trim() } : {}),
       });
       if (response.ok) {
         toast.success("Success", {
-          description: "User completely deleted across all systems.",
+          description: impact?.willAnonymize
+            ? "Account anonymized. Booking and payment history was kept."
+            : "User deleted across all systems.",
         });
         setDeletingUser(null);
+        setOverrideReason("");
         loadUsers();
       } else {
         const error = await response.json();
@@ -290,9 +295,9 @@ export function AdminUserManagement() {
           <AlertDialogHeader>
             <AlertDialogTitle>Completely Delete User?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes <strong>{deletingUser?.username}</strong> and every
-              record attached to the account, then removes their identity from Firebase Auth
-              and Firestore.
+              This removes <strong>{deletingUser?.username}</strong> and their sign-in from
+              Firebase Auth and Firestore. Bookings, claims and payment records are never
+              deleted: if the account has any, they are kept and the account is anonymized.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -334,26 +339,41 @@ export function AdminUserManagement() {
                 </Table>
               </div>
 
-              {(impact.counts?.locations ?? 0) > 0 && (
+              {impact.willAnonymize && (
                 <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-                  This deletes the manager's locations, kitchens, listings, bookings, and related records, including other users' bookings at those locations.
+                  This account has booking, claim or payment history. That history is kept and the
+                  account is anonymized; any locations and kitchens it manages are archived, not deleted.
                 </p>
               )}
 
-              {impact.obligations?.hasObligations && (
+              {impact.blockedMessage && (
+                <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+                  <p>{impact.blockedMessage}</p>
+                  <p>To go ahead anyway, write why. The reason is saved with the deletion record.</p>
+                  <textarea
+                    aria-label="Override reason"
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    rows={2}
+                    value={overrideReason}
+                    onChange={(event) => setOverrideReason(event.target.value)}
+                  />
+                </div>
+              )}
+
+              {!impact.blockedMessage && impact.obligations?.hasObligations && (
                 <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
                   This user has unresolved obligations:{" "}
                   {impact.obligations.overstayPenalties} overstay penalty(ies) and{" "}
                   {impact.obligations.damageClaims} damage claim(s), totaling{" "}
                   <strong>${(impact.obligations.totalOwedCents / 100).toFixed(2)}</strong>.
-                  These related records will also be deleted.
+                  The account will be anonymized and these records kept.
                 </p>
               )}
             </div>
           )}
 
           <p className="text-sm">
-            <strong className="text-destructive">This action is irreversible.</strong>
+            <strong className="text-destructive">This action cannot be undone.</strong>
           </p>
 
           <AlertDialogFooter>
@@ -367,7 +387,7 @@ export function AdminUserManagement() {
                 e.preventDefault();
                 handleDeleteUser();
               }}
-              disabled={loading}
+              disabled={loading || Boolean(impact?.blockedMessage && overrideReason.trim().length < 10)}
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

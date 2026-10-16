@@ -14,6 +14,7 @@ import type { AvailableSupportAction, SearchRow, SupportCase } from "./types";
 import { FrozenCancellationPolicy } from './FrozenCancellationPolicy';
 import { DamageClaimPanel } from './DamageClaimPanel';
 import { AdminCancellationPolicyEditor } from '@/components/admin/AdminCancellationPolicyEditor';
+import { CheckoutIncidents } from './CheckoutIncidents';
 
 function readBookingParam(): number | null {
   const raw = new URLSearchParams(window.location.search).get("booking");
@@ -62,6 +63,7 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <div><h1 className="text-xl font-semibold">{t("bsTitle")}</h1><p className="text-sm text-muted-foreground">{t("bsSubtitle")}</p></div>
+        <CheckoutIncidents getToken={getFirebaseToken} query={query} />
         <form className="relative" onSubmit={(e) => { e.preventDefault(); setQuery(text.trim()); }} role="search">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input autoFocus className="pl-9" type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder={t("bsSearchPlaceholder")} aria-label={t("bsSearchLabel")} />
@@ -104,6 +106,15 @@ export function BookingSupportSection({ getFirebaseToken }: { getFirebaseToken: 
     <div className="space-y-4">
       {doneLabel && <p role="status" data-testid="action-done" className="rounded-xl border border-success/40 bg-success/10 p-3 text-sm font-medium">{t("bsToastDone", { action: doneLabel })}</p>}
       <CaseHeader c={c} onBack={back} onRefresh={() => void caseQuery.refetch()} refreshing={caseQuery.isFetching} />
+      {c.kitchenRefund && (
+        <p role={c.kitchenRefund.status === 'pending' ? 'alert' : 'status'} data-testid="kitchen-refund-state"
+          className={`rounded-xl border p-3 text-sm ${c.kitchenRefund.status === 'pending' ? 'border-warning/40 bg-warning/10' : 'border-success/40 bg-success/10'}`}>
+          {c.kitchenRefund.status === 'pending'
+            ? t('bsKitchenRefundPending', { amount: new Intl.NumberFormat(undefined, { style: 'currency', currency: c.money.currency }).format(c.kitchenRefund.amountCents / 100),
+              problem: c.kitchenRefund.error ? ` ${t('bsKitchenRefundProblem', { error: c.kitchenRefund.error })}` : '' })
+            : t('bsKitchenRefundSent', { amount: new Intl.NumberFormat(undefined, { style: 'currency', currency: c.money.currency }).format(c.kitchenRefund.amountCents / 100) })}
+        </p>
+      )}
       <DamageClaimPanel bookingId={c.bookingId} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_20rem] xl:items-start">
         <div className="order-1 md:col-span-2 xl:order-3 xl:col-span-1">

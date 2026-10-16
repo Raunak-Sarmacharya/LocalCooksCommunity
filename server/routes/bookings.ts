@@ -68,6 +68,17 @@ import {
 import { notificationService } from "../services/notification.service";
 import { generateDamageClaimInvoicePDF } from "../services/invoice-service";
 
+
+/** After a successful chef check-out: withdraw open extra-time offers/requests for that visit (best effort; the expiry worker backs it up). */
+async function withdrawExtensionsAfterCheckout(bookingId: number, visitId?: number) {
+    if (!process.env.STRIPE_SECRET_KEY) return;
+    try {
+        const { default: Stripe } = await import('stripe');
+        const { withdrawOpenSessionExtensions } = await import('../services/session-extensions');
+        await withdrawOpenSessionExtensions(new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' }), bookingId, visitId);
+    } catch (error) { logger.warn('[Checkout] Open extra-time offers will be withdrawn by the expiry worker', { bookingId, error }); }
+}
+
 const router = Router();
 router.get('/kitchens/:id/cancellation-policy', async (req, res) => {
     try {
@@ -1620,7 +1631,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             return res.status(400).json({ error: "Invalid booking ID" });
         }
 
-        const booking = await bookingService.getBookingById(id);
+        let booking = await bookingService.getBookingById(id);
         if (!booking) {
             return res.status(404).json({ error: "Booking not found" });
         }
@@ -1628,6 +1639,11 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         // Verify the booking belongs to this chef
         if (booking.chefId !== req.neonUser!.id) {
             return res.status(403).json({ error: "You don't have permission to view this booking" });
+        }
+        // A request past its response deadline expires when viewed (the scheduled sweep is only the backstop).
+        if (booking.status === 'pending' && booking.paymentStatus === 'authorized'
+            && await (await import('../services/auth-expiry-service')).lazyExpireKitchenBookingAuth(booking as never).catch(() => false)) {
+            booking = (await bookingService.getBookingById(id)) ?? booking;
         }
 
         // Get kitchen details
@@ -2263,7 +2279,9 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         if (booking.status === 'cancelled') {
             if (booking.paymentStatus === 'failed' && booking.cancellationCause !== 'kitchen') return res.json({ success: true, action: 'cancelled', message: 'This booking request is already cancelled.' });
             const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
-            return res.json(await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, req.body.expectedRefundCents));
+            const cancelled = await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, req.body.expectedRefundCents);
+            await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'chef_cancelled')).catch(() => undefined);
+            return res.json(cancelled);
         }
         if (booking.status === 'completed') {
             return res.status(400).json({ error: "Cannot cancel a completed booking" });
@@ -2300,6 +2318,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
             const { cancelChefBooking } = await import('../services/booking-cancellation-refund');
             const result = await cancelChefBooking(id, req.neonUser!.id, req.body.operationKey, reason, req.neonUser!.id, req.body.expectedRefundCents);
             await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, id).catch(error => logger.warn('Cancellation notice pending retry', error));
+            await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(id, 'chef_cancelled')).catch(() => undefined);
             return res.json(result);
         }
 
@@ -2404,6 +2423,7 @@ router.post("/chef/bookings/:id/checkout", requireChef, async (req: Request, res
             const { checkoutKitchenVisit } = await import('../services/kitchen-visit-lifecycle');
             const result = await checkoutKitchenVisit(id, visitId, req.neonUser!.id,
                 checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems);
+            if (result.success) await withdrawExtensionsAfterCheckout(id, visitId);
             return result.success ? res.json(result) : res.status(400).json({ error: result.error, fieldErrors: result.fieldErrors });
         }
         const { requestKitchenCheckout } = await import("../services/kitchen-checkout-service");
@@ -2419,6 +2439,7 @@ router.post("/chef/bookings/:id/checkout", requireChef, async (req: Request, res
         if (!result.success) {
             return res.status(400).json({ error: result.error, fieldErrors: result.fieldErrors });
         }
+        await withdrawExtensionsAfterCheckout(id);
 
         res.json(result);
     } catch (error) {
@@ -2810,6 +2831,9 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 try {
                     const equipmentListing = await inventoryService.getEquipmentListingById(equipmentListingId);
 
+                    // An archived listing (removed by the kitchen, kept for past receipts) is never priced into a new booking.
+                    if (equipmentListing?.archivedAt) continue;
+
                     // Filter in memory for compatibility with previous query
                     if (equipmentListing && equipmentListing.availabilityType === 'included') {
                         // Skip included items for pricing calculation
@@ -2894,7 +2918,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
 
         const { checkoutCancellationSnapshot, cancellationSnapshotMetadata } = await import('../services/cancellation-policy-settings');
         const policySnapshot = await checkoutCancellationSnapshot(kitchenId, bookingDate, startTime, availability.windowStartTime!,
-            location?.timezone || 'America/St_Johns', req.body.cancellationPolicyAccepted, req.body.cancellationPolicyVersion);
+            location?.timezone || 'America/St_Johns', req.body.cancellationPolicyAccepted, req.body.cancellationPolicyVersion, req.body.cancellationDisclosureVersion);
         // Create payment intent
         const paymentIntent = await createPaymentIntent({
             amount: chefChargeCents,
@@ -3100,7 +3124,7 @@ router.post("/chef/bookings/checkout/cancel", requireChef, async (req: Request, 
 
 router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds, cancellationPolicyAccepted, cancellationPolicyVersion } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds, cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion } = req.body;
         const chefId = req.neonUser!.id;
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
@@ -3263,7 +3287,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             for (const equipmentListingId of selectedEquipmentIds) {
                 try {
                     const equipmentListing = await inventoryService.getEquipmentListingById(equipmentListingId);
-                    if (equipmentListing && equipmentListing.availabilityType !== 'included') {
+                    if (equipmentListing && !equipmentListing.archivedAt && equipmentListing.availabilityType !== 'included') {
                         const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
                         totalPriceCents += sessionRateCents;
                         equipmentLineItems.push({
@@ -3310,7 +3334,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         const { checkoutCancellationSnapshot } = await import('../services/cancellation-policy-settings');
         const cancellationPolicySnapshot = await checkoutCancellationSnapshot(kitchenId, bookingDateStr, startTime,
-            availabilityCheck.windowStartTime!, location.timezone || 'America/St_Johns', cancellationPolicyAccepted, cancellationPolicyVersion);
+            availabilityCheck.windowStartTime!, location.timezone || 'America/St_Johns', cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion);
         const holdId = await reserveKitchenCheckout(kitchenId, chefId, bookingDateStr, bookingSlots,
             availabilityCheck.windowStartTime!, selectedPricingMode === 'daily');
         let checkoutSession: Awaited<ReturnType<typeof createPendingCheckoutSession>>;
@@ -3668,352 +3692,16 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         res.status(500).json({ error: error.message || "Failed to create booking" });
     }
 });
-// Get booking by Stripe session ID (for payment success page)
-// CRITICAL: This endpoint also serves as a FALLBACK if the webhook failed to create the booking
-// It will create the booking from the Stripe session metadata if payment was successful but booking doesn't exist
+// Session-bound checkout evidence; fulfillment belongs to the webhook and recurring recovery worker.
 router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Request, res: Response) => {
     try {
-        const { sessionId } = req.params;
-        const chefId = req.neonUser!.id;
-
-        logger.info(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
-
-        if (!sessionId) {
-            return res.status(400).json({ error: "Session ID is required" });
-        }
-
-        // Retrieve the session from Stripe to get the payment intent ID
-        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-        if (!stripeSecretKey) {
-            return res.status(500).json({ error: "Stripe configuration error" });
-        }
-
-        const Stripe = (await import("stripe")).default;
-        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2026-02-25.clover" });
-        
-        let session;
-        try {
-            session = await stripe.checkout.sessions.retrieve(sessionId, {
-                expand: ["payment_intent"],
-            });
-            logger.info(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
-        } catch (stripeError: any) {
-            logger.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
-            return res.status(404).json({ error: "Invalid or expired session ID" });
-        }
-
-        let paymentIntentId: string | undefined;
-        if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
-            paymentIntentId = session.payment_intent.id;
-        } else if (typeof session.payment_intent === "string") {
-            paymentIntentId = session.payment_intent;
-        }
-
-        if (!paymentIntentId) {
-            return res.status(404).json({ error: "Payment intent not found for session" });
-        }
-
-        // Find booking by payment intent ID
-        logger.info(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
-        
-        // Query by payment intent ID only, then verify chef ownership
-        const [bookingByIntent] = await db
-            .select()
-            .from(kitchenBookings)
-            .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
-            .limit(1);
-        
-        let booking = bookingByIntent;
-        
-        if (bookingByIntent) {
-            logger.info(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
-            
-            // Verify chef ownership
-            if (bookingByIntent.chefId !== chefId) {
-                logger.info(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
-                return res.status(403).json({ error: "This booking does not belong to you" });
-            }
-            
-            // Booking found and chef matches - get kitchen name
-            const [kitchen] = await db
-                .select({ name: kitchens.name, locationId: kitchens.locationId })
-                .from(kitchens)
-                .where(eq(kitchens.id, bookingByIntent.kitchenId))
-                .limit(1);
-            
-            // NOTE: Email notifications for existing bookings are sent by the webhook
-            // (handleCheckoutSessionCompleted in webhooks.ts) when the booking is created.
-            // Previously this endpoint re-sent emails as a "fallback" for bookings <5 min old,
-            // but that caused DUPLICATE emails in production because the in-memory trackingId
-            // duplicate prevention doesn't work across separate serverless invocations.
-            // The fallback booking CREATION path below (L3173+) still sends emails for
-            // bookings it creates when the webhook truly didn't fire.
-            
-            return res.json({
-                ...await chefBookingInstructions(bookingByIntent),
-                kitchenName: kitchen?.name || 'Kitchen',
-            });
-        } else {
-            logger.info(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
-        }
-
-        // FALLBACK: If booking doesn't exist but payment was successful/authorized, create it from session metadata
-        // This handles cases where the webhook failed to process
-        // AUTH-THEN-CAPTURE: Also handle manual capture where payment_status='paid' but PI status='requires_capture'
-        const piObj = typeof session.payment_intent === 'object' ? session.payment_intent : null;
-        const fallbackIsManualCapture = piObj?.status === 'requires_capture';
-        const fallbackPaymentStatus = fallbackIsManualCapture ? 'authorized' : 'paid';
-        if (!booking && (session.payment_status === 'paid' || fallbackIsManualCapture) && session.metadata?.type === 'kitchen_booking') {
-            logger.info(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
-            
-            const metadata = session.metadata;
-            const kitchenIdFromMeta = parseInt(metadata.kitchen_id);
-            const chefIdFromMeta = parseInt(metadata.chef_id);
-            
-            // Verify the chef ID matches
-            if (chefIdFromMeta !== chefId) {
-                return res.status(403).json({ error: "Session does not belong to this chef" });
-            }
-            
-            // Create the booking from metadata (webhook hasn't created it yet)
-            const bookingDate = new Date(metadata.booking_date);
-            const startTime = metadata.start_time;
-            const endTime = metadata.end_time;
-            const specialNotes = metadata.special_notes || null;
-            const selectedSlots = parseCheckoutSlots(metadata.selected_slots, startTime, endTime);
-            const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
-            const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
-            
-            logger.info(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
-            
-            // Use direct DB insert to bypass chef access validation (already validated at checkout)
-            const totalPriceCents = parseInt(metadata.total_price_cents || "0");
-            const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
-            const durationHours = parseFloat(metadata.duration_hours || "1");
-            
-            const { fulfillKitchenCheckout } = await import('../services/kitchen-checkout-holds');
-            const directBooking = await fulfillKitchenCheckout(
-                metadata.hold_id, sessionId, kitchenIdFromMeta, bookingDate.toISOString().slice(0, 10),
-                selectedSlots, metadata.window_start_time || startTime, async () => {
-            const [created] = await db
-                .insert(kitchenBookings)
-                .values({
-                    kitchenId: kitchenIdFromMeta,
-                    chefId: chefIdFromMeta,
-                    bookingDate,
-                    startTime,
-                    endTime,
-                    status: "pending", // Awaiting manager approval
-                    paymentStatus: fallbackPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
-                    paymentIntentId: paymentIntentId,
-                    specialNotes,
-                    totalPrice: totalPriceCents.toString(),
-                    hourlyRate: hourlyRateCents.toString(),
-                    durationHours: durationHours.toString(),
-                    serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
-                    currency: "CAD",
-                    selectedSlots: selectedSlots,
-                    operatingWindowStartTime: metadata.window_start_time || null,
-                    pricingMode: metadata.pricing_mode === 'daily' ? 'daily' : 'hourly',
-                    storageItems: [],
-                    equipmentItems: [],
-                })
-                .returning();
-            if (!created) throw new Error('Failed to create booking');
-            return created;
-            });
-            
-            if (!directBooking) {
-                throw new Error("Failed to create booking");
-            }
-            
-            const newBooking = directBooking;
-            logger.info(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
-            
-            // Create payment_transactions record
-            try {
-                const { createPaymentTransaction } = await import('../services/payment-transactions-service');
-                
-                const [kitchen] = await db
-                    .select({ locationId: kitchens.locationId })
-                    .from(kitchens)
-                    .where(eq(kitchens.id, kitchenIdFromMeta))
-                    .limit(1);
-                
-                if (kitchen) {
-                    const [location] = await db
-                        .select({ managerId: locations.managerId })
-                        .from(locations)
-                        .where(eq(locations.id, kitchen.locationId))
-                        .limit(1);
-                    
-                    if (location && location.managerId) {
-                        const chargeId = session.payment_intent && typeof session.payment_intent === 'object'
-                            ? (typeof session.payment_intent.latest_charge === 'string'
-                                ? session.payment_intent.latest_charge
-                                : session.payment_intent.latest_charge?.id)
-                            : undefined;
-                        
-                        await createPaymentTransaction({
-                            bookingId: newBooking.id,
-                            bookingType: "kitchen",
-                            chefId: chefIdFromMeta,
-                            managerId: location.managerId,
-                            amount: parseInt(metadata.booking_price_cents || "0"),
-                            baseAmount: parseInt(metadata.total_price_cents || "0") + parseInt(metadata.tax_cents || "0"),
-                            serviceFee: parseInt(metadata.platform_fee_cents || "0"),
-                            taxAmount: parseInt(metadata.tax_cents || "0"),
-                            managerRevenue:
-                                parseInt(metadata.total_price_cents || "0")
-                                + parseInt(metadata.tax_cents || "0")
-                                - parseInt(metadata.stripe_fee_cents || "0"),
-                            currency: "CAD",
-                            paymentIntentId,
-                            status: fallbackIsManualCapture ? "authorized" : "succeeded",
-                            stripeStatus: fallbackIsManualCapture ? "authorized" : "succeeded",
-                            metadata: {
-                                checkout_session_id: sessionId,
-                                booking_id: newBooking.id.toString(),
-                                created_via: "fallback_endpoint",
-                                tax_cents: metadata.tax_cents || "0",
-                                tax_rate_percent: metadata.tax_rate_percent || "0",
-                            },
-                        }, db);
-                        
-                        logger.info(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
-                    }
-                }
-            } catch (ptError) {
-                logger.warn(`[Fallback] Could not create payment_transactions:`, ptError);
-            }
-            
-            // Send manager notification
-            try {
-                const [kitchen] = await db
-                    .select({ name: kitchens.name, locationId: kitchens.locationId })
-                    .from(kitchens)
-                    .where(eq(kitchens.id, kitchenIdFromMeta))
-                    .limit(1);
-                
-                if (kitchen) {
-                    const [location] = await db
-                        .select({ 
-                            name: locations.name,
-                            address: locations.address,
-                            managerId: locations.managerId,
-                            notificationEmail: locations.notificationEmail,
-                            timezone: locations.timezone,
-                            managerLocale: users.preferredLocale,
-                        })
-                        .from(locations)
-                        .leftJoin(users, eq(users.id, locations.managerId))
-                        .where(eq(locations.id, kitchen.locationId))
-                        .limit(1);
-                    
-                    if (location && location.managerId) {
-                        const [chef] = await db
-                            .select({ username: users.username })
-                            .from(users)
-                            .where(eq(users.id, chefIdFromMeta))
-                            .limit(1);
-                        
-                        const chefName = chef?.username || "Chef";
-                        
-                        // Send manager email
-                        let managerEmailAddress = location.notificationEmail;
-                        if (!managerEmailAddress) {
-                            const [manager] = await db
-                                .select({ username: users.username })
-                                .from(users)
-                                .where(eq(users.id, location.managerId))
-                                .limit(1);
-                            managerEmailAddress = manager?.username;
-                        }
-                        
-                        if (managerEmailAddress) {
-                            const { sendEmail, generateBookingNotificationEmail, getBookingResponseDeadline } = await import('../email');
-                            const managerEmail = generateBookingNotificationEmail({
-                                managerEmail: managerEmailAddress,
-                                chefName,
-                                kitchenName: kitchen.name,
-                                bookingDate,
-                                startTime,
-                                endTime,
-                                specialNotes: specialNotes || undefined,
-                                timezone: 'America/St_Johns',
-                                locationName: location.name,
-                                bookingId: newBooking.id,
-                                referenceCode: newBooking.referenceCode,
-                                responseDeadline: await getBookingResponseDeadline(newBooking),
-                                totalCents: session.amount_total ?? undefined,
-                                paymentState: fallbackPaymentStatus === "authorized" ? "held" : "paid",
-                                locationAddress: location.address || undefined,
-                                locale: location.managerLocale,
-                                operatingWindowStartTime: newBooking.operatingWindowStartTime,
-                                selectedSlots: newBooking.selectedSlots,
-                            });
-                            await sendEmail(managerEmail);
-                            logger.info(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
-                        }
-                        
-                        // Create in-app notification
-                        const { notificationService } = await import('../services/notification.service');
-                        await notificationService.notifyNewBooking({
-                            managerId: location.managerId,
-                            locationId: kitchen.locationId,
-                            bookingId: newBooking.id,
-                            chefName,
-                            kitchenName: kitchen.name,
-                            bookingDate: bookingDate.toISOString().split("T")[0],
-                            startTime,
-                            endTime,
-                        });
-                    }
-                }
-            } catch (notifyError) {
-                logger.error(`[Fallback] Error sending notifications:`, notifyError);
-            }
-            
-            // Fetch the created booking
-            [booking] = await db
-                .select()
-                .from(kitchenBookings)
-                .where(eq(kitchenBookings.id, newBooking.id))
-                .limit(1);
-        }
-
-        if (!booking) {
-            // Log why fallback didn't trigger
-            logger.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
-                paymentStatus: session.payment_status,
-                metadataType: session.metadata?.type,
-                hasMetadata: !!session.metadata,
-                paymentIntentId,
-                chefId,
-            });
-            return res.status(404).json({ 
-                error: "Booking not found for this session",
-                debug: {
-                    paymentStatus: session.payment_status,
-                    metadataType: session.metadata?.type,
-                }
-            });
-        }
-
-        // Get kitchen details
-        const [kitchen] = await db
-            .select({ name: kitchens.name })
-            .from(kitchens)
-            .where(eq(kitchens.id, booking.kitchenId))
-            .limit(1);
-
-        res.json({
-            ...await chefBookingInstructions(booking),
-            kitchenName: kitchen?.name || 'Kitchen',
-        });
-    } catch (error: any) {
-        logger.error("Error fetching booking by session:", error);
-        res.status(500).json({ error: error.message || "Failed to fetch booking" });
+        const { readKitchenCheckoutResult } = await import('../services/kitchen-checkout-incidents');
+        const result = await readKitchenCheckoutResult(req.params.sessionId, req.neonUser!.id);
+        if (!result) return res.status(404).json({ error: "Checkout not found for this account" });
+        return res.json(result);
+    } catch (error) {
+        logger.error("Error reading checkout result:", error);
+        return res.status(503).json({ error: "Checkout verification is temporarily unavailable. Keep your checkout reference and contact Local Cooks." });
     }
 });
 

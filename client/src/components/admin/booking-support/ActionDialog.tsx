@@ -176,6 +176,13 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
       <form onSubmit={(e) => { e.preventDefault(); void send(false); }} className="flex min-h-0 flex-1 flex-col">
         <AppDialogBody className="space-y-5">
           {type === 'release_payout' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{t('bsReleasePayoutHelp')}</p>}
+          {type === 'finish_kitchen_refund' && (
+            <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-sm">
+              <p>{t('bsFinishKitchenRefundHelp')}</p>
+              <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={form.fundByLocalCooks} disabled={readOnly} onChange={(e) => set("fundByLocalCooks", e.target.checked)} />{t('bsFundKitchenRefund')}</label>
+            </div>
+          )}
+          {type === 'resolve_money_attempt' && <p className="rounded-lg border bg-muted/30 p-3 text-sm">{t('bsResolveMoneyAttemptHelp')}</p>}
           {serverError && (
             <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm" data-testid="server-error">
               <p>{serverError}</p>
@@ -376,7 +383,7 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
           </Field>
 
           {spec.notifies && (
-            <p className="flex items-start gap-2 text-sm text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{t("bsBothNotified")}</p>
+            <p className="flex items-start gap-2 text-sm text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{t(spec.notifies === "chef" ? "bsChefNotified" : spec.notifies === "kitchen" ? "bsKitchenNotified" : "bsBothNotified")}</p>
           )}
         </AppDialogBody>
         <AppDialogFooter>

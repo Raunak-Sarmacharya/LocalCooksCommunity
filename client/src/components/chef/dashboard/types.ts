@@ -17,6 +17,8 @@ export type KitchenApplicationWithLocation = Omit<ChefKitchenApplication, 'locat
    * `undefined` means the server did not say — test `=== false`, never falsiness.
    */
   locationListed?: boolean;
+  /** The server's booking-eligibility verdict (renewal and access-ended states included); same shape as the applications hook. */
+  bookingEligibility?: { canBook: boolean; status: string; message: string; actionUrl?: string };
 };
 
 // Public kitchen data for enriching cards

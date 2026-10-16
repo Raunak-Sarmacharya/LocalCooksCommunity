@@ -444,7 +444,7 @@ describe("the widget survives the collapsed rail", () => {
     expect(source).toMatch(/group-data-\[collapsible=icon\]:inset-0/);
     expect(source).toMatch(/group-data-\[collapsible=icon\]:m-auto/);
     // ...which needs the launcher to be a containing block.
-    expect(source).toMatch(/"relative h-auto items-center/);
+    expect(source).toMatch(/"relative h-auto min-h-12 items-center/);
   });
 
   it("never paints the ring's TRACK with `muted`", () => {

@@ -2,9 +2,10 @@
 import { db } from "../../db";
 import {
     storageListings,
-    equipmentListings
+    equipmentListings,
+    equipmentBookings
 } from "@shared/schema";
-import { asc, eq, getTableColumns } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
 import { storageListingAwaitingRemoval } from '../../services/booking-linked-cancellation';
 import { InsertStorageListing, InsertEquipmentListing, StorageListing, EquipmentListing } from "./inventory.types";
 
@@ -112,7 +113,7 @@ export class InventoryRepository {
         const rows = await db
             .select()
             .from(equipmentListings)
-            .where(eq(equipmentListings.kitchenId, kitchenId))
+            .where(and(eq(equipmentListings.kitchenId, kitchenId), isNull(equipmentListings.archivedAt)))
             .orderBy(asc(equipmentListings.id));
         return rows.map(row => this.mapEquipmentToDTO(row));
     }
@@ -127,7 +128,8 @@ export class InventoryRepository {
 
     async updateEquipmentListing(id: number, updates: Partial<EquipmentListing>) {
         // Sanitize updates: remove readonly/auto-managed fields
-        const { id: _id, createdAt, updatedAt, ...safeUpdates } = updates as any;
+        // archivedAt is only ever set by archiveEquipmentListing; a client edit cannot restore or archive a listing.
+        const { id: _id, createdAt, updatedAt, archivedAt: _archivedAt, ...safeUpdates } = updates as any;
 
         const [updated] = await db
             .update(equipmentListings)
@@ -142,6 +144,26 @@ export class InventoryRepository {
 
     async deleteEquipmentListing(id: number) {
         return db.delete(equipmentListings).where(eq(equipmentListings.id, id));
+    }
+
+    /** `open` counts bookings that are still live (not cancelled or completed), whatever their date. */
+    async getEquipmentBookingUsage(listingId: number) {
+        const [row] = await db
+            .select({
+                total: sql<number>`count(*)::int`,
+                open: sql<number>`(count(*) FILTER (WHERE ${equipmentBookings.status} IN ('pending', 'confirmed', 'cancellation_requested')))::int`,
+            })
+            .from(equipmentBookings)
+            .where(eq(equipmentBookings.equipmentListingId, listingId));
+        return { total: row?.total ?? 0, open: row?.open ?? 0 };
+    }
+
+    /** Hidden from manager lists and chef booking; the row stays so past receipts and invoices keep resolving it. */
+    async archiveEquipmentListing(id: number) {
+        await db
+            .update(equipmentListings)
+            .set({ archivedAt: new Date(), isActive: false, updatedAt: new Date() })
+            .where(eq(equipmentListings.id, id));
     }
 }
 

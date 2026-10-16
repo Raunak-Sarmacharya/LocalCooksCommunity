@@ -5,14 +5,14 @@ export const REQUEST_SOURCES: RequestSource[] = ["call", "message", "email", "in
 
 export type FieldId =
   | "items" | "quote" | "codeTarget" | "arrival" | "visit" | "actualAt" | "attendance"
-  | "claim" | "amount" | "resend" | "flag" | "message";
+  | "claim" | "amount" | "resend" | "flag" | "message" | "fundKitchenRefund";
 
 type Spec = {
   acting: ActingFor[];
   reasons: string[];
   fields: FieldId[];
-  /** Both parties get a notice (and an optional shared message is offered). */
-  notifies: boolean;
+  /** Who is told: both sides (each in its own words), the chef only, the kitchen only, or nobody (internal). */
+  notifies: false | "both" | "chef" | "kitchen";
 };
 
 const M: ActingFor[] = ["manager"];
@@ -20,24 +20,27 @@ const C: ActingFor[] = ["chef"];
 const ANY: ActingFor[] = ["local_cooks", "manager", "chef"];
 
 export const ACTION_SPECS: Record<SupportActionType, Spec> = {
-  confirm_for_manager: { acting: M, reasons: ["manager_asked", "no_response_from_manager", "other"], fields: ["items"], notifies: true },
-  decline_for_manager: { acting: M, reasons: ["manager_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: true },
-  release_hold_for_chef: { acting: C, reasons: ["customer_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: true },
-  replay_payment_decision: { acting: ANY, reasons: ["payment_problem", "other"], fields: [], notifies: true },
-  cancel_kitchen_caused: { acting: M, reasons: ["kitchen_could_not_serve", "safety_concern", "other"], fields: [], notifies: true },
-  request_cancellation_for_chef: { acting: C, reasons: ["customer_asked", "other"], fields: ["message"], notifies: true },
-  accept_cancellation_for_manager: { acting: M, reasons: ["manager_asked", "other"], fields: ["quote"], notifies: true },
-  issue_visit_code: { acting: M, reasons: ["arrival_problem", "other"], fields: ["codeTarget"], notifies: true },
-  set_arrival_mode: { acting: M, reasons: ["arrival_problem", "manager_asked", "other"], fields: ["arrival", "message"], notifies: true },
-  record_assisted_arrival: { acting: M, reasons: ["arrival_problem", "manager_asked", "other"], fields: ["visit", "actualAt", "message"], notifies: true },
-  correct_attendance: { acting: ANY, reasons: ["record_correction", "manager_asked", "customer_asked", "other"], fields: ["visit", "attendance", "message"], notifies: true },
-  clear_checkout_for_manager: { acting: M, reasons: ["manager_asked", "other"], fields: ["visit", "message"], notifies: true },
-  report_issue_for_manager: { acting: M, reasons: ["manager_asked", "safety_concern", "other"], fields: ["visit", "claim", "message"], notifies: true },
-  goodwill_refund: { acting: ["local_cooks"], reasons: ["service_recovery", "payment_problem", "customer_asked", "other"], fields: ["amount"], notifies: true },
+  confirm_for_manager: { acting: M, reasons: ["manager_asked", "no_response_from_manager", "other"], fields: ["items"], notifies: "both" },
+  decline_for_manager: { acting: M, reasons: ["manager_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: "both" },
+  release_hold_for_chef: { acting: C, reasons: ["customer_asked", "kitchen_could_not_serve", "other"], fields: [], notifies: "both" },
+  replay_payment_decision: { acting: ANY, reasons: ["payment_problem", "other"], fields: [], notifies: "both" },
+  cancel_kitchen_caused: { acting: M, reasons: ["kitchen_could_not_serve", "safety_concern", "other"], fields: [], notifies: "both" },
+  refund_captured_request: { acting: M, reasons: ["payment_problem", "customer_asked", "other"], fields: [], notifies: "both" },
+  finish_kitchen_refund: { acting: M, reasons: ["payment_problem", "internal_review", "other"], fields: ["fundKitchenRefund"], notifies: "chef" },
+  request_cancellation_for_chef: { acting: C, reasons: ["customer_asked", "other"], fields: ["message"], notifies: "both" },
+  accept_cancellation_for_manager: { acting: M, reasons: ["manager_asked", "other"], fields: ["quote"], notifies: "both" },
+  issue_visit_code: { acting: M, reasons: ["arrival_problem", "other"], fields: ["codeTarget"], notifies: "both" },
+  set_arrival_mode: { acting: M, reasons: ["arrival_problem", "manager_asked", "other"], fields: ["arrival", "message"], notifies: "both" },
+  record_assisted_arrival: { acting: M, reasons: ["arrival_problem", "manager_asked", "other"], fields: ["visit", "actualAt", "message"], notifies: "both" },
+  correct_attendance: { acting: ANY, reasons: ["record_correction", "manager_asked", "customer_asked", "other"], fields: ["visit", "attendance", "message"], notifies: "both" },
+  clear_checkout_for_manager: { acting: M, reasons: ["manager_asked", "other"], fields: ["visit", "message"], notifies: "both" },
+  report_issue_for_manager: { acting: M, reasons: ["manager_asked", "safety_concern", "other"], fields: ["visit", "claim", "message"], notifies: "both" },
+  goodwill_refund: { acting: ["local_cooks"], reasons: ["service_recovery", "payment_problem", "customer_asked", "other"], fields: ["amount"], notifies: "chef" },
   resend_notice: { acting: ANY, reasons: ["notice_not_received", "other"], fields: ["resend"], notifies: false },
   open_flag: { acting: ANY, reasons: ["internal_review", "payment_problem", "safety_concern", "other"], fields: [], notifies: false },
   resolve_flag: { acting: ANY, reasons: ["internal_review", "other"], fields: ["flag"], notifies: false },
-  release_payout: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: [], notifies: true },
+  release_payout: { acting: ["local_cooks"], reasons: ["internal_review", "other"], fields: [], notifies: "kitchen" },
+  resolve_money_attempt: { acting: ["local_cooks"], reasons: ["payment_problem", "internal_review", "other"], fields: [], notifies: false },
 };
 
 export type ActionForm = {
@@ -48,7 +51,7 @@ export type ActionForm = {
   visitId: string; targetKey: string; allTargets: boolean; mode: "staffed" | "self";
   actualAt: string; attendanceAction: "report_no_show" | "report_attended" | "withdraw_attendance"; confirmsChefAbsent: boolean;
   claimTitle: string; claimDescription: string; claimedAmount: string;
-  eventId: string; recipientId: string; force: boolean; flagId: string;
+  eventId: string; recipientId: string; force: boolean; flagId: string; fundByLocalCooks: boolean;
 };
 
 export const pendingItems = (c: SupportCase) => [
@@ -72,7 +75,7 @@ export function initialForm(type: SupportActionType, c: SupportCase): ActionForm
     visitId: visit ? String(visit.id) : "", targetKey: targets[0]?.targetKey ?? "", allTargets: false, mode: "staffed",
     actualAt: "", attendanceAction: "report_attended", confirmsChefAbsent: false,
     claimTitle: "", claimDescription: "", claimedAmount: "",
-    eventId: "", recipientId: "", force: false, flagId: c.flags[0] ? String(c.flags[0].id) : "",
+    eventId: "", recipientId: "", force: false, flagId: c.flags[0] ? String(c.flags[0].id) : "", fundByLocalCooks: false,
   };
 }
 
@@ -198,6 +201,7 @@ export function buildActionRequest(
       if (!recipientId) errors.recipientId = "bsErrChooseRecipient"; else details.recipientId = recipientId;
       details.force = form.force;
     }
+    if (field === "fundKitchenRefund" && form.fundByLocalCooks) details.fundedByLocalCooks = true;
     if (field === "flag") {
       const flagId = parseInt(form.flagId, 10);
       if (!flagId) errors.flagId = "bsErrChooseFlag"; else details.flagId = flagId;

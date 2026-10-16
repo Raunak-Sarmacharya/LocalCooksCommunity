@@ -942,7 +942,13 @@ export function EquipmentListingContent({
       toast({ title: mt("success"), description: mt("equipmentListingDeletedSuccessfully") });
       loadAllKitchenListings(kitchens);
     } catch (error: any) {
-      toast({ title: mt("error"), description: error.message || "Failed to delete listing", variant: "destructive" });
+      // 409: upcoming bookings still use this equipment. Say what to do instead of showing a status line.
+      const inUse = /\b409\b/.test(String(error?.message));
+      toast({
+        title: mt("error"),
+        description: inUse ? mt("equipmentListingHasUpcomingBookings") : error.message || "Failed to delete listing",
+        variant: "destructive",
+      });
     } finally {
       // The refetch is awaited before notifying so any other reader (the onboarding
       // review) sees the row gone, not the previous list.

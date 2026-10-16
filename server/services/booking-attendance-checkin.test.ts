@@ -5,7 +5,7 @@ import { kitchens, locations } from '@shared/schema';
 const state = vi.hoisted(() => ({
   rows: [] as any[][], updates: [] as any[], attempts: [] as any[], conditions: [] as any[],
   selects: [] as any[], joins: [] as any[], locks: [] as any[], won: true, duties: {} as any,
-  capture: vi.fn(), queue: vi.fn(), deliver: vi.fn(),
+  capture: vi.fn(), queue: vi.fn(), deliver: vi.fn(), gate: undefined as any,
 }));
 vi.mock('../db', () => {
   const db: any = {
@@ -37,6 +37,12 @@ vi.mock('./visit-duties', () => ({ kitchenDuties: async () => state.duties,
   validateCurrentKitchenSubmission: vi.fn(async () => {}), captureKitchenDuties: state.capture }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.queue, deliverBookingLifecycleEvents: state.deliver }));
 vi.mock('./checkin-checkout-checklist', () => ({}));
+// A verified staff code is a gate result; by default the real (legacy, no challenge row) path runs.
+vi.mock('./visit-code-challenge', async importActual => {
+  const actual: any = await importActual();
+  return { ...actual, verifyArrivalCode: async (input: any) => state.gate ?? actual.verifyArrivalCode(input),
+    gateArrivalInTx: async (tx: any, input: any) => state.gate ?? actual.gateArrivalInTx(tx, input), consumeForArrival: async (tx: any, gate: any, input: any) => state.gate ? undefined : actual.consumeForArrival(tx, gate, input) };
+});
 import { requestKitchenCheckin, requestKitchenCheckout } from './kitchen-checkout-service';
 
 const booking = { id: 10, chefId: 3, kitchenId: 4, locationId: 5, bookingDate: new Date('2026-10-02T00:00:00Z'),
@@ -215,6 +221,14 @@ describe('single/contiguous kitchen timezone (mocked DB and delivery, real time 
     const guard = new PgDialect().sqlToQuery(state.conditions[0]);
     expect(guard.params).toEqual(expect.arrayContaining([10, booking.updatedAt.toISOString(), 'confirmed', action === 'arrival' ? 'not_checked_in' : 'checked_in']));
     expect(state.capture).not.toHaveBeenCalled(); expect(state.queue).not.toHaveBeenCalled(); expect(state.deliver).not.toHaveBeenCalled();
+  });
+  it('records a verified staff code as a code arrival, not self check-in', async () => {
+    vi.setSystemTime(new Date('2026-10-02T10:00:00Z'));
+    state.gate = { kind: 'ok', challenge: { id: 1, revision: 1 }, method: 'code' };
+    prepare({ checkinStatus: 'not_checked_in' });
+    expect((await requestKitchenCheckin(10, 3, 'self', undefined, undefined, undefined, '123456')).success).toBe(true);
+    expect(state.updates[0]).toMatchObject({ checkedInMethod: 'code' });
+    state.gate = undefined;
   });
   it('does not erase an existing no-show through chef arrival', async () => {
     prepare({ checkinStatus: 'no_show' }); expect((await requestKitchenCheckin(10, 3)).success).toBe(false); noWrites();

@@ -36,7 +36,7 @@ export async function processExpiredCancellationRequests(): Promise<{ processed:
                     lte(kitchenBookings.cancellationRequestedAt, cutoffDate),
                 )
             ).orderBy(kitchenBookings.id).limit(workerBatch());
-        await workerPageEnd('cancelBookings', expiredRequests.length);
+        await workerPageEnd('cancelBookings', expiredRequests.length, workerBatch());
 
         results.processed = expiredRequests.length;
 

@@ -1,3 +1,5 @@
+import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
+import { BookingProblemReport } from "./BookingProblemReport"
 /**
  * VisitCodeField
  *
@@ -34,13 +36,14 @@ interface VisitCodeFieldProps {
   value: string
   onChange: (digits: string) => void
   problem: VisitCodeProblem | null
+  canReportProblem?: boolean
   disabled?: boolean
   bookingId: number
   chefId: number
   kitchenName: string
 }
 
-export function VisitCodeField({ gate, state, value, onChange, problem, disabled, bookingId, chefId, kitchenName }: VisitCodeFieldProps) {
+export function VisitCodeField({ gate, state, value, onChange, problem, disabled, canReportProblem, bookingId, chefId, kitchenName }: VisitCodeFieldProps) {
   const { t } = useTranslation("chef")
   const id = useId()
   const [chat, setChat] = useState<{ conversationId: string; draft: string } | null>(null)
@@ -93,7 +96,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
     </>
   )
 
-  const noAccess = <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", { defaultValue: "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen." })}</p>
+  const noAccess = <div><p className="text-sm text-muted-foreground">{t("kciAcNoAccess", { defaultValue: "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen." })}</p>{canReportProblem && <BookingProblemReport bookingId={bookingId} initialCategory="access" />}</div>
 
   if (gate === "self") {
     return (
@@ -113,7 +116,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
         {gate === "locked" && <p className="text-sm text-muted-foreground">{t("kciVcLocked", { defaultValue: "Too many incorrect check-in codes. Your check-in details are kept while you wait." })}</p>}
         {noAccess}
         {message}
-        {gate === "locked" && <a className="flex min-h-11 items-center text-sm underline underline-offset-4" href="mailto:support@localcooks.ca">{t("kciAcGetHelp", { defaultValue: "Get help from Local Cooks" })}</a>}
+        {gate === "locked" && <a className="flex min-h-11 items-center text-sm underline underline-offset-4" href={localCooksSupportHref({ bookingId, role: "chef", situation: "Visit code locked" })}>{t("kciAcGetHelp", { defaultValue: "Get help from Local Cooks" })}</a>}
       </div>
     )
   }

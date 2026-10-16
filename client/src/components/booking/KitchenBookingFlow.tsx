@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet } from '@/lib/api';
 import { CancellationPolicySummary, type PolicyResponse } from './CancellationPolicySummary';
-import { CheckoutCancellationDisclosure } from './CheckoutCancellationDisclosure';
+import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from './CheckoutCancellationDisclosure';
+import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
 import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
@@ -388,11 +389,26 @@ export default function KitchenBookingFlow({
 
   // State
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
+  const [bookableThrough, setBookableThrough] = useState<string | null>(null);
+  useEffect(() => {
+    setBookableThrough(null);
+    if (!selectedKitchen?.id) return;
+    let stale = false;
+    void apiGet(`/chef/kitchens/${selectedKitchen.id}/policy`).then(policy => {
+      if (!stale && typeof policy?.bookableThrough === 'string') setBookableThrough(policy.bookableThrough);
+    }).catch(() => {});
+    return () => { stale = true; };
+  }, [selectedKitchen?.id]);
   const { t: policyT } = useTranslation('booking');
   const { data: acceptedPolicy } = useQuery<PolicyResponse>({ queryKey: ['cancellation-policy', selectedKitchen?.id], enabled: !!selectedKitchen?.id,
     queryFn: async () => { const result = await apiGet(`/kitchens/${selectedKitchen.id}/cancellation-policy`); if (!result?.policy || !result?.settings) throw Error(policyT('cpError')); return result; } });
-  const [policyAcknowledged, setPolicyAcknowledged] = useState(false);
-  useEffect(() => setPolicyAcknowledged(false), [selectedKitchen?.id, acceptedPolicy?.policy.version]);
+  // #52: no checkbox. Selecting Checkout under the consent line is the acceptance; the policy link opens these details.
+  const [policyDetailsOpen, setPolicyDetailsOpen] = useState(false);
+  useEffect(() => setPolicyDetailsOpen(false), [selectedKitchen?.id, acceptedPolicy?.policy.version]);
+  const showPolicyDetails = () => {
+    setPolicyDetailsOpen(true);
+    requestAnimationFrame(() => document.getElementById('checkout-cancellation-details')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
+  };
   const [currentStep, setCurrentStep] = useState<BookingStep>("calendar");
   /** When true, date was prefilled — hide Date from the step rail and start after it. */
   const [hideDateStep, setHideDateStep] = useState(false);
@@ -1012,7 +1028,7 @@ export default function KitchenBookingFlow({
   const isDayAvailable = (date: Date) => {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
-    if (d < today) return false;
+    if (d < today || bookableThrough && toLocalDateString(d) > bookableThrough) return false;
     return dateAvailability[toLocalDateString(d)] === true;
   };
 
@@ -1167,7 +1183,7 @@ export default function KitchenBookingFlow({
   // Redirect to Stripe Checkout
   const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
-    if (!acceptedPolicy || !policyAcknowledged) { setCheckoutError(policyT('cpAck')); return; }
+    if (!acceptedPolicy) { setCheckoutError(policyT('cpError')); return; }
     if (bookingBlocked) return;
     if (!requireValidSelection()) return;
     setCheckoutError(null);
@@ -1220,8 +1236,10 @@ export default function KitchenBookingFlow({
         credentials: 'include',
         body: JSON.stringify({
           kitchenId: selectedKitchen.id,
-          cancellationPolicyAccepted: policyAcknowledged,
+          // Selecting Checkout under the consent line is the acceptance (clickwrap); the server records the disclosure shown.
+          cancellationPolicyAccepted: true,
           cancellationPolicyVersion: acceptedPolicy.policy.version,
+          cancellationDisclosureVersion: CANCELLATION_DISCLOSURE_VERSION,
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
@@ -1425,6 +1443,7 @@ export default function KitchenBookingFlow({
                 <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
               </div>
             )}
+            {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
             <UICalendar
               mode="single"
               numberOfMonths={2}
@@ -1838,7 +1857,8 @@ export default function KitchenBookingFlow({
                         <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
                       </div>
                     )}
-                    <UICalendar
+                    {bookableThrough && <p className="text-sm text-muted-foreground">{t("bookingBookableThrough", { defaultValue: "Bookable up to {date}", date: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || "en-CA", { dateStyle: "medium" }).format(new Date(`${bookableThrough}T12:00:00`)) })}</p>}
+            <UICalendar
                       mode="single"
                       selected={selectedDate}
                       onSelect={(date) => {
@@ -2203,7 +2223,7 @@ export default function KitchenBookingFlow({
       return (
         <div className="space-y-3">
           <div className="lg:hidden">{renderPriceBreakdown("mobile")}</div>
-          {grandTotal > 0 && <CheckoutCancellationDisclosure policy={acceptedPolicy} startAt={policyStartAt} acknowledged={policyAcknowledged} onAcknowledged={setPolicyAcknowledged} />}
+          {grandTotal > 0 && <CheckoutCancellationDisclosure policy={acceptedPolicy} startAt={policyStartAt} detailsOpen={policyDetailsOpen} onDetailsOpenChange={setPolicyDetailsOpen} detailsId="checkout-cancellation-details" />}
           <div className="grid grid-cols-2 gap-3 sm:flex [&>button:first-child]:col-span-2 [&>button:first-child]:sm:col-auto">
             {cancelButton}
             {previousButton}
@@ -2216,7 +2236,7 @@ export default function KitchenBookingFlow({
                   grandTotal > 0 ? redirectToStripeCheckout() : handleFreeBookingSubmit()
                 )
               }
-              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking || grandTotal > 0 && (!acceptedPolicy || !policyAcknowledged)}
+              disabled={bookingBlocked || createBooking.isPending || isRedirectingToCheckout || isProcessingBooking || grandTotal > 0 && !acceptedPolicy}
             >
               {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
                 <>
@@ -2236,6 +2256,7 @@ export default function KitchenBookingFlow({
               )}
             </Button>
           </div>
+          {grandTotal > 0 && acceptedPolicy && <CheckoutConsentNotice buttonLabel={t("sheetCheckoutButton", "Checkout")} onShowPolicy={showPolicyDetails} />}
         </div>
       );
     }

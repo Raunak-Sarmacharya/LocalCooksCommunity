@@ -51,8 +51,8 @@ const toConfirm = async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: /^Continue$/ })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: /^Continue$/ }));
   expect(screen.getByRole('tab', { name: /Confirm/ })).toHaveAttribute('aria-selected', 'true');
-  const acknowledgement = screen.queryByRole('checkbox', { name: 'cpAck' });
-  if (acknowledgement) { await waitFor(() => expect(acknowledgement).toBeEnabled()); fireEvent.click(acknowledgement); }
+  // #52: no acceptance checkbox; Checkout enables once the published policy has loaded.
+  await waitFor(() => expect(screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ })).toBeEnabled());
 };
 const submit = () => screen.getByRole('button', { name: /^(Checkout|Confirm Booking)$/ });
 
@@ -144,5 +144,19 @@ describe('checkout failures are never silent', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => { if (url.includes('/api/chef/bookings/checkout')) throw new TypeError('Failed to fetch'); return original(url); }));
     fireEvent.click(submit());
     await waitFor(() => expect(screen.getAllByRole('alert').some(alert => alert.textContent === 'We could not reach Local Cooks. Check your connection and try again.')).toBe(true));
+  });
+});
+
+describe('cancellation consent is given by selecting Checkout', () => {
+  it('has no checkbox, enables Checkout, shows the consent line and sends the acceptance evidence with the v3 disclosure', async () => {
+    const bodies: any[] = [];
+    const original = global.fetch as any;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: any) => { if (url.includes('/api/chef/bookings/checkout')) bodies.push(JSON.parse(init.body)); return original(url, init); }));
+    await open(); await toConfirm();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByTestId('checkout-consent')).toBeVisible();
+    fireEvent.click(submit());
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ cancellationPolicyAccepted: true, cancellationPolicyVersion: 1, cancellationDisclosureVersion: 'food-corridor-v3' });
   });
 });

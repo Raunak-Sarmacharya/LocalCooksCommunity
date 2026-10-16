@@ -54,7 +54,8 @@ describe('booking access boundaries (mocked role gates and services)', () => {
   it.each(['/bookings/:id/confirm-checkin', '/bookings/:id/clear-kitchen-checkout', '/bookings/:id/kitchen-checkout-claim'])('rejects wrong-kitchen %s before manufacturing visits', async path => {
     mocks.permission.mockResolvedValue(false);
     const res = response(); await route(managerRouter, path).at(-1).handle({ neonUser: { id: 7 }, params: { id: '10' }, body: { claimTitle: 'Draft', claimDescription: 'Description', claimedAmountCents: 100 } }, res);
-    expect(res.status).toHaveBeenCalledWith(404); expect(mocks.visits).not.toHaveBeenCalled();
+    // confirm-checkin is retired: 410 for everyone, without reading or manufacturing anything.
+    expect(res.status).toHaveBeenCalledWith(path === '/bookings/:id/confirm-checkin' ? 410 : 404); expect(mocks.visits).not.toHaveBeenCalled();
   });
   it('rejects a stale manager decision before cascading linked inventory', async () => {
     mocks.booking.mockResolvedValue({ id: 10, kitchenId: 1, status: 'confirmed', updatedAt: new Date('2026-01-01') });

@@ -1,3 +1,4 @@
+import { bookingIntervalsConflict, type InstantInterval } from './booking-occupancy';
 import { matchingLocalInstants } from './booking-dst';
 import { absoluteOperatingSlotInterval, calendarDateForOperatingTime, minutesInOperatingWindow, timeToMinutes, type OperatingSlot } from './operating-hours';
 import { roundRatio } from './cancellation-policy';
@@ -9,7 +10,11 @@ export type ExtensionKind = 'request' | 'offer' | 'extra_time' | 'early_start';
 export type ExtensionStatus = 'requested' | 'offered' | 'approved' | 'declined' | 'expired' | 'paid' | 'cancelled' | 'disputed';
 export type ExtensionQuote = { subtotalCents: number; taxCents: number; commissionCents: number; amountCents: number; kitchenGrossCents: number };
 export type ExtensionOption = ExtensionQuote & { minutes: number; endTime: string; endAt: string };
-export type ExtensionOperation = { action: 'authorize' | 'pay' | 'capture' | 'release'; state: 'pending' | 'done'; key: string; target?: 'declined' | 'expired' | 'cancelled'; decidedAt: string };
+export type ExtensionOperation = { action: 'authorize' | 'pay' | 'capture' | 'release' | 'refund'; state: 'pending' | 'done'; key: string; target?: 'declined' | 'expired' | 'cancelled'; decidedAt: string;
+  checkout?: boolean; returnUrl?: string; customerId?: string | null;
+  attemptKey?: string;
+  retiredAttempts?: Array<{ attemptKey: string; paymentIntentId: string | null; checkoutSessionId: string | null }>;
+  capturedAt?: string; capturedAmountCents?: number; chargeId?: string | null };
 const cents = (value: number) => { if (!Number.isSafeInteger(value) || value < 0) throw Error('Whole nonnegative cents are required'); return value; };
 
 /** Tax and service-fee ratios are frozen from the parent charge, matching its separate-transfer split. */
@@ -39,6 +44,7 @@ export const validExtensionMinutes = (minutes: unknown): minutes is number =>
 export function sessionExtensionOptions(input: {
   operatingDate: string; windowStartTime: string; windowEndTime: string; endTime: string; endAt: string; timezone: string;
   durationMinutes: number; maxMinutes: number | null; occupied: Array<{ start: number; end: number }>;
+  turnoverOccupied?: InstantInterval[];
   hourlyRateCents: number; ratios: Parameters<typeof extensionPrice>[2];
 }): ExtensionOption[] {
   const end = minutesInOperatingWindow(input.endTime, input.windowStartTime);
@@ -55,6 +61,7 @@ export function sessionExtensionOptions(input: {
     if (matches.length !== 1 || matches[0] - oldEndMs !== minutes * 60_000) break;
     const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime: input.endTime, endTime }, input.windowStartTime);
     if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) break;
+    if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: oldEndMs, end: matches[0] }, 60))) break;
     options.push({ minutes, endTime, endAt: new Date(matches[0]).toISOString(), ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
   }
   return options;
@@ -99,10 +106,12 @@ export function inExtensionWindow(now: Date | number, endAt: string) {
   return Number.isFinite(end) && time >= end - EXTENSION_REQUEST_WINDOW_MINUTES * 60_000 && time < end;
 }
 /** Extra-time charges may be sent within 24 hours of the later of the recorded checkout and the booked end. */
-export function extraTimeChargeOpen(now: Date, checkoutAt: string | Date | null | undefined, endAt: string) {
+/** Overstay within the service-end grace (the same grace the closeout clock uses; 15 min by default) is never charged —
+ * Turo: no charge up to 29 min late; Peerspace bills overtime in 30-min blocks. Past the grace, blocks count from the booked end. */
+export function extraTimeChargeOpen(now: Date, checkoutAt: string | Date | null | undefined, endAt: string, graceMinutes = 0) {
   if (!checkoutAt) return false;
   const checkout = new Date(checkoutAt).getTime(), end = Date.parse(endAt);
-  return checkout > end && now.getTime() >= checkout && now.getTime() <= Math.max(checkout, end) + 24 * 3600_000;
+  return checkout > end + Math.max(0, graceMinutes) * 60_000 && now.getTime() >= checkout && now.getTime() <= Math.max(checkout, end) + 24 * 3600_000;
 }
 
 /** Early starts: manager-only, from 2 hours before the booked start. The manager chooses Free or Charge. */
@@ -125,6 +134,7 @@ const clockOf = (minutes: number) => { const normalized = ((minutes % 1440) + 14
 export function earlyStartOptions(input: {
   operatingDate: string; windowStartTime: string; startTime: string; startAt: string; timezone: string;
   durationMinutes: number; maxMinutes: number | null; occupied: Array<{ start: number; end: number }>;
+  turnoverOccupied?: InstantInterval[];
   hourlyRateCents: number; ratios: Parameters<typeof extensionPrice>[2]; now?: Date | number;
 }): EarlyStartOption[] {
   const start = minutesInOperatingWindow(input.startTime, input.windowStartTime);
@@ -143,6 +153,7 @@ export function earlyStartOptions(input: {
     if (matches[0] + 15 * 60_000 <= nowMs) break;
     const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime, endTime: input.startTime }, input.windowStartTime);
     if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) break;
+    if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: matches[0], end: oldStartMs }, 60))) break;
     options.push({ minutes, startTime, startAt: new Date(matches[0]).toISOString(), defaultFree: defaultFree(minutes),
       billedMinutes: billedMinutes(minutes), startNow: matches[0] <= nowMs, ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
   }

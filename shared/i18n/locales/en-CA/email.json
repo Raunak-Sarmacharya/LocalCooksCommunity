@@ -227,7 +227,7 @@
   "managerCheckoutPayoutAction": "Finish inspection",
   "bookingManagerPayoutAfterCloseout": "Paid after the visit — as soon as you finish the inspection, or automatically 24 hours after it ends.",
   "payoutChefFallback": "the chef",
-  "bookingDownloadFinalInvoice": "Download your final invoice",
+  "bookingDownloadFinalInvoice": "See your receipts",
   "managerRunningLateTitle": "{chef} is running late",
   "managerRunningLateBody": "{chef} is running about {duration} late. Their booking still ends at {end}.",
   "managerRunningLateDuration15": "15 minutes",
@@ -281,7 +281,7 @@
   "sxSupportUnansweredTitle": "{reference}: extra-time charge unanswered",
   "sxSupportUnansweredBody": "{chef} hasn’t answered the extra-time charge of {amount} from {kitchen} for {billed} in 48 hours. No card was charged; please follow up.",
   "sxCardFailedChefTitle": "Your card couldn’t be used",
-  "sxCardFailedChefBody": "Your saved card couldn’t be used for the extra time at {kitchen}, so nothing was charged. Try again from your booking, or message {kitchen}.",
+  "sxCardFailedChefBody": "Your saved card was declined for {amount} of extra time at {kitchen}. Nothing was charged. Choose “Pay with another card” from your booking, or message {kitchen}.",
   "sxGrantedEndChefTitle": "{kitchen} gave you {duration}",
   "sxGrantedEndChefBody": "{kitchen} gave you {duration} at no charge. You have until {end}.",
   "sxGrantedStartChefTitle": "{kitchen} let you start at {end}",
@@ -304,7 +304,7 @@
   "ncSessionEndingBody": "Your booked time at {kitchen} ends at {time} ({zone}). {count, plural, =0 {Open your visit to check out.} one {Complete 1 departure task, then check out from your visit page.} other {Complete # departure tasks, then check out from your visit page.}}",
   "ncVisitCompleteTitle": "Visit complete · {kitchen}",
   "ncVisitCompleteGood": "{kitchen} checked the space — all good.",
-  "ncVisitCompleteInvoice": "Your final invoice is ready.",
+  "ncVisitCompleteInvoice": "Your receipts are on the booking. Your final statement will be ready once everything is settled.",
   "ncCancelledRefundTitle": "Booking cancelled · {amount} refund on its way",
   "ncCancelledNoRefundTitle": "Your booking is cancelled · no refund applies",
   "ncPayoutBooking": "Booking",
@@ -315,5 +315,9 @@
   "ncDurationHoursMinutes": "{hours, plural, one {1 hr} other {# hrs}} {minutes} min",
   "bookingNotIncluded": "Not included",
   "bookingNotIncludedChef": "{items} — the kitchen couldn’t provide it, so you weren’t charged for it.",
-  "bookingNotIncludedStaff": "{items} — declined at approval; the chef wasn’t charged for it."
+  "bookingNotIncludedStaff": "{items} — declined at approval; the chef wasn’t charged for it.",
+  "sxRefundedChefTitle": "Extra time refunded · {amount}",
+  "sxRefundedChefBody": "We couldn’t add the time at {kitchen}. You were refunded {amount}. Your booking time has not changed.",
+  "sxRequestExpiredChefTitle": "{kitchen} didn’t answer in time",
+  "sxRequestExpiredChefBody": "{kitchen} didn’t answer your request for {duration} in time, so it closed. Your card wasn’t charged. Your booking still ends at {originalEnd}."
 }

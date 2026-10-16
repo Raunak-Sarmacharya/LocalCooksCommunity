@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import { SmartImage } from '@/components/ui/smart-image';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DamageClaimCard } from '@/components/booking/DamageClaimCards';
-import { claimMoney, claimWhen, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimMoney, claimPayByDate, claimWhen, type DamageClaimCardData } from '@/lib/damage-claims';
 import type { BookingPillTone } from '@/lib/booking-header-state';
 import { cn } from '@/lib/utils';
 
@@ -163,7 +163,7 @@ export function NowClaimRows({ claims, manager, chefName, timezone, allowPrimary
         const disputable = ['submitted', 'under_review'].includes(claim.status);
         return <NowAttentionRow key={claim.id} data-testid="claim-attention">
           <p className="text-sm font-medium">{tb('dcV2ClaimTitle', { kitchen: kitchenOf(claim), amount: amount(claim) })}</p>
-          <p className="text-xs text-muted-foreground">{claim.upheldAt ? tc('bnClaimUpheldChef')
+          <p className="text-xs text-muted-foreground">{claim.upheldAt ? tc('bnClaimUpheldChef', { date: claimPayByDate(claim.upheldAt, zone(claim), i18n.language) })
             : claim.status === 'submitted' ? tb('dcV2RespondBy', { when: claimWhen(claim.deadline, zone(claim), i18n.language) }) : tb(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
           <div className="flex flex-wrap gap-2">
             {payInBarFor !== claim.id && <Button type="button" className="min-h-11" variant={primary ? 'default' : 'outline'} {...(primary ? { 'data-primary-action': 'true' } : {})}
@@ -194,7 +194,7 @@ export function NowClaimRows({ claims, manager, chefName, timezone, allowPrimary
     <Sheet open={!!open} onOpenChange={value => { if (!value) setOpen(null); }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader className="mb-4"><SheetTitle>{open ? tb(manager ? 'dcV2ViewingTitle' : 'dcV2ClaimTitle', { kitchen: kitchenOf(open), amount: amount(open) }) : ''}</SheetTitle><SheetDescription className="sr-only">{open ? amount(open) : ''}</SheetDescription></SheetHeader>
-        {open && <DamageClaimCard claim={open} manager={manager} onChanged={() => { setOpen(null); onChanged(); }} />}
+        {open && <DamageClaimCard claim={open} manager={manager} hideTitle onChanged={() => { setOpen(null); onChanged(); }} />}
       </SheetContent>
     </Sheet>
     {paying && <Suspense fallback={<p role="status" className="text-sm">{tb('dcV2Loading')}</p>}>

@@ -389,7 +389,7 @@ export async function scheduleAdvanceReminders(tx: Transaction, source: Reminder
       continue;
     }
     await tx.insert(emailLogs).values({ recipientEmail: reminder.email, recipientUserId: reminder.recipientId,
-      recipientRole: reminder.role, subject: reminder.kind === 'manager_decision' ? reminder.title : reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
+      recipientRole: reminder.role, subject: reminder.kind === 'manager_decision' || reminder.kind === 'deadline' ? reminder.title : reminder.source === 'booking' ? bookingReminderSubject(reminder) : `${reminder.title}: ${reminder.kind}`, category, status: 'scheduled',
       trackingId: key, textBody: JSON.stringify({ reminder, channel }), previewText: reminder.message });
   }
 }

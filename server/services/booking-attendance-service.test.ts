@@ -138,4 +138,21 @@ describe('explicit booking attendance statements (mocked database only)', () => 
     expect(JSON.stringify(result)).not.toContain('SECRET');
     expect(result.history[0].sharedMessage).toBe('Public message');
   });
+  it('tells the chef plainly after "They didn’t come": who reported it, the policy and how to contest (WP-N)', async () => {
+    state.rows.push([{ ...context(), kitchenName: 'PHASE0 Main Kitchen' }], [], []); response();
+    await recordBookingAttendance(10, actor, input);
+    const roleText = state.notify.mock.calls[0][6].roleText;
+    expect(roleText.chef.title).toBe('PHASE0 Main Kitchen reported you didn’t arrive');
+    // Owner (Oct 15): never refunded at any kitchen (50% or 100% late charge), disclosed at checkout.
+    expect(roleText.chef.message).toBe('PHASE0 Main Kitchen reported you didn’t arrive. No-shows aren’t refunded. Message from kitchen manager: Chef did not attend. If you were there, tell us from the booking page.');
+    expect(roleText.chef.message).not.toMatch(/%/);
+    expect(state.notify.mock.calls[0][6]).toMatchObject({ policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false });
+  });
+  it('"They came" on a booking that closed with no check-in opens the rating request, nothing else (WP-N)', async () => {
+    state.rows.push([{ ...context({ status: 'completed', feedbackRequestedAt: null }), kitchenName: 'PHASE0 Main Kitchen' }], [], []); response();
+    await recordBookingAttendance(10, actor, { action: 'report_attended', expectedUpdatedAt: timestamp, expectedBookingUpdatedAt: timestamp, sharedMessage: 'Arrived about 9:10 a.m.' });
+    expect(state.events[0]).toMatchObject({ action: 'report_attended' });
+    expect(state.updates).toEqual([{ updatedAt: expect.any(Date) }, { feedbackRequestedAt: expect.any(Date) }]);
+    expect(state.notify.mock.calls[0][6].roleText.chef.title).toBe('PHASE0 Main Kitchen confirmed your visit');
+  });
 });

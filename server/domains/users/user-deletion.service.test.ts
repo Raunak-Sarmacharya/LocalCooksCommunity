@@ -66,3 +66,30 @@ describe('complete user deletion', () => {
     expect(query).toContain('COUNT(*)');
   });
 });
+
+describe('history-safe account deletion', () => {
+  it('keepHistory never deletes bookings, claims or payment rows, and limits bookings to manager blocks', async () => {
+    const { tx, statements } = createTx();
+    await deleteUserDependents(tx, 42, { keepHistory: true });
+    const deleted = statements.filter(s => s.sql.startsWith('DELETE FROM')).map(s => s.sql);
+    for (const table of ['payment_transactions', 'damage_claims', 'storage_bookings', 'equipment_bookings', 'storage_overstay_records', 'kitchen_booking_visits'])
+      expect(deleted.some(sql => sql.startsWith(`DELETE FROM "${table}"`))).toBe(false);
+    expect(deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_bookings"'))).toContain("booking_type = 'manager_blocked'");
+  });
+
+  it('anonymizes the person, archives owned locations and kitchens, and keeps every booking row', async () => {
+    const { anonymizeUserAccount, anonymizedUsername, isAnonymizedUsername } = await import('./user-deletion.service');
+    const { tx, statements } = createTx(0);
+    await anonymizeUserAccount(tx, 42);
+    const sqls = statements.map(s => s.sql);
+    expect(sqls.some(s => s.startsWith('UPDATE locations SET archived_at'))).toBe(true);
+    expect(sqls.some(s => s.startsWith('UPDATE kitchens SET archived_at') && s.includes("listing_status = 'draft'"))).toBe(true);
+    const userUpdate = statements.find(s => s.sql.startsWith('UPDATE users SET username'))!;
+    expect(userUpdate.sql).toContain('firebase_uid = NULL');
+    expect(userUpdate.params).toContain(anonymizedUsername(42));
+    for (const table of ['kitchen_bookings', 'payment_transactions', 'damage_claims', 'users', 'kitchens', 'locations', 'storage_bookings', 'equipment_bookings'])
+      expect(sqls.some(s => s.startsWith(`DELETE FROM "${table}"`))).toBe(false);
+    expect(isAnonymizedUsername(anonymizedUsername(42))).toBe(true);
+    expect(isAnonymizedUsername('chef@example.com')).toBe(false);
+  });
+});

@@ -7,6 +7,7 @@
  */
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { paymentTransactions } from '@shared/schema';
+import { kitchenPayout } from '@shared/kitchen-payout';
 
 export type AdditionalChargeKind = 'extension' | 'extra_time' | 'damage_claim';
 export interface AdditionalCharge {
@@ -24,7 +25,8 @@ export interface AdditionalCharge {
 }
 
 type Row = { id: number; amount: string | number | null; managerRevenue: string | number | null; stripeProcessingFee?: string | number | null; refundAmount: string | number | null;
-  status: string; paidAt: Date | string | null; paymentIntentId: string | null; metadata: unknown };
+  status: string; paidAt: Date | string | null; paymentIntentId: string | null; metadata: unknown;
+  baseAmount?: string | number | null; serviceFee?: string | number | null; transferId?: string | null; payoutTiming?: string | null; payoutReleasedAt?: Date | string | null };
 
 const PAID = ['succeeded', 'partially_refunded', 'refunded'] as const;
 const cents = (value: string | number | null | undefined) => { const n = Math.round(Number(value ?? 0)); return Number.isFinite(n) ? n : 0; };
@@ -46,7 +48,10 @@ export function toAdditionalCharges(rows: Row[], role: 'chef' | 'manager', paren
     // A claim Local Cooks funded (compensation recovery) was never the kitchen's money from this row.
     // Extensions and extra time carry their own processing fee like the booking charge; Local Cooks absorbs it on claims.
     const kitchenShare = kind === 'damage_claim' ? (meta.fundedBy === 'local_cooks' || meta.platformRecovery === true ? 0 : cents(row.managerRevenue))
-      : Math.max(0, cents(row.managerRevenue) - cents(row.stripeProcessingFee));
+      // Same rule as the booking charge: what was transferred once sent, else the split minus the actual processing fee.
+      // (managerRevenue is rewritten to the net amount when Stripe's fee is synced, so it can't be reduced again.)
+      : kitchenPayout({ amount: row.amount ?? 0, baseAmount: row.baseAmount ?? 0, serviceFee: row.serviceFee ?? 0, stripeProcessingFee: row.stripeProcessingFee,
+        managerRevenue: row.managerRevenue, metadata: row.metadata, transferId: row.transferId, payoutTiming: row.payoutTiming, payoutReleasedAt: row.payoutReleasedAt }).amountCents;
     const minutes = kind === 'damage_claim' ? null : Number.isFinite(Number(meta.minutes)) ? Number(meta.minutes) : null;
     const line: AdditionalCharge = { id: row.id, kind, minutes, amountCents: cents(row.amount), refundedCents: cents(row.refundAmount),
       paidAt: row.paidAt ? new Date(row.paidAt).toISOString() : null, status: row.status };
@@ -58,6 +63,8 @@ export function toAdditionalCharges(rows: Row[], role: 'chef' | 'manager', paren
 export async function readAdditionalCharges(db: any, bookingId: number, role: 'chef' | 'manager', parentPaymentIntentId?: string | null): Promise<AdditionalCharge[]> {
   const rows: Row[] = await db.select({
     id: paymentTransactions.id, amount: paymentTransactions.amount, managerRevenue: paymentTransactions.managerRevenue, stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+    baseAmount: paymentTransactions.baseAmount, serviceFee: paymentTransactions.serviceFee, transferId: paymentTransactions.transferId,
+    payoutTiming: paymentTransactions.payoutTiming, payoutReleasedAt: paymentTransactions.payoutReleasedAt,
     refundAmount: paymentTransactions.refundAmount, status: paymentTransactions.status, paidAt: paymentTransactions.paidAt,
     paymentIntentId: paymentTransactions.paymentIntentId, metadata: paymentTransactions.metadata,
   }).from(paymentTransactions).where(and(

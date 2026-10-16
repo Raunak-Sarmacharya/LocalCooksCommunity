@@ -82,3 +82,24 @@ it("handles missing applications and fetch errors without showing another record
   state.error = new Error("offline"); rendered.rerender(page());
   expect(screen.getByRole("alert")).toHaveTextContent("We couldn’t load your kitchen applications");
 });
+
+it.each(["document_expired", "document_review_required"])("replaces Book kitchen with a renew action when documents block booking (%s)", status => {
+  state.search += "&application=9"; state.applications[2] = fixture(9, "approved", 3, { tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status, message: "" } });
+  const scrollIntoView = vi.fn(); Element.prototype.scrollIntoView = scrollIntoView;
+  render(page());
+  expect(screen.queryByRole("button", { name: "Book kitchen" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Continue application" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Renew documents" }));
+  expect(scrollIntoView).toHaveBeenCalled();
+});
+
+it("shows no action at all while a renewal is under review or access has ended", () => {
+  for (const status of ["renewal_under_review", "access_ended"]) {
+    cleanup();
+    state.search = "?view=kitchen-requests&application=9"; state.applications[2] = fixture(9, "approved", 3, { tier2_completed_at: "2026-10-09", bookingEligibility: { canBook: false, status, message: "" } });
+    render(page());
+    expect(screen.queryByRole("button", { name: "Book kitchen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Renew documents" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Continue application" })).not.toBeInTheDocument();
+  }
+});

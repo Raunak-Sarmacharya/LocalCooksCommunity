@@ -169,11 +169,12 @@ export function licenseAllowsBookings(
  * licence on file, is not visible — which is what the publish gate already required.
  */
 export function kitchenIsVisibleToChefs(
-  kitchen: { isActive?: boolean | null; listingStatus?: string | null },
+  kitchen: { isActive?: boolean | null; listingStatus?: string | null; archivedAt?: Date | string | null },
   license: KitchenLicenseFields | null | undefined,
   now: Date = new Date(),
 ): boolean {
   return (
+    !kitchen.archivedAt &&
     Boolean(kitchen.isActive) &&
     kitchen.listingStatus === "active" &&
     licenseAllowsBookings(license ?? {}, now)

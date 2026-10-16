@@ -1,3 +1,6 @@
+import { effectiveTurnoverBuffer } from '@shared/kitchen-booking-policies';
+import { randomInt, randomUUID } from 'node:crypto';
+import { operatingSlotInstants } from '@shared/booking-occupancy';
 /**
  * Session extensions and extra-time charges (docs/architecture/phase0/build-session-extensions.md).
  *
@@ -26,14 +29,15 @@ import { lockBookingMoneySources } from './booking-support-flags';
 import { sessionExtensionsEnabled } from './session-extension-settings';
 import { queueSessionExtensionNotices, type SessionExtensionNoticeEvent } from './session-extension-notice';
 import { scheduleAdvanceReminders } from './advance-reminders';
+import { scheduleDeadlineTimer } from './deadline-timer';
 import { workerAfter, workerPageEnd, workerRecord, isWorkerBudgetError } from './worker-context';
 import { logger } from '../logger';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Extension = typeof kitchenBookingExtensions.$inferSelect;
 export type ExtensionActor = { id: number; role: string | null };
-export type ExtensionStripe = Pick<Stripe, 'paymentIntents'>;
-export class SessionExtensionError extends Error { constructor(message: string, public status = 409) { super(message); } }
+export type ExtensionStripe = Pick<Stripe, 'paymentIntents'> & Partial<Pick<Stripe, 'checkout' | 'refunds'>>;
+export class SessionExtensionError extends Error { constructor(message: string, public status = 409, public translationKey?: string) { super(message); } }
 const readTx = () => db as unknown as Tx;
 const retainedHoldUntil = new Date('9999-12-31T00:00:00Z'); // Kept until the extension is applied or released.
 /** An unknown provider result older than this is treated as never created (Stripe search is eventually consistent). */
@@ -41,10 +45,11 @@ const unknownCreateGraceMs = 60 * 60_000;
 const cancellable = ['requires_capture', 'requires_action', 'requires_payment_method', 'requires_confirmation'];
 /** Per-attempt key: a retry of the same committed decision reuses it; a new decision never collides with an old one. */
 export const extensionOperation = (id: number, action: ExtensionOperation['action'], now: Date, target?: ExtensionOperation['target']): ExtensionOperation =>
-  ({ action, state: 'pending', key: `session-extension:${id}:${action}:${now.getTime()}`, decidedAt: now.toISOString(), ...(target ? { target } : {}) });
+  ({ action, state: 'pending', key: `session-extension:${id}:${action}:${now.getTime()}${randomInt(1_000_000_000)}`, decidedAt: now.toISOString(),
+    ...(['authorize', 'pay'].includes(action) ? { attemptKey: randomUUID() } : {}), ...(target ? { target } : {}) });
 
 async function context(tx: Tx, bookingId: number, actor?: ExtensionActor) {
-  const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone })
+  const [row] = await tx.select({ booking: kitchenBookings, kitchen: kitchens, managerId: locations.managerId, timezone: locations.timezone, locationBuffer: locations.turnoverBufferEnabled })
     .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!row || actor && !(actor.role === 'admin' || actor.role === 'chef' && actor.id === row.booking.chefId || actor.role === 'manager' && actor.id === row.managerId))
@@ -108,7 +113,14 @@ async function scheduleFacts(tx: Tx, row: Context, visit: VisitCloseout, now: Da
     (slot as { date?: string }).date || booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime)));
   occupied.push(...holds.filter(hold => hold.id !== excludeHoldId).flatMap(hold => occupiedIntervals({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots })
     .map(slot => absoluteOperatingSlotInterval(hold.operatingDate, slot, hold.windowStartTime))));
-  return { operatingDate, window: { startTime: window.startTime, endTime: window.endTime }, occupied,
+  const turnoverOccupied = effectiveTurnoverBuffer(row.kitchen, { turnoverBufferEnabled: row.locationBuffer })
+    ? [
+      ...bookings.filter(booking => booking.id !== row.booking.id).flatMap(booking => occupiedIntervals(booking).map(slot => operatingSlotInstants(
+        (slot as { date?: string }).date || booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime, row.timezone!))),
+      ...holds.filter(hold => hold.id !== excludeHoldId).flatMap(hold => occupiedIntervals({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots })
+        .map(slot => operatingSlotInstants(hold.operatingDate, slot, hold.windowStartTime, row.timezone!))),
+    ] : undefined;
+  return { operatingDate, window: { startTime: window.startTime, endTime: window.endTime }, occupied, turnoverOccupied,
     durationMinutes: Math.round(Number(row.booking.durationHours) * 60), maxMinutes: row.kitchen.defaultDailyBookingLimit == null ? null : row.kitchen.defaultDailyBookingLimit * 60 };
 }
 async function available(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null): Promise<ExtensionOption[]> {
@@ -126,6 +138,9 @@ async function availableEarly(tx: Tx, row: Context, visit: VisitCloseout, now: D
   const windowStartTime = timeToMinutes(facts.window.startTime) > timeToMinutes(anchor) ? facts.window.startTime : anchor;
   return earlyStartOptions({ ...facts, windowStartTime, startTime: visit.startTime, startAt: visit.scheduledStartAt, timezone: row.timezone!, now, ...await priceTerms(tx, row) });
 }
+/** The closeout clock's service-end grace saved with the booking (platform default 15 min): no extra-time charge inside it. */
+const overstayGraceMinutes = (row: Context) =>
+  Number((row.booking.visitDuties as { clockCloseout?: { serviceEndGraceMinutes?: number } } | null)?.clockCloseout?.serviceEndGraceMinutes ?? 15);
 /** Before the visit: booking confirmed, nobody has arrived, within 2 hours of the booked start. */
 const isBeforeStart = (row: Context, visit: VisitCloseout, now: Date) =>
   row.booking.status === 'confirmed' && !visit.arrivalRecorded && visit.attendance === 'unknown' && inEarlyStartWindow(now, visit.scheduledStartAt);
@@ -177,7 +192,10 @@ export function sessionExtensionDto(extension: Extension) {
     authorized: !!extension.authorizedAt, paid: !!extension.paidAt, confirmed: !!extension.appliedAt || extension.kind === 'extra_time' && !!extension.paidAt,
     originalEndAt: extension.originalEndAt.toISOString(), endAt: extension.endAt.toISOString(), expiresAt: extension.expiresAt.toISOString(),
     note: extension.note, autoApprove: extension.autoApprove, createdAt: extension.createdAt.toISOString(),
-    processing: extension.operation?.state === 'pending', escalated: !!extension.escalatedAt };
+    processing: extension.operation?.state === 'pending', escalated: !!extension.escalatedAt,
+    checkoutPending: !!extension.operation?.checkout && extension.operation.state === 'pending' && ['authorize', 'pay'].includes(extension.operation.action),
+    refundPending: extension.operation?.action === 'refund' && extension.operation.state === 'pending',
+    cardFailedAt: extension.cardFailedAt?.toISOString() ?? null, refundedAt: extension.refundedAt?.toISOString() ?? null };
 }
 const openActive = (ext: Extension, blockIndex: number) => ext.blockIndex === blockIndex && ext.kind !== 'extra_time'
   && ['requested', 'offered', 'approved'].includes(ext.status) && !ext.appliedAt;
@@ -187,6 +205,11 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   const history = await tx.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, bookingId)).orderBy(desc(kitchenBookingExtensions.id)).limit(50);
   const enabled = await sessionExtensionsEnabled(tx);
   const clock = await chooseSession(tx, row, now, visitId).catch(() => null);
+  // A request/offer past its deadline is closed in everyone's eyes now (the timer/worker/next write records it): it no longer
+  // blocks a new ask, and its own time hold no longer hides the slot from the chef.
+  const overdue = (ext: Extension) => ['requested', 'offered'].includes(ext.status) && ext.expiresAt <= now;
+  const stillOpen = (ext: Extension, blockIndex: number) => openActive(ext, blockIndex) && !overdue(ext);
+  const staleHoldId = clock ? history.find(ext => openActive(ext, clock.visit.blockIndex) && overdue(ext))?.holdId ?? null : null;
   const manager = actor.role === 'manager' || actor.role === 'admin';
   let options: ExtensionOption[] = [], earlyOptions: EarlyStartOption[] = [], extraTime: ReturnType<typeof extraTimeQuote> | null = null, unavailableReason: string | null = null;
   const beforeStart = !!clock && isBeforeStart(row, clock.visit, now);
@@ -195,9 +218,9 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   const finalHour = inSession;
   if (enabled && clock) try {
     await assertBookingMoneyWritable({ bookingId }, tx);
-    if ((manager ? inSession : finalHour) && !history.some(ext => openActive(ext, clock.visit.blockIndex))) options = await available(tx, row, clock.visit, now);
-    if (manager && beforeStart && !history.some(ext => openActive(ext, clock.visit.blockIndex))) earlyOptions = await availableEarly(tx, row, clock.visit, now);
-    if (manager && extraTimeChargeOpen(now, clock.checkout, clock.visit.scheduledEndAt)
+    if ((manager ? inSession : finalHour) && !history.some(ext => stillOpen(ext, clock.visit.blockIndex))) options = await available(tx, row, clock.visit, now, staleHoldId);
+    if (manager && beforeStart && !history.some(ext => stillOpen(ext, clock.visit.blockIndex))) earlyOptions = await availableEarly(tx, row, clock.visit, now, staleHoldId);
+    if (manager && extraTimeChargeOpen(now, clock.checkout, clock.visit.scheduledEndAt, overstayGraceMinutes(row))
       && !history.some(ext => ext.blockIndex === clock.visit.blockIndex && ext.kind === 'extra_time' && !['declined', 'cancelled'].includes(ext.status))) {
       const terms = await priceTerms(tx, row);
       extraTime = extraTimeQuote(clock.visit.scheduledEndAt, new Date(clock.checkout!).toISOString(), terms.hourlyRateCents, terms.ratios);
@@ -209,7 +232,7 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
     timezone: row.timezone, kitchenName: row.kitchen.name, currency: row.booking.currency, options, earlyOptions, extraTime,
     visitId: clock?.visit.visitId ?? null, endAt: clock?.visit.scheduledEndAt ?? null, startAt: clock?.visit.scheduledStartAt ?? null, beforeStart, checkoutAt: clock?.checkout ? new Date(clock.checkout).toISOString() : null,
     inSession, canRequest: finalHour, hasSavedCard: !!row.booking.stripeCustomerId && !!row.booking.stripePaymentMethodId,
-    unavailableReason, noTimeFree: !unavailableReason && (manager ? inSession : finalHour) && !options.length && !history.some(ext => !!clock && openActive(ext, clock.visit.blockIndex)),
+    unavailableReason, noTimeFree: !unavailableReason && (manager ? inSession : finalHour) && !options.length && !history.some(ext => !!clock && stillOpen(ext, clock.visit.blockIndex)),
     history: shown, serverNow: now.toISOString() };
 }
 
@@ -222,7 +245,7 @@ export async function pendingSessionExtensionRequests(managerId: number, now = n
       isNotNull(kitchenBookingExtensions.authorizedAt), gt(kitchenBookingExtensions.expiresAt, now)))
     .orderBy(asc(kitchenBookingExtensions.expiresAt)).limit(20);
   const { getUserDisplayName } = await import('../utils/user-display');
-  return { requests: await Promise.all(rows.map(async item => ({ ...sessionExtensionDto(item.extension), kitchenName: item.kitchenName,
+  return { serverNow: now.toISOString(), requests: await Promise.all(rows.map(async item => ({ ...sessionExtensionDto(item.extension), kitchenName: item.kitchenName,
     timezone: item.timezone, chefName: item.chefId ? await getUserDisplayName(item.chefId, 'chef').catch(() => null) : null }))) };
 }
 
@@ -248,6 +271,8 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
   // Free is a manager choice for offers and early starts only; the platform never decides it.
   const free = input.free === true;
   if (free && !['offer', 'early_start'].includes(input.kind)) throw new SessionExtensionError('Only the kitchen can give time for free');
+  // Lazy-on-write: close anything overdue first so a stale hold or unanswered offer never blocks this decision.
+  await expireOverdueForBooking(stripe, bookingId, now);
   const extension = await db.transaction(async tx => {
     const row = await lockedContext(tx, bookingId, actor);
     const [existing] = await tx.select().from(kitchenBookingExtensions).where(and(eq(kitchenBookingExtensions.bookingId, bookingId), eq(kitchenBookingExtensions.requestKey, input.requestKey))).limit(1);
@@ -259,9 +284,6 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
     if (input.kind === 'request' ? actor.role !== 'chef' || actor.id !== row.booking.chefId : actor.role !== 'manager' || actor.id !== row.managerId)
       throw new SessionExtensionError('This extra-time action is unavailable for your role', 403);
     await mustBeEnabled(tx); await assertBookingMoneyWritable({ bookingId }, tx);
-    if (input.kind !== 'extra_time' && !free && (!row.booking.stripeCustomerId || !row.booking.stripePaymentMethodId))
-      throw new SessionExtensionError(input.kind === 'request' ? 'Your saved card is unavailable, so no charge was started. Message the kitchen or Local Cooks.'
-        : 'The chef has no saved card for this booking. Message them instead.');
     const clock = await chooseSession(tx, row, now, input.visitId, input.kind), terms = await priceTerms(tx, row);
     // `expectedEndAt` is the boundary the person saw: the booked end, or for an early start the booked start.
     const boundary = boundaryOf(input.kind, clock.visit);
@@ -277,8 +299,8 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
       quote = { ...option, endAt: option.startAt, endTime: option.startTime };
     } else if (input.kind === 'extra_time') {
       if (!input.note?.trim()) throw new SessionExtensionError('Please include a note to the chef');
-      if (!extraTimeChargeOpen(now, clock.checkout, clock.visit.scheduledEndAt))
-        throw new SessionExtensionError('Extra-time charges need a checkout recorded after the booked end and must be sent within 24 hours');
+      if (!extraTimeChargeOpen(now, clock.checkout, clock.visit.scheduledEndAt, overstayGraceMinutes(row)))
+        throw new SessionExtensionError('Extra-time charges need a checkout recorded after the booked end plus the grace period, and must be sent within 24 hours');
       if (prior.some(ext => ext.blockIndex === clock.visit.blockIndex && ext.kind === 'extra_time' && !['declined', 'cancelled'].includes(ext.status)))
         throw new SessionExtensionError('An extra-time charge was already sent for this visit');
       quote = { ...extraTimeQuote(clock.visit.scheduledEndAt, new Date(clock.checkout!).toISOString(), terms.hourlyRateCents, terms.ratios, input.amountCents),
@@ -313,7 +335,13 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
     } else await notify(tx, created, input.kind === 'offer' ? 'offered' : input.kind === 'early_start' ? 'early_offered' : 'extra_time', actor.id);
     return created;
   });
-  if (extension.kind === 'request') return reconcileSessionExtension(stripe, extension.id, now, true);
+  // Exact expiry: wake at the deadline instead of waiting for the next worker tick (best-effort; the tick is the backstop).
+  if (!extension.appliedAt && ['requested', 'offered'].includes(extension.status)) scheduleDeadlineTimer('extension', extension.id, extension.expiresAt);
+  if (extension.kind === 'request') {
+    const row = await context(readTx(), bookingId);
+    if (!row.booking.stripeCustomerId || !row.booking.stripePaymentMethodId) return { extension: sessionExtensionDto(extension), checkoutRequired: true };
+    return reconcileSessionExtension(stripe, extension.id, now, true);
+  }
   return { extension: sessionExtensionDto(extension) };
 }
 
@@ -323,16 +351,22 @@ export async function createSessionExtension(stripe: ExtensionStripe, bookingId:
  */
 async function saveRelease(tx: Tx, extension: Extension, target: 'declined' | 'expired' | 'cancelled', now: Date, actorId?: number) {
   // Never reverse an in-flight capture/payment: its money and time must reconcile first.
-  if (extension.operation?.state === 'pending' && ['capture', 'pay'].includes(extension.operation.action))
+  if (extension.operation?.state === 'pending' && !extension.operation.checkout && ['capture', 'pay'].includes(extension.operation.action))
     throw new SessionExtensionError('A payment for this is still being checked. Refresh in a moment.');
-  const createInFlight = extension.operation?.state === 'pending' && extension.operation.action === 'authorize';
+  const createInFlight = extension.operation?.state === 'pending' && extension.operation.action === 'authorize' && !extension.operation.checkout;
+  if (extension.operation?.checkout && !extension.paymentIntentId) {
+    await tx.update(kitchenBookingExtensions).set({ status: target, decidedBy: actorId, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
+    await dropHold(tx, extension);
+    await notify(tx, { ...extension, status: target }, target === 'cancelled' ? 'card_failed' : target, actorId);
+    return false; // Keep Checkout evidence: a late payment must still be reconciled and refunded.
+  }
   if (!extension.paymentIntentId && !createInFlight) {
     await tx.update(kitchenBookingExtensions).set({ status: target, decidedBy: actorId, operation: null, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
     await dropHold(tx, extension);
     await notify(tx, { ...extension, status: target }, target === 'cancelled' ? 'card_failed' : target, actorId);
     return false;
   }
-  await tx.update(kitchenBookingExtensions).set({ status: target, operation: extensionOperation(extension.id, 'release', now, target), decidedBy: actorId, updatedAt: now })
+  await tx.update(kitchenBookingExtensions).set({ status: target, operation: { ...extension.operation, ...extensionOperation(extension.id, 'release', now, target) }, decidedBy: actorId, updatedAt: now })
     .where(eq(kitchenBookingExtensions.id, extension.id));
   // The time is free again at once; only the card hold still needs its provider release.
   await dropHold(tx, extension);
@@ -345,7 +379,7 @@ async function commitCapture(tx: Tx, row: Context, extension: Extension, now: Da
   if (!fits) throw new SessionExtensionError('The booking time or availability changed; the card hold will be released');
   await reserve(tx, row, extension, operatingDateFor(row, visit));
   await tx.update(kitchenBookingExtensions).set({ status: 'approved', decidedBy: actorId ?? extension.decidedBy,
-    operation: extensionOperation(extension.id, 'capture', now), updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
+    operation: { ...extension.operation, ...extensionOperation(extension.id, 'capture', now) }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
 }
 export async function decideSessionExtension(stripe: ExtensionStripe, bookingId: number, id: number, actor: ExtensionActor,
   input: { action: 'approve' | 'approve_free' | 'decline' | 'accept' | 'pay' | 'dispute'; expectedAmountCents?: number; note?: string }, now = new Date()) {
@@ -395,7 +429,7 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
       if (!fits) throw new SessionExtensionError('That time is no longer free. Decline instead; the card hold will be released.');
       const granted = { ...extension, free: true, status: 'approved' as const, decidedBy: actor.id };
       await tx.update(kitchenBookingExtensions).set({ free: true, status: 'approved', decidedBy: actor.id,
-        operation: extensionOperation(id, 'release', now), updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+        operation: { ...extension.operation, ...extensionOperation(id, 'release', now) }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
       await applyBoundary(tx, row, granted, now);
       await dropHold(tx, extension);
       await notify(tx, { ...granted, appliedAt: now }, 'granted', actor.id);
@@ -410,7 +444,7 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
       await reserve(tx, row, extension, operatingDateFor(row, visit));
     }
     await tx.update(kitchenBookingExtensions).set({ decidedBy: actor.id,
-      operation: extensionOperation(id, extension.kind === 'extra_time' ? 'pay' : 'authorize', now), updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+      operation: { retiredAttempts: retireAttempt(extension)?.retiredAttempts, ...extensionOperation(id, extension.kind === 'extra_time' ? 'pay' : 'authorize', now) }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
     provider = true;
   });
   if (!provider) {
@@ -422,9 +456,26 @@ export async function decideSessionExtension(stripe: ExtensionStripe, bookingId:
 
 function verifyIntent(intent: Stripe.PaymentIntent, extension: Extension, row: Context) {
   const customer = typeof intent.customer === 'string' ? intent.customer : intent.customer?.id;
-  if (intent.amount !== extension.amountCents || intent.currency !== row.booking.currency.toLowerCase() || customer !== row.booking.stripeCustomerId
+  const expectedCustomer = extension.operation?.checkout ? extension.operation.customerId : row.booking.stripeCustomerId;
+  if (intent.amount !== extension.amountCents || intent.currency !== row.booking.currency.toLowerCase() || expectedCustomer && customer !== expectedCustomer
     || intent.metadata?.type !== 'session_extension' || intent.metadata.session_extension_id !== String(extension.id) || intent.metadata.booking_id !== String(row.booking.id)
+    || intent.metadata.chef_id !== String(row.booking.chefId) || intent.metadata.kind !== extension.kind
+    || !matchesAttempt(intent.metadata, extension)
+    || extension.operation?.checkout && intent.metadata.checkout !== '1'
     || extension.paymentIntentId && extension.paymentIntentId !== intent.id) throw new SessionExtensionError('Payment evidence differs from the saved extra-time decision');
+}
+
+function matchesAttempt(metadata: Stripe.Metadata | null | undefined, extension: Extension) {
+  const op = extension.operation;
+  // Legacy operations may reconcile an already-bound intent, but can never adopt an unknown one.
+  return !!op && (op.attemptKey ? metadata?.attempt_key === op.attemptKey : !!extension.paymentIntentId && !metadata?.attempt_key);
+}
+
+function retireAttempt(extension: Extension): ExtensionOperation | null {
+  const op = extension.operation;
+  return op ? { ...op, state: 'done', retiredAttempts: [...op.retiredAttempts || [],
+    ...(op.attemptKey && !op.retiredAttempts?.some(attempt => attempt.attemptKey === op.attemptKey)
+      ? [{ attemptKey: op.attemptKey, paymentIntentId: extension.paymentIntentId, checkoutSessionId: extension.checkoutSessionId }] : [])] } : null;
 }
 
 /** One function owns every successful boundary write (end, or start for an early start): booking, visit row, saved clock, reminders. */
@@ -490,15 +541,15 @@ async function recordPaid(tx: Tx, row: Context, extension: Extension, intent: St
   }
   await applyBoundary(tx, row, extension, now);
   await tx.update(kitchenBookingExtensions).set({ status: extension.kind === 'extra_time' ? 'paid' : 'approved', paymentIntentId: intent.id,
-    paidAt: now, operation: { ...extension.operation, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
+    paidAt: now, cardFailedAt: null, operation: { ...extension.operation, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
   await dropHold(tx, extension);
   await notify(tx, extension, extension.kind === 'extra_time' ? 'paid' : extension.kind === 'request' && extension.autoApprove ? 'instant' : 'confirmed');
 }
 /** A card that was declined or failed authentication: nothing was charged; offers and charges can be tried again. */
 async function recordCardFailure(tx: Tx, extension: Extension, now: Date) {
   const retryable = extension.kind !== 'request';
-  await tx.update(kitchenBookingExtensions).set({ status: retryable ? 'offered' : 'cancelled', operation: null,
-    paymentIntentId: retryable ? null : extension.paymentIntentId, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
+  await tx.update(kitchenBookingExtensions).set({ status: retryable ? 'offered' : 'cancelled', operation: retireAttempt(extension),
+    paymentIntentId: null, checkoutSessionId: null, cardFailedAt: now, authorizedAt: null, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
   await dropHold(tx, extension);
   await notify(tx, extension, 'card_failed');
 }
@@ -510,7 +561,7 @@ async function createIntent(stripe: ExtensionStripe, extension: Extension, row: 
       confirm: true, off_session: false, use_stripe_sdk: true,
       description: extension.kind === 'extra_time' ? `Extra time at ${row.kitchen.name}` : `More time at ${row.kitchen.name}`,
       metadata: { type: 'session_extension', session_extension_id: String(extension.id), booking_id: String(row.booking.id),
-        chef_id: String(row.booking.chefId), kind: extension.kind } }, { idempotencyKey: op.key });
+        chef_id: String(row.booking.chefId), kind: extension.kind, attempt_key: op.attemptKey! } }, { idempotencyKey: op.key });
   } catch (error) {
     // A decline comes back as an error carrying the intent; anything else stays pending for recovery.
     const intent = (error as { payment_intent?: Stripe.PaymentIntent }).payment_intent;
@@ -520,25 +571,132 @@ async function createIntent(stripe: ExtensionStripe, extension: Extension, row: 
 }
 /** Read-only lookup for a create whose result was lost. Never creates anything. */
 async function findIntent(stripe: ExtensionStripe, extension: Extension) {
-  const found = await stripe.paymentIntents.search({ query: `metadata['session_extension_id']:'${extension.id}'`, limit: 10 });
-  const matches = found.data.filter(intent => intent.metadata?.session_extension_id === String(extension.id) && intent.metadata?.booking_id === String(extension.bookingId));
+  if (!extension.operation?.attemptKey) throw new SessionExtensionError('The original payment attempt needs Local Cooks review');
+  const found = await stripe.paymentIntents.search({ query: `metadata['session_extension_id']:'${extension.id}' AND metadata['attempt_key']:'${extension.operation.attemptKey}'`, limit: 10 });
+  const matches = found.data.filter(intent => intent.metadata?.session_extension_id === String(extension.id) && intent.metadata?.booking_id === String(extension.bookingId)
+    && matchesAttempt(intent.metadata, extension));
   if (matches.length > 1) throw new SessionExtensionError('More than one payment exists for this extra time; Local Cooks needs to review it');
   return matches[0];
 }
 
+/** The return URL is built by the route from a same-origin path, never from Stripe metadata. */
+export async function checkoutSessionExtension(stripe: ExtensionStripe, bookingId: number, id: number, actor: ExtensionActor,
+  expectedAmountCents: number, returnUrl: string, now = new Date()) {
+  if (!stripe.checkout) throw new SessionExtensionError('Payments are unavailable. Nothing was charged.', 503, 'sxbCheckoutUnavailable');
+  const extension = await db.transaction(async tx => {
+    const row = await lockedContext(tx, bookingId, actor), current = await savedExtension(tx, bookingId, id);
+    if (actor.role !== 'chef' || actor.id !== row.booking.chefId) throw new SessionExtensionError('Only the booking chef can pay', 403, 'sxbPaymentReview');
+    if (current.amountCents !== expectedAmountCents || current.free || current.paidAt || current.refundedAt)
+      throw new SessionExtensionError('Review the price and payment before continuing', 409, 'sxbPaymentReview');
+    if (!['offered', 'requested'].includes(current.status) && !(current.kind === 'request' && current.status === 'cancelled' && current.cardFailedAt)
+      || current.kind !== 'extra_time' && current.expiresAt <= now) throw new SessionExtensionError('This extra-time offer has closed', 409, 'sxbCheckoutClosed');
+    await mustBeEnabled(tx); await assertBookingMoneyWritable({ bookingId }, tx);
+    if (current.operation?.checkout && current.operation.state === 'pending') return current;
+    if (current.paymentIntentId || current.operation?.state === 'pending' && (current.operation.action !== 'authorize' || row.booking.stripePaymentMethodId && row.booking.stripeCustomerId))
+      throw new SessionExtensionError('A payment is still being checked', 409, 'sxbCheckoutBusy');
+    if (current.kind !== 'extra_time') {
+      const others = await tx.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, bookingId));
+      if (others.some(ext => ext.id !== id && openActive(ext, current.blockIndex))) throw new SessionExtensionError('Another extra-time decision is already open', 409, 'sxbPaymentReview');
+      const { visit, fits } = await stillFits(tx, row, current, now, current.holdId);
+      if (!fits) throw new SessionExtensionError('That time is no longer available. Nothing was charged.', 409, 'sxbCheckoutNoTime');
+      current.holdId = await reserve(tx, row, current, operatingDateFor(row, visit));
+    }
+    const operation = { retiredAttempts: retireAttempt(current)?.retiredAttempts, ...extensionOperation(id, current.kind === 'request' ? 'authorize' : 'pay', now), checkout: true,
+      returnUrl, customerId: row.booking.stripeCustomerId };
+    await tx.update(kitchenBookingExtensions).set({ operation, status: current.kind === 'request' ? 'requested' : 'offered',
+      checkoutSessionId: null, paymentIntentId: null, authorizedAt: null, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+    return { ...current, operation, checkoutSessionId: null };
+  });
+  let session = extension.checkoutSessionId ? await stripe.checkout.sessions.retrieve(extension.checkoutSessionId) : null;
+  if (session && session.status !== 'open') {
+    return { ...(await reconcileSessionExtension(stripe, id, now)), checkoutUrl: undefined };
+  }
+  if (!session) {
+    const row = await context(readTx(), bookingId), op = extension.operation!;
+    const metadata = { type: 'session_extension', session_extension_id: String(id), booking_id: String(bookingId),
+      chef_id: String(row.booking.chefId), kind: extension.kind, checkout: '1', attempt_key: op.attemptKey! };
+    const url = new URL(op.returnUrl!);
+    url.searchParams.set('extensionCheckout', String(id));
+    url.searchParams.delete('extensionCheckoutCancelled');
+    const successUrl = url.toString(); url.searchParams.set('extensionCheckoutCancelled', '1');
+    session = await stripe.checkout.sessions.create({ mode: 'payment', submit_type: 'pay', payment_method_types: ['card'],
+      ...(op.customerId ? { customer: op.customerId } : { customer_creation: 'always' }), metadata,
+      line_items: [{ quantity: 1, price_data: { currency: row.booking.currency.toLowerCase(), unit_amount: extension.amountCents,
+        product_data: { name: row.kitchen.name } } }],
+      payment_intent_data: { capture_method: extension.kind === 'request' ? 'manual' : 'automatic', setup_future_usage: 'on_session', metadata },
+      // Stripe's default expiry keeps retries identical without a moving 30-minute minimum; our deadline controls fulfillment.
+      success_url: successUrl, cancel_url: url.toString() },
+    { idempotencyKey: `${op.key}:checkout` });
+    await db.update(kitchenBookingExtensions).set({ checkoutSessionId: session.id, updatedAt: now })
+      .where(and(eq(kitchenBookingExtensions.id, id), sql`${kitchenBookingExtensions.operation}->>'key' = ${op.key}`));
+  }
+  if (!session.url) throw new SessionExtensionError('The payment page is unavailable. Nothing new was charged.', 409, 'sxbCheckoutUnavailable');
+  return { extension: sessionExtensionDto(extension), checkoutUrl: session.url };
+}
+
+export async function handleSessionExtensionCheckout(stripe: ExtensionStripe, session: Stripe.Checkout.Session) {
+  if (session.metadata?.type !== 'session_extension') return;
+  const id = Number(session.metadata.session_extension_id);
+  if (!Number.isSafeInteger(id) || id < 1) throw new SessionExtensionError('Invalid extra-time Checkout');
+  const [extension] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
+  if (!extension || extension.operation?.state !== 'pending' || !matchesAttempt(session.metadata, extension)
+    || extension.checkoutSessionId && extension.checkoutSessionId !== session.id) return;
+  return reconcileSessionExtension(stripe, id);
+}
+
+/** These refunds have extension evidence instead of a captured booking payment source. */
+export async function handleSessionExtensionRefund(stripe: ExtensionStripe, charge: Stripe.Charge) {
+  const refund = charge.refunds?.data.find(item => item.metadata?.type === 'session_extension');
+  if (!refund) return false;
+  const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+  if (!intentId) throw new SessionExtensionError('Extension refund is missing its payment');
+  const intent = await stripe.paymentIntents.retrieve(intentId);
+  if (intent.metadata.type !== 'session_extension' || intent.metadata.session_extension_id !== refund.metadata?.session_extension_id)
+    throw new SessionExtensionError('Extension refund differs from its payment');
+  await handleSessionExtensionWebhook(stripe, intent);
+  return true;
+}
+
+async function clearExpiredCheckout(extension: Extension, op: ExtensionOperation, now: Date) {
+  await db.transaction(async tx => {
+    await lockedContext(tx, extension.bookingId);
+    const current = await savedExtension(tx, extension.bookingId, extension.id);
+    if (current.operation?.key !== op.key || current.paidAt || current.authorizedAt) return;
+    await tx.update(kitchenBookingExtensions).set({ checkoutSessionId: null, paymentIntentId: null, operation: retireAttempt(current),
+      status: current.kind === 'request' && current.status === 'requested' ? 'expired' : current.status, updatedAt: now })
+      .where(eq(kitchenBookingExtensions.id, extension.id));
+    await dropHold(tx, current);
+  });
+  const [latest] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, extension.id)).limit(1);
+  return { extension: sessionExtensionDto(latest), cardFailed: !!latest.cardFailedAt };
+}
+
 /** Every provider action consumes a committed operation; retries reuse its key and verify ownership and amount. */
-export async function reconcileSessionExtension(stripe: ExtensionStripe, id: number, now = new Date(), onSession = false): Promise<{ extension: ReturnType<typeof sessionExtensionDto>; clientSecret?: string; requiresAction?: boolean }> {
+export async function reconcileSessionExtension(stripe: ExtensionStripe, id: number, now = new Date(), onSession = false): Promise<{ extension: ReturnType<typeof sessionExtensionDto>; clientSecret?: string; requiresAction?: boolean; cardFailed?: boolean }> {
   const [extension] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
   if (!extension) throw new SessionExtensionError('Extension not found', 404);
   const row = await context(readTx(), extension.bookingId), op = extension.operation;
-  if (!op || op.state === 'done') return { extension: sessionExtensionDto(extension) };
+  if (!op || op.state === 'done') return { extension: sessionExtensionDto(extension), cardFailed: !!extension.cardFailedAt };
   let intent: Stripe.PaymentIntent | undefined;
-  if (extension.paymentIntentId) intent = await stripe.paymentIntents.retrieve(extension.paymentIntentId);
-  else if (onSession && ['authorize', 'pay'].includes(op.action)) {
+  let checkoutExpired = false;
+  if (op.checkout && ['authorize', 'pay'].includes(op.action)) {
+    if (!stripe.checkout) throw new SessionExtensionError('Checkout recovery is unavailable', 503, 'sxbCheckoutUnavailable');
+    // A lost create response is recovered with the same committed idempotency key on the next chef tap.
+    if (extension.checkoutSessionId) {
+      const session = await stripe.checkout.sessions.retrieve(extension.checkoutSessionId);
+      checkoutExpired = session.status === 'expired';
+      const intentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+      if (intentId) intent = await stripe.paymentIntents.retrieve(intentId);
+      else if (!extension.paymentIntentId) return checkoutExpired ? clearExpiredCheckout(extension, op, now) : { extension: sessionExtensionDto(extension) };
+    }
+    else if (!extension.paymentIntentId) return { extension: sessionExtensionDto(extension) };
+  }
+  if (!intent && extension.paymentIntentId) intent = await stripe.paymentIntents.retrieve(extension.paymentIntentId);
+  else if (!intent && onSession && ['authorize', 'pay'].includes(op.action)) {
     // Only the chef's own tap starts a hold or charge; the decision above was committed first.
     await mustBeEnabled(readTx()); await assertBookingMoneyWritable({ bookingId: row.booking.id });
     intent = await createIntent(stripe, extension, row, op);
-  } else {
+  } else if (!intent) {
     intent = await findIntent(stripe, extension);
     if (!intent) {
       if (now.getTime() - Date.parse(op.decidedAt) < unknownCreateGraceMs) return { extension: sessionExtensionDto(extension) };
@@ -560,9 +718,20 @@ export async function reconcileSessionExtension(stripe: ExtensionStripe, id: num
     }
   }
   verifyIntent(intent, extension, row);
+  if (checkoutExpired && (cancellable.includes(intent.status) || intent.status === 'canceled')) {
+    if (intent.status !== 'canceled') await stripe.paymentIntents.cancel(intent.id, {}, { idempotencyKey: `${op.key}:cancel` });
+    return clearExpiredCheckout(extension, op, now);
+  }
+  // Checkout owns card retries and authentication while its hosted page is open.
+  if (op.checkout && ['authorize', 'pay'].includes(op.action) && ['requires_payment_method', 'requires_action', 'requires_confirmation'].includes(intent.status)) {
+    const session = extension.checkoutSessionId && stripe.checkout ? await stripe.checkout.sessions.retrieve(extension.checkoutSessionId) : null;
+    if (session?.status !== 'expired') return { extension: sessionExtensionDto(extension) };
+  }
   // Persist the provider identity before any capture/cancel, including 3DS states.
   if (!extension.paymentIntentId) await db.transaction(async tx => {
     const latest = await savedExtension(tx, extension.bookingId, id);
+    if (latest.operation?.key !== op.key || latest.operation.state !== 'pending' || !matchesAttempt(intent!.metadata, latest))
+      throw new SessionExtensionError('This payment attempt has retired');
     if (latest.paymentIntentId && latest.paymentIntentId !== intent!.id) throw new SessionExtensionError('A different payment already belongs to this request');
     await tx.update(kitchenBookingExtensions).set({ paymentIntentId: intent!.id, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
   });
@@ -573,12 +742,53 @@ export async function reconcileSessionExtension(stripe: ExtensionStripe, id: num
     intent = await stripe.paymentIntents.cancel(intent.id, {}, { idempotencyKey: `${op.key}:cancel` });
   }
   verifyIntent(intent, { ...extension, paymentIntentId: intent.id }, row);
+  if (op.action === 'refund') {
+    if (!stripe.refunds) throw new SessionExtensionError('Refund recovery is unavailable', 503, 'sxbRefundPending');
+    const refund = extension.refundId ? await stripe.refunds.retrieve(extension.refundId)
+      : await stripe.refunds.create({ payment_intent: intent.id, amount: extension.amountCents,
+        metadata: { type: 'session_extension', session_extension_id: String(id), booking_id: String(extension.bookingId) } }, { idempotencyKey: op.key });
+    const refundIntent = typeof refund.payment_intent === 'string' ? refund.payment_intent : refund.payment_intent?.id;
+    if (refund.amount !== extension.amountCents || refundIntent !== intent.id || refund.metadata?.session_extension_id !== String(id))
+      throw new SessionExtensionError('The extra-time refund evidence needs Local Cooks review', 409, 'sxbPaymentReview');
+    await db.update(kitchenBookingExtensions).set({ refundId: refund.id, updatedAt: now })
+      .where(and(eq(kitchenBookingExtensions.id, id), sql`${kitchenBookingExtensions.operation}->>'key' = ${op.key}`));
+    if (refund.status !== 'succeeded') throw new SessionExtensionError('The extra-time refund is still being checked', 409, 'sxbRefundPending');
+    await db.transaction(async tx => {
+      await lockedContext(tx, extension.bookingId);
+      const current = await savedExtension(tx, extension.bookingId, id);
+      if (current.refundedAt || current.operation?.key !== op.key) return;
+      await tx.update(kitchenBookingExtensions).set({ refundedAt: now, refundId: refund.id, cardFailedAt: null,
+        status: 'cancelled', operation: { ...op, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+      await dropHold(tx, current); await notify(tx, current, 'refunded');
+    });
+    const [latest] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
+    if (latest.refundedAt) await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(extension.bookingId, 'extension_refunded')).catch(() => undefined);
+    return { extension: sessionExtensionDto(latest) };
+  }
   const settled = intent;
-  let next: 'capture' | 'release' | null = null;
+  let next: 'capture' | 'release' | 'refund' | null = null;
   await db.transaction(async tx => {
     const currentRow = await lockedContext(tx, extension.bookingId), current = await savedExtension(tx, extension.bookingId, id);
-    if (current.operation?.key !== op.key) return;
+    // Another writer (worker vs. webhook) finished this same operation while we waited for the lock: its notice is sent.
+    if (current.operation?.key !== op.key || current.operation?.state === 'done') return;
     if (settled.status === 'succeeded') {
+      if (op.checkout && !current.paidAt) {
+        let fits = !current.free && !['declined', 'cancelled', 'expired', 'disputed'].includes(current.status)
+          && (current.kind === 'extra_time' || current.expiresAt > now);
+        if (fits && current.kind !== 'extra_time') {
+          try { fits = (await stillFits(tx, currentRow, current, now, current.holdId)).fits; }
+          catch (error) { if (!(error instanceof SessionExtensionError)) throw error; fits = false; }
+        }
+        if (!fits) {
+          if (settled.amount_received !== current.amountCents) throw new SessionExtensionError('The captured extra-time amount needs Local Cooks review');
+          await tx.update(kitchenBookingExtensions).set({ status: 'cancelled', cardFailedAt: null,
+            operation: { ...op, ...extensionOperation(id, 'refund', now), capturedAt: now.toISOString(), capturedAmountCents: settled.amount_received,
+              chargeId: typeof settled.latest_charge === 'string' ? settled.latest_charge : settled.latest_charge?.id || null }, updatedAt: now })
+            .where(eq(kitchenBookingExtensions.id, id));
+          await dropHold(tx, current); next = 'refund'; return;
+        }
+        await saveCheckoutCard(tx, currentRow, settled, now);
+      }
       if (op.action === 'release') throw new SessionExtensionError('A captured charge cannot be released; Local Cooks needs to review it');
       await recordPaid(tx, currentRow, current, settled, now);
     } else if (settled.status === 'canceled') {
@@ -596,7 +806,8 @@ export async function reconcileSessionExtension(stripe: ExtensionStripe, id: num
       await recordCardFailure(tx, current, now);
     } else if (settled.status === 'requires_capture' && op.action === 'authorize') {
       if (!current.authorizedAt) {
-        await tx.update(kitchenBookingExtensions).set({ authorizedAt: now, operation: { ...op, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+        await tx.update(kitchenBookingExtensions).set({ authorizedAt: now, cardFailedAt: null, operation: { ...op, state: 'done' }, updatedAt: now }).where(eq(kitchenBookingExtensions.id, id));
+        if (op.checkout) await saveCheckoutCard(tx, currentRow, settled, now);
         current.authorizedAt = now; current.operation = { ...op, state: 'done' };
         if (current.kind === 'request' && !current.autoApprove && current.expiresAt > now && current.status === 'requested') await notify(tx, current, 'requested');
       }
@@ -613,11 +824,24 @@ export async function reconcileSessionExtension(stripe: ExtensionStripe, id: num
   });
   const [latest] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
   // A newer decision (auto-capture, release, or a decline saved while this one was in flight) runs now.
+  if (next === 'refund') await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(extension.bookingId, 'extension_late_charge')).catch(() => undefined);
   if (next || latest.operation?.state === 'pending' && latest.operation.key !== op.key) return reconcileSessionExtension(stripe, id, now, onSession);
   if (latest.paidAt) await (await import('./session-extension-payout')).releaseSessionExtensionPayout(id, now)
     .catch((error: unknown) => logger.error('[Session extension] Paid; the kitchen payout will retry', { extensionId: id, error }));
+  // One receipt per payment: issued (idempotently) once the extra time is paid.
+  if (latest.paidAt) await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(extension.bookingId, 'extension_paid')).catch(() => undefined);
   return { extension: sessionExtensionDto(latest),
+    cardFailed: !!latest.cardFailedAt,
     ...(settled.status === 'requires_action' && onSession && settled.client_secret ? { requiresAction: true, clientSecret: settled.client_secret } : {}) };
+}
+
+async function saveCheckoutCard(tx: Tx, row: Context, intent: Stripe.PaymentIntent, now: Date) {
+  const paymentMethod = typeof intent.payment_method === 'string' ? intent.payment_method : intent.payment_method?.id;
+  const customer = typeof intent.customer === 'string' ? intent.customer : intent.customer?.id;
+  if (!paymentMethod || !customer) throw new SessionExtensionError('The new card needs payment recovery', 409, 'sxbPaymentReview');
+  await tx.update(kitchenBookings).set({ stripePaymentMethodId: paymentMethod, stripeCustomerId: customer, updatedAt: now })
+    .where(eq(kitchenBookings.id, row.booking.id));
+  row.booking.stripePaymentMethodId = paymentMethod; row.booking.stripeCustomerId = customer;
 }
 
 /** 48 hours without an answer: Local Cooks follows up. No card is ever charged without the chef's tap. */
@@ -626,38 +850,79 @@ async function escalate(tx: Tx, extension: Extension, now: Date) {
   await tx.update(kitchenBookingExtensions).set({ escalatedAt: now, updatedAt: now }).where(eq(kitchenBookingExtensions.id, extension.id));
   await notify(tx, extension, 'escalated');
 }
+/**
+ * Expires ONE overdue request/offer (or escalates an unanswered extra-time charge). Idempotent and safe to race: the row is
+ * re-read under the booking lock, so the exact-deadline timer, the worker tick, and a lazy-on-write call never double-act
+ * or double-notify. Throws on failure so the caller (worker loop / timer retry) decides how to recover.
+ */
+export async function expireSessionExtension(stripe: ExtensionStripe, id: number, now = new Date()) {
+  const [row] = await db.select({ bookingId: kitchenBookingExtensions.bookingId }).from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
+  if (!row) return { expired: false };
+  let provider = false, acted = false;
+  await db.transaction(async tx => {
+    await lockedContext(tx, row.bookingId);
+    const current = await savedExtension(tx, row.bookingId, id);
+    if (!['requested', 'offered'].includes(current.status) || current.paidAt || current.escalatedAt || current.expiresAt > now) return;
+    if (current.kind === 'extra_time') { await escalate(tx, current, now); acted = true; return; }
+    if (current.operation?.state === 'pending' && !current.operation.checkout && ['capture', 'pay'].includes(current.operation.action)) return; // Recovery owns it.
+    provider = await saveRelease(tx, current, 'expired', now); acted = true;
+  });
+  if (provider) await reconcileSessionExtension(stripe, id, now);
+  return { expired: acted };
+}
+/** Lazy-on-write: a chef's own stale hold (or an unanswered offer) must never block a new ask, so overdue open ones are closed first. */
+async function expireOverdueForBooking(stripe: ExtensionStripe, bookingId: number, now: Date) {
+  const overdue = await db.select({ id: kitchenBookingExtensions.id }).from(kitchenBookingExtensions).where(and(
+    eq(kitchenBookingExtensions.bookingId, bookingId), inArray(kitchenBookingExtensions.status, ['requested', 'offered']),
+    inArray(kitchenBookingExtensions.kind, ['request', 'offer', 'early_start']), isNull(kitchenBookingExtensions.paidAt), lte(kitchenBookingExtensions.expiresAt, now)));
+  for (const { id } of overdue) {
+    try { await expireSessionExtension(stripe, id, now); }
+    catch (error) { logger.error('[Session extension] Overdue request could not be closed before a new one; the expiry worker retries', { extensionId: id, error }); }
+  }
+}
 /** Recurring worker: index-backed (status/expiry partial index), at most three rows, rotating cursor, early exit. */
 export async function expireSessionExtensions(stripe: ExtensionStripe, limit = 3, now = new Date()) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Session-extension expiry batch must be one to three');
   const rows = await db.select().from(kitchenBookingExtensions).where(and(inArray(kitchenBookingExtensions.status, ['requested', 'offered']),
     isNull(kitchenBookingExtensions.escalatedAt), lte(kitchenBookingExtensions.expiresAt, now), workerAfter('sessionExtensionExpiry', kitchenBookingExtensions.id)))
     .orderBy(asc(kitchenBookingExtensions.id)).limit(limit);
-  await workerPageEnd('sessionExtensionExpiry', rows.length);
+  await workerPageEnd('sessionExtensionExpiry', rows.length, limit);
   if (!rows.length) return { processed: 0, errors: 0 };
   let errors = 0;
   for (const row of rows) {
     await workerRecord('sessionExtensionExpiry', row.id);
+    try { await expireSessionExtension(stripe, row.id, now); }
+    catch (error) { if (isWorkerBudgetError(error)) throw error; errors++; logger.error('[Session extension] Expiry needs recovery', { extensionId: row.id, error }); }
+  }
+  return { processed: rows.length, errors };
+}
+/** Chef checked out: open offers/requests for that visit can no longer be used, so withdraw them now (release holds) instead of
+ * leaving "Accept & pay" on a finished visit. Overstay charges (`extra_time`) stay payable. Paid/in-flight payments are left to recovery. */
+export async function withdrawOpenSessionExtensions(stripe: ExtensionStripe, bookingId: number, visitId?: number | null, now = new Date()) {
+  const open = await db.select({ id: kitchenBookingExtensions.id }).from(kitchenBookingExtensions).where(and(
+    eq(kitchenBookingExtensions.bookingId, bookingId), inArray(kitchenBookingExtensions.status, ['requested', 'offered']),
+    inArray(kitchenBookingExtensions.kind, ['offer', 'request', 'early_start']), isNull(kitchenBookingExtensions.paidAt)));
+  for (const { id } of open) {
     try {
       let provider = false;
       await db.transaction(async tx => {
-        await lockedContext(tx, row.bookingId);
-        const current = await savedExtension(tx, row.bookingId, row.id);
-        if (!['requested', 'offered'].includes(current.status) || current.paidAt || current.escalatedAt || current.expiresAt > now) return;
-        if (current.kind === 'extra_time') { await escalate(tx, current, now); return; }
-        if (current.operation?.state === 'pending' && ['capture', 'pay'].includes(current.operation.action)) return; // Recovery owns it.
+        await lockedContext(tx, bookingId);
+        const current = await savedExtension(tx, bookingId, id);
+        if (!['requested', 'offered'].includes(current.status) || current.paidAt) return;
+        if (visitId && current.visitId && current.visitId !== visitId) return;
+        if (current.operation?.state === 'pending' && !current.operation.checkout && ['capture', 'pay'].includes(current.operation.action)) return;
         provider = await saveRelease(tx, current, 'expired', now);
       });
-      if (provider) await reconcileSessionExtension(stripe, row.id, now);
-    } catch (error) { if (isWorkerBudgetError(error)) throw error; errors++; logger.error('[Session extension] Expiry needs recovery', { extensionId: row.id, error }); }
+      if (provider) await reconcileSessionExtension(stripe, id, now);
+    } catch (error) { logger.error('[Session extension] Withdraw at checkout needs recovery; the expiry worker retries', { extensionId: id, error }); }
   }
-  return { processed: rows.length, errors };
 }
 /** Recurring worker: finishes committed decisions (capture/release/lost creates) on the pending-operation partial index. */
 export async function recoverSessionExtensions(stripe: ExtensionStripe, limit = 3, now = new Date()) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Session-extension recovery batch must be one to three');
   const rows = await db.select({ id: kitchenBookingExtensions.id }).from(kitchenBookingExtensions).where(and(sql`${kitchenBookingExtensions.operation}->>'state' = 'pending'`,
     workerAfter('sessionExtensionRecovery', kitchenBookingExtensions.id))).orderBy(asc(kitchenBookingExtensions.id)).limit(limit);
-  await workerPageEnd('sessionExtensionRecovery', rows.length);
+  await workerPageEnd('sessionExtensionRecovery', rows.length, limit);
   if (!rows.length) return { processed: 0, errors: 0 };
   let errors = 0;
   for (const row of rows) {
@@ -678,10 +943,15 @@ export async function syncSessionExtension(stripe: ExtensionStripe, bookingId: n
 export async function handleSessionExtensionWebhook(stripe: ExtensionStripe, intent: Stripe.PaymentIntent) {
   const id = Number(intent.metadata?.session_extension_id);
   if (intent.metadata?.type !== 'session_extension' || !Number.isSafeInteger(id) || id < 1) return;
-  const [extension] = await db.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1);
-  if (!extension) throw new SessionExtensionError('Saved extension missing for this payment');
-  const row = await context(readTx(), extension.bookingId); verifyIntent(intent, extension, row);
-  if (!extension.paymentIntentId) await db.update(kitchenBookingExtensions).set({ paymentIntentId: intent.id })
-    .where(and(eq(kitchenBookingExtensions.id, id), isNull(kitchenBookingExtensions.paymentIntentId)));
+  const bound = await db.transaction(async tx => {
+    const [extension] = await tx.select().from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.id, id)).limit(1).for('update');
+    if (!extension) throw new SessionExtensionError('Saved extension missing for this payment');
+    if (extension.operation?.state !== 'pending' || !matchesAttempt(intent.metadata, extension)) return false;
+    const row = await context(tx, extension.bookingId); verifyIntent(intent, extension, row);
+    if (!extension.paymentIntentId) await tx.update(kitchenBookingExtensions).set({ paymentIntentId: intent.id })
+      .where(eq(kitchenBookingExtensions.id, id));
+    return true;
+  });
+  if (!bound) return;
   return reconcileSessionExtension(stripe, id);
 }

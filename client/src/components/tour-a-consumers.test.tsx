@@ -67,7 +67,7 @@ describe('Tour A exact task consumers', () => {
     expect(within(coordination).getByRole('link', { name: 'morgan@example.com' })).toHaveAttribute('href', 'mailto:morgan@example.com');
     const next = screen.getByRole('region', { name: 'What to do next' });
     expect(within(next).queryByRole('button', { name: 'Running late' })).not.toBeInTheDocument();
-    fireEvent.click(within(coordination).getByRole('button', { name: 'Running late' }));
+    fireEvent.click(within(coordination).getByRole('button', { name: 'Running late?' }));
     expect(await screen.findByTestId('specific-chat')).toHaveTextContent('I’m running late for my kitchen tour. My estimated arrival time is:');
     expect(chat.resolve).toHaveBeenCalledWith(42);
   });

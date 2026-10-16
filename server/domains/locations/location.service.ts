@@ -8,7 +8,8 @@ import { logger } from "../../logger";
 
 import { db } from '../../db';
 import { chefKitchenApplications } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import { DeletionBlockedError, getDeletionBlockers, hasDeletionHistory, isForeignKeyViolation } from '../../services/deletion-guard';
 import { LocationRepository } from './location.repository';
 import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO, LocationRequirements, UpdateLocationRequirements } from './location.types';
 import { DomainError, LocationErrorCodes } from '../../shared/errors/domain-error';
@@ -348,51 +349,54 @@ export class LocationService {
     }
   }
 
-  async deleteLocation(id: number): Promise<void> {
-    // Logic for checking kitchens dependency needs to be here or in repo?
-    // storage-firebase check: const locationKitchens = await db.select().from(kitchens).where(eq(kitchens.locationId, id));
-    // Ideally Repo should handle DB checks, Service handles Error logic.
-    // But Repo is clean DB access.
-    // For now, I'll trust the repo delete to fail with FK constraint if kitchens exist, 
-    // OR I should implement the check.
-    // The original code had an explicit check.
-    // Since I don't have access to KitchenRepo here easily (circular dep potentially), 
-    // I will rely on DB constraint or add the check if I can import types.
+  /**
+   * Delete a location, safely. Live bookings, open claims or money in flight block it (with references).
+   * Booking/claim history archives the location and its kitchens instead; otherwise it is removed.
+   */
+  async deleteLocation(id: number): Promise<{ archived: boolean }> {
+    await this.getLocationById(id);
+    const scope = { kind: 'location', locationId: id } as const;
+    const blockers = await getDeletionBlockers(db, scope);
+    if (blockers.blocked) throw new DeletionBlockedError('location', blockers);
 
-    // Let's implement the check in Repo or just let it fail?
-    // Original code threw "Cannot delete location: It has X kitchen(s)". 
-
-    // For this refactor, I will add the method to Repository to check dependencies or handle deletion.
-    // Wait, I just added a simple delete to Repository. 
-    // I should update Repository to check for kitchens or handle the FK error.
+    const archive = async () => {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`UPDATE kitchens SET archived_at = COALESCE(archived_at, now()), listing_status = 'draft', updated_at = now() WHERE location_id = ${id}`);
+        await tx.execute(sql`UPDATE locations SET archived_at = COALESCE(archived_at, now()), updated_at = now() WHERE id = ${id}`);
+      });
+      return { archived: true };
+    };
+    if (await hasDeletionHistory(db, scope)) return archive();
 
     try {
-      // 1. Get all applications associated with this location
-      // We need to clean up their conversations in Firestore
       const locationApps = await db
-        .select({
-          id: chefKitchenApplications.id,
-          conversationId: chefKitchenApplications.chat_conversation_id
-        })
+        .select({ id: chefKitchenApplications.id, conversationId: chefKitchenApplications.chat_conversation_id })
         .from(chefKitchenApplications)
         .where(eq(chefKitchenApplications.locationId, id));
 
-      // 2. Delete associated conversations in Firestore
+      await db.transaction(async (tx) => {
+        // Manager blocks carry no money; real bookings are protected by the RESTRICT foreign key.
+        await tx.execute(sql`DELETE FROM kitchen_bookings WHERE booking_type = 'manager_blocked' AND kitchen_id IN (SELECT id FROM kitchens WHERE location_id = ${id})`);
+        await tx.execute(sql`DELETE FROM locations WHERE id = ${id}`);
+      });
+
+      // Chat clean-up only after the database delete succeeded.
       if (locationApps.length > 0) {
         const { deleteConversation } = await import('../../chat-service');
-        const cleanupPromises = locationApps
+        const cleanups = locationApps
           .filter(app => app.conversationId)
           .map(app => deleteConversation(app.conversationId!)
-            .catch((err: any) => logger.error(`Failed to delete conversation ${app.conversationId}:`, err))
-          );
-
-        await Promise.all(cleanupPromises);
-        logger.info(`[LocationService] Cleaned up ${cleanupPromises.length} conversations for deleted location ${id}`);
+            .catch((err: any) => logger.error(`Failed to delete conversation ${app.conversationId}:`, err)));
+        await Promise.all(cleanups);
+        logger.info(`[LocationService] Cleaned up ${cleanups.length} conversations for deleted location ${id}`);
       }
-
-      // 3. Delete location in Postgres
-      await this.locationRepo.delete(id);
+      return { archived: false };
     } catch (error: any) {
+      if (isForeignKeyViolation(error)) {
+        const again = await getDeletionBlockers(db, scope);
+        if (again.blocked) throw new DeletionBlockedError('location', again);
+        return archive();
+      }
       logger.error('[LocationService] Error deleting location:', error);
       throw error;
     }

@@ -3,7 +3,7 @@ import { Router, Request, Response } from "express";
 
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
 import { requireChef } from "./middleware";
-import { inventoryService } from "../domains/inventory/inventory.service";
+import { inventoryService, EquipmentListingInUseError } from "../domains/inventory/inventory.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 
@@ -146,6 +146,10 @@ router.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser
             return res.status(403).json({ error: "Access denied to this listing" });
         }
 
+        if (existingListing.archivedAt) {
+            return res.status(404).json({ error: "Equipment listing not found" });
+        }
+
         const updated = await inventoryService.updateEquipmentListing(listingId, req.body);
 
         logger.info(`✅ Equipment listing ${listingId} updated by manager ${user.id}`);
@@ -181,11 +185,19 @@ router.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithU
             return res.status(403).json({ error: "Access denied to this listing" });
         }
 
-        await inventoryService.deleteEquipmentListing(listingId);
+        if (existingListing.archivedAt) {
+            return res.status(404).json({ error: "Equipment listing not found" });
+        }
 
-        logger.info(`✅ Equipment listing ${listingId} deleted by manager ${user.id}`);
-        res.json({ success: true });
+        const outcome = await inventoryService.deleteEquipmentListing(listingId);
+
+        logger.info(`✅ Equipment listing ${listingId} ${outcome.archived ? "archived" : "deleted"} by manager ${user.id}`);
+        res.json({ success: true, archived: outcome.archived });
     } catch (error: any) {
+        // Open bookings (or a booking that appeared mid-delete and tripped the foreign key) never lose their listing.
+        if (error instanceof EquipmentListingInUseError || error?.code === "23503" || error?.cause?.code === "23503") {
+            return res.status(409).json({ error: "This equipment has upcoming bookings. Turn it off for new bookings instead." });
+        }
         logger.error("Error deleting equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
     }

@@ -136,6 +136,34 @@ export default function MyKitchensTabContent({
                     )}
                   </Badge>
                 );
+              } else if (display.bookingBlocked && display.actionKind === "complete-step") {
+                // Approved, but booking is blocked until the chef renews expiring or rejected documents: offer that, never Book.
+                primary = (
+                  <Button
+                    variant="outline"
+                    className={outlineActionClass}
+                    onClick={() => {
+                      window.location.href = app.bookingEligibility?.actionUrl
+                        ?? `/dashboard?view=kitchen-requests&application=${app.id}`;
+                    }}
+                  >
+                    {t("renewDocumentsTitle", "Renew documents")}
+                  </Button>
+                );
+              } else if (display.bookingBlocked) {
+                // Renewal under review, or access ended: a state, not an action (same non-interactive badge as the paused state).
+                primary = (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "h-auto min-h-11 w-full justify-center whitespace-normal px-3 py-2 text-center font-medium",
+                      chefOutlineCtaClass()
+                    )}
+                  >
+                    <Clock className="mr-1 h-3 w-3" />
+                    {display.label}
+                  </Badge>
+                );
               } else if ((app.current_tier ?? 1) >= 3) {
                 primary = (
                   <Button

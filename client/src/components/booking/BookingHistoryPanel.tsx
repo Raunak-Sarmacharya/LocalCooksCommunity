@@ -34,6 +34,17 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
   const money = (cents: number) => new Intl.NumberFormat(i18n.resolvedLanguage || 'en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(cents / 100);
   // "Oct 15 at 8:00 p.m."; the year only when it isn't this year. Neutral dots: brand red is reserved for the one primary action.
   const when = (value: string, _compact = false) => timezone ? friendlyDateTime(value, i18n.resolvedLanguage || 'en-CA', timezone) : t('historyTimeUnavailable');
+  // Extra-time lines read from the viewer's side (you / the chef / the kitchen), using the facts the server sent.
+  const extensionText = (event: BookingHistoryResponse['events'][number]) => {
+    const flow = event.extFlow ?? 'ask', who = chefName || t('historyChefFallback');
+    const flowKey = flow === 'early' ? 'offer' : flow;
+    const name = event.kind === 'ext_requested' ? `requested_${flow === 'charge' ? 'charge' : 'ask'}_${role}`
+      : event.kind === 'ext_offered' ? `offered_${flow === 'early' ? 'early' : 'offer'}_${role}`
+      : event.kind === 'ext_approved' ? `approved_ask_${role}` : event.kind === 'ext_accepted' ? `accepted_offer_${role}`
+      : event.kind === 'ext_paid' ? `paid_${role}` : event.kind === 'ext_declined' ? `declined_${flowKey}_${role}`
+      : event.kind === 'ext_expired' ? `expired_${flowKey}` : event.kind === 'ext_withdrawn' ? `withdrawn_${flowKey}` : 'refunded';
+    return t(`historyExt_${name}` as 'historyGoodwill_chef', { minutes: event.minutes ?? 0, amount: money(event.amountCents ?? 0), chef: who });
+  };
   return <section aria-label={t('historyTitle')} className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-sm font-semibold leading-5">{t('historyTitle')}</h2>
@@ -58,6 +69,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                   ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')
                   : event.kind === 'goodwill_refunded' && event.amountCents
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
+                    : event.kind.startsWith('ext_') ? extensionText(event)
                     : role === 'chef' && event.kind === 'checkout_requested' ? t('historyYouCheckedOut')
                     : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>

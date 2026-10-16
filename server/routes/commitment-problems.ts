@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireFirebaseAuthWithUser } from '../firebase-auth-middleware';
 import { errorResponse } from '../api-response';
-import { canReportProblem, listProblems, problemContext, reportProblem, updateProblem } from '../services/commitment-problems';
+import { canReportProblem, listProblems, problemContext, problemReportingOpensAt, reportProblem, updateProblem } from '../services/commitment-problems';
 import { db } from '../db';
 import { attemptOutcomeDelivery } from '../services/outcome-delivery';
 
@@ -19,8 +19,8 @@ router.get('/:kind/:id', async (req, res) => {
     const kind = req.params.kind as 'booking' | 'tour', id = Number(req.params.id);
     const problems = await listProblems(req.neonUser!, kind, id);
     const context = await db.transaction(tx => problemContext(tx, kind, id));
-    const reportingOpensAt = context?.wasConfirmed && context.scheduledStart && context.scheduledStart.getTime() > Date.now()
-      ? context.scheduledStart.toISOString() : null;
+    const opens = problemReportingOpensAt(context);
+    const reportingOpensAt = opens && opens.getTime() > Date.now() ? opens.toISOString() : null;
     res.json({ problems, reportingAvailable: canReportProblem(context, req.neonUser!), reportingOpensAt, actorId: req.neonUser!.id });
   }
   catch (error) { return errorResponse(res, error); }

@@ -41,8 +41,8 @@ it('shows recorded event chronology in Newfoundland time and refreshes after a v
   expect(scroll.querySelector('details')).not.toHaveAttribute('open');
   expect(screen.getAllByTestId('tour-history-dot')).toHaveLength(6);
   const timestamp = scroll.querySelector('time')!;
-  expect(timestamp).toHaveClass('whitespace-nowrap', 'text-right');
-  expect(timestamp.parentElement).toHaveClass('grid-cols-[minmax(0,1fr)_auto]');
+  expect(timestamp).toHaveClass('sm:whitespace-nowrap', 'sm:text-right');
+  expect(timestamp.parentElement).toHaveClass('sm:grid-cols-[minmax(0,1fr)_auto]');
   expect(timestamp).toHaveAttribute('title', 'Oct 7, 2026, 9:30 AM');
   expect(fetcher).toHaveBeenCalledWith('/api/viewings/manager/10/history', { headers: { Authorization: 'Bearer fixture-token' }, cache: 'no-store' });
   view.rerender(<QueryClientProvider client={client}><TourHistoryPanel id={10} version="second" /></QueryClientProvider>);

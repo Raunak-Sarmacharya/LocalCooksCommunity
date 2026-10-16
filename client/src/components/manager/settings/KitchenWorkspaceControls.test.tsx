@@ -38,7 +38,7 @@ describe("kitchen policy write scope", () => {
   it("has no kitchen arrival/departure switch or checklist fetch", () => {
     const { client } = mount();
     // The only switch here is the extra-time auto-approval (build-session-extensions.md); never an arrival/departure one.
-    expect(screen.queryAllByRole('switch').filter(element => !element.id.startsWith('auto-extend-'))).toHaveLength(0);
+    expect(screen.queryAllByRole('switch').filter(element => !element.id.startsWith('auto-extend-') && element.id !== 'turnover-buffer')).toHaveLength(0);
     expect(api.get).not.toHaveBeenCalledWith('/manager/locations/33/checkin-checkout-settings');
     expect(api.put).not.toHaveBeenCalled(); client.clear();
   });
@@ -47,7 +47,7 @@ describe("kitchen policy write scope", () => {
     const { client, ref } = mount();
     api.put.mockResolvedValue({ ...original, kitchen: { ...original.kitchen, minimumBookingWindowHours: 0 },
       effective: { ...defaults, minimumBookingWindowHours: 0 } });
-    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "0" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpNoticeLabel" }), { target: { value: "0" } });
     expect(screen.queryByText("kitchenPolicyPendingOverride")).not.toBeInTheDocument();
     await ref.current!.saveAllChanges("kitchen");
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", { minimumBookingWindowHours: 0 }));
@@ -71,7 +71,7 @@ describe("kitchen policy write scope", () => {
     const { client, ref } = mount();
     api.put.mockResolvedValue({ updatedKitchens: 2 });
     api.get.mockResolvedValue(original);
-    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpNoticeLabel" }), { target: { value: "3" } });
     expect(await ref.current!.saveAllChanges("location")).toBe(true);
     expect(api.put).toHaveBeenCalledWith("/manager/locations/33/kitchen-booking-policies", { minimumBookingWindowHours: 3 });
     expect(api.put).not.toHaveBeenCalledWith("/manager/kitchens/40/workspace-settings", expect.anything());
@@ -83,7 +83,7 @@ describe("kitchen policy write scope", () => {
     client.setQueryData(kitchenWorkspaceSettingsKey(40), { ...original,
       kitchen: { ...original.kitchen, minimumBookingWindowHours: 0 }, effective: { ...defaults, minimumBookingWindowHours: 0 } });
     await screen.findByRole("button", { name: "kitchenPolicyReset" });
-    fireEvent.change(screen.getByRole("textbox", { name: "dailyBookingLimit" }), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpLongestLabel" }), { target: { value: "3" } });
     expect(screen.getByRole("button", { name: "kitchenPolicyReset" })).toBeDisabled();
     expect(screen.getByText("kitchenPolicyResetAfterSave")).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();

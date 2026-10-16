@@ -88,7 +88,7 @@ it('offers undo only for a no-show and sends the optional-note default', async (
 it('keeps a no-show read-only for chefs and offers messaging and support', async () => {
   mount({ manager: false, data: { ...record, visits: [{ ...record.visits[0], checkinStatus: 'no_show' }], history: [{ id: 1, visitId: 5, action: 'report_no_show', actorRole: 'manager', sharedMessage: 'We waited and tried to call.', createdAt: '2026-10-04T12:00:00Z' }] } });
   expect(await screen.findByRole('button', { name: 'Message kitchen' })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'This isn’t right: contact Local Cooks' })).toHaveAttribute('href', 'mailto:support@localcooks.ca');
+  expect(screen.getByRole('link', { name: 'This isn’t right: contact Local Cooks' }).getAttribute('href')).toMatch(/^mailto:support@localcooks\.ca\?subject=/);
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.getByText('Show history')).toBeInTheDocument();
 });

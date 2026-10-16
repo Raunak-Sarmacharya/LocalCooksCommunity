@@ -67,7 +67,7 @@ describe("claims in the Now card (§1.5)", () => {
   });
   it("chef: an upheld claim says what happens if it stays unpaid, without a Dispute button", () => {
     render(<NowClaimRows claims={[claim({ status: "approved", upheldAt: "2030-01-19T00:00:00Z" })]} manager={false} chefName="Ada" timezone="America/St_Johns" onChanged={vi.fn()} />);
-    expect(screen.getByTestId("claim-attention")).toHaveTextContent("If it’s unpaid after 7 days, new bookings pause.");
+    expect(screen.getByTestId("claim-attention")).toHaveTextContent("Pay by Jan 25 to keep booking.");
     expect(screen.queryByRole("button", { name: "Dispute" })).not.toBeInTheDocument();
   });
   it("chef: Pay opens the payment step", async () => {

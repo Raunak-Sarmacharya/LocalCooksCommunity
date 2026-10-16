@@ -1,3 +1,4 @@
+import { bookingWindowCap } from '../../services/booking-policy-settings';
 import { logger } from "../../logger";
 /**
  * Kitchen Repository
@@ -9,7 +10,7 @@ import { logger } from "../../logger";
 import { db } from '../../db';
 import { resolveKitchenBookingPolicies } from '@shared/kitchen-booking-policies';
 import { kitchens, locations, kitchenDateOverrides, kitchenAvailability, kitchenBookings } from '@shared/schema';
-import { eq, and, asc, desc, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, asc, desc, gte, lte, sql, isNull } from 'drizzle-orm';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
 import { kitchenIsVisibleToChefs, licenseAllowsBookings } from '@shared/kitchen-license';
@@ -82,7 +83,7 @@ export class KitchenRepository {
       const results = await db
         .select()
         .from(kitchens)
-        .where(eq(kitchens.locationId, locationId))
+        .where(and(eq(kitchens.locationId, locationId), isNull(kitchens.archivedAt)))
         .orderBy(asc(kitchens.createdAt), asc(kitchens.id));
 
       return results.map(k => this.mapToDTO(k));
@@ -107,7 +108,8 @@ export class KitchenRepository {
         .where(
           and(
             eq(kitchens.locationId, locationId),
-            eq(kitchens.isActive, true)
+            eq(kitchens.isActive, true),
+            isNull(kitchens.archivedAt)
           )
         )
         .orderBy(desc(kitchens.createdAt));
@@ -190,7 +192,7 @@ export class KitchenRepository {
         })
         .from(kitchens)
         .leftJoin(locations, eq(kitchens.locationId, locations.id))
-        .where(and(eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active")));
+        .where(and(eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active"), isNull(kitchens.archivedAt)));
 
       /*
        * DISTINCT still earns its keep: two kitchens at one location with the same licence state
@@ -442,11 +444,12 @@ export class KitchenRepository {
         .leftJoin(locations, eq(kitchens.locationId, locations.id))
         .orderBy(desc(kitchens.createdAt));
 
+      const cap = await bookingWindowCap();
       return results.map(({ kitchen, location }) => ({
         ...this.mapToDTO(kitchen),
         location: location ? {
           ...location,
-          ...resolveKitchenBookingPolicies(kitchen, location),
+          ...resolveKitchenBookingPolicies(kitchen, location, cap),
           logoUrl: location.logoUrl || null,
           brandImageUrl: location.brandImageUrl || null,
           kitchenLicenseUrl: location.kitchenLicenseUrl || null,
@@ -467,20 +470,22 @@ export class KitchenRepository {
     }
   }
 
+  /**
+   * Remove a kitchen that has no booking history. Manager blocks (no money) go with it; real bookings are never
+   * deleted here: the booking foreign key is RESTRICT, so a booking that appears mid-delete aborts the delete.
+   */
   async delete(id: number): Promise<void> {
-    try {
-      await db.transaction(async (tx) => {
-        await tx.delete(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
-        await tx.delete(kitchens).where(eq(kitchens.id, id));
-      });
-    } catch (error: any) {
-      logger.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
-      throw new DomainError(
-        KitchenErrorCodes.KITCHEN_NOT_FOUND,
-        'Failed to delete kitchen',
-        500
-      );
-    }
+    await db.transaction(async (tx) => {
+      await tx.delete(kitchenBookings).where(and(eq(kitchenBookings.kitchenId, id), eq(kitchenBookings.bookingType, 'manager_blocked')));
+      await tx.delete(kitchens).where(eq(kitchens.id, id));
+    });
+  }
+
+  /** Take a kitchen with history off every list and listing; bookings, receipts and claims keep resolving it. */
+  async archive(id: number): Promise<void> {
+    await db.update(kitchens)
+      .set({ archivedAt: new Date(), listingStatus: 'draft', updatedAt: new Date() })
+      .where(and(eq(kitchens.id, id), isNull(kitchens.archivedAt)));
   }
 
   // ==========================================

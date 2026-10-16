@@ -3,7 +3,7 @@ import { getTableName } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ booking: {} as any, payments: [] as any[], visits: [] as any[], flags: [] as any[], actions: [] as any[],
   events: [] as any[], storage: [] as any[], equipment: [] as any[], provider: vi.fn(), goodwill: vi.fn(), queue: vi.fn(), issue: vi.fn(), database: null as any, receipts: [] as any[], codes: [] as any[], enroll: vi.fn(), names: {} as Record<number, string>,
-  release: vi.fn(), payout: { timing: 'at_capture', status: 'sent', holdReason: null, expectedAt: null, sentAt: null, amountCents: 9680 } as any }));
+  closeoutVisits: [] as any[], release: vi.fn(), payout: { timing: 'at_capture', status: 'sent', holdReason: null, expectedAt: null, sentAt: null, amountCents: 9680 } as any }));
 vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.select(...args), insert: (...args: any[]) => state.database.insert(...args),
   update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
 vi.mock('./booking-payment-decision', () => ({ decideAuthorizedBooking: state.provider, reconcileBookingDecision: state.provider }));
@@ -17,7 +17,7 @@ vi.mock('./visit-code-challenge', () => ({ chefVisitCodes: async () => state.cod
 vi.mock('./visit-assistance', () => ({ assistKitchenVisit: state.provider }));
 vi.mock('./booking-attendance-service', () => ({ recordBookingAttendance: state.provider }));
 vi.mock('./clock-closeout', () => ({ recordKitchenInspection: state.provider,
-  projectBookingCloseout: async () => ({ checkoutReviewDeadline: null, closeout: { status: state.booking.status, visits: [] } }) }));
+  projectBookingCloseout: async () => ({ checkoutReviewDeadline: null, closeout: { status: state.booking.status, visits: state.closeoutVisits } }) }));
 vi.mock('./kitchen-visit-lifecycle', () => ({ claimKitchenVisit: state.provider }));
 vi.mock('./booking-support-flags', () => ({ changeBookingFlag: state.provider }));
 vi.mock('./advance-reminders', () => ({ reminderVisitTimes: () => [{ start: new Date('2027-01-02T12:00:00Z'), end: new Date('2027-01-02T14:00:00Z') }] }));
@@ -64,7 +64,7 @@ beforeEach(() => {
   state.receipts = [];
   state.codes = [{ targetKey: 'booking:1', visitId: null, mode: 'staffed', code: '987654', nonce: 'private-nonce', codeRequired: true }];
   state.enroll.mockImplementation(async () => { expect(state.booking.status).toBe('confirmed'); state.codes = [{ targetKey: 'booking:1', mode: 'staffed' }]; return 1; });
-  vi.clearAllMocks(); state.actions = []; state.events = []; state.flags = []; state.visits = []; state.storage = []; state.equipment = [];
+  vi.clearAllMocks(); state.closeoutVisits = []; state.actions = []; state.events = []; state.flags = []; state.visits = []; state.storage = []; state.equipment = []; state.closeoutVisits = [];
   state.booking = { id: 1, chefId: 4, kitchenId: 2, referenceCode: 'KB-TEST', status: 'confirmed', paymentStatus: 'paid', checkinStatus: 'not_checked_in',
     currency: 'CAD', paymentIntentId: 'pi_one', paymentDecision: null, createdAt: new Date(), updatedAt: new Date(),
     bookingDate: new Date('2027-01-02T00:00:00Z'), startTime: '09:00', endTime: '11:00', selectedSlots: [], cancellationPolicyHours: 24 };
@@ -118,6 +118,100 @@ describe('support state × action matrix', () => {
     expect(availableSupportActions(context()).map(row => row.type)).not.toContain('cancel_kitchen_caused');
   });
 });
+describe('inspection actions while a completed booking\'s inspection window is open', () => {
+  const types = (extra: any = {}) => availableSupportActions({ ...context(), ...extra }).map(row => row.type);
+  const closeout = (...visits: Array<{ visitId: number | null; canRespond: boolean }>) => ({ closeout: { visits: visits.map(visit => ({ visitId: visit.visitId, inspection: { canRespond: visit.canRespond } })) } });
+  beforeEach(() => { state.booking.status = 'completed'; state.booking.checkinStatus = 'checkout_requested'; });
+
+  it('offers clear and report while the closeout projection says the kitchen can still respond', () => {
+    state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '11:00', checkinStatus: 'checkout_requested' }];
+    expect(types({ closeout: closeout({ visitId: 9, canRespond: true }) })).toEqual(expect.arrayContaining(['clear_checkout_for_manager', 'report_issue_for_manager']));
+  });
+  it('offers clear for a single-visit booking with no visit rows', () => {
+    const list = types({ closeout: closeout({ visitId: null, canRespond: true }) });
+    expect(list).toContain('clear_checkout_for_manager');
+    expect(list).not.toContain('report_issue_for_manager'); // reports are per visit, as before
+  });
+  it('withholds both once the inspection window is closed or the projection is missing', () => {
+    state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '11:00', checkinStatus: 'checkout_requested' }];
+    for (const extra of [{ closeout: closeout({ visitId: 9, canRespond: false }) }, { closeout: undefined }, { closeout: closeout() }]) {
+      expect(types(extra)).not.toContain('clear_checkout_for_manager'); expect(types(extra)).not.toContain('report_issue_for_manager');
+    }
+  });
+  it('judges each visit by its own window', () => {
+    state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '10:00', checkinStatus: 'checkout_requested' }, { id: 10, blockIndex: 1, startTime: '10:00', endTime: '11:00', checkinStatus: 'checkout_requested' }];
+    expect(types({ closeout: closeout({ visitId: 9, canRespond: false }, { visitId: 10, canRespond: true }) })).toContain('clear_checkout_for_manager');
+    expect(types({ closeout: closeout({ visitId: 9, canRespond: false }, { visitId: 10, canRespond: false }) })).not.toContain('clear_checkout_for_manager');
+  });
+  it('needs a pending checkout on that visit, even with an open window', () => {
+    state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '11:00', checkinStatus: 'checked_out' }];
+    expect(types({ closeout: closeout({ visitId: 9, canRespond: true }) })).not.toContain('clear_checkout_for_manager');
+  });
+  it('keeps arrival actions confirmed-only and still blocks a recovering decision', () => {
+    state.booking.checkinStatus = 'not_checked_in'; state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '11:00', checkinStatus: 'not_checked_in' }];
+    const list = types({ closeout: closeout({ visitId: 9, canRespond: true }) });
+    for (const arrival of ['issue_visit_code', 'set_arrival_mode', 'record_assisted_arrival']) expect(list).not.toContain(arrival);
+    state.booking.checkinStatus = 'checkout_requested'; state.visits[0].checkinStatus = 'checkout_requested'; state.booking.paymentDecision = { state: 'pending', target: 'confirmed' };
+    expect(types({ closeout: closeout({ visitId: 9, canRespond: true }) })).not.toContain('clear_checkout_for_manager');
+  });
+  it('does not open the checkout actions for a cancelled booking', () => {
+    state.booking.status = 'cancelled'; state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '11:00', checkinStatus: 'checkout_requested' }];
+    expect(types({ closeout: closeout({ visitId: 9, canRespond: true }) })).not.toContain('clear_checkout_for_manager');
+  });
+  it('the executor honours the same gate: runs for an open window and refuses a closed one', async () => {
+    state.visits = [{ id: 9, blockIndex: 0, startTime: '09:00', endTime: '11:00', checkinStatus: 'checkout_requested' }];
+    state.closeoutVisits = [{ visitId: 9, inspection: { canRespond: false } }];
+    await expect(executeBookingSupportAction(1, 7, input('clear_checkout_for_manager', { actingFor: 'manager', amountCents: undefined, details: { visitId: 9 } }))).rejects.toThrow('unavailable');
+    expect(state.provider).not.toHaveBeenCalled();
+    state.closeoutVisits = [{ visitId: 9, inspection: { canRespond: true } }];
+    const result = await executeBookingSupportAction(1, 7, input('clear_checkout_for_manager', { actingFor: 'manager', amountCents: undefined, operationKey: 'test-operation-2', details: { visitId: 9 } }));
+    expect(result.action.status).toBe('verified');
+    expect(state.provider).toHaveBeenCalledWith(1, expect.any(Number), 9, undefined);
+  });
+});
+describe('dead-end payment decisions get an executable support action', () => {
+  const types = () => availableSupportActions(context()).map(row => row.type);
+  const deadEnd = (kind: string) => ({ state: 'pending', deadEnd: { kind, at: '2027-01-01T00:00:00.000Z' } });
+
+  it('a confirmation whose card hold was released can be released by support', () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized', paymentDecision: { ...deadEnd('hold_canceled'), target: 'confirmed' } });
+    state.payments[0].status = 'authorized';
+    expect(types()).toEqual(expect.arrayContaining(['decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision']));
+    expect(types()).not.toContain('confirm_for_manager');
+  });
+  it('still works when a legacy cancel webhook already cancelled the booking, and can be retried after a failed attempt', () => {
+    Object.assign(state.booking, { status: 'cancelled', paymentStatus: 'failed', paymentDecision: { ...deadEnd('hold_canceled'), target: 'confirmed' } });
+    state.actions = [{ status: 'failed', actionType: 'decline_for_manager' }];
+    expect(types()).toContain('decline_for_manager');
+    state.actions = [{ status: 'recovery_required', actionType: 'decline_for_manager' }];
+    expect(types()).toContain('decline_for_manager');
+    state.actions = [{ status: 'executing', actionType: 'decline_for_manager' }];
+    expect(types()).not.toContain('decline_for_manager');
+  });
+  it('a pending confirmation without the dead-end marker is only replayed, never released', () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized', paymentDecision: { state: 'pending', target: 'confirmed' } });
+    expect(types()).not.toContain('decline_for_manager'); expect(types()).not.toContain('release_hold_for_chef');
+  });
+  it('a confirmed booking never offers the hold release, whatever its old decision says', () => {
+    Object.assign(state.booking, { status: 'confirmed', paymentStatus: 'paid', paymentDecision: { ...deadEnd('hold_canceled'), target: 'confirmed' } });
+    expect(types()).not.toContain('decline_for_manager');
+  });
+  it('a release that lost to a capture offers the refund-and-cancel action', () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'paid', paymentDecision: { ...deadEnd('captured_before_release'), target: 'cancelled' } });
+    expect(types()).toContain('refund_captured_request');
+    expect(types()).not.toContain('goodwill_refund');
+  });
+  it('withholds the refund-and-cancel action while money is under review, flagged, or already refunded as goodwill', () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'paid', paymentDecision: { ...deadEnd('captured_before_release'), target: 'cancelled' } });
+    state.flags = [{ id: 1 }]; expect(types()).not.toContain('refund_captured_request'); state.flags = [];
+    state.payments[0].metadata = { refundRecovery: { status: 'pending' } }; expect(types()).not.toContain('refund_captured_request');
+    state.payments[0].metadata = { refunds: [{ platformGoodwillCents: 500 }] }; expect(types()).not.toContain('refund_captured_request');
+  });
+  it('a dead-end cancellation without a captured payment offers neither', () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized', paymentDecision: { ...deadEnd('captured_before_release'), target: 'cancelled' } });
+    expect(types()).not.toContain('refund_captured_request'); expect(types()).not.toContain('decline_for_manager');
+  });
+});
 describe('support operation reservation and notices', () => {
   it('enrolls a legacy booking through the challenge service before issuing a redacted code', async () => {
     state.codes = [];
@@ -166,12 +260,19 @@ describe('support operation reservation and notices', () => {
     await expect(executeBookingSupportAction(1, 7, input('goodwill_refund', { amountCents: 3000 }))).rejects.toThrow('exception confirmation');
     expect(state.actions).toHaveLength(0); expect(state.goodwill).not.toHaveBeenCalled();
   });
-  it('queues a both-party notice with no internal note or visit-code digits in responses', async () => {
+  it('adds no generic notice for an action whose own service tells each side; no internal note or code digits in responses', async () => {
     const result = await executeBookingSupportAction(1, 7, input('issue_visit_code', { actingFor: 'manager', amountCents: undefined, details: { targetKey: 'booking:1' } }));
-    expect(state.queue.mock.calls[0][6]).toEqual({ recipientPolicy: 'participants', supportActionId: 1 });
-    expect(state.queue.mock.calls[0][4]).toMatch(/^Local Cooks support updated your booking:/);
+    expect(state.queue).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toMatch(/987654|private-nonce|Private details/);
     expect(state.actions[0].internalNote).toBe('Private details from the support call.');
+  });
+  it('a goodwill refund tells the chef only, in refund words (the kitchen payout is untouched)', async () => {
+    const result = await executeBookingSupportAction(1, 7, input());
+    expect(result.action.status).toBe('verified');
+    expect(state.queue).toHaveBeenCalledTimes(1);
+    expect(state.queue.mock.calls[0][6]).toEqual({ recipientPolicy: 'chef', supportActionId: 1 });
+    expect(state.queue.mock.calls[0][3]).toMatch(/^Local Cooks refunded you \$/);
+    expect(state.queue.mock.calls[0][4]).toMatch(/Banks usually show it within 5–10 business days\.$/);
     expect(state.actions[0].notifiedEventIds).toEqual([1]);
   });
   it('keeps uncertain refunds in recovery and never sends another provider request for that key', async () => {
@@ -196,8 +297,8 @@ describe('support operation reservation and notices', () => {
     const result = await executeBookingSupportAction(1, 7, input('release_payout', { amountCents: undefined, reasonCode: 'internal_review' }));
     expect(result.action.status).toBe('verified');
     expect(state.release).toHaveBeenCalledWith(1, 'support:test-operation-1', expect.any(Date), { override: true });
-    expect(state.events.at(-1)).toMatchObject({ kind: 'support_updated', metadata: { recipientPolicy: 'manager' } });
-    expect(state.events.at(-1).message).toContain('the kitchen payout has been released');
+    // The payout service sends the kitchen its own "payout sent" notice; support adds nothing generic.
+    expect(state.events.some((event: any) => event.kind === 'support_updated')).toBe(false);
     state.actions = []; state.events = []; state.release.mockReset().mockRejectedValue(Error('Stripe timeout'));
     const uncertain = await executeBookingSupportAction(1, 7, input('release_payout', { amountCents: undefined, operationKey: 'test-operation-2' }));
     expect(uncertain.action.status).toBe('recovery_required');
@@ -264,5 +365,100 @@ describe('admin kitchen transfer lines', () => {
     const held = supportTransferLine({ id: 9, transferId: null, managerRevenue: '5750', stripeProcessingFee: '256', amount: '7000', baseAmount: '5750', serviceFee: '700',
       payoutTiming: 'after_closeout', metadata: {} } as any);
     expect(held).toMatchObject({ sent: false, amountCents: 5494, sentAt: null, status: 'not_recorded' });
+  });
+});
+
+it('requires an explanatory internal note for a goodwill exception', async () => {
+  await expect(executeBookingSupportAction(1, 7, input('goodwill_refund', { amountCents: 3000, confirmException: true, note: '' }))).rejects.toThrow('note of at least 10 characters');
+  expect(state.goodwill).not.toHaveBeenCalled();
+});
+
+describe('a refund attempt that failed before any refund exists never freezes the case', () => {
+  const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000);
+  const stall = async () => {
+    state.goodwill.mockRejectedValueOnce(Error('socket hang up'));
+    const first = await executeBookingSupportAction(1, 7, input());
+    expect(first.action.status).toBe('recovery_required');
+  };
+  it('judges the provider evidence for the original operation key', async () => {
+    const { judgeMoneyAttempt } = await import('./booking-support');
+    const old = { completedAt: minutesAgo(30), createdAt: minutesAgo(31) }, fresh = { completedAt: minutesAgo(1), createdAt: minutesAgo(2) };
+    const refund = (status: string, key = 'op') => ({ status, metadata: { refund_operation_id: key } });
+    expect(judgeMoneyAttempt([refund('succeeded')], 'op', fresh).kind).toBe('succeeded');
+    expect(judgeMoneyAttempt([refund('pending')], 'op', old)).toMatchObject({ kind: 'waiting' });
+    expect(judgeMoneyAttempt([refund('failed')], 'op', fresh)).toMatchObject({ kind: 'closed', evidence: 'provider_refund_failed' });
+    expect(judgeMoneyAttempt([], 'op', fresh)).toMatchObject({ kind: 'waiting' });
+    expect(judgeMoneyAttempt([refund('succeeded', 'other')], 'op', old)).toMatchObject({ kind: 'closed', evidence: 'no_refund_found' });
+    expect(judgeMoneyAttempt([refund('succeeded'), refund('succeeded')], 'op', old)).toMatchObject({ kind: 'waiting' });
+  });
+  it('waits while the attempt is recent and says why', async () => {
+    await stall();
+    const again = await executeBookingSupportAction(1, 7, input());
+    expect(again.action.status).toBe('recovery_required');
+    expect(state.actions[0].error).toContain('waits 10 minutes');
+    expect(state.goodwill).toHaveBeenCalledTimes(1);
+  });
+  it('closes an attempt with no refund at the provider once it has settled, freeing the case', async () => {
+    await stall();
+    state.actions[0].completedAt = minutesAgo(30);
+    const again = await executeBookingSupportAction(1, 7, input());
+    expect(again.action.status).toBe('failed');
+    expect(state.goodwill).toHaveBeenCalledTimes(1);
+    expect(state.actions[0].error).toContain('Nothing was sent');
+    expect(state.actions[0].providerRefs.attempt.evidence).toBe('no_refund_found');
+    expect(availableSupportActions(context()).map(row => row.type)).toContain('goodwill_refund');
+    expect(state.actions[0].status).toBe('failed');
+  });
+  it('closes an attempt the provider reports as failed', async () => {
+    await stall();
+    state.receipts = [{ status: 'failed', metadata: { refund_operation_id: 'test-operation-1' } }];
+    expect((await executeBookingSupportAction(1, 7, input())).action.status).toBe('failed');
+    expect(state.goodwill).toHaveBeenCalledTimes(1);
+  });
+  it('completes from the original receipt with the same key when the refund actually went through', async () => {
+    await stall();
+    state.receipts = [{ status: 'succeeded', metadata: { refund_operation_id: 'test-operation-1' } }];
+    const again = await executeBookingSupportAction(1, 7, input());
+    expect(again.action.status).toBe('verified');
+    expect(state.goodwill).toHaveBeenCalledTimes(2);
+    expect(state.goodwill.mock.calls[1][4]).toBe('test-operation-1');
+  });
+  it('offers the console check only while an attempt is stuck, and it resolves the stuck attempt', async () => {
+    expect(availableSupportActions(context()).map(row => row.type)).not.toContain('resolve_money_attempt');
+    await stall();
+    expect(availableSupportActions(context()).map(row => row.type)).toContain('resolve_money_attempt');
+    state.actions[0].completedAt = minutesAgo(30);
+    const checked = await executeBookingSupportAction(1, 7, input('resolve_money_attempt', { amountCents: undefined, reasonCode: 'payment_problem', operationKey: 'check-attempt-1' }));
+    expect(checked.action.status).toBe('verified');
+    expect(state.actions[0].status).toBe('failed');
+    expect(availableSupportActions(context()).map(row => row.type)).not.toContain('resolve_money_attempt');
+  });
+});
+
+describe('a committed kitchen cancellation whose refund is unfinished', () => {
+  const pending = (extra: any = {}) => ({ kitchenCancellationRefund: { id: 'support-kitchen-fail', status: 'pending', expectedCents: 10000, attempts: 1, error: 'The required manager reversal exceeds the verified unreversed transfer.', ...extra } });
+  const types = () => availableSupportActions(context()).map(row => row.type);
+  it('offers finishing the refund, never a second cancellation, and says so in the case', async () => {
+    Object.assign(state.booking, { status: 'cancelled', cancellationCause: 'kitchen', paymentStatus: 'paid' });
+    state.payments[0].metadata = pending();
+    expect(types()).toContain('finish_kitchen_refund');
+    expect(types()).not.toContain('cancel_kitchen_caused'); expect(types()).not.toContain('goodwill_refund');
+    const result = await readBookingSupport(1);
+    expect(result.kitchenRefund).toMatchObject({ status: 'pending', amountCents: 10000, attempts: 1, error: expect.stringContaining('manager reversal') });
+  });
+  it('is not offered while a flag pauses refunds, or once the refund went out', () => {
+    Object.assign(state.booking, { status: 'cancelled', cancellationCause: 'kitchen', paymentStatus: 'paid' });
+    state.payments[0].metadata = pending(); state.flags = [{ id: 1 }];
+    expect(types()).not.toContain('finish_kitchen_refund');
+    state.flags = []; state.payments[0].metadata = pending({ status: 'succeeded' });
+    expect(types()).not.toContain('finish_kitchen_refund');
+  });
+  it('lets Local Cooks fund it, passing only that choice and the support key', async () => {
+    Object.assign(state.booking, { status: 'cancelled', cancellationCause: 'kitchen', paymentStatus: 'paid' });
+    state.payments[0].metadata = pending();
+    const result = await executeBookingSupportAction(1, 7, input('finish_kitchen_refund', { actingFor: 'manager', reasonCode: 'payment_problem', amountCents: undefined,
+      details: { fundedByLocalCooks: true }, operationKey: 'finish-refund-1' }));
+    expect(result.action.status).toBe('verified');
+    expect(state.provider).toHaveBeenCalledWith(1, expect.anything(), 7, 'finish-refund-1', undefined, { fundedByLocalCooks: true });
   });
 });

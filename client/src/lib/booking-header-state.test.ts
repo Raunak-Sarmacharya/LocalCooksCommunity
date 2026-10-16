@@ -135,3 +135,28 @@ describe('closed-out bookings keep a raw check-in value (live #132 / #160 / #164
     expect(bookingHeaderPhase({ ...base, checkinStatus: 'no_show', inspectionCanRespond: false })).toBe('no_show');
   });
 });
+
+describe('no check-in recorded (WP-N)', () => {
+  const unknown = { visitAttendance: ['unknown'] };
+  it.each([
+    [{ status: 'completed', ...unknown }, 'no_checkin'],
+    [{ status: 'confirmed', closeoutPhase: 'ended', ...unknown }, 'no_checkin'],
+    // Still within the grace period after the booked end: not yet closed out.
+    [{ status: 'confirmed', closeoutPhase: 'booked_time_ended', ...unknown }, 'visit_ended'],
+    // The kitchen said "They came" (server projection reads it as recorded): a normal completed visit.
+    [{ status: 'completed', visitAttendance: ['recorded'] }, 'completed'],
+    [{ status: 'completed', checkinStatus: 'no_show', visitAttendance: ['no_show'] }, 'no_show'],
+    [{ status: 'completed', checkinStatus: 'checked_out', visitAttendance: ['recorded'] }, 'completed'],
+    // One of two visits attended: not a no-check-in booking.
+    [{ status: 'completed', visits: [{ checkinStatus: 'checked_out' }, { checkinStatus: 'not_checked_in' }], visitAttendance: ['recorded', 'unknown'] }, 'completed'],
+    [{ status: 'cancelled', ...unknown }, 'cancelled'],
+  ] as const)('%o → %s', (input, phase) => {
+    expect(bookingHeaderPhase(input as any)).toBe(phase);
+  });
+  it('is amber, and the kitchen answers only while the inspection window is open', () => {
+    expect(bookingPillTone('no_checkin')).toBe('amber');
+    expect(bookingPrimaryAction('no_checkin', true, true)).toBe('answer_attendance');
+    expect(bookingPrimaryAction('no_checkin', true, false)).toBeNull();
+    expect(bookingPrimaryAction('no_checkin', false, true)).toBeNull();
+  });
+});

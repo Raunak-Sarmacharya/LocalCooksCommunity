@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ rows: {} as Record<string, any[]>, event: vi.fn(), next: 100 }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `FIXTURE-${state.next}` }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.event }));
-vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: async (...args: any[]) => args.at(-1)(),
+vi.mock('./kitchen-checkout-incidents', () => ({ registerKitchenCheckout: vi.fn(), checkoutIncident: async () => ({ chefId: 3, kitchenId: 4 }), updateCheckoutIncident: vi.fn(), resolveCheckoutConflict: vi.fn() }));
+vi.mock('./kitchen-checkout-holds', () => ({ fulfillKitchenCheckout: async (...args: any[]) => args[6](),
   KitchenHoldMissingError: class extends Error {}, KitchenSlotUnavailableError: class extends Error {} }));
 vi.mock('../db', () => {
   const database = (rows: Record<string, any[]>) => {

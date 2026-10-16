@@ -97,7 +97,7 @@ interface SettingsRowProps {
    */
   required?: boolean;
   /** One short line of context. Omit when the label already says it. */
-  hint?: string;
+  hint?: ReactNode;
   /**
    * A short tag that belongs with the field name rather than with the control —
    * e.g. a "Compliance" marker on a row that carries regulatory weight. Rendered
@@ -190,7 +190,7 @@ export function SettingsRow({
           {disabledReason}
         </p>
       ) : hint ? (
-        <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+        <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>
       ) : null}
     </div>
   );

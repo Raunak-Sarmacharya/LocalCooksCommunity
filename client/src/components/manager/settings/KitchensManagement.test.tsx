@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   saveArrival: vi.fn(async () => true),
   policiesDirty: false,
   savePolicies: vi.fn(async (_scope: string) => true),
+  toast: vi.fn(),
   tourEnabled: {} as Record<number, boolean>,
   tourHours: {} as Record<number, boolean>,
   bookingHours: [] as Array<{ dayOfWeek: number; startTime: string; endTime: string; isAvailable: boolean }>,
@@ -53,7 +54,7 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/hooks/use-status-button", () => ({
   useStatusButton: () => ({ status: "idle", execute: vi.fn() }),
 }));
-vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: h.toast }) }));
 vi.mock("@/hooks/useSessionFileUpload", () => ({
   useSessionFileUpload: () => ({ uploadFile: vi.fn() }),
 }));
@@ -99,10 +100,11 @@ vi.mock("./CheckinCheckoutSettings", async () => {
 vi.mock("./KitchenPhotos", () => ({ default: () => <div data-testid="photos" /> }));
 vi.mock("./KitchenWorkspaceControls", async () => {
   const { useImperativeHandle } = await import("react");
-  return { default: ({ onDirtyChange, saveRef }: any) => {
+  // The section's own save (Booking rules) asks the shell for the scope step.
+  return { default: ({ onDirtyChange, saveRef, onRequestSave }: any) => {
     useImperativeHandle(saveRef, () => ({ saveAllChanges: h.savePolicies }));
     onDirtyChange?.(h.policiesDirty);
-    return <div />;
+    return <div><button onClick={onRequestSave}>bpSaveRules</button></div>;
   } };
 });
 vi.mock("@/pages/KitchenAvailabilityManagement", () => ({ default: () => <div /> }));
@@ -173,6 +175,7 @@ beforeEach(() => {
   h.saveArrival.mockReset().mockResolvedValue(true);
   h.policiesDirty = false;
   h.savePolicies.mockClear();
+  h.toast.mockClear();
   h.tourEnabled = {};
   h.tourHours = {};
   h.bookingHours = [];
@@ -396,21 +399,27 @@ describe("My Kitchens — creating a kitchen", () => {
     h.kitchens = [{ id: 40, name: "First Kitchen" }, { id: 47, name: "Second Kitchen" }];
     h.policiesDirty = true;
     render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "saveChanges" }));
+    // Nothing saves from the page header on this tab; the section's save opens the scope step.
+    expect(screen.queryByRole("button", { name: "saveChanges" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "bpSaveRules" }));
     expect(screen.getAllByText("policySaveThisKitchen")).toHaveLength(2);
     fireEvent.click(screen.getByRole("radio", { name: /policySaveAllKitchens/ }));
     fireEvent.click(screen.getByRole("button", { name: "policySaveAllKitchens" }));
     expect(h.savePolicies).toHaveBeenCalledWith("location");
   });
-  it("saves the shared location policy when only one kitchen exists", () => {
+  it("saves the shared location policy when only one kitchen exists", async () => {
     window.history.replaceState({}, "", "/?view=kitchens&section=policies");
     h.kitchens = [{ id: 40, name: "First Kitchen" }];
     h.policiesDirty = true;
     render(<KitchensManagement {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "saveChanges" }));
+    // Nothing saves from the page header on this tab; the section's save opens the scope step.
+    expect(screen.queryByRole("button", { name: "saveChanges" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "bpSaveRules" }));
+    // No scope question for a single kitchen: it saves straight away and confirms.
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "policySaveLocation" }));
+    expect(screen.queryByRole("button", { name: "policySaveLocation" })).not.toBeInTheDocument();
     expect(h.savePolicies).toHaveBeenCalledWith("location");
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith({ title: "bookingRulesSavedToast" }));
   });
   it("keeps the requested kitchen selected when opening and revisiting the tours tab", () => {
     window.history.replaceState({}, "", "/?view=kitchens&section=tours&kit=47");

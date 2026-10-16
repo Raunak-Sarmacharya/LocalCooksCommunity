@@ -12,7 +12,8 @@ export type NowRole = 'chef' | 'manager';
 export type NowSecondary =
   | 'cancel_request' | 'see_arrival_details' | 'add_to_calendar' | 'running_late' | 'arrived_early' | 'need_more_time'
   | 'download_invoice' | 'contact_local_cooks' | 'find_another_time'
-  | 'extension_tools' | 'change_booking' | 'fix_record' | 'record_left' | 'report_damage' | 'download_payout_statement' | 'manage_refund';
+  | 'extension_tools' | 'change_booking' | 'fix_record' | 'record_left' | 'report_damage' | 'download_payout_statement' | 'manage_refund'
+  | 'report_no_show' | 'i_was_there';
 export type NowAttention = 'extensions' | 'changes' | 'claims';
 export type NowBody = 'preparation' | 'code' | 'no_show_message' | null;
 
@@ -46,6 +47,10 @@ export interface BookingNowFacts {
   settledClaim?: { outcome: 'chef_paid' | 'local_cooks_paid' | 'closed'; amount: string } | null;
   hasClaim?: boolean;
   claimDeadline?: string;
+  /** Where the open claim stands for the chef: Local Cooks is reviewing a dispute, or has decided an amount due. */
+  claimStage?: 'reviewing' | 'decided';
+  claimAmount?: string;
+  claimPayBy?: string;
   inspectionOutcome?: string | null;
   inspectedOn?: string | null;
   /** Booking status, for the few rules that depend on it beyond the phase. */
@@ -107,16 +112,22 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
     case 'checkout_review':
       if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
       if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
+      if (f.claimStage === 'reviewing') return t('booking:bnChefClaimReviewing');
+      if (f.claimStage === 'decided' && f.claimAmount && f.claimPayBy) return t('booking:bnChefClaimDecided', { amount: f.claimAmount, date: f.claimPayBy });
       if (f.claimDeadline) return t('booking:bnChefClaimOpen', { kitchen, date: f.claimDeadline });
       return f.checkoutClock ? t('bnChefCheckoutSubmitted', { time: f.checkoutClock }) : t('bnChefCheckoutSubmittedNoTime');
     case 'completed':
       if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
       if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
+      if (f.claimStage === 'reviewing') return t('booking:bnChefClaimReviewing');
+      if (f.claimStage === 'decided' && f.claimAmount && f.claimPayBy) return t('booking:bnChefClaimDecided', { amount: f.claimAmount, date: f.claimPayBy });
       if (f.claimDeadline) return t('booking:bnChefClaimOpen', { kitchen, date: f.claimDeadline });
       // Hidden claims are omitted from the chef response, so a cleared inspection cannot promise “all good”.
       return t('booking:bnVisitComplete');
     case 'visit_ended': return t('bdhNextChefMissed');
     case 'no_show': return t('kciStatusNoShow');
+    // Before the kitchen answers: no money statement (owner, Oct 15); "No-shows aren't refunded" is in the accepted terms.
+    case 'no_checkin': return f.startClock ? t('bnChefNoCheckin', { kitchen, time: f.startClock }) : t('bnChefNoCheckinNoTime', { kitchen });
     case 'issue': return t('bnChefIssue', { kitchen });
   }
 }
@@ -136,8 +147,11 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
       if (f.cancelCause === 'declined' || f.cancelCause === 'expired' || f.cancelCause === 'withdrawn') return t(`bdhNextManager_${f.cancelCause}`, { chef });
       return t('bdhNextManagerCancelled');
     case 'confirmed': return f.arrivalMode === 'self' ? t('bnManagerUpcomingSelf', { chef }) : t('bdhNextManagerUpcoming', { chef });
-    case 'today': return f.startClock ? t('bdhNextManagerToday', { chef, time: f.startClock }) : t('bdhNextManagerUpcoming', { chef });
+    case 'today':
+      if (f.runningLate && f.endWithZone) return t('bnManagerRunningLate', { chef, duration: f.runningLate.duration, end: f.endWithZone });
+      return f.startClock ? t('bdhNextManagerToday', { chef, time: f.startClock }) : t('bdhNextManagerUpcoming', { chef });
     case 'checkin_open':
+      if (f.runningLate && f.endWithZone) return t('bnManagerRunningLate', { chef, duration: f.runningLate.duration, end: f.endWithZone });
       return !f.startPassed && f.startClock ? t('bdhNextManagerToday', { chef, time: f.startClock }) : t('bdhNextManagerNotArrived', { chef });
     case 'in_session': return `${t('bdhNextManagerInSession', { chef, time: f.endClock || '' })}${checkedInFragment(f, t)}`;
     case 'time_ended_in_session': return t('bdhNextManagerTimeEnded', { chef, end: f.overstayEndWithZone || f.endWithZone || '' });
@@ -154,6 +168,8 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
       if (f.inspectionOutcome === 'auto_closed_uninspected') return t('bnManagerCompletedNoInspection');
       return t('bdhNextManagerCompleted');
     case 'no_show': return t('bdhNextManagerNoShow');
+    case 'no_checkin': return f.inspectionCanRespond && f.inspectionDue
+      ? t('bnManagerNoCheckinAsk', { chef, time: f.inspectionDue }) : t('bnManagerNoCheckinClosed', { chef });
     case 'issue': return t('bnManagerIssue');
   }
 }
@@ -172,7 +188,8 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
       if (f.runningLateOpen) out.push('running_late');
       break;
     case 'today': case 'checkin_open':
-      if (!f.startPassed && f.canMessage) out.push('arrived_early');
+      // Said they're running late: "Arrived early?" would contradict it.
+      if (!f.startPassed && f.canMessage && !f.runningLate) out.push('arrived_early');
       if (f.runningLateOpen) out.push('running_late');
       if (phase === 'today') out.push('see_arrival_details');
       if (f.canAddToCalendar) out.push('add_to_calendar');
@@ -180,6 +197,7 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
     case 'in_session': out.push('need_more_time'); break;
     case 'completed': if (f.canDownload) out.push('download_invoice'); break;
     case 'no_show': out.push('contact_local_cooks'); break;
+    case 'no_checkin': out.push('i_was_there'); break;
     case 'cancelled': if (f.findAnotherTime) out.push('find_another_time'); break;
   }
   return out;
@@ -207,6 +225,8 @@ function managerSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSec
       if (f.canDownload) out.push('download_payout_statement');
       break;
     case 'no_show': out.push('fix_record'); break;
+    // "They came" is the primary; "They didn't come" sits beside it while the kitchen can still answer.
+    case 'no_checkin': out.push(f.inspectionCanRespond ? 'report_no_show' : 'fix_record'); break;
     case 'cancelled': if (f.managerCanManage) out.push('manage_refund'); break;
   }
   return out;
@@ -219,7 +239,7 @@ export function bookingNowContent({ phase, role, facts, t }: { phase: BookingHea
   const attention: NowAttention[] = [];
   // Schedule changes are open only before the visit; extra time and claims once the booking is confirmed.
   if (['confirmed', 'today', 'checkin_open', 'cancellation_requested'].includes(phase)) attention.push('changes');
-  if (visitPhases && phase !== 'cancellation_requested') attention.push('extensions');
+  if (visitPhases && phase !== 'cancellation_requested' && phase !== 'no_checkin') attention.push('extensions');
   if (['checkout_review', 'visit_ended', 'completed', 'issue', 'no_show', 'time_ended_in_session'].includes(phase)) attention.push('claims');
   const body: NowBody = manager
     ? (BEFORE_START.includes(phase) ? 'code' : null)

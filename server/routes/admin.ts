@@ -6,6 +6,7 @@ import { db, getDbError } from "../db";
 import { userService } from "../domains/users/user.service";
 import { completeUserDeletion, pendingUserDeletions } from "../domains/users/user-deletion-integrations.service";
 import { getUserDeletionImpact } from "../domains/users/user-deletion.service";
+import { DeletionBlockedError, describeDeletionBlockers, getDeletionBlockers, hasDeletionHistory } from "../services/deletion-guard";
 // Imports updated to remove legacy storage
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from "../firebase-auth-middleware";
 import {
@@ -110,15 +111,22 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
 // ===================================
 
 
+/** An explicit, written override of the live-reference guard; recorded in account_deletion_audit. */
+function adminOverride(req: Request): { override?: { actorId: number; reason: string } } {
+    const reason = typeof req.body?.overrideReason === 'string' ? req.body.overrideReason.trim() : '';
+    return reason ? { override: { actorId: req.neonUser!.id, reason } } : {};
+}
+
 // Completely delete a user (admin)
 router.delete("/users/:id/complete", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     const userId = Number(req.params.id);
     if (!Number.isSafeInteger(userId) || userId <= 0) return res.status(400).json({ error: "Invalid user ID" });
     if (userId === req.neonUser!.id) return res.status(400).json({ error: "You cannot delete your own account" });
     try {
-        await completeUserDeletion(userId);
-        res.json({ success: true, message: "User completely deleted" });
+        await completeUserDeletion(userId, undefined, adminOverride(req));
+        res.json({ success: true, message: "User deleted. Any booking and payment history was kept and the account was anonymized." });
     } catch (error: any) {
+        if (error instanceof DeletionBlockedError) return res.status(409).json({ error: error.message, code: error.code, blockers: error.blockers });
         logger.error("Error completely deleting user:", error);
         res.status(error.status || 500).json({ error: getDbError(error).message || "Failed to delete user" });
     }
@@ -137,10 +145,16 @@ router.get("/users/:id/delete-impact", requireFirebaseAuthWithUser, requireAdmin
         }
         const counts = await getUserDeletionImpact(db, userId);
         const obligations = await userService.hasOutstandingObligations(userId);
+        const scope = { kind: "user", userId } as const;
+        const blockers = await getDeletionBlockers(db, scope);
         res.json({
             user: { id: user.id, username: user.username, role: user.role, firebaseUid: user.firebaseUid },
             counts,
             obligations,
+            blockers,
+            blockedMessage: blockers.blocked ? describeDeletionBlockers("account", blockers) : null,
+            // History is kept: the account is anonymized rather than purged.
+            willAnonymize: await hasDeletionHistory(db, scope),
         });
     } catch (error: any) {
         logger.error("Error computing user delete impact:", error);
@@ -1238,7 +1252,7 @@ router.get("/locations/:id/full-details", requireFirebaseAuthWithUser, requireAd
             allEquipment = await db
                 .select()
                 .from(equipmentListings)
-                .where(sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`);
+                .where(sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)}) AND ${equipmentListings.archivedAt} IS NULL`);
 
             // Batch query all storage for all kitchens at this location
             allStorage = await db
@@ -1389,7 +1403,7 @@ router.get("/kitchens", async (req: Request, res: Response) => {
             const equipRows = await db
                 .select({ kitchenId: equipmentListings.kitchenId, count: sql<number>`count(*)::int` })
                 .from(equipmentListings)
-                .where(sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`)
+                .where(sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)}) AND ${equipmentListings.archivedAt} IS NULL`)
                 .groupBy(equipmentListings.kitchenId);
 
             const storageRows = await db
@@ -1648,9 +1662,10 @@ router.delete("/locations/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid location ID" });
         }
 
-        await locationService.deleteLocation(locationId);
-        res.json({ success: true, message: "Location deleted successfully" });
+        const { archived } = await locationService.deleteLocation(locationId);
+        res.json({ success: true, archived, message: archived ? "Location archived. Its booking history is kept." : "Location deleted successfully" });
     } catch (error: any) {
+        if (error instanceof DeletionBlockedError) return res.status(409).json({ error: error.message, code: error.code, blockers: error.blockers });
         logger.error("Error deleting location:", error);
         res.status(500).json({ error: error.message || "Failed to delete location" });
     }
@@ -1855,9 +1870,10 @@ router.delete("/kitchens/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
-        await kitchenService.deleteKitchen(kitchenId);
-        res.json({ success: true, message: "Kitchen deleted successfully" });
+        const { archived } = await kitchenService.deleteKitchen(kitchenId);
+        res.json({ success: true, archived, message: archived ? "Kitchen archived. Its booking history is kept." : "Kitchen deleted successfully" });
     } catch (error: any) {
+        if (error instanceof DeletionBlockedError) return res.status(409).json({ error: error.message, code: error.code, blockers: error.blockers });
         logger.error("Error deleting kitchen:", error);
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
     }
@@ -1970,9 +1986,10 @@ router.delete("/managers/:id", requireFirebaseAuthWithUser, requireAdmin, async 
     if (!Number.isSafeInteger(managerId) || managerId <= 0) return res.status(400).json({ error: "Invalid manager ID" });
     if (managerId === req.neonUser!.id) return res.status(400).json({ error: "You cannot delete your own account" });
     try {
-        await completeUserDeletion(managerId, 'manager');
-        res.json({ success: true, message: "Manager completely deleted" });
+        await completeUserDeletion(managerId, 'manager', adminOverride(req));
+        res.json({ success: true, message: "Manager deleted. Any booking and payment history was kept and the account was anonymized." });
     } catch (error: any) {
+        if (error instanceof DeletionBlockedError) return res.status(409).json({ error: error.message, code: error.code, blockers: error.blockers });
         logger.error("Error deleting manager:", error);
         res.status(error.status || 500).json({ error: getDbError(error).message || "Failed to delete manager" });
     }
@@ -4431,6 +4448,20 @@ router.get('/kitchens/:id/cancellation-policy', requireFirebaseAuthWithUser, req
     try { res.json(await (await import('../services/cancellation-policy-settings')).managedCancellationPolicy(Number(req.params.id), req.neonUser!.id, true)); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Policy unavailable' }); }
 });
+router.get('/booking-window-cap', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { res.json({ maxAdvanceBookingDaysCap: await (await import('../services/booking-policy-settings')).bookingWindowCap() }); }
+    catch { res.status(500).json({ error: 'Booking window cap unavailable' }); }
+});
+router.put('/booking-window-cap', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    const cap = req.body?.maxAdvanceBookingDaysCap;
+    if (!Number.isSafeInteger(cap) || cap < 1 || cap > 2147483647) return res.status(400).json({ error: 'Cap must be a positive whole number of days' });
+    try {
+        await db.insert(platformSettings).values({ key: 'booking_max_advance_days_cap', value: String(cap), updatedBy: req.neonUser!.id })
+            .onConflictDoUpdate({ target: platformSettings.key, set: { value: String(cap), updatedBy: req.neonUser!.id, updatedAt: new Date() } });
+        res.json({ maxAdvanceBookingDaysCap: cap });
+    } catch { res.status(500).json({ error: 'Booking window cap could not be saved' }); }
+});
+
 router.get("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { key } = req.params;
@@ -4450,6 +4481,7 @@ router.get("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (r
 router.patch("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { key } = req.params;
+        if (key === 'booking_max_advance_days_cap') return res.status(400).json({ error: 'Use the booking window cap endpoint' });
         const value = JSON.stringify(req.body);
         if (['cancellation_notice_options', 'cancellation_charge_options', 'cancellation_default'].includes(key)) return res.status(400).json({ error: 'Use the audited cancellation settings endpoint' });
 

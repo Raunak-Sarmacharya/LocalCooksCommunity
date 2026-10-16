@@ -23,7 +23,7 @@ export interface BookingListRow {
   /** The kitchen zone from the server's closeout projection (preferred over `locationTimezone`). */
   timezone?: string | null;
   /** The server's closeout projection, as on the booking page. */
-  closeout?: { phase?: string | null; visits?: Array<{ inspection?: { canRespond?: boolean } | null }> | null } | null;
+  closeout?: { phase?: string | null; legacy?: boolean; visits?: Array<{ attendance?: string | null; inspection?: { canRespond?: boolean } | null }> | null } | null;
   /** Per-visit check-in states (multi-visit bookings). */
   visitStates?: Array<{ id?: number; checkinStatus: string; checkoutRequestedAt?: string | null }> | null;
   /** The kitchen's check-in window (minutes before start); the page's default is 15. */
@@ -55,6 +55,7 @@ export function bookingListPhase(row: BookingListRow, now = Date.now()): Booking
     // Closed-out bookings with a stale check-in value are settled inside bookingHeaderPhase (shared with the booking page).
     visits: row.visitStates?.map(visit => ({ ...visit, checkinStatus: visit.checkinStatus || 'not_checked_in' })),
     closeoutPhase: row.closeout?.phase,
+    visitAttendance: row.closeout?.legacy ? undefined : row.closeout?.visits?.map(visit => visit.attendance),
     inspectionCanRespond: listInspectionCanRespond(row), startAt: bounds?.startAt, endAt: bounds?.endAt, checkinOpensAt: bounds?.opensAt,
     timezone: listTimezone(row), now,
   });

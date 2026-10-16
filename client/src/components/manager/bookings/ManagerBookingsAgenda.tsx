@@ -29,7 +29,7 @@ type Row = Booking & { paymentDecision?: { target?: string; actorId?: number | n
 
 const ACTION_LABEL: Record<NonNullable<ManagerRowAction>, string> = {
   review_request: "bdTakeAction", review_cancellation: "bdhReviewCancellation", review_checkout: "bdhReviewCheckout",
-  inspect_visit: "fixInspection", open_visit: "bdhOpenVisit", record_left: "bdhOverstayRecordLeft",
+  inspect_visit: "fixInspection", open_visit: "bdhOpenVisit", record_left: "bdhOverstayRecordLeft", answer_attendance: "bnDidTheyCome",
 };
 
 /** The booking page's inspection link: the one visit, or the visit whose checkout is waiting. */
@@ -144,7 +144,7 @@ export function ManagerBookingsAgenda({ bookings, onReviewRequest }: {
                           ? <Button size="sm" variant="outline" className="relative z-10 min-h-11 w-full md:min-h-9 md:w-auto" onClick={() => onReviewRequest(row)}>{actionLabel}</Button>
                           : <Button asChild size="sm" variant="outline" className="relative z-10 min-h-11 w-full md:min-h-9 md:w-auto">
                             {/* Cancellation review and "Record when they left" happen on the booking page; checkouts on the inspection page. */}
-                            <Link href={action === "review_cancellation" || action === "record_left" ? `/manager/booking/${row.id}` : inspectionHref(row)}>{actionLabel}</Link>
+                            <Link href={action === "review_cancellation" || action === "record_left" || action === "answer_attendance" ? `/manager/booking/${row.id}` : inspectionHref(row)}>{actionLabel}</Link>
                           </Button>)}
                       </div>
                     </li>

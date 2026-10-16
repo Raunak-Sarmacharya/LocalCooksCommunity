@@ -10,6 +10,8 @@ vi.mock('../firebase-auth-middleware', () => ({
 vi.mock('../services/booking-support', () => ({ searchBookingSupport: state.search, readBookingSupport: state.read,
   executeBookingSupportAction: state.execute, BookingSupportError: class extends Error { constructor(message: string, public status = 409) { super(message); } } }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
+const checkout = vi.hoisted(() => ({ list: vi.fn(), retry: vi.fn() }));
+vi.mock('../services/kitchen-checkout-incidents', () => ({ listCheckoutIncidents: checkout.list, retryCheckoutIncidentForAdmin: checkout.retry }));
 import router from './admin-booking-support';
 import { BookingSupportError } from '../services/booking-support';
 function request(method: string, path: string, authorization?: string, body: any = {}, query: any = {}) {
@@ -25,11 +27,22 @@ beforeEach(() => {
   state.execute.mockResolvedValue({ action: { id: 1, status: 'verified' }, case: { bookingId: 149 }, replayed: false });
 });
 describe('protected booking support route contracts', () => {
-  it.each(['GET /admin/booking-support/search', 'GET /admin/booking-support/149', 'POST /admin/booking-support/149/actions'])('requires a named admin for %s', async entry => {
+  it.each(['GET /admin/booking-support/search', 'GET /admin/booking-support/149', 'POST /admin/booking-support/149/actions',
+    'GET /admin/booking-support/checkout-incidents', 'POST /admin/booking-support/checkout-incidents/cs_original/retry'])('requires a named admin for %s', async entry => {
     const [method, path] = entry.split(' ');
     expect((await request(method, path)).status).toBe(401);
     expect((await request(method, path, 'manager')).status).toBe(403);
     expect(state.search).not.toHaveBeenCalled(); expect(state.read).not.toHaveBeenCalled(); expect(state.execute).not.toHaveBeenCalled();
+  });
+  it('finds incidents without a booking and takes the recovery actor from auth', async () => {
+    checkout.list.mockResolvedValue([{ sessionId: 'cs_original', bookingId: null }]);
+    const response = await request('GET', '/admin/booking-support/checkout-incidents', 'admin', {}, { q: 'pi_original' });
+    expect(response.body.incidents).toEqual([{ sessionId: 'cs_original', bookingId: null }]);
+    expect(checkout.list).toHaveBeenCalledWith('pi_original');
+    checkout.retry.mockResolvedValue({ sessionId: 'cs_original' });
+    expect((await request('POST', '/admin/booking-support/checkout-incidents/cs_original/retry', 'admin', { note: 'Check original refund', actorId: 999 })).status).toBe(200);
+    expect(checkout.retry).toHaveBeenCalledWith('cs_original', 77, 'Check original refund');
+    expect((await request('POST', '/admin/booking-support/checkout-incidents/cs_original/retry', 'admin', { note: 'short' })).status).toBe(400);
   });
   it('keeps search ahead of the numeric case route and passes its query', async () => {
     expect((await request('GET', '/admin/booking-support/search', 'admin', {}, { q: 'KB-EXAMPLE' })).body).toEqual({ results: [] });

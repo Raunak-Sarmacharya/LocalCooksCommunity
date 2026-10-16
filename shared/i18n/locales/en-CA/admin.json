@@ -158,7 +158,7 @@
   "bsSharedMessage": "Message shared with the chef and kitchen (optional)",
   "bsSharedMessageHint": "Shared with the chef and kitchen. Both will read it, so keep it kind and factual. At least 10 characters if you add one.",
   "bsSharedMessageSelfHint": "Required for self check-in, 10 to 500 characters. Shared with the chef and kitchen.",
-  "bsBothNotified": "Both parties will be notified.",
+  "bsBothNotified": "The chef and the kitchen will each be notified.",
   "bsSubmit": "Do this now",
   "bsToastDone": "Done. {action}",
   "bsItemsLegend": "Requested extras",
@@ -254,5 +254,16 @@
   "bsTransferSentLine": "{amount} sent to the kitchen on {date}",
   "bsTransferSentNoDate": "{amount} sent to the kitchen",
   "bsTransferExpectedLine": "{amount} expected for the kitchen (after processing fee), not sent yet",
-  "bsPolicyRightNow": "Existing bookings keep the terms their chefs accepted."
+  "bsPolicyRightNow": "Existing bookings keep the terms their chefs accepted.",
+  "bsChefNotified": "The chef will be notified. The kitchen isn’t — its payout doesn’t change.",
+  "bsKitchenNotified": "The kitchen will be notified.",
+  "bsAction_resolve_money_attempt": "Check the earlier refund attempt",
+  "bsResolveMoneyAttemptHelp": "An earlier refund attempt did not finish and its result is not known. This checks the original refund with the payment provider. A refund that went through is completed from its original receipt, never sent twice. An attempt that created no refund (or whose refund failed) is closed so a new one can be started.",
+  "bsAction_refund_captured_request": "Refund the charge and close the request",
+  "bsAction_finish_kitchen_refund": "Finish the kitchen cancellation refund",
+  "bsFinishKitchenRefundHelp": "The booking is already cancelled and the chef has been told their full refund is on its way. This sends that refund again under its original reference, so it can never be sent twice.",
+  "bsFundKitchenRefund": "Local Cooks funds the refund. The kitchen’s balance is not debited. Use this when the kitchen’s share cannot be taken back.",
+  "bsKitchenRefundPending": "The kitchen cancelled this booking, but the chef’s full refund of {amount} has not been sent yet.{problem}",
+  "bsKitchenRefundProblem": "Problem: {error}",
+  "bsKitchenRefundSent": "The kitchen cancelled this booking and the chef’s full refund of {amount} was sent."
 }

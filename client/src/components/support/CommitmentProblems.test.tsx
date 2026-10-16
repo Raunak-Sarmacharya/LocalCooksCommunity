@@ -111,7 +111,7 @@ it('lets current server eligibility enable reporting without reopening the paren
 
 it.each(['booking','tour'] as const)('explains when %s reporting opens while retaining support and existing replies', async kind => {
   const client=mount({kind,id:20,canReport:true},vi.fn(async()=>({ok:true,json:async()=>({problems:[problem],reportingAvailable:false,reportingOpensAt:'2026-10-05T12:00:00Z'})})));
-  expect(await screen.findByText(/You can report a problem when your visit starts\./)).toHaveTextContent('Contact Local Cooks if you need help sooner.');
+  expect(await screen.findByText(kind === 'booking' ? /You can report a problem when check-in opens\./ : /You can report a problem when your visit starts\./)).toHaveTextContent('Contact Local Cooks if you need help sooner.');
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
   expect(screen.getByRole('link',{name:'support@localcooks.ca'})).toHaveAttribute('href','mailto:support@localcooks.ca');
   expect(screen.getByRole('textbox',{name:'Add a reply'})).toBeInTheDocument(); client.clear();

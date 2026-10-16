@@ -63,6 +63,28 @@ describe("chef: Need more time?", () => {
     expect(posts()[0].body).toMatchObject({ kind: "request", minutes: 60, expectedEndAt: END, expectedAmountCents: 3000 });
     expect(posts()[0].body.requestKey).toMatch(/^[0-9a-f-]{36}$/);
   });
+  it('a failed request offers another card and keeps Message kitchen available', async () => {
+    responses.push({ match: /\/extensions$/, method: 'GET', body: state() },
+      { match: /\/extensions$/, method: 'POST', body: { cardFailed: true, extension: item({ status: 'cancelled', authorized: false, cardFailedAt: END }) } },
+      { match: /\/checkout$/, method: 'POST', body: { extension: item({ checkoutPending: true, authorized: false }) } });
+    const onMessage = vi.fn(); mount(onMessage);
+    fireEvent.click(screen.getByRole('button', { name: 'Need more time?' }));
+    fireEvent.click(await screen.findByRole('button', { name: /1 more hour, until 5:00/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your saved card was declined. Nothing was charged.');
+    fireEvent.click(screen.getByRole('button', { name: 'Pay with another card · $30.00' }));
+    await waitFor(() => expect(posts()[1].url).toMatch(/\/checkout$/));
+    fireEvent.click(screen.getByRole('button', { name: 'Message Harbour Kitchen' })); expect(onMessage).toHaveBeenCalled();
+  });
+  it('requests without a saved card start Checkout instead of blocking the chef', async () => {
+    responses.push({ match: /\/extensions$/, method: 'GET', body: state({ hasSavedCard: false }) },
+      { match: /\/extensions$/, method: 'POST', body: { checkoutRequired: true, extension: item({ authorized: false }) } },
+      { match: /\/checkout$/, method: 'POST', body: { extension: item({ checkoutPending: true, authorized: false }) } });
+    mount(); fireEvent.click(screen.getByRole('button', { name: 'Need more time?' }));
+    fireEvent.click(await screen.findByRole('button', { name: /1 more hour, until 5:00/ }));
+    expect(await screen.findByText('Finish payment to send your request. Nothing has been charged.')).toBeInTheDocument();
+    expect(screen.queryByText(/is on hold on your card/)).not.toBeInTheDocument();
+    expect(posts().map(post => post.url)).toEqual(['/api/bookings/10/extensions', '/api/bookings/10/extensions/5/checkout']);
+  });
   it("confirmed (instant mode) says until when and refreshes the visit", async () => {
     const onExtended = vi.fn();
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ autoApprove: true }) },
@@ -95,7 +117,6 @@ describe("chef: Need more time?", () => {
   });
   it.each([
     [{ enabled: false }, "This kitchen handles extra time by message."],
-    [{ hasSavedCard: false }, "Add time by messaging the kitchen — your booking card can't be reused."],
     [{ unavailableReason: 'Extra time needs Local Cooks to review this booking.' }, 'Extra time needs Local Cooks to review this booking.'],
   ])('explains an unavailable extension: %s', async (extra, reason) => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state(extra) });
@@ -118,6 +139,73 @@ describe("chef: Need more time?", () => {
 });
 
 describe("booking page: extra time", () => {
+  it('shows a pending refund amount without claiming nothing was charged', async () => {
+    responses.push({ match: /\/extensions$/, body: state({ history: [item({ kind: 'offer', status: 'cancelled', refundPending: true })] }) });
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
+    expect(await screen.findByRole('status')).toHaveTextContent('We couldn’t add the time. Your $30.00 refund is being processed.');
+    expect(screen.queryByText(/Nothing was charged/)).not.toBeInTheDocument();
+  });
+  it('lets the manager charge for an offer when the chef has no saved card', async () => {
+    responses.push({ match: /\/extensions$/, method: 'GET', body: state({ hasSavedCard: false }) },
+      { match: /\/extensions$/, method: 'POST', body: { extension: item({ kind: 'offer', status: 'offered' }) } });
+    render(<SessionExtensionsCard bookingId={10} manager chefName="Maya" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Offer more time' }));
+    fireEvent.click(screen.getByRole('button', { name: /1 more hour · until/ }));
+    expect(screen.getByRole('radio', { name: 'Charge for the extra time · $30.00' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Send offer · $30.00' }));
+    await waitFor(() => expect(posts()[0].body).toMatchObject({ free: false, expectedAmountCents: 3000 }));
+  });
+  it('a cancelled request Checkout can be resumed without claiming a card hold exists', async () => {
+    responses.push({ match: /\/extensions$/, body: state({ history: [item({ authorized: false, checkoutPending: true })] }) });
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
+    expect(await screen.findByText('Finish payment to send your request. Nothing has been charged.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pay $30.00' })).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting for Harbour Kitchen/)).not.toBeInTheDocument();
+  });
+  it("a persisted card failure shows the price and another-card action after reload", async () => {
+    responses.push({ match: /\/extensions$/, body: state({ history: [item({ kind: 'offer', status: 'offered', cardFailedAt: END })] }) },
+      { match: /\/checkout$/, method: 'POST', body: { extension: item({ kind: 'offer', status: 'offered' }) } });
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
+    expect(await screen.findByText('Your saved card was declined. Nothing was charged.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Pay with another card · $30.00' }));
+    await waitFor(() => expect(posts()[0]).toMatchObject({ url: '/api/bookings/10/extensions/5/checkout', body: { expectedAmountCents: 3000 } }));
+    expect(screen.getByRole('button', { name: 'No thanks' })).toBeInTheDocument();
+  });
+  it('a cardFailed response displays failure instead of the payment success message', async () => {
+    responses.push({ match: /\/extensions$/, body: state({ history: [item({ kind: 'extra_time', status: 'offered' })] }) },
+      { match: /\/decision$/, method: 'POST', body: { cardFailed: true, extension: item({ kind: 'extra_time', status: 'offered', cardFailedAt: END }) } });
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pay $30.00' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your saved card was declined. Nothing was charged.');
+    expect(screen.queryByText('Paid. Thank you!')).not.toBeInTheDocument();
+  });
+  it('accepting a paid offer keeps a confirmation on screen after the offer closes (#93)', async () => {
+    responses.push({ match: /\/extensions$/, body: state({ history: [item({ kind: 'offer', status: 'offered' })] }) },
+      { match: /\/decision$/, method: 'POST', body: { extension: item({ kind: 'offer', status: 'approved', paid: true, confirmed: true }) } });
+    render(<SessionExtensionsCard variant="now" bookingId={10} manager={false} chefName="Maya" />);
+    const accept = await screen.findByRole('button', { name: 'Accept & pay $30.00' });
+    responses[0].body = state({ history: [item({ kind: 'offer', status: 'approved', paid: true, confirmed: true })] });
+    fireEvent.click(accept);
+    expect(await screen.findByRole('status')).toHaveTextContent('Time added — you now have until 5:00 p.m. $30.00 was charged.');
+    expect(screen.queryByRole('button', { name: 'Accept & pay $30.00' })).not.toBeInTheDocument();
+  });
+  it('paid offers without a saved card go directly to Checkout', async () => {
+    responses.push({ match: /\/extensions$/, body: state({ hasSavedCard: false, history: [item({ kind: 'offer', status: 'offered' })] }) },
+      { match: /\/checkout$/, method: 'POST', body: { extension: item({ kind: 'offer', status: 'offered' }) } });
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pay $30.00' }));
+    await waitFor(() => expect(posts()[0].url).toMatch(/\/checkout$/));
+    expect(posts().some(post => /\/decision$/.test(post.url))).toBe(false);
+  });
+  it('syncs a Checkout return before showing the refreshed extension', async () => {
+    window.history.replaceState({}, '', '/booking/10/visit?extensionCheckout=5');
+    responses.push({ match: /\/sync$/, method: 'POST', body: { extension: item({ confirmed: true }) } },
+      { match: /\/extensions$/, body: state({ history: [item({ confirmed: true, status: 'approved' })] }) });
+    const changed = vi.fn(); render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" onChanged={changed} />);
+    await screen.findByTestId('extension-history');
+    expect(posts()[0].url).toBe('/api/bookings/10/extensions/5/sync'); expect(changed).toHaveBeenCalledTimes(1);
+    expect(window.location.search).toBe(''); window.history.replaceState({}, '', '/');
+  });
   it("manager sees the request banner and approves with a POST", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ history: [item()] }) },
       { match: /\/decision$/, method: "POST", body: { extension: item({ status: "approved", confirmed: true }) } });

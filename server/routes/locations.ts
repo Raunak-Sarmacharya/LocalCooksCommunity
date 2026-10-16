@@ -1,3 +1,4 @@
+import { bookingWindowCap } from '../services/booking-policy-settings';
 import { logger } from "../logger";
 
 import { Router, Request, Response } from 'express';
@@ -350,6 +351,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
 
         // Sanitize and normalize kitchens
         const coordinates = (await geocodeAddresses([location.address])).get(location.address);
+        const cap = await bookingWindowCap();
         const sanitizedKitchens = await Promise.all(activeKitchens.map(async (kitchen: any) => {
             const kImageUrl = normalizeImageUrl(
                 kitchen.imageUrl || null,
@@ -376,7 +378,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 name: kitchen.name,
                 slug: kitchen.slug,
                 description: kitchen.description,
-                ...resolveKitchenBookingPolicies(kitchen, location),
+                ...resolveKitchenBookingPolicies(kitchen, location, cap),
                 imageUrl: kImageUrl,
                 image_url: kImageUrl,
                 galleryImages: kGalleryImages,

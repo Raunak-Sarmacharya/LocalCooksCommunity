@@ -15,6 +15,7 @@ import { storageListingAwaitingRemoval } from './booking-linked-cancellation';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
 import { getBookingResponseDeadline } from './booking-response-deadline';
 import { emailLocalDateTimeSentence } from '../email';
+import { registerKitchenCheckout, checkoutIncident, updateCheckoutIncident, resolveCheckoutConflict } from './kitchen-checkout-incidents';
 
 /** The chef's own in-app notice for a new request; the manager keeps the review copy. */
 async function chefRequestCopy(booking: Parameters<typeof getBookingResponseDeadline>[0], reader: Parameters<typeof getBookingResponseDeadline>[1], kitchenName: string | null, timezone: string | null) {
@@ -34,8 +35,15 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   const kitchenId = Number(metadata.kitchen_id), chefId = Number(metadata.chef_id);
   if (!prices || !Number.isSafeInteger(kitchenId) || !Number.isSafeInteger(chefId) || session.amount_total !== intent.amount
     || session.currency !== 'cad' || !['requires_capture', 'succeeded'].includes(intent.status)) throw new Error('Checkout payment evidence is incomplete');
+  await registerKitchenCheckout(session.id, chefId, kitchenId, metadata.booking_date.slice(0, 10));
+  const recovery = await checkoutIncident(session.id);
+  if (recovery?.chefId !== chefId || recovery.kitchenId !== kitchenId) throw Error('Checkout ownership changed');
   const [existing] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, intent.id)).limit(1);
-  if (existing) return existing.id; // Every new booking is committed atomically below.
+  if (existing) {
+    await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: existing.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
+    return existing.id;
+  }
+  if (recovery.inventoryConflict) return resolveCheckoutConflict(session, intent, stripe);
   const bookingDate = new Date(metadata.booking_date);
   const storageDates = JSON.parse(metadata.selected_storage || '[]') as { storageListingId: number; startDate: string; endDate: string }[];
   if (storageDates.length !== prices.s.length || !Number.isFinite(bookingDate.getTime())) throw new Error('Checkout dates are incomplete');
@@ -47,6 +55,8 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     const booking = await fulfillKitchenCheckout(metadata.hold_id, session.id, kitchenId, metadata.booking_date.slice(0, 10),
       parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time), metadata.window_start_time || metadata.start_time,
       () => db.transaction(async tx => {
+        // Another fulfillment may have recorded a conflict while this caller waited for inventory.
+        if ((await checkoutIncident(session.id))?.inventoryConflict) throw new KitchenSlotUnavailableError();
         const [context] = await tx.select({ managerId: locations.managerId, kitchenName: kitchens.name, timezone: locations.timezone }).from(kitchens)
           .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, kitchenId)).limit(1);
         if (!context?.managerId) throw new Error('Checkout manager not found');
@@ -106,17 +116,17 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
             : `A new kitchen booking request is ready to review. The checkout payment has been received.`, chefId,
           authorized ? { roleText: { chef: await chefRequestCopy(parent, tx, context.kitchenName, context.timezone) } } : undefined);
         return parent;
-      }));
+      }), async () => {
+        const [existing] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, intent.id)).limit(1);
+        return existing;
+      });
+    await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
     return booking.id;
   } catch (error) {
-    if (!(error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError)) throw error;
-    // An inventory conflict has a verified financial outcome, with stable retry keys.
-    if (intent.status === 'requires_capture') await stripe.paymentIntents.cancel(intent.id);
-    else {
-      await (await import('./booking-money-guard')).assertBookingMoneyWritable({ paymentIntentId: intent.id });
-      await stripe.refunds.create({ payment_intent: intent.id, reason: 'requested_by_customer' },
-        { idempotencyKey: `kitchen_inventory_conflict_${session.id}` });
+    if (error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError) {
+      return resolveCheckoutConflict(session, intent, stripe);
     }
-    return null;
+    await updateCheckoutIncident(session.id, { outcome: 'needs_support', paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, error: (error as Error).message });
+    throw error;
   }
 }

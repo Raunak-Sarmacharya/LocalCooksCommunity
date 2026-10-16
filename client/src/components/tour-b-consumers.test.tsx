@@ -23,8 +23,10 @@ function mount(role:'chef'|'manager',future=false){
  if(role==='manager')fireEvent.click(screen.getByRole('button',{name:'Open tour'}));return {fetcher,client};
 }
 it.each(['chef','manager'] as const)('shows private feedback after the appointment for %s and no attendance controls',async role=>{
- const{fetcher}=mount(role);await screen.findByRole('radio',{name:'yes'});
- expect(screen.getByRole('region',{name:'tourFeedbackTitle'})).toBeInTheDocument();
+ const{fetcher}=mount(role);
+ if(role==='manager')fireEvent.click(await screen.findByRole('button',{name:'tourFeedbackOpen'}));
+ await screen.findByRole('radio',{name:'yes'});
+ expect(screen.getByRole('dialog',{name:'tourFeedbackTitle'})).toBeInTheDocument();
  expect(screen.queryByRole('button',{name:/Record arrival|Record departure|markCompleted|markNoShow/})).not.toBeInTheDocument();
  expect(fetcher.mock.calls.every(([url])=>!url.includes('attendance')&&!url.includes('check-in')&&!url.includes('check-out'))).toBe(true);
  expect(fetcher.mock.calls.every(([,options])=>!(options as any)?.method || (options as any).method === 'GET')).toBe(true);

@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
-import { damageClaims, damageClaimHistory, emailLogs, users, storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations, commitmentProblems } from '@shared/schema';
+import { kitchenCheckoutIncidents, damageClaims, damageClaimHistory, emailLogs, users, storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations, commitmentProblems } from '@shared/schema';
 import { db } from '../db';
 import { getAppBaseUrl } from '../config';
 import { sendEmail, renderTransactionalEmail, bookingDeliveryEmail, emailLocalDateTime, emailLocalDateTimeSentence } from '../email';
@@ -60,7 +60,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
     const result = await db.transaction(async tx => {
       const [intent] = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, 'lifecycle_outcome'),
         inArray(emailLogs.status, ['queued', 'failed']), onlyLogId ? eq(emailLogs.id, onlyLogId) : undefined,
-        sql`(${emailLogs.trackingId} LIKE 'claim-outcome:%' OR ${emailLogs.trackingId} LIKE 'payment-outcome:%' OR ${emailLogs.trackingId} LIKE 'overstay-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-outcome:%' OR ${emailLogs.trackingId} LIKE 'problem-outcome:%')`,
+        sql`(${emailLogs.trackingId} LIKE 'checkout-outcome:%' OR ${emailLogs.trackingId} LIKE 'claim-outcome:%' OR ${emailLogs.trackingId} LIKE 'payment-outcome:%' OR ${emailLogs.trackingId} LIKE 'overstay-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-outcome:%' OR ${emailLogs.trackingId} LIKE 'problem-outcome:%')`,
         attempted.length ? sql`${emailLogs.id} NOT IN (${sql.join(attempted.map(id => sql`${id}`), sql`,`)})` : undefined,
         onlyLogId ? undefined : sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} < CURRENT_TIMESTAMP - interval '1 minute')`))
         .orderBy(sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
@@ -127,6 +127,14 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
                 { label: 'Reported', value: reported }, { label: 'Reference', value: `${current.bookingId ? 'KB' : 'TOUR'}-${current.bookingId || current.viewingId}` }],
               actionLabel: role === 'admin' ? 'Review problem' : 'View problem',
               actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'manager' ? 'kitchen' : 'chef')}${path}` });
+          } else if (kind === 'checkout-outcome') {
+            const [current] = await tx.select().from(kitchenCheckoutIncidents).where(eq(kitchenCheckoutIncidents.id, id)).limit(1);
+            if (!current) throw Error('Checkout incident missing');
+            const [recipient] = intent.recipientUserId ? await tx.select().from(users).where(eq(users.id, intent.recipientUserId)).limit(1) : [];
+            if (!recipient || recipient.username !== intent.recipientEmail || !(recipient.id === current.chefId || recipient.role === 'admin'))
+              throw Error('Checkout recipient changed; Local Cooks must verify contact before recovery');
+            recipientLocale = recipient.preferredLocale;
+            currentState = (await import('./kitchen-checkout-incidents')).checkoutOutcomeMessage(current, recipientLocale);
           } else if (kind === 'claim-outcome') {
             const [current] = await tx.select({ status: damageClaims.status }).from(damageClaims).where(eq(damageClaims.id, id)).limit(1);
             if (current) currentState = current.status.replaceAll('_', ' ');

@@ -18,10 +18,10 @@ const facts: BookingNowFacts = {
   canCancel: true, canAddToCalendar: true, runningLateOpen: true, canMessage: true, canDownload: true, managerCanManage: true, claimFilingOpen: true,
 };
 const phases: BookingHeaderPhase[] = ['pending', 'confirmed', 'today', 'checkin_open', 'in_session', 'time_ended_in_session',
-  'checkout_review', 'visit_ended', 'completed', 'no_show', 'issue', 'cancellation_requested', 'cancelled'];
+  'checkout_review', 'visit_ended', 'completed', 'no_show', 'no_checkin', 'issue', 'cancellation_requested', 'cancelled'];
 const expectedPrimary: Record<NowRole, Partial<Record<BookingHeaderPhase, string>>> = {
   chef: { checkin_open: 'open_visit', in_session: 'open_visit', time_ended_in_session: 'open_visit' },
-  manager: { pending: 'review_request', cancellation_requested: 'review_cancellation', checkout_review: 'review_checkout', visit_ended: 'inspect_visit' },
+  manager: { pending: 'review_request', cancellation_requested: 'review_cancellation', checkout_review: 'review_checkout', visit_ended: 'inspect_visit', no_checkin: 'answer_attendance' },
 };
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
 
@@ -60,6 +60,11 @@ describe('copy per moment', () => {
   it('chef running late: the heads-up becomes the sentence', () => {
     expect(sentence('checkin_open', 'chef', { runningLate: { duration: '15 min' }, startPassed: true }))
       .toBe('You told Harbour Kitchen you’re about 15 min late. Your booking still ends at 12:00 p.m. NT.');
+  });
+  it('kitchen sees the running-late heads-up too, not "arrives at" the booked time', () => {
+    for (const phase of ['today', 'checkin_open'] as const)
+      expect(sentence(phase, 'manager', { runningLate: { duration: '15 min' } }))
+        .toBe('Ada Lovelace is running about 15 min late. Their booking still ends at 12:00 p.m. NT.');
   });
   it('the payout amount stays on the Payment card; the sentence keeps the action', () => {
     expect(sentence('checkout_review', 'manager')).toBe('Ada Lovelace checked out. Finish the inspection to get paid now — or it’s sent Jan 16 at 12:00 p.m.');
@@ -127,4 +132,30 @@ it.each(['checkout_review', 'completed'] as const)('chef %s reflects a visible c
   expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.' })).toBe('Harbour Kitchen reported damage or extra cleaning. Pay or dispute by Oct 18 at 3:30 p.m.');
   expect(content({ settledClaim: { outcome: 'chef_paid', amount: '$70.00' } })).toBe('You paid $70.00 for damage or extra cleaning.');
   expect(content({ settledClaim: { outcome: 'closed', amount: '' } })).toContain('nothing to pay');
+  // The header follows the claim state instead of repeating "Pay or dispute by".
+  expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.', claimStage: 'reviewing' })).toBe('Local Cooks is reviewing your response. Nothing is due while they look.');
+  expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.', claimStage: 'decided', claimAmount: '$25.00', claimPayBy: 'Oct 22' })).toBe('Local Cooks decided $25.00 is due. Pay by Oct 22 to keep booking.');
+});
+
+describe('booked time ended with no check-in recorded (WP-N)', () => {
+  it('tells the chef plainly, without a money statement before the kitchen answers, and offers "I was there"', () => {
+    const now = bookingNowContent({ phase: 'no_checkin', role: 'chef', facts, t });
+    expect(t(now.pill.key)).toBe('No check-in recorded');
+    expect(now.sentence).toBe('We didn’t see a check-in for your booking at Harbour Kitchen (10:00 a.m.). If you were there, let us know.');
+    expect(now.sentence).not.toMatch(/refund/i);
+    expect(now.secondary).toEqual(['i_was_there']);
+    expect(now.primary).toBeNull();
+    expect(now.attention).toEqual([]);
+  });
+  it('asks the kitchen "Did they come?" until the window closes, then states it', () => {
+    const open = bookingNowContent({ phase: 'no_checkin', role: 'manager', facts, t });
+    expect(t(open.pill.key)).toBe('No check-in recorded');
+    expect(open.sentence).toBe('No check-in from Ada Lovelace. Did they come? Tell us by Jan 16, 12:00 p.m.');
+    expect(open.primary).toBe('answer_attendance');
+    expect(open.secondary).toEqual(['report_no_show']);
+    const closed = bookingNowContent({ phase: 'no_checkin', role: 'manager', facts: { ...facts, inspectionCanRespond: false }, t });
+    expect(closed.primary).toBeNull();
+    expect(closed.secondary).toEqual(['fix_record']);
+    expect(closed.sentence).toMatch(/nothing changes for your payout/);
+  });
 });

@@ -159,7 +159,7 @@ describe("money preview and exception confirmation", () => {
     expect(within(box).getByText("$3.20")).toBeVisible();
     type(/Goodwill amount/, "10");
     expect(within(box).getAllByText("$10.00")).toHaveLength(2);
-    expect(screen.getByText("Both parties will be notified.")).toBeVisible();
+    expect(screen.getByText("The chef will be notified. The kitchen isn’t — its payout doesn’t change.")).toBeVisible();
   });
   it("sends an ordinary goodwill refund directly, without an exception", async () => {
     const c = baseCase();

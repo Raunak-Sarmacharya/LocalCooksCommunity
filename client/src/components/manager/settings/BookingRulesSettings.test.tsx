@@ -5,11 +5,12 @@ import BookingRulesSettings from "./BookingRulesSettings";
 vi.mock("@/i18n/manager", () => ({
   mt: (key: string) =>
     ({
-      saveChanges: "Save Changes",
+      scpSave: "Save changes",
+      bpSaveRules: "Save booking rules",
       savingShort: "Saving",
       saved: "Saved",
       replace: "Replace",
-      viewDocument: "View Document",
+      bpViewDocument: "View document",
       cancel: "Cancel",
       uploaded: "Uploaded:",
       hoursSuffix: "hours",
@@ -17,6 +18,7 @@ vi.mock("@/i18n/manager", () => ({
 }));
 
 vi.mock("@/i18n/common-ns", () => ({ tt: (key: string) => key }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -33,7 +35,7 @@ vi.mock("@/hooks/use-presigned-document-url", () => ({
 
 vi.mock("@/components/ui/manager-icons", () => {
   const Stub = () => <span aria-hidden />;
-  return { Info: Stub, FileText: Stub, ExternalLink: Stub, RotateCcw: Stub, Loader2: Stub, AlertTriangle: Stub };
+  return { Info: Stub, FileText: Stub, ExternalLink: Stub, RotateCcw: Stub, Loader2: Stub, AlertTriangle: Stub, ChevronDown: Stub, ChevronRight: Stub, ClipboardCheck: Stub, Lock: Stub };
 });
 
 vi.mock("@/components/chef/ui", () => ({
@@ -66,17 +68,17 @@ const termsDropzone = () => document.getElementById("terms-upload");
 describe("BookingRulesSettings", () => {
   it("leaves the embedded tab's save action to its parent", () => {
     render(<BookingRulesSettings location={baseLocation} onSave={vi.fn()} hideHeader hideArrivalTimings hideTerms />);
-    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "48" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpNoticeLabel" }), { target: { value: "48" } });
     expect(screen.queryByRole("button", { name: /save\s*changes/i })).not.toBeInTheDocument();
   });
   it("groups kitchen minimum duration with policies without duplicating arrival or terms controls", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<BookingRulesSettings location={baseLocation} onSave={onSave} minimumBookingHours={2}
       hideArrivalTimings hideTerms policyOverrides={{ cancellationPolicyHours: null }} />);
-    expect(screen.getAllByRole("textbox", { name: "minimumBookingDuration" })).toHaveLength(1);
+    expect(screen.getAllByRole("textbox", { name: "bpShortestLabel" })).toHaveLength(1);
     expect(screen.queryByLabelText("checkinOpensLabel")).not.toBeInTheDocument();
     expect(termsDropzone()).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingDuration" }), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpShortestLabel" }), { target: { value: "3" } });
     fireEvent.click(await screen.findByRole("button", { name: /save\s*changes/i }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ minimumBookingHours: 3 })));
   });
@@ -92,7 +94,7 @@ describe("BookingRulesSettings", () => {
     expect(screen.queryByRole("button", { name: /save\s*changes/i })).not.toBeInTheDocument();
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "minimumBookingWindow" }), { target: { value: "48" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "bpNoticeLabel" }), { target: { value: "48" } });
 
     const saveButton = await screen.findByRole("button", { name: /save\s*changes/i });
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);

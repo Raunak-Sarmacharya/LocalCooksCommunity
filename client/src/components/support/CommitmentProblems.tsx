@@ -103,7 +103,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
       <p><span className="whitespace-nowrap">{t('problemCopy29')}</span> · <span className="whitespace-nowrap">{t('problemCopy30')}</span></p>
     </div>}
     {!kind && !staff && <p className="text-sm">{t('problemChooseHelp')} <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=bookings' : '/dashboard?view=bookings'}>{t('problemBookings')}</a> · <a className="underline" href={role === 'manager' ? '/manager/dashboard?view=viewings' : '/dashboard?view=viewings'}>{t('problemTours')}</a></p>}
-    {kind && !staff && canReport && !reportingAvailable && query.data?.reportingOpensAt && <p className="text-sm text-muted-foreground">{t('problemCopy31')}</p>}
+    {kind && !staff && canReport && !reportingAvailable && query.data?.reportingOpensAt && <p className="text-sm text-muted-foreground">{t(kind === 'booking' ? 'problemBookingCheckinOpening' : 'problemCopy31')}</p>}
     <Dialog open={reportOpen} onOpenChange={setReportOpen}>
       {reportingAvailable && <DialogTrigger asChild><Button variant="outline" disabled={report.isPending}>{t('problemCopy32')}</Button></DialogTrigger>}
       <DialogContent showCloseButton>

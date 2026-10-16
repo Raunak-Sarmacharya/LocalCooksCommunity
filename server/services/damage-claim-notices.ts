@@ -42,8 +42,11 @@ export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history:
       : event === 'kitchenPaid' ? claim.fundedBy === 'local_cooks' ? 'localPaid' : 'paid' : event;
     const roleKey = `Notice${chef ? 'Chef' : 'Kitchen'}_${roleEvent}`;
     const reduction = claim.finalAmountCents != null && claim.finalAmountCents < claim.claimedAmountCents ? t('NoticeReduction', { claimed: requested }) : '';
+    // Local Cooks' shared decision message reaches whoever the decision is shared with: the kitchen on send/close/uphold,
+    // and the chef on an upheld/reduced final decision (never first-review exchanges, which `shared` already blanks).
+    const reason = chef ? (event === 'upheld' ? shared : '') : (['sent', 'closed', 'upheld'].includes(event) ? publicMessage : '');
     const message = participant
-      ? `${t(roleKey, { kitchen, chef: chefName && chefName !== 'A chef' ? chefName : t('Chef'), amount, deadline, reduction, message: publicMessage }).replace(/\.\.$/, '.')}${!chef && ['sent', 'closed', 'upheld'].includes(event) && publicMessage ? ` ${publicMessage}` : ''}`
+      ? `${t(roleKey, { kitchen, chef: chefName && chefName !== 'A chef' ? chefName : t('Chef'), amount, deadline, reduction, message: publicMessage }).replace(/\.\.$/, '.')}${reason ? ` ${reason}` : ''}`
       : `${t(`Notice_${event}`, { kitchen, amount, deadline })} ${debt} ${shared}`.trim();
     const path = person.role === 'admin' ? `/admin?section=booking-support&booking=${claim.kitchenBookingId}`
       : chef ? `/booking/${claim.kitchenBookingId}` : `/manager/booking/${claim.kitchenBookingId}`;

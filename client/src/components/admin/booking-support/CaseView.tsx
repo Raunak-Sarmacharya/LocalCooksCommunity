@@ -143,7 +143,7 @@ export function MoneyCard({ c }: { c: SupportCase }) {
         </dl>
         {c.payout && <div data-testid="admin-kitchen-payout">
           {c.payout.status !== 'not_applicable' && <p className="mt-3 text-sm font-medium">{t("bsKitchenPayout")} {fmtMoney(c.payout.amountCents, m.currency)}</p>}
-          <KitchenPayoutStatus payout={c.payout} timezone={c.schedule.timezone} currency={m.currency} showAmount={false} />
+          <KitchenPayoutStatus payout={c.payout} timezone={c.schedule.timezone} currency={m.currency} showAmount={false} audience="admin" />
         </div>}
         <div className="border-t pt-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("bsTransfers")}</p>

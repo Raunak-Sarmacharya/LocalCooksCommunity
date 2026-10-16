@@ -11,6 +11,8 @@ import {
   buildKitchenPayoutStatementBreakdown,
 } from "@shared/booking-pricing-breakdown";
 import { resolveCapturedKitchenRate, type KitchenBookingRateMode } from "@shared/kitchen-booking-rate";
+import { LOCAL_COOKS_SUPPLIER } from "@shared/booking-documents";
+import { friendlyTimezoneName } from "@shared/timezone-utils";
 
 /**
  * Generate invoice PDF for a booking
@@ -1023,7 +1025,9 @@ export async function generateDamageClaimInvoicePDF(
       // Header
       doc.fontSize(24).font('Helvetica-Bold').text('DAMAGE CLAIM INVOICE', { align: 'center' });
       doc.moveDown(0.5);
-      doc.fontSize(10).font('Helvetica').fillColor('#6b7280').text('LocalCooks Platform', { align: 'center' });
+      // Supplier block shared with the booking documents (WP-R): operating name, legal name, address, site.
+      doc.fontSize(10).font('Helvetica').fillColor('#6b7280').text('Local Cooks', { align: 'center' });
+      doc.fontSize(8).text(`${LOCAL_COOKS_SUPPLIER.legalNote} ${LOCAL_COOKS_SUPPLIER.address} · ${LOCAL_COOKS_SUPPLIER.website}`, { align: 'center' });
       doc.fillColor('#000000');
       doc.moveDown(2);
 
@@ -1144,7 +1148,9 @@ export async function generateDamageClaimInvoicePDF(
       // Payment info
       doc.fontSize(10).font('Helvetica');
       doc.text('Payment Method: Credit/Debit Card');
-      doc.text(`Transaction Date: ${chargeDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
+      // Kitchen-local 12-hour time, like the app.
+      const claimTimezone = (location as any)?.timezone || 'America/St_Johns';
+      doc.text(`Transaction Date: ${new Intl.DateTimeFormat('en-CA', { timeZone: claimTimezone, year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(chargeDate)} ${friendlyTimezoneName(claimTimezone)}`);
       const dcRef = claim.referenceCode;
       if (dcRef) {
         doc.text(`Reference: ${dcRef}`);
@@ -1157,7 +1163,8 @@ export async function generateDamageClaimInvoicePDF(
       const dcFooterY = dcPageHeight - 80;
 
       doc.moveTo(50, dcFooterY).lineTo(550, dcFooterY).stroke('#e5e7eb');
-      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcooks.ca', 50, dcFooterY + 15, { align: 'center', width: 500 });
+      // lineBreak: false keeps the footer on this page (it used to spill onto an otherwise empty page 2).
+      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcooks.ca', 50, dcFooterY + 15, { align: 'center', width: 500, lineBreak: false });
       doc.fillColor('#000000');
 
       doc.end();

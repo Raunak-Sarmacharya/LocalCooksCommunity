@@ -88,6 +88,8 @@ export interface KitchenDTO {
    */
   listingStatus: ListingStatus;
   cancellationPolicyHours?: number | null;
+  maxAdvanceBookingDays?: number | null;
+  turnoverBufferEnabled?: boolean | null;
   minimumBookingWindowHours?: number | null;
   defaultDailyBookingLimit?: number | null;
   hourlyRate: number | null;
@@ -115,6 +117,9 @@ export interface KitchenWithLocationDTO extends KitchenDTO {
     cancellationPolicyMessage: string;
     defaultDailyBookingLimit: number;
     minimumBookingWindowHours: number;
+    maxAdvanceBookingDays?: number;
+    turnoverBufferEnabled?: boolean;
+    maxAdvanceBookingDaysCap?: number;
     logoUrl: string | null;
     brandImageUrl: string | null;
     timezone: string;

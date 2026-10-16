@@ -1,11 +1,14 @@
+vi.mock('../services/booking-policy-settings', () => ({ kitchenBookingPolicies: async () => ({ maxAdvanceBookingDays: 100000, turnoverBufferEnabled: state.buffer, timezone: 'America/St_Johns' }) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ insert: vi.fn(), payment: vi.fn(), release: vi.fn(), quote: vi.fn(), cancel: vi.fn(), deliver: vi.fn(async () => ({})),
-  kitchen: { id: 4, locationId: 1, isActive: true, listingStatus: 'active', hourlyRate: 1000, minimumBookingHours: 0 },
+  buffer: false, kitchen: { id: 4, locationId: 1, isActive: true, listingStatus: 'active', hourlyRate: 1000, minimumBookingHours: 0 },
   rows: {} as Record<string, any[]> }));
 vi.mock('../db', () => ({ pool: { connect: async () => ({ query: vi.fn(), release: state.release }) }, db: {
   select: () => { let table: any; const q: any = { from: (value: any) => { table = value; return q; }, innerJoin: () => q,
     leftJoin: () => q, orderBy: () => q, where: () => q, limit: () => q, then: (resolve: any) => resolve(state.rows[table[Symbol.for('drizzle:Name')]] || []) }; return q; },
   insert: () => ({ values: state.insert }),
+  // WP-D: an inventory conflict now records its checkout incident before refusing the booking.
+  update: () => { const q: any = { set: () => q, where: () => q, returning: () => q, then: (resolve: any) => resolve([]) }; return q; },
   delete: () => ({ where: vi.fn() }),
 } }));
 vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: {
@@ -23,7 +26,7 @@ vi.mock('../email', () => ({ sendEmail: vi.fn() }));
 import router from './bookings';
 import portal from './portal';
 import { bookingService } from '../domains/bookings/booking.service';
-import { reserveKitchenCheckout, fulfillKitchenCheckout } from '../services/kitchen-checkout-holds';
+import { hasInventoryConflict, reserveKitchenCheckout, fulfillKitchenCheckout } from '../services/kitchen-checkout-holds';
 
 const gap = [{ startTime: '09:00', endTime: '10:00' }, { startTime: '11:00', endTime: '12:00' }];
 async function call(target: any, path: string, selectedSlots: unknown) {
@@ -34,7 +37,7 @@ async function call(target: any, path: string, selectedSlots: unknown) {
   return res;
 }
 beforeEach(() => {
-  vi.clearAllMocks(); state.rows = { portal_user_location_access: [{ locationId: 1 }], kitchens: [state.kitchen],
+  vi.clearAllMocks(); state.buffer = false; state.rows = { portal_user_location_access: [{ locationId: 1 }], kitchens: [state.kitchen],
     kitchen_bookings: [], kitchen_checkout_holds: [] };
 });
 describe('actual fresh booking boundaries', () => {
@@ -97,4 +100,16 @@ describe('actual self-serve cancellation route boundary', () => {
     expect(state.cancel).toHaveBeenCalledTimes(2); expect(state.cancel).toHaveBeenCalledWith(10, 3, 'chef-route-operation', undefined, 3, 0);
     expect(res.json).toHaveBeenCalledWith({ success: true, action: 'cancelled' }); expect(res.status).not.toHaveBeenCalledWith(400);
   });
+});
+
+it('checkout fulfillment rechecks buffered occupancy under the kitchen lock', async () => {
+  const slots = [{ startTime: '09:00', endTime: '10:00' }];
+  state.rows.kitchen_checkout_holds = [{ id: 'held', stripeSessionId: 'saved', kitchenId: 4, operatingDate: '2099-10-04', windowStartTime: '08:00', selectedSlots: slots }];
+  state.rows.kitchen_bookings = [{ id: 12, bookingDate: new Date('2099-10-04'), status: 'pending', startTime: '10:30', endTime: '12:00', operatingWindowStartTime: '08:00' }];
+  expect(await hasInventoryConflict(4, '2099-10-04', slots, '08:00', 'held')).toBe(false);
+  state.buffer = true;
+  expect(await hasInventoryConflict(4, '2099-10-04', slots, '08:00', 'held')).toBe(true);
+  const create = vi.fn();
+  await expect(fulfillKitchenCheckout('held', 'saved', 4, '2099-10-04', slots, '08:00', create)).rejects.toThrow('no longer available');
+  expect(create).not.toHaveBeenCalled();
 });

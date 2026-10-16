@@ -6,14 +6,17 @@ import { friendlyDate, friendlyDateTime } from '@/lib/friendly-date';
 /** Manager/admin view of a kitchen payout sent after the visit closes. */
 /** `stage` is only passed where the viewer is the kitchen on its own booking: it adds the "finish the inspection to get paid sooner" guidance. */
 /** `variant="line"`: the booking page's payment card already shows the amount, so render only the one status line. */
-export function KitchenPayoutStatus({ payout, timezone, currency = 'CAD', showAmount = true, chefName, stage, variant = 'box' }: { payout: KitchenPayout; timezone?: string | null; currency?: string; showAmount?: boolean;
-  chefName?: string; stage?: 'before_checkout' | 'inspect' | 'closed'; variant?: 'box' | 'line' }) {
+/** `audience="admin"`: Local Cooks reads it, so "the kitchen's Stripe account", never "your". */
+export function KitchenPayoutStatus({ payout, timezone, currency = 'CAD', showAmount = true, chefName, stage, variant = 'box', audience = 'kitchen' }: { payout: KitchenPayout; timezone?: string | null; currency?: string; showAmount?: boolean;
+  chefName?: string; stage?: 'before_checkout' | 'inspect' | 'closed'; variant?: 'box' | 'line'; audience?: 'kitchen' | 'admin' }) {
   const { t, i18n } = useTranslation('booking');
   const when = (value: string, withTime: boolean) => new Intl.DateTimeFormat(i18n.language, { timeZone: timezone || undefined,
     dateStyle: 'medium', ...(withTime ? { timeStyle: 'short' as const } : {}) }).format(new Date(value));
   const amount = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: currency.toUpperCase() }).format(payout.amountCents / 100);
   const detail = payout.status === 'on_hold' ? t(payout.holdReason === 'support_flag' ? 'payoutOnHoldReview' : 'payoutOnHold')
-    : payout.status === 'sent' ? payout.sentAt ? t('payoutSent', { date: when(payout.sentAt, false) }) : t('payoutSentNoDate')
+    : payout.status === 'sent' ? audience === 'admin'
+      ? payout.sentAt ? t('payoutSentKitchen', { date: when(payout.sentAt, false) }) : t('payoutSentKitchenNoDate')
+      : payout.sentAt ? t('payoutSent', { date: when(payout.sentAt, false) }) : t('payoutSentNoDate')
     : payout.status === 'not_applicable' ? t('payoutNotApplicable')
     : stage === 'before_checkout' ? t('payoutScheduledBeforeCheckout', { chef: chefName || t('payoutChefFallback') })
     : stage === 'inspect' ? payout.expectedAt ? t('payoutScheduledAfterCheckout', { date: when(payout.expectedAt, true) }) : t('payoutScheduledAfterCheckoutNoDate')

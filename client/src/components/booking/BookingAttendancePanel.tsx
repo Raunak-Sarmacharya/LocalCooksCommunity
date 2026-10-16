@@ -1,3 +1,4 @@
+import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -32,8 +33,8 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
   hideArrivalStatus?: boolean;
   /** Controls "Fix the visit record" from the page's overflow menu; the in-card trigger is then hidden. */
   fixOpen?: boolean; onFixOpenChange?: (open: boolean) => void;
-  /** Opens "Fix the visit record" straight on this choice when it applies (e.g. "Record when they left"). */
-  fixAction?: 'departure';
+  /** Opens "Fix the visit record" straight on this choice when it applies ("Record when they left", "They came", "They didn't come"). */
+  fixAction?: 'departure' | 'report_attended' | 'report_no_show';
 }) {
   const { t, i18n } = useTranslation('chef');
   const locale = i18n?.resolvedLanguage || 'en-CA';
@@ -111,12 +112,12 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     { value: 'withdraw_attendance' as const, visible: chosen && noShow, icon: Undo2, hint: 'fixUndoHint' },
     { value: 'support' as const, visible: true, icon: LifeBuoy, hint: 'fixOtherHint' },
   ] as const;
-  const departureVisible = options.some(option => option.value === 'departure' && option.visible);
+  const presetVisible = !!fixAction && options.some(option => option.value === fixAction && option.visible);
   const [presetApplied, setPresetApplied] = useState(false);
   useEffect(() => {
     if (!open) { setPresetApplied(false); return; }
-    if (!presetApplied && fixAction === 'departure' && departureVisible) { setAction('departure'); setPresetApplied(true); }
-  }, [open, fixAction, departureVisible, presetApplied]);
+    if (!presetApplied && fixAction && presetVisible) { setAction(fixAction); setPresetApplied(true); }
+  }, [open, fixAction, presetVisible, presetApplied]);
   const visitPicker = data && data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
     <select className="ml-2 max-w-full rounded border bg-background p-2" value={visitId ?? ''} disabled={saving} onChange={event => { setVisitId(event.target.value ? Number(event.target.value) : undefined); reset(); }}>
       <option value="">{t('bookingAttendanceChooseVisit')}</option>{data.visits.map((visit, index) => <option key={visit.id} value={visit.id}>{t('fixVisitRange', { number: index + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</option>)}
@@ -166,7 +167,7 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
       {zone && !embedded && <p className="text-xs text-muted-foreground">{friendlyTimezoneName(zone, locale)}</p>}
       {!manager && !localCooks && chosen && noShow && <div className="space-y-3">
         {latest?.sharedMessage && <blockquote className="rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{latest.sharedMessage}</blockquote>}
-        <div className="flex flex-wrap items-center gap-3">{!embedded && <MessageKitchenButton bookingId={bookingId} />}<a className="text-sm underline" href="mailto:support@localcooks.ca">{t('fixDispute')}</a></div>
+        <div className="flex flex-wrap items-center gap-3">{!embedded && <MessageKitchenButton bookingId={bookingId} />}<a className="text-sm underline" href={localCooksSupportHref({ bookingId, role: manager ? "manager" : "chef", situation: "Visit attendance needs review" })}>{t('fixDispute')}</a></div>
       </div>}
       {(events.length > 0 || assistance.length > 0) && <details><summary className="cursor-pointer text-sm">{t('fixHistory')}</summary><ol className="mt-3 space-y-3 text-sm">
         {events.map(event => <li key={event.id}><p>{eventLabel(event)} · {when(event.createdAt)}</p>{event.sharedMessage && <p className="whitespace-pre-wrap text-muted-foreground">{event.sharedMessage}</p>}{localCooks && event.internalNotes && <p>{t('fixInternal')}: {event.internalNotes}</p>}</li>)}

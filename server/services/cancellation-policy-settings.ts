@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { cancellationPolicyAudit, kitchenCancellationPolicies, kitchens, locations, platformSettings } from '@shared/schema';
-import { CANCELLATION_DISCLOSURE_VERSION, cancellationTiers, NOTICE_OPTIONS, CHARGE_OPTIONS, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
+import { ACCEPTED_DISCLOSURE_VERSIONS, CHECKBOX_DISCLOSURE_VERSION, cancellationTiers, NOTICE_OPTIONS, CHARGE_OPTIONS, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
 import { calendarDateForOperatingTime } from '@shared/operating-hours';
 import { matchingLocalInstants } from '@shared/booking-dst';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -61,12 +61,18 @@ export function policySessionStart(date: string, time: string, windowStart: stri
   if (instants.length !== 1) throw Error('Cancellation policy needs an unambiguous kitchen-local start');
   return new Date(instants[0]).toISOString();
 }
-export async function checkoutCancellationSnapshot(kitchenId: number, date: string, startTime: string, windowStart: string, timezone: string, acknowledgement: unknown, policyVersion: unknown): Promise<CancellationPolicySnapshot> {
+/**
+ * `disclosureVersion` is the wording the chef's client showed: v3 = consent by selecting Checkout. Clients that predate v3
+ * send none and showed the v2 checkbox, so that is what gets recorded for them.
+ */
+export async function checkoutCancellationSnapshot(kitchenId: number, date: string, startTime: string, windowStart: string, timezone: string, acknowledgement: unknown, policyVersion: unknown, disclosureVersion?: unknown): Promise<CancellationPolicySnapshot> {
   const policy = await publishedCancellationPolicy(kitchenId);
   if (acknowledgement !== true || policyVersion !== policy.version) throw Error('Review and accept the current cancellation policy before payment');
+  const disclosure = disclosureVersion == null ? CHECKBOX_DISCLOSURE_VERSION : disclosureVersion;
+  if (typeof disclosure !== 'string' || !ACCEPTED_DISCLOSURE_VERSIONS.includes(disclosure)) throw Error('Review and accept the current cancellation policy before payment');
   return { policyId: policy.id, version: policy.version, noticeHours: policy.noticeHours, lateChargePercent: policy.lateChargePercent,
     tiers: cancellationTiers(policy.noticeHours, policy.lateChargePercent), timezone, sessions: [{ startAt: policySessionStart(date, startTime, windowStart, timezone) }],
-    disclosureVersion: CANCELLATION_DISCLOSURE_VERSION, acceptedAt: new Date().toISOString() };
+    disclosureVersion: disclosure, acceptedAt: new Date().toISOString() };
 }
 /** Scalar metadata values stay well below Stripe's 500-character limit. */
 export function cancellationSnapshotMetadata(snapshot: CancellationPolicySnapshot): Record<string, string> {
@@ -79,7 +85,7 @@ export function cancellationSnapshotFromMetadata(metadata: Record<string, string
   const policyId = Number(metadata.cancellation_policy_id), version = Number(metadata.cancellation_policy_version), noticeHours = Number(metadata.cancellation_notice), lateChargePercent = Number(metadata.cancellation_charge);
   const tiers = cancellationTiers(noticeHours, lateChargePercent);
   if (!Number.isSafeInteger(policyId) || policyId <= 0 || !Number.isSafeInteger(version) || version <= 0 || !metadata.cancellation_timezone
-    || !Number.isFinite(Date.parse(metadata.cancellation_start)) || !Number.isFinite(Date.parse(metadata.cancellation_accepted_at)) || metadata.cancellation_disclosure !== CANCELLATION_DISCLOSURE_VERSION) throw Error('Checkout cancellation acceptance needs review');
+    || !Number.isFinite(Date.parse(metadata.cancellation_start)) || !Number.isFinite(Date.parse(metadata.cancellation_accepted_at)) || !ACCEPTED_DISCLOSURE_VERSIONS.includes(metadata.cancellation_disclosure)) throw Error('Checkout cancellation acceptance needs review');
   new Intl.DateTimeFormat('en-CA', { timeZone: metadata.cancellation_timezone });
   return { policyId, version, noticeHours, lateChargePercent, tiers, timezone: metadata.cancellation_timezone, sessions: [{ startAt: metadata.cancellation_start }], disclosureVersion: metadata.cancellation_disclosure, acceptedAt: metadata.cancellation_accepted_at };
 }

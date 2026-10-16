@@ -6,18 +6,20 @@ import { Link } from "wouter"
 import { Clock, Loader2 } from "lucide-react"
 import { apiGet } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { decideExtension, kitchenClock, money, type ExtensionItem } from "@/lib/session-extensions"
+import { decideExtension, kitchenClock, money, useServerNow, type ExtensionItem } from "@/lib/session-extensions"
 
 type Pending = ExtensionItem & { bookingId: number; kitchenName: string; timezone: string | null; chefName: string | null }
 
 export function SessionExtensionRequests() {
   const { t, i18n } = useTranslation("manager")
   const locale = i18n.resolvedLanguage || i18n.language || "en-CA"
-  const { data, refetch } = useQuery<{ requests: Pending[] }>({ queryKey: ["session-extension-requests"], queryFn: () => apiGet("/manager/session-extensions/pending"),
+  const { data, refetch } = useQuery<{ requests: Pending[]; serverNow?: string }>({ queryKey: ["session-extension-requests"], queryFn: () => apiGet("/manager/session-extensions/pending"),
     refetchInterval: 60_000, refetchIntervalInBackground: false })
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState<{ id: number; text: string; error?: boolean } | null>(null)
-  const requests = data?.requests || []
+  // A request disappears at its deadline (server clock): the kitchen can no longer answer it, so it must not stay on screen.
+  const now = useServerNow(data?.serverNow, (data?.requests || []).map(item => item.expiresAt))
+  const requests = (data?.requests || []).filter(item => Date.parse(item.expiresAt) > now)
   if (!requests.length && !message) return null
   const decide = async (item: Pending, action: "approve" | "approve_free" | "decline") => {
     setBusy(`${action}-${item.id}`); setMessage(null)

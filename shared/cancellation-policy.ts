@@ -1,7 +1,15 @@
 export type CancellationTier = { minHoursBeforeStart: number; refundPercent: number };
 export type CancellationPolicySnapshot = { policyId: number | null; version: number; noticeHours: number; lateChargePercent: number;
   tiers: CancellationTier[]; timezone: string; sessions: Array<{ startAt: string; endAt?: string; nonRefundable?: boolean; amountCents?: number }>; disclosureVersion: string; acceptedAt: string | null };
-export const CANCELLATION_DISCLOSURE_VERSION = 'food-corridor-v1';
+/**
+ * v2 (WP-N, owner Oct 15): the accepted terms also say "No-shows aren't refunded." for every policy (checkbox consent).
+ * v3 (#52): same terms; consent is given by selecting Checkout under "By selecting Checkout, you agree to…" (no checkbox).
+ */
+export const CANCELLATION_DISCLOSURE_VERSION = 'food-corridor-v3';
+/** The checkbox disclosure, recorded for checkouts from clients that predate v3 (they send no disclosure version). */
+export const CHECKBOX_DISCLOSURE_VERSION = 'food-corridor-v2';
+/** Checkouts opened before a disclosure bump still fulfil under the version the chef actually accepted. */
+export const ACCEPTED_DISCLOSURE_VERSIONS: readonly string[] = ['food-corridor-v1', CHECKBOX_DISCLOSURE_VERSION, CANCELLATION_DISCLOSURE_VERSION];
 export const NOTICE_OPTIONS = [24, 48, 72] as const;
 export const CHARGE_OPTIONS = [50, 100] as const;
 export function cancellationTiers(notice: number, charge: number): CancellationTier[] {
@@ -104,3 +112,4 @@ export function quoteCancellation(snapshot: CancellationPolicySnapshot, input: C
     reasonCode: authorized ? 'hold_release' : remedy ? 'full_remedy' : perComponent.every(item => !item.refundPercent) ? 'no_refund' : 'policy_refund',
     explanationKeys: [snapshot.version === 0 ? 'original_terms' : 'frozen_policy', ...(fee && !remedy ? ['processing_fee_kept'] : [])] };
 }
+

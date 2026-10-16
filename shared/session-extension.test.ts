@@ -121,3 +121,17 @@ describe('session extensions', () => {
     });
   });
 });
+
+it('applies the turnover buffer to extensions and early starts in instants (59 blocked, 60 allowed)', () => {
+  const extendedEnd = Date.parse(input.endAt) + 30 * 60_000;
+  const next = (gap: number) => [{ start: extendedEnd + gap * 60_000, end: extendedEnd + (gap + 60) * 60_000 }];
+  expect(sessionExtensionOptions({ ...input, turnoverOccupied: next(59) }).some(o => o.minutes === 30)).toBe(false);
+  expect(sessionExtensionOptions({ ...input, turnoverOccupied: next(60) }).some(o => o.minutes === 30)).toBe(true);
+  expect(sessionExtensionOptions({ ...input }).some(o => o.minutes === 30)).toBe(true);
+  const startAt = '2026-10-14T16:30:00Z';
+  const earlyStart = Date.parse(startAt) - 30 * 60_000;
+  const previous = (gap: number) => [{ start: earlyStart - (gap + 60) * 60_000, end: earlyStart - gap * 60_000 }];
+  const early = { ...input, startTime: '14:00', startAt };
+  expect(earlyStartOptions({ ...early, turnoverOccupied: previous(59) }).some(o => o.minutes === 30)).toBe(false);
+  expect(earlyStartOptions({ ...early, turnoverOccupied: previous(60) }).some(o => o.minutes === 30)).toBe(true);
+});

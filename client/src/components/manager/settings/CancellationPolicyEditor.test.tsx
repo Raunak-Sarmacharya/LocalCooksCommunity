@@ -10,9 +10,9 @@ const policy = { policy: { id: 1, version: 1, noticeHours: 24, lateChargePercent
 beforeEach(() => { vi.clearAllMocks(); api.get.mockResolvedValue(policy); api.put.mockResolvedValue({}); });
 function mount(admin = false) { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); client.setQueryData(['managerBookings'], []); render(<QueryClientProvider client={client}><CancellationPolicyEditor kitchenId={10} admin={admin} /></QueryClientProvider>); }
 it('publishes exactly two choices with a live preview and new-bookings-only warning', async () => {
-  mount(); await waitFor(() => expect(screen.getByLabelText('Chefs can cancel for a refund up to')).toBeEnabled());
-  fireEvent.change(screen.getByLabelText('Chefs can cancel for a refund up to'), { target: { value: '48' } });
-  fireEvent.change(screen.getByLabelText('If they cancel later, they pay'), { target: { value: '50' } });
+  mount(); await waitFor(() => expect(screen.getByLabelText('Free cancellation until')).toBeEnabled());
+  fireEvent.change(screen.getByLabelText('Free cancellation until'), { target: { value: '48' } });
+  fireEvent.change(screen.getByLabelText('Late cancellation charge'), { target: { value: '50' } });
   expect(screen.getByText(/Cancel at least 48 hours.*50%/)).toBeInTheDocument(); expect(screen.getByText(/Applies to new bookings only/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Save cancellation policy' }));
   expect(api.put).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('checkbox'));
@@ -23,8 +23,13 @@ it('shows and locks an audited admin override for the manager', async () => {
   api.get.mockResolvedValue({ ...policy, policy: { ...policy.policy, adminOverrideReason: 'Pilot agreement' } }); mount();
   expect(await screen.findByText('Local Cooks override: Pilot agreement')).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeDisabled();
 });
-it('keeps the current policy when confirmation is cancelled', async () => {
-  mount(); await waitFor(() => expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeEnabled());
+it('stays quiet until a choice changes, then keeps the current policy when confirmation is cancelled', async () => {
+  mount(); await waitFor(() => expect(screen.getByLabelText('Free cancellation until')).toBeEnabled());
+  expect(screen.getByRole('button', { name: 'Save cancellation policy' })).toBeDisabled();
+  expect(screen.queryByTestId('setting-change-preview')).not.toBeInTheDocument();
+  expect(screen.getByText(/Chefs see:/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Free cancellation until'), { target: { value: '72' } });
+  expect(screen.getByTestId('setting-change-preview')).toHaveTextContent('Applies to new bookings only');
   fireEvent.click(screen.getByRole('button', { name: 'Save cancellation policy' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep current policy' }));
   expect(api.put).not.toHaveBeenCalled();

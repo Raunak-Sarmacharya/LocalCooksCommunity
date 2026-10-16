@@ -294,10 +294,21 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   });
   const requestPolicySave = useCallback(() => new Promise<boolean>((resolve) => {
     if (policySaveResolver.current) { resolve(false); return; }
+    // One kitchen: the rules can only apply to this location, so there is nothing to choose.
+    if (kitchens.length <= 1) {
+      void (async () => {
+        setPolicyScopeSaving(true);
+        const saved = (await policiesRef.current?.saveAllChanges("location")) ?? false;
+        setPolicyScopeSaving(false);
+        if (saved) toast({ title: mt("bookingRulesSavedToast") });
+        resolve(saved);
+      })();
+      return;
+    }
     policySaveResolver.current = resolve;
     setPolicyScope(kitchens.length > 1 ? "kitchen" : "location");
     setPolicyScopeOpen(true);
-  }), [kitchens.length]);
+  }), [kitchens.length, toast]);
   const closePolicyScope = () => {
     if (policyScopeSaving) return;
     setPolicyScopeOpen(false);
@@ -310,6 +321,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     const saved = (await policiesRef.current?.saveAllChanges(kitchens.length > 1 ? policyScope : "location")) ?? false;
     setPolicyScopeSaving(false);
     if (!saved) return;
+    toast({ title: mt("bookingRulesSavedToast") });
     setPolicyScopeOpen(false);
     policySaveResolver.current?.(true);
     policySaveResolver.current = null;
@@ -590,10 +602,9 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             }}><Copy className="mr-1.5 h-4 w-4" />{mt("shareKitchen")}</Button>}
 
             {/* Page-level save. Rendered only while something is unsaved, so the
-                header stays quiet at rest — the same convention as Booking Policies. */}
-            {activeSection === "policies" && kitchensDirty ? (
-              <Button disabled={policyScopeSaving || policyScopeOpen} onClick={() => void requestPolicySave()}>{mt("saveChanges")}</Button>
-            ) : showSaveAction && (
+                header stays quiet at rest. Booking Policies is the exception: each of its
+                sections owns its one save, so nothing saves from up here on that tab. */}
+            {activeSection === "policies" ? null : showSaveAction && (
               <StatusButton
                 status={saveAction.status}
                 onClick={saveAction.execute}
@@ -778,7 +789,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             </TabsContent>
             <TabsContent value="policies" className="mt-0">
               {activeKitchenId && <KitchenWorkspaceControls key={activeKitchenId} kitchenId={activeKitchenId} location={location}
-                mode="policies" showTerms onDirtyChange={setPoliciesDirty} saveRef={policiesRef} />}
+                mode="policies" showTerms onDirtyChange={setPoliciesDirty} saveRef={policiesRef}
+                onRequestSave={() => { if (!policyScopeSaving && !policyScopeOpen) void requestPolicySave(); }} />}
             </TabsContent>
 
             <TabsContent value="equipment" className="mt-0">

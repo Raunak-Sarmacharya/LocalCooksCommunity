@@ -7,6 +7,11 @@ import locale from '../../../../shared/i18n/locales/en-CA/common.json';
 const mocks = vi.hoisted(() => ({ person: { uid: 'manager-one', getIdToken: vi.fn(async () => 'fixture-token') } }));
 vi.mock('@/lib/firebase', () => ({ auth: { get currentUser() { return mocks.person; } } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => (locale as Record<string, string>)[key] || key }) }));
+vi.mock('@/components/ui/date-field', () => ({
+  DateField: ({ id, value, onChange, ...props }: any) => (
+    <input id={id} value={value} onChange={event => onChange(event.target.value)} {...props} />
+  ),
+}));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); mocks.person.uid = 'manager-one'; });
 const empty = () => buildTourFunnel({ tours: [], events: [], applications: [], bookings: [], range: tourFunnelRange() });
 function mount(locationId = 20) {
@@ -22,8 +27,8 @@ describe('scoped tour funnel', () => {
     const [url, options] = fetcher.mock.calls[0] as unknown as [string, any];
     expect(url).toContain('/api/viewings/funnel?from='); expect(url).toContain('locationId=20');
     expect(options).toMatchObject({ credentials: 'include', headers: { Authorization: 'Bearer fixture-token' } });
-    expect(screen.getByText('Applications predating first request')).toBeInTheDocument();
-    expect(screen.getByText('Recorded results / elapsed confirmed kitchen tours')).toBeInTheDocument();
+    expect(screen.queryByText('Applications predating first request')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recorded results / elapsed confirmed kitchen tours')).not.toBeInTheDocument();
     expect(client.getQueryCache().getAll()[0].queryKey).toContain('manager-one');
     client.clear();
   });

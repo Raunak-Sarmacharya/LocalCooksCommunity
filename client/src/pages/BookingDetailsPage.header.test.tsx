@@ -416,6 +416,49 @@ describe("after the booked end, the chef is still checked in (overstay)", () => 
   });
 });
 
+// ── WP-N: booked time ended with no check-in recorded ─────────────────────────────────────────────────────────────
+describe("no check-in recorded", () => {
+  const missed = (canRespond = true) => ({ ...base(), status: "completed", paymentStatus: "paid", checkinStatus: "not_checked_in",
+    closeout: { phase: "ended", timezone: "America/St_Johns", serviceEndedAt: "2030-01-15T15:45:00Z", visits: [{ key: "b", phase: "ended", arrivalRecorded: false,
+      attendance: "unknown", scheduledStartAt: "2030-01-15T13:30:00Z", scheduledEndAt: "2030-01-15T15:30:00Z",
+      inspection: { outcome: canRespond ? "due" : "auto_closed_uninspected", dueAt: "2030-01-15T15:30:00Z", deadline: "2030-01-16T15:30:00Z",
+        closedAt: canRespond ? null : "2030-01-16T15:30:00Z", canRespond } }] } });
+  it("kitchen: not Completed; asks Did they come? with They came (primary) and They didn't come", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
+    h.manager = true; h.booking = missed();
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent(/^No check-in from Ada Lovelace\. Did they come\? Tell us by /);
+    expect(screen.getAllByText("No check-in recorded").length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/Completed|This visit is closed|Report damage/);
+    const primary = screen.getByTestId("booking-header").querySelector("[data-primary-action]")!;
+    expect(primary).toHaveTextContent("They came");
+    fireEvent.click(primary);
+    expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_attended" });
+    fireEvent.click(within(screen.getByTestId("now-secondary")).getByRole("button", { name: "They didn’t come" }));
+    expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_no_show" });
+  });
+  it("kitchen: after the window closes it simply reads No check-in recorded, with no question", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 30 * 3_600_000);
+    h.manager = true; h.booking = missed(false);
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent(/nothing changes for your payout/);
+    expect(screen.getByTestId("booking-header").querySelector("[data-primary-action]")).toBeNull();
+  });
+  it("chef: told plainly, no money statement yet; I was there and Message kitchen; no rating or final invoice", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
+    h.manager = false; h.booking = missed();
+    render(<BookingDetailsPage />);
+    expect(await screen.findByTestId("booking-next-step")).toHaveTextContent("We didn’t see a check-in for your booking at Harbour Kitchen (10:00 a.m.). If you were there, let us know.");
+    expect(document.body.textContent).not.toMatch(/Visit complete|final invoice|How was your session/i);
+    expect(within(screen.getByTestId("header-actions")).getByRole("button", { name: /Message kitchen/ })).toBeInTheDocument();
+    const scroll = vi.fn();
+    const support = document.getElementById("booking-support");
+    if (support) support.scrollIntoView = scroll;
+    fireEvent.click(within(screen.getByTestId("now-secondary")).getByRole("button", { name: "I was there" }));
+    expect(scroll).toHaveBeenCalled();
+  });
+});
+
 // ── WP-A acceptance (design-booking-consolidation.md §5) ─────────────────────────────────────────────────────────
 const count = (needle: string) => document.body.textContent!.split(needle).length - 1;
 /** Text of the page without the when-line (which states the booked range by design). */

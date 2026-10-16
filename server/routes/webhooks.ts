@@ -14,7 +14,7 @@ import {
   equipmentListings,
   pendingStorageExtensions,
 } from "@shared/schema";
-import { eq, and, ne, notInArray } from "drizzle-orm";
+import { eq, and, ne, notInArray, inArray, isNull, or, type AnyColumn, type SQL } from "drizzle-orm";
 import { logger } from "../logger";
 import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
@@ -24,6 +24,12 @@ import { parseCheckoutSlots, parseCheckoutCancellationPolicy } from "../services
 import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 
 const router = Router();
+
+/** The only booking payment statuses a successful payment may upgrade to 'paid'. Anything later (refunded, partially_refunded, failed) is kept. */
+export const PAYABLE_BOOKING_PAYMENT_STATUSES = ["pending", "authorized", "processing"] as const;
+export function paymentStatusCanBecomePaid(column: AnyColumn): SQL {
+  return or(isNull(column), inArray(column, [...PAYABLE_BOOKING_PAYMENT_STATUSES]))!;
+}
 
 // ===================================
 // STRIPE WEBHOOK ENDPOINTS
@@ -94,6 +100,14 @@ router.post("/stripe", async (req: Request, res: Response) => {
     // Child logger: every log in this webhook automatically includes event context
     const wLog = logger.child({ webhookEventId, eventType: event.type });
 
+    // Stripe redelivers and may reorder events. An event that already finished is acknowledged and skipped;
+    // one that failed earlier (no processed_at) runs again, which every handler below tolerates.
+    const { claimStripeWebhookEvent, markStripeWebhookEventProcessed } = await import('../services/stripe-webhook-events');
+    if ((await claimStripeWebhookEvent(webhookEventId, event.type)).alreadyProcessed) {
+      wLog.info(`Duplicate Stripe event ${webhookEventId} already processed; skipping`);
+      return res.json({ received: true, duplicate: true });
+    }
+
     if (['charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed', 'payout.failed', 'transfer.reversed'].includes(event.type)) {
       const { handleBookingSupportWebhook } = await import('../services/booking-support-flags');
       await handleBookingSupportWebhook(event, stripe);
@@ -110,6 +124,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
         break;
       }
       case "checkout.session.completed":
+        if ((event.data.object as Stripe.Checkout.Session).metadata?.type === 'session_extension') {
+          const { handleSessionExtensionCheckout } = await import('../services/session-extensions');
+          await handleSessionExtensionCheckout(stripe, event.data.object as Stripe.Checkout.Session);
+          break;
+        }
         await handleCheckoutSessionCompleted(
           event.data.object as Stripe.Checkout.Session,
           webhookEventId,
@@ -117,6 +136,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
         break;
       case "checkout.session.expired": {
         const expiredSession = event.data.object as Stripe.Checkout.Session;
+        if (expiredSession.metadata?.type === 'session_extension') {
+          const { handleSessionExtensionCheckout } = await import('../services/session-extensions');
+          await handleSessionExtensionCheckout(stripe, expiredSession);
+          break;
+        }
         if (expiredSession.metadata?.type === 'kitchen_booking_change') {
           const { syncKitchenChange } = await import('../services/kitchen-booking-changes');
           await syncKitchenChange(stripe, Number(expiredSession.metadata.booking_id), expiredSession.metadata.kitchen_change_id,
@@ -146,12 +170,15 @@ router.post("/stripe", async (req: Request, res: Response) => {
           webhookEventId,
         );
         break;
-      case "charge.refunded":
+      case "charge.refunded": {
+        const { handleSessionExtensionRefund } = await import('../services/session-extensions');
+        if (await handleSessionExtensionRefund(stripe, event.data.object as Stripe.Charge)) break;
         await handleChargeRefunded(
           event.data.object as Stripe.Charge,
           webhookEventId,
         );
         break;
+      }
       case "charge.updated":
         await handleChargeUpdated(
           event.data.object as Stripe.Charge,
@@ -184,6 +211,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
         break;
     }
 
+    // Only a handler that returned normally marks the event done; a thrown error above skips this and Stripe retries.
+    await markStripeWebhookEventProcessed(webhookEventId);
     res.json({ received: true });
   } catch (err: any) {
     logger.error("Unhandled webhook error:", err);
@@ -2025,6 +2054,8 @@ async function handlePaymentIntentSucceeded(
     // This handles both auto-capture and manual capture (after manager approval triggers capture)
     // Wrap in transaction for integrity
     await db.transaction(async (tx) => {
+      // Monotonic: only an unpaid status becomes 'paid'. A redelivered or late payment_intent.succeeded must never
+      // turn refunded / partially_refunded / failed back into paid (Stripe does not guarantee event order).
       await tx
         .update(kitchenBookings)
         .set({
@@ -2034,7 +2065,7 @@ async function handlePaymentIntentSucceeded(
         .where(
           and(
             eq(kitchenBookings.paymentIntentId, paymentIntent.id),
-            ne(kitchenBookings.paymentStatus, "paid"),
+            paymentStatusCanBecomePaid(kitchenBookings.paymentStatus),
           ),
         );
 
@@ -2050,8 +2081,7 @@ async function handlePaymentIntentSucceeded(
         .where(
           and(
             eq(storageBookings.paymentIntentId, paymentIntent.id),
-            ne(storageBookings.paymentStatus, "paid"),
-            ne(storageBookings.paymentStatus, "failed"),
+            paymentStatusCanBecomePaid(storageBookings.paymentStatus),
           ),
         );
 
@@ -2064,8 +2094,7 @@ async function handlePaymentIntentSucceeded(
         .where(
           and(
             eq(equipmentBookings.paymentIntentId, paymentIntent.id),
-            ne(equipmentBookings.paymentStatus, "paid"),
-            ne(equipmentBookings.paymentStatus, "failed"),
+            paymentStatusCanBecomePaid(equipmentBookings.paymentStatus),
           ),
         );
 
@@ -2164,6 +2193,9 @@ async function handlePaymentIntentSucceeded(
       `[Webhook] Error updating payment status for ${paymentIntent.id}:`,
       error,
     );
+    // Do not acknowledge a payment state change that was not saved: the event stays unprocessed and Stripe retries
+    // (every write above is monotonic, so a retry is safe).
+    throw error;
   }
 }
 
@@ -2179,34 +2211,37 @@ async function handlePaymentIntentFailed(
   }
 
   try {
+    const { getBookingPaymentIntent } = await import('../services/stripe-service');
+    paymentIntent = await getBookingPaymentIntent(paymentIntent.id);
+    // A later retry may already be authorized, processing or captured; this failure snapshot is then obsolete.
+    if (paymentIntent.status !== 'requires_payment_method') return;
     const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
       await import("../services/payment-transactions-service");
 
-    // Update payment_transactions table
-    const transaction = await findPaymentTransactionByIntentId(
-      paymentIntent.id,
-      db,
-    );
-    if (transaction) {
-      await updatePaymentTransaction(
-        transaction.id,
-        {
-          status: "failed",
-          stripeStatus: paymentIntent.status,
-          failureReason:
-            paymentIntent.last_payment_error?.message || "Payment failed",
-          lastSyncedAt: new Date(),
-          webhookEventId: webhookEventId,
-        },
-        db,
-      );
-      logger.info(
-        `[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`,
-      );
-    }
+    // Keep the source and booking consistent under the source lock; old failure events cannot demote captured money.
+    const failed = await db.transaction(async (tx) => {
+      const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, tx);
+      if (transaction) {
+        const updated = await updatePaymentTransaction(
+          transaction.id,
+          {
+            status: "failed",
+            stripeStatus: paymentIntent.status,
+            failureReason:
+              paymentIntent.last_payment_error?.message || "Payment failed",
+            lastSyncedAt: new Date(),
+            webhookEventId: webhookEventId,
+          },
+          tx,
+          true,
+        );
+        if (updated?.status !== 'failed') return false;
+        logger.info(
+          `[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`,
+        );
+      }
 
-    // Also update booking tables for backward compatibility
-    await db.transaction(async (tx) => {
+      // Also update booking tables for backward compatibility
       const excludedStatuses: (
         | "pending"
         | "paid"
@@ -2253,7 +2288,9 @@ async function handlePaymentIntentFailed(
             notInArray(equipmentBookings.paymentStatus, excludedStatuses),
           ),
         );
+      return true;
     });
+    if (!failed) return;
 
     logger.info(
       `[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`,
@@ -2321,6 +2358,7 @@ async function handlePaymentIntentFailed(
       `[Webhook] Error updating payment status for ${paymentIntent.id}:`,
       error,
     );
+    throw error;
   }
 }
 
@@ -2376,6 +2414,9 @@ async function handlePaymentIntentCanceled(
         | "partially_refunded"
       )[] = ["paid", "refunded", "partially_refunded"];
 
+      // A booking with a saved payment decision belongs to the decision owner (booking-payment-decision): it cancels the
+      // booking, releases linked dates and queues the notices in one transaction. Cancelling it here first would leave
+      // that decision stuck pending forever, so only legacy bookings without a decision are touched.
       await tx
         .update(kitchenBookings)
         .set({
@@ -2387,6 +2428,7 @@ async function handlePaymentIntentCanceled(
           and(
             eq(kitchenBookings.paymentIntentId, paymentIntent.id),
             eq(kitchenBookings.status, "pending"),
+            isNull(kitchenBookings.paymentDecision),
             notInArray(kitchenBookings.paymentStatus, excludedStatuses),
           ),
         );
@@ -2441,6 +2483,8 @@ async function handlePaymentIntentCanceled(
       `[Webhook] Error updating payment status for ${paymentIntent.id}:`,
       error,
     );
+    // Not saved means not acknowledged: Stripe retries and the event stays unprocessed.
+    throw error;
   }
 }
 

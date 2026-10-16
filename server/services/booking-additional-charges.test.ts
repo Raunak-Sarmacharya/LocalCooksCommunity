@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { chargeKind, readAdditionalCharges, toAdditionalCharges } from './booking-additional-charges';
 
-const row = (extra: Record<string, unknown> = {}) => ({ id: 1, amount: '1438', managerRevenue: '1250', refundAmount: '0', status: 'succeeded',
+const row = (extra: Record<string, unknown> = {}) => ({ id: 1, amount: '1438', managerRevenue: '1250', baseAmount: '1250', serviceFee: '188', refundAmount: '0', status: 'succeeded',
   paidAt: new Date('2026-10-14T23:00:00Z'), paymentIntentId: 'pi_ext', metadata: { type: 'session_extension', sessionExtensionId: 7, extensionKind: 'extend', minutes: 30 }, ...extra }) as any;
 
 describe('booking additional charges', () => {
@@ -25,9 +25,17 @@ describe('booking additional charges', () => {
       ['extension', 1438, 1250, 30], ['damage_claim', 9000, 9000, null], ['damage_claim', 4500, 0, null]]);
   });
   it('kitchen share of an extension is net of its own processing fee; claims carry none (live #166: $14.38 − $0.86)', () => {
-    const lines = toAdditionalCharges([row({ amount: '1526', managerRevenue: '1438', stripeProcessingFee: '86' }),
+    const lines = toAdditionalCharges([row({ amount: '1526', managerRevenue: '1438', baseAmount: '1438', serviceFee: '88', stripeProcessingFee: '86' }),
       row({ id: 2, amount: '9000', managerRevenue: '9000', stripeProcessingFee: '291', paymentIntentId: 'pi_claim', metadata: { type: 'damage_claim', damage_claim_id: '9' } })], 'manager');
     expect(lines.map(line => line.kitchenShareCents)).toEqual([1352, 9000]);
+  });
+  it('after the transfer the share is what was sent, not reduced again (live #175: net $13.52 stored, fee $0.86)', () => {
+    const sent = row({ amount: '1526', managerRevenue: '1352', baseAmount: '1438', serviceFee: '88', stripeProcessingFee: '86', transferId: 'tr_x',
+      payoutTiming: 'after_closeout', metadata: { type: 'session_extension', sessionExtensionId: 7, extensionKind: 'offer', minutes: 30,
+        payoutSent: { sentAt: '2026-10-15T18:32:17.022Z', amountCents: 1352 } } });
+    expect(toAdditionalCharges([sent], 'manager')[0].kitchenShareCents).toBe(1352);
+    const synced = row({ amount: '1526', managerRevenue: '1352', baseAmount: '1438', serviceFee: '88', stripeProcessingFee: '86' });
+    expect(toAdditionalCharges([synced], 'manager')[0].kitchenShareCents).toBe(1352);
   });
   it('leaves out the parent charge, unpaid rows and unrelated rows; keeps refunds visible', () => {
     expect(toAdditionalCharges([row({ paymentIntentId: 'pi_parent' })], 'chef', 'pi_parent')).toEqual([]);

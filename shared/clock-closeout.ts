@@ -24,7 +24,9 @@ type DatedSlot = { startTime: string; endTime: string; date?: string };
 export type VisitCloseout = SavedVisitClock & { visitId?: number; clockKey: string; blockIndex: number; localDate: string; phase: ServicePhase; arrivalRecorded: boolean; attendance: 'unknown' | 'recorded' | 'no_show';
   inspection: { outcome: InspectionOutcome; dueAt: string; deadline: string; closedAt: string | null; canRespond: boolean } };
 export type BookingCloseout = { phase: ServicePhase; serviceEndedAt: string; timezone: string; visits: VisitCloseout[];
-  status: string; serverNow: string; nextDueAt: string | null };
+  status: string; serverNow: string; nextDueAt: string | null;
+  /** No closeout was ever saved (the booking predates the clock): history only, never re-labelled as "No check-in recorded". */
+  legacy?: boolean };
 
 const instant = (value: Date | string) => {
   const time = new Date(value).getTime();

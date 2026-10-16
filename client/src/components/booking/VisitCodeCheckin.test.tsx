@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IntlMessageFormat } from "intl-messageformat";
 import en from "@shared/i18n/locales/en-CA/chef.json";
+import bookingEn from "@shared/i18n/locales/en-CA/booking.json";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { getIdToken: async () => "local-test-token" } } }));
@@ -13,10 +14,10 @@ vi.mock("@/components/ui/smart-image", () => ({ SmartImage: (props: any) => <img
 vi.mock("@/components/chat/UnifiedChatView", () => ({ default: (props: any) => <div data-testid="chat">{props.initialDraft}</div> }));
 vi.mock("@/hooks/useSessionFileUpload", () => ({ useSessionFileUpload: () => ({ uploadFile: vi.fn(), isUploading: false, uploadProgress: 0 }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() } }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({
+vi.mock("react-i18next", () => ({ useTranslation: (namespace: string) => ({
   i18n: { language: "en-CA", resolvedLanguage: "en-CA" },
   t: (key: string, options?: any) => {
-    let value = (en as Record<string, string>)[key] || (typeof options === "string" ? options : options?.defaultValue) || key;
+    let value = ((namespace === 'booking' ? bookingEn : en) as Record<string, string>)[key] || (typeof options === "string" ? options : options?.defaultValue) || key;
     if (key === "kciVcAttemptsLeft" || key === "kciCompleteRequiredTasks" || key === "kciAcReleaseAt") return new IntlMessageFormat(value, "en-CA").format(options);
     for (const [name, replacement] of Object.entries(options || {})) value = value.replaceAll(`{{${name}}}`, String(replacement)).replaceAll(`{${name}}`, String(replacement));
     return value;
@@ -53,6 +54,28 @@ const field = () => screen.getByLabelText("Check-in code") as HTMLInputElement;
 const confirm = () => screen.getByRole("button", { name: "Confirm check-in" }) as HTMLButtonElement;
 
 describe("chef arrival check-in code", () => {
+  it('shows a failed kitchen offer in session and still allows check-out', async () => {
+    const now = Date.now(), endAt = new Date(now + 5 * 60_000).toISOString();
+    status = visit({ checkinStatus: 'checked_in', checkedInAt: new Date(now - 60_000).toISOString(),
+      visitCloseout: { phase: 'in_session', scheduledStartAt: new Date(now - 60_000).toISOString(), scheduledEndAt: endAt,
+        inspection: { outcome: 'not_due' } } });
+    const extension = { id: 55, kind: 'offer', status: 'offered', amountCents: 1501, minutes: 30, endAt, expiresAt: endAt,
+      cardFailedAt: new Date(now).toISOString(), confirmed: false, paid: false, processing: false };
+    const extensions = { options: [], history: [extension], enabled: true, hasSavedCard: true, inSession: true,
+      timezone: 'UTC', kitchenName: 'Test kitchen', currency: 'CAD', serverNow: new Date(now).toISOString() };
+    fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      if (String(url).endsWith('/extensions')) return new Response(JSON.stringify(extensions));
+      if (String(url).endsWith('/checkout') && options?.method === 'POST') return new Response(JSON.stringify({ success: true }));
+      return new Response(JSON.stringify(status));
+    });
+    vi.stubGlobal('fetch', fetchMock); setup();
+    expect(await screen.findByTestId('extension-offer')).toHaveTextContent('Your saved card was declined. Nothing was charged.');
+    expect(screen.getByRole('button', { name: 'Pay with another card · $15.01' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Need more time?' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Check out now' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Submit checkout' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => String(url).endsWith('/checkout') && options?.method === 'POST')).toBe(true));
+  });
   beforeEach(() => {
     status = visit(); failure = null;
     fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
@@ -67,6 +90,21 @@ describe("chef arrival check-in code", () => {
   });
   afterEach(() => { cleanup(); client?.clear(); vi.unstubAllGlobals(); });
 
+  it("offers an access report at check-in opening and sends it through the shared report form", async () => {
+    status = visit({ startTime: '23:59', checkinWindowMinutesBefore: 1440 });
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: 'Report a problem' }));
+    expect(screen.getByRole('radio', { name: 'Access (cannot get in or out)' })).toBeChecked();
+    fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'The kitchen is locked and nobody is here.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send report' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => String(url).includes('/commitment-problems/booking/901') && JSON.parse(String(options?.body)).category === 'access')).toBe(true));
+  });
+  it("does not offer problem reporting before check-in opens", async () => {
+    status = visit({ bookingDate: '2099-10-04', startTime: '09:00', checkinWindowMinutesBefore: 15 });
+    setup();
+    await screen.findByTestId('visit-next-step');
+    expect(screen.queryByRole('button', { name: 'Report a problem' })).not.toBeInTheDocument();
+  });
   it("shows one numeric one-time-code field with the kitchen hint for a staffed visit", async () => {
     setup();
     const input = await screen.findByLabelText("Check-in code") as HTMLInputElement;

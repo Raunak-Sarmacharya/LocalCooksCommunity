@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
-import { claimRequest, claimMoney, claimWhen, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimRequest, claimMoney, claimPayByDate, claimWhen, type DamageClaimCardData } from '@/lib/damage-claims';
 import type { ClaimLine } from '@shared/damage-claims';
 const ClaimPayment = lazy(() => import('./DamageClaimPayment'));
 
@@ -30,7 +30,8 @@ export function ClaimTimeline({ claim }: { claim: DamageClaimCardData }) {
     {claim.kitchenPaid && <li>{t('dcV2KitchenPaid')}</li>}
   </ol></details>;
 }
-export function DamageClaimCard({ claim, manager = false, onChanged }: { claim: DamageClaimCardData; manager?: boolean; onChanged: () => void }) {
+/** `hideTitle`: the surrounding sheet already shows the claim title, so the card doesn't repeat it. */
+export function DamageClaimCard({ claim, manager = false, hideTitle = false, onChanged }: { claim: DamageClaimCardData; manager?: boolean; hideTitle?: boolean; onChanged: () => void }) {
   const { t, i18n } = useTranslation('booking');
   const [payOpen, setPayOpen] = useState(false), [responding, setResponding] = useState(false), [note, setNote] = useState('');
   const [files, setFiles] = useState<ClaimLine['document'][]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -53,7 +54,7 @@ export function DamageClaimCard({ claim, manager = false, onChanged }: { claim: 
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('dcV2Failed')); } finally { setBusy(false); }
   };
   return <article className="rounded-2xl border bg-card p-5 space-y-4">
-    <div><h3 className="font-semibold">{t(manager ? 'dcV2ClaimTitleOwn' : 'dcV2ClaimTitle', { kitchen, amount })}</h3><p className="mt-1 text-sm">{manager
+    <div>{!hideTitle && <h3 className="font-semibold">{t(manager ? 'dcV2ClaimTitleOwn' : 'dcV2ClaimTitle', { kitchen, amount })}</h3>}<p className={hideTitle ? 'text-sm font-medium' : 'mt-1 text-sm'}>{manager
       ? t(`dcV2Status_${claim.status}`, { defaultValue: claim.status })
       : t(`dcV2ChefStatus_${claim.status}`, { defaultValue: t(`dcV2Status_${claim.status}`, { defaultValue: claim.status }) })}</p></div>
     {manager && claim.status === 'in_review' && <p role="status">{t('dcV2FirstReview')}</p>}
@@ -67,7 +68,7 @@ export function DamageClaimCard({ claim, manager = false, onChanged }: { claim: 
     {claim.kitchenReply && <p className="text-sm whitespace-pre-wrap"><strong>{t('dcV2KitchenReply')}: </strong>{claim.kitchenReply}</p>}
     <ClaimEvidence claim={claim} />
     {!manager && claim.status === 'submitted' && <p className="text-sm">{t('dcV2RespondBy', { when: claimWhen(claim.deadline, claim.visitEvidence?.timezone || 'America/St_Johns', i18n.language) })}</p>}
-    {!manager && canPay && <p className="text-sm">{t(claim.upheldAt ? 'dcV2FinalConsequence' : 'dcV2ChefNext')}</p>}
+    {!manager && canPay && <p className="text-sm">{claim.upheldAt ? t('dcV2FinalConsequence', { date: claimPayByDate(claim.upheldAt, claim.visitEvidence?.timezone || 'America/St_Johns', i18n.language) }) : t('dcV2ChefNext')}</p>}
     <div className="flex flex-wrap gap-3">{canPay && <Button onClick={() => setPayOpen(true)}>{t('dcV2Pay', { amount })}</Button>}
       {responseAllowed && <Button variant="outline" onClick={() => setResponding(value => !value)}>{t(manager ? 'dcV2Reply' : 'dcV2Dispute')}</Button>}
     </div>

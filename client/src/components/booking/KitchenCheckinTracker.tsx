@@ -1,3 +1,4 @@
+import { BookingProblemReport } from "./BookingProblemReport"
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { VisitDutyValidationError, type DutyFieldErrors } from '@shared/visit-duties';
 /**
@@ -522,7 +523,7 @@ export function KitchenCheckinTracker({
                     ))}
                   </dl>
                 )}
-                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && (
+                {data.status === "confirmed" && checkinStatus === "not_checked_in" && beforeCheckinOpens && !data.runningLate && (
                   <MessageKitchenButton link bookingId={bookingId} label={t("rlArrivedEarly", "Arrived early? Message the kitchen")} />
                 )}
                 {data.status === "confirmed" && checkinStatus === "not_checked_in" && (
@@ -536,6 +537,8 @@ export function KitchenCheckinTracker({
             )}
           </div>
         </header>
+        {data && checkinStatus !== "not_checked_in" && <SessionExtensionsCard bookingId={bookingId} manager={false} chefName=""
+          refreshKey={`${checkinStatus}:${data.visitId ?? ""}`} onChanged={() => void refetch()} />}
         {showInSession && clockVisit && data && (
           <InSessionPanel bookingId={bookingId} chefId={data.chefId} kitchenName={kitchenName || t("kitchenDefault", "Kitchen")}
             timezone={timezone} scheduledStartAt={clockVisit.scheduledStartAt} scheduledEndAt={clockVisit.scheduledEndAt}
@@ -590,9 +593,13 @@ export function KitchenCheckinTracker({
                 {arrivalChanged && <p role="status" className="rounded-lg border bg-muted/30 p-3 text-sm">{t("kciAcModeChanged", "Arrival details changed. Review the current instructions.")}</p>}
                 {codeGate !== "none" && codeState && data && (
                   <VisitCodeField gate={codeGate} state={codeState} value={visitCodeInput} onChange={changeVisitCode}
-                    problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
+                    canReportProblem={!beforeCheckinOpens && !!checkinOpensAt} problem={codeProblem} disabled={isCheckingIn} bookingId={bookingId} chefId={data.chefId}
                     kitchenName={kitchenName || t("kitchenDefault", "Kitchen")} />
                 )}
+                {(codeGate === "none" || codeGate === "self") && !beforeCheckinOpens && !!checkinOpensAt && <div>
+                  <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen.")}</p>
+                  <BookingProblemReport bookingId={bookingId} initialCategory="access" />
+                </div>}
                 {!!checklist?.checkinItems?.length && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
                 {(checklist?.checkinItems || []).length > 0 && renderChecklist(checklist?.checkinItems || [], t("kciChecklistLabel"))}
 

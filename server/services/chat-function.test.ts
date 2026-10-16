@@ -1,13 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), conversation: {} as any, message: {} as any,
   mapping: undefined as any, person: {} as any, keys: new Set<string>(), firestore: vi.fn(), pools: [] as any[], fetch: vi.fn(), diagnostics: vi.fn() }));
+vi.mock('firebase-functions/v2/firestore', () => ({
+  onDocumentCreatedWithAuthContext: (options: any, handler: any) => Object.assign(handler, {
+    run: handler,
+    __endpoint: {
+      eventTrigger: { eventFilters: { database: options.database } },
+      secretEnvironmentVariables: options.secrets.map((key: string) => ({ key })),
+      serviceAccountEmail: options.serviceAccount,
+    },
+  }),
+}));
 vi.mock('../../functions/node_modules/firebase-admin', () => ({ initializeApp: vi.fn() }));
 vi.mock('../../functions/node_modules/firebase-admin/lib/esm/firestore/index.js', () => ({ getFirestore: state.firestore }));
+vi.mock('firebase-admin', () => ({ initializeApp: vi.fn() }));
+vi.mock('firebase-admin/firestore', () => ({ getFirestore: state.firestore }));
 state.firestore.mockImplementation(() => ({ collection: (name: string) => ({ doc: () => ({
   get: async () => ({ exists: name === 'chatRelationships' ? !!state.mapping : true, data: () => name === 'chatRelationships' ? state.mapping : state.conversation }),
   collection: () => ({ doc: () => ({ get: async () => ({ exists: true, data: () => state.message }) }) }),
 }) }) }));
 vi.mock('../../functions/node_modules/pg', () => ({ Pool: class {
+  constructor(options: any) { state.pools.push(options); }
+  connect = async () => ({ query: state.query, release: state.release });
+} }));
+vi.mock('pg', () => ({ Pool: class {
   constructor(options: any) { state.pools.push(options); }
   connect = async () => ({ query: state.query, release: state.release });
 } }));

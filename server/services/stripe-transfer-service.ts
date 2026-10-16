@@ -36,6 +36,7 @@ import { logger } from '../logger';
 import { db } from '../db';
 import { eq, ne, and } from 'drizzle-orm';
 import { users, paymentTransactions, kitchenBookingChanges } from '@shared/schema';
+import { recordPayoutTransferEvidence } from './payout-document-evidence';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -80,6 +81,8 @@ export interface TransferResult {
   transferredCents: number;
   /** Verified original net before reversals; retain this for refund-share ceilings. */
   originalManagerNetCents?: number;
+  originalTransferAmountCents?: number;
+  reversedCents?: number;
 }
 
 // ============================================================================
@@ -162,6 +165,9 @@ export async function transferToManagerForBooking(
     const [timing] = await tx.select({ payoutTiming: paymentTransactions.payoutTiming }).from(paymentTransactions)
       .where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
     const result = await transferLockedSource(params, tx);
+    if (result.transferred && result.transferId && result.originalTransferAmountCents !== undefined)
+      await recordPayoutTransferEvidence(tx, params.paymentIntentId, { transferId: result.transferId,
+        originalAmountCents: result.originalTransferAmountCents, reversedCents: result.reversedCents || 0 });
     // The release command's transfer (or a webhook/sync recovery of it) records the payout and queues its notice once.
     if (timing?.payoutTiming === 'after_closeout' && result.transferred)
       await (await import('./kitchen-payout-service')).recordReleasedPayout(params.paymentTransactionId, result, tx);
@@ -286,6 +292,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
           await connection.update(paymentTransactions).set({ transferId: replacement.id, updatedAt: new Date() })
             .where(eq(paymentTransactions.id, params.paymentTransactionId));
           return { transferred: true, transferId: replacement.id, transferredCents: replacement.amount - replacement.amount_reversed,
+            originalTransferAmountCents: replacement.amount, reversedCents: replacement.amount_reversed,
             originalManagerNetCents: split.managerGrossCents - params.actualStripeFeeCents,
             actualStripeFeeCents: params.actualStripeFeeCents, platformCommissionCents: split.platformCommissionCents,
             feeWithheldCents: split.platformCommissionCents + params.actualStripeFeeCents,
@@ -345,6 +352,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
             platformCommissionCents: split.platformCommissionCents,
             feeWithheldCents: params.chargeAmountCents - expectedTransferCents,
             transferredCents: expectedTransferCents,
+            originalTransferAmountCents: expectedTransferCents, reversedCents: 0,
           };
         }
         // Intentional manager reversals are customer refunds, never new fees.
@@ -357,6 +365,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
           platformCommissionCents: split.platformCommissionCents,
           feeWithheldCents,
           transferredCents,
+          originalTransferAmountCents: existingTransfer.amount, reversedCents: existingTransfer.amount_reversed,
           originalManagerNetCents: managerRefundedCents > 0 ? split.managerGrossCents - params.actualStripeFeeCents : existingTransfer.amount,
         };
       } catch (retrieveErr) {
@@ -422,6 +431,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
       await connection.update(paymentTransactions).set({ transferId: recoveredTransfer.id, updatedAt: new Date() })
         .where(eq(paymentTransactions.id, params.paymentTransactionId));
       return { ...baseResult, transferred: true, transferId: recoveredTransfer.id, platformCommissionCents,
+        originalTransferAmountCents: recoveredTransfer.amount, reversedCents: recoveredTransfer.amount_reversed,
         feeWithheldCents, transferredCents: recoveredTransfer.amount - recoveredTransfer.amount_reversed,
         originalManagerNetCents: recoveredTransfer.amount - recoveredTransfer.amount_reversed + managerRefundedCents,
         reason: 'Recovered existing provider transfer; no new transfer created' };
@@ -487,6 +497,7 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
       feeWithheldCents,
       transferredCents,
       originalManagerNetCents,
+      originalTransferAmountCents: transferredCents, reversedCents: 0,
     };
   } catch (err: any) {
     // Stripe returns the same transfer on idempotency replay — handle gracefully

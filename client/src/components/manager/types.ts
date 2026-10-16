@@ -19,4 +19,7 @@ export interface LocationData {
     cancellationPolicyMessage?: string;
     defaultDailyBookingLimit?: number;
     minimumBookingWindowHours?: number;
+  maxAdvanceBookingDays?: number;
+  turnoverBufferEnabled?: boolean;
+  maxAdvanceBookingDaysCap?: number;
 }

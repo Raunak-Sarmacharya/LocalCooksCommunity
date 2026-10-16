@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
-const effects = vi.hoisted(() => ({ update: vi.fn(), release: vi.fn() }));
+const effects = vi.hoisted(() => ({ update: vi.fn(), release: vi.fn(), claim: vi.fn(), done: vi.fn() }));
 vi.mock('../db', () => ({ db: { update: effects.update }, pool: null }));
+vi.mock('../services/stripe-webhook-events', () => ({ claimStripeWebhookEvent: effects.claim, markStripeWebhookEventProcessed: effects.done }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: (_req: unknown, _res: unknown, next: () => void) => next() }));
 vi.mock('../services/kitchen-checkout-holds', () => ({ releaseKitchenCheckout: effects.release }));
 import router, { paymentReceivedNoticeApplies } from './webhooks';
@@ -17,7 +18,7 @@ describe('actual Stripe webhook signature boundary (no network)', () => {
     expect(paymentReceivedNoticeApplies({ metadata: { type: 'kitchen_booking' } }, { bookingDecisionId: 'approved:10' })).toBe(false);
     expect(paymentReceivedNoticeApplies({ metadata: { type: 'kitchen_booking' } }, {})).toBe(true);
   });
-  beforeEach(() => { vi.clearAllMocks(); vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); vi.stubEnv('STRIPE_WEBHOOK_SECRET', secret); });
+  beforeEach(() => { vi.clearAllMocks(); effects.claim.mockResolvedValue({ alreadyProcessed: false }); vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); vi.stubEnv('STRIPE_WEBHOOK_SECRET', secret); });
   afterEach(() => vi.unstubAllEnvs());
   it.each(['production', 'development'])('rejects unsigned input in %s before releasing inventory', async mode => {
     vi.stubEnv('NODE_ENV', mode);
@@ -40,5 +41,24 @@ describe('actual Stripe webhook signature boundary (no network)', () => {
   it('dispatches a valid signed event', async () => {
     const res = response(); await handler({ headers: { 'stripe-signature': signature() }, body: Buffer.from(payload) }, res);
     expect(res.json).toHaveBeenCalledWith({ received: true }); expect(effects.release).toHaveBeenCalledExactlyOnceWith('audit_hold');
+    expect(effects.claim).toHaveBeenCalledWith('evt_signature_audit', 'checkout.session.expired');
+    expect(effects.done).toHaveBeenCalledExactlyOnceWith('evt_signature_audit');
+  });
+  it('acknowledges and skips an event id that already finished', async () => {
+    effects.claim.mockResolvedValue({ alreadyProcessed: true });
+    const res = response(); await handler({ headers: { 'stripe-signature': signature() }, body: Buffer.from(payload) }, res);
+    expect(res.json).toHaveBeenCalledWith({ received: true, duplicate: true });
+    expect(effects.release).not.toHaveBeenCalled(); expect(effects.done).not.toHaveBeenCalled();
+  });
+  it('leaves the event unprocessed when the handler fails so Stripe retries it', async () => {
+    effects.release.mockRejectedValueOnce(new Error('inventory unavailable'));
+    const res = response(); await handler({ headers: { 'stripe-signature': signature() }, body: Buffer.from(payload) }, res);
+    expect(effects.done).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).not.toHaveBeenCalledWith({ received: true });
+  });
+  it('does not record an event whose signature failed', async () => {
+    const res = response(); await handler({ headers: {}, body: Buffer.from(payload) }, res);
+    expect(effects.claim).not.toHaveBeenCalled();
   });
 });

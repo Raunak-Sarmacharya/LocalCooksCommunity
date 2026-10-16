@@ -227,7 +227,7 @@
   "managerCheckoutPayoutAction": "Terminer l’inspection",
   "bookingManagerPayoutAfterCloseout": "Versé après la visite — dès que vous terminez l’inspection, ou automatiquement 24 heures après la fin de la visite.",
   "payoutChefFallback": "le chef",
-  "bookingDownloadFinalInvoice": "Télécharger votre facture finale",
+  "bookingDownloadFinalInvoice": "Voir vos reçus",
   "managerRunningLateTitle": "{chef} sera en retard",
   "managerRunningLateBody": "{chef} aura environ {duration} de retard. Sa réservation se termine toujours à {end}.",
   "managerRunningLateDuration15": "15 minutes",
@@ -281,7 +281,7 @@
   "sxSupportUnansweredTitle": "{reference} : frais de temps supplémentaire sans réponse",
   "sxSupportUnansweredBody": "{chef} n’a pas répondu depuis 48 heures aux frais de {amount} de {kitchen} pour {billed}. Aucune carte n’a été débitée; veuillez faire un suivi.",
   "sxCardFailedChefTitle": "Votre carte n’a pas pu être utilisée",
-  "sxCardFailedChefBody": "Votre carte enregistrée n’a pas pu être utilisée pour le temps supplémentaire à {kitchen}; rien n’a été débité. Réessayez depuis votre réservation ou écrivez à {kitchen}.",
+  "sxCardFailedChefBody": "Votre carte enregistrée a été refusée pour {amount} de temps supplémentaire à {kitchen}. Aucun montant n’a été débité. Choisissez « Payer avec une autre carte » dans votre réservation ou écrivez à {kitchen}.",
   "sxGrantedEndChefTitle": "{kitchen} vous donne {duration}",
   "sxGrantedEndChefBody": "{kitchen} vous donne {duration} sans frais. Vous avez jusqu’à {end}.",
   "sxGrantedStartChefTitle": "{kitchen} vous laisse commencer à {end}",
@@ -304,7 +304,7 @@
   "ncSessionEndingBody": "Votre réservation chez {kitchen} se termine à {time} ({zone}). {count, plural, =0 {Ouvrez votre visite pour confirmer votre départ.} one {Terminez 1 tâche de départ, puis confirmez votre départ sur votre page de visite.} other {Terminez # tâches de départ, puis confirmez votre départ sur votre page de visite.}}",
   "ncVisitCompleteTitle": "Visite terminée · {kitchen}",
   "ncVisitCompleteGood": "{kitchen} a vérifié les lieux — tout est en ordre.",
-  "ncVisitCompleteInvoice": "Votre facture finale est prête.",
+  "ncVisitCompleteInvoice": "Vos reçus sont dans la réservation. Votre relevé final sera prêt une fois que tout sera réglé.",
   "ncCancelledRefundTitle": "Réservation annulée · remboursement de {amount} en route",
   "ncCancelledNoRefundTitle": "Votre réservation est annulée · aucun remboursement ne s’applique",
   "ncPayoutBooking": "Réservation",
@@ -315,5 +315,9 @@
   "ncDurationHoursMinutes": "{hours} h {minutes} min",
   "bookingNotIncluded": "Non inclus",
   "bookingNotIncludedChef": "{items} — la cuisine ne pouvait pas le fournir, il ne vous a donc pas été facturé.",
-  "bookingNotIncludedStaff": "{items} — refusé lors de l’approbation; le chef n’a pas été facturé."
+  "bookingNotIncludedStaff": "{items} — refusé lors de l’approbation; le chef n’a pas été facturé.",
+  "sxRefundedChefTitle": "Temps supplémentaire remboursé · {amount}",
+  "sxRefundedChefBody": "Nous n’avons pas pu ajouter le temps à {kitchen}. Un remboursement de {amount} a été effectué. L’horaire de votre réservation n’a pas changé.",
+  "sxRequestExpiredChefTitle": "{kitchen} n’a pas répondu à temps",
+  "sxRequestExpiredChefBody": "{kitchen} n’a pas répondu à temps à votre demande de {duration}; elle est donc fermée. Votre carte n’a pas été débitée. Votre réservation se termine toujours à {originalEnd}."
 }

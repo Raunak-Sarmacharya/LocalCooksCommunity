@@ -408,7 +408,7 @@ export default function AdminManageLocations() {
         headers,
       });
       if (response.ok) {
-        toast.success("Success", { description: "Location deleted successfully" });
+        toast.success("Success", { description: (await response.clone().json().catch(() => ({}))).message || "Location deleted successfully" });
         setDeletingItem(null);
         loadLocations();
         if (selectedLocationId === deletingItem.id) {
@@ -560,7 +560,7 @@ export default function AdminManageLocations() {
         headers,
       });
       if (response.ok) {
-        toast.success("Success", { description: "Kitchen deleted successfully" });
+        toast.success("Success", { description: (await response.clone().json().catch(() => ({}))).message || "Kitchen deleted successfully" });
         setDeletingItem(null);
         if (selectedLocationId) {
           loadKitchens(selectedLocationId);
@@ -672,7 +672,7 @@ export default function AdminManageLocations() {
         headers,
       });
       if (response.ok) {
-        toast.success("Success", { description: "Manager deleted successfully" });
+        toast.success("Success", { description: (await response.clone().json().catch(() => ({}))).message || "Manager deleted successfully" });
         setDeletingItem(null);
         loadManagers();
         loadLocations(); // Reload locations in case manager was assigned

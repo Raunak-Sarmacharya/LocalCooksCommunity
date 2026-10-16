@@ -1,37 +1,37 @@
 import { SettingChangePreview } from './SettingChangePreview';
 import { useSettingImpact } from '@/lib/setting-impact';
 import { mt } from "@/i18n/manager";
-import { DamageCleaningPolicy } from '@/components/legal/DamageCleaningPolicy';
 /**
- * Booking Policies Settings Component
+ * Booking rules
  *
- * Manages the cancellation policy, daily booking limit and minimum booking window
- * for a location, plus the kitchen terms & conditions chefs must accept when booking.
+ * When chefs can book and for how long: advance notice, how far ahead, shortest and longest
+ * booking, and the optional free hour between bookings. Each row reads as label · what it means
+ * for chefs (live, from the value in the control) · control.
  *
- * Layout notes:
- * - The policy fields are saved explicitly; the save action only appears while there
- *   are unsaved edits, so the page is quiet at rest.
- * - Terms upload saves immediately on its own (different endpoint), hence its own card.
+ * Saving:
+ * - Kitchen tab (`onRequestSave`): the section owns ONE save at its foot, disabled until something
+ *   changes; the parent asks which kitchens it applies to. The consequence preview shows above it.
+ * - Location settings page (header shown): the page header keeps its save, as before.
+ * - Onboarding (`hideHeader`, no `onRequestSave`): the parent saves through the imperative handle.
+ *
+ * The two newest settings (`maxAdvanceBookingDays`, `turnoverBufferEnabled`) render only when the
+ * server sends them, so an older server never receives fields it does not know.
  */
 
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useState, useEffect, useCallback, useImperativeHandle, forwardRef, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { FileText, ExternalLink, ClipboardCheck, ChevronRight, RotateCcw, Loader2 } from "@/components/ui/manager-icons";
+import { ClipboardCheck, ChevronRight, Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
+import { Switch } from "@/components/ui/switch";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase";
 import { apiGet } from "@/lib/api";
-import { tt } from "@/i18n/common-ns";
-import { getDocumentFilename } from "@/lib/formatters";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { ChefPageHeader } from "@/components/chef/ui";
-import { SettingsFileUpload } from "./SettingsFileUpload";
-import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
 import { SettingsRow } from "./SettingsRow";
+import { ManagerDamagePolicySection, PolicySection } from "./PolicySection";
+import { KitchenTermsSection } from "./KitchenTermsSection";
 import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 
 interface Location {
@@ -40,19 +40,39 @@ interface Location {
   cancellationPolicyHours?: number;
   defaultDailyBookingLimit?: number;
   minimumBookingWindowHours?: number;
+  /** Days ahead chefs can book. Absent on servers that predate the setting. */
+  maxAdvanceBookingDays?: number | null;
+  /** "Keep an hour free between bookings". Absent on servers that predate the setting. */
+  turnoverBufferEnabled?: boolean | null;
+  /** Read-only platform ceiling for `maxAdvanceBookingDays`, set by Local Cooks. */
+  maxAdvanceBookingDaysCap?: number | null;
   kitchenTermsUrl?: string | null;
   kitchenTermsUploadedAt?: string | null;
 }
 
+type PolicyOverrides = {
+  cancellationPolicyHours?: number | null;
+  defaultDailyBookingLimit?: number | null;
+  minimumBookingWindowHours?: number | null;
+  maxAdvanceBookingDays?: number | null;
+  turnoverBufferEnabled?: boolean | null;
+};
+export type ResettablePolicyField = "cancellationPolicyHours" | "defaultDailyBookingLimit" | "minimumBookingWindowHours" | "maxAdvanceBookingDays" | "turnoverBufferEnabled";
+
 interface BookingRulesSettingsProps {
   hideHeader?: boolean;
   minimumBookingHours?: number;
-  policyOverrides?: { cancellationPolicyHours?: number | null; defaultDailyBookingLimit?: number | null; minimumBookingWindowHours?: number | null };
+  policyOverrides?: PolicyOverrides;
   kitchenName?: string;
   policyUpdating?: boolean;
-  onResetPolicy?: (field: "cancellationPolicyHours" | "defaultDailyBookingLimit" | "minimumBookingWindowHours") => void;
+  onResetPolicy?: (field: ResettablePolicyField) => void;
   location: Location;
   onSave: (updates: any) => Promise<unknown>;
+  /**
+   * The section's own save. The kitchen tab passes this so the save sits under the rules it
+   * saves; the parent then asks which kitchens the rules apply to before calling `saveAllChanges`.
+   */
+  onRequestSave?: () => void;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Lets the arrival-timing card link across to the check-in/check-out page. */
@@ -74,6 +94,8 @@ interface BookingRulesSettingsProps {
    * them unsure which upload counts.
    */
   hideTerms?: boolean;
+  /** The kitchen tab renders the damage section itself, in its own place in the order. */
+  hideDamagePolicy?: boolean;
   /**
    * A caller-supplied line under the terms card's description.
    *
@@ -104,26 +126,28 @@ export interface BookingPoliciesHandle {
   saveAllChanges: () => Promise<boolean>;
 }
 
+/** Upper bound when an older server sends the window but not the cap. */
+const FALLBACK_WINDOW_CAP = 365;
+
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
-  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false }, ref) {
-    const { toast } = useToast();
+  function BookingRulesSettings({ location, onSave, onRequestSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, hideDamagePolicy = false, termsNote, policyOverrides, onResetPolicy, minimumBookingHours, hideHeader = false, kitchenName, policyUpdating = false }, ref) {
     const queryClient = useQueryClient();
     const { impact, impactFetching, impactError } = useSettingImpact(undefined, location.id);
 
-    // Cancellation Policy State
+    // Legacy location field; no longer edited here (the versioned cancellation policy replaced it) but still saved back unchanged.
     const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours ?? 24);
-
-    // Daily Booking Limit State
     const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
-
-    // Minimum Booking Window State
     const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours ?? 1);
     const [minimumDuration, setMinimumDuration] = useState(minimumBookingHours ?? 0);
     useEffect(() => setMinimumDuration(minimumBookingHours ?? 0), [minimumBookingHours]);
 
-    // Terms & Conditions State
-    const [termsFile, setTermsFile] = useState<File | null>(null);
-    const [isReplacingTerms, setIsReplacingTerms] = useState(false);
+    const hasWindow = location.maxAdvanceBookingDays != null;
+    const hasBuffer = location.turnoverBufferEnabled != null;
+    const windowCap = location.maxAdvanceBookingDaysCap ?? undefined;
+    const savedWindow = location.maxAdvanceBookingDays ?? 30;
+    const savedBuffer = location.turnoverBufferEnabled ?? false;
+    const [windowDays, setWindowDays] = useState(savedWindow);
+    const [buffer, setBuffer] = useState(savedBuffer);
 
     // Arrival timings. These live on the locations table but the check-in/check-out
     // endpoint owns them, so read them (plus the platform defaults shown as hints)
@@ -138,37 +162,32 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const [checkinWindow, setCheckinWindow] = useState<number | null>(null);
     const [noShowGrace, setNoShowGrace] = useState<number | null>(null);
 
-    const isRulesDirty = cancellationHours !== (location.cancellationPolicyHours ?? 24)
-      || dailyBookingLimit !== (location.defaultDailyBookingLimit || 2)
-      || minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1)
-      || (minimumBookingHours !== undefined && minimumDuration !== minimumBookingHours)
-      || (!hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
-      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null)));
-
-    const hasTerms = Boolean(location.kitchenTermsUrl);
-    const showTermsUpload = !hasTerms || isReplacingTerms;
+    const changed = {
+      notice: minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1),
+      window: hasWindow && windowDays !== savedWindow,
+      shortest: minimumBookingHours !== undefined && minimumDuration !== minimumBookingHours,
+      longest: dailyBookingLimit !== (location.defaultDailyBookingLimit || 2),
+      buffer: hasBuffer && buffer !== savedBuffer,
+    };
+    const rulesChanged = Object.values(changed).some(Boolean) || cancellationHours !== (location.cancellationPolicyHours ?? 24);
+    const timingChanged = !hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
+      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null));
+    const isRulesDirty = rulesChanged || timingChanged;
 
     // Suffix follows the value: "1 hour" vs "24 hours". Uses ICU plurals so
     // locales with more than two forms (uk) resolve correctly.
     const hourUnit = (value: number) => mt("hourUnit", { count: value });
-    const resetPolicyControl = (field: keyof NonNullable<BookingRulesSettingsProps["policyOverrides"]>) =>
-      policyOverrides?.[field] != null ? (
-        <div className="flex max-w-56 flex-col items-end gap-1">
-          <Button variant="outline" size="sm" className="!min-h-0 h-8 gap-1.5 px-3 text-xs"
-            disabled={isRulesDirty || policyUpdating} onClick={() => onResetPolicy?.(field)}>
-            {policyUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-            {mt("kitchenPolicyReset")}
-          </Button>
-          {isRulesDirty && <p className="text-right text-xs text-muted-foreground">{mt("kitchenPolicyResetAfterSave")}</p>}
-        </div>
-      ) : null;
 
-    // Update state when location changes
-    useEffect(() => {
+    const resetLocalEdits = useCallback(() => {
       setCancellationHours(location.cancellationPolicyHours ?? 24);
       setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
       setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
+      setWindowDays(location.maxAdvanceBookingDays ?? 30);
+      setBuffer(location.turnoverBufferEnabled ?? false);
     }, [location]);
+
+    // Update state when location changes
+    useEffect(() => { resetLocalEdits(); }, [resetLocalEdits]);
 
     // Seed the arrival timings once their own query resolves. Safe to key off the
     // object because queries here never refetch on window focus (see
@@ -178,6 +197,13 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       setCheckinWindow(arrivalSettings.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
       setNoShowGrace(arrivalSettings.timeWindowSettings?.noShowGraceMinutes ?? null);
     }, [arrivalSettings]);
+
+    const discard = () => {
+      resetLocalEdits();
+      setMinimumDuration(minimumBookingHours ?? 0);
+      setCheckinWindow(arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
+      setNoShowGrace(arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null);
+    };
 
     // Let the shell warn before navigating away with unsaved edits.
     useEffect(() => {
@@ -202,6 +228,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         defaultDailyBookingLimit: dailyBookingLimit,
         minimumBookingWindowHours: minimumBookingWindowHours,
         ...(minimumBookingHours !== undefined ? { minimumBookingHours: minimumDuration } : {}),
+        // Only send the newer settings to a server that told us about them.
+        ...(hasWindow ? { maxAdvanceBookingDays: windowDays } : {}),
+        ...(hasBuffer ? { turnoverBufferEnabled: buffer } : {}),
         // null clears the per-location override so the platform default applies.
         checkinWindowMinutesBefore: checkinWindow,
         noShowGraceMinutes: noShowGrace,
@@ -210,27 +239,17 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       // cache too or the page would keep rendering the pre-save values.
       queryClient.invalidateQueries({ queryKey: ["checkin-checkout-settings", location.id] });
     }, [
-      onSave,
-      location.id,
-      cancellationHours,
-      dailyBookingLimit,
-      minimumBookingWindowHours,
-      minimumBookingHours,
-      minimumDuration,
-      checkinWindow,
-      noShowGrace,
-      queryClient,
+      onSave, location.id, cancellationHours, dailyBookingLimit, minimumBookingWindowHours, minimumBookingHours,
+      minimumDuration, hasWindow, windowDays, hasBuffer, buffer, checkinWindow, noShowGrace, queryClient,
     ]);
 
     const saveRulesAction = useStatusButton(saveRules);
-    const timingChanged = !hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
-      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null));
     const timingPreview = <SettingChangePreview
       whatChanges={<>{checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null) && <span className="block">{mt('scpWindowWhat', { minutes: checkinWindow ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore, current: arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? arrivalSettings?.platformDefaults?.checkinWindowMinutesBefore })}</span>}
         {noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null) && <span className="block">{mt('scpGraceWhat', { minutes: noShowGrace ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes, current: arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? arrivalSettings?.platformDefaults?.noShowGraceMinutes })}</span>}</>}
       appliesTo={mt('scpTimingWhen', { kitchen: kitchenName || location.name })} impact={impact} impactFetching={impactFetching} impactError={impactError}
       rightNow={impact ? mt(impact.upcoming ? 'scpTimingImpact' : 'scpNone', { upcoming: impact.upcoming }) : undefined}
-      undo={mt('scpTimingUndo')} confirm actionLabel={mt('saveChanges')} disabled={saveRulesAction.status === 'loading'} onSave={saveRulesAction.execute} />;
+      undo={mt('scpTimingUndo')} confirm actionLabel={mt('scpSave')} disabled={saveRulesAction.status === 'loading'} onSave={saveRulesAction.execute} />;
 
     // Used by the unsaved-changes guard to save before leaving.
     useImperativeHandle(ref, () => ({
@@ -245,307 +264,164 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       },
     }), [saveRules, timingChanged]);
 
-    const uploadTerms = useCallback(async () => {
-      if (!termsFile) return;
-      try {
-        const currentUser = auth.currentUser;
-        if (!currentUser) throw new Error(tt("firebaseUserNotAvailable"));
-        const token = await currentUser.getIdToken();
-        const formData = new FormData();
-        formData.append("file", termsFile);
-        const uploadResponse = await fetch("/api/files/upload-file", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: formData,
-        });
-        if (!uploadResponse.ok) throw new Error((await uploadResponse.json().catch(() => ({}))).error || tt("failedToUploadTermsDoc"));
-        const uploaded = await uploadResponse.json();
-        const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ kitchenTermsUrl: uploaded.url }),
-        });
-        if (!updateResponse.ok) throw new Error((await updateResponse.json().catch(() => ({}))).error || tt("failedToUploadTermsDoc"));
-        setTermsFile(null);
-        queryClient.invalidateQueries({ queryKey: ["locationDetails", location.id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-        toast({ title: mt("termsUploaded"), description: mt("yourTermsAndConditionsHaveBeenUploadedSuccessfully") });
-      } catch (error) {
-        toast({ title: mt("uploadFailed"), description: error instanceof Error ? error.message : tt("failedToUploadTermsDoc"), variant: "destructive" });
-        // Re-throw so the StatusButton can show its error state.
-        throw error;
-      }
-    }, [termsFile, location.id, queryClient, toast]);
-
-    const termsUploadAction = useStatusButton(uploadTerms);
-
-    const closeTermsUpload = () => {
-      setTermsFile(null);
-      setIsReplacingTerms(false);
-    };
-
-    // Keep the action mounted through its success animation, even after the
+    // Keep the header action mounted through its success animation, even after the
     // refetched location clears the dirty flag.
     const showSaveAction = isRulesDirty || saveRulesAction.status !== "idle";
 
+    /** "Set for this kitchen · Use the location's rule", only on rows this kitchen overrides. */
+    const overrideNote = (field: ResettablePolicyField) => policyOverrides?.[field] != null && onResetPolicy ? (
+      <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <span>{mt("bpOverridden")}</span>
+        <span aria-hidden>·</span>
+        <button type="button" disabled={isRulesDirty || policyUpdating} onClick={() => onResetPolicy(field)}
+          className="-my-3 inline-flex min-h-11 items-center gap-1 rounded-md px-1 font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline">
+          {policyUpdating && <Loader2 className="h-3 w-3 animate-spin" />}
+          {mt("kitchenPolicyReset")}
+        </button>
+        {isRulesDirty && <span className="basis-full">{mt("kitchenPolicyResetAfterSave")}</span>}
+      </span>
+    ) : null;
+    const hint = (consequence: string, field?: ResettablePolicyField): ReactNode =>
+      <><span className="block">{consequence}</span>{field ? overrideNote(field) : null}</>;
+
+    // One chef-facing sentence per changed rule: the same sentence the row shows, so the preview never says something new.
+    const noticeLine = mt("bpNoticeValue", { count: minimumBookingWindowHours });
+    const windowLine = mt("bpWindowValue", { count: windowDays });
+    const shortestLine = mt("bpShortestValue", { count: minimumDuration });
+    const longestLine = mt("bpLongestValue", { count: dailyBookingLimit });
+    const changeLines = [
+      changed.notice && noticeLine,
+      changed.window && windowLine,
+      changed.shortest && shortestLine,
+      changed.longest && longestLine,
+      changed.buffer && mt(buffer ? "bpBufferOnWhat" : "bpBufferOff"),
+    ].filter((line): line is string => Boolean(line));
+
+    const rulesPreview = rulesChanged && changeLines.length > 0 ? <SettingChangePreview
+      whatChanges={changeLines.map((line) => <span key={line} className="block">{line}</span>)}
+      appliesTo={mt("bpRulesWhen")} impact={impact} impactFetching={impactFetching} impactError={impactError}
+      rightNow={impact ? mt("bpRulesImpact", { upcoming: impact.upcoming }) : undefined}
+      undo={mt("bpRulesUndo")} /> : null;
+
+    const rulesFooter = onRequestSave ? (
+      <div className="space-y-3">
+        {rulesPreview}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {rulesChanged && <Button variant="ghost" className="min-h-11" disabled={policyUpdating} onClick={discard}>{mt("bpDiscard")}</Button>}
+          <Button className="min-h-11" variant={rulesChanged ? "default" : "outline"} disabled={!rulesChanged || policyUpdating} onClick={onRequestSave}>
+            {mt("bpSaveRules")}
+          </Button>
+        </div>
+      </div>
+    ) : rulesPreview;
+
     return (
-      <div className="space-y-6">
-        <DamageCleaningPolicy manager />
+      <div className="space-y-8">
         {timingChanged && timingPreview}
         {!hideHeader && <ChefPageHeader
           title={mt("navBookingRules")}
-          description={mt(policyOverrides ? "kitchenPoliciesInheritedDescription" : "configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}
+          description={mt("bpPageDescription")}
           actions={
             // One save for the whole page, in a stable spot near the title and
-            // only while something is unsaved — the page now spans three cards,
+            // only while something is unsaved — the page spans several sections,
             // so an in-card action would sit next to only one of them.
             showSaveAction && !timingChanged ? (
               <StatusButton
                 status={saveRulesAction.status}
                 onClick={saveRulesAction.execute}
-                labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }}
+                labels={{ idle: mt("scpSave"), loading: mt("savingShort"), success: mt("saved") }}
               />
             ) : undefined
           }
         />}
 
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
-            {policyOverrides && <CardDescription>{mt("kitchenPoliciesCardDescription")}</CardDescription>}
-          </CardHeader>
-          <CardContent className="divide-y divide-border p-0">
-            {minimumBookingHours !== undefined && <SettingsRow id="kitchen-minimum-duration"
-              label={mt("minimumBookingDuration")} hint={mt("zeroMeansNoMinimum")}
-              help={mt("setTheMinimumHoursRequiredPerBookingForEachKitchen")}>
-              <NumericInput id="kitchen-minimum-duration" suffix={hourUnit(minimumDuration)} value={String(minimumDuration)}
-                disabled={policyUpdating}
-                onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} className="w-32" />
-            </SettingsRow>}
-            <SettingsRow
-              id="daily-limit"
-              label={mt("dailyBookingLimit")}
-              hint={mt("maximumHoursAChefCanBookInASingleDay124Hours")}
-              help={mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}
-            >
-              <div className="flex flex-col items-end gap-2"><NumericInput
-                id="daily-limit"
-                disabled={policyUpdating}
-                suffix={hourUnit(dailyBookingLimit)}
-                value={String(dailyBookingLimit)}
-                onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
-                className="w-32"
-              />
-              {resetPolicyControl("defaultDailyBookingLimit")}</div>
-            </SettingsRow>
-
-            <SettingsRow
-              id="min-window"
-              label={mt("minimumBookingWindow")}
-              hint={mt("chefsMustBookAtLeastHours")}
-              help={mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}
-            >
-              <div className="flex flex-col items-end gap-2"><NumericInput
-                id="min-window"
-                disabled={policyUpdating}
-                suffix={hourUnit(minimumBookingWindowHours)}
-                value={String(minimumBookingWindowHours)}
+        <PolicySection title={mt("bpRulesTitle")} description={mt("bpRulesDescription")} footer={rulesFooter} testId="booking-rules-section">
+          <div className="divide-y divide-border">
+            <SettingsRow id="min-window" label={mt("bpNoticeLabel")} hint={hint(noticeLine, "minimumBookingWindowHours")}>
+              <NumericInput id="min-window" disabled={policyUpdating} suffix={hourUnit(minimumBookingWindowHours)}
+                value={String(minimumBookingWindowHours)} className="h-11 w-32"
                 onValueChange={(val) => {
                   const parsed = parseInt(val, 10);
                   setMinimumBookingWindowHours(isNaN(parsed) ? 0 : Math.min(168, Math.max(0, parsed)));
-                }}
-                className="w-32"
-              />
-              {resetPolicyControl("minimumBookingWindowHours")}</div>
+                }} />
             </SettingsRow>
-          </CardContent>
-        </Card>
+
+            {hasWindow && <SettingsRow id="booking-window" label={mt("bpWindowLabel")} hint={hint(windowLine, "maxAdvanceBookingDays")}>
+              <div className="flex flex-col items-end gap-1">
+                <NumericInput id="booking-window" disabled={policyUpdating} suffix={mt("bpDaysUnit", { count: windowDays })}
+                  value={String(windowDays)} className="h-11 w-32" aria-describedby={windowCap ? "booking-window-cap" : undefined}
+                  onValueChange={(val) => {
+                    const parsed = parseInt(val, 10);
+                    // Never above the Local Cooks cap, never below 1 day: the server rejects both.
+                    setWindowDays(isNaN(parsed) ? 1 : Math.min(windowCap ?? FALLBACK_WINDOW_CAP, Math.max(1, parsed)));
+                  }} />
+                {windowCap ? <span id="booking-window-cap" className="text-xs text-muted-foreground">{mt("bpWindowCap", { cap: windowCap })}</span> : null}
+              </div>
+            </SettingsRow>}
+
+            {minimumBookingHours !== undefined && <SettingsRow id="kitchen-minimum-duration" label={mt("bpShortestLabel")} hint={hint(shortestLine)}>
+              <NumericInput id="kitchen-minimum-duration" suffix={hourUnit(minimumDuration)} value={String(minimumDuration)}
+                disabled={policyUpdating} className="h-11 w-32"
+                onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} />
+            </SettingsRow>}
+
+            <SettingsRow id="daily-limit" label={mt("bpLongestLabel")} hint={hint(longestLine, "defaultDailyBookingLimit")}
+              help={mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}>
+              <NumericInput id="daily-limit" disabled={policyUpdating} suffix={hourUnit(dailyBookingLimit)}
+                value={String(dailyBookingLimit)} className="h-11 w-32"
+                onValueChange={(val) => setDailyBookingLimit(Math.min(24, Math.max(1, parseInt(val, 10) || 2)))} />
+            </SettingsRow>
+
+            {hasBuffer && <SettingsRow id="turnover-buffer" label={mt("bpBufferLabel")} help={mt("bpBufferHelp")}
+              hint={hint(mt(buffer ? "bpBufferOn" : "bpBufferOff"), "turnoverBufferEnabled")}>
+              <Switch id="turnover-buffer" checked={buffer} disabled={policyUpdating} onCheckedChange={setBuffer} />
+            </SettingsRow>}
+          </div>
+        </PolicySection>
 
         {!hideArrivalTimings && (
-          <>
-        {/* Arrival timing. These two values also appear on the check-in/check-out
-            page, which is intentional — both pages read and write the same
-            query-cached field, so a manager never has to leave the page they are
-            already on to set when arrival opens. Locked (and explained) on both
-            pages whenever neither flow is switched on. */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
-            <CardDescription>
-              {arrivalTimingsLocked(arrivalSettings ?? undefined)
-                ? mt("arrivalTimingLockedDescription")
-                : mt("arrivalTimingDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="divide-y divide-border p-0">
-            <SettingsRow
-              id="checkin-window"
-              label={mt("checkinOpensLabel")}
-              disabledReason={
-                arrivalTimingsLocked(arrivalSettings ?? undefined)
-                  ? mt("enableStageToEditTimings")
-                  : undefined
-              }
-              hint={
-                arrivalSettings?.platformDefaults
-                  ? mt("platformDefaultIs", {
-                      minutes: mt("minutesShort", {
-                        count: arrivalSettings.platformDefaults.checkinWindowMinutesBefore,
-                      }),
-                    })
-                  : undefined
-              }
-              help={mt("checkinWindowHelp")}
-            >
-              <NumericInput
-                id="checkin-window"
-                disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)}
-                suffix={mt("minutesUnit")}
-                value={checkinWindow === null ? "" : String(checkinWindow)}
-                onValueChange={(val) => {
-                  const parsed = parseInt(val, 10);
-                  setCheckinWindow(
-                    val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
-                  );
-                }}
-                className="w-32"
-              />
-            </SettingsRow>
-
-            <SettingsRow
-              id="no-show-grace"
-              label={mt("noShowGraceLabel")}
-              disabledReason={
-                arrivalTimingsLocked(arrivalSettings ?? undefined)
-                  ? mt("enableStageToEditTimings")
-                  : undefined
-              }
-              hint={
-                arrivalSettings?.platformDefaults
-                  ? mt("platformDefaultIs", {
-                      minutes: mt("minutesShort", {
-                        count: arrivalSettings.platformDefaults.noShowGraceMinutes,
-                      }),
-                    })
-                  : undefined
-              }
-              help={mt("noShowGraceHelp")}
-            >
-              <NumericInput
-                id="no-show-grace"
-                disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)}
-                suffix={mt("minutesUnit")}
-                value={noShowGrace === null ? "" : String(noShowGrace)}
-                onValueChange={(val) => {
-                  const parsed = parseInt(val, 10);
-                  setNoShowGrace(
-                    val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
-                  );
-                }}
-                className="w-32"
-              />
-            </SettingsRow>
-
-            {onNavigate && (
-              <div className="flex justify-end px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => onNavigate("settings-checkin-checkout")}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors duration-200 ease-out motion-reduce:transition-none hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <ClipboardCheck className="h-4 w-4" />
-                  {mt("goToCheckinChecklist")}
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-          </>
-        )}
-
-        {!hideTerms && (
-          <>
-        {/* Terms & Conditions — saves on upload, independent of the policy save action */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle className="text-lg">{mt("termsConditions")}</CardTitle>
-                <CardDescription>{mt("uploadTermsThatChefsMustAgreeToWhenBooking")}</CardDescription>
-                {termsNote ? <p className="mt-1 text-xs text-muted-foreground">{termsNote}</p> : null}
-              </div>
-              {hasTerms && !isReplacingTerms && (
-                <Button variant="outline" size="sm" onClick={() => setIsReplacingTerms(true)}>
-                  {mt("replace")}
-                </Button>
+          /* Arrival timing. These two values also appear on the check-in/check-out
+             page, which is intentional — both pages read and write the same
+             query-cached field. Locked (and explained) on both pages whenever
+             neither flow is switched on. */
+          <PolicySection title={mt("arrivalTiming")} testId="arrival-timing-section"
+            description={arrivalTimingsLocked(arrivalSettings ?? undefined) ? mt("arrivalTimingLockedDescription") : mt("arrivalTimingDescription")}>
+            <div className="divide-y divide-border">
+              <SettingsRow id="checkin-window" label={mt("checkinOpensLabel")}
+                disabledReason={arrivalTimingsLocked(arrivalSettings ?? undefined) ? mt("enableStageToEditTimings") : undefined}
+                hint={arrivalSettings?.platformDefaults ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: arrivalSettings.platformDefaults.checkinWindowMinutesBefore }) }) : undefined}
+                help={mt("checkinWindowHelp")}>
+                <NumericInput id="checkin-window" disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)} suffix={mt("minutesUnit")}
+                  value={checkinWindow === null ? "" : String(checkinWindow)} className="h-11 w-32"
+                  onValueChange={(val) => {
+                    const parsed = parseInt(val, 10);
+                    setCheckinWindow(val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)));
+                  }} />
+              </SettingsRow>
+              <SettingsRow id="no-show-grace" label={mt("noShowGraceLabel")}
+                disabledReason={arrivalTimingsLocked(arrivalSettings ?? undefined) ? mt("enableStageToEditTimings") : undefined}
+                hint={arrivalSettings?.platformDefaults ? mt("platformDefaultIs", { minutes: mt("minutesShort", { count: arrivalSettings.platformDefaults.noShowGraceMinutes }) }) : undefined}
+                help={mt("noShowGraceHelp")}>
+                <NumericInput id="no-show-grace" disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)} suffix={mt("minutesUnit")}
+                  value={noShowGrace === null ? "" : String(noShowGrace)} className="h-11 w-32"
+                  onValueChange={(val) => {
+                    const parsed = parseInt(val, 10);
+                    setNoShowGrace(val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)));
+                  }} />
+              </SettingsRow>
+              {onNavigate && (
+                <div className="flex justify-end px-4 py-2">
+                  <Button variant="ghost" className="min-h-11 gap-1.5" onClick={() => onNavigate("settings-checkin-checkout")}>
+                    <ClipboardCheck className="h-4 w-4" />{mt("goToCheckinChecklist")}<ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               )}
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3 p-4 pt-0">
-            {hasTerms && (
-              <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {getDocumentFilename(location.kitchenTermsUrl) || mt("termsConditions")}
-                  </p>
-                  {location.kitchenTermsUploadedAt && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {mt("uploaded")} {new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
-                <AuthenticatedDocumentLink
-                  url={location.kitchenTermsUrl}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors duration-200 ease-out motion-reduce:transition-none hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {mt("viewDocument")}
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </AuthenticatedDocumentLink>
-              </div>
-            )}
-
-            {showTermsUpload && (
-              <div className="space-y-3">
-                <SettingsFileUpload
-                  id="terms-upload"
-                  accept=".pdf"
-                  file={termsFile}
-                  label={mt("chooseTermsAndConditions")}
-                  hint={mt("pDFOnlyMax5MB")}
-                  disabled={termsUploadAction.status === "loading"}
-                  onChange={setTermsFile}
-                />
-                {(termsFile || termsUploadAction.status !== "idle") && (
-                  <div className="flex justify-end gap-2">
-                    {hasTerms && (
-                      <Button variant="ghost" onClick={closeTermsUpload} disabled={termsUploadAction.status === "loading"}>
-                        {mt("cancel")}
-                      </Button>
-                    )}
-                    <StatusButton
-                      status={termsUploadAction.status}
-                      onClick={termsUploadAction.execute}
-                      labels={{
-                        idle: hasTerms ? mt("replace") : mt("uploadTerms"),
-                        loading: mt("uploading"),
-                        success: mt("saved"),
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-          </>
+          </PolicySection>
         )}
+
+        {!hideDamagePolicy && <ManagerDamagePolicySection />}
+        {!hideTerms && <KitchenTermsSection location={location} note={termsNote} />}
       </div>
     );
   },

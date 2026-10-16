@@ -35,7 +35,8 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       if (!c) return { title: `Booking cancelled · ${facts.reference}`, message: `${who}. ${facts.message}` };
       const by = c.cause === 'kitchen' ? `${facts.kitchen} cancelled` : `${facts.chef} cancelled`;
       const money_ = c.feePending ? 'Refund waiting for the actual processing fee to be verified.'
-        : [`Refunded ${money(c.refundCents)}.`, (c.feeCents || 0) > 0 ? `Processing fee kept: ${money(c.feeCents)}.` : '',
+        : [(c.refundCents || 0) > 0 ? `Refunded ${money(c.refundCents)}.` : 'No refund under the kitchen’s policy.',
+          (c.refundCents || 0) > 0 && (c.feeCents || 0) > 0 ? `Processing fee kept: ${money(c.feeCents)}.` : '',
           (c.kitchenShareRetainedCents || 0) > 0 ? `Kitchen keeps ${money(c.kitchenShareRetainedCents)} under its policy.` : ''].filter(Boolean).join(' ');
       return { title: `Booking cancelled · ${facts.reference}`, message: `${by} — ${who}. ${money_}` };
     }

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, XCircle, Loader2, Calendar, Clock, MapPin, DollarSign, AlertTriangle, RefreshCcw, Info, Pencil } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
@@ -125,6 +126,8 @@ interface BookingActionDialogProps {
     status: "confirmed" | "cancelled";
     storageActions?: StorageDecision[];
     equipmentActions?: EquipmentDecision[];
+    /** Optional note to the chef, sent with the decline notice. */
+    message?: string;
   }) => void;
 }
 
@@ -229,6 +232,7 @@ function BookingActionDialogContent({
 
   // Editable refund amount override
   const [isEditingRefund, setIsEditingRefund] = useState(false);
+  const [declineMessage, setDeclineMessage] = useState("");
   const [customRefundInput, setCustomRefundInput] = useState("");
 
   const toggleKitchenAction = () => {
@@ -493,9 +497,11 @@ function BookingActionDialogContent({
     // The backend cancels the PaymentIntent and cascades to all sub-bookings.
     // No need to send individual addon actions — they're all cancelled implicitly.
     if (kitchenAction === "cancelled") {
+      const note = declineMessage.trim();
       onSubmit({
         bookingId: booking.id,
         status: "cancelled",
+        ...(isAuthorized && note ? { message: note } : {}),
       });
       return;
     }
@@ -745,15 +751,31 @@ function BookingActionDialogContent({
               <div className="flex items-center gap-2">
                 <Info className="h-4 w-4 text-blue-600" />
                 <p className="text-sm font-semibold text-blue-800">
-                  {mt("noChargeAuthReleased")}
+                  {mt("reviewDeclineDialogTitle")}
                 </p>
               </div>
               <p className="text-xs text-blue-700">
-                {mt("chefCardHoldAmount", { amount: booking.transactionAmount ? formatPrice(booking.transactionAmount) : mt("theBookingAmount") })}
-                {" "}{mt("rejectingReleaseHoldNote")}
+                {mt("reviewDeclineNoCharge", { chef: booking.chefName || mt("theChef") })}
               </p>
             </div>
           </>
+        )}
+
+        {/* Optional note to the chef, sent with the decline notice. */}
+        {isAuthorized && kitchenIsRejected && (
+          <div className="space-y-1.5">
+            <Label htmlFor="booking-decline-message" className="text-sm">{mt("reviewDeclineMessageLabel")}</Label>
+            <Textarea
+              id="booking-decline-message"
+              value={declineMessage}
+              maxLength={500}
+              rows={3}
+              disabled={isLoading}
+              placeholder={mt("reviewDeclineMessagePlaceholder")}
+              onChange={event => setDeclineMessage(event.target.value)}
+            />
+            <p className="text-right text-xs text-muted-foreground tabular-nums">{mt("reviewDeclineMessageCount", { count: declineMessage.length })}</p>
+          </div>
         )}
 
         {/* ── Auth-Then-Capture: Full Approval ────────────────────────────── */}

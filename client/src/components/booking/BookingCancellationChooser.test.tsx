@@ -75,7 +75,7 @@ describe('one parent cancellation chooser', () => {
     vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ quoteReady: true, chefRefundCents: 0, feeRetainedCents: 200, retainedCents: 10000 }) } as any);
     const view = render(<BookingCancellationChooser bookingId={10} status="confirmed" paymentStatus="paid" paidCancellationAvailable={false} items={items} onChanged={async () => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
-    expect(await screen.findByText(/There is no refund under/)).toBeInTheDocument();
+    expect(await screen.findByText(/this booking isn’t refunded/)).toBeInTheDocument();
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel booking' })).toBeEnabled();
     view.unmount();
     render(<BookingCancellationChooser bookingId={10} status="pending" paymentStatus="authorized" paidCancellationAvailable={false} items={items} onChanged={async () => {}} />);

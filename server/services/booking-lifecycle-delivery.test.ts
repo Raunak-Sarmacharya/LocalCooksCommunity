@@ -13,6 +13,8 @@ vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn(), ackno
     start: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.startTime, timezone),
     end: createBookingDateTime(booking.bookingDate.toISOString().slice(0, 10), slot.endTime, timezone) })) }));
 import { scheduleAdvanceReminders, acknowledgeConfirmationReminders } from './advance-reminders';
+vi.mock('./deadline-timer', () => ({ scheduleBookingRequestTimer: vi.fn(async () => undefined) }));
+import { scheduleBookingRequestTimer } from './deadline-timer';
 const state = vi.hoisted(() => ({ payout: null as any, feedbackEmail: vi.fn(), closeoutEmail: vi.fn(), instructionEmail: vi.fn(), notify: vi.fn(), insert: vi.fn(), send: vi.fn(), log: vi.fn(), adminEmailEnabled: true, activeTargets: [] as any[], noticeRow: null as any, event: null as any, database: null as any, rows: [] as any[][], people: [] as any[] }));
 vi.mock('./kitchen-payout-service', () => ({ readKitchenPayout: async () => state.payout }));
 import { tEmail } from '../i18n/outbound';
@@ -177,6 +179,7 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     expect(emails).toHaveLength(2);
     for (const email of emails) expect(email.content.text).toContain('7:00 p.m.');
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'manager_decision', 10);
+    expect(scheduleBookingRequestTimer).toHaveBeenCalledWith(tx, 10); // the exact response deadline is armed (WP-T)
   });
   it('uses expiry role copy and an environment-aware Find another time link', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'cancelled', 'Booking request expired', 'Chef expiry copy', undefined,
@@ -528,6 +531,11 @@ describe('consolidated checkout and closeout notices', () => {
     expect(state.notify.mock.calls[0][0].title).toContain('checked out');
     expect(state.insert.mock.calls[0][0].emails).toHaveLength(1);
     expect(state.notify.mock.calls[0][0].message.includes('$27.32')).toBe(afterCloseout);
+  });
+  it('a chef check-in notifies only the kitchen, never the chef who checked in', async () => {
+    state.rows = [[context], people];
+    await queueBookingLifecycleEvent(tx, 10, 'checkin_recorded', 'Arrival confirmed', 'Open the booking to see the chef’s checklist', 3, { recipientPolicy: 'participants' });
+    expect(state.notify.mock.calls.map(call => call[0].userId)).toEqual([2]);
   });
   it('sends one chef Visit complete notice with the outcome and no second email, idempotent per visit', async () => {
     state.rows = [[], [context], people, []];

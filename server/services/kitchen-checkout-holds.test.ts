@@ -7,7 +7,7 @@ vi.mock('../db', () => ({
   pool: { connect: vi.fn(async () => ({ query, release })) },
 }));
 
-import { sameOperatingSlots, withKitchenDayLock } from './kitchen-checkout-holds';
+import { fulfillKitchenCheckout, sameOperatingSlots, withKitchenDayLock } from './kitchen-checkout-holds';
 
 describe('kitchen day lock on a pooled database', () => {
   beforeEach(() => {
@@ -35,6 +35,11 @@ describe('kitchen day lock on a pooled database', () => {
     })).rejects.toThrow('booking failed');
     expect(query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
     expect(release).toHaveBeenCalledOnce();
+  });
+  it('finds a booking committed by a competing fulfillment before checking a consumed hold', async () => {
+    const create = vi.fn(), existing = { id: 42 };
+    expect(await fulfillKitchenCheckout('consumed-hold', 'cs_same', 3, '2026-12-04', [], '10:00', create, async () => existing)).toBe(existing);
+    expect(create).not.toHaveBeenCalled();
   });
 });
 

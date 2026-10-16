@@ -18,13 +18,18 @@ export async function pendingUserDeletions(id?: number): Promise<PendingUserDele
 }
 
 /** Idempotent external cleanup shared by both admin deletion endpoints. */
-export async function completeUserDeletion(id: number, expectedRole?: 'manager'): Promise<void> {
+export async function completeUserDeletion(
+  id: number,
+  expectedRole?: 'manager',
+  options: { override?: { actorId: number; reason: string } } = {},
+): Promise<void> {
   const user = await userService.getUser(id);
   const pending = user ? null : (await pendingUserDeletions(id))[0];
   if (!user && !pending) throw Object.assign(new Error('User not found'), { status: 404 });
   if (expectedRole && (user ?? pending)!.role !== expectedRole)
     throw Object.assign(new Error('User is not a manager'), { status: 400 });
-  if (user) await userService.deleteUser(id, { enforceObligations: false });
+  // Live bookings, claims and payments block the deletion unless an admin gives an audited override reason.
+  if (user) await userService.deleteUser(id, { override: options.override });
   const [job] = await pendingUserDeletions(id);
   // Another successful retry may already have finished this job.
   if (!job) return;

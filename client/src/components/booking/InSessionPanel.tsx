@@ -1,3 +1,4 @@
+import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
 /**
  * InSessionPanel
  *
@@ -9,17 +10,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { LogOut, Mail, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { BookingProblemReport } from "./BookingProblemReport"
 import { getAuthHeaders } from "@/lib/api"
 import UnifiedChatView from "@/components/chat/UnifiedChatView"
 import { SessionExtensionRequest } from "./SessionExtensionRequest"
 
 export const SESSION_ENDING_WINDOW_MINUTES = 15
 const TICK_MS = 30_000
-export const PROBLEM_CATEGORIES = ["safety", "access", "equipment", "cleanliness", "other"] as const
-export type ProblemCategory = (typeof PROBLEM_CATEGORIES)[number]
+export { PROBLEM_CATEGORIES, type ProblemCategory } from "./BookingProblemReport"
 export type SessionPhase = "active" | "ending" | "ended"
 
 export function sessionPhase(now: number, endMs: number): SessionPhase {
@@ -108,29 +107,6 @@ export function InSessionPanel({
   const moreTimeDraft = t("kciIsMoreTimeMessage", { defaultValue: "Hi, could I have more time at {kitchen}? My booking ends at {time}.", kitchen: kitchenName, time: endTime })
 
   // ── Report a problem (existing commitment-problems API) ──────────────────────
-  const [reportOpen, setReportOpen] = useState(false)
-  const [category, setCategory] = useState<ProblemCategory | "">("")
-  const [description, setDescription] = useState("")
-  const [requestKey, setRequestKey] = useState(() => crypto.randomUUID())
-  const [reportBusy, setReportBusy] = useState(false)
-  const [reportError, setReportError] = useState("")
-  const [reportSent, setReportSent] = useState(false)
-  const canSend = !!category && description.trim().length >= 10 && !reportBusy
-  const sendReport = async () => {
-    if (!canSend) return
-    setReportBusy(true); setReportError("")
-    try {
-      const response = await fetch(`/api/commitment-problems/booking/${bookingId}`, {
-        method: "POST", headers: await getAuthHeaders(), credentials: "include",
-        body: JSON.stringify({ description: description.trim(), category, requestKey }),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || t("kciIsReportFailed", { defaultValue: "Could not send the report. Your text is kept; try again." }))
-      setReportOpen(false); setReportSent(true); setDescription(""); setCategory(""); setRequestKey(crypto.randomUUID())
-    } catch (error) {
-      setReportError(error instanceof Error ? error.message : t("kciIsReportFailed", { defaultValue: "Could not send the report. Your text is kept; try again." }))
-    } finally { setReportBusy(false) }
-  }
 
   const tap = "min-h-11 w-full whitespace-normal h-auto py-2 sm:w-auto"
   const link = "min-h-11 px-1 text-sm underline-offset-4 hover:underline disabled:opacity-50"
@@ -170,14 +146,14 @@ export function InSessionPanel({
           {chatBusy ? t("kciIsOpeningMessage", { defaultValue: "Opening conversation…" }) : t("kciIsMessageKitchen", { defaultValue: "Message kitchen" })}
         </button>
         <span aria-hidden className="text-muted-foreground">·</span>
-        <button type="button" className={link} onClick={() => { setReportSent(false); setReportOpen(true) }}>{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</button>
+        <BookingProblemReport bookingId={bookingId} />
         <span aria-hidden className="text-muted-foreground">·</span>
         <button type="button" className={link} aria-expanded={helpOpen} onClick={() => setHelpOpen(value => !value)}>{t("kvIsHelp", { defaultValue: "Get help" })}</button>
       </div>
       {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
-      {reportSent && <p role="status" className="text-sm">{t("kciIsReportSent", { defaultValue: "Report sent. You can follow it on your booking page." })}</p>}
+
       {helpOpen && <div className="space-y-1 rounded-lg bg-muted/40 p-3 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
-        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0" />support@localcooks.ca</a>
+        <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href={localCooksSupportHref({ bookingId, role: "chef", situation: "Help during kitchen visit" })}><Mail className="h-4 w-4 shrink-0" />support@localcooks.ca</a>
         <a className="flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0" />+1 (709) 631-8480</a>
         <p className="text-xs text-muted-foreground">{t("kciIsHelpHours", { defaultValue: "Mon–Fri, 9 AM–5 PM NL time. After hours, we reply within 24 hours." })}</p>
       </div>}
@@ -203,37 +179,7 @@ export function InSessionPanel({
         </div>
       </details>
 
-      <Sheet open={reportOpen} onOpenChange={value => { if (!reportBusy) setReportOpen(value) }}>
-        <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-lg space-y-4 overflow-y-auto rounded-t-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          <SheetHeader>
-            <SheetTitle>{t("kciIsReportProblem", { defaultValue: "Report a problem" })}</SheetTitle>
-            <SheetDescription>{t("kciIsReportIntro", { defaultValue: "Safety comes first. If anyone is in danger, call 911 before anything else." })}</SheetDescription>
-          </SheetHeader>
-          <form className="space-y-4" onSubmit={event => { event.preventDefault(); void sendReport() }}>
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">{t("kciIsCategory", { defaultValue: "What kind of problem is it?" })}</legend>
-              {PROBLEM_CATEGORIES.map(value => (
-                <label key={value} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 text-sm">
-                  <input type="radio" name="problem-category" value={value} checked={category === value} disabled={reportBusy}
-                    onChange={() => setCategory(value)} className="h-4 w-4" />
-                  <span>{t(`kciIsCat_${value}`, { defaultValue: value })}</span>
-                </label>
-              ))}
-            </fieldset>
-            <div className="space-y-2">
-              <label htmlFor="in-session-problem-text" className="block text-sm font-medium">{t("kciIsDescribe", { defaultValue: "What happened?" })}</label>
-              <Textarea id="in-session-problem-text" value={description} maxLength={2000} disabled={reportBusy} rows={4}
-                onChange={event => setDescription(event.target.value)} aria-describedby="in-session-problem-hint" />
-              <p id="in-session-problem-hint" className="text-xs text-muted-foreground">{t("kciIsDescribeHint", { defaultValue: "Write 10 to 2000 characters. The kitchen manager and Local Cooks will see this." })}</p>
-            </div>
-            {reportError && <p role="alert" className="text-sm text-destructive">{reportError}</p>}
-            <SheetFooter className="gap-2">
-              <Button type="button" variant="outline" className="min-h-11" disabled={reportBusy} onClick={() => setReportOpen(false)}>{t("kciIsCancel", { defaultValue: "Cancel" })}</Button>
-              <Button type="submit" className="min-h-11" disabled={!canSend}>{reportBusy ? t("kciIsSending", { defaultValue: "Sending…" }) : t("kciIsSendReport", { defaultValue: "Send report" })}</Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
+
 
       <Dialog open={!!chat} onOpenChange={value => { if (!value) setChat(null) }}>
         <DialogContent showCloseButton className="flex h-[85dvh] w-[calc(100%_-_1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0">

@@ -1,3 +1,4 @@
+import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
 import { ct } from '@/i18n/chef-ns';
 import { KitchenPayoutStatus } from '@/components/booking/KitchenPayoutStatus';
 import { bookingStatusLabel } from "@/components/booking/booking-status-label";
@@ -13,12 +14,13 @@ import { CommitmentProblems } from '@/components/support/CommitmentProblems';
 import { ManagerDamageClaimEntry, claimFilingOpen } from '@/components/booking/ManagerDamageClaimEntry';
 import { BookingNowCard, ClampedBlock, NowClaimRows, chefCanPayClaim, closedClaimLine, closedClaims, nowClaims, type NowSecondaryLink } from '@/components/booking/BookingNowCard';
 import { BookingVisitRecord, type VisitTimelineEvent } from '@/components/booking/BookingVisitRecord';
+import { BookingReceipts, useBookingDocuments } from "@/components/booking/BookingReceipts";
 import { BookingPaymentCard, paymentStatusSource } from '@/components/booking/BookingPaymentCard';
 import { StorageRows, EquipmentRows } from '@/components/booking/BookingAddOns';
 import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
 import { formatBookedDuration } from '@/lib/booked-duration';
 import { friendlyDate, friendlyDateTime } from '@/lib/friendly-date';
-import { claimMoney, claimWhen, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimMoney, claimPayByDate, claimWhen, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import { canReportRunningLate } from '@shared/running-late';
 import { cn } from '@/lib/utils';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
@@ -260,6 +262,10 @@ export default function BookingDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  // Issued receipts / remittances / statement (WP-R). Unavailable until migration 0086: the legacy download stays.
+  const documentsQuery = useBookingDocuments(booking?.id, isManagerView ? 'manager' : 'chef',
+    !!booking && booking.paymentDecision?.state !== 'pending' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || ''));
+  const bookingDocuments = documentsQuery.data?.available ? documentsQuery.data : null;
   const [openingConversation, setOpeningConversation] = useState(false);
   const openBookingConversation = async () => {
     if (!booking || openingConversation) return;
@@ -294,7 +300,7 @@ export default function BookingDetailsPage() {
   const bt = policyT as unknown as (key: string, options?: Record<string, unknown>) => string;
   const [fixOpen, setFixOpen] = useState(false);
   // "Record when they left" opens Fix the visit record straight on the departure choice.
-  const [fixAction, setFixAction] = useState<'departure' | undefined>();
+  const [fixAction, setFixAction] = useState<'departure' | 'report_attended' | 'report_no_show' | undefined>();
   const [lateOpen, setLateOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
   const [extTools, setExtTools] = useState<ExtensionTool[]>([]);
@@ -419,6 +425,7 @@ export default function BookingDetailsPage() {
 
   const handleDownloadInvoice = async () => {
     if (!booking?.id) return;
+    if (bookingDocuments) { document.getElementById('booking-payment-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
 
     setIsDownloading(true);
     try {
@@ -780,6 +787,7 @@ export default function BookingDetailsPage() {
     status: 'confirmed' | 'cancelled';
     storageActions?: Array<{ storageBookingId: number; action: string }>;
     equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
+    message?: string;
   }) => {
     if (!booking?.id) return;
 
@@ -794,6 +802,7 @@ export default function BookingDetailsPage() {
           status: params.status,
           storageActions: params.storageActions,
           equipmentActions: params.equipmentActions,
+          message: params.message,
         }),
       });
 
@@ -1166,7 +1175,8 @@ export default function BookingDetailsPage() {
       {item.status === 'pending' ? cap(t('bdStatusPending')) : item.status === 'expired' ? cap(t('bdStatusExpired')) : bookingStatusLabel(item.status, t)}
     </InfoChip>;
   };
-  const payoutTitle = booking?.paymentStatus === 'authorized' ? t('bdEstimatedPayout', { defaultValue: 'Estimated payout' }) : t('bdYourPayout', { defaultValue: 'Your payout' });
+  // Owner (WP-R): the kitchen's figure stays an estimate until its payout statement is issued at settlement.
+  const payoutTitle = booking?.paymentStatus === 'authorized' || (bookingDocuments && !bookingDocuments.statementIssued) ? t('bdEstimatedPayout', { defaultValue: 'Estimated payout' }) : t('bdYourPayout', { defaultValue: 'Your payout' });
   const chefTotalLabel = booking?.paymentStatus === 'authorized' ? t('bdAmountAuthorized') : t('bdAmountCharged');
   // Headline figure reuses the same shared breakdown builders the itemized list renders (display only).
   const paymentCaptured = ['paid', 'partially_refunded', 'refunded'].includes(booking?.paymentStatus || '');
@@ -1205,7 +1215,7 @@ export default function BookingDetailsPage() {
   })();
   const phase: BookingHeaderPhase = booking ? bookingHeaderPhase({
     status: booking.status, checkinStatus: booking.checkinStatus, visits: booking.visits, closeoutPhase: booking.closeout?.phase,
-    inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
+    visitAttendance: booking.closeout?.legacy ? undefined : booking.closeout?.visits?.map(visit => visit.attendance), inspectionCanRespond, startAt: visitBounds?.startAt, endAt: visitBounds?.endAt, checkinOpensAt: visitBounds?.opensAt, timezone: tz,
   }) : 'confirmed';
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
@@ -1282,7 +1292,7 @@ export default function BookingDetailsPage() {
     endWithZone: visitBounds ? withZone(visitBounds.endAt) : null,
     overstayEndWithZone: overstayEndAt ? withZone(overstayEndAt) : null,
     startPassed,
-    runningLate: !isManagerView && runningLateSent && booking?.runningLate ? { duration: t(`rlDurationShort${booking.runningLate.minutes}`) } : null,
+    runningLate: runningLateSent && booking?.runningLate ? { duration: t(`rlDurationShort${booking.runningLate.minutes}`) } : null,
     arrivalMode: booking?.arrivalMode,
     checkedInClock: booking?.checkedInAt ? clockTime(booking.checkedInAt) : null,
     checkedInMethod: booking?.checkedInMethod,
@@ -1291,6 +1301,10 @@ export default function BookingDetailsPage() {
     payoutReview: isManagerView && booking?.payout?.timing === 'after_closeout' && booking.payout.status === 'scheduled' && booking.payout.amountCents > 0 && booking.payout.expectedAt
       ? { amount: formatCurrency(booking.payout.amountCents), date: formatEventTimestamp(booking.payout.expectedAt) } : null,
     claimDeadline: latestClaim && !settledClaim && !['resolved', 'rejected'].includes(latestClaim.status) ? claimWhen(latestClaim.deadline, latestClaim.visitEvidence?.timezone || tz || 'America/St_Johns', i18n.language) : undefined,
+    claimStage: latestClaim && !settledClaim ? (['chef_disputed', 'under_review'].includes(latestClaim.status) ? 'reviewing'
+      : latestClaim.upheldAt && latestClaim.chefOwes && ['approved', 'partially_approved', 'chef_accepted'].includes(latestClaim.status) ? 'decided' : undefined) : undefined,
+    claimAmount: latestClaim ? claimMoney(latestClaim.amountCents, i18n.language) : undefined,
+    claimPayBy: latestClaim?.upheldAt ? claimPayByDate(latestClaim.upheldAt, latestClaim.visitEvidence?.timezone || tz || 'America/St_Johns', i18n.language) : undefined,
     settledClaim, hasClaim: claimsQuery.isPending || claimsQuery.isError || !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft'),
     inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
     canCancel: chefCanCancel, canAddToCalendar: booking?.status === 'confirmed' && !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
@@ -1302,13 +1316,16 @@ export default function BookingDetailsPage() {
   const claimTakesPrimary = !primary && !!payableClaim;
 
   const primaryLabel = primary === 'review_request' ? t('bdTakeAction') : primary === 'review_cancellation' ? t('bdhReviewCancellation')
-    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? (phase === 'in_session' || phase === 'time_ended_in_session' ? t('bdhCheckOut') : t('bdhOpenVisit')) : '';
+    : primary === 'review_checkout' ? t('bdhReviewCheckout') : primary === 'inspect_visit' ? t('fixInspection') : primary === 'open_visit' ? (phase === 'in_session' || phase === 'time_ended_in_session' ? t('bdhCheckOut') : t('bdhOpenVisit'))
+    : primary === 'answer_attendance' ? t('bnTheyCame') : '';
   const runPrimary = () => {
     if (!booking) return;
     if (primary === 'review_request') openActionDialog();
     else if (primary === 'review_cancellation') openManagementDialog();
     else if (primary === 'review_checkout' || primary === 'inspect_visit') navigate(inspectionHref);
     else if (primary === 'open_visit') navigate(`/booking/${booking.id}/visit`);
+    // "They came": the existing visit-record statement (report_attended), with an optional note for the actual times.
+    else if (primary === 'answer_attendance') openFix('report_attended');
   };
   const primaryBusy = (primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing);
   const primaryButton = (testId: string, className?: string) => primary && (
@@ -1330,8 +1347,8 @@ export default function BookingDetailsPage() {
       location: [booking.location?.name, booking.location?.address].filter(Boolean).join(', '), description: booking.referenceCode || undefined });
     downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
   };
-  const openFix = (action?: 'departure') => { setFixAction(action); setFixOpen(true); };
-  const downloadLabel = isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
+  const openFix = (action?: 'departure' | 'report_attended' | 'report_no_show') => { setFixAction(action); setFixOpen(true); };
+  const downloadLabel = isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' && phase !== 'no_checkin' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
 
   // Secondary row: at most three links; the rest join the ⋯ menu.
   const toolLabel = (tool: ExtensionTool) => bt(tool === 'offer' ? 'sxbOfferMore' : tool === 'early_start' ? 'sxbLetStartEarly' : 'sxbChargeExtra');
@@ -1351,6 +1368,9 @@ export default function BookingDetailsPage() {
       case 'manage_refund': return [{ key, label: t('bdhManageRefund'), onSelect: openManagementDialog }];
       case 'fix_record': return [{ key, label: t('fixTitle'), onSelect: () => openFix() }];
       case 'record_left': return [{ key, label: t('bdhOverstayRecordLeft'), icon: LogOut, onSelect: () => openFix('departure') }];
+      case 'report_no_show': return [{ key, label: t('bnTheyDidntCome'), onSelect: () => openFix('report_no_show'), testId: 'they-didnt-come' }];
+      // The chef contests a missing check-in through the booking's problem report (Local Cooks reviews; it sees the kitchen's answer).
+      case 'i_was_there': return [{ key, label: t('bnIWasThere'), onSelect: goToHelp, testId: 'i-was-there' }];
       case 'report_damage': return !claimsQuery.data ? [] : alreadyReported
         ? [{ key, label: policyT('dcV2AlreadyReported'), muted: true, href: '/manager/dashboard?view=support' }]
         : [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
@@ -1788,8 +1808,10 @@ export default function BookingDetailsPage() {
       breakdown={breakdown}
       breakdownOpen={!paymentHeadline}
       breakdownLabels={{ show: t('bdhShowBreakdown'), hide: t('bdhHideBreakdown') }}
-      actions={((canDownload && !downloadInNow) || showRefundReview) ? <>
-        {canDownload && !downloadInNow && (
+      actions={((canDownload && !downloadInNow) || showRefundReview || bookingDocuments) ? <>
+        {bookingDocuments && <BookingReceipts data={bookingDocuments} role={isManagerView ? 'manager' : 'chef'} timezone={booking.location?.timezone || undefined}
+          formatCurrency={formatCurrency} onError={message => toast({ title: t('bdDownloadFailedTitle'), description: message, variant: 'destructive' })} />}
+        {canDownload && !downloadInNow && !bookingDocuments && (
           <Button onClick={handleDownloadInvoice} disabled={isDownloading} variant="outline" className="min-h-11 w-full">
             {isDownloading ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{t("bdGenerating")}</> : <><Download className="mr-1.5 h-4 w-4" />{downloadLabel}</>}
           </Button>
@@ -1815,7 +1837,7 @@ export default function BookingDetailsPage() {
       <h2 className={`${headingClass} mb-2`}>{t('bdContactSupport', { defaultValue: 'Contact Local Cooks' })}</h2>
       <p className="text-[13px] leading-[18px] text-muted-foreground">{t('bdContactSupportHint', { defaultValue: 'Need help with your booking or payment?' })}</p>
       <div className="mt-3 space-y-1 text-sm">
-        <a className="flex min-h-11 min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="mailto:support@localcooks.ca"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
+        <a className="flex min-h-11 min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href={localCooksSupportHref({ bookingId: booking.id, bookingReference: booking.referenceCode, role: isManagerView ? "manager" : "chef", situation: "Booking or payment help" })}><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
         <a className="flex min-h-11 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
       </div>
       <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded />

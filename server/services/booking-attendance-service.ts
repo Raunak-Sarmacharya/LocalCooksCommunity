@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, bookingLifecycleEvents, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
+import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, kitchenBookingExtensions, bookingLifecycleEvents, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
 import { buildBookingHistory } from '@shared/booking-history';
 import { bookingAttendanceEnd, bookingOperationsComplete, hasBookingAttendanceEvidence, visitAttendanceEnd } from '@shared/booking-attendance';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
@@ -34,8 +34,15 @@ export async function readBookingHistory(bookingId: number, actor: AttendanceAct
     .from(paymentHistory).innerJoin(paymentTransactions, eq(paymentTransactions.id, paymentHistory.transactionId))
     .where(and(eq(paymentHistory.eventType, 'support_goodwill_verified'), eq(paymentTransactions.bookingId, bookingId),
       sql`${paymentTransactions.bookingType} IN ('kitchen', 'bundle')`)).orderBy(asc(paymentHistory.id));
+  // Extra time (requests, offers, charges) lives in its own table; only dates, minutes and amounts leave it.
+  const extensions = await db.select({ id: kitchenBookingExtensions.id, kind: kitchenBookingExtensions.kind, status: kitchenBookingExtensions.status,
+    minutes: kitchenBookingExtensions.minutes, amountCents: kitchenBookingExtensions.amountCents, free: kitchenBookingExtensions.free,
+    autoApprove: kitchenBookingExtensions.autoApprove, createdAt: kitchenBookingExtensions.createdAt, updatedAt: kitchenBookingExtensions.updatedAt,
+    authorizedAt: kitchenBookingExtensions.authorizedAt, paidAt: kitchenBookingExtensions.paidAt, appliedAt: kitchenBookingExtensions.appliedAt,
+    refundedAt: kitchenBookingExtensions.refundedAt, operation: kitchenBookingExtensions.operation })
+    .from(kitchenBookingExtensions).where(eq(kitchenBookingExtensions.bookingId, bookingId)).orderBy(asc(kitchenBookingExtensions.id));
   return buildBookingHistory(context.booking, [...records,
-    ...goodwill.map(row => ({ id: row.id, key: `payment-${row.id}`, kind: 'goodwill_refunded', createdAt: row.createdAt, metadata: row.metadata }))], visits);
+    ...goodwill.map(row => ({ id: row.id, key: `payment-${row.id}`, kind: 'goodwill_refunded', createdAt: row.createdAt, metadata: row.metadata }))], visits, extensions);
 }
 
 export async function readBookingAttendance(bookingId: number, actor: AttendanceActor) {
@@ -83,7 +90,7 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
   await db.transaction(async tx => {
     // Parent then visit: serialize reports/corrections with reservation changes.
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone })
+    const [context] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId)).limit(1);
@@ -123,12 +130,31 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
       : current.checkinStatus === 'no_show' ? { checkinStatus: 'not_checked_in' as const, noShowDetectedAt: null } : {}), updatedAt: now };
     if (visit) await tx.update(kitchenBookingVisits).set(values).where(and(eq(kitchenBookingVisits.id, visit.id), eq(kitchenBookingVisits.bookingId, bookingId)));
     else await tx.update(kitchenBookings).set(values).where(eq(kitchenBookings.id, bookingId));
+    // "They came" after the booking already closed with no check-in: the visit now counts as attended, so the usual
+    // rating request opens (closeout skipped it). Not a money or status change.
+    if (input.action === 'report_attended' && context.booking.status === 'completed' && !context.booking.feedbackRequestedAt)
+      await tx.update(kitchenBookings).set({ feedbackRequestedAt: now }).where(eq(kitchenBookings.id, bookingId));
     // No status/completion/checkout/financial/inventory mutation here.
     const title = input.action === 'report_no_show' ? 'No-show reported' : input.action === 'report_attended' ? 'Visit confirmed as attended' : 'Visit update withdrawn';
     const shared = message ? ` Message from ${actor.role === 'manager' ? 'kitchen manager' : 'Local Cooks'}: ${message}` : '';
     await queueBookingLifecycleEvent(tx, bookingId, input.action, title,
       `${title} for booking #${bookingId}${visit ? `, visit ${visit.blockIndex + 1}` : ''}.${shared} If this doesn’t look right, contact Local Cooks. Open the booking to see the update and reply.`,
-      actor.id, { ...(visit ? { visitId: visit.id } : {}), ...(input.action === 'report_no_show' ? { policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false } : {}) });
+      actor.id, { ...(visit ? { visitId: visit.id } : {}), ...(input.action === 'report_no_show' ? { policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false } : {}),
+        ...(input.action !== 'withdraw_attendance' ? { roleText: attendanceRoleText(input.action, context.kitchenName, shared) } : {}) });
   });
   return readBookingAttendance(bookingId, actor);
+}
+
+/** WP-N: what each side reads after the kitchen answers "Did they come?". The policy sentence matches the chef page. */
+/** Owner (Oct 15): no-shows are not refunded at any kitchen; the chef accepted that at checkout (disclosure v2). */
+export function attendanceRoleText(action: 'report_no_show' | 'report_attended', kitchen: string, message = '') {
+  // The kitchen's own note, closed with a full stop so the next sentence reads cleanly.
+  const shared = message && !/[.!?]$/.test(message.trim()) ? `${message}.` : message;
+  return action === 'report_no_show' ? {
+    chef: { title: `${kitchen} reported you didn’t arrive`, message: `${kitchen} reported you didn’t arrive. No-shows aren’t refunded.${shared} If you were there, tell us from the booking page.` },
+    manager: { title: 'No-show recorded', message: `You recorded that the chef didn’t come.${shared} Local Cooks may contact you if the chef disagrees.` },
+  } : {
+    chef: { title: `${kitchen} confirmed your visit`, message: `${kitchen} confirmed you were there.${shared}` },
+    manager: { title: 'Visit confirmed', message: `You confirmed the chef came.${shared}` },
+  };
 }

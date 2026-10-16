@@ -26,4 +26,17 @@ describe('session-extension notices', () => {
     expect(sessionExtensionCopy('sxGrantedStartChef', 'en-CA', facts).title).toBe('Harbour Kitchen let you start at 4:30 p.m. Newfoundland Time');
     for (const locale of ['fr-CA', 'uk']) expect(sessionExtensionCopy('sxOfferedChef', locale, facts).title).toContain('Harbour Kitchen');
   });
+  it('explains another-card recovery and automatic refunds in all three languages', async () => {
+    await ensureServerI18n();
+    expect(sessionExtensionAudiences('refunded', 'early_start')).toEqual([['chef', 'sxRefundedChef']]);
+    for (const locale of ['en-CA', 'fr-CA', 'uk']) {
+      const failure = sessionExtensionCopy('sxCardFailedChef', locale, facts);
+      const refunded = sessionExtensionCopy('sxRefundedChef', locale, facts);
+      expect(failure.message).toContain('$28.75'); expect(failure.message).toContain('Harbour Kitchen');
+      expect(refunded.message).toContain('$28.75'); expect(refunded.message).not.toContain('sxRefunded');
+      expect(refunded.message).not.toContain('?');
+    }
+    expect(sessionExtensionCopy('sxCardFailedChef', 'en-CA', facts).message).toContain('Pay with another card');
+    expect(sessionExtensionCopy('sxRefundedChef', 'en-CA', facts).message).toContain('You were refunded $28.75');
+  });
 });

@@ -3,30 +3,51 @@ const state = vi.hoisted(() => ({ booking: null as any, payment: null as any, ev
   intent: vi.fn(), session: vi.fn(), capture: vi.fn(), create: vi.fn(), update: vi.fn(), notify: vi.fn() }));
 vi.mock('../db', () => {
   const database = () => ({
+    execute: async () => ({ rows: [] }),
     select: (fields: any) => {
       let table: any;
       const rows = () => {
         const name = table?.[Symbol.for('drizzle:Name')];
         if (name === 'kitchen_bookings') {
           if (fields?.chefId) return [{ chefId: 3, managerId: 2 }];
-          if (fields?.booking) return [{ booking: state.booking, kitchen: { name: 'Fixture kitchen', checkinCheckoutEnabled: false },
-            location: { name: 'Harbour', address: '1 Harbour Road' }, checklist: null }];
+          if (fields?.booking) return [{
+            booking: state.booking,
+            kitchen: { name: 'Fixture kitchen', checkinCheckoutEnabled: false },
+            location: { name: 'Harbour', address: '1 Harbour Road', timezone: 'America/St_Johns' },
+            timezone: 'America/St_Johns',
+            locationId: 5,
+            kitchenName: 'Fixture kitchen',
+            checklist: null,
+          }];
           return [state.booking];
         }
-        if (name === 'users') return [{ id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' }, { id: 1, email: 'admin@example.test', role: 'admin' }];
+        if (name === 'users') return [
+          { id: 3, email: 'chef@example.test', username: 'chef@example.test', role: 'chef' },
+          { id: 2, email: 'manager@example.test', username: 'manager@example.test', role: 'manager' },
+          { id: 1, email: 'admin@example.test', username: 'admin@example.test', role: 'admin', adminEmailNotifications: true },
+        ];
+        if (name === 'locations') return [{ timezone: 'America/St_Johns' }];
         if (name === 'payment_transactions') return state.payment ? [{ amount: state.payment.amount, tax: state.payment.tax_amount, fee: state.payment.service_fee }] : [];
         if (name === 'booking_lifecycle_events') return state.events;
         return [];
       };
       const chain: any = { from: (value: any) => { table = value; return chain; }, innerJoin: () => chain, leftJoin: () => chain,
-        where: () => chain, limit: () => chain, for: () => chain, then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
+        where: () => chain, orderBy: () => chain, limit: () => chain, for: () => chain, then: (resolve: any) => Promise.resolve(rows()).then(resolve) };
       return chain;
     },
     update: (table: any) => ({ set: (values: any) => ({ where: () => {
       if (table[Symbol.for('drizzle:Name')] === 'kitchen_bookings') Object.assign(state.booking, values);
       const chain: any = { returning: async () => [{ id: 10 }], then: (resolve: any) => Promise.resolve([]).then(resolve) }; return chain;
     } }) }),
-    insert: () => ({ values: async (event: any) => { state.events.push(event); } }),
+    insert: (table: any) => ({ values: (event: any) => {
+      if (table?.[Symbol.for('drizzle:Name')] === 'booking_lifecycle_events') state.events.push(event);
+      const chain: any = {
+        onConflictDoNothing: () => chain,
+        returning: async () => [],
+        then: (resolve: any) => Promise.resolve([]).then(resolve),
+      };
+      return chain;
+    } }),
   });
   return { db: { ...database(), transaction: async (run: any) => {
     const saved = structuredClone({ booking: state.booking, payment: state.payment, events: state.events });
@@ -73,7 +94,7 @@ describe('actual manager fallback → authoritative payment history → real ric
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
     expect(state.payment.status).toBe('succeeded');
     const event = state.events.find(event => event.kind === 'confirmed');
-    expect(event.emails[0].content.text).toContain('Payment captured: CAD $12.20 (tax CAD $1.50, service fee CAD $0.70)');
+    expect(event.emails[0].content.text).toContain('Total paid: CAD $12.20');
     expect(event.emails[0].content.attachments[0].content).toContain('UID:booking-10@localcooks.com');
     expect(state.capture).not.toHaveBeenCalled(); expect(state.session).not.toHaveBeenCalled();
   });

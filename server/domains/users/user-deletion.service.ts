@@ -73,14 +73,20 @@ export async function getUserDeletionImpact(tx: any, id: number): Promise<Record
   return result.rows[0];
 }
 
+/** Money and booking history is never purged by the account flow; it is kept and the identity is anonymized instead. */
+const HISTORY_TABLES = new Set(["payment_transactions", "damage_claims", "storage_bookings", "equipment_bookings", "storage_overstay_records", "kitchen_booking_visits"]);
+
 /** Run inside the user's deletion transaction. Migration 0071 is required. */
-export async function deleteUserDependents(tx: any, id: number): Promise<Record<string, number>> {
+export async function deleteUserDependents(tx: any, id: number, options: { keepHistory?: boolean } = {}): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   // Audit triggers allow only this account's purge/anonymization, for this transaction.
   await tx.execute(sql`SELECT set_config('localcooks.deleting_user_id', ${String(id)}, true)`);
   await tx.execute(sql`UPDATE tour_visit_events SET actor_id = NULL WHERE actor_id = ${id}`);
   for (const { table, where } of userDeletionTargets(id)) {
-    const result = await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ${where} RETURNING 1`);
+    if (options.keepHistory && HISTORY_TABLES.has(table)) continue;
+    // Only manager blocks (no money) may be removed with their kitchens; real bookings stop the delete at the RESTRICT FK.
+    const effective = options.keepHistory && table === "kitchen_bookings" ? sql`(${where}) AND booking_type = 'manager_blocked'` : where;
+    const result = await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ${effective} RETURNING 1`);
     if (result.rows.length) counts[table] = result.rows.length;
   }
 
@@ -104,4 +110,50 @@ export async function deleteUserDependents(tx: any, id: number): Promise<Record<
   }
   logger.info(`Removed dependents for user ${id}`, counts);
   return counts;
+}
+
+export const ANONYMIZED_DOMAIN = "deleted.localcooks.invalid";
+export const anonymizedUsername = (id: number) => `deleted-user-${id}@${ANONYMIZED_DOMAIN}`;
+export const isAnonymizedUsername = (username: string | null | undefined) => Boolean(username?.endsWith(`@${ANONYMIZED_DOMAIN}`));
+
+/**
+ * The account has booking, claim or payment history, so the row stays and only the person goes: identity is
+ * erased, sign-in is impossible, the person's own non-financial records are removed, and a manager's locations and
+ * kitchens are archived (unlisted, hidden from lists) instead of deleted. Idempotent.
+ */
+export async function anonymizeUserAccount(tx: any, id: number): Promise<{ archivedLocationIds: number[]; removed: Record<string, number> }> {
+  await tx.execute(sql`SELECT set_config('localcooks.deleting_user_id', ${String(id)}, true)`);
+  const locationIds = sql`SELECT id FROM locations WHERE manager_id = ${id}`;
+  // Read the address before it is erased; mail logs and tokens are matched by it.
+  const original = await tx.execute(sql`SELECT lower(username) AS email, lower(pending_email) AS pending FROM users WHERE id = ${id}`);
+  const addresses = [original.rows[0]?.email, original.rows[0]?.pending].filter(Boolean) as string[];
+  const archived = await tx.execute(sql`UPDATE locations SET archived_at = COALESCE(archived_at, now()), notification_email = NULL, notification_phone = NULL, updated_at = now()
+    WHERE manager_id = ${id} RETURNING id`);
+  await tx.execute(sql`UPDATE kitchens SET archived_at = COALESCE(archived_at, now()), listing_status = 'draft', updated_at = now() WHERE location_id IN (${locationIds})`);
+  await tx.execute(sql`UPDATE users SET username = ${anonymizedUsername(id)}, password = '!deleted', password_set_by_user = false,
+    google_id = NULL, facebook_id = NULL, firebase_uid = NULL, phone_number = NULL, phone_verified_at = NULL,
+    pending_email = NULL, pending_email_token_hash = NULL, pending_email_expires_at = NULL, pending_email_sent_at = NULL,
+    email_verified_at = NULL, is_verified = false, manager_profile_data = '{}'::jsonb, updated_at = now() WHERE id = ${id}`);
+  const emails = addresses.length ? sql.join(addresses.map(a => sql`${a}`), sql`, `) : sql`NULL`;
+  const own: Array<{ table: string; where: SQL }> = [
+    { table: "chef_notifications", where: sql`chef_id = ${id}` },
+    { table: "manager_notifications", where: sql`manager_id = ${id}` },
+    { table: "email_logs", where: sql`recipient_user_id = ${id} OR lower(recipient_email) IN (${emails})` },
+    { table: "password_reset_tokens", where: sql`user_id = ${id}` },
+    { table: "email_verification_tokens", where: sql`lower(email) IN (${emails})` },
+    { table: "microlearning_completions", where: sql`user_id = ${id}` },
+    { table: "video_progress", where: sql`user_id = ${id}` },
+    { table: "portal_user_location_access", where: sql`portal_user_id = ${id}` },
+    { table: "portal_user_applications", where: sql`user_id = ${id}` },
+    { table: "chef_location_access", where: sql`chef_id = ${id}` },
+    { table: "chef_kitchen_access", where: sql`chef_id = ${id}` },
+    { table: "session", where: sql`sess->>'userId' = ${String(id)} OR sess->>'neonUserId' = ${String(id)} OR sess->'passport'->>'user' = ${String(id)}` },
+  ];
+  const removed: Record<string, number> = {};
+  for (const { table, where } of own) {
+    const result = await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ${where} RETURNING 1`);
+    if (result.rows.length) removed[table] = result.rows.length;
+  }
+  logger.info(`Anonymized user ${id}; history kept`, removed);
+  return { archivedLocationIds: archived.rows.map((row: any) => Number(row.id)), removed };
 }

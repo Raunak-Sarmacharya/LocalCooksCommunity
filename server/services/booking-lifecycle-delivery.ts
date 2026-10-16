@@ -130,7 +130,8 @@ export function bookingEmailRetryDelayMs(failures: number) {
 /** Notifications and durable email/history evidence commit with the decision. */
 export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: number, kind: string, title: string,
   message: string, actorId?: number, metadata: Record<string, unknown> = {}, afterFailedAttempts = false) {
-  if (kind === 'checkout_requested') metadata = { ...metadata, recipientPolicy: 'manager' };
+  // The chef's own arrival and checkout are shown on their visit page; only the kitchen is notified.
+  if (kind === 'checkout_requested' || kind === 'checkin_recorded') metadata = { ...metadata, recipientPolicy: 'manager' };
   if (kind === 'visit_closed') {
     const [existing] = await tx.select({ id: bookingLifecycleEvents.id }).from(bookingLifecycleEvents).where(and(
       eq(bookingLifecycleEvents.bookingId, bookingId), eq(bookingLifecycleEvents.kind, kind),
@@ -367,6 +368,8 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'manager_decision', bookingId);
   }
+  // Exact expiry of an unanswered request: a timer wakes at the response deadline (best-effort; the worker tick is the backstop).
+  if (kind === 'requested') await (await import('./deadline-timer')).scheduleBookingRequestTimer(tx, bookingId);
   if (kind === 'confirmed') {
     const { scheduleAdvanceReminders } = await import('./advance-reminders');
     await scheduleAdvanceReminders(tx, 'booking', bookingId);

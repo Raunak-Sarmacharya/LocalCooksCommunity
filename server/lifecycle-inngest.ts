@@ -7,6 +7,7 @@ import { runRecurringWorker } from './services/recurring-worker';
 import { processExpiredCancellationRequests } from './services/scheduled-cancellations';
 import { workerPool, assertWorkerSessionConnection, initializeWorkerSession } from './services/recurring-worker';
 import { deliverStartingChatMessage } from './services/chat-notices';
+import { deadlineGraceMs, deadlineKinds, deadlineScheduledEvent, runDeadlineExpiry, type DeadlineKind } from './services/deadline-timer';
 
 const requestClock = new AsyncLocalStorage<number>();
 export const workerRequestStarted = () => requestClock.getStore() || performance.now();
@@ -55,6 +56,24 @@ export const bookingNoticeDelivery = inngest.createFunction({ id: 'booking-notic
   });
 });
 
+/** Exact deadlines: sleeps (no compute) until `dueAt`, then runs the worker's own idempotent expiry for that one item.
+ * Gated like bookingNoticeDelivery (event-triggered; producers only send when INNGEST_EVENT_KEY is set). The recurring
+ * tick stays the backstop, so a lost event only delays expiry to the next tick. */
+export async function runDeadlineTimer({ event, step }: {
+  event: { data: { kind?: unknown; id?: unknown; dueAt?: unknown } };
+  step: { sleepUntil: (id: string, time: Date) => Promise<unknown>; run: (id: string, action: () => Promise<unknown>) => Promise<unknown> };
+}) {
+  const { kind, id, dueAt } = event.data ?? {};
+  const due = typeof dueAt === 'string' ? Date.parse(dueAt) : NaN;
+  if (!deadlineKinds.includes(kind as DeadlineKind) || typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0 || !Number.isFinite(due))
+    throw Error('Invalid deadline timer identity');
+  await step.sleepUntil('wait-for-deadline', new Date(due + deadlineGraceMs));
+  return step.run('expire-at-deadline', () => runDeadlineExpiry(kind as DeadlineKind, id));
+}
+export const deadlineTimer = inngest.createFunction({ id: 'deadline-timer', retries: 3,
+  triggers: [{ event: deadlineScheduledEvent }],
+}, runDeadlineTimer);
+
 export async function runStartingChatEmail({ event, step }: {
   event: { data: { conversationId: string; messageId: string; senderId: number; recipientRole?: 'chef' | 'manager' } };
   step: { sleep: (id: string, duration: '15s') => Promise<unknown>; run: (id: string, action: () => Promise<unknown>) => Promise<unknown> };
@@ -78,7 +97,7 @@ export const startingChatEmail = inngest.createFunction({ id: 'starting-chat-mes
 }, runStartingChatEmail);
 
 export function registerInngest(app: Express) {
-  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery],
+  const handler = serve({ client: inngest, functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, deadlineTimer],
     servePath: '/api/inngest', serveOrigin: process.env.INNGEST_SERVE_ORIGIN });
   app.use('/api/inngest', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');

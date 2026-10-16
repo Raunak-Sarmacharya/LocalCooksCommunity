@@ -10,6 +10,8 @@ import { KitchenRepository } from './kitchen.repository';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { DomainError, KitchenErrorCodes } from '../../shared/errors/domain-error';
 import { validateKitchenInput } from '../../shared/validators/input-validator';
+import { db } from '../../db';
+import { DeletionBlockedError, getDeletionBlockers, hasDeletionHistory, isForeignKeyViolation } from '../../services/deletion-guard';
 
 /**
  * Service for kitchen business logic
@@ -398,16 +400,38 @@ export class KitchenService {
   }
 
   /**
-   * Delete kitchen
+   * Delete a kitchen, safely.
+   *
+   * - Anything still live (upcoming bookings, open claims, money in flight) blocks it with the references.
+   * - Booking/claim history keeps the kitchen: it is archived (unlisted, hidden from manager lists) so receipts,
+   *   history pages and claims still resolve it.
+   * - A kitchen with no history is removed for real.
    */
-  async deleteKitchen(id: number): Promise<void> {
+  async deleteKitchen(id: number): Promise<{ archived: boolean }> {
     try {
-      // Check if kitchen exists
       await this.getKitchenById(id);
 
-      await this.kitchenRepo.delete(id);
+      const scope = { kind: 'kitchens', kitchenIds: [id] } as const;
+      const blockers = await getDeletionBlockers(db, scope);
+      if (blockers.blocked) throw new DeletionBlockedError('kitchen', blockers);
+
+      if (await hasDeletionHistory(db, scope)) {
+        await this.kitchenRepo.archive(id);
+        return { archived: true };
+      }
+      try {
+        await this.kitchenRepo.delete(id);
+      } catch (error: any) {
+        // A booking appeared between the check and the delete: the RESTRICT foreign key refused it. Keep the history.
+        if (!isForeignKeyViolation(error)) throw error;
+        const again = await getDeletionBlockers(db, scope);
+        if (again.blocked) throw new DeletionBlockedError('kitchen', again);
+        await this.kitchenRepo.archive(id);
+        return { archived: true };
+      }
+      return { archived: false };
     } catch (error: any) {
-      if (error instanceof DomainError) {
+      if (error instanceof DomainError || error instanceof DeletionBlockedError) {
         throw error;
       }
       logger.error('[KitchenService] Error deleting kitchen:', error);

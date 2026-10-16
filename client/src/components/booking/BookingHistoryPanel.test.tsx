@@ -7,7 +7,7 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () =
 vi.mock('react-i18next', async () => {
   const { default: locale } = await import('../../../../shared/i18n/locales/en-CA/booking.json');
   return { useTranslation: () => ({ i18n: { resolvedLanguage: 'en-CA' }, t: (key: string, options?: any) =>
-    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef)\}/g, (_m, key) => String(options?.[key])) }) };
+    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef|minutes)\}/g, (_m, key) => String(options?.[key])) }) };
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 function mount(role: 'chef' | 'manager' = 'chef', chefName: string | null = null) {
@@ -34,6 +34,26 @@ it('shows a dated tour-style trail and refreshes after the booking changes', asy
   expect(fetcher).toHaveBeenCalledWith('/api/chef/bookings/10/history', { headers: { Authorization: 'Bearer fixture-token' }, cache: 'no-store' });
   view.rerender(tree('second'));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2)); client.clear();
+});
+it('shows extra-time events from each side', async () => {
+  const events = [
+    { key: 'e1', kind: 'ext_requested', recordedAt: '2026-10-01T12:00:00Z', extFlow: 'ask', minutes: 30 },
+    { key: 'e2', kind: 'ext_approved', recordedAt: '2026-10-01T12:05:00Z', extFlow: 'ask', minutes: 30 },
+    { key: 'e3', kind: 'ext_paid', recordedAt: '2026-10-01T12:06:00Z', extFlow: 'ask', minutes: 30, amountCents: 1500 },
+    { key: 'e4', kind: 'ext_declined', recordedAt: '2026-10-01T12:07:00Z', extFlow: 'offer', minutes: 60 },
+  ];
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events }) })));
+  mount('chef');
+  expect(await screen.findByText('You asked for 30 more minutes')).toBeInTheDocument();
+  expect(screen.getByText('The kitchen approved your request')).toBeInTheDocument();
+  expect(screen.getByText('You paid $15.00 for the extra time')).toBeInTheDocument();
+  expect(screen.getByText('You declined the offer')).toBeInTheDocument();
+  cleanup();
+  mount('manager', 'Sam');
+  expect(await screen.findByText('Sam asked for 30 more minutes')).toBeInTheDocument();
+  expect(screen.getByText('You approved the request')).toBeInTheDocument();
+  expect(screen.getByText('Sam paid $15.00 for the extra time')).toBeInTheDocument();
+  expect(screen.getByText('Sam declined the offer')).toBeInTheDocument();
 });
 it('shows only the latest events in the booking sidebar until Show all is pressed', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events: [

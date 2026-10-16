@@ -30,7 +30,7 @@ beforeEach(() => {
 describe('kitchen Checkout session', () => {
   it.each([
     ['daily', [{ startTime: '08:00', endTime: '09:00' }, { startTime: '09:00', endTime: '10:00' }], 10000],
-    ['hourly', [{ startTime: '08:00', endTime: '09:00' }, { startTime: '10:00', endTime: '11:00' }], 8000],
+    ['hourly', [{ startTime: '08:00', endTime: '09:00' }, { startTime: '09:00', endTime: '10:00' }], 8000],
   ] as const)('preserves %s price and slots in Stripe metadata', async (mode, slots, kitchenPrice) => {
     stripeSessions.create.mockResolvedValue({ id: 'cs_test_booking', url: 'https://checkout.stripe.test/session' });
     const total = kitchenPrice + 1300 + 700;
@@ -43,7 +43,7 @@ describe('kitchen Checkout session', () => {
       cancelUrl: 'https://example.test/cancel',
       bookingData: {
         kitchenId: 12, chefId: 34, bookingDate: '2026-10-01T12:00:00.000Z',
-        startTime: '08:00', endTime: mode === 'daily' ? '10:00' : '11:00',
+        startTime: '08:00', endTime: '10:00',
         selectedSlots: [...slots], totalPriceCents: kitchenPrice, taxCents: 1300,
         hourlyRateCents: mode === 'daily' ? 10000 : 4000, durationHours: 2,
         pricingMode: mode, holdId: 'hold-test', windowStartTime: '08:00',

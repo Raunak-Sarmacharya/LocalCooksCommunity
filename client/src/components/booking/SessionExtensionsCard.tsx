@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { NowAttentionRow } from "@/components/booking/BookingNowCard"
-import { createExtension, decideExtension, defaultFreeChoice, isExtensionState, isQuickPick, kitchenClock, lengthText, money, newRequestKey, readExtensions, withCardAction,
+import { MessageKitchenButton } from "./MessageKitchenButton"
+import { checkoutExtension, syncCheckoutReturn, createExtension, decideExtension, defaultFreeChoice, isExtensionState, isQuickPick, kitchenClock, lapsedAt, lengthText, money, newRequestKey, readExtensions, useServerNow, withCardAction,
   type ExtensionItem, type ExtensionState } from "@/lib/session-extensions"
 
 /** A manager's pick before sending: which time, and Free or Charge (Free is only preselected up to 30 minutes). */
@@ -57,24 +58,34 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
   const [requestKey, setRequestKey] = useState(newRequestKey)
 
   const load = useCallback(async () => {
-    try { const result = await readExtensions(bookingId); setState(isExtensionState(result) ? result : null) } catch { setState(null) }
+    try { const result = await readExtensions(bookingId); setState(isExtensionState(result) ? result : null) } catch { /* Keep the last known payment actions on a failed refresh. */ }
   }, [bookingId])
   useEffect(() => {
-    void load()
+    void syncCheckoutReturn(bookingId).then(async result => { if (result) await onChanged?.() }).catch(failure => setError(String(failure.message))).finally(load)
     const wake = () => { if (document.visibilityState !== "hidden") void load() }
     window.addEventListener("focus", wake)
     return () => window.removeEventListener("focus", wake)
   }, [load, refreshKey])
 
-  const now = state ? Date.parse(state.serverNow) : 0
+  // Server time, ticking: an open request/offer closes on screen exactly at its deadline (no flip-flop with the next refresh).
+  const now = useServerNow(state?.serverNow, (state?.history || []).filter(item => item.kind !== "extra_time" && ["requested", "offered"].includes(item.status)).map(item => item.expiresAt))
   const view = useMemo(() => {
     const history = (state?.history || []).filter(item => !only || item.kind === only)
+    // The newest request/offer that ended unanswered (its deadline passed), kept as the one history line for it.
+    const latest = history[0]
+    // The Now card is for what needs attention, so there it fades after an hour; the Extra time card keeps it as history.
+    const closed = latest && latest.kind !== "extra_time" && ["requested", "offered", "expired"].includes(latest.status) && Date.parse(latest.expiresAt) <= now
+      && (variant !== "now" || now - Date.parse(latest.expiresAt) < 3_600_000) ? latest : null
     return { requests: history.filter(item => item.kind === "request" && item.status === "requested" && item.authorized && Date.parse(item.expiresAt) > now),
       offers: history.filter(item => ["offer", "early_start"].includes(item.kind) && item.status === "offered" && Date.parse(item.expiresAt) > now),
       charges: history.filter(item => item.kind === "extra_time" && ["offered", "disputed"].includes(item.status)),
-      waiting: history.filter(item => item.kind === "request" && ["requested", "approved"].includes(item.status) && !item.confirmed),
+      waiting: history.filter(item => item.kind === "request" && ["requested", "approved"].includes(item.status) && !item.confirmed && !item.cardFailedAt && !item.checkoutPending && !lapsedAt(item, now)),
+      closed,
+      failed: history.filter(item => item.kind === "request" && (!!item.cardFailedAt || item.checkoutPending && !item.authorized) && !item.refundedAt && Date.parse(item.expiresAt) > now),
+      refunded: history.filter(item => !!item.refundedAt),
+      refunding: history.filter(item => !!item.refundPending),
       done: history.filter(item => item.confirmed) }
-  }, [state, now, only])
+  }, [state, now, only, variant])
   const hasOpen = view.requests.length > 0 || view.offers.length > 0 || view.waiting.length > 0
   const showOffer = !!state && !only && manager && state.enabled && state.inSession && state.options.length > 0 && !hasOpen
   const showEarly = !!state && !only && manager && state.enabled && !!state.beforeStart && (state.earlyOptions?.length ?? 0) > 0 && !hasOpen
@@ -105,11 +116,13 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
 
   const act = async (key: string, work: () => Promise<unknown>, success?: string) => {
     setBusy(key); setError(""); setNotice("")
-    try { await work(); if (success) setNotice(success); setRequestKey(newRequestKey()); await load(); await onChanged?.() }
+    try { const result = await work() as { cardFailed?: boolean }; if (result?.cardFailed) setError(t("sxbCardFailed")); else if (success) setNotice(success); setRequestKey(newRequestKey()); await load(); await onChanged?.() }
     catch (failure) { setError(failure instanceof Error ? failure.message : t("sxbFailed", { defaultValue: "That didn’t go through. Nothing new was charged." })); await load() }
     finally { setBusy(null) }
   }
   const decide = (item: ExtensionItem, action: string, extra: Record<string, unknown> = {}) =>
+    !manager && ["accept", "pay"].includes(action) && (item.cardFailedAt || !state.hasSavedCard)
+      ? checkoutExtension(bookingId, item) :
     withCardAction(bookingId, () => decideExtension(bookingId, item.id, { action, ...extra }))
   const closeTools = () => { setOffering(null); setPick(null); setChoosing(false); setCharging(false); if (variant === "now") onToolChange?.(null) }
 
@@ -142,6 +155,13 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
   if (variant === "record") return historyList || null
 
   const openItems = <>
+    {!manager && view.refunded.map(item => <p key={`refund-${item.id}`} role="status" className="text-sm">{t("sxbRefunded", { amount: cash(item.amountCents) })}</p>)}
+    {!manager && view.refunding.map(item => <p key={`refunding-${item.id}`} role="status" className="text-sm">{t("sxbRefunding", { amount: cash(item.amountCents) })}</p>)}
+    {!manager && view.failed.map(item => <div key={item.id} className="space-y-2 rounded-xl border p-3">
+      <p role={item.cardFailedAt ? "alert" : "status"} className="text-sm">{t(item.cardFailedAt ? "sxbCardFailed" : "sxbFinishCheckout")}</p>
+      <Button type="button" disabled={!!busy} onClick={() => void act(`checkout-${item.id}`, () => checkoutExtension(bookingId, item))}>{t(item.cardFailedAt ? "sxbAnotherCard" : "sxbPay", { amount: cash(item.amountCents) })}</Button>
+      <MessageKitchenButton bookingId={bookingId} />
+    </div>)}
     {manager && view.requests.map(item => (
       <NowAttentionRow key={item.id} as={nowMode ? undefined : "plain"} role="alert" className={nowMode ? undefined : "sticky top-0 z-20 space-y-2 rounded-xl border border-primary/40 bg-background p-3 shadow-sm"} data-testid="extension-request-banner">
         <p className="text-sm font-medium">{t("sxbRequestBanner", { defaultValue: "{chef} asked for {duration} (until {time}) · you’d get {payout}",
@@ -164,6 +184,18 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
     {!manager && view.waiting.map(item => (
       <p key={item.id} className="text-sm" role="status">{t("sxbWaiting", { defaultValue: "Waiting for {kitchen} · we’ll let you know", kitchen })}</p>
     ))}
+    {view.closed && (manager
+      ? <p className="text-sm text-muted-foreground" role="status" data-testid="extension-closed">{view.closed.kind === "request"
+        ? t("sxbRequestClosed", { defaultValue: "Request closed — not answered in time" })
+        : t("sxbOfferExpired", { defaultValue: "Offer expired" })}</p>
+      : <div className="space-y-2" data-testid="extension-closed">
+        <p className="text-sm" role="status">{view.closed.kind === "request"
+          ? t(view.closed.status === "expired" ? "sxbExpiredChef" : "sxbLapsed", { defaultValue: view.closed.status === "expired"
+            ? "{kitchen} didn’t answer in time. Your {amount} hold was released — you weren’t charged."
+            : "{kitchen} didn’t answer in time. Your {amount} hold is being released — you won’t be charged.", kitchen, amount: cash(view.closed.amountCents) })
+          : t("sxbOfferExpiredChef", { defaultValue: "{kitchen}’s offer expired.", kitchen })}</p>
+        {view.closed.kind === "request" && <MessageKitchenButton bookingId={bookingId} />}
+      </div>)}
     {manager && view.offers.map(item => (
       <p key={item.id} className="text-sm" role="status">{item.kind === "early_start"
         ? t("sxbEarlyOfferSent", { defaultValue: "You offered {chef} an earlier start at {time} · {amount}. Waiting for them to accept.", chef: chefName, time: clock(item.endAt), amount: cash(item.amountCents) })
@@ -177,10 +209,13 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           ? t("sxbEarlyOffer", { defaultValue: "{kitchen} can let you start {early} early, at {time} · {amount}", kitchen, early: minutesText(item.minutes), time: clock(item.endAt), amount: cash(item.amountCents) })
           : t("sxbOffer", { defaultValue: "{kitchen} offered you {duration} (until {time}) · {amount}",
           kitchen, duration: duration(item.minutes), time: clock(item.endAt), amount: cash(item.amountCents) })}</p>
-        <p className="text-xs text-muted-foreground">{t("sxbNoRefund", { defaultValue: "Charged to your saved card. Extra time can’t be refunded once it’s added." })}</p>
+        {item.cardFailedAt ? <p role="alert" className="text-sm">{t("sxbCardFailed")}</p> : <p className="text-xs text-muted-foreground">{t("sxbPaymentHint")}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" className={tap} {...answer(`accept-${item.id}`)} disabled={!!busy} onClick={() => void act(`accept-${item.id}`, () => decide(item, "accept", { expectedAmountCents: item.amountCents }))}>
-            {busy === `accept-${item.id}` && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />}{t("sxbAcceptPay", { defaultValue: "Accept & pay {amount}", amount: cash(item.amountCents) })}</Button>
+          <Button type="button" className={tap} {...answer(`accept-${item.id}`)} disabled={!!busy} onClick={() => void act(`accept-${item.id}`, () => decide(item, "accept", { expectedAmountCents: item.amountCents }),
+            // Kept on screen after the offer closes, so the chef sees what changed (#93).
+            item.kind === "early_start" ? t("sxbAcceptedEarly", { time: clock(item.endAt), amount: cash(item.amountCents) })
+              : t("sxbAcceptedMore", { time: clock(item.endAt), amount: cash(item.amountCents) }))}>
+            {busy === `accept-${item.id}` && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />}{t(item.cardFailedAt ? "sxbAnotherCard" : !state.hasSavedCard ? "sxbPay" : "sxbAcceptPay", { amount: cash(item.amountCents) })}</Button>
           <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => void act(`decline-${item.id}`, () => decide(item, "decline"))}>{t("sxbNoThanks", { defaultValue: "No thanks" })}</Button>
         </div>
       </NowAttentionRow>
@@ -199,10 +234,11 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           : manager ? <p className="text-xs text-muted-foreground">{item.escalated ? t("sxbEscalated", { defaultValue: "No answer after 48 hours, so Local Cooks is following up. Nothing has been charged." })
             : t("sxbChargeWaiting", { defaultValue: "Waiting for {chef}. Their card is only charged if they pay.", chef: chefName })}</p>
           : <>
+            {item.cardFailedAt && <p role="alert" className="text-sm">{t("sxbCardFailed")}</p>}
             <div className="flex flex-wrap gap-2">
               <Button type="button" className={tap} {...answer(`pay-${item.id}`)} disabled={!!busy} onClick={() => void act(`pay-${item.id}`, () => decide(item, "pay", { expectedAmountCents: item.amountCents }),
                 t("sxbPaid", { defaultValue: "Paid. Thank you!" }))}>
-                {busy === `pay-${item.id}` && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />}{t("sxbPay", { defaultValue: "Pay {amount}", amount: cash(item.amountCents) })}</Button>
+                {busy === `pay-${item.id}` && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />}{t(item.cardFailedAt ? "sxbAnotherCard" : "sxbPay", { amount: cash(item.amountCents) })}</Button>
               <Button type="button" variant="outline" className={tap} disabled={!!busy} onClick={() => { setDisputing(item.id); setDisputeNote("") }}>{t("sxbNotRight", { defaultValue: "This isn’t right" })}</Button>
             </div>
             {disputing === item.id && <div className="space-y-2">
@@ -228,7 +264,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           ? (state.earlyOptions || []).map(option => ({ minutes: option.minutes, at: option.startAt, amountCents: option.amountCents, startNow: !!option.startNow }))
           : state.options.map(option => ({ minutes: option.minutes, at: option.endAt, amountCents: option.amountCents, startNow: false }))
         const chips = all.filter(option => option.startNow || isQuickPick(option.minutes))
-        const choose = (option: typeof all[number]) => setPick({ kind: offering, minutes: option.minutes, at: option.at, amountCents: option.amountCents, free: defaultFreeChoice(option.minutes) || !state.hasSavedCard })
+        const choose = (option: typeof all[number]) => setPick({ kind: offering, minutes: option.minutes, at: option.at, amountCents: option.amountCents, free: defaultFreeChoice(option.minutes) })
         const label = (option: typeof all[number]) => offering === "early_start"
           ? option.startNow ? t("sxbStartNowOption", { defaultValue: "Start now (from {time})", time: clock(option.at) })
             : t("sxbEarlyOption", { defaultValue: "Start at {time} ({early} early)", time: clock(option.at), early: length(option.minutes) })
@@ -262,7 +298,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
         <legend className="text-sm font-medium">{t("sxbChargeChoice", { defaultValue: "Free, or charge {chef}?", chef: chefName })}</legend>
         <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={pick.free} onChange={() => setPick({ ...pick, free: true })} />
           {t("sxbFree", { defaultValue: "Free" })}</label>
-        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={!pick.free} disabled={!state.hasSavedCard} onChange={() => setPick({ ...pick, free: false })} />
+        <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={!pick.free} onChange={() => setPick({ ...pick, free: false })} />
           {t("sxbChargeFor", { defaultValue: "Charge for the extra time · {amount}", amount: cash(pick.amountCents) })}</label>
         <p className="text-xs text-muted-foreground">{pick.free
           ? pick.kind === "early_start" ? t("sxbFreeStartHint", { defaultValue: "{chef} can start at {time} right away — we’ll let them know.", chef: chefName, time: clock(pick.at) })
@@ -310,7 +346,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
 
   if (nowMode) {
     const sheetOpen = !!picker || !!chargeForm
-    const hasItems = view.requests.length + view.offers.length + view.charges.length + view.waiting.length > 0
+    const hasItems = view.requests.length + view.offers.length + view.charges.length + view.waiting.length + view.failed.length + view.refunded.length + view.refunding.length + (view.closed ? 1 : 0) > 0
     if (!hasItems && !sheetOpen && !notice && !error) return null
     return <div className="space-y-3" data-testid="session-extensions" data-variant="now">
       {openItems}
@@ -328,7 +364,7 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
     </div>
   }
 
-  const nothing = !view.requests.length && !view.offers.length && !view.charges.length && !view.waiting.length && !view.done.length && !showOffer && !showEarly && !showCharge
+  const nothing = !view.closed && !view.requests.length && !view.offers.length && !view.charges.length && !view.waiting.length && !view.failed.length && !view.refunded.length && !view.refunding.length && !view.done.length && !showOffer && !showEarly && !showCharge
   if (nothing && !error && !notice) return null
 
   return (

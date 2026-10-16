@@ -20,6 +20,14 @@ export interface SettingChangePreviewProps {
   onSave?: () => void | Promise<unknown>;
   disabled?: boolean;
   children?: ReactNode;
+  /** Hide the inline four lines (e.g. nothing changed yet). The confirm dialog still repeats them. */
+  showPreview?: boolean;
+  /** Settings pages: an unchanged setting shows a quiet outline button, so only a real pending change is filled. */
+  quietWhenDisabled?: boolean;
+  /** Where the action sits; settings sections right-align their one save. */
+  align?: 'start' | 'end';
+  /** Extra actions rendered before the save (e.g. Discard), only while the save is live. */
+  secondaryAction?: ReactNode;
 }
 
 export function SettingChangePreview(props: SettingChangePreviewProps) {
@@ -41,12 +49,16 @@ export function SettingChangePreview(props: SettingChangePreviewProps) {
     catch (cause) { setError(cause instanceof Error ? cause.message : t('scpSaveFailed')); }
     finally { setBusy(false); }
   };
+  const inactive = props.disabled || busy;
+  const button = props.onSave && <Button className="min-h-11" variant={props.quietWhenDisabled && inactive ? 'outline' : 'default'} disabled={inactive} onClick={() => {
+    if (props.confirm) { setAcknowledged(false); setOpen(true); } else void save();
+  }}>{props.actionLabel}</Button>;
   return <div className="space-y-3">
-    {lines}
+    {props.showPreview !== false && lines}
     {!open && error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    {props.onSave && <Button className="min-h-11" disabled={props.disabled || busy} onClick={() => {
-      if (props.confirm) { setAcknowledged(false); setOpen(true); } else void save();
-    }}>{props.actionLabel}</Button>}
+    {button && (props.align === 'end' || props.secondaryAction
+      ? <div className={`flex flex-wrap items-center gap-2 ${props.align === 'end' ? 'justify-end' : ''}`}>{props.secondaryAction}{button}</div>
+      : button)}
     {props.confirm && props.onSave && <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>{props.actionLabel}</DialogTitle></DialogHeader>

@@ -8,6 +8,8 @@ import { ClaimEvidence, ClaimTimeline } from '@/components/booking/DamageClaimCa
 import { claimAction, claimMoney, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
 import type { ClaimSupportInput } from '@shared/damage-claims';
 
+/** Required-field marker drawn by CSS so the label text stays exactly the field name. */
+const req = "after:ml-0.5 after:text-destructive after:content-['*']";
 export function DamageClaimPanel({ bookingId }: { bookingId: number }) {
   const { t } = useTranslation('booking');
   const query = useQuery({ queryKey: ['support-damage-claims', bookingId], queryFn: () => claimRequest<{ claims: DamageClaimCardData[] }>(`/admin/booking-support/${bookingId}/claims`), retry: false });
@@ -44,6 +46,11 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
   if (claim.resolutionType !== 'withdrawn') actions.push('claim_withdraw');
   const moneyAction = ['claim_send', 'claim_reduce', 'claim_compensate'].includes(type);
   const amountCents = /^\d+(?:\.\d{1,2})?$/.test(amount) ? Math.round(Number(amount) * 100) : 0;
+  const amountInvalid = moneyAction && (amountCents <= 0 || amountCents > claim.claimedAmountCents || amountCents > 25000);
+  const missing = [!reasonCode.trim() && t('dcV2NeedReason'), note.trim().length < 10 && t('dcV2NeedNote'),
+    publicMessage.trim().length < 10 && t('dcV2NeedMessage'), amountInvalid && t('dcV2NeedAmount')].filter((item): item is string => !!item);
+  const saveBlocked = missing.length > 0;
+  const saveHint = saveBlocked ? t('dcV2SaveNeeds', { items: new Intl.ListFormat(i18n.language, { style: 'long', type: 'conjunction' }).format(missing) }) : '';
   const submit = async () => {
     if (!type) return;
     setBusy(true); setError('');
@@ -78,15 +85,18 @@ function ClaimReview({ claim, bookingId, onChanged }: { claim: DamageClaimCardDa
       {type === 'claim_compensate' && !firstReview && <label className="block space-y-1"><span>{t('dcV2DebtChoice')}</span><select className="w-full rounded border p-2 bg-background" value={String(chefStillOwes)} disabled={busy || retrying} onChange={event => setChefStillOwes(event.target.value === 'true')}>
         <option value="false">{t('dcV2WriteOff')}</option><option value="true">{t('dcV2ChefOwes')}</option></select></label>}
       {type === 'claim_compensate' && firstReview && <p className="text-sm">{t('dcV2FirstCompensation')}</p>}
-      <label className="block space-y-1"><span>{t('dcV2Reason')}</span><Input value={reasonCode} maxLength={100} disabled={busy || retrying} onChange={event => setReason(event.target.value)} /></label>
-      <label className="block space-y-1"><span>{t('dcV2InternalNote')}</span><Textarea value={note} maxLength={2000} disabled={busy || retrying} onChange={event => setNote(event.target.value)} /></label>
-      <label className="block space-y-1"><span>{t(firstReview ? 'dcV2MessageKitchen' : 'dcV2MessageBoth')}</span><Textarea value={publicMessage} maxLength={2000} disabled={busy || retrying} onChange={event => setMessage(event.target.value)} /></label>
+      <label className="block space-y-1"><span className={req}>{t('dcV2Reason')}</span><Input required aria-required value={reasonCode} maxLength={100} disabled={busy || retrying} onChange={event => setReason(event.target.value)} /></label>
+      <div className="space-y-1"><label className="block space-y-1"><span className={req}>{t('dcV2InternalNote')}</span><Textarea required aria-required value={note} maxLength={2000} disabled={busy || retrying} onChange={event => setNote(event.target.value)} /></label>
+        <span className="block text-xs text-muted-foreground">{t('dcV2MinChars', { min: 10, count: note.trim().length })}</span></div>
+      <div className="space-y-1"><label className="block space-y-1"><span className={req}>{t(firstReview ? 'dcV2MessageKitchen' : 'dcV2MessageBoth')}</span><Textarea required aria-required value={publicMessage} maxLength={2000} disabled={busy || retrying} onChange={event => setMessage(event.target.value)} /></label>
+        <span className="block text-xs text-muted-foreground">{t('dcV2MinChars', { min: 10, count: publicMessage.trim().length })}</span></div>
       <label className="block space-y-1"><span>{t('dcV2Source')}</span><select className="rounded border p-2 bg-background" value={source} disabled={busy || retrying} onChange={event => setSource(event.target.value as typeof source)}>
         {(['proactive', 'message', 'call', 'email', 'in_person'] as const).map(value => <option value={value} key={value}>{t(`dcV2Source_${value}`)}</option>)}</select></label>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {retrying && <p className="text-sm">{t('dcV2RetrySaved')}</p>}
-      <div className="flex flex-wrap gap-2"><Button disabled={busy || !reasonCode.trim() || note.trim().length < 10 || publicMessage.trim().length < 10 || moneyAction && (amountCents <= 0 || amountCents > claim.claimedAmountCents || amountCents > 25000)} onClick={() => void submit()}>{t(busy ? 'dcV2Sending' : retrying ? 'dcV2Retry' : 'dcV2SaveDecision')}</Button>
+      <div className="flex flex-wrap gap-2"><Button disabled={busy || saveBlocked} title={saveHint || undefined} aria-describedby={saveBlocked ? `claim-${claim.id}-save-hint` : undefined} onClick={() => void submit()}>{t(busy ? 'dcV2Sending' : retrying ? 'dcV2Retry' : 'dcV2SaveDecision')}</Button>
         {!retrying && <Button variant="ghost" disabled={busy} onClick={() => setType('')}>{t('dcV2Back')}</Button>}</div>
+      {saveBlocked && <p id={`claim-${claim.id}-save-hint`} className="text-xs text-muted-foreground">{saveHint}</p>}
     </div>}
   </article>;
 }

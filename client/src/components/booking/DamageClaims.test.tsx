@@ -113,6 +113,7 @@ describe('admin review-first panel', () => {
     expect(screen.queryByRole('button', { name: 'Uphold', exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Send to chef' }));
     expect(screen.getByRole('button', { name: 'Save decision' })).toBeDisabled();
+    expect(screen.getByText(/To save, add a reason, an internal note \(at least 10 characters\),? and a message/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Approved amount (CAD, up to $250)'), { target: { value: '15' } });
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'receipt' } });
     fireEvent.change(screen.getByLabelText('Internal note (staff only)'), { target: { value: 'Internal evidence review completed.' } });

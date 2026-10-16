@@ -7,11 +7,13 @@ import Stripe from 'stripe';
 import { z } from 'zod';
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from '../firebase-auth-middleware';
 import { createSessionExtension, decideSessionExtension, pendingSessionExtensionRequests, readSessionExtensions,
-  SessionExtensionError, syncSessionExtension } from '../services/session-extensions';
+  SessionExtensionError, syncSessionExtension, checkoutSessionExtension } from '../services/session-extensions';
 import { readSessionExtensionSettings, saveSessionExtensionSettings, sessionExtensionsEnabled, SessionExtensionSettingsError,
   setSessionExtensionsEnabled } from '../services/session-extension-settings';
 import { BookingMoneyFrozen } from '../services/booking-money-guard';
 import { logger } from '../logger';
+import { getAppBaseUrl } from '../config';
+import { ensureServerI18n, tLocale } from '../i18n';
 
 const router = Router();
 const auth = requireFirebaseAuthWithUser as RequestHandler;
@@ -42,6 +44,10 @@ function handler(work: (req: Request, id: number) => Promise<unknown>, idParam =
       const known = error instanceof SessionExtensionError || error instanceof SessionExtensionSettingsError;
       const status = known ? (error as SessionExtensionError).status : error instanceof z.ZodError ? 400 : error instanceof BookingMoneyFrozen ? 409 : 500;
       if (status >= 500) logger.error('[Session extension] Request failed', { path: req.path, error });
+      if (error instanceof SessionExtensionError && error.translationKey) {
+        await ensureServerI18n();
+        return res.status(status).json({ error: tLocale(req.neonUser?.preferredLocale, error.translationKey, { ns: 'booking' }) });
+      }
       res.status(status).json({ error: error instanceof z.ZodError ? 'Review the extra-time details and try again.'
         : known || error instanceof BookingMoneyFrozen ? (error as Error).message
         : 'Extra time could not be loaded or saved. Nothing new was charged. Retry or contact Local Cooks.' });
@@ -62,6 +68,17 @@ router.post('/bookings/:id/extensions/:extensionId/sync', auth, handler((req, id
   const extensionId = positive(req.params.extensionId);
   if (!extensionId) throw new SessionExtensionError('Choose a valid request', 400);
   return syncSessionExtension(stripeClient(), id, extensionId, actor(req));
+}));
+router.post('/bookings/:id/extensions/:extensionId/checkout', auth, handler((req, id) => {
+  const extensionId = positive(req.params.extensionId);
+  if (!extensionId) throw new SessionExtensionError('Choose a valid request', 400);
+  const input = z.object({ expectedAmountCents: cents, returnPath: z.string().max(2000) }).strict().parse(req.body);
+  const origin = getAppBaseUrl('chef');
+  const url = new URL(input.returnPath, origin);
+  if (!input.returnPath.startsWith('/') || url.origin !== origin || !/^\/booking\/\d+(?:\/visit)?\/?$/.test(url.pathname))
+    throw new SessionExtensionError('Choose a booking or visit return page', 400, 'sxbPaymentReview');
+  if (Number(url.pathname.split('/')[2]) !== id) throw new SessionExtensionError('Choose this booking return page', 400, 'sxbPaymentReview');
+  return checkoutSessionExtension(stripeClient(), id, extensionId, actor(req), input.expectedAmountCents, url.toString());
 }));
 
 router.get('/manager/session-extensions/pending', auth, requireManager as RequestHandler, async (req, res) => {

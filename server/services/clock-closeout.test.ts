@@ -1,14 +1,15 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 const state = vi.hoisted(() => ({ booking: {} as any, visits: [] as any[], writes: [] as any[], due: [] as any[], query: null as any, limit: 0,
-  cutover: new Date('2026-10-01T00:00:00Z'), anchored: 0 }));
+  cutover: new Date('2026-10-01T00:00:00Z'), anchored: 0, reports: [] as any[] }));
 vi.mock('../db', () => {
   const db: any = {
     execute: vi.fn(async () => []),
     select: (fields: any) => {
       let table: string;
-      const rows = () => table === 'kitchen_booking_visits' ? state.visits : fields?.booking
-        ? [{ booking: state.booking, timezone: 'America/St_Johns', managerId: 7, locationId: 4 }] : state.due.slice(0, state.limit);
+      const rows = () => table === 'kitchen_booking_visits' ? state.visits : table === 'kitchen_booking_attendance_events' ? state.reports
+        : table === 'users' || table === 'applications' || table === 'chef_kitchen_applications' ? [] : fields?.booking
+        ? [{ booking: state.booking, timezone: 'America/St_Johns', managerId: 7, locationId: 4, kitchenName: 'Harbour Kitchen' }] : state.due.slice(0, state.limit);
       const q: any = { from: (value: any) => { table = value[Symbol.for('drizzle:Name')]; return q; },
         innerJoin: () => q, where: (query: any) => { state.query = query; return q; },
         orderBy: () => q, limit: (limit: number) => { state.limit = limit; return q; },
@@ -29,6 +30,8 @@ vi.mock('./lifecycle-settings', () => ({ getLifecycleSettings: async () => ({ se
 vi.mock('./kitchen-checkout-service', () => ({ getCheckinSettings: async () => ({ checkinWindowMinutesBefore: 15 }) }));
 vi.mock('./visit-duties', () => ({ kitchenDuties: async () => ({ version: 2, arrival: { enabled: true, items: [], photos: [] }, departure: { enabled: true, items: [], photos: [] }, checkinWindowMinutesBefore: 15, checkoutReviewWindowMinutes: 60 }) }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: vi.fn(async () => {}) }));
+const timer = vi.hoisted(() => ({ schedule: vi.fn() }));
+vi.mock('./deadline-timer', () => ({ deadlineHorizonMs: 6 * 86_400_000, scheduleDeadlineTimer: timer.schedule }));
 import { db } from '../db';
 import { persistBookingCloseout, projectBookingCloseout, recordKitchenInspection, sweepClockCloseout } from './clock-closeout';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
@@ -38,18 +41,62 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
   beforeEach(() => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-13T14:00:00Z')); vi.clearAllMocks();
     state.booking = { id: 10, bookingDate: new Date('2026-10-13'), startTime: '10:00', endTime: '11:00', status: 'confirmed', checkinStatus: 'not_checked_in', visitDuties: null };
-    state.visits = []; state.writes = []; state.due = [{ id: 10 }]; state.cutover = new Date('2026-10-01T00:00:00Z'); state.anchored = 0;
+    state.visits = []; state.writes = []; state.due = [{ id: 10 }]; state.cutover = new Date('2026-10-01T00:00:00Z'); state.anchored = 0; state.reports = [];
   });
   afterEach(() => vi.useRealTimers());
-  it('completes never-tapped service while preserving unknown attendance and approval fields', async () => {
+  it('completes never-tapped service while preserving unknown attendance and approval fields; no rating request (WP-N)', async () => {
     const result = await db.transaction(tx => persistBookingCloseout(10, tx));
     expect(result.projection?.status).toBe('completed');
     expect(result.projection?.visits[0].attendance).toBe('unknown');
-    expect(state.booking.feedbackRequestedAt).toEqual(new Date('2026-10-13T14:00:00Z'));
+    expect(state.booking.feedbackRequestedAt).toBeUndefined();
     expect(state.booking.checkinStatus).toBe('not_checked_in');
     expect(state.booking).not.toHaveProperty('checkoutApprovedAt');
     expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 10, 'service_ended', expect.anything(), expect.anything(), undefined,
-      expect.objectContaining({ serviceEndedAt: '2026-10-13T13:45:00.000Z' }));
+      expect.objectContaining({ serviceEndedAt: '2026-10-13T13:45:00.000Z', noArrival: true, notificationRecipientPolicy: 'participants' }));
+  });
+  it('arms and re-arms the next closeout deadline even when the saved clock is unchanged (WP-T)', async () => {
+    vi.setSystemTime(new Date('2026-10-13T12:00:00Z')); // before the booked start: service end is the next deadline
+    const first = await db.transaction(tx => persistBookingCloseout(10, tx));
+    const dueAt = first.projection!.nextDueAt;
+    expect(dueAt).toEqual(expect.any(String));
+    expect(timer.schedule).toHaveBeenCalledTimes(1);
+    expect(timer.schedule).toHaveBeenCalledWith('closeout', 10, dueAt, Date.now());
+    // The same deadline is re-armed; Inngest dedupes its event identity.
+    await db.transaction(tx => persistBookingCloseout(10, tx));
+    expect(timer.schedule).toHaveBeenCalledTimes(2);
+    // Each timer fires just after its deadline: the saved clock advances and arms the next one, until the booking is closed.
+    let due: string | null = dueAt, last = first;
+    for (let step = 0; step < 10 && due; step++) {
+      vi.setSystemTime(new Date(Date.parse(due) + 5_000));
+      last = await db.transaction(tx => persistBookingCloseout(10, tx));
+      if (last.projection!.nextDueAt) expect(timer.schedule).toHaveBeenLastCalledWith('closeout', 10, last.projection!.nextDueAt, Date.now());
+      due = last.projection!.nextDueAt;
+    }
+    expect(due).toBeNull();
+    expect(last.projection?.status).toBe('completed');
+    const armed = timer.schedule.mock.calls.map(call => Date.parse(call[2]));
+    expect(armed.length).toBeGreaterThan(2);
+    expect(armed).toEqual([...armed].sort((a, b) => a - b)); // deadlines advance in order; retries may repeat the same deadline
+    expect(armed[0]).toBe(armed[1]);
+    expect(new Set(armed.slice(1)).size).toBe(armed.length - 1);
+  });
+  it('words a booked time that ended with no arrival per role: the kitchen is asked, the chef is told plainly (WP-N)', async () => {
+    await db.transaction(tx => persistBookingCloseout(10, tx));
+    const call = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(args => args[2] === 'service_ended')!;
+    const roleText = (call[6] as any).roleText;
+    expect(roleText.manager).toEqual({ title: 'No check-in from the chef', message: 'Tue, Oct 13, 10:00 a.m. Did they come? Tell us by Oct 14, 11:00 a.m.' });
+    expect(roleText.chef).toEqual({ title: 'No check-in recorded',
+      message: 'We didn\u2019t see a check-in for your booking at Harbour Kitchen (Oct 13, 10:00 a.m.). If you were there, let us know.' });
+  });
+  it('a kitchen "They came" statement counts as attended: the rating request opens and the visit is not a no-arrival (WP-N)', async () => {
+    state.reports = [{ bookingId: 10, visitId: null, action: 'report_attended' }];
+    const result = await db.transaction(tx => persistBookingCloseout(10, tx));
+    expect(result.projection?.visits[0].attendance).toBe('unknown');
+    expect(state.booking.feedbackRequestedAt).toEqual(new Date('2026-10-13T14:00:00Z'));
+    const call = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(args => args[2] === 'service_ended')!;
+    expect(call[6]).not.toHaveProperty('noArrival');
+    const projected = await projectBookingCloseout(state.booking, 'America/St_Johns', [], undefined, db);
+    expect(projected.closeout.visits[0].attendance).toBe('recorded');
   });
   it('a chef still checked in at the end is asked to check out now (never told the visit is complete), and the kitchen is told', async () => {
     Object.assign(state.booking, { checkinStatus: 'checked_in', checkedInAt: new Date('2026-10-13T13:05:00Z') });
@@ -67,7 +114,8 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
     expect((await sweepClockCloseout()).changed).toBe(0);
     expect(state.booking).toEqual(before); expect(state.writes).toHaveLength(writes);
     expect(Object.values(state.booking.visitDuties.clockCloseout.inspections)).toEqual([{ outcome: 'auto_closed_uninspected', closedAt: '2026-10-14T13:30:00.000Z' }]);
-    expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(3);
+    // No arrival recorded: no chef "Visit complete" (WP-N), only the start notice and the manager's window notice.
+    expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(2);
   });
   it('requests feedback for attended completion and preserves its original timestamp on later sweeps', async () => {
     state.booking.checkinStatus = 'checked_in'; state.booking.checkedInAt = new Date('2026-10-13T12:30:00Z');
@@ -101,12 +149,20 @@ describe('closeout persistence and reads (mocked database/providers)', () => {
   });
   it('notifies for a booking that finishes after the cutover: the chef and manager once, the manager alone for the inspection', async () => {
     state.cutover = new Date('2026-10-13T00:00:00Z');
+    Object.assign(state.booking, { checkinStatus: 'checkout_requested', checkedInAt: new Date('2026-10-13T12:35:00Z'), checkoutRequestedAt: new Date('2026-10-13T13:20:00Z') });
     vi.setSystemTime(new Date('2026-10-20T14:00:00Z'));
     expect((await sweepClockCloseout()).changed).toBe(1);
     expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.map(call => [call[2], (call[6] as any).recipientPolicy])).toEqual([
       ['service_ended', 'participants'], ['visit_closed', 'chef'], ['inspection_auto_closed', 'manager']]);
     expect((await sweepClockCloseout()).changed).toBe(0);
     expect(queueBookingLifecycleEvent).toHaveBeenCalledTimes(3);
+  });
+  it('closes an unanswered no-check-in visit without telling the chef it is complete (WP-N)', async () => {
+    state.cutover = new Date('2026-10-13T00:00:00Z');
+    vi.setSystemTime(new Date('2026-10-20T14:00:00Z'));
+    expect((await sweepClockCloseout()).changed).toBe(1);
+    expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.map(call => [call[2], (call[6] as any).recipientPolicy])).toEqual([
+      ['service_ended', 'participants'], ['inspection_auto_closed', 'manager']]);
   });
   it('notifies when service ended just after the cutover', async () => {
     // Service ended 13:45Z, after the cutover at 13:00Z.

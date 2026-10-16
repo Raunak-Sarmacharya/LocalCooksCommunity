@@ -53,7 +53,9 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
   const saved = savedCloseout(booking.visitDuties);
   if (!saved) return null;
   const evidence = await reader.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
-  const closeout = reduceClockCloseout(booking, evidence, saved, new Date());
+  // A "They came" statement from the kitchen counts as attended (WP-N); money never reads this.
+  const { withReportedAttendance } = await import('./clock-closeout');
+  const closeout = await withReportedAttendance(bookingId, reduceClockCloseout(booking, evidence, saved, new Date()), reader);
   // Notices already queued for a booking that finished before the rollout cutover are dropped too.
   const cutover = await getSavedCloseoutNotificationsFrom(reader);
   if (cutover && new Date(saved.serviceEndedAt ?? closeout.serviceEndedAt) < cutover) return null;
@@ -91,6 +93,22 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
     }
   }
 
+  // WP-N: the booked time ended and nobody recorded an arrival. Ask the kitchen; tell the chef plainly (no "complete", no rating).
+  const noArrival = kind === 'service_ended' && closeout.visits.every(visit => visit.attendance === 'unknown')
+    && !(evidence.length ? evidence : [booking]).some(row => row.checkinStatus === 'checked_in');
+  if (noArrival) {
+    const { noArrivalRoleText } = await import('./clock-closeout');
+    const copy = await noArrivalRoleText({ booking, kitchenName: kitchen.name, timezone }, closeout, chefName);
+    const role = chefIsRecipient ? copy.chef : copy.manager;
+    return renderTransactionalEmail({ to, recipientName, subject: `${role.title} · ${reference}`, heading: role.title, message: role.message,
+      facts: [], sections: [{ title: 'The visit', facts: [...place, ...(!chefIsRecipient && chefName ? [{ label: 'Chef', value: chefName }] : [])] }],
+      actionLabel: chefIsRecipient ? 'I was there' : 'Answer now', actionUrl: chefIsRecipient ? `${bookingUrl}#booking-support` : bookingUrl,
+      ...(chefIsRecipient ? { secondaryLink: { label: 'View booking', url: bookingUrl } } : {}),
+      // Before the kitchen answers, nothing is said about money (owner, Oct 15).
+      note: chefIsRecipient ? undefined
+        : 'If you don\u2019t answer by then, the visit closes with no check-in recorded. Nothing changes for your payout.' });
+  }
+
   if (kind === 'inspection_auto_closed') {
     const visitLabel = closeout.visits.length > 1 ? ` (visit on ${formatInTimezone(new Date(settled!.scheduledStartAt), 'MMM d', timezone)})` : '';
     return renderTransactionalEmail({ to, recipientName,
@@ -122,7 +140,7 @@ export async function currentCloseoutEmail(bookingId: number, kind: CloseoutNoti
       message: [`Thanks for cooking at ${kitchen.name}. Your booked time has ended. Here is a short summary of your visit.`, ...claimSummary].join(' '),
       facts: [], sections: [{ title: 'Your visit', facts: place }, { title: 'Summary', facts: recorded }],
       actionLabel: feedbackAction?.label || 'View booking', actionUrl: feedbackAction?.url || bookingUrl,
-      // Receipt at capture, final invoice at closeout: the booking page offers it once the booking is completed.
+      // Receipts are issued per payment; the final statement only once the booking is settled (booking-documents.ts).
       ...(closeout.status === 'completed' && ['paid', 'partially_refunded', 'refunded'].includes(booking.paymentStatus || '')
         ? { actions: [{ label: tEmail(recipient.locale, 'bookingDownloadFinalInvoice'), url: `${bookingUrl}#booking-payment-title` }] } : {}),
       secondaryLink: { label: 'Need help or want to report a problem with this visit?', url: `${bookingUrl}#booking-support` },

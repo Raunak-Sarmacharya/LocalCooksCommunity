@@ -355,8 +355,10 @@ export const locations = pgTable("locations", {
   name: text("name").notNull(),
   slug: text("slug").unique(),
   address: text("address").notNull(),
-  managerId: integer("manager_id").references(() => users.id, { onDelete: "cascade" }),
+  managerId: integer("manager_id").references(() => users.id, { onDelete: "restrict" }),
   isActive: boolean("is_active").default(true).notNull(),
+  // Set instead of deleting a location with booking/claim history; hidden from lists, history still resolves.
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   notificationEmail: text("notification_email"), // Email where notifications will be sent
   notificationPhone: text("notification_phone"), // Phone number where SMS notifications will be sent
   contactEmail: text("contact_email"), // Primary business contact email
@@ -365,6 +367,8 @@ export const locations = pgTable("locations", {
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
+  maxAdvanceBookingDays: integer("max_advance_booking_days").default(30).notNull(),
+  turnoverBufferEnabled: boolean("turnover_buffer_enabled").default(false).notNull(),
   minimumBookingWindowHours: integer("minimum_booking_window_hours").default(1).notNull(),
   logoUrl: text("logo_url"), // Logo URL for the location (for manager header)
   brandImageUrl: text("brand_image_url"), // Brand image URL for the location (displayed on public kitchen listings)
@@ -466,7 +470,9 @@ export const locationRequirements = pgTable("location_requirements", {
 // Define kitchens table
 export const kitchens = pgTable("kitchens", {
   id: serial("id").primaryKey(),
-  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "restrict" }).notNull(),
+  // Set instead of deleting a kitchen with booking/claim history; unlisted, hidden from manager lists.
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   name: text("name").notNull(),
   slug: text("slug"),
   description: text("description"),
@@ -487,6 +493,8 @@ export const kitchens = pgTable("kitchens", {
    */
   listingStatus: listingStatusEnum("listing_status").default("draft").notNull(),
   cancellationPolicyHours: integer("cancellation_policy_hours"),
+  maxAdvanceBookingDays: integer("max_advance_booking_days"),
+  turnoverBufferEnabled: boolean("turnover_buffer_enabled"),
   minimumBookingWindowHours: integer("minimum_booking_window_hours"),
   defaultDailyBookingLimit: integer("default_daily_booking_limit"),
   checkinCheckoutEnabled: boolean("checkin_checkout_enabled").default(false).notNull(),
@@ -539,6 +547,30 @@ export const kitchenCheckoutHolds = pgTable("kitchen_checkout_holds", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Session-bound checkout evidence survives expired inventory holds and missing bookings.
+export const kitchenCheckoutIncidents = pgTable("kitchen_checkout_incidents", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull().unique(),
+  chefId: integer("chef_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  kitchenId: integer("kitchen_id").notNull().references(() => kitchens.id, { onDelete: "restrict" }),
+  paymentIntentId: text("payment_intent_id"),
+  bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "restrict" }),
+  operatingDate: text("operating_date").notNull(),
+  outcome: text("outcome").notNull().default("awaiting_checkout"),
+  inventoryConflict: boolean("inventory_conflict").notNull().default(false),
+  moneyStatus: text("money_status").notNull().default("unverified"),
+  amountCents: integer("amount_cents"),
+  currency: text("currency").notNull().default("cad"),
+  refundId: text("refund_id"),
+  moneyAttemptedAt: timestamp("money_attempted_at", { withTimezone: true }),
+  error: text("error"),
+  notificationState: text("notification_state"),
+  recoveryHistory: jsonb("recovery_history").default([]).notNull(),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   feedbackRequestedAt: timestamp('feedback_requested_at', { withTimezone: true }),
@@ -547,8 +579,8 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. KB-A7K9MX
-  chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
-  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "restrict" }), // Nullable for external/third-party bookings
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "restrict" }).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM format - earliest slot start
   endTime: text("end_time").notNull(), // HH:MM format - latest slot end
@@ -558,7 +590,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   status: bookingStatusEnum("status").default("pending").notNull(),
   specialNotes: text("special_notes"),
   bookingType: text("booking_type").default("chef").notNull(), // 'chef', 'external', 'manager_blocked'
-  createdBy: integer("created_by").references(() => users.id), // Manager who created the booking (for external/manual bookings)
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "restrict" }), // Manager who created the booking (for external/manual bookings)
   externalContactName: text("external_contact_name"), // For third-party bookings
   externalContactEmail: text("external_contact_email"), // For third-party bookings
   externalContactPhone: text("external_contact_phone"), // For third-party bookings
@@ -674,7 +706,7 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
 // Separate saved-card charges; decisions commit before provider I/O and the parent owns payout timing.
 export const kitchenBookingExtensions = pgTable('kitchen_booking_extensions', {
   id: serial('id').primaryKey(),
-  bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: 'cascade' }).notNull(),
+  bookingId: integer('booking_id').references(() => kitchenBookings.id, { onDelete: 'restrict' }).notNull(),
   visitId: integer('visit_id').references(() => kitchenBookingVisits.id),
   blockIndex: integer('block_index').notNull(),
   requestKey: text('request_key').notNull(),
@@ -685,6 +717,10 @@ export const kitchenBookingExtensions = pgTable('kitchen_booking_extensions', {
   quote: jsonb('quote').$type<import('./session-extension').ExtensionQuote>().notNull(),
   status: text('status').$type<import('./session-extension').ExtensionStatus>().notNull(),
   paymentIntentId: text('payment_intent_id').unique(),
+  checkoutSessionId: text('checkout_session_id').unique(),
+  cardFailedAt: timestamp('card_failed_at', { withTimezone: true }),
+  refundedAt: timestamp('refunded_at', { withTimezone: true }),
+  refundId: text('refund_id'),
   requestedBy: integer('requested_by').references(() => users.id).notNull(),
   decidedBy: integer('decided_by').references(() => users.id),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -1425,6 +1461,8 @@ export const equipmentListings = pgTable("equipment_listings", {
   // Status
   status: listingStatusEnum("status").default("draft").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  // Set instead of deleting a listing that has booking history; archived listings are hidden but still resolve for receipts.
+  archivedAt: timestamp("archived_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1442,6 +1480,7 @@ export const insertEquipmentListingSchema = createInsertSchema(equipmentListings
   createdAt: true,
   updatedAt: true,
   status: true,
+  archivedAt: true,
   currency: true, // Always CAD, not user-selectable
 });
 
@@ -1495,9 +1534,9 @@ export const storageBookings = pgTable("storage_bookings", {
   assistanceHistory: jsonb('assistance_history').default([]).notNull(),
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. SB-X3P2NR
-  storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
+  storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "restrict" }).notNull(),
   overstayTerms: jsonb("overstay_terms"), // Frozen terms; null legacy rows require review
-  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }), // NULLABLE - storage can be booked independently
+  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "restrict" }), // NULLABLE - storage can be booked independently
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef making the booking
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
@@ -1665,8 +1704,8 @@ export type KitchenCheckoutReview = z.infer<typeof kitchenCheckoutReviewSchema>;
 
 export const equipmentBookings = pgTable("equipment_bookings", {
   id: serial("id").primaryKey(),
-  equipmentListingId: integer("equipment_listing_id").references(() => equipmentListings.id, { onDelete: "cascade" }).notNull(),
-  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(), // REQUIRED - no standalone bookings
+  equipmentListingId: integer("equipment_listing_id").references(() => equipmentListings.id, { onDelete: "restrict" }).notNull(),
+  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "restrict" }).notNull(), // REQUIRED - no standalone bookings
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Nullable for external bookings
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
@@ -2220,9 +2259,9 @@ export const damageClaims = pgTable("damage_claims", {
   storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "set null" }),
   
   // Parties involved
-  chefId: integer("chef_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  managerId: integer("manager_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  locationId: integer("location_id").notNull().references(() => locations.id, { onDelete: "cascade" }),
+  chefId: integer("chef_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  managerId: integer("manager_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  locationId: integer("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
   
   // Claim details
   status: damageClaimStatusEnum("status").default("draft").notNull(),

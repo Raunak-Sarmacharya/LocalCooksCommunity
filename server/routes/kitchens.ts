@@ -1,3 +1,5 @@
+import { kitchenBookingPolicies } from '../services/booking-policy-settings';
+import { bookingWindowLastDate } from '@shared/kitchen-booking-policies';
 import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import { eq, inArray, desc, and } from "drizzle-orm";
@@ -142,7 +144,8 @@ router.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req: Request,
         // Default to 2 if not set
         const maxSlotsPerChef = kitchen.defaultDailyBookingLimit ?? location.defaultDailyBookingLimit ?? 2;
 
-        res.json({ maxSlotsPerChef });
+        const policies = await kitchenBookingPolicies(kitchenId);
+        res.json({ maxSlotsPerChef, ...policies, bookableThrough: bookingWindowLastDate(policies.maxAdvanceBookingDays, policies.timezone) });
     } catch (error: any) {
         if (error.statusCode === 404) {
             return res.status(404).json({ error: error.message });

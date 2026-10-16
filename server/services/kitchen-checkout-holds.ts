@@ -1,8 +1,10 @@
+import { kitchenBookingPolicies } from './booking-policy-settings';
+import { bookingIntervalsConflict, operatingSlotInstants } from '@shared/booking-occupancy';
 import { randomUUID } from 'node:crypto';
 import { and, eq, gt, lte } from 'drizzle-orm';
 import { db, pool } from '../db';
 import { kitchenBookings, kitchenCheckoutHolds } from '@shared/schema';
-import { absoluteOperatingSlotInterval, occupiedIntervals, type OperatingSlot } from '@shared/operating-hours';
+import { occupiedIntervals, type OperatingSlot } from '@shared/operating-hours';
 
 export const HOLD_MINUTES = 37; // Stripe Checkout expires after 32 minutes; allow webhook delivery time.
 
@@ -63,18 +65,20 @@ export async function hasInventoryConflict(
     db.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId)),
     getActiveKitchenHolds(kitchenId),
   ]);
+  const policy = await kitchenBookingPolicies(kitchenId);
+  const interval = (date: string, slot: OperatingSlot, anchor: string) => operatingSlotInstants(date, slot, anchor, policy.timezone);
   const occupied = bookings
     .filter(booking => booking.status !== 'cancelled')
-    .flatMap(booking => occupiedIntervals(booking).map(slot => absoluteOperatingSlotInterval(
-      booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime,
+    .flatMap(booking => occupiedIntervals(booking).map(slot => interval(
+      (slot as { date?: string }).date || booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime,
     )));
   for (const hold of holds) {
     if (hold.id !== excludeHoldId) occupied.push(...occupiedIntervals({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots })
-      .map(slot => absoluteOperatingSlotInterval(hold.operatingDate, slot, hold.windowStartTime)));
+      .map(slot => interval(hold.operatingDate, slot, hold.windowStartTime)));
   }
   return slots.some(slot => {
-    const candidate = absoluteOperatingSlotInterval(operatingDate, slot, windowStartTime);
-    return occupied.some(interval => candidate.start < interval.end && candidate.end > interval.start);
+    const candidate = interval(operatingDate, slot, windowStartTime);
+    return occupied.some(interval => bookingIntervalsConflict(interval, candidate, policy.turnoverBufferEnabled ? 60 : 0));
   });
 }
 
@@ -110,6 +114,10 @@ export async function reserveKitchenCheckout(
 }
 
 export async function bindKitchenCheckout(holdId: string, sessionId: string): Promise<void> {
+  const [hold] = await db.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, holdId)).limit(1);
+  if (!hold) throw new Error('Checkout reservation expired');
+  // Persist before binding: a crash here still leaves the worker a session to inspect.
+  await (await import('./kitchen-checkout-incidents')).registerKitchenCheckout(sessionId, hold.chefId, hold.kitchenId, hold.operatingDate);
   const updated = await db.update(kitchenCheckoutHolds)
     .set({ stripeSessionId: sessionId })
     .where(eq(kitchenCheckoutHolds.id, holdId)).returning({ id: kitchenCheckoutHolds.id });
@@ -123,20 +131,29 @@ export async function releaseKitchenCheckout(holdId: string): Promise<void> {
 export async function fulfillKitchenCheckout<T>(
   holdId: string | undefined, sessionId: string, kitchenId: number, operatingDate: string,
   slots: OperatingSlot[], windowStartTime: string, createBooking: () => Promise<T>,
+  findExisting?: () => Promise<T | undefined>,
 ): Promise<T> {
   return withKitchenDayLock(kitchenId, operatingDate, async () => {
-    if (holdId) {
-      const [hold] = await db.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, holdId)).limit(1);
-      if (!hold || hold.stripeSessionId !== sessionId || hold.kitchenId !== kitchenId || hold.operatingDate !== operatingDate
-        || hold.windowStartTime !== windowStartTime || !sameOperatingSlots(hold.selectedSlots, slots)) {
-        throw new KitchenHoldMissingError();
+    try {
+      const existing = await findExisting?.();
+      if (existing) return existing;
+      if (holdId) {
+        const [hold] = await db.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, holdId)).limit(1);
+        if (!hold || hold.stripeSessionId !== sessionId || hold.kitchenId !== kitchenId || hold.operatingDate !== operatingDate
+          || hold.windowStartTime !== windowStartTime || !sameOperatingSlots(hold.selectedSlots, slots)) {
+          throw new KitchenHoldMissingError();
+        }
       }
+      if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime, holdId)) {
+        throw new KitchenSlotUnavailableError();
+      }
+      const booking = await createBooking();
+      if (holdId) await releaseKitchenCheckout(holdId);
+      return booking;
+    } catch (error) {
+      if (error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError)
+        await (await import('./kitchen-checkout-incidents')).recordCheckoutConflict(sessionId);
+      throw error;
     }
-    if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime, holdId)) {
-      throw new KitchenSlotUnavailableError();
-    }
-    const booking = await createBooking();
-    if (holdId) await releaseKitchenCheckout(holdId);
-    return booking;
   });
 }

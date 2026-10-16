@@ -158,7 +158,7 @@
   "bsSharedMessage": "Message partagé avec le chef et la cuisine (facultatif)",
   "bsSharedMessageHint": "Partagé avec le chef et la cuisine. Ils le liront tous les deux, alors restez aimable et factuel. Au moins 10 caractères si vous en ajoutez un.",
   "bsSharedMessageSelfHint": "Obligatoire pour l’arrivée autonome, de 10 à 500 caractères. Partagé avec le chef et la cuisine.",
-  "bsBothNotified": "Les deux parties seront avisées.",
+  "bsBothNotified": "Le chef et la cuisine seront chacun avisés.",
   "bsSubmit": "Faire maintenant",
   "bsToastDone": "Terminé. {action}",
   "bsItemsLegend": "Ajouts demandés",
@@ -254,5 +254,16 @@
   "bsTransferSentLine": "{amount} envoyés à la cuisine le {date}",
   "bsTransferSentNoDate": "{amount} envoyés à la cuisine",
   "bsTransferExpectedLine": "{amount} prévus pour la cuisine (après les frais de traitement), pas encore envoyés",
-  "bsPolicyRightNow": "Les réservations existantes conservent les conditions acceptées par leurs chefs."
+  "bsPolicyRightNow": "Les réservations existantes conservent les conditions acceptées par leurs chefs.",
+  "bsChefNotified": "Le chef sera avisé. La cuisine ne l’est pas — son versement ne change pas.",
+  "bsKitchenNotified": "La cuisine sera avisée.",
+  "bsAction_resolve_money_attempt": "Vérifier la tentative de remboursement précédente",
+  "bsResolveMoneyAttemptHelp": "Une tentative de remboursement précédente n’a pas abouti et son résultat est inconnu. Cette action vérifie le remboursement d’origine auprès du fournisseur de paiement. Un remboursement effectué est complété à partir de son reçu d’origine, sans jamais être envoyé deux fois. Une tentative qui n’a créé aucun remboursement (ou dont le remboursement a échoué) est fermée afin d’en démarrer une nouvelle.",
+  "bsAction_refund_captured_request": "Rembourser le prélèvement et fermer la demande",
+  "bsAction_finish_kitchen_refund": "Terminer le remboursement de l’annulation par la cuisine",
+  "bsFinishKitchenRefundHelp": "La réservation est déjà annulée et le chef a été informé que son remboursement complet est en route. Cette action relance ce remboursement sous sa référence d’origine; il ne peut donc jamais être envoyé deux fois.",
+  "bsFundKitchenRefund": "Local Cooks finance le remboursement. Le solde de la cuisine n’est pas débité. À utiliser lorsque la part de la cuisine ne peut pas être récupérée.",
+  "bsKitchenRefundPending": "La cuisine a annulé cette réservation, mais le remboursement complet de {amount} au chef n’a pas encore été envoyé.{problem}",
+  "bsKitchenRefundProblem": "Problème : {error}",
+  "bsKitchenRefundSent": "La cuisine a annulé cette réservation et le remboursement complet de {amount} au chef a été envoyé."
 }

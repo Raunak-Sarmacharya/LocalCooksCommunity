@@ -28,6 +28,10 @@ import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking
 
 import { chefService } from "../users/chef.service";
 
+import { kitchenBookingPolicies } from '../../services/booking-policy-settings';
+import { bookingWindowLastDate } from '@shared/kitchen-booking-policies';
+import { bookingIntervalsConflict, operatingSlotInstants } from '@shared/booking-occupancy';
+
 type BookingInterval = { startTime: string; endTime: string };
 
 export function hasBookingConflict(
@@ -47,9 +51,13 @@ export function hasBookingConflict(
 function occupiesOperatingSlot(
     existing: BookingInterval & { selectedSlots?: unknown }, existingDate: string, existingWindowStart: string,
     requested: BookingInterval, requestedDate: string, requestedWindowStart: string,
+    bufferMinutes = 0, timezone = "America/St_Johns",
 ): boolean {
-    return occupiedIntervals(existing).some(slot => operatingSlotsOverlapAcrossDates(
-        existingDate, slot, existingWindowStart, requestedDate, requested, requestedWindowStart,
+    return occupiedIntervals(existing).some(slot => bufferMinutes ? bookingIntervalsConflict(
+        operatingSlotInstants((slot as { date?: string }).date || existingDate, slot, existingWindowStart, timezone),
+        operatingSlotInstants(requestedDate, requested, requestedWindowStart, timezone), bufferMinutes,
+    ) : operatingSlotsOverlapAcrossDates(
+        (slot as { date?: string }).date || existingDate, slot, existingWindowStart, requestedDate, requested, requestedWindowStart,
     ));
 }
 
@@ -268,7 +276,7 @@ export class BookingService {
                     logger.info(`[BookingService] Processing equipment ID: ${eqId}`);
                     const listing = await inventoryService.getEquipmentListingById(eqId);
                     logger.info(`[BookingService] Equipment listing found: ${JSON.stringify(listing)}`);
-                    if (listing && listing.availabilityType !== 'included') {
+                    if (listing && !listing.archivedAt && listing.availabilityType !== 'included') {
                         // DB stores session_rate in CENTS (e.g., 3500 = $35.00)
                         const sessionRateCents = Math.round(parseFloat(String(listing.sessionRate || '0')));
                         logger.info(`[BookingService] Creating equipment booking: kitchenBookingId=${booking.id}, equipmentListingId=${listing.id}, sessionRateCents=${sessionRateCents}`);
@@ -449,6 +457,7 @@ export class BookingService {
         } = {}
     ): Promise<{ valid: boolean; error?: string; slots?: BookingInterval[]; windowStartTime?: string }> {
         try {
+            const policy = await kitchenBookingPolicies(kitchenId);
             // First check if there's a date-specific override
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, bookingDate);
 
@@ -500,14 +509,15 @@ export class BookingService {
             }
 
             const dateStr = bookingDate.toISOString().split('T')[0];
-            const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .where(eq(kitchens.id, kitchenId)).limit(1);
-            const timezone = 'America/St_Johns';
+            // Kitchen-initiated confirmed changes use excludeBookingId and bypass only the advance window.
+            if (!options.excludeBookingId && dateStr > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) {
+                return { valid: false, error: `This kitchen takes bookings up to ${policy.maxAdvanceBookingDays} days ahead.` };
+            }
+            const timezone = policy.timezone;
             if (requestedIntervals.some(slot => !isUnambiguousBookingSlot(dateStr, slot, availabilityStartTime, timezone))) {
                 return { valid: false, error: 'This hour is affected by a daylight saving clock change and is unavailable for self-service booking' };
             }
-            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.status !== 'cancelled' && booking.id !== options.excludeBookingId);
+            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.status !== 'cancelled' && (options.excludeBookingId === undefined || booking.id !== options.excludeBookingId));
 
             // A full-day booking requires the entire day to be free. Hourly bookings only
             // conflict with the discrete slots submitted by the client.
@@ -517,14 +527,14 @@ export class BookingService {
 
             if (bookings.some(booking => requestedIntervals.some(slot => occupiesOperatingSlot(
                 booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
-                booking.operatingWindowStartTime || booking.startTime, slot, dateStr, availabilityStartTime,
+                booking.operatingWindowStartTime || booking.startTime, slot, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone,
             )))) {
                 return { valid: false, error: "One or more selected time slots are no longer available" };
             }
             const holds = await getActiveKitchenHolds(kitchenId);
-            if (holds.filter(hold => hold.id !== options.excludeHoldId).some(hold => requestedIntervals.some(slot => occupiesOperatingSlot(
+            if (holds.filter(hold => (options.excludeHoldId === undefined || hold.id !== options.excludeHoldId)).some(hold => requestedIntervals.some(slot => occupiesOperatingSlot(
                 { startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
-                hold.operatingDate, hold.windowStartTime, slot, dateStr, availabilityStartTime,
+                hold.operatingDate, hold.windowStartTime, slot, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone,
             )))) {
                 return { valid: false, error: 'One or more selected time slots are temporarily reserved' };
             }
@@ -538,6 +548,8 @@ export class BookingService {
 
     async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
         try {
+            const policy = await kitchenBookingPolicies(kitchenId);
+            if (date.toISOString().slice(0, 10) > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) return [];
             // First check if there's a date-specific override
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
 
@@ -583,7 +595,7 @@ export class BookingService {
                 for (const slot of slots) {
                     if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
                         booking.operatingWindowStartTime || booking.startTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
                         bookedSlots.add(slot);
                     }
                 }
@@ -593,18 +605,15 @@ export class BookingService {
                 slots.forEach(slot => {
                     if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
                         hold.operatingDate, hold.windowStartTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
                         bookedSlots.add(slot);
                     }
                 });
             });
 
-            const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .where(eq(kitchens.id, kitchenId)).limit(1);
             return slots.filter(slot => !bookedSlots.has(slot) && isUnambiguousBookingSlot(
                 dateStr, { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
-                'America/St_Johns'));
+                policy.timezone));
         } catch (error) {
             logger.error('Error getting available time slots:', error);
             throw error;
@@ -629,6 +638,8 @@ export class BookingService {
         isFullyBooked: boolean;
     }>> {
         try {
+            const policy = await kitchenBookingPolicies(kitchenId);
+            if (date.toISOString().slice(0, 10) > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) return [];
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
 
             let availabilityStartTime: string;
@@ -673,7 +684,7 @@ export class BookingService {
                 allSlots.forEach(slot => {
                     if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
                         booking.operatingWindowStartTime || booking.startTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
@@ -683,20 +694,17 @@ export class BookingService {
                 allSlots.forEach(slot => {
                     if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
                         hold.operatingDate, hold.windowStartTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
             });
 
-            const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .where(eq(kitchens.id, kitchenId)).limit(1);
             return allSlots.map(slot => {
                 const bookedCount = slotBookingCounts.get(slot) || 0;
                 const clockSafe = isUnambiguousBookingSlot(dateStr,
                     { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
-                    'America/St_Johns');
+                    policy.timezone);
                 return {
                     time: slot,
                     available: clockSafe ? Math.max(0, capacity - bookedCount) : 0,
@@ -851,6 +859,7 @@ export class BookingService {
         year: number,
         month: number
     ): Promise<Record<string, boolean>> {
+        const policy = await kitchenBookingPolicies(kitchenId);
         const scheduleMap = await kitchenService.getMonthAvailability(kitchenId, year, month);
         const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
         const monthEnd = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
@@ -863,10 +872,7 @@ export class BookingService {
                 eq(kitchenCheckoutHolds.kitchenId, kitchenId), gt(kitchenCheckoutHolds.expiresAt, new Date()),
             )),
         ]);
-        const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
-            .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .where(eq(kitchens.id, kitchenId)).limit(1);
-        const timezone = 'America/St_Johns';
+        const timezone = policy.timezone;
 
         const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string }>();
         weeklyAvailability.forEach((a: any) => {
@@ -891,7 +897,7 @@ export class BookingService {
             const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
             const dateStr = date.toISOString().split('T')[0];
 
-            if (!scheduleMap[dateStr]) {
+            if (!scheduleMap[dateStr] || dateStr > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) {
                 result[dateStr] = false;
                 continue;
             }
@@ -930,7 +936,7 @@ export class BookingService {
                 allSlots.forEach((slot) => {
                     if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
                         booking.operatingWindowStartTime || booking.startTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
@@ -939,7 +945,7 @@ export class BookingService {
                 allSlots.forEach(slot => {
                     if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
                         hold.operatingDate, hold.windowStartTime,
-                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime, policy.turnoverBufferEnabled ? 60 : 0, policy.timezone)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });

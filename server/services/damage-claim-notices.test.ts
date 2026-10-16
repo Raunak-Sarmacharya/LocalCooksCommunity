@@ -40,6 +40,16 @@ describe('claim recipient privacy and notices', () => {
 });
 
 
+describe('final decision reason reaches the chef', () => {
+  it('includes the shared decision message in the chef notice and email, as the kitchen gets it', async () => {
+    await queueDamageClaimNotice(tx, claim('partially_approved', true), history('claim_reduce'));
+    for (const id of [2, 5]) {
+      expect(state.notices.find(row => row.userId === id)?.message).toContain('We reviewed the receipts.');
+      expect(state.emails.find(row => row.recipientUserId === id)?.textBody).toContain('We reviewed the receipts.');
+    }
+  });
+});
+
 describe('recipient-specific claim outcomes in app and email', () => {
   it.each([
     ['claim_send', 'submitted', [2, 5], 'Local Cooks sent your claim to Sam for $15.00 (of $20.00 requested).', 'reported damage or extra cleaning: $15.00'],

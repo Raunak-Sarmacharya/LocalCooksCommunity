@@ -26,6 +26,19 @@ import { updatePaymentTransaction } from './payment-transactions-service';
 import { addPaymentHistory } from './payment-transactions-service';
 import { processManagerDecision } from './overstay-penalty-service';
 import { createProblem } from './commitment-problems';
+describe('checkout incident outcome delivery', () => {
+  it.each([false, true])('delivers a queued checkout outcome only while its recipient still matches (changed=%s)', async changed => {
+    state.tables.kitchen_checkout_incidents = [{ id: 12, chefId: 3, sessionId: 'cs_original', outcome: 'inventory_conflict',
+      inventoryConflict: true, moneyStatus: 'refunded', amountCents: 2440, currency: 'cad', operatingDate: '2099-01-01' }];
+    state.tables.email_logs = [{ id: 1, recipientEmail: changed ? 'former@example.test' : 'chef@example.test', recipientUserId: 3, recipientRole: 'chef',
+      category: 'lifecycle_outcome', status: 'queued', subject: 'Kitchen checkout update', trackingId: 'checkout-outcome:12:inventory_conflict:refunded:3',
+      textBody: 'Checkout reference: cs_original', createdAt: new Date(), retryCount: 0 }];
+    state.send.mockResolvedValue(true);
+    expect(await deliverOutcomeEmails(1)).toEqual({ completed: changed ? 0 : 1 });
+    if (changed) expect(state.send).not.toHaveBeenCalled();
+    else expect(state.send.mock.calls[0][0].text).toContain('Your refund of $24.40 was sent');
+  });
+});
 vi.mock('./overstay-defaults-service', () => ({ getOverstayDisputeWindowHours: async () => 48 }));
 
 const name = (table: any) => table[Symbol.for('drizzle:Name')];

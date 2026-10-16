@@ -17,3 +17,15 @@ it.each([0, 5000])('kitchen sees who cancelled, when and only a positive retaine
   expect(notice.message.includes('You keep $50.00')).toBe(retained > 0);
   expect(notice.message).not.toMatch(/\$0|Your booking is cancelled|refund/i);
 });
+
+it.each(['en-CA', 'fr-CA', 'uk'])('the kitchen that cancelled is told what it did, never "the chef cancelled" (live #169) (%s)', async locale => {
+  const notice = await cancellationNotice('manager', locale, { cause: 'kitchen', chefName: 'Sam', date: 'Oct 18, 10:00 a.m.', refundCents: 3050, reason: 'Cooler failed' });
+  expect(notice.title).toContain('Sam');
+  expect(notice.message).toContain('Oct 18, 10:00 a.m.');
+  expect(notice.message).not.toMatch(/\{\w+\}/);
+  if (locale === 'en-CA') {
+    expect(notice.title).toBe('You cancelled Sam’s booking');
+    expect(notice.message).toContain('Sam gets a full refund of $30.50');
+    expect(notice.message).not.toMatch(/The chef cancelled/);
+  }
+});

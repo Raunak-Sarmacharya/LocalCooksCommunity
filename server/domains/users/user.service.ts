@@ -8,16 +8,23 @@ import { hashPassword } from "../../passwordUtils";
 import { DomainError, UserErrorCodes } from "../../shared/errors/domain-error";
 import { nationalPhoneDigits } from "@shared/phone-validation";
 import { randomBytes } from "node:crypto";
-import { deleteUserDependents } from "./user-deletion.service";
+import { anonymizeUserAccount, deleteUserDependents, isAnonymizedUsername } from "./user-deletion.service";
+import { DeletionBlockedError, getDeletionBlockers, hasDeletionHistory } from "../../services/deletion-guard";
 
 /**
- * See `UserService.deleteUser`. Admins opt out of the debt guard because they
- * are acting with context the account holder does not have.
+ * See `UserService.deleteUser`.
  */
 export interface DeleteUserOptions {
-  /** Refuse the deletion while unpaid penalties or damage claims remain. Default `true`. */
+  /** Refuse the deletion while unpaid penalties/claims or live bookings, claims and payments remain. Default `true`. */
   enforceObligations?: boolean;
+  /**
+   * Audited admin override of the live-reference guard. It never allows booking or payment rows to be removed:
+   * an account with history is anonymized either way.
+   */
+  override?: { actorId: number; reason: string };
 }
+
+export type DeleteUserOutcome = 'deleted' | 'anonymized';
 
 export class UserService {
   private repo: UserRepository;
@@ -306,19 +313,22 @@ export class UserService {
   }
 
   /**
-   * Hard-deletes a user account and everything hanging off it.
+   * Deletes an account without ever destroying booking or payment history.
    *
-   * @param options.enforceObligations
-   *   When `true` (the default, used by the self-serve `chef_account_delete`
-   *   flow) the deletion is refused while the user owes unpaid overstay
-   *   penalties or damage claims — deleting the account would make the debt
-   *   uncollectable and the payer disappear.
+   * - Live references (upcoming bookings, open claims, payments/refunds/payouts in flight) block the deletion with a
+   *   plain list of references, unless an admin passes an audited `override`.
+   * - An account with booking, claim or payment history is anonymized: the person is erased, the row, bookings,
+   *   claims and receipts stay, and a manager's locations and kitchens are archived.
+   * - An account with no history is removed completely.
    *
-   *   Admins pass `false` to authorize a complete purge, including their
-   *   bookings, claims, payment records and manager-owned resources.
+   * Every call is recorded in `account_deletion_audit` (migration 0089).
    */
-  async deleteUser(id: number, options: DeleteUserOptions = {}): Promise<void> {
-    const { enforceObligations = true } = options;
+  async deleteUser(id: number, options: DeleteUserOptions = {}): Promise<DeleteUserOutcome> {
+    const { override } = options;
+    const enforceObligations = override ? false : (options.enforceObligations ?? true);
+    if (override && override.reason.trim().length < 10) {
+      throw new Error('An override needs a written reason of at least 10 characters.');
+    }
 
     if (enforceObligations) {
       const obligations = await this.hasOutstandingObligations(id);
@@ -333,21 +343,41 @@ export class UserService {
       }
     }
 
-    await db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
       const [user] = await tx.select().from(users).where(eq(users.id, id)).for('update');
-      if (!user) return;
+      if (!user) return 'deleted' as const;
+      // A retry after the person was already anonymized only needs the external clean-up.
+      if (isAnonymizedUsername(user.username)) return 'anonymized' as const;
+
+      const scope = { kind: 'user', userId: id } as const;
+      const blockers = await getDeletionBlockers(tx, scope);
+      if (enforceObligations && blockers.blocked) throw new DeletionBlockedError('account', blockers);
+
       const managedLocations = await tx.select({ id: locations.id }).from(locations)
         .where(eq(locations.managerId, id)).for('update');
-      await tx.execute(sql`INSERT INTO user_deletion_jobs (user_id, username, role, firebase_uid, location_ids)
-        VALUES (${id}, ${user.username}, ${user.role}, ${user.firebaseUid}, ${JSON.stringify(managedLocations.map(location => location.id))}::jsonb)
-        ON CONFLICT (user_id) DO NOTHING`);
-      const counts = await deleteUserDependents(tx, id);
-      await tx.delete(users).where(eq(users.id, id));
+      const history = await hasDeletionHistory(tx, scope);
+      const outcome: DeleteUserOutcome = history ? 'anonymized' : 'deleted';
 
-      const summary = Object.entries(counts)
-        .map(([table, n]) => `${table}=${n}`)
-        .join(", ");
-      logger.info(`Deleted user ${id}${summary ? ` (cascade: ${summary})` : ""}`);
+      // Archived locations keep their other parties' conversations; only a full purge removes location-wide chats.
+      const jobLocationIds = history ? [] : managedLocations.map(location => location.id);
+      await tx.execute(sql`INSERT INTO user_deletion_jobs (user_id, username, role, firebase_uid, location_ids)
+        VALUES (${id}, ${user.username}, ${user.role}, ${user.firebaseUid}, ${JSON.stringify(jobLocationIds)}::jsonb)
+        ON CONFLICT (user_id) DO NOTHING`);
+      await tx.execute(sql`INSERT INTO account_deletion_audit (user_id, username, role, actor_id, override_used, override_reason, outcome, blockers)
+        VALUES (${id}, ${user.username}, ${user.role}, ${override?.actorId ?? null}, ${Boolean(override && blockers.blocked)},
+          ${override?.reason.trim() ?? null}, ${outcome}, ${JSON.stringify(blockers)}::jsonb)`);
+
+      if (history) {
+        const { removed } = await anonymizeUserAccount(tx, id);
+        logger.info(`Anonymized user ${id}; booking and payment history kept`, removed);
+      } else {
+        const counts = await deleteUserDependents(tx, id, { keepHistory: true });
+        await tx.delete(users).where(eq(users.id, id));
+        const summary = Object.entries(counts).map(([table, n]) => `${table}=${n}`).join(", ");
+        logger.info(`Deleted user ${id}${summary ? ` (cascade: ${summary})` : ""}`);
+      }
+      if (override && blockers.blocked) logger.warn(`[AUDIT] Admin ${override.actorId} overrode the deletion guard for user ${id}: ${override.reason.trim()}`);
+      return outcome;
     });
   }
 }

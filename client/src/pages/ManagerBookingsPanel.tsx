@@ -105,13 +105,13 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
 
   // Update booking status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ bookingId, status, storageActions, equipmentActions }: { bookingId: number; status: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }> }) => {
+    mutationFn: async ({ bookingId, status, storageActions, equipmentActions, message }: { bookingId: number; status: string; message?: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }> }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/bookings/${bookingId}/status`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ status, storageActions, equipmentActions }),
+        body: JSON.stringify({ status, storageActions, equipmentActions, message }),
       });
       if (!response.ok) {
         let errorMessage = mt("failedToUpdateBookingStatus");
@@ -258,9 +258,10 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
     status: 'confirmed' | 'cancelled';
     storageActions?: Array<{ storageBookingId: number; action: string }>;
     equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
+    message?: string;
   }) => {
     updateStatusMutation.mutate(
-      { bookingId: params.bookingId, status: params.status, storageActions: params.storageActions, equipmentActions: params.equipmentActions },
+      { bookingId: params.bookingId, status: params.status, storageActions: params.storageActions, equipmentActions: params.equipmentActions, message: params.message },
       {
         onSettled: () => {
           setActionDialogOpen(false);

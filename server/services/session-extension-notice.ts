@@ -15,13 +15,14 @@ import { kitchenClockWithZone } from './kitchen-payout-notice';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Extension = typeof kitchenBookingExtensions.$inferSelect;
 export type SessionExtensionNoticeEvent = 'requested' | 'instant' | 'confirmed' | 'declined' | 'expired' | 'offered'
-  | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered';
+  | 'extra_time' | 'paid' | 'disputed' | 'escalated' | 'card_failed' | 'granted' | 'early_offered' | 'refunded';
 type Audience = 'chef' | 'manager' | 'admins';
 type Facts = { chef: string; kitchen: string; reference: string; end: string; originalEnd: string; expires: string; amount: string;
   payout: string; duration: string; billed: string; stayed: string; early: string; note: string | null };
 
 /** Which audiences hear about each event, and which copy each of them reads. */
 export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, kind: Extension['kind']): Array<[Audience, string]> {
+  if (event === 'refunded') return [['chef', 'sxRefundedChef']];
   if (kind === 'early_start') switch (event) {
     case 'granted': return [['chef', 'sxGrantedStartChef']];
     case 'early_offered': return [['chef', 'sxEarlyOfferedChef']];
@@ -38,7 +39,7 @@ export function sessionExtensionAudiences(event: SessionExtensionNoticeEvent, ki
     case 'instant': return [['chef', 'sxConfirmedChef'], ['manager', 'sxInstantManager']];
     case 'confirmed': return kind === 'offer' ? [['chef', 'sxConfirmedChef'], ['manager', 'sxOfferAcceptedManager']] : [['chef', 'sxConfirmedChef']];
     case 'declined': return kind === 'offer' ? [['manager', 'sxOfferDeclinedManager']] : [['chef', 'sxDeclinedChef']];
-    case 'expired': return kind === 'offer' ? [['manager', 'sxOfferExpiredManager']] : [['chef', 'sxDeclinedChef'], ['manager', 'sxRequestExpiredManager']];
+    case 'expired': return kind === 'offer' ? [['manager', 'sxOfferExpiredManager']] : [['chef', 'sxRequestExpiredChef'], ['manager', 'sxRequestExpiredManager']];
     case 'offered': return [['chef', 'sxOfferedChef']];
     case 'extra_time': return [['chef', 'sxExtraTimeChef']];
     case 'paid': return [['chef', 'sxPaidChef'], ['manager', 'sxPaidManager']];

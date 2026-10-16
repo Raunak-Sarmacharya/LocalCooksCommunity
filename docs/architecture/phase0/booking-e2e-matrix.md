@@ -19,15 +19,15 @@ Time control: `.phase0-harness/shift-booking.mjs` (synthetic bookings only) to b
 
 ## B. Kitchen response
 | B1 | Approve all | charged; confirmed notices (chef, kitchen, admin) | ✅ #166/#168 |
-| B2 | Approve some, decline an add-on | partial charge = approved items; chef told what was declined | ⏳ |
-| B3 | Decline the request | hold released; chef "find another time"; admin summary | ⏳ |
+| B2 | Approve some, decline an add-on | partial charge = approved items; chef told what was declined | ✅ #169 after fixes 461a4f3d (charged $30.50, oven 'Not charged'; kitchen share was inflated $57.50 → fixed; chef now told 'Not included') — add-on can't be approved without the session (UI lock + server cascade) |
+| B3 | Decline the request | hold released; chef "find another time"; admin summary | ✅ #171 after f01268d9/17f2a028 (chef 'couldn’t take your request' + Find another time; kitchen 'You declined…'; admin 'Request declined'). Open: optional decline reason (#53) |
 | B4 | Request expires (no response) | hold released at deadline; chef + kitchen told; admin "Request expired" | ⏳ |
-| B5 | Chef withdraws pending | hold released, no charge; kitchen + admin told | ⏳ |
+| B5 | Chef withdraws pending | hold released, no charge; kitchen + admin told | ✅ #172 (one cancel entry, no calendar; 'Request withdrawn' / 'TestSprite chef withdrew…' / admin). Wording tidy cb865fe9 |
 
 ## C. Before the visit
 | C1 | Chef cancels before deadline | refund = paid − actual fee; chef/kitchen/admin wording | ✅ #167/#168 |
-| C2 | Chef cancels after deadline | per policy (100%/50% of total); kitchen payout per policy; wording | ⏳ |
-| C3 | Kitchen cancels (kitchen-caused) | full refund incl. fee; chef apology + reason + "find another time" | ⏳ |
+| C2 | Chef cancels after deadline | per policy (100%/50% of total); kitchen payout per policy; wording | ✅ #174 (booked inside window: short-notice warning at checkout; refund $0; kitchen keeps $27.32; admin facts). Copy fixed in batch: 'saved policy' jargon, dialog reason, admin '$0 refunded' noise. ⏳ kitchen payout release at booked end |
+| C3 | Kitchen cancels (kitchen-caused) | full refund incl. fee; chef apology + reason + "find another time" | ✅ #169 money ($30.50 back incl. fee) + chef apology with reason; ❌→fixed in batch: kitchen told 'The chef cancelled' (#61); data label #62 open |
 | C4 | Settings change (cancellation policy) | preview, applies to new bookings only, existing keep terms | ✅ Save works; ⏳ change + new booking terms |
 | C5 | Change booking (kitchen) | proposal → chef accepts/declines; money delta | ⏳ |
 | C6 | Messages chef ↔ kitchen | thread on booking, notices | ⏳ |

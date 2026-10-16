@@ -43,6 +43,7 @@ export type CloseoutVisit = { key?: string; visitId?: number; blockIndex: number
 export type SupportCase = {
   cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot | null;
   payout?: import('@shared/kitchen-payout').KitchenPayout;
+  kitchenRefund?: { status: 'pending' | 'succeeded'; amountCents: number; error: string | null; failedAt: string | null; attempts: number; refundId: string | null } | null;
   bookingId: number; referenceCode: string; status: string; paymentStatus: string | null; checkinStatus: string | null;
   updatedAt: string; paymentIntentId: string | null;
   parties: { chef: Party | null; manager: Party | null };

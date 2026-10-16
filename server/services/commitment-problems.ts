@@ -1,3 +1,6 @@
+import { readVisitDuties } from '@shared/visit-duties';
+import { savedCloseout } from '@shared/clock-closeout';
+import { getCheckinSettings } from './kitchen-checkout-service';
 import { emailLocalDateTime, renderTransactionalEmail } from '../email';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
@@ -20,7 +23,7 @@ const reject = (message: string, status = 409): never => { throw new DomainError
 
 export async function problemContext(tx: Tx, kind: 'booking' | 'tour', id: number) {
   if (kind === 'booking') {
-    const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name })
+    const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name, locationId: kitchens.locationId })
       .from(kitchenBookings).innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
       .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchenBookings.id, id)).limit(1);
     if (!row) return undefined;
@@ -38,7 +41,10 @@ export async function problemContext(tx: Tx, kind: 'booking' | 'tour', id: numbe
       const starts = reminderVisitTimes(row.booking, row.timezone || DEFAULT_TIMEZONE).map(visit => visit.start.getTime());
       if (starts.length && starts.every(Number.isFinite)) scheduledStart = new Date(Math.min(...starts));
     } catch { /* Invalid legacy schedules use general support rather than inventing a start. */ }
-    return { chefId: row.booking.chefId, managerId: row.managerId, kitchenId: row.booking.kitchenId,
+    const saved = readVisitDuties(row.booking.visitDuties);
+    const checkinWindowMinutesBefore = savedCloseout(row.booking.visitDuties)?.checkinWindowMinutesBefore
+      ?? saved?.checkinWindowMinutesBefore ?? (await getCheckinSettings(row.locationId, tx)).checkinWindowMinutesBefore;
+    return { checkinWindowMinutesBefore, chefId: row.booking.chefId, managerId: row.managerId, kitchenId: row.booking.kitchenId,
       status: row.booking.status, wasConfirmed, scheduledStart, timezone: row.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchenName };
   }
   const [row] = await tx.select({ tour: kitchenViewings, managerId: locations.managerId }).from(kitchenViewings)
@@ -51,8 +57,14 @@ export function authorizeProblem(context: { chefId: number | null; managerId: nu
   if (!context || (actor.role !== 'admin' && actor.id !== context.chefId && actor.id !== context.managerId)) reject('Commitment not found or access denied', 403);
 }
 
-export function canReportProblem(context: { chefId: number | null; managerId: number | null; wasConfirmed: boolean; scheduledStart: Date | null } | undefined, actor: Actor) {
-  return !!context?.wasConfirmed && !!context.scheduledStart && context.scheduledStart.getTime() <= Date.now()
+export function problemReportingOpensAt(context: { wasConfirmed: boolean; scheduledStart: Date | null; checkinWindowMinutesBefore?: number } | undefined) {
+  if (!context?.wasConfirmed || !context.scheduledStart || !Number.isFinite(context.scheduledStart.getTime())) return null;
+  return new Date(context.scheduledStart.getTime() - (context.checkinWindowMinutesBefore ?? 0) * 60_000);
+}
+
+export function canReportProblem(context: { chefId: number | null; managerId: number | null; wasConfirmed: boolean; scheduledStart: Date | null; checkinWindowMinutesBefore?: number } | undefined, actor: Actor) {
+  const opens = problemReportingOpensAt(context);
+  return !!context && !!opens && opens.getTime() <= Date.now()
     && (actor.role === 'chef' && actor.id === context.chefId || actor.role === 'manager' && actor.id === context.managerId);
 }
 
@@ -97,7 +109,7 @@ export async function createProblem(tx: Tx, input: { kind: 'live' | 'schedule'; 
   }
   const context = await problemContext(tx, input.commitment, input.id);
   if (input.kind === 'live') authorizeProblem(context, input.actor);
-  if (input.kind === 'live' && !canReportProblem(context, input.actor)) reject('The booking chef or current kitchen manager can report from the scheduled start onwards, after confirmation. Contact Support before then or if the schedule or confirmation cannot be verified.');
+  if (input.kind === 'live' && !canReportProblem(context, input.actor)) reject('The booking chef or current kitchen manager can report from check-in opening onwards, after confirmation. Contact Support before then or if the schedule or confirmation cannot be verified.');
   if (input.kind === 'schedule' && context?.status !== 'confirmed') reject('Only a confirmed commitment can receive schedule recovery');
   const history: ProblemHistory[] = [{ revision: 1, actorId: input.actor.id, actorRole: input.actor.role || undefined, at: new Date().toISOString(), action: 'report', note: 'Report received' }];
   const [problem] = await tx.insert(commitmentProblems).values({ sourceKey: input.sourceKey, kind: input.kind,

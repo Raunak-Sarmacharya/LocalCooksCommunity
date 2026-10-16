@@ -12,6 +12,8 @@ import { computeManagerGrossAndCommission } from "./manager-payout-math";
 
 export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle';
 export type TransactionStatus = 'pending' | 'authorized' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
+/** The only statuses a success event may upgrade; later states (refunded, failed, canceled) are never overwritten by it. */
+const SUCCEEDABLE_FROM: readonly TransactionStatus[] = ['pending', 'authorized', 'processing'];
 
 export interface CreatePaymentTransactionParams {
   bookingId: number;
@@ -204,6 +206,10 @@ export async function updatePaymentTransaction(
   db: any,
   inTransaction = false
 ): Promise<PaymentTransactionRecord | null> {
+  // Reload under the source lock before deciding any money transition, including status-only webhooks.
+  if (!inTransaction && (params.status === 'succeeded' || params.status === 'failed' || params.refundAmount !== undefined
+    || params.stripeAmount !== undefined || params.stripeNetAmount !== undefined))
+    return db.transaction((tx: any) => updatePaymentTransaction(transactionId, params, tx, true));
   // Get current transaction to track status changes
   const currentResult = await db.execute(sql`
     SELECT status, refund_amount, amount, payout_timing, metadata, manager_revenue
@@ -224,9 +230,18 @@ export async function updatePaymentTransaction(
     params = { ...params, managerRevenue: Number(current.manager_revenue || 0), serviceFee: 0, taxAmount: 0 };
   }
   const previousStatus = current.status as TransactionStatus;
-  if (!inTransaction && (params.refundAmount !== undefined || params.stripeAmount !== undefined || params.stripeNetAmount !== undefined
-    || params.status === "failed" && ["succeeded", "partially_refunded"].includes(previousStatus)))
-    return db.transaction((tx: any) => updatePaymentTransaction(transactionId, params, tx, true));
+  // Monotonic success: a redelivered or late "succeeded" never moves a refunded, failed or canceled payment back to
+  // succeeded (Stripe does not guarantee event order). It also never moves an existing paid_at.
+  if (params.status === 'succeeded') {
+    if (previousStatus && previousStatus !== 'succeeded' && !SUCCEEDABLE_FROM.includes(previousStatus)) {
+      const { status: _kept, paidAt: _paidAt, ...rest } = params;
+      params = rest;
+    }
+  }
+  if (params.status === 'failed' && !SUCCEEDABLE_FROM.includes(previousStatus) && previousStatus !== 'failed') {
+    const { status: _status, stripeStatus: _stripeStatus, failureReason: _reason, paidAt: _paidAt, ...rest } = params;
+    params = rest;
+  }
   const currentRefundAmount = parseFloat(current.refund_amount || '0');
   const currentAmount = parseFloat(current.amount || '0');
   // Fee-availability/payout callbacks can carry a snapshot from before a refund.
@@ -311,7 +326,7 @@ export async function updatePaymentTransaction(
   }
 
   if (params.paidAt !== undefined) {
-    updates.push(sql`paid_at = ${params.paidAt}`);
+    updates.push(params.status === 'succeeded' ? sql`paid_at = COALESCE(paid_at, ${params.paidAt})` : sql`paid_at = ${params.paidAt}`);
   }
 
   if (params.refundedAt !== undefined) {

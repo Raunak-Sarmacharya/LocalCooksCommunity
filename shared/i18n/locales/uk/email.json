@@ -227,7 +227,7 @@
   "managerCheckoutPayoutAction": "Завершити огляд",
   "bookingManagerPayoutAfterCloseout": "Виплата надійде після візиту — щойно ви завершите огляд, або автоматично через 24 години після його завершення.",
   "payoutChefFallback": "кухаря",
-  "bookingDownloadFinalInvoice": "Завантажити остаточний рахунок",
+  "bookingDownloadFinalInvoice": "Переглянути квитанції",
   "managerRunningLateTitle": "{chef} запізнюється",
   "managerRunningLateBody": "{chef} запізнюється приблизно на {duration}. Бронювання все одно завершується о {end}.",
   "managerRunningLateDuration15": "15 хвилин",
@@ -281,7 +281,7 @@
   "sxSupportUnansweredTitle": "{reference}: плата за додатковий час без відповіді",
   "sxSupportUnansweredBody": "{chef} не відповідає 48 годин на плату {amount} від {kitchen} за {billed}. Картку не списано; будь ласка, зв’яжіться.",
   "sxCardFailedChefTitle": "Не вдалося використати картку",
-  "sxCardFailedChefBody": "Вашу збережену картку не вдалося використати для додаткового часу у {kitchen}, тож нічого не списано. Спробуйте ще раз зі сторінки бронювання або напишіть {kitchen}.",
+  "sxCardFailedChefBody": "Вашу збережену картку відхилено для оплати додаткового часу в {kitchen} на суму {amount}. Кошти не списано. Виберіть «Сплатити іншою карткою» у бронюванні або напишіть {kitchen}.",
   "sxGrantedEndChefTitle": "{kitchen} дає вам {duration}",
   "sxGrantedEndChefBody": "{kitchen} безкоштовно дає вам {duration}. У вас є час до {end}.",
   "sxGrantedStartChefTitle": "{kitchen} дозволяє почати о {end}",
@@ -304,7 +304,7 @@
   "ncSessionEndingBody": "Ваш час у {kitchen} закінчується о {time} ({zone}). {count, plural, =0 {Відкрийте візит, щоб підтвердити вихід.} one {Виконайте # завдання перед виходом, потім підтвердьте вихід на сторінці візиту.} few {Виконайте # завдання перед виходом, потім підтвердьте вихід на сторінці візиту.} many {Виконайте # завдань перед виходом, потім підтвердьте вихід на сторінці візиту.} other {Виконайте # завдання перед виходом, потім підтвердьте вихід на сторінці візиту.}}",
   "ncVisitCompleteTitle": "Візит завершено · {kitchen}",
   "ncVisitCompleteGood": "{kitchen} перевірила приміщення — усе гаразд.",
-  "ncVisitCompleteInvoice": "Ваш остаточний рахунок готовий.",
+  "ncVisitCompleteInvoice": "Ваші квитанції — у бронюванні. Остаточна виписка буде готова, щойно все буде врегульовано.",
   "ncCancelledRefundTitle": "Бронювання скасовано · повернення {amount} уже в дорозі",
   "ncCancelledNoRefundTitle": "Ваше бронювання скасовано · повернення коштів не передбачено",
   "ncPayoutBooking": "Бронювання",
@@ -315,5 +315,9 @@
   "ncDurationHoursMinutes": "{hours} год {minutes} хв",
   "bookingNotIncluded": "Не включено",
   "bookingNotIncludedChef": "{items} — кухня не змогла це надати, тому з вас за це не стягнули оплату.",
-  "bookingNotIncludedStaff": "{items} — відхилено під час підтвердження; з шефа за це не стягнули оплату."
+  "bookingNotIncludedStaff": "{items} — відхилено під час підтвердження; з шефа за це не стягнули оплату.",
+  "sxRefundedChefTitle": "Кошти за додатковий час повернуто · {amount}",
+  "sxRefundedChefBody": "Не вдалося додати час у {kitchen}. Вам повернуто {amount}. Час бронювання не змінився.",
+  "sxRequestExpiredChefTitle": "{kitchen} не відповіли вчасно",
+  "sxRequestExpiredChefBody": "{kitchen} не відповіли вчасно на ваш запит про {duration}, тому його закрито. З вашої картки нічого не списано. Бронювання все одно завершується о {originalEnd}."
 }

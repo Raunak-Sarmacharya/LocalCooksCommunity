@@ -26,9 +26,85 @@ function retrySafe(op: ClaimMoneyOperation) {
   if (op.attemptedAt && Date.now() - Date.parse(op.attemptedAt) >= 23 * 3600000)
     throw new DamageClaimError('This payment needs Local Cooks to verify its earlier attempt. No new money was sent.');
 }
+const creationIsAged = (op: ClaimMoneyOperation) => !!op.attemptedAt && Date.now() - Date.parse(op.attemptedAt) >= 23 * 3600000;
+type StalledOutcome = { kind: 'found'; intent: Stripe.PaymentIntent } | { kind: 'reset' } | { kind: 'review'; reason: string };
+const MAX_SCANNED_INTENTS = 500;
+
+/**
+ * An intent-creation attempt with no saved intent that is too old to retry under its idempotency key. Looks the original up by its
+ * operation key in the customer's own intents (a consistent list, never an eventually-consistent search):
+ * exactly one verified match is attached; none in a complete listing means it was never created, so a new attempt starts under a new
+ * key; anything else (provider unreachable, too many intents, conflicting matches, a mismatch) is kept for Local Cooks with the reason.
+ */
+export async function resolveStalledClaimCreation(id: number, op: ClaimMoneyOperation, claim: Claim): Promise<StalledOutcome> {
+  const review = async (reason: string): Promise<StalledOutcome> => { await markClaimPaymentForReview(id, op, reason); return { kind: 'review', reason }; };
+  if (!op.customerId) return review('The saved payment has no customer to search.');
+  const matches: Stripe.PaymentIntent[] = [];
+  try {
+    const since = Math.floor((Date.parse(op.startedAt) - 5 * 60000) / 1000);
+    let scanned = 0;
+    for await (const candidate of provider().paymentIntents.list({ customer: op.customerId, created: { gte: since }, limit: 100 })) {
+      if (++scanned > MAX_SCANNED_INTENTS) return review('The customer has too many payments in this period to check automatically.');
+      if (candidate.metadata?.claim_operation_key === op.key) matches.push(candidate);
+    }
+  } catch {
+    return review('The payment provider could not be reached to check the earlier attempt.');
+  }
+  if (matches.length > 1) return review('More than one payment matches this attempt.');
+  if (matches.length === 0 || matches[0].status === 'canceled') {
+    await db.transaction(async tx => {
+      const current = await locked(id, tx);
+      if (current.paymentOperation?.key !== op.key || current.paymentOperation.intentId) return;
+      await tx.update(damageClaims).set({ paymentOperation: { ...current.paymentOperation, state: 'cancelled', error: 'No payment was created by that attempt; a new one was started.' },
+        stripePaymentIntentId: null, updatedAt: new Date() }).where(eq(damageClaims.id, id));
+    });
+    return { kind: 'reset' };
+  }
+  const found = matches[0];
+  if (found.amount !== op.amountCents || found.currency !== 'cad' || intentReference(found.customer) !== op.customerId
+    || found.metadata.damage_claim_id !== String(id) || found.metadata.chef_id !== String(claim.chefId)
+    || found.metadata.booking_id !== String(claim.kitchenBookingId)) return review('The payment found does not match the saved claim decision.');
+  await db.transaction(async tx => {
+    const current = await locked(id, tx);
+    if (current.paymentOperation?.key !== op.key || current.paymentOperation.intentId) return;
+    await tx.update(damageClaims).set({ stripePaymentIntentId: found.id, paymentOperation: { ...current.paymentOperation, intentId: found.id, error: undefined,
+      state: current.paymentOperation.state === 'pending' ? 'ready' : current.paymentOperation.state }, updatedAt: new Date() }).where(eq(damageClaims.id, id));
+  });
+  // The chef may have paid without us ever learning of it: settle it from the verified original.
+  if (found.status === 'succeeded') await settleClaimPayment(found);
+  return { kind: 'found', intent: found };
+}
+
+/** Durable, once: keep the reason on the operation and tell Local Cooks, so a stalled payment is never silent. */
+async function markClaimPaymentForReview(id: number, op: ClaimMoneyOperation, reason: string) {
+  await db.transaction(async tx => {
+    const claim = await locked(id, tx);
+    if (claim.paymentOperation?.key !== op.key || claim.paymentOperation.error === reason) return;
+    await tx.update(damageClaims).set({ paymentOperation: { ...claim.paymentOperation, error: reason } }).where(eq(damageClaims.id, id));
+    if (!claim.kitchenBookingId) return;
+    const { queueBookingLifecycleEvent } = await import('./booking-lifecycle-delivery');
+    await queueBookingLifecycleEvent(tx, claim.kitchenBookingId, 'support_updated', 'A damage claim payment needs attention',
+      `${claim.referenceCode || `Claim ${id}`}: the chef's payment for $${(op.amountCents / 100).toFixed(2)} could not be matched to the payment provider. ${reason} Open the booking in support to review the payment before any new charge.`,
+      undefined, { recipientPolicy: 'admins', supportCase: true, claimId: id });
+  });
+}
+
+/** Bounded sweep: stalled claim payments are resolved without waiting for the chef to return. */
+export async function recoverStalledClaimPayments(limit = 3) {
+  assertWorkerTime();
+  const due = await db.select().from(damageClaims).where(and(workerAfter('claimPayments', damageClaims.id),
+    sql`${damageClaims.paymentOperation}->>'state' = 'pending'`, sql`${damageClaims.paymentOperation}->>'intentId' IS NULL`,
+    sql`(${damageClaims.paymentOperation}->>'attemptedAt')::timestamptz < now() - interval '23 hours'`)).orderBy(asc(damageClaims.id)).limit(limit);
+  await workerPageEnd('claimPayments', due.length, limit);
+  for (const row of due) {
+    await workerRecord('claimPayments', row.id);
+    try { await resolveStalledClaimCreation(row.id, row.paymentOperation!, row as unknown as Claim); }
+    catch (error) { if (isWorkerBudgetError(error)) throw error; }
+  }
+}
 const intentReference = (value: string | { id: string } | null | undefined) => typeof value === 'string' ? value : value?.id;
 
-export async function prepareClaimPayment(id: number, chefId: number, newCard = false) {
+export async function prepareClaimPayment(id: number, chefId: number, newCard = false, retriedAfterReset = false) {
   const saved = await db.transaction(async tx => {
     const claim = await locked(id, tx);
     if (claim.chefId !== chefId) throw new DamageClaimError('Claim not found.', 404);
@@ -54,12 +130,20 @@ export async function prepareClaimPayment(id: number, chefId: number, newCard = 
   const stripe = provider(), op = saved.operation;
   assertWorkerTime(2000);
   // Persisted parameters only. Creating an unconfirmed intent never charges or authorizes the card.
-  if (!op.intentId) retrySafe(op);
-  const intent = op.intentId ? await stripe.paymentIntents.retrieve(op.intentId) : await stripe.paymentIntents.create({
+  let discovered: Stripe.PaymentIntent | undefined;
+  if (!op.intentId && creationIsAged(op)) {
+    // An attempt older than the provider's idempotency retention: find what it did instead of guessing.
+    const outcome = await resolveStalledClaimCreation(id, op, saved.claim);
+    if (outcome.kind === 'reset' && !retriedAfterReset) return prepareClaimPayment(id, chefId, newCard, true);
+    if (outcome.kind !== 'found') throw new DamageClaimError('Local Cooks is checking this payment. You do not need to do anything, and you have not been charged twice.');
+    discovered = outcome.intent;
+    if (outcome.intent.status === 'succeeded') throw new DamageClaimError('Your payment was received. Thank you.');
+  }
+  const intent = discovered ?? (op.intentId ? await stripe.paymentIntents.retrieve(op.intentId) : await stripe.paymentIntents.create({
     amount: op.amountCents, currency: 'cad', customer: op.customerId, ...(op.paymentMethodId ? { payment_method: op.paymentMethodId } : {}),
     automatic_payment_methods: { enabled: true, allow_redirects: 'never' }, capture_method: 'automatic',
     metadata: { type: 'damage_claim', damage_claim_v2: 'true', damage_claim_id: String(id), chef_id: String(chefId),
-      booking_id: String(saved.claim.kitchenBookingId), manager_id: String(saved.claim.managerId), claim_operation_key: op.key } }, { idempotencyKey: op.key });
+      booking_id: String(saved.claim.kitchenBookingId), manager_id: String(saved.claim.managerId), claim_operation_key: op.key } }, { idempotencyKey: op.key }));
   if (intent.amount !== op.amountCents || intent.currency !== 'cad' || intentReference(intent.customer) !== op.customerId
     || intent.metadata.claim_operation_key !== op.key) throw new DamageClaimError('The saved card payment needs verification before it can be shown.');
   const canReturnSecret = await db.transaction(async tx => {
@@ -146,6 +230,8 @@ export async function settleClaimPayment(intent: Stripe.PaymentIntent) {
   // Fee discovery can arrive later via charge.updated; it must never make the chef pay twice or delay full kitchen entitlement.
   try { await recordClaimProcessingCost(intent.id); }
   catch (error) { if (isWorkerBudgetError(error)) throw error; (await import('../logger')).logger.error('Claim processing cost needs fee reconciliation', { claimId: id }); }
+  // Chef receipt for the claim payment and the kitchen's remittance (idempotent; never fails settlement).
+  await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(claim.kitchenBookingId, 'claim_paid')).catch(() => undefined);
 }
 export async function recordClaimProcessingCost(intentId: string) {
   const stripe = provider(), intent = await stripe.paymentIntents.retrieve(intentId, { expand: ['latest_charge.balance_transaction'] });

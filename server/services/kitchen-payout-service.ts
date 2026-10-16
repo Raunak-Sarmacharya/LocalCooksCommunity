@@ -114,7 +114,8 @@ async function releaseKitchenPayoutInTick(bookingId: number, reason: string, now
     await assertBookingMoneyWritable({ bookingId, paymentTransactionId: source.id }, tx);
     if (saved.refundRecovery && saved.refundRecovery.status !== 'succeeded'
       || saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded'
-      || saved.capturedCancellationRace || saved.fullRefundRequest?.status === 'pending')
+      || saved.capturedCancellationRace || saved.fullRefundRequest?.status === 'pending'
+      || saved.kitchenCancellationRefund && saved.kitchenCancellationRefund.status !== 'succeeded')
       return { result: { success: false, deferred: true, reason: 'A refund needs review before the payout' } };
     const metadata = { ...saved, payoutRelease: { ...(saved.payoutRelease || {}), reason: saved.payoutRelease?.reason || reason,
       decidedAt: saved.payoutRelease?.decidedAt || now.toISOString() } };
@@ -164,7 +165,11 @@ export async function recordReleasedPayout(id: number, result: TransferResult, t
 export async function releaseKitchenPayout(bookingId: number, reason: string, now = new Date(), options: { override?: boolean } = {}): Promise<ReleaseResult> {
   return payoutNoticeTick.run(now.toISOString(), async () => {
     try { return await releaseKitchenPayoutInTick(bookingId, reason, now, options); }
-    finally { await flushReleasedPayoutNotices(bookingId).catch(error => logger.error('[Payout] Notice will retry from the sweep', { bookingId, error })); }
+    finally {
+      await flushReleasedPayoutNotices(bookingId).catch(error => logger.error('[Payout] Notice will retry from the sweep', { bookingId, error }));
+      // Remittance per transfer (and the final statements once settled); idempotent, never fails the release.
+      await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(bookingId, 'payout_released')).catch(() => undefined);
+    }
   });
 }
 
@@ -305,7 +310,7 @@ export async function releaseDuePayouts(limit = 3) {
         and(isNull(paymentTransactions.payoutReleasedAt), or(isNull(paymentTransactions.payoutEligibleAt), lte(paymentTransactions.payoutEligibleAt, now))),
         sql`${paymentTransactions.payoutReleasedAt} IS NOT NULL AND COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`)))
     .orderBy(asc(paymentTransactions.id)).limit(limit);
-  await workerPageEnd('closeoutPayouts', rows.length);
+  await workerPageEnd('closeoutPayouts', rows.length, limit);
   if (!rows.length) return { processed: 0, released: 0, errors: 0 };
   let released = 0, errors = 0;
   for (const row of rows) {
@@ -322,4 +327,93 @@ export async function releaseDuePayouts(limit = 3) {
     }
   }
   return { processed: rows.length, released, errors };
+}
+
+/** What a kitchen is told, and what Local Cooks sees, when a capture-time transfer cannot be sent yet. */
+export type TransferRecovery = { state: 'needs_setup' | 'waiting_fee' | 'failed'; problem: string; amountCents: number; checkedAt: string; attempts: number; firstSeenAt: string };
+
+/**
+ * Recurring-worker sweep for payments that were meant to pay the kitchen at capture (legacy `at_capture` / NULL timing)
+ * but never got a transfer: the kitchen had no Connect account yet, the provider failed, or the fee was not ready when the
+ * webhook ran. The original transfer is retried through the same idempotent engine (same key, provider-side discovery),
+ * so it can never pay twice. While it cannot be sent, the row records the amount owed and the specific problem; the kitchen is told
+ * once per problem with where to fix it, and Local Cooks is told once. After-closeout rows are never touched here
+ * (`releaseDuePayouts` owns them). Bounded: three rows per tick, 6 hours between tries of the same row.
+ */
+export async function recoverCaptureTransfers(limit = 3) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Transfer recovery batch must be between one and three.');
+  const rows = await db.select().from(paymentTransactions).where(and(
+    workerAfter('captureTransfers', paymentTransactions.id), isNull(paymentTransactions.transferId),
+    inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), inArray(paymentTransactions.status, ['succeeded', 'partially_refunded']),
+    or(isNull(paymentTransactions.payoutTiming), eq(paymentTransactions.payoutTiming, 'at_capture')),
+    sql`${paymentTransactions.paymentIntentId} IS NOT NULL AND ${paymentTransactions.managerId} IS NOT NULL`,
+    sql`COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true' AND COALESCE(${paymentTransactions.metadata}->>'damage_claim_v2', '') = ''`,
+    sql`${paymentTransactions.createdAt} < now() - interval '20 minutes' AND ${paymentTransactions.createdAt} > now() - interval '120 days'`,
+    sql`COALESCE((${paymentTransactions.metadata}->'transferRecovery'->>'checkedAt')::timestamptz, 'epoch') < now() - interval '6 hours'`))
+    .orderBy(asc(paymentTransactions.id)).limit(limit);
+  await workerPageEnd('captureTransfers', rows.length, limit);
+  let recovered = 0, blocked = 0;
+  for (const row of rows) {
+    await workerRecord('captureTransfers', row.id);
+    try {
+      const outcome = await recoverCaptureTransfer(row);
+      if (outcome === 'sent') recovered++; else if (outcome === 'blocked') blocked++;
+    } catch (error) {
+      if (isWorkerBudgetError(error)) throw error;
+      logger.error('[Payout] Capture transfer recovery will retry', { transactionId: row.id, error });
+    }
+  }
+  return { processed: rows.length, recovered, blocked };
+}
+
+export async function recoverCaptureTransfer(row: Source): Promise<'sent' | 'blocked' | 'skipped'> {
+  const amounts = await (await import('./stripe-service')).getStripePaymentAmounts(row.paymentIntentId!);
+  let result: TransferResult | undefined, failure: string | undefined;
+  if (!amounts?.chargeId) failure = 'The payment provider has no captured charge for this payment yet.';
+  else {
+    try {
+      result = await (await import('./stripe-transfer-service')).transferToManagerForBooking({ paymentTransactionId: row.id, paymentIntentId: row.paymentIntentId!,
+        chargeAmountCents: amounts.stripeAmount, actualStripeFeeCents: amounts.stripeProcessingFee, chargeId: amounts.chargeId,
+        transferGroup: `pi_${row.paymentIntentId}`, existingMetadata: row.metadata as Record<string, unknown> });
+    } catch (error) { failure = (error as Error).message; }
+  }
+  const now = new Date().toISOString();
+  if (result?.transferred) {
+    const transfer = { transferred: true, transferredAt: now, source: 'transfer_recovery', transferId: result.transferId, transferredCents: result.transferredCents };
+    await db.execute(sql`UPDATE payment_transactions SET metadata = (COALESCE(metadata, '{}'::jsonb) - 'transferRecovery') || ${JSON.stringify({ transfer })}::jsonb,
+      updated_at = NOW() WHERE id = ${row.id}`);
+    return 'sent';
+  }
+  if (result && !failure && result.reason?.startsWith('Computed transfer amount')) {
+    await db.execute(sql`UPDATE payment_transactions SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"payoutNoEntitlement":true}'::jsonb, updated_at = NOW() WHERE id = ${row.id} AND transfer_id IS NULL`);
+    return 'skipped';
+  }
+  const reason = failure ?? result?.reason ?? 'The transfer was not created.';
+  const state: TransferRecovery['state'] = /no Stripe Connect account/i.test(reason) ? 'needs_setup' : /fee not yet available|processing fee/i.test(reason) ? 'waiting_fee' : 'failed';
+  // Normal waiting states (refund review, deferred payout, kitchen change) are not problems to announce.
+  if (result && !failure && state === 'failed') return 'skipped';
+  const previous = (row.metadata as { transferRecovery?: TransferRecovery } | null)?.transferRecovery;
+  const owed = result?.transferredCents || Math.max(0, Number(row.managerRevenue) || 0);
+  const next: TransferRecovery = { state, problem: reason.replace(/^Failed to [a-z ]+: /i, '').slice(0, 300), amountCents: owed, checkedAt: now,
+    attempts: (previous?.attempts ?? 0) + 1, firstSeenAt: previous?.firstSeenAt ?? now };
+  await db.transaction(async tx => {
+    const [current] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, row.id)).limit(1).for('update');
+    if (!current || current.transferId) return;
+    await tx.update(paymentTransactions).set({ metadata: { ...((current.metadata as object) || {}), transferRecovery: next }, updatedAt: new Date() })
+      .where(eq(paymentTransactions.id, row.id));
+    // Announce a problem once (or when it changes), never every retry.
+    if (previous?.state === next.state && previous.problem === next.problem) return;
+    const [booking] = await tx.select({ referenceCode: kitchenBookings.referenceCode, id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id, row.bookingId)).limit(1);
+    if (!booking) return;
+    const ref = booking.referenceCode || `#${booking.id}`, money = `$${(owed / 100).toFixed(2)}`;
+    const what = state === 'needs_setup' ? 'You have not finished payment setup, so your Stripe account cannot receive it yet'
+      : state === 'waiting_fee' ? 'The payment provider has not finished processing it yet; we will keep checking' : `The transfer did not go through (${next.problem})`;
+    await queueBookingLifecycleEvent(tx, booking.id, 'support_updated', state === 'needs_setup' ? 'Finish payment setup to receive your payout' : 'Your payout is delayed',
+      `${money} for ${ref} is waiting to be sent to you. ${what}.${state === 'needs_setup' ? ' Open Payment settings in your dashboard to finish setup; the payout is sent automatically once it is done.' : ''} Questions? Contact Local Cooks.`,
+      undefined, { recipientPolicy: 'manager', transactionId: row.id, transferRecovery: state });
+    if (state !== 'waiting_fee') await queueBookingLifecycleEvent(tx, booking.id, 'support_updated', 'A kitchen payout could not be sent',
+      `${ref}: ${money} owed to the kitchen was not transferred. ${what}. The transfer is retried every few hours under its original reference.`,
+      undefined, { recipientPolicy: 'admins', supportCase: true, transactionId: row.id, transferRecovery: state });
+  });
+  return 'blocked';
 }

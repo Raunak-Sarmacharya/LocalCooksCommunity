@@ -407,7 +407,8 @@ export async function requestKitchenCheckin(
       .set({
         checkinStatus: 'checked_in',
         checkedInAt: now,
-        checkedInMethod: method,
+        // A verified staff code is recorded as 'code' so the kitchen sees how the chef got in.
+        checkedInMethod: gate.kind === 'ok' ? gate.method : method,
         checkinNotes: checkinNotes || null,
         checkinPhotoUrls: checkinPhotoUrls || [],
         checkinChecklistItems: checkinChecklistItems || [],
@@ -430,7 +431,7 @@ export async function requestKitchenCheckin(
     });
     if (!checkedIn) return { success: false, error: 'Booking changed; refresh before checking in' };
 
-    logger.info(`[KitchenCheckout] Chef ${chefId} checked in to booking ${bookingId} via ${method}`, {
+    logger.info(`[KitchenCheckout] Chef ${chefId} checked in to booking ${bookingId}`, {
       actualStartTime,
       hasPhotos: (checkinPhotoUrls?.length || 0) > 0,
     });

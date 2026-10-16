@@ -218,7 +218,7 @@ export async function processExpiredAuthorizations(): Promise<AuthExpiryResult[]
           eq(kitchenBookings.status, "pending"),
         ),
       ).orderBy(kitchenBookings.id).limit(workerBatch());
-    await workerPageEnd('authBookings', expiredBookings.length);
+    await workerPageEnd('authBookings', expiredBookings.length, workerBatch());
 
     logger.info(`[AuthExpiry] Checking ${expiredBookings.length} pending kitchen booking response deadlines`);
 

@@ -1,3 +1,4 @@
+import { localCooksSupportHref } from "@/components/support/ContactLocalCooks";
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
@@ -91,7 +92,7 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone,
       {entry.state !== 'applied' && <p className="text-sm">{t('changeCopy09')}</p>}
       {pending.includes(entry.state) && <p className="text-sm">{entry.paymentBy ? t('changeCopy10') : t('changeCopy11')}: {time(entry.paymentBy || entry.decisionBy)}.</p>}
       <details><summary className="cursor-pointer text-sm">{t('changeCopy12')}</summary><div className="pt-2"><ChangePrice quote={entry.quote} /></div></details>
-      {entry.state === 'recovery_required' && <p className="text-sm">{t('changeSupport')} {entry.refundRecorded ? t('changeCopy13') : entry.paymentRecorded ? t('changeCopy14') : t('changeCopy15')} {t('changeDoNotPay')} <a className="underline" href="mailto:support@localcooks.ca">support@localcooks.ca</a>.</p>}
+      {entry.state === 'recovery_required' && <p className="text-sm">{t('changeSupport')} {entry.refundRecorded ? t('changeCopy13') : entry.paymentRecorded ? t('changeCopy14') : t('changeCopy15')} {t('changeDoNotPay')} <a className="underline" href={localCooksSupportHref({ bookingId, role: manager ? "manager" : "chef", changeId: entry.id, situation: "Booking change payment recovery" })}>support@localcooks.ca</a>.</p>}
       {manager && entry.canDecide && ['requested', 'authorized'].includes(entry.state) && <div className="space-y-2">
         <Button variant="outline" disabled={busy} onClick={() => void decision(entry, 'decline')}>{t('changeCopy16')}</Button>
       </div>}

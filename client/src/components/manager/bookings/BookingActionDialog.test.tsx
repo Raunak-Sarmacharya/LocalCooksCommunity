@@ -71,6 +71,16 @@ describe('manager booking request review', () => {
     expect(submit).toHaveBeenCalledWith({ bookingId: 112, status: 'cancelled' });
   });
 
+  it('sends an optional message to the chef with the decline', () => {
+    const { submit } = setup({ storageItems: [], equipmentItems: [] });
+    choose('Kitchen Session', 'Decline');
+    expect(screen.getByText('Decline this request?')).toBeInTheDocument();
+    expect(screen.getByText('Alex isn’t charged — their card hold is released.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Message to the chef (optional)'), { target: { value: '  Closed that day.  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Decline request' }));
+    expect(submit).toHaveBeenCalledWith({ bookingId: 112, status: 'cancelled', message: 'Closed that day.' });
+  });
+
   it('restores addon approvals when the manager changes the kitchen choice back to approval', () => {
     setup();
     choose('Mixer', 'Decline');

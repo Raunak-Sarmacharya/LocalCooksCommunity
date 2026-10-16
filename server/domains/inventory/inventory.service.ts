@@ -50,8 +50,26 @@ export class InventoryService {
         return this.repo.updateEquipmentListing(id, updates);
     }
 
-    async deleteEquipmentListing(id: number) {
-        return this.repo.deleteEquipmentListing(id);
+    /**
+     * Removing equipment never destroys booking history: with upcoming/open bookings it is refused (turn it off for new
+     * bookings instead); with only past bookings it is archived (hidden, kept for receipts); with none it is deleted.
+     */
+    async deleteEquipmentListing(id: number): Promise<{ archived: boolean }> {
+        const usage = await this.repo.getEquipmentBookingUsage(id);
+        if (usage.open > 0) throw new EquipmentListingInUseError();
+        if (usage.total > 0) {
+            await this.repo.archiveEquipmentListing(id);
+            return { archived: true };
+        }
+        await this.repo.deleteEquipmentListing(id);
+        return { archived: false };
+    }
+}
+
+export class EquipmentListingInUseError extends Error {
+    constructor() {
+        super('This equipment has upcoming bookings. Turn it off for new bookings instead.');
+        this.name = 'EquipmentListingInUseError';
     }
 }
 

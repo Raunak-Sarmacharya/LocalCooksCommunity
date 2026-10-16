@@ -181,3 +181,23 @@ describe('closed-out bookings with a stale check-in column', () => {
     expect(bookingListPhase({ ...closed(173, 'checked_in', 'due'), status: 'confirmed', closeout: { phase: 'booked_time_ended' } }, NOW)).toBe('time_ended_in_session');
   });
 });
+
+describe('lists show the no-check-in state like the booking page (WP-N)', () => {
+  const missed = row(41, { bookingDate: '2026-10-13T00:00:00Z', status: 'completed', checkinStatus: 'not_checked_in',
+    closeout: { phase: 'ended', visits: [{ attendance: 'unknown', inspection: { canRespond: true } }] } });
+  it('chef: a past booking with the same pill', () => {
+    expect(bookingListPhase(missed, NOW)).toBe('no_checkin');
+    expect(bookingListPill('no_checkin', false).key).toBe('bdhPill_no_checkin');
+    expect(chefBookingTabs([missed], NOW).past.map(item => item.row.id)).toEqual([41]);
+  });
+  it('a legacy booking (no saved closeout, predates check-in) keeps reading as completed (#101)', () => {
+    expect(bookingListPhase({ ...missed, closeout: { ...missed.closeout!, legacy: true } }, NOW)).toBe('completed');
+  });
+  it('kitchen: needs action ("Did they come?") while it can answer, past once the window closed', () => {
+    expect(managerBookingGroups([missed], NOW).needs_action.map(item => item.row.id)).toEqual([41]);
+    const closed = { ...missed, closeout: { phase: 'ended', visits: [{ attendance: 'unknown', inspection: { canRespond: false } }] } };
+    expect(managerBookingGroups([closed], NOW).past.map(item => item.row.id)).toEqual([41]);
+    const answered = { ...missed, closeout: { phase: 'ended', visits: [{ attendance: 'recorded', inspection: { canRespond: true } }] } };
+    expect(bookingListPhase(answered, NOW)).toBe('completed');
+  });
+});

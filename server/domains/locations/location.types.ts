@@ -17,6 +17,8 @@ export interface CreateLocationDTO {
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
+  maxAdvanceBookingDays?: number;
+  turnoverBufferEnabled?: boolean;
   minimumBookingWindowHours?: number;
   logoUrl?: string;
   brandImageUrl?: string;
@@ -44,6 +46,8 @@ export interface UpdateLocationDTO {
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
+  maxAdvanceBookingDays?: number;
+  turnoverBufferEnabled?: boolean;
   minimumBookingWindowHours?: number;
   logoUrl?: string;
   brandImageUrl?: string;
@@ -89,6 +93,9 @@ export interface LocationDTO {
   cancellationPolicyMessage: string;
   defaultDailyBookingLimit: number;
   minimumBookingWindowHours: number;
+  maxAdvanceBookingDays?: number;
+  turnoverBufferEnabled?: boolean;
+  maxAdvanceBookingDaysCap?: number;
   logoUrl: string | null;
   brandImageUrl: string | null;
   customOnboardingLink: string | null;

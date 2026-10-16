@@ -230,7 +230,7 @@ export async function notifyDamageClaimBookingHolds(now = new Date()) {
     isNull(damageClaims.holdReleasedAt), isNull(damageClaims.resolvedAt), isNull(damageClaims.chargeSucceededAt),
     isNull(damageClaims.bookingHoldNotifiedAt), lte(damageClaims.upheldAt, new Date(now.getTime() - 7 * 86400000))))
     .orderBy(asc(damageClaims.id)).limit(3);
-  await workerPageEnd('claimHolds', due.length);
+  await workerPageEnd('claimHolds', due.length, 3);
   if (!due.length) return;
   for (const row of due) {
     await workerRecord('claimHolds', row.id);

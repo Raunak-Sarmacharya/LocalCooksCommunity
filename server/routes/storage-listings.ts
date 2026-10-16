@@ -215,6 +215,10 @@ router.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUse
         logger.info(`✅ Storage listing ${listingId} deleted by manager ${user.id}`);
         res.json({ success: true });
     } catch (error: any) {
+        // Bookings keep the listing (RESTRICT foreign key, migration 0089); history is never cascaded away.
+        if (error?.code === "23503" || error?.cause?.code === "23503") {
+            return res.status(409).json({ error: "This storage listing has bookings, so it can't be deleted. Turn it off for new bookings instead." });
+        }
         logger.error("Error deleting storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to delete storage listing" });
     }

@@ -20,6 +20,10 @@ type Context = {
   database: NodePgDatabase<typeof schema>; deadline: number; taskDeadline: number;
   cursors: Record<string, number>; checkpoint: (key: string, id: number) => Promise<void>;
   databaseFailures?: number;
+  /** Keys whose page came back short this tick → records still to attempt. The cursor advances per record as usual and
+   * wraps to the start only when the LAST record of the short page is reached (not before: a slow first record must not
+   * starve the rest of the page on the next tick). */
+  shortPages?: Map<string, number>;
 };
 export const workerContext = new AsyncLocalStorage<Context>();
 export const inRecurringWorker = () => !!workerContext.getStore();
@@ -44,8 +48,16 @@ export function workerAfter(key: string, column: PgColumn): SQL | undefined {
 export async function workerRecord(key: string, id: number) {
   if (!inRecurringWorker()) return;
   assertWorkerTime(2_000);
-  await workerContext.getStore()!.checkpoint(key, id);
+  const scope = workerContext.getStore()!;
+  const left = scope.shortPages?.get(key);
+  if (left !== undefined) scope.shortPages!.set(key, left - 1);
+  await scope.checkpoint(key, left === 1 ? 0 : id);
 }
-export async function workerPageEnd(key: string, count: number) {
-  if (inRecurringWorker() && !count) await workerContext.getStore()!.checkpoint(key, 0);
+/** Pass `pageSize` (the query's limit): a short page means nothing eligible is left past it, so the next tick starts from the
+ * beginning instead of spending a tick on an empty page (a booking due just under the cursor otherwise waits an extra tick). */
+export async function workerPageEnd(key: string, count: number, pageSize?: number) {
+  if (!inRecurringWorker()) return;
+  const scope = workerContext.getStore()!;
+  if (!count) await scope.checkpoint(key, 0);
+  else if (pageSize && count < pageSize) (scope.shortPages ??= new Map()).set(key, count);
 }
