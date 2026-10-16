@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchens, locations, paymentTransactions, equipmentBookings, storageBookings, pendingStorageExtensions } from '@shared/schema';
+import { kitchenBookings, kitchenBookingVisits, kitchens, locations, paymentTransactions, equipmentBookings, equipmentListings, storageBookings, pendingStorageExtensions } from '@shared/schema';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { cancellationSourceQuote, isCancellationReservationSource } from '@shared/cancellation-refund';
 import { DomainError } from '../shared/errors/domain-error';
@@ -9,8 +9,11 @@ import { createRefund, getCancellationPaymentFacts, getPaymentIntentRefunds, rev
 import { cancelLinkedBookingDates, cancelledStorageStatus } from './booking-linked-cancellation';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { addPaymentHistory } from './payment-transactions-service';
-import { assertBookingMoneyWritable } from './booking-money-guard';
+import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
+import { BookingItemCancellationError } from './booking-item-cancellation';
+import { logger } from '../logger';
 import { allocateCents, legacyCancellationSnapshot, quoteCancellation, type CancellationPolicySnapshot } from '@shared/cancellation-policy';
+import { getUserDisplayName } from '../utils/user-display';
 import { policySessionStart } from './cancellation-policy-settings';
 
 /** Staff use the same instant frozen-policy command as the chef. */
@@ -224,6 +227,8 @@ export async function refundKitchenCausedAddons(bookingId: number, managerId: nu
     for (const pick of picks) {
       const item = (pick.kind === 'storage' ? ctx.storage : ctx.equipment).find(row => row.id === pick.id);
       if (!item || item.status !== 'cancelled') throw Error('Cancel the add-on first, then refund it.');
+      // The chef already removed this one under the booking's policy; its refund (or its no-charge outcome) is settled.
+      if (pick.kind === 'equipment' && addonEntry(ctx, pick.id)?.removal) throw Error('The chef already removed this add-on under the booking’s cancellation policy, so it has already been settled.');
       if (pick.kind === 'storage' ? usedStorage(item as typeof storageBookings.$inferSelect) : usedEquipment(item as typeof equipmentBookings.$inferSelect))
         throw Error('This add-on was already used, so its payment stays with the kitchen.');
       const source = ctx.sources.find(row => row.bookingType === pick.kind && row.bookingId === pick.id)
@@ -275,7 +280,11 @@ export async function refundKitchenCausedAddons(bookingId: number, managerId: nu
       });
       const verified = await (await import('./payment-refund-reconciliation')).reconcilePaymentRefundReceipts(source.paymentIntentId!, tx);
       const [fresh] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, source.id)).limit(1);
-      await tx.update(paymentTransactions).set({ metadata: { ...metadata(fresh ?? source), kitchenAddonRefunds: [...done.filter(row => row.operationKey !== key), ...sourcePicks.map(pick => ({ ...pick, operationKey: key }))] }, updatedAt: new Date() })
+      await tx.update(paymentTransactions).set({ metadata: { ...metadata(fresh ?? source), kitchenAddonRefunds: [...done.filter(row => row.operationKey !== key), ...sourcePicks.map(pick => {
+        const index = allocations.findIndex(row => row.kind === pick.kind && row.bookingId === pick.id);
+        return { ...pick, operationKey: key, componentId: `${pick.kind}:${pick.id}:0`, refundCents: grosses[index] + platformShares[index],
+          kitchenRefundCents: grosses[index] - feeShares[index], platformProcessingCostCents: feeShares[index] };
+      })] }, updatedAt: new Date() })
         .where(eq(paymentTransactions.id, source.id));
       if (source.paymentIntentId === ctx.parent.paymentIntentId)
         await tx.update(kitchenBookings).set({ paymentStatus: verified.status === 'refunded' ? 'refunded' : 'partially_refunded', updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
@@ -298,7 +307,7 @@ const usedStorage = (item: typeof storageBookings.$inferSelect) => item.status =
 const usedEquipment = (item: typeof equipmentBookings.$inferSelect) => item.status === 'completed';
 
 async function context(tx: Tx, bookingId: number, actorId: number, role: 'manager' | 'chef', lock = false) {
-  const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone }).from(kitchenBookings)
+  const [row] = await tx.select({ booking: kitchenBookings, managerId: locations.managerId, timezone: locations.timezone, kitchenName: kitchens.name }).from(kitchenBookings)
     .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq(kitchens.locationId, locations.id))
     .where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!row || (role === 'manager' ? row.managerId : row.booking.chefId) !== actorId) throw new Error('Booking not found or access denied');
@@ -330,46 +339,70 @@ async function context(tx: Tx, bookingId: number, actorId: number, role: 'manage
     [parent.paymentIntentId, ...storage.map(item => item.paymentIntentId), ...equipment.map(item => item.paymentIntentId)], extensions.map(item => item.stripePaymentIntentId), parent.paymentIntentId));
   const intentIds = reservationSources.map(source => source.paymentIntentId).filter(Boolean);
   if (new Set(intentIds).size !== intentIds.length) throw new Error('Duplicate captured source identity requires Local Cooks review before cancellation');
-  return { parent, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', storage, equipment, sources: reservationSources };
+  return { parent, kitchenName: row.kitchenName, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', storage, equipment, sources: reservationSources };
 }
 
-async function chefQuote(tx: Tx, ctx: Awaited<ReturnType<typeof context>>, cancelAt: Date, recoveringFee = false) {
+const readConnection = () => db as unknown as Tx;
+const contextVersion = (ctx: Context) => hash({ parent: ctx.parent, managerId: ctx.managerId, sources: ctx.sources, equipment: ctx.equipment, storage: ctx.storage });
+function recheckContext(ctx: Context, version: string) {
+  if (contextVersion(ctx) !== version) throw new Error('The booking payment changed. Refresh and review the new amount.');
+}
+
+/** The accepted terms for this booking (frozen at checkout); a changed time must have had its terms re-verified. */
+function chefSnapshot(ctx: Awaited<ReturnType<typeof context>>) {
   const snapshot = ctx.parent.cancellationPolicySnapshot as CancellationPolicySnapshot | null ?? legacyCancellationSnapshot(ctx.parent.cancellationPolicyHours, ctx.timezone,
     [{ startAt: policySessionStart(ctx.parent.bookingDate.toISOString(), ctx.parent.startTime, ctx.parent.operatingWindowStartTime || ctx.parent.startTime, ctx.timezone) }]);
   if (snapshot.policyId && snapshot.sessions[0]?.startAt && Date.parse(snapshot.sessions[0].startAt) !== Date.parse(policySessionStart(ctx.parent.bookingDate.toISOString(), ctx.parent.startTime, ctx.parent.operatingWindowStartTime || ctx.parent.startTime, snapshot.timezone)))
     throw new DomainError('CANCELLATION_AMENDMENT_REVIEW', 'The booking time changed after these terms were accepted. Local Cooks must verify the accepted new deadline before quoting a refund.', 409);
+  return snapshot;
+}
+
+/** One captured source, verified against the provider before any chef refund is quoted from it. */
+async function chefSourceFacts(source: Source, ctx: Awaited<ReturnType<typeof context>>, recoveringFee: boolean) {
+  if (!source.paymentIntentId || source.status === 'authorized' || source.chefId !== ctx.parent.chefId || source.managerId !== ctx.managerId) throw Error('Payment ownership or an unresolved hold needs review');
+  const saved = metadata(source);
+  if (saved.refundRecovery && saved.refundRecovery.status !== 'succeeded' || saved.fullRefundRequest?.status === 'pending'
+    || saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded'
+      && !(recoveringFee && saved.cancellationRefundOperation.status === 'fee_pending')) throw Error('An earlier refund needs review before cancellation');
+  const facts = await getCancellationPaymentFacts(source.paymentIntentId);
+  if (facts.currency !== source.currency.toLowerCase() || facts.captured !== Number(source.amount)) throw Error('Captured source differs from the payment ledger');
+  const verified = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: saved.refunds });
+  return { saved, facts, verified };
+}
+
+/** The captured source's frozen components (kitchen time and each add-on) with their service-fee shares, plus the ones already used. */
+function sourceComponents(ctx: Awaited<ReturnType<typeof context>>, source: Source, saved: Record<string, any>, facts: { captured: number }, snapshot: CancellationPolicySnapshot, cancelAt: Date) {
+  let allocations = saved.capturedComponentAllocations as Array<{ kind: 'kitchen' | 'equipment' | 'storage'; bookingId: number; managerGrossCents: number; sessionIndex?: number }> | undefined;
+  if (!allocations) {
+    if (['kitchen', 'bundle'].includes(source.bookingType) && [...ctx.storage, ...ctx.equipment].some(item => item.paymentIntentId === source.paymentIntentId)
+      || snapshot.sessions.length !== 1) throw Error('Shared or multi-session payment needs frozen component allocations');
+    allocations = [{ kind: source.bookingType === 'storage' ? 'storage' : source.bookingType === 'equipment' ? 'equipment' : 'kitchen', bookingId: source.bookingId!, managerGrossCents: facts.captured - Number(source.serviceFee) }];
+  }
+  if (allocations.reduce((sum, item) => sum + item.managerGrossCents, 0) !== facts.captured - Number(source.serviceFee)) throw Error('Frozen component allocation differs from capture');
+  if (snapshot.sessions.length > 1 && allocations.some(item => item.sessionIndex === undefined)) throw Error('Multiple sessions need frozen per-session payment allocations before quoting a refund');
+  const platform = allocateCents(Number(source.serviceFee), allocations.map(item => item.managerGrossCents));
+  const components = allocations.map((item, index) => ({ id: `${item.kind}:${item.bookingId}:${item.sessionIndex ?? 0}`, bookingId: item.bookingId, kind: item.kind, sessionIndex: item.sessionIndex ?? 0,
+    kitchenCents: item.managerGrossCents, platformCents: platform[index] }));
+  const startedComponents = components.filter(item => item.kind === 'storage' ? ctx.storage.some(storage => item.bookingId === storage.id &&
+    (usedStorage(storage) || ['checkin_requested', 'checkin_completed'].includes(storage.checkinStatus || '') || storage.startDate <= cancelAt))
+    : item.kind === 'equipment' && ctx.equipment.some(equipment => item.bookingId === equipment.id && usedEquipment(equipment))).map(item => item.id);
+  return { components, startedComponents };
+}
+
+async function chefQuote(tx: Tx, ctx: Awaited<ReturnType<typeof context>>, cancelAt: Date, recoveringFee = false) {
+  const snapshot = chefSnapshot(ctx);
   const sources = [];
   for (const source of ctx.sources) {
     if (['pending', 'failed', 'canceled'].includes(source.status)) continue;
-    if (!source.paymentIntentId || source.status === 'authorized' || source.chefId !== ctx.parent.chefId || source.managerId !== ctx.managerId) throw Error('Payment ownership or an unresolved hold needs review');
-    const saved = metadata(source);
-    if (saved.refundRecovery && saved.refundRecovery.status !== 'succeeded' || saved.fullRefundRequest?.status === 'pending'
-      || saved.cancellationRefundOperation && saved.cancellationRefundOperation.status !== 'succeeded'
-        && !(recoveringFee && saved.cancellationRefundOperation.status === 'fee_pending')) throw Error('An earlier refund needs review before cancellation');
-    const facts = await getCancellationPaymentFacts(source.paymentIntentId);
-    if (facts.currency !== source.currency.toLowerCase() || facts.captured !== Number(source.amount)) throw Error('Captured source differs from the payment ledger');
-    const verified = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: saved.refunds });
-    let allocations = saved.capturedComponentAllocations as Array<{ kind: 'kitchen' | 'equipment' | 'storage'; bookingId: number; managerGrossCents: number; sessionIndex?: number }> | undefined;
-    if (!allocations) {
-      if (['kitchen', 'bundle'].includes(source.bookingType) && [...ctx.storage, ...ctx.equipment].some(item => item.paymentIntentId === source.paymentIntentId)
-        || snapshot.sessions.length !== 1) throw Error('Shared or multi-session payment needs frozen component allocations');
-      allocations = [{ kind: source.bookingType === 'storage' ? 'storage' : source.bookingType === 'equipment' ? 'equipment' : 'kitchen', bookingId: source.bookingId!, managerGrossCents: facts.captured - Number(source.serviceFee) }];
-    }
-    if (allocations.reduce((sum, item) => sum + item.managerGrossCents, 0) !== facts.captured - Number(source.serviceFee)) throw Error('Frozen component allocation differs from capture');
-    if (snapshot.sessions.length > 1 && allocations.some(item => item.sessionIndex === undefined)) throw Error('Multiple sessions need frozen per-session payment allocations before quoting a refund');
-    const platform = allocateCents(Number(source.serviceFee), allocations.map(item => item.managerGrossCents));
-    const components = allocations.map((item, index) => ({ id: `${item.kind}:${item.bookingId}:${item.sessionIndex ?? 0}`, bookingId: item.bookingId, kind: item.kind, sessionIndex: item.sessionIndex ?? 0,
-      kitchenCents: item.managerGrossCents, platformCents: platform[index] }));
-    const startedComponents = components.filter(item => item.kind === 'storage' ? ctx.storage.some(storage => item.bookingId === storage.id &&
-      (usedStorage(storage) || ['checkin_requested', 'checkin_completed'].includes(storage.checkinStatus || '') || storage.startDate <= cancelAt))
-      : item.kind === 'equipment' && ctx.equipment.some(equipment => item.bookingId === equipment.id && usedEquipment(equipment))).map(item => item.id);
+    const { saved, facts, verified } = await chefSourceFacts(source, ctx, recoveringFee);
+    const { components, startedComponents } = sourceComponents(ctx, source, saved, facts, snapshot, cancelAt);
     const engine = quoteCancellation(snapshot, { cancelAt, confirmedAt: ctx.parent.createdAt || cancelAt, capturedCents: facts.captured, processingFeeCents: facts.processingCost,
-      components, startedComponents, cause: 'chef', alreadyRefundedCents: facts.refunded,
+      components, startedComponents, settledComponents: settledAddons(saved), cause: 'chef', alreadyRefundedCents: facts.refunded,
       alreadyKitchenRefundedCents: verified.receipts.reduce((sum, item) => sum + item.managerDebited, 0),
       alreadyPlatformRefundedCents: verified.receipts.reduce((sum, item) => sum + item.platformServiceFeeReturned, 0) });
     if (!engine.quoteReady) throw Error('Actual card processing fee is not yet verified');
-    const funding = engine.kitchenRefundCents ? await verifyCancellationRefundFunding(source.paymentIntentId, source.transferId, engine.kitchenRefundCents) : null;
-    sources.push({ transactionId: source.id, intentId: source.paymentIntentId, currency: source.currency, processingCost: facts.processingCost,
+    const funding = engine.kitchenRefundCents ? await verifyCancellationRefundFunding(source.paymentIntentId!, source.transferId, engine.kitchenRefundCents) : null;
+    sources.push({ transactionId: source.id, intentId: source.paymentIntentId!, currency: source.currency, processingCost: facts.processingCost,
       feeProvenance: { balanceTransactionId: facts.balanceTransactionId, details: facts.feeDetails, classification: 'stripe_fee' },
       serviceFee: Number(source.serviceFee), receipts: verified.receipts, funding, ...engine });
   }
@@ -381,21 +414,24 @@ async function chefQuote(tx: Tx, ctx: Awaited<ReturnType<typeof context>>, cance
 }
 
 export async function readChefCancellationQuote(bookingId: number, chefId: number) {
-  return db.transaction(async tx => {
-    const ctx = await context(tx, bookingId, chefId, 'chef', true);
-    if (ctx.parent.status === 'pending' && ['pending', 'authorized', 'failed'].includes(ctx.parent.paymentStatus || ''))
-      return { bookingId, quoteReady: true, reasonCode: 'hold_release', chefRefundCents: 0, feeRetainedCents: 0, retainedCents: 0, sources: [] };
-    if (ctx.parent.status === 'cancelled') return { bookingId, cancelled: true, sources: ctx.sources.map(source => metadata(source).cancellationRefundOperation) };
-    if (!['confirmed', 'cancellation_requested'].includes(ctx.parent.status)) throw Error('This booking cannot be cancelled');
-    await assertBookingMoneyWritable({ bookingId }, tx);
-    try { return await chefQuote(tx, ctx, new Date()); }
-    catch (error) { if ((error as Error).message.includes('not yet verified')) return { bookingId, quoteReady: false, reasonCode: 'processing_fee_pending' }; throw error; }
-  });
+  const tx = readConnection(), ctx = await context(tx, bookingId, chefId, 'chef');
+  if (ctx.parent.status === 'pending' && ['pending', 'authorized', 'failed'].includes(ctx.parent.paymentStatus || ''))
+    return { bookingId, quoteReady: true, reasonCode: 'hold_release', chefRefundCents: 0, feeRetainedCents: 0, retainedCents: 0, sources: [] };
+  if (ctx.parent.status === 'cancelled') return { bookingId, cancelled: true, sources: ctx.sources.map(source => metadata(source).cancellationRefundOperation) };
+  if (!['confirmed', 'cancellation_requested'].includes(ctx.parent.status)) throw Error('This booking cannot be cancelled');
+  await assertBookingMoneyWritable({ bookingId });
+  try { return await chefQuote(tx, ctx, new Date()); }
+  catch (error) { if (feeStillUnknown(error)) return { bookingId, quoteReady: false, reasonCode: 'processing_fee_pending' }; throw error; }
 }
 
 /** Reserve the received time and every source operation before provider work. */
 export async function cancelChefBooking(bookingId: number, chefId: number, operationKey: string, reason?: string, actorId = chefId, expectedRefundCents?: number) {
   if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(operationKey || '')) throw Error('A cancellation operation key is required');
+  const before = await context(readConnection(), bookingId, chefId, 'chef'), version = contextVersion(before), cancelAt = new Date();
+  let prepared: Awaited<ReturnType<typeof chefQuote>> | undefined, quoteError: unknown;
+  if (!before.parent.cancellationOperationKey) {
+    try { prepared = await chefQuote(readConnection(), before, cancelAt); } catch (error) { quoteError = error; }
+  }
   const managerId = await db.transaction(async tx => {
     const ctx = await context(tx, bookingId, chefId, 'chef', true);
     if (ctx.parent.cancellationOperationKey) {
@@ -404,9 +440,9 @@ export async function cancelChefBooking(bookingId: number, chefId: number, opera
     }
     await assertBookingMoneyWritable({ bookingId, operationKey }, tx);
     if (!['confirmed', 'cancellation_requested'].includes(ctx.parent.status) || (ctx.parent.paymentDecision as any)?.state === 'pending') throw Error('This booking cannot be cancelled in its current state');
-    const cancelAt = new Date();
+    recheckContext(ctx, version);
     let quoted: Awaited<ReturnType<typeof chefQuote>>;
-    try { quoted = await chefQuote(tx, ctx, cancelAt); }
+    try { if (quoteError) throw quoteError; quoted = prepared!; }
     catch (error) {
       if (!(error as Error).message.includes('not yet verified')) throw error;
       for (const source of ctx.sources.filter(source => !['pending', 'failed', 'canceled'].includes(source.status)))
@@ -428,7 +464,7 @@ export async function cancelChefBooking(bookingId: number, chefId: number, opera
         managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents, cancellationNoticeIncludesRefund: true,
         status: money.chefRefundCents ? 'pending' : 'succeeded', acceptedAt: cancelAt.toISOString(), supportOperationKey: actorId !== chefId ? operationKey : undefined };
       await tx.update(paymentTransactions).set({ stripeProcessingFee: String(money.processingCost), managerRevenue: String(money.capturedCents - money.processingCost - money.serviceFee),
-        metadata: { ...metadata(source), refunds: money.receipts, cancellationRefundOperation: operation }, updatedAt: cancelAt }).where(eq(paymentTransactions.id, source.id));
+        metadata: { ...metadata(source), refunds: money.receipts, cancellationRefundOperations: archivedOperations(metadata(source)), cancellationRefundOperation: operation }, updatedAt: cancelAt }).where(eq(paymentTransactions.id, source.id));
       await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'policy_cancellation_reserved', description: 'Frozen policy refund reserved before provider work', createdBy: actorId, metadata: operation }, tx);
     }
     await tx.update(kitchenBookings).set({ status: 'cancelled', cancellationEffectiveAt: cancelAt, cancellationOperationKey: operationKey, cancellationCause: 'chef', cancellationRequestReason: reason?.trim() || null, updatedAt: cancelAt }).where(eq(kitchenBookings.id, bookingId));
@@ -444,8 +480,304 @@ export async function cancelChefBooking(bookingId: number, chefId: number, opera
   return { success: true, action: 'cancelled', ...(await readCancellationRefund(bookingId, chefId, 'chef')) };
 }
 
+// ── Chef removes an add-on from a confirmed booking (instant, under the booking's frozen policy) ─────────────────────────────────
+
+export type AddonScope = { kind: 'equipment'; id: number };
+/** What the chef is told when the booking's payment can't be verified; nothing moves. */
+export const ADDON_MONEY_REVIEW = 'Local Cooks is reviewing this booking’s payment. Contact Local Cooks to remove it.';
+type AddonRemoval = { operationKey: string; at: string; itemName: string; free: boolean; lateCancel: boolean; refundCents: number; kitchenRefundCents: number;
+  finalizationPending?: boolean; componentId: string; operationId?: string; reason?: string; noticeState?: 'removed' | 'processing' | 'fee_pending' | 'sent' };
+type Context = Awaited<ReturnType<typeof context>>;
+const addonFail = (message: string, status = 409) => new BookingItemCancellationError(message, status);
+/** The reserved money operation for a removal, wherever it now sits (a later operation archives it). */
+const findAddonOperation = (ctx: Context, id?: string): Record<string, any> | undefined => id ? ctx.sources.flatMap(row => [metadata(row).cancellationRefundOperation, ...(metadata(row).cancellationRefundOperations || [])]).find(op => op?.id === id) : undefined;
+const addonEntry = (ctx: Context, id: number) => (ctx.parent.equipmentItems as Array<Record<string, any>> | null || []).find(entry => (entry.equipmentBookingId ?? entry.id) === id);
+/** The part-refunds already paid for removed add-ons: a later whole-booking quote keeps them as they were. */
+function settledAddons(saved: Record<string, any>) {
+  return Object.fromEntries([...(saved.addonRemovals || []), ...(saved.kitchenAddonRefunds || [])].filter(row => row.componentId)
+    .map(row => [row.componentId, { refundCents: row.refundCents, kitchenRefundCents: row.kitchenRefundCents }]));
+}
+const addonSource = (ctx: Context, item: typeof equipmentBookings.$inferSelect) => ctx.sources.find(row => row.bookingType === 'equipment' && row.bookingId === item.id)
+  ?? ctx.sources.find(row => row.paymentIntentId && row.paymentIntentId === item.paymentIntentId);
+
+/** Refuses cleanly (no money moves) unless this add-on can still be removed. */
+async function removableAddon(tx: Tx, ctx: Context, scope: AddonScope) {
+  const item = ctx.equipment.find(row => row.id === scope.id);
+  if (!item) throw addonFail('That add-on is not part of this booking.', 404);
+  if (ctx.parent.status !== 'confirmed') throw addonFail('This booking is no longer active, so its add-ons can’t be changed.');
+  if ((ctx.parent.paymentDecision as { state?: string } | null)?.state === 'pending') throw addonFail(ADDON_MONEY_REVIEW);
+  const visits = await tx.select({ checkinStatus: kitchenBookingVisits.checkinStatus, checkedInAt: kitchenBookingVisits.checkedInAt }).from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, ctx.parent.id));
+  if (ctx.parent.checkedInAt || (ctx.parent.checkinStatus ?? 'not_checked_in') !== 'not_checked_in' || visits.some(visit => visit.checkedInAt || (visit.checkinStatus ?? 'not_checked_in') !== 'not_checked_in'))
+    throw addonFail('This visit has already started, so add-ons can’t be removed now.');
+  if (item.status === 'cancellation_requested') throw addonFail('The kitchen is already reviewing your earlier request for this add-on.');
+  if (item.status !== 'confirmed') throw addonFail('This add-on is no longer available to remove.');
+  try { await assertBookingMoneyWritable({ bookingId: ctx.parent.id }, tx); }
+  catch (error) { if (error instanceof BookingMoneyFrozen) throw addonFail(ADDON_MONEY_REVIEW); throw error; }
+  return item;
+}
+
+async function addonName(tx: Tx, item: typeof equipmentBookings.$inferSelect) {
+  const [listing] = await tx.select({ name: equipmentListings.equipmentType }).from(equipmentListings).where(eq(equipmentListings.id, item.equipmentListingId)).limit(1);
+  return listing?.name || 'Equipment';
+}
+
+/**
+ * What removing this one add-on returns: its price + HST + its share of the Local Cooks service fee, minus its share of the actual card fee
+ * (pro-rata of the payment's actual fee). The frozen late tier applies to this component just as it does to the booking.
+ */
+async function addonQuote(tx: Tx, ctx: Context, scope: AddonScope, cancelAt: Date, recoveringFee = false) {
+  const item = ctx.equipment.find(row => row.id === scope.id)!;
+  const itemName = await addonName(tx, item), snapshot = chefSnapshot(ctx), itemPriceCents = Math.round(Number(item.totalPrice) || 0);
+  const source = addonSource(ctx, item);
+  const base = { bookingId: ctx.parent.id, scope, itemName, itemPriceCents, snapshot, cancelAt: cancelAt.toISOString() };
+  if (source?.status === 'authorized') throw Error('Payment ownership or an unresolved hold needs review');
+  if (!source) throw addonFail(ADDON_MONEY_REVIEW);
+  const allocation = metadata(source).capturedComponentAllocations?.filter((row: any) => row.kind === 'equipment' && row.bookingId === item.id);
+  const verifiedZero = allocation?.length === 1 && allocation[0].managerGrossCents === 0
+    && metadata(source).capturedComponentAllocations.reduce((sum: number, row: any) => sum + row.managerGrossCents, 0) === Number(source.amount) - Number(source.serviceFee);
+  if (!itemPriceCents && !verifiedZero && !['pending', 'failed', 'canceled'].includes(source.status)) throw addonFail(ADDON_MONEY_REVIEW);
+  if (source.chefId !== ctx.parent.chefId || source.managerId !== ctx.managerId) throw addonFail(ADDON_MONEY_REVIEW);
+  if (['pending', 'failed', 'canceled'].includes(source.status) && item.paymentStatus !== 'paid' || verifiedZero)
+    return { ...base, quoteReady: true as const, free: true as const, lateCancel: false, chefRefundCents: 0, feeRetainedCents: 0, retainedCents: 0, alreadyRefundedCents: 0, kitchenShareRetainedCents: 0, sources: [] };
+  const { saved, facts, verified } = await chefSourceFacts(source, ctx, recoveringFee);
+  if ((saved.kitchenAddonRefunds as Array<{ kind: string; id: number }> | undefined)?.some(row => row.kind === 'equipment' && row.id === item.id)) throw Error('This add-on was already refunded.');
+  const { components, startedComponents } = sourceComponents(ctx, source, saved, facts, snapshot, cancelAt);
+  const engine = quoteCancellation(snapshot, { cancelAt, confirmedAt: ctx.parent.createdAt || cancelAt, capturedCents: facts.captured, processingFeeCents: facts.processingCost,
+    components, startedComponents, settledComponents: settledAddons(saved), cause: 'chef', alreadyRefundedCents: facts.refunded,
+    alreadyKitchenRefundedCents: verified.receipts.reduce((sum, row) => sum + row.managerDebited, 0),
+    alreadyPlatformRefundedCents: verified.receipts.reduce((sum, row) => sum + row.platformServiceFeeReturned, 0) });
+  if (!engine.quoteReady) throw Error('Actual card processing fee is not yet verified');
+  const parts = engine.perComponent.filter(row => row.kind === 'equipment' && row.id.startsWith(`equipment:${item.id}:`));
+  if (parts.length !== 1) throw new DomainError('CANCELLATION_ALLOCATION_REVIEW', 'This add-on has no frozen paid amount. Local Cooks must verify it first.', 409);
+  const part = parts[0], paid = part.kitchenCents + part.platformCents, lateCancel = part.refundPercent !== 100;
+  const refund = part.refundCents, kitchen = part.kitchenRefundCents, platform = refund - kitchen;
+  if (refund > facts.captured - facts.refunded || kitchen > verified.managerRefund || platform > verified.serviceFeeReview)
+    throw Error('The remaining payment cannot fund this add-on refund. Local Cooks must review it.');
+  const retainedCents = paid - refund, kitchenShareRetainedCents = Math.max(0, part.kitchenCents - part.feeCents - kitchen);
+  return { ...base, quoteReady: true as const, free: false as const, lateCancel, chefRefundCents: refund, feeRetainedCents: part.feeCents, retainedCents,
+    alreadyRefundedCents: 0, kitchenShareRetainedCents,
+    sources: [{ transactionId: source.id, intentId: source.paymentIntentId!, currency: source.currency, processingCost: facts.processingCost, serviceFee: Number(source.serviceFee),
+      sourceCapturedCents: facts.captured, feeProvenance: { balanceTransactionId: facts.balanceTransactionId, details: facts.feeDetails, classification: 'stripe_fee' },
+      receipts: verified.receipts, capturedCents: paid, chefRefundCents: refund, kitchenRefundCents: kitchen, platformRefundCents: platform, feeRetainedCents: part.feeCents,
+      retainedCents, kitchenShareRetainedCents, alreadyRefundedCents: 0, componentId: part.id, refundPercent: part.refundPercent, perComponent: [part] }] };
+}
+type AddonQuote = Awaited<ReturnType<typeof addonQuote>>;
+/** Any quote problem other than the fee still being unknown means the payment can't be verified: no money moves. */
+function addonQuoteProblem(error: unknown) {
+  if (error instanceof BookingItemCancellationError) return error;
+  logger.warn('[AddonRemoval] The payment could not be verified', { error: error instanceof Error ? error.message : String(error) });
+  return addonFail(ADDON_MONEY_REVIEW);
+}
+const feeStillUnknown = (error: unknown) => error instanceof Error && error.message.includes('not yet verified');
+
+async function signalAddonMoneyReview(bookingId: number, chefId: number, scope: AddonScope) {
+  await db.transaction(async tx => {
+    const ctx = await context(tx, bookingId, chefId, 'chef', true);
+    if (addonEntry(ctx, scope.id)?.paymentReviewNeeded) return;
+    await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'An add-on payment needs review',
+      ADDON_MONEY_REVIEW, undefined, { recipientPolicy: 'admins', supportCase: true, itemKind: 'equipment', itemId: scope.id });
+    await tx.update(kitchenBookings).set({ equipmentItems: (ctx.parent.equipmentItems as any[] || []).map(row =>
+      (row.equipmentBookingId ?? row.id) === scope.id ? { ...row, paymentReviewNeeded: true } : row), updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
+  });
+}
+async function prepareAddon(bookingId: number, chefId: number, scope: AddonScope) {
+  const tx = readConnection(), ctx = await context(tx, bookingId, chefId, 'chef'), version = contextVersion(ctx), cancelAt = new Date();
+  if (addonEntry(ctx, scope.id)?.removal) return { ctx, version, cancelAt };
+  const item = await removableAddon(tx, ctx, scope);
+  try { return { ctx, version, cancelAt, quoted: await addonQuote(tx, ctx, scope, cancelAt) }; }
+  catch (error) {
+    if (feeStillUnknown(error)) return { ctx, version, cancelAt, feePending: true, itemName: await addonName(tx, item) };
+    await signalAddonMoneyReview(bookingId, chefId, scope);
+    throw addonQuoteProblem(error);
+  }
+}
+export async function readChefAddonQuote(bookingId: number, chefId: number, scope: AddonScope) {
+  const prepared = await prepareAddon(bookingId, chefId, scope);
+  if (prepared.quoted) return prepared.quoted;
+  return { bookingId, scope, quoteReady: false as const, reasonCode: 'processing_fee_pending' as const, itemName: prepared.itemName, free: false };
+}
+
+export type AddonRemovalInput = { operationKey: string; expectedRefundCents?: number; reason?: string };
+/**
+ * Instant, like cancelling the whole booking: the chef's decision commits first (add-on cancelled, money reserved under one idempotent key),
+ * then the provider is asked once for the part-refund. A failing money step never undoes the removal; the reserved operation is retried by the
+ * Stripe fee webhook, the recovery sweep and the manager sync, always under the same key, and Local Cooks is told once.
+ */
+export async function removeChefAddon(bookingId: number, chefId: number, scope: AddonScope, input: AddonRemovalInput) {
+  if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(input.operationKey || '')) throw addonFail('A removal operation key is required.', 400);
+  const prepared = await prepareAddon(bookingId, chefId, scope);
+  const reserved = await db.transaction(tx => reserveAddonRemoval(tx, bookingId, chefId, scope, input, prepared));
+  if (reserved.needsProvider) {
+    try { await retryCancellationRefund(bookingId, reserved.managerId); }
+    catch (error) { logger.warn('[AddonRemoval] Refund attempt will be retried', { bookingId, error: error instanceof Error ? error.message : String(error) }); }
+  }
+  return finishAddonRemoval(bookingId, chefId, scope, input.operationKey);
+}
+
+async function reserveAddonRemoval(tx: Tx, bookingId: number, chefId: number, scope: AddonScope, input: AddonRemovalInput, prepared: Awaited<ReturnType<typeof prepareAddon>>) {
+  const ctx = await context(tx, bookingId, chefId, 'chef', true);
+  const existing = addonEntry(ctx, scope.id)?.removal as AddonRemoval | undefined;
+  if (existing) {
+    if (existing.operationKey !== input.operationKey) throw addonFail('This add-on was already removed.');
+    const operation = findAddonOperation(ctx, existing.operationId);
+    return { managerId: ctx.managerId, needsProvider: !!operation && operation.status !== 'succeeded' };
+  }
+  const item = await removableAddon(tx, ctx, scope);
+  recheckContext(ctx, prepared.version);
+  const { cancelAt, quoted, feePending } = prepared;
+  if (quoted && input.expectedRefundCents !== undefined && input.expectedRefundCents !== quoted.chefRefundCents) throw addonFail('The refund changed. Review the new amount.');
+  const itemName = quoted?.itemName ?? prepared.itemName ?? await addonName(tx, item);
+  const record: AddonRemoval = { operationKey: input.operationKey, at: cancelAt.toISOString(), itemName, free: !!quoted?.free, lateCancel: !!quoted?.lateCancel,
+    refundCents: quoted?.chefRefundCents ?? 0, kitchenRefundCents: quoted?.sources[0]?.kitchenRefundCents ?? 0, componentId: quoted?.sources[0]?.componentId ?? `equipment:${item.id}:0`, finalizationPending: true,
+    ...(input.reason?.trim() ? { reason: input.reason.trim().slice(0, 500) } : {}) };
+  let needsProvider = false;
+  const operationBase = (source: Source) => ({ id: `chef-addon-${bookingId}-${source.id}-${item.id}-${input.operationKey}`, bookingId, managerId: ctx.managerId, chefId, intentId: source.paymentIntentId,
+    policyEngine: true, chefInitiated: true, scope, itemName, removalKey: input.operationKey, acceptedAt: cancelAt.toISOString() });
+  if (feePending) {
+    const source = addonSource(ctx, item)!;
+    const operation = { ...operationBase(source), status: 'fee_pending', cancellationNoticeIncludesRefund: true };
+    record.operationId = operation.id;
+    await tx.update(paymentTransactions).set({ metadata: { ...metadata(source), cancellationRefundOperations: archivedOperations(metadata(source)), cancellationRefundOperation: operation }, updatedAt: cancelAt })
+      .where(eq(paymentTransactions.id, source.id));
+    needsProvider = true;
+  } else if (quoted && !quoted.free) {
+    const money = quoted.sources[0], source = ctx.sources.find(row => row.id === money.transactionId)!;
+    const operation = { ...operationBase(source), ...money, managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents,
+      lateCancel: quoted.lateCancel, cancellationNoticeIncludesRefund: true, status: money.chefRefundCents ? 'pending' : 'succeeded' };
+    record.operationId = operation.id;
+    const saved = metadata(source);
+    await tx.update(paymentTransactions).set({ stripeProcessingFee: String(money.processingCost), managerRevenue: String(money.sourceCapturedCents - money.processingCost - money.serviceFee),
+      metadata: { ...saved, refunds: money.receipts, cancellationRefundOperations: archivedOperations(saved), cancellationRefundOperation: operation,
+        addonRemovals: [...(saved.addonRemovals || []), { kind: 'equipment', id: item.id, ...record }] }, updatedAt: cancelAt }).where(eq(paymentTransactions.id, source.id));
+    await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'addon_removal_reserved',
+      description: 'Frozen policy refund for a removed add-on reserved before provider work', createdBy: chefId, metadata: operation }, tx);
+    needsProvider = !!money.chefRefundCents;
+  }
+  await tx.update(equipmentBookings).set({ status: 'cancelled', updatedAt: cancelAt }).where(eq(equipmentBookings.id, item.id));
+  const entries = (ctx.parent.equipmentItems as Array<Record<string, any>> | null || []);
+  if (!entries.some(entry => (entry.equipmentBookingId ?? entry.id) === item.id)) entries.push({ equipmentBookingId: item.id });
+  await tx.update(kitchenBookings).set({ equipmentItems: entries
+    .map(entry => (entry.equipmentBookingId ?? entry.id) === item.id ? { ...entry, status: 'cancelled', removal: record } : entry), updatedAt: cancelAt })
+    .where(eq(kitchenBookings.id, bookingId));
+  return { managerId: ctx.managerId, needsProvider };
+}
+const archivedOperations = (saved: Record<string, any>) => [...(saved.cancellationRefundOperations || []), ...(saved.cancellationRefundOperation ? [saved.cancellationRefundOperation] : [])];
+
+/** One durable finalizer for the route, worker and provider webhook. Caller holds source before parent. */
+export async function finalizeAddonRemoval(tx: Tx, bookingId: number, source: Source | undefined, operation: Record<string, any> | undefined, itemId: number) {
+  const [parent] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1).for('update');
+  const entries = parent?.equipmentItems as Array<Record<string, any>> | null || [];
+  const entry = entries.find(row => (row.equipmentBookingId ?? row.id) === itemId), removal = entry?.removal as AddonRemoval | undefined;
+  if (!parent || !removal || operation && removal.operationId !== operation.id) return;
+  const state = !operation || operation.status === 'succeeded' ? 'removed' : operation.status === 'fee_pending' ? 'fee_pending' : 'processing';
+  const refundCents = Number(operation?.customerRefund ?? removal.refundCents), kitchenRefundCents = Number(operation?.managerRefund ?? removal.kitchenRefundCents);
+  const debt = Number(operation?.kitchenDebtCents || 0);
+  const completing = !!removal.noticeState && ['processing', 'fee_pending'].includes(removal.noticeState) && state === 'removed';
+  if (!removal.noticeState || completing) {
+    const addonRemoval = { state: completing ? 'sent' : state, itemName: removal.itemName, free: removal.free, afterDeadline: removal.lateCancel,
+      refundCents, kitchenRefundCents, kitchenDebtCents: debt, feeCents: Number(operation?.feeRetainedCents || 0), ...(removal.reason ? { reason: removal.reason } : {}) };
+    await queueBookingLifecycleEvent(tx, bookingId, completing ? 'refund_issued' : 'addon_removed', `${removal.itemName} removed`,
+      `${removal.itemName} removed.`, parent.chefId ?? undefined,
+      { itemKind: 'equipment', itemId, operationId: removal.operationId || removal.operationKey, ...(source ? { transactionId: source.id } : {}), addonRemoval });
+  }
+  await tx.update(kitchenBookings).set({ equipmentItems: entries.map(row => row === entry ? { ...row, removal: { ...removal, refundCents, kitchenRefundCents,
+    finalizationPending: false, noticeState: completing ? 'sent' : removal.noticeState || state } } : row), updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
+}
+
+async function finishAddonRemoval(bookingId: number, chefId: number, scope: AddonScope, operationKey: string) {
+  return db.transaction(async tx => {
+    const ctx = await context(tx, bookingId, chefId, 'chef', true);
+    const removal = addonEntry(ctx, scope.id)?.removal as AddonRemoval | undefined;
+    if (!removal || removal.operationKey !== operationKey) throw addonFail('This add-on was already removed.');
+    const operation = findAddonOperation(ctx, removal.operationId), source = ctx.sources.find(row =>
+      [metadata(row).cancellationRefundOperation, ...(metadata(row).cancellationRefundOperations || [])].some(op => op?.id === removal.operationId));
+    await finalizeAddonRemoval(tx, bookingId, source, operation, scope.id);
+    const state = !operation || operation.status === 'succeeded' ? 'removed' : operation.status === 'fee_pending' ? 'fee_pending' : 'processing';
+    const refundCents = Number(operation?.customerRefund ?? removal.refundCents);
+    return { success: true, action: 'removed' as const, state, itemName: removal.itemName, free: removal.free, lateCancel: removal.lateCancel,
+      refundCents, kitchenDebtCents: Number(operation?.kitchenDebtCents || 0),
+      message: removal.free ? `${removal.itemName} removed. It wasn’t charged.` : state === 'removed' ? (refundCents ? `${removal.itemName} removed. Your $${(refundCents / 100).toFixed(2)} refund is on its way.` : `${removal.itemName} removed. Under the cancellation policy it isn’t refundable.`)
+        : state === 'fee_pending' ? `${removal.itemName} removed. We’re confirming the card fee before sending your exact refund.` : `${removal.itemName} removed. Your $${(refundCents / 100).toFixed(2)} refund is being processed — we’ll confirm when it’s sent.` };
+  });
+}
+
+/** Successful receipt completion shared by webhook, retry and support reconciliation. */
+export async function finalizeCancellationRefund(tx: Tx, source: Source, operation: Record<string, any>) {
+  if (operation.chefInitiated) await finalizeAddonRemoval(tx, operation.bookingId, source, operation, operation.scope.id);
+  else if (!operation.cancellationNoticeIncludesRefund) await queueBookingLifecycleEvent(tx, operation.bookingId, 'refund_issued', 'Refund sent',
+    `A refund of $${(Number(operation.customerRefund ?? operation.managerRefund) / 100).toFixed(2)} has been sent.`, undefined,
+    { transactionId: source.id, refundId: operation.refundId, operationId: operation.id });
+  const bookingPaymentStatus = source.status === 'succeeded' ? 'paid' : source.status === 'canceled' ? 'failed' : source.status;
+  if (['kitchen', 'bundle'].includes(source.bookingType)) await tx.update(kitchenBookings).set({ paymentStatus: bookingPaymentStatus, updatedAt: new Date() })
+    .where(and(eq(kitchenBookings.id, operation.bookingId), eq(kitchenBookings.paymentIntentId, source.paymentIntentId!)));
+  if (operation.kitchenDebtCents) await reportKitchenDebt(tx, operation.bookingId, source, operation);
+}
+
+/** Local Cooks hears once when a chef's add-on refund didn't go through (the chef and kitchen were told it's being processed). */
+async function reportAddonRefundProblem(tx: Tx, bookingId: number, source: Source, operation: Record<string, any>, message: string) {
+  const [parent] = await tx.select({ referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+  const amount = `$${(Number(operation.customerRefund || 0) / 100).toFixed(2)}`;
+  await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'A chef’s add-on refund needs attention',
+    `${parent?.referenceCode || `#${bookingId}`}: the chef removed ${operation.itemName || 'an add-on'} but the ${amount} refund did not go through (${message.slice(0, 200)}). Local Cooks retries it automatically under the same reference; check Stripe before sending another refund.`,
+    undefined, { recipientPolicy: 'admins', supportCase: true, transactionId: source.id, operationId: operation.id, itemKind: 'equipment', itemId: operation.scope?.id });
+}
+
+/** The kitchen's share couldn't be pulled back from its payout: the chef is still refunded from Local Cooks' balance and Local Cooks hears about the debt. */
+const kitchenFundingShortfall = (error: unknown) => /exceeds the verified unreversed|kitchen transfer reversal has insufficient balance/i.test(error instanceof Error ? error.message : String(error));
+async function reportKitchenDebt(tx: Tx, bookingId: number, source: Source, operation: Record<string, any>) {
+  const [parent] = await tx.select({ referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+  await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'A kitchen owes Local Cooks for a removed add-on',
+    `${parent?.referenceCode || `#${bookingId}`}: the chef was refunded for ${operation.itemName || 'a removed add-on'}, but $${(Number(operation.managerRefund || 0) / 100).toFixed(2)} could not be taken back from the kitchen's payout (it was already paid out or its balance is too low). Local Cooks paid it; Contact the kitchen to arrange recovery. This is recorded only; payouts are not reduced automatically.`,
+    undefined, { recipientPolicy: 'admins', supportCase: true, transactionId: source.id, operationId: operation.id, itemKind: 'equipment', itemId: operation.scope?.id });
+}
+
+/** The card fee became known for a removal made while it wasn't: price the part at the original removal time and turn the reservation into a normal pending refund. */
+async function settleAddonFee(tx: Tx, locked: Context, source: Source, operation: Record<string, any>, quoted: AddonQuote) {
+  if (quoted.free) throw Error('Fee-pending source set changed; review required');
+  const money = quoted.sources[0], saved = metadata(source), id = operation.scope.id as number;
+  const entries = locked.parent.equipmentItems as Array<Record<string, any>> | null || [];
+  const entry = entries.find(row => (row.equipmentBookingId ?? row.id) === id), removal = entry?.removal as AddonRemoval | undefined;
+  if (!entry || !removal) throw Error('Fee-pending source set changed; review required');
+  const next: AddonRemoval = { ...removal, refundCents: money.chefRefundCents, kitchenRefundCents: money.kitchenRefundCents, lateCancel: quoted.lateCancel, componentId: money.componentId };
+  const updated = { ...operation, ...money, managerRefund: money.kitchenRefundCents, customerRefund: money.chefRefundCents, platformRefund: money.platformRefundCents,
+    lateCancel: quoted.lateCancel, status: money.chefRefundCents ? 'pending' : 'succeeded' };
+  await tx.update(paymentTransactions).set({ stripeProcessingFee: String(money.processingCost), managerRevenue: String(money.sourceCapturedCents - money.processingCost - money.serviceFee),
+    metadata: { ...saved, refunds: money.receipts, cancellationRefundOperation: updated, addonRemovals: [...(saved.addonRemovals || []), { kind: 'equipment', id, ...next }] }, updatedAt: new Date() })
+    .where(eq(paymentTransactions.id, source.id));
+  await tx.update(kitchenBookings).set({ equipmentItems: entries.map(row => row === entry ? { ...row, removal: next } : row), updatedAt: new Date() }).where(eq(kitchenBookings.id, locked.parent.id));
+  if (!money.chefRefundCents) await finalizeAddonRemoval(tx, locked.parent.id, source, { ...updated, customerRefund: 0 }, operation.scope.id);
+}
+
+/** Worker sweep: reserved add-on refunds that haven't finished are retried under their original keys (the chef was already told). */
+export async function recoverChefAddonRefunds(limit = 3) {
+  const rows = await db.execute(sql`SELECT id, (metadata->'cancellationRefundOperation'->>'bookingId')::integer AS booking_id, (metadata->'cancellationRefundOperation'->>'managerId')::integer AS manager_id FROM payment_transactions
+    WHERE metadata->'cancellationRefundOperation'->>'chefInitiated' = 'true'
+      AND metadata->'cancellationRefundOperation'->>'status' IN ('pending', 'recovery_required', 'fee_pending')
+      AND (metadata->'cancellationRefundOperation'->>'acceptedAt')::timestamptz < now() - interval '2 minutes'
+      AND COALESCE((metadata->'cancellationRefundOperation'->>'lastRetryAt')::timestamptz, 'epoch') < now() - interval '10 minutes'
+    ORDER BY COALESCE((metadata->'cancellationRefundOperation'->>'lastRetryAt')::timestamptz, 'epoch') ASC, id ASC LIMIT ${limit}`);
+  let retried = 0;
+  for (const row of rows.rows as Array<{ id: number; booking_id: number; manager_id: number }>) {
+    if (!row.booking_id || !row.manager_id) continue;
+    // Stamp first so a refund that keeps failing cannot starve the rest of the queue.
+    await db.execute(sql`UPDATE payment_transactions SET metadata = jsonb_set(metadata, '{cancellationRefundOperation,lastRetryAt}', to_jsonb(now()::text)) WHERE id = ${row.id}`);
+    try { await retryCancellationRefund(row.booking_id, row.manager_id); retried++; }
+    catch (error) { logger.warn('[AddonRemoval] Recovery will retry', { bookingId: row.booking_id, error: error instanceof Error ? error.message : String(error) }); }
+  }
+  const unfinished = await db.execute(sql`SELECT id, chef_id, equipment_items FROM kitchen_bookings
+    WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(equipment_items, '[]'::jsonb)) item
+      WHERE item->'removal'->>'finalizationPending' = 'true') ORDER BY updated_at ASC, id ASC LIMIT ${limit}`);
+  for (const parent of unfinished.rows as Array<{ id: number; chef_id: number; equipment_items: Array<Record<string, any>> }>) {
+    for (const entry of parent.equipment_items || []) if (entry.removal?.finalizationPending) {
+      try { await finishAddonRemoval(parent.id, parent.chef_id, { kind: 'equipment', id: entry.equipmentBookingId ?? entry.id }, entry.removal.operationKey); }
+      catch (error) { logger.warn('[AddonRemoval] Notice recovery will retry', { bookingId: parent.id, error }); }
+    }
+  }
+  return { retried };
+}
+
 async function quote(tx: Tx, bookingId: number, managerId: number, scope?: CancellationScope) {
-  const ctx = await context(tx, bookingId, managerId, 'manager', true);
+  const ctx = await context(tx, bookingId, managerId, 'manager');
   const selectedItem = scope ? (scope.kind === 'storage' ? ctx.storage : ctx.equipment).find(item => item.id === scope.id) : undefined;
   if (scope && (!selectedItem || selectedItem.status !== 'cancellation_requested' || ctx.parent.status !== 'confirmed')) throw new Error('No selected add-on cancellation awaits a decision');
   if (!scope && (ctx.parent.status !== 'cancellation_requested' || !ctx.parent.cancellationRequestedAt)) throw new Error('No cancellation request awaits a decision');
@@ -500,8 +832,13 @@ async function quote(tx: Tx, bookingId: number, managerId: number, scope?: Cance
       if (allocation.length !== 1 || !Number.isSafeInteger(allocation[0].managerGrossCents) || allocation[0].managerGrossCents < 0
         || allocations.reduce((sum: number, item: any) => sum + Number(item.managerGrossCents), 0) !== Number(source.baseAmount))
         throw new DomainError('CANCELLATION_ALLOCATION_REVIEW', 'This selected add-on shares a captured charge without frozen component allocations. Local Cooks must verify its original paid component before acceptance.', 409);
-      if (money.alreadyRefunded && (saved.cancellationRefundOperation?.scope?.id !== scope.id || saved.cancellationRefundOperation?.scope?.kind !== scope.kind))
+      if (money.alreadyRefunded && !Object.keys(settledAddons(saved)).length && (saved.cancellationRefundOperation?.scope?.id !== scope.id || saved.cancellationRefundOperation?.scope?.kind !== scope.kind))
         throw new Error('Prior refund component entitlement requires Local Cooks review before selected add-on acceptance');
+      const settled = settledAddons(saved)[`${scope.kind}:${scope.id}:0`];
+      if (settled) throw new Error('This selected add-on has already been settled');
+      // Every prior receipt must belong to a settled component before using its remaining entitlement.
+      const knownRefunded = Object.values(settledAddons(saved) as Record<string, { refundCents: number }>).reduce((sum, row) => sum + row.refundCents, 0);
+      if (money.alreadyRefunded && knownRefunded !== money.alreadyRefunded) throw new Error('Prior refund component entitlement requires Local Cooks review');
       money.managerRefund = Math.min(money.managerRefund, allocation[0].managerGrossCents);
       money.serviceFeeReview = 0; // A selected component cannot return the whole source service fee.
     }
@@ -522,20 +859,22 @@ async function quote(tx: Tx, bookingId: number, managerId: number, scope?: Cance
 }
 
 export async function readCancellationRefund(bookingId: number, actorId: number, role: 'manager' | 'chef', scope?: CancellationScope) {
-  return db.transaction(async tx => {
+  const tx = readConnection();
     const ctx = await context(tx, bookingId, actorId, role);
     const saved = ctx.sources.flatMap(source => [...(metadata(source).cancellationRefundOperations || []), metadata(source).cancellationRefundOperation].filter(Boolean)
       .map(operation => ({ transactionId: source.id, operation, serviceFeeRequest: metadata(source).fullRefundRequest })))
       .filter(item => item.operation && (role === 'chef' || !scope && ctx.parent.status === 'confirmed'
         || (!scope && !item.operation.scope) || scope && item.operation.scope?.kind === scope.kind && item.operation.scope?.id === scope.id));
-    if (saved.length) return { bookingId, accepted: true, sources: saved };
+    if (saved.length) return { bookingId, accepted: true, sources: saved, partyName: role === 'chef' ? ctx.kitchenName : await getUserDisplayName(ctx.parent.chefId!, 'chef'),
+      date: ctx.parent.bookingDate.toISOString(), timezone: ctx.timezone };
     if (role === 'chef') return { bookingId, accepted: false, sources: [] };
     return (await quote(tx, bookingId, actorId, scope)).quote;
-  });
 }
 
 export async function acceptCancellationRefund(bookingId: number, managerId: number, quoteHash: string, scope?: CancellationScope, supportOperationKey?: string) {
   if (!/^[a-f0-9]{64}$/.test(quoteHash || '')) throw new Error('Review and acknowledge the current cancellation refund quote');
+  const reviewed = await quote(readConnection(), bookingId, managerId, scope).catch(() => null);
+  const version = reviewed ? contextVersion(reviewed.ctx) : '';
   await db.transaction(async tx => {
     const existing = await context(tx, bookingId, managerId, 'manager', true);
     const operations = existing.sources.map(source => metadata(source).cancellationRefundOperation).filter(Boolean);
@@ -544,7 +883,8 @@ export async function acceptCancellationRefund(bookingId: number, managerId: num
       if (operations.some(operation => operation.quoteHash !== quoteHash)) throw new Error('Cancellation was accepted with a different quote');
       return;
     }
-    const reviewed = await quote(tx, bookingId, managerId, scope);
+    if (!reviewed) throw new Error('No cancellation request awaits a decision');
+    recheckContext(existing, version);
     if (reviewed.quote.quoteHash !== quoteHash) throw new Error('Refund quote changed. Review the refreshed amounts before accepting');
     for (const money of reviewed.quote.sources) {
       const source = reviewed.ctx.sources.find(item => item.id === money.transactionId)!;
@@ -576,17 +916,24 @@ export async function acceptCancellationRefund(bookingId: number, managerId: num
   return readCancellationRefund(bookingId, managerId, 'manager', scope);
 }
 
-export async function retryCancellationRefund(bookingId: number, managerId: number) {
-  let ctx = await db.transaction(tx => context(tx, bookingId, managerId, 'manager'));
-  if (ctx.sources.some(source => metadata(source).cancellationRefundOperation?.status === 'fee_pending')) {
+export type RefundOperationSelector = { transactionId: number; refundOperationId: string };
+/** The console's audit key is independent of the immutable provider key. */
+export async function retryCancellationRefund(bookingId: number, managerId: number, options: { selector?: RefundOperationSelector; receiptOnly?: boolean; supportOperationKey?: string } = {}) {
+  let ctx = await context(readConnection(), bookingId, managerId, 'manager');
+  const selected = (source: Source) => !options.selector || source.id === options.selector.transactionId && metadata(source).cancellationRefundOperation?.id === options.selector.refundOperationId;
+  if (options.selector && !ctx.sources.some(selected)) throw new Error('The selected refund operation changed. Refresh the case.');
+  if (ctx.sources.some(source => selected(source) && metadata(source).cancellationRefundOperation?.status === 'fee_pending')) {
     try {
+      const version = contextVersion(ctx), pending = ctx.sources.filter(source => selected(source) && metadata(source).cancellationRefundOperation?.status === 'fee_pending');
+      const first = metadata(pending[0]).cancellationRefundOperation;
+      const addon = first.chefInitiated ? await addonQuote(readConnection(), ctx, first.scope, new Date(first.acceptedAt), true) : undefined;
+      const whole = !addon ? await chefQuote(readConnection(), ctx, new Date(first.acceptedAt), true) : undefined;
       await db.transaction(async tx => {
         const locked = await context(tx, bookingId, managerId, 'manager', true);
-        const pending = locked.sources.filter(source => metadata(source).cancellationRefundOperation?.status === 'fee_pending');
-        if (!pending.length) return;
-        await assertBookingMoneyWritable({ bookingId, operationKey: metadata(pending[0]).cancellationRefundOperation.supportOperationKey }, tx);
-        const quoted = await chefQuote(tx, locked, new Date(metadata(pending[0]).cancellationRefundOperation.acceptedAt), true);
-        for (const money of quoted.sources) {
+        recheckContext(locked, version);
+        await assertBookingMoneyWritable({ bookingId, operationKey: options.supportOperationKey || first.supportOperationKey }, tx);
+        if (addon) { await settleAddonFee(tx, locked, pending[0], first, addon); return; }
+        for (const money of whole!.sources) {
           const source = pending.find(item => item.id === money.transactionId);
           if (!source) throw Error('Fee-pending source set changed; review required');
           const operation = metadata(source).cancellationRefundOperation;
@@ -596,56 +943,71 @@ export async function retryCancellationRefund(bookingId: number, managerId: numb
               status: money.chefRefundCents ? 'pending' : 'succeeded' } }, updatedAt: new Date() }).where(eq(paymentTransactions.id, source.id));
         }
       });
-      ctx = await db.transaction(tx => context(tx, bookingId, managerId, 'manager'));
-    } catch { return readCancellationRefund(bookingId, managerId, 'manager'); }
+      ctx = await context(readConnection(), bookingId, managerId, 'manager');
+    } catch (error) { if (options.selector) throw error; return readCancellationRefund(bookingId, managerId, 'manager'); }
   }
   if (!ctx.sources.some(source => metadata(source).cancellationRefundOperation)) throw new Error('No accepted cancellation to reconcile');
-  for (const original of ctx.sources) {
+  for (const original of ctx.sources.filter(selected)) {
     const originalOperation = metadata(original).cancellationRefundOperation;
-    if (!originalOperation || originalOperation.status === 'succeeded') continue;
+    if (!originalOperation) continue;
+    if (originalOperation.status === 'succeeded') {
+      if (originalOperation.chefInitiated) await finishAddonRemoval(bookingId, ctx.parent.chefId!, originalOperation.scope, originalOperation.removalKey);
+      continue;
+    }
     try {
-      await db.transaction(async tx => {
+      // Validate the committed reservation in a short transaction before any provider mutation.
+      let operation = await db.transaction(async tx => {
         const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, original.id)).for('update');
-        const saved = metadata(source), operation = saved.cancellationRefundOperation;
-        if (!operation || operation.status === 'succeeded') return;
-        if (operation.managerId !== managerId || operation.intentId !== source.paymentIntentId) throw new Error('Reserved refund source ownership changed');
-        const receipts = await getPaymentIntentRefunds(operation.intentId);
-        const previous = receipts.filter(item => item.metadata?.refund_operation_id === operation.id);
-        if (previous.length > 1) throw new Error('Multiple provider receipts require Local Cooks review');
-        if (previous[0] && previous[0].status !== 'succeeded') throw new Error(`Original refund ${previous[0].status}; verify the same operation with Local Cooks`);
-        const customerRefund = operation.customerRefund ?? operation.managerRefund;
-        const platformRefund = operation.platformRefund ?? 0;
-        await assertBookingMoneyWritable({ bookingId, operationKey: operation.supportOperationKey }, tx);
-        const result = await reverseTransferAndRefund(operation.intentId, customerRefund, 'requested_by_customer', {
-          sourceConnection: tx, idempotencyKey: operation.id, supportOperationKey: operation.supportOperationKey, reverseTransferAmount: operation.managerRefund, refundApplicationFee: false,
-          metadata: { booking_id: String(bookingId), transaction_id: String(source.id), manager_id: String(managerId),
-            customer_receives: String(customerRefund), manager_debited: String(operation.managerRefund), platform_service_fee_returned: String(platformRefund) } });
-        const facts = await getCancellationPaymentFacts(operation.intentId);
-        const money = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts: saved.refunds });
-        if (!money.receipts.some(item => item.id === result.refundId && item.customerReceived === customerRefund && item.managerDebited === operation.managerRefund && item.platformServiceFeeReturned === platformRefund))
-          throw new Error('Provider refund allocation differs from the reserved quote');
-        const status = money.alreadyRefunded >= money.captured - money.processingCost ? 'refunded' : 'partially_refunded';
-        await tx.update(paymentTransactions).set({ refundAmount: String(money.alreadyRefunded), netAmount: String(money.captured - money.alreadyRefunded),
-          status, refundId: result.refundId, refundedAt: new Date(), updatedAt: new Date(), metadata: { ...saved, refunds: money.receipts,
-            cancellationRefundOperation: { ...operation, status: 'succeeded', refundId: result.refundId, refunded: customerRefund, verifiedAt: new Date().toISOString(), error: null } } }).where(eq(paymentTransactions.id, source.id));
-        if (['kitchen', 'bundle'].includes(source.bookingType)) await tx.update(kitchenBookings).set({ paymentStatus: status, updatedAt: new Date() })
-          .where(and(eq(kitchenBookings.id, bookingId), eq(kitchenBookings.paymentIntentId, source.paymentIntentId!)));
-        await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: status, eventType: 'cancellation_refund_verified', description: 'Stripe verified the reserved cancellation refund; bank receipt is not confirmed', metadata: { ...operation, refundId: result.refundId }, createdBy: managerId }, tx);
-        if (!operation.cancellationNoticeIncludesRefund) await queueBookingLifecycleEvent(tx, bookingId, 'refund_issued', 'Refund sent',
-          `A refund of ${(customerRefund / 100).toFixed(2)} ${source.currency} has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`, managerId, { transactionId: source.id, refundId: result.refundId });
+        const op = metadata(source).cancellationRefundOperation;
+        if (op?.id !== originalOperation.id || op.managerId !== managerId || op.intentId !== source.paymentIntentId || source.managerId !== managerId || source.chefId !== ctx.parent.chefId)
+          throw new Error('Reserved refund source ownership changed');
+        await assertBookingMoneyWritable({ bookingId, operationKey: options.supportOperationKey || op.supportOperationKey }, tx);
+        return op;
       });
+      const customerRefund = operation.customerRefund ?? operation.managerRefund, platformRefund = operation.platformRefund ?? 0;
+      if (!options.receiptOnly) {
+        const sendRefund = (reverseTransferAmount: number) => reverseTransferAndRefund(operation.intentId, customerRefund, 'requested_by_customer', {
+          reservedOperation: true, idempotencyKey: operation.id, supportOperationKey: options.supportOperationKey || operation.supportOperationKey, reverseTransferAmount, refundApplicationFee: false,
+          ...(options.supportOperationKey ? {
+            refundIdempotencyKey: `${operation.id}-refund-${options.supportOperationKey}`,
+            reversalIdempotencyKey: `${operation.id}-reversal`,
+          } : {}),
+          metadata: { booking_id: String(bookingId), transaction_id: String(original.id), manager_id: String(managerId),
+            customer_receives: String(customerRefund), manager_debited: String(operation.managerRefund), platform_service_fee_returned: String(platformRefund),
+            ...(operation.kitchenDebtCents ? { kitchen_debt_cents: String(operation.kitchenDebtCents) } : {}) } });
+        try { await sendRefund(operation.platformFunding ? 0 : operation.managerRefund); }
+        catch (error) {
+          if (!(operation.chefInitiated && operation.managerRefund > 0 && kitchenFundingShortfall(error))) throw error;
+          // Persist the funding decision BEFORE sending money: a lost response must retain the liability.
+          operation = await db.transaction(async tx => {
+            const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, original.id)).for('update');
+            const saved = metadata(source), op = saved.cancellationRefundOperation;
+            if (op.id !== operation.id || op.status === 'succeeded') throw new Error('The refund changed before funding could be recorded');
+            const next = { ...op, platformFunding: true, kitchenDebtCents: op.managerRefund };
+            const debt = { operationId: op.id, bookingId, itemName: op.itemName, amountCents: op.managerRefund, status: 'awaiting_refund', recordedAt: new Date().toISOString() };
+            await tx.update(paymentTransactions).set({ metadata: { ...saved, cancellationRefundOperation: next,
+              kitchenRefundDebts: [...(saved.kitchenRefundDebts || []).filter((row: any) => row.operationId !== op.id), debt] }, updatedAt: new Date() }).where(eq(paymentTransactions.id, source.id));
+            return next;
+          });
+          await sendRefund(0);
+        }
+      }
+      // Reconciliation fetches provider facts first, then locks/rechecks/writes and runs the common completion function.
+      const reconciled = await (await import('./payment-refund-reconciliation')).reconcilePaymentRefundReceipts(operation.intentId);
+      if (reconciled.operation?.id !== operation.id || reconciled.operation?.status !== 'succeeded') throw new Error('No successful matching provider refund receipt is available.');
     } catch (error) {
       await db.transaction(async tx => {
         const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.id, original.id)).for('update');
         const saved = metadata(source), operation = saved.cancellationRefundOperation;
-        if (operation?.status === 'succeeded') return;
+        if (operation?.id !== originalOperation.id || operation?.status === 'succeeded') return;
         if (operation?.status === 'recovery_required' && operation.error === (error as Error).message) return;
         await tx.update(paymentTransactions).set({ metadata: { ...saved, cancellationRefundOperation: { ...operation, status: 'recovery_required', error: (error as Error).message } }, updatedAt: new Date() }).where(eq(paymentTransactions.id, source.id));
         await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: source.status, eventType: 'cancellation_refund_recovery', description: 'Cancellation refund requires original-operation verification', metadata: { operationId: operation.id, error: (error as Error).message }, createdBy: managerId }, tx);
-        await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your refund',
-          'The cancellation is accepted. Local Cooks is checking the refund and will confirm the next step. Please don’t send another payment or refund.',
-          managerId, { transactionId: source.id, operationId: operation.id, error: (error as Error).message });
+        if (operation.chefInitiated) await reportAddonRefundProblem(tx, bookingId, source, operation, (error as Error).message);
+        else await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your refund',
+          'Local Cooks is checking the refund and will confirm the next step.', managerId, { recipientPolicy: 'admins', transactionId: source.id, operationId: operation.id });
       });
+      if (options.selector) throw error;
     }
   }
   return readCancellationRefund(bookingId, managerId, 'manager');

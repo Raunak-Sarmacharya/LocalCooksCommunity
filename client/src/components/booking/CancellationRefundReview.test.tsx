@@ -25,14 +25,36 @@ describe('shared quoted cancellation review', () => {
   it('keeps an acceptance error visible and permits refreshing the quote', async () => {
     request.mockImplementation(async (method: string) => { if (method === 'PUT') throw Error('Refund quote changed'); return { json: async () => data }; });
     show(); fireEvent.click(await screen.findByText('Accept cancellation and send these refunds'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Refund quote changed');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Local Cooks is checking this refund');
     expect(screen.getByText('Refresh refund details')).toBeEnabled();
   });
   it('shows pending recovery without claiming customer bank receipt or another refund', async () => {
     data = { accepted: true, sources: [{ transactionId: 99, operation: { ...source, status: 'recovery_required', error: 'Original refund pending' } }] };
-    show(false); expect(await screen.findByText('Original refund pending')).toBeInTheDocument();
+    show(false); expect(await screen.findByText(/Local Cooks is checking this refund/)).toBeInTheDocument();
+    expect(screen.queryByText('Original refund pending')).not.toBeInTheDocument();
     expect(screen.queryByText('Accept cancellation and send these refunds')).not.toBeInTheDocument();
     expect(screen.queryByText('Ask Local Cooks to review the service fee')).not.toBeInTheDocument();
+  });
+  it('shows named-party, date and normalized add-on amounts without provider or internal ids', async () => {
+    data = { accepted: true, partyName: 'Harbour kitchen', date: '2026-11-10T12:30:00Z', timezone: 'America/St_Johns', sources: [{ transactionId: 99,
+      operation: { id: 'chef-addon-private', intentId: 'pi_private', refundId: 're_private', itemName: 'Commercial Oven', scope: { kind: 'equipment', id: 31 },
+        currency: 'CAD', capturedCents: 2122, alreadyRefundedCents: 0, customerRefund: 1028, managerRefund: 967, platformRefund: 61, feeRetainedCents: 67, status: 'succeeded', refunded: 1028 } }] };
+    show(false);
+    expect(await screen.findByText('Harbour kitchen')).toBeInTheDocument();
+    expect(screen.getByText(/Nov.*10.*2026/i)).toBeInTheDocument();
+    expect(screen.getByText('Commercial Oven')).toBeInTheDocument();
+    expect(screen.getAllByText('$10.28').length).toBeGreaterThan(0);
+    expect(screen.getByText('From the kitchen payout').nextSibling).toHaveTextContent('$9.67');
+    expect(screen.getByText('From the Local Cooks service fee').nextSibling).toHaveTextContent('$0.61');
+    expect(screen.getByText('$0.67')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).not.toHaveTextContent(/Payment #|chef-addon-private|pi_private|re_private|#31/);
+  });
+  it('does not claim a zero-dollar late add-on refund was sent', async () => {
+    data = { accepted: true, partyName: 'Harbour kitchen', date: '2026-11-10T12:30:00Z', timezone: 'America/St_Johns', sources: [{ transactionId: 99,
+      operation: { itemName: 'Commercial Oven', scope: { kind: 'equipment', id: 31 }, currency: 'CAD', capturedCents: 2122, customerRefund: 0, managerRefund: 0, feeRetainedCents: 67, status: 'succeeded' } }] };
+    show(false);
+    expect(await screen.findByText(/this item wasn’t refundable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00 sent/i)).not.toBeInTheDocument();
   });
   it('routes selected storage through the same reviewed quote with its exact identity', async () => {
     show(true, { kind: 'storage', id: 77 });

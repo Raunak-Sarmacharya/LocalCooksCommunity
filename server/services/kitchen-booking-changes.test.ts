@@ -59,6 +59,8 @@ vi.mock('./booking-documents', async importOriginal => ({ ...(await importOrigin
 vi.mock('./kitchen-change-payout', () => ({ releaseKitchenChangePayoutForSource: async (id: number) => { h.calls.changePayout.push(id); return { success: true }; },
   sweepKitchenChangePayouts: async () => ({ checked: 0, sent: 0 }) }));
 vi.mock('./stripe-service', () => ({
+  // Reversal receipts (read before the reconciliation lock): none recovered in these flows; never called inside a transaction.
+  getCancellationReversalEvidence: async () => { expect(h.txDepth).toBe(0); return []; },
   getCancellationPaymentFacts: async (intentId: string) => {
     expect(h.txDepth).toBe(0);
     const [source] = await h.db.select().from((await import('@shared/schema')).paymentTransactions).where((await import('drizzle-orm')).eq((await import('@shared/schema')).paymentTransactions.paymentIntentId, intentId));

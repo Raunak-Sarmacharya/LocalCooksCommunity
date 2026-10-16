@@ -1,18 +1,25 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { paymentTransactions } from '@shared/schema';
-import { cancellationSourceQuote } from '@shared/cancellation-refund';
-import { getCancellationPaymentFacts } from './stripe-service';
+import { cancellationSourceQuote, verifiedReservedRefund } from '@shared/cancellation-refund';
+import { getCancellationPaymentFacts, getCancellationReversalEvidence } from './stripe-service';
 import { addPaymentHistory } from './payment-transactions-service';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Recover component receipts when a provider callback precedes the route commit. */
-export async function reconcilePaymentRefundReceipts(intentId: string, connection?: Tx, providerFacts?: Awaited<ReturnType<typeof getCancellationPaymentFacts>>): Promise<{
+export async function reconcilePaymentRefundReceipts(intentId: string, connection?: Tx, evidence?: Awaited<ReturnType<typeof getCancellationPaymentFacts>>, reversals?: Awaited<ReturnType<typeof getCancellationReversalEvidence>>): Promise<{
   sourceId: number; status: typeof paymentTransactions.$inferSelect.status; money: ReturnType<typeof cancellationSourceQuote>; operation: any;
 }> {
-  const facts = providerFacts ?? await getCancellationPaymentFacts(intentId);
-  if (!connection) return db.transaction(tx => reconcilePaymentRefundReceipts(intentId, tx, facts));
+  // Provider facts are read before any source lock; a caller already holding the lock passes them in.
+  if (!connection) {
+    const facts = evidence ?? await getCancellationPaymentFacts(intentId);
+    const reversalFacts = reversals ?? await getCancellationReversalEvidence(intentId);
+    const result = await db.transaction(tx => reconcilePaymentRefundReceipts(intentId, tx, facts, reversalFacts));
+    if (result.operation?.status === 'succeeded') await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(result.operation.bookingId, 'cancellation refund reconciled')).catch(() => undefined);
+    return result;
+  }
+  const facts = evidence ?? await getCancellationPaymentFacts(intentId);
   const [source] = await connection.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intentId)).for('update');
   if (!source) throw new Error('Refund source is missing');
   if (facts.captured !== Number(source.amount) || facts.currency?.toLowerCase() !== source.currency.toLowerCase() || facts.refunded < Number(source.refundAmount || 0))
@@ -26,9 +33,11 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
     const matches = facts.refunds.filter(refund => refund.metadata?.refund_operation_id === operation.id);
     if (matches.length > 1) throw new Error('Multiple receipts match the reserved refund');
     if (matches[0]) {
-      const receipt = money.receipts.find(item => item.id === matches[0].id)!;
+      const providerReceipt = verifiedReservedRefund(source, operation, facts);
+      const receipt = money.receipts.find(item => item.id === providerReceipt.id)!;
       if (receipt.managerDebited !== operation.managerRefund || receipt.platformServiceFeeReturned !== (operation.platformRefund ?? 0) || receipt.customerReceived !== (operation.customerRefund ?? operation.managerRefund))
         throw new Error('Refund receipt differs from the reserved cancellation allocation');
+      if (operation.platformFunding && Number(providerReceipt.metadata?.kitchen_debt_cents) !== operation.kitchenDebtCents) throw new Error('Kitchen funding evidence differs from the reserved debt');
       reconciledOperation = { ...operation, status: 'succeeded', refunded: receipt.customerReceived, refundId: receipt.id, verifiedAt: new Date().toISOString(), error: null };
     }
   }
@@ -50,10 +59,16 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
         decidedBy: actorId, decidedAt: new Date().toISOString(), recoveredFromRefundId: receipt.id };
     }
   }
+  if (reversals) {
+    const { recordPayoutTransferEvidence } = await import('./payout-document-evidence');
+    for (const reversal of reversals) await recordPayoutTransferEvidence(connection, intentId, reversal);
+  }
+  const debts = (saved.kitchenRefundDebts || []).map((debt: any) => debt.operationId === reconciledOperation?.id && reconciledOperation?.status === 'succeeded'
+    ? { ...debt, status: 'open', refundId: reconciledOperation.refundId } : debt);
   const status = money.alreadyRefunded === 0 ? source.status : money.alreadyRefunded >= money.captured - money.processingCost ? 'refunded' : 'partially_refunded';
   await connection.update(paymentTransactions).set({ status, refundAmount: String(money.alreadyRefunded),
     stripeProcessingFee: String(money.processingCost), netAmount: String(money.captured - money.alreadyRefunded),
-    metadata: { ...saved, ...(recovered ? { refundRecovery: recovered } : {}), refunds: money.receipts,
+    metadata: { ...saved, ...(debts.length ? { kitchenRefundDebts: debts } : {}), ...(recovered ? { refundRecovery: recovered } : {}), refunds: money.receipts,
       ...(reconciledRequest ? { fullRefundRequest: reconciledRequest } : {}),
       ...(reconciledOperation ? { cancellationRefundOperation: reconciledOperation } : {}) }, updatedAt: new Date() }).where(eq(paymentTransactions.id, source.id));
   if (request?.status === 'pending' && reconciledRequest?.status === 'approved') {
@@ -64,9 +79,7 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
   if (operation?.status !== 'succeeded' && reconciledOperation?.status === 'succeeded') {
     await addPaymentHistory(source.id, { previousStatus: source.status, newStatus: status, eventType: 'cancellation_refund_verified',
       description: 'Original provider receipt recovered with verified component allocations', metadata: reconciledOperation }, connection);
-    await queueBookingLifecycleEvent(connection, operation.bookingId, 'refund_issued', 'Refund sent',
-      `The ${(reconciledOperation.refunded / 100).toFixed(2)} ${source.currency} refund has been sent. Processing costs are kept. It may take time to appear at the chef’s bank.`,
-      undefined, { transactionId: source.id, refundId: reconciledOperation.refundId, operationId: operation.id });
+    await (await import('./booking-cancellation-refund')).finalizeCancellationRefund(connection, { ...source, status }, reconciledOperation);
   }
   return { sourceId: source.id, status, money, operation: reconciledOperation };
 }

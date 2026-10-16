@@ -1,6 +1,6 @@
 vi.mock('../services/booking-policy-settings', () => ({ kitchenBookingPolicies: async () => ({ maxAdvanceBookingDays: 100000, turnoverBufferEnabled: state.buffer, timezone: 'America/St_Johns' }) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ insert: vi.fn(), payment: vi.fn(), release: vi.fn(), quote: vi.fn(), cancel: vi.fn(), deliver: vi.fn(async () => ({})),
+const state = vi.hoisted(() => ({ insert: vi.fn(), payment: vi.fn(), release: vi.fn(), quote: vi.fn(), cancel: vi.fn(), addonQuote: vi.fn(), remove: vi.fn(), legacy: vi.fn(), documents: vi.fn(), deliver: vi.fn(async () => ({})),
   buffer: false, kitchen: { id: 4, locationId: 1, isActive: true, listingStatus: 'active', hourlyRate: 1000, minimumBookingHours: 0 },
   rows: {} as Record<string, any[]> }));
 vi.mock('../db', () => ({ pool: { connect: async () => ({ query: vi.fn(), release: state.release }) }, db: {
@@ -17,7 +17,9 @@ vi.mock('../domains/kitchens/kitchen.service', () => ({ kitchenService: {
 } }));
 vi.mock('../domains/users/chef.service', () => ({ chefService: { getApplicationStatusForBooking: async () => ({ canBook: true }) } }));
 vi.mock('../services/stripe-service', () => ({ createPaymentIntent: state.payment }));
-vi.mock('../services/booking-cancellation-refund', () => ({ readChefCancellationQuote: state.quote, cancelChefBooking: state.cancel }));
+vi.mock('../services/booking-cancellation-refund', () => ({ readChefCancellationQuote: state.quote, cancelChefBooking: state.cancel, readChefAddonQuote: state.addonQuote, removeChefAddon: state.remove }));
+vi.mock('../services/booking-item-cancellation', async importOriginal => ({ ...(await importOriginal() as object), cancelBookingItem: state.legacy }));
+vi.mock('../services/booking-documents', () => ({ issueBookingDocumentsSafely: state.documents }));
 vi.mock('../services/booking-lifecycle-delivery', () => ({ deliverBookingLifecycleEvents: state.deliver, queueBookingLifecycleEvent: vi.fn() }));
 vi.mock('../firebase-auth-middleware', () => ({ requireFirebaseAuthWithUser: vi.fn(), hasVerifiedEmail: () => true }));
 vi.mock('./middleware', () => ({ requireChef: vi.fn(), requireNoUnpaidPenalties: vi.fn(), requirePortalUser: vi.fn() }));
@@ -99,6 +101,56 @@ describe('actual self-serve cancellation route boundary', () => {
     await route.stack.at(-1).handle(request, res); await route.stack.at(-1).handle(request, res);
     expect(state.cancel).toHaveBeenCalledTimes(2); expect(state.cancel).toHaveBeenCalledWith(10, 3, 'chef-route-operation', undefined, 3, 0);
     expect(res.json).toHaveBeenCalledWith({ success: true, action: 'cancelled' }); expect(res.status).not.toHaveBeenCalledWith(400);
+  });
+  const getQuote = async (query: Record<string, unknown>) => {
+    const route = (router as any).stack.find((entry: any) => Array.isArray(entry.route?.path) && entry.route.path.includes('/bookings/:id/cancellation-quote')).route;
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    await route.stack.at(-1).handle({ params: { id: '10' }, neonUser: { id: 3 }, query, body: {} }, res);
+    return res;
+  };
+  it('prices one add-on with ?scope=equipment:<id> for the signed-in chef, and refuses a malformed scope', async () => {
+    state.addonQuote.mockResolvedValue({ quoteReady: true, chefRefundCents: 2055 });
+    const ok = await getQuote({ scope: 'equipment:31' });
+    expect(state.addonQuote).toHaveBeenCalledWith(10, 3, { kind: 'equipment', id: 31 }); expect(ok.json).toHaveBeenCalledWith({ quoteReady: true, chefRefundCents: 2055 });
+    for (const scope of ['storage:2', 'equipment:', 'equipment:1;drop', '31']) { const bad = await getQuote({ scope }); expect(bad.status).toHaveBeenCalledWith(400); }
+    expect(state.addonQuote).toHaveBeenCalledOnce(); expect(state.quote).not.toHaveBeenCalled();
+  });
+  it('quote problems come back as plain messages with their own status', async () => {
+    const { BookingItemCancellationError } = await import('../services/booking-item-cancellation');
+    state.addonQuote.mockRejectedValue(new BookingItemCancellationError('Local Cooks is reviewing this booking’s payment. Contact Local Cooks to remove it.', 409));
+    const res = await getQuote({ scope: 'equipment:31' });
+    expect(res.status).toHaveBeenCalledWith(409); expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('Contact Local Cooks') });
+  });
+  const putEquipment = async (body: Record<string, unknown>) => {
+    const route = (router as any).stack.find((entry: any) => entry.route?.path === '/chef/equipment-bookings/:id/cancel' && entry.route.methods.put).route;
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    await route.stack.at(-1).handle({ params: { id: '31' }, neonUser: { id: 3 }, body }, res);
+    return res;
+  };
+  it('a confirmed booking’s equipment is removed at once with the chef’s key and the refund they saw; receipts follow', async () => {
+    state.rows.equipment_bookings = [{ kitchenBookingId: 10 }]; state.rows.kitchen_bookings = [{ status: 'confirmed' }];
+    state.remove.mockResolvedValue({ success: true, action: 'removed', state: 'removed', refundCents: 2055 });
+    const res = await putEquipment({ operationKey: 'chef-route-oven-1', expectedRefundCents: 2055, reason: 'Menu changed' });
+    expect(state.remove).toHaveBeenCalledWith(10, 3, { kind: 'equipment', id: 31 }, { operationKey: 'chef-route-oven-1', expectedRefundCents: 2055, reason: 'Menu changed' });
+    expect(state.deliver).toHaveBeenCalledWith(10, 20_000, 10); expect(state.documents).toHaveBeenCalledWith(10, 'addon_removed');
+    expect(res.json).toHaveBeenCalledWith({ success: true, action: 'removed', state: 'removed', refundCents: 2055 }); expect(state.legacy).not.toHaveBeenCalled();
+  });
+  it('refuses a removal with no key or a non-integer refund, and shows a stale refund as a plain 409', async () => {
+    state.rows.equipment_bookings = [{ kitchenBookingId: 10 }]; state.rows.kitchen_bookings = [{ status: 'confirmed' }];
+    expect((await putEquipment({})).status).toHaveBeenCalledWith(400); expect((await putEquipment({ operationKey: 'chef-route-oven-2', expectedRefundCents: 20.5 })).status).toHaveBeenCalledWith(400);
+    expect(state.remove).not.toHaveBeenCalled();
+    const { BookingItemCancellationError } = await import('../services/booking-item-cancellation');
+    state.remove.mockRejectedValue(new BookingItemCancellationError('The refund changed. Review the new amount.', 409));
+    const stale = await putEquipment({ operationKey: 'chef-route-oven-3', expectedRefundCents: 1 });
+    expect(stale.status).toHaveBeenCalledWith(409); expect(stale.json).toHaveBeenCalledWith({ error: 'The refund changed. Review the new amount.' });
+    expect(state.documents).not.toHaveBeenCalled();
+  });
+  it('equipment on a booking that is still a request keeps the withdrawal behaviour', async () => {
+    state.rows.equipment_bookings = [{ kitchenBookingId: 10 }]; state.rows.kitchen_bookings = [{ status: 'pending' }];
+    state.legacy.mockResolvedValue({ success: true, action: 'cancelled' });
+    const res = await putEquipment({ reason: 'Change of plan' });
+    expect(state.legacy).toHaveBeenCalledWith('equipment', 31, 3, 'Change of plan'); expect(state.remove).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ success: true, action: 'cancelled' });
   });
 });
 

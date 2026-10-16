@@ -5,13 +5,14 @@ import { db } from '../db';
 import { bookingFlags, supportActions, kitchenBookings, kitchenBookingVisits, kitchens, locations, users,
   paymentTransactions, paymentHistory, bookingLifecycleEvents, emailLogs, commitmentProblems, storageBookings, equipmentBookings } from '@shared/schema';
 import { supportActionInput, type AvailableSupportAction, type SupportActionInput, type SupportActionType } from '@shared/booking-support';
+import { verifiedReservedRefund } from '@shared/cancellation-refund';
 import { DEFAULT_TIMEZONE } from '@shared/timezone-utils';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { bookingAttendanceEnd, visitAttendanceEnd } from '@shared/booking-attendance';
 import { chefVisitCodes, ensureChallengesForBooking, issueNewCode, setMode, resolveArrivalTarget } from './visit-code-challenge';
 import { queueBookingLifecycleEvent, requeueBookingNotice } from './booking-lifecycle-delivery';
 import { decideAuthorizedBooking, reconcileBookingDecision } from './booking-payment-decision';
-import { acceptCancellationRefund, readCancellationRefund, requestChefCancellation, refundSupportGoodwill, cancelKitchenCausedBooking } from './booking-cancellation-refund';
+import { acceptCancellationRefund, readCancellationRefund, requestChefCancellation, refundSupportGoodwill, cancelKitchenCausedBooking, retryCancellationRefund } from './booking-cancellation-refund';
 import { getBookingPaymentIntent, getCancellationPaymentFacts, getBookingCheckoutSession, getPaymentIntentRefunds } from './stripe-service';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { assistKitchenVisit } from './visit-assistance';
@@ -99,6 +100,7 @@ const labels: Record<SupportActionType, string> = {
   goodwill_refund: 'Send a Local Cooks goodwill refund', resend_notice: 'Send a booking notice again', open_flag: 'Pause refunds and kitchen payments', resolve_flag: 'Resolve a support flag',
   release_payout: 'Release payout',
   resolve_money_attempt: 'Check the earlier refund attempt',
+  retry_refund: 'Retry refund', mark_refunded: 'Mark refunded after checking Stripe',
   finish_kitchen_refund: 'Finish the kitchen cancellation refund', refund_captured_request: 'Refund the charge and close the request',
 };
 const cents = (value: unknown) => value == null ? 0 : Number(value);
@@ -154,7 +156,30 @@ function money(ctx: Pick<Context, 'booking' | 'payments'>) {
     processingFeeCents: captured.reduce((sum, row) => sum + cents(row.stripeProcessingFee), 0), currency: ctx.booking.currency,
     providerVerified: false as const, transfers: ctx.payments.map(supportTransferLine) };
 }
-export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments' | 'visits' | 'flags' | 'actions' | 'storage' | 'equipment'> & Partial<Pick<Context, 'responseDeadlineAt' | 'location' | 'closeout'>>, now = new Date()): AvailableSupportAction[] {
+const AUTOMATIC_REFUND_ACTIONS = ['retry_refund', 'mark_refunded'];
+/** Separately charged add-ons are included; selectors never fall back to the parent payment. */
+function automaticRefundOperations(payments: Payment[]) {
+  return payments.flatMap(source => {
+    const operation = (source.metadata as Record<string, any> | null)?.cancellationRefundOperation;
+    return operation && ['pending', 'recovery_required', 'failed', 'fee_pending'].includes(operation.status)
+      ? [{ source, operation }] : [];
+  });
+}
+type RefundEvidence = Map<number, Awaited<ReturnType<typeof getCancellationPaymentFacts>>>;
+async function readAutomaticRefundEvidence(payments: Payment[]) {
+  const evidence: RefundEvidence = new Map();
+  await Promise.all(automaticRefundOperations(payments).map(async ({ source }) => {
+    try { evidence.set(source.id, await getCancellationPaymentFacts(source.paymentIntentId!)); } catch { /* Unreadable is never proof. */ }
+  }));
+  return evidence;
+}
+function hasReservedReceipt(source: Payment, operation: Record<string, any>, evidence?: RefundEvidence) {
+  const facts = evidence?.get(source.id);
+  if (!facts) return false;
+  try { verifiedReservedRefund(source, operation, facts); return true; } catch { return false; }
+}
+
+export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments' | 'visits' | 'flags' | 'actions' | 'storage' | 'equipment'> & Partial<Pick<Context, 'responseDeadlineAt' | 'location' | 'closeout'>>, now = new Date(), refundEvidence?: RefundEvidence): AvailableSupportAction[] {
   const booking = ctx.booking, decision = booking.paymentDecision as { state?: string; target?: string; deadEnd?: { kind?: string } } | null;
   const result: SupportActionType[] = ['open_flag', 'resend_notice'];
   if (ctx.flags.length) result.push('resolve_flag');
@@ -162,6 +187,16 @@ export function availableSupportActions(ctx: Pick<Context, 'booking' | 'payments
   const recovering = decision?.state === 'pending';
   if (recovering) result.push('replay_payment_decision');
   const flags = ctx.flags.length > 0;
+  const automatic = automaticRefundOperations(ctx.payments);
+  const unrelatedBusy = ctx.actions.some(row => row.status === 'executing' || row.status === 'recovery_required' && !AUTOMATIC_REFUND_ACTIONS.includes(row.actionType));
+  const unrelatedReview = ctx.payments.some(source => {
+    const m = source.metadata as Record<string, any> | null;
+    return m?.refundRecovery && m.refundRecovery.status !== 'succeeded' || m?.fullRefundRequest?.status === 'pending' || m?.kitchenCancellationRefund?.status === 'pending';
+  });
+  if (!flags && !recovering && !unrelatedBusy && !unrelatedReview && automatic.length) {
+    result.push('retry_refund');
+    if (automatic.some(({ source, operation }) => hasReservedReceipt(source, operation, refundEvidence))) result.push('mark_refunded');
+  }
   const priorGoodwill = ctx.actions.some(action => action.actionType === 'goodwill_refund' && action.status !== 'failed')
     || ctx.payments.some(source => ((source.metadata as { refunds?: Array<{ platformGoodwillCents?: number }> } | null)?.refunds || []).some(receipt => (receipt.platformGoodwillCents || 0) > 0));
   const moneyNeedsReview = ctx.payments.some(source => {
@@ -262,7 +297,8 @@ export async function readBookingSupport(id: number) {
       refundedCents: facts?.refunded ?? null, processingFeeCents: facts?.processingCost ?? null, termsVerified, captureTerms };
     if (ctx.booking.status === 'cancellation_requested' && ctx.manager?.id) cancellationQuote = await readCancellationRefund(id, ctx.manager.id, 'manager');
   } catch { evidenceUnavailable = true; }
-  const availableActions = availableSupportActions(ctx).filter(action =>
+  const refundEvidence = await readAutomaticRefundEvidence(ctx.payments);
+  const availableActions = availableSupportActions(ctx, new Date(), refundEvidence).filter(action =>
     (action.type !== 'accept_cancellation_for_manager' || cancellationQuote && 'quoteHash' in cancellationQuote)
     && (action.type !== 'issue_visit_code' || !codes.length || codes.some(code => code.mode === 'staffed' && !code.consumed && !code.revoked))
     && (action.type !== 'set_arrival_mode' || codes.some(code => !code.consumed && !code.revoked)));
@@ -325,6 +361,10 @@ export async function readBookingSupport(id: number) {
       const plan = ctx.payments.map(source => (source.metadata as { kitchenCancellationRefund?: { status: string; expectedCents: number; error?: string; failedAt?: string; attempts: number; refundId?: string } } | null)?.kitchenCancellationRefund).find(Boolean);
       return plan ? { status: plan.status, amountCents: plan.expectedCents, error: plan.error ?? null, failedAt: plan.failedAt ?? null, attempts: plan.attempts, refundId: plan.refundId ?? null } : null;
     })(),
+    refundOperations: automaticRefundOperations(ctx.payments).map(({ source, operation }) => ({ transactionId: source.id, refundOperationId: operation.id,
+      itemName: operation.itemName || 'Booking cancellation', amountCents: operation.customerRefund ?? operation.managerRefund ?? null, status: operation.status,
+      acceptedAt: operation.acceptedAt || source.updatedAt?.toISOString?.() || new Date(0).toISOString(), hasReceipt: hasReservedReceipt(source, operation, refundEvidence) })),
+    kitchenRefundDebts: ctx.payments.flatMap(source => ((source.metadata as Record<string, any> | null)?.kitchenRefundDebts || []).map((debt: any) => ({ ...debt, transactionId: source.id }))),
     payout: await (await import('./kitchen-payout-service')).readKitchenPayout(id),
     money: money(ctx), paymentEvidence, evidenceUnavailable, cancellationQuote: cancellationQuote && 'quoteHash' in cancellationQuote ? {
       quoteHash: cancellationQuote.quoteHash, chefReceivesCents: cancellationQuote.sources.reduce((sum, row) => sum + row.managerRefund, 0),
@@ -338,12 +378,13 @@ const requiredActingFor: Partial<Record<SupportActionType, SupportActionInput['a
   cancel_kitchen_caused: 'manager', request_cancellation_for_chef: 'chef', accept_cancellation_for_manager: 'manager',
   issue_visit_code: 'manager', set_arrival_mode: 'manager', record_assisted_arrival: 'manager',
   clear_checkout_for_manager: 'manager', report_issue_for_manager: 'manager', goodwill_refund: 'local_cooks', release_payout: 'local_cooks',
-  resolve_money_attempt: 'local_cooks', finish_kitchen_refund: 'manager', refund_captured_request: 'manager',
+  retry_refund: 'local_cooks', mark_refunded: 'local_cooks', resolve_money_attempt: 'local_cooks', finish_kitchen_refund: 'manager', refund_captured_request: 'manager',
 };
 function validateDetails(input: SupportActionInput) {
   const d = input.details || {};
   if (requiredActingFor[input.type] && requiredActingFor[input.type] !== input.actingFor) throw new BookingSupportError('Choose the party this action is for.', 400);
   const require = (ok: unknown, message: string) => { if (!ok) throw new BookingSupportError(message, 400); };
+  if (AUTOMATIC_REFUND_ACTIONS.includes(input.type)) require(d.transactionId && d.refundOperationId, 'Choose the original refund operation.');
   if (input.type === 'goodwill_refund') require(input.amountCents, 'Enter a goodwill refund amount.');
   if (input.type === 'set_arrival_mode') require(d.mode && (d.targetKey || d.all) && (d.mode !== 'self' || d.publicMessage && d.publicMessage.length <= 500), 'Choose the arrival mode and visit, with a shared explanation for self check-in.');
   if (input.type === 'record_assisted_arrival') require(d.actualAt && d.publicMessage && d.expectedUpdatedAt && d.expectedBookingUpdatedAt, 'Enter the actual arrival time, shared explanation and current record versions.');
@@ -366,6 +407,14 @@ async function dispatch(ctx: Context, actorId: number, input: SupportActionInput
     case 'finish_kitchen_refund': return cancelKitchenCausedBooking(id, managerId!, actorId, input.operationKey, undefined, { fundedByLocalCooks: d.fundedByLocalCooks === true });
     case 'request_cancellation_for_chef': return requestChefCancellation(id, ctx.booking.chefId!, actorId, d.publicMessage, input.operationKey);
     case 'accept_cancellation_for_manager': return acceptCancellationRefund(id, managerId!, d.quoteHash!, undefined, input.operationKey);
+    case 'retry_refund': case 'mark_refunded': {
+      if (!managerId) throw Error('The kitchen contact needs review.');
+      const result = await retryCancellationRefund(id, managerId, { selector: { transactionId: d.transactionId!, refundOperationId: d.refundOperationId! },
+        receiptOnly: input.type === 'mark_refunded', supportOperationKey: input.operationKey });
+      const target = result.sources.find((row: any) => row.transactionId === d.transactionId && row.operation?.id === d.refundOperationId) as any;
+      if (target?.operation?.status !== 'succeeded') throw Error('The original refund is not verified yet.');
+      return { ...result, refundId: target.operation.refundId, paymentIntentId: target.operation.intentId, amountCents: target.operation.refunded, success: true };
+    }
     case 'resolve_money_attempt': return resolveMoneyAttempts(ctx);
     case 'goodwill_refund': return refundSupportGoodwill(id, managerId!, actorId, input.amountCents!, input.operationKey);
     case 'release_payout': {
@@ -429,9 +478,16 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
   const input = parsed.data;
   validateDetails(input);
   const fingerprint = createHash('sha256').update(JSON.stringify({ id, actorId, input })).digest('hex');
+  const refundEvidence = input.type === 'mark_refunded' ? await readAutomaticRefundEvidence((await loadContext(id)).payments) : undefined;
   const reserved = await db.transaction(async tx => {
     // Lock sources before the parent, matching refund and transfer writers.
-    await tx.select({ id: paymentTransactions.id }).from(paymentTransactions).where(and(inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), eq(paymentTransactions.bookingId, id))).orderBy(asc(paymentTransactions.id)).for('update');
+    const storageIds = (await tx.select({ id: storageBookings.id }).from(storageBookings).where(eq(storageBookings.kitchenBookingId, id))).map(row => row.id);
+    const equipmentIds = (await tx.select({ id: equipmentBookings.id }).from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, id))).map(row => row.id);
+    await tx.select({ id: paymentTransactions.id }).from(paymentTransactions).where(or(
+      and(inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), eq(paymentTransactions.bookingId, id)),
+      ...(storageIds.length ? [and(eq(paymentTransactions.bookingType, 'storage'), inArray(paymentTransactions.bookingId, storageIds))] : []),
+      ...(equipmentIds.length ? [and(eq(paymentTransactions.bookingType, 'equipment'), inArray(paymentTransactions.bookingId, equipmentIds))] : []),
+    )).orderBy(asc(paymentTransactions.id)).for('update');
     await tx.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.id, id)).for('update');
     const [existing] = await tx.select().from(supportActions).where(eq(supportActions.operationKey, input.operationKey)).limit(1);
     if (existing) {
@@ -439,7 +495,9 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
       return { action: existing, ctx: existing.status === 'recovery_required' ? await loadContext(id, tx) : null };
     }
     const ctx = await loadContext(id, tx);
-    if (!availableSupportActions(ctx).some(action => action.type === input.type)) throw new BookingSupportError('This action is unavailable in the booking’s current state. Refresh the case before choosing the next step.');
+    if (!availableSupportActions(ctx, new Date(), refundEvidence).some(action => action.type === input.type)) throw new BookingSupportError('This action is unavailable in the booking’s current state. Refresh the case before choosing the next step.');
+    if (AUTOMATIC_REFUND_ACTIONS.includes(input.type) && !automaticRefundOperations(ctx.payments).some(({ source, operation }) => source.id === input.details?.transactionId && operation.id === input.details?.refundOperationId
+      && (input.type !== 'mark_refunded' || hasReservedReceipt(source, operation, refundEvidence)))) throw new BookingSupportError('The selected refund is unavailable. Refresh the case.');
     const goodwill = ctx.actions.filter(action => action.actionType === 'goodwill_refund' && action.status !== 'failed').reduce((sum, action) => sum + (action.amountCents || 0), 0);
     const exception = input.type === 'goodwill_refund' && goodwill + input.amountCents! > 2500;
     if (exception && input.confirmException !== true) throw new BookingSupportError('Goodwill above $25 for this booking needs your explicit exception confirmation.');
@@ -456,7 +514,9 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
     // Recover a verified original receipt; absence/pending evidence cannot authorize another money operation.
     let verified = false;
     try {
-      if (MONEY_ATTEMPT_TYPES.includes(input.type) && reserved.ctx.booking.paymentIntentId) {
+      if (AUTOMATIC_REFUND_ACTIONS.includes(input.type)) {
+        verified = true; // Dispatch rechecks the same reservation and receipt; a support replay never changes its provider key.
+      } else if (MONEY_ATTEMPT_TYPES.includes(input.type) && reserved.ctx.booking.paymentIntentId) {
         const receipts = await getPaymentIntentRefunds(reserved.ctx.booking.paymentIntentId);
         // A retry of an already committed cancellation reuses the refund's original operation key, which is not this request's key.
         const planKey = input.type === 'finish_kitchen_refund' ? reserved.ctx.payments.map(source => (source.metadata as { kitchenCancellationRefund?: { id?: string } } | null)?.kitchenCancellationRefund?.id).find(Boolean) : undefined;
@@ -508,7 +568,7 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
     }
   } catch {
     // A rejected/unknown provider response is never evidence that no money moved.
-    outcome = ['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'refund_captured_request', 'finish_kitchen_refund', 'accept_cancellation_for_manager', 'release_payout'].includes(input.type) ? 'recovery_required' : 'failed';
+    outcome = ['confirm_for_manager', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'refund_captured_request', 'finish_kitchen_refund', 'accept_cancellation_for_manager', 'release_payout', 'retry_refund', 'mark_refunded'].includes(input.type) ? 'recovery_required' : 'failed';
     error = outcome === 'recovery_required' ? 'Local Cooks needs to verify this original payment operation before another attempt.' : 'The update could not be completed. Refresh the booking and review the next step.';
   }
   await db.transaction(async tx => {

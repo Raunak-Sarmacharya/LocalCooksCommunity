@@ -28,6 +28,7 @@ import {
     storageBookings,
     storageListings,
     equipmentListings,
+    equipmentBookings,
     paymentTransactions,
     checkinCheckoutChecklists,
     chefKitchenApplications,
@@ -90,8 +91,20 @@ router.get('/kitchens/:id/cancellation-policy', async (req, res) => {
     } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Cancellation policy unavailable' }); }
 });
 router.get(['/bookings/:id/cancellation-quote', '/chef/bookings/:id/cancellation-quote'], requireFirebaseAuthWithUser, requireChef, async (req, res) => {
-    try { res.json(await (await import('../services/booking-cancellation-refund')).readChefCancellationQuote(Number(req.params.id), req.neonUser!.id)); }
-    catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Cancellation quote needs review' }); }
+    try {
+        const service = await import('../services/booking-cancellation-refund');
+        // `?scope=equipment:<id>` prices removing just that add-on under the same frozen policy.
+        if (req.query?.scope !== undefined) {
+            const match = /^equipment:(\d{1,9})$/.exec(String(req.query.scope));
+            if (!match) return res.status(400).json({ error: 'Choose an add-on to price.' });
+            return res.json(await service.readChefAddonQuote(Number(req.params.id), req.neonUser!.id, { kind: 'equipment', id: Number(match[1]) }));
+        }
+        res.json(await service.readChefCancellationQuote(Number(req.params.id), req.neonUser!.id));
+    }
+    catch (error) {
+        if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
+        res.status(409).json({ error: error instanceof Error ? error.message : 'Cancellation quote needs review' });
+    }
 });
 router.post('/bookings/:id/cancel', requireFirebaseAuthWithUser, requireChef, async (req, res) => {
     // Forward to the existing pending-hold route as well as the new captured path.
@@ -371,7 +384,23 @@ router.put('/chef/equipment-bookings/:id/cancel', requireChef, async (req, res) 
     const id = Number(req.params.id), reason = req.body?.reason;
     if (!Number.isSafeInteger(id) || id <= 0 || (reason !== undefined && (typeof reason !== 'string' || reason.length > 2000)))
         return res.status(400).json({ error: 'Invalid equipment cancellation request' });
-    try { res.json(await cancelBookingItem('equipment', id, req.neonUser!.id, reason)); }
+    try {
+        // A confirmed booking's equipment comes off at once under the booking's own policy (storage still goes to the kitchen as a request).
+        const [item] = await db.select({ kitchenBookingId: equipmentBookings.kitchenBookingId }).from(equipmentBookings)
+            .where(and(eq(equipmentBookings.id, id), eq(equipmentBookings.chefId, req.neonUser!.id))).limit(1);
+        const [parent] = item ? await db.select({ status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.id, item.kitchenBookingId)).limit(1) : [];
+        if (parent?.status === 'confirmed') {
+            const operationKey = req.body?.operationKey, expected = req.body?.expectedRefundCents;
+            if (typeof operationKey !== 'string' || (expected !== undefined && !Number.isSafeInteger(expected)))
+                return res.status(400).json({ error: 'Invalid equipment removal request' });
+            const { removeChefAddon } = await import('../services/booking-cancellation-refund');
+            const result = await removeChefAddon(item.kitchenBookingId, req.neonUser!.id, { kind: 'equipment', id }, { operationKey, expectedRefundCents: expected, reason });
+            await (await import('../services/booking-lifecycle-delivery')).deliverBookingLifecycleEvents(10, 20_000, item.kitchenBookingId).catch(error => logger.warn('Add-on removal notice pending retry', error));
+            await import('../services/booking-documents').then(d => d.issueBookingDocumentsSafely(item.kitchenBookingId, 'addon_removed')).catch(() => undefined);
+            return res.json(result);
+        }
+        res.json(await cancelBookingItem('equipment', id, req.neonUser!.id, reason));
+    }
     catch (error) {
         if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
         logger.error('Equipment cancellation unavailable', error);

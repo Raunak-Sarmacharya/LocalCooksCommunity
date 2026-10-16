@@ -135,6 +135,11 @@ export function MoneyCard({ c }: { c: SupportCase }) {
   return (
     <Card><CardHeader className="pb-2"><CardTitle className="text-base">{t("bsMoney")}</CardTitle></CardHeader>
       <CardContent className="space-y-2">
+        {!!c.kitchenRefundDebts?.length && <div data-testid="kitchen-refund-debts" className="rounded-lg border p-3 text-sm">
+          <p className="font-medium">{t("bsKitchenDebtTitle")}</p>
+          {c.kitchenRefundDebts.map(debt => <p key={debt.operationId}>{debt.itemName} · {fmtMoney(debt.amountCents, m.currency)} · {t(debt.status === "open" ? "bsKitchenDebtOpen" : "bsKitchenDebtAwaiting")} · {formatAdminDateTime(debt.recordedAt, c.schedule)}</p>)}
+          <p className="mt-2 text-muted-foreground">{t("bsKitchenDebtHelp")}</p>
+        </div>}
         <dl className="space-y-1.5">
           <Row label={t("bsMoneyCaptured")}>{fmtMoney(m.capturedCents, m.currency)}</Row>
           <Row label={t("bsMoneyRefunded")}>{fmtMoney(m.refundedCents, m.currency)}</Row>

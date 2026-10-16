@@ -86,3 +86,21 @@ describe('Local Cooks goodwill in the history', () => {
     expect(history.events[0].otherBookingId).toBeUndefined();
   });
 });
+
+describe('add-on removals in the history', () => {
+  it('shows what was removed and refunded with no ids, and folds the later refund-sent notice into the same row', () => {
+    const history = buildBookingHistory({}, [
+      { id: 1, kind: 'requested', createdAt: '2026-10-01T12:00:00Z' },
+      { id: 7, kind: 'addon_removed', createdAt: '2026-10-14T12:00:00Z', metadata: { itemKind: 'equipment', itemId: 31, addonRemoval: { itemName: 'Commercial Oven', state: 'processing', refundCents: 2055 } } },
+      { id: 8, kind: 'refund_issued', createdAt: '2026-10-14T12:30:00Z', metadata: { itemKind: 'equipment', itemId: 31, addonRemoval: { itemName: 'Commercial Oven', state: 'sent', refundCents: 2055 } } },
+      { id: 9, kind: 'addon_removed', createdAt: '2026-10-14T13:00:00Z', metadata: { addonRemoval: { itemName: 'Mixer', free: true, refundCents: 0 } } },
+      { id: 10, kind: 'addon_removed', createdAt: '2026-10-14T14:00:00Z', metadata: { addonRemoval: { itemName: 'Rack', afterDeadline: true, refundCents: 0 } } },
+      { id: 11, kind: 'addon_removed', createdAt: '2026-10-14T15:00:00Z', metadata: { addonRemoval: { itemName: 'Late mixer', state: 'sent', afterDeadline: true, refundCents: 1028 } } },
+      { id: 12, kind: 'addon_removed', createdAt: '2026-10-14T15:30:00Z', metadata: {} },
+      { id: 13, kind: 'payment_recovery_needed', createdAt: '2026-10-14T16:00:00Z', metadata: { recipientPolicy: 'admins', supportCase: true, itemKind: 'equipment', itemId: 31 } },
+    ]);
+    expect(history.events.map(event => [event.kind, event.itemName, event.refundedCents])).toEqual([
+      ['requested', undefined, undefined], ['addon_removed', 'Commercial Oven', 2055], ['addon_removed', 'Mixer', 0], ['addon_removed', 'Rack', 0], ['addon_removed', 'Late mixer', 1028]]);
+    expect(JSON.stringify(history)).not.toMatch(/processing|pi_|re_/);
+  });
+});

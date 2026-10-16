@@ -6,15 +6,16 @@
 export const ADMIN_BOOKING_KINDS = new Set([
   // Bookings & money
   'requested', 'confirmed', 'cancelled', 'cancellation_reviewed', 'storage_cancellation_reviewed', 'refund_issued',
-  'payout_released', 'payout_on_hold', 'payment_recovery_needed', 'booking_changed',
+  'payout_released', 'payout_on_hold', 'payment_recovery_needed', 'booking_changed', 'addon_removed',
   // Problems
   'report_attended', 'report_no_show', 'checkout_claim_filed',
 ]);
 
 type Cancellation = { cause?: 'chef' | 'kitchen'; refundCents?: number; feeCents?: number; kitchenShareRetainedCents?: number; feePending?: boolean };
+type Addon = { state?: string; itemName: string; free?: boolean; afterDeadline?: boolean; refundCents?: number; kitchenRefundCents?: number; kitchenDebtCents?: number; feeCents?: number };
 export type AdminBookingFacts = {
   chef: string; kitchen: string; reference: string; when: string; message: string; locale?: string | null;
-  cancellation?: Cancellation; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support' | 'replaced'; payoutCents?: number;
+  cancellation?: Cancellation; addon?: Addon; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support' | 'replaced'; payoutCents?: number;
   /** A new request that replaces an earlier one of the same chef ("Change request"). */ replacesRef?: string; replacedByRef?: string; holdReason?: string | null;
 };
 
@@ -44,6 +45,15 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
     }
     case 'cancellation_reviewed': case 'storage_cancellation_reviewed':
       return { title: `Cancellation request answered · ${facts.reference}`, message: `${who}. ${facts.message}` };
+    case 'addon_removed': {
+      const a = facts.addon;
+      if (!a) return { title: `Add-on removed · ${facts.reference}`, message: `${who}. ${facts.message}` };
+      const moneyLine = a.free ? 'It wasn’t charged.' : a.state === 'fee_pending' ? 'Refund waiting for the actual processing fee to be verified.'
+        : !(a.refundCents || 0) ? 'Not refundable: the refund deadline had passed.'
+        : [`${a.state === 'processing' ? 'Processing refund' : 'Refunded'} ${money(a.refundCents)}.`, `Kitchen payout −${money(a.kitchenRefundCents)}.`,
+          (a.feeCents || 0) > 0 ? `Card fee kept: ${money(a.feeCents)}.` : '', (a.kitchenDebtCents || 0) > 0 ? `The kitchen owes Local Cooks ${money(a.kitchenDebtCents)}.` : ''].filter(Boolean).join(' ');
+      return { title: `Add-on removed · ${facts.reference}`, message: `${facts.chef} removed ${a.itemName} at ${facts.kitchen} · ${facts.when} · ${facts.reference}. ${moneyLine}` };
+    }
     case 'refund_issued':
       return { title: `Refund issued · ${facts.reference}`, message: `${who}. ${facts.message}` };
     // The chef moved a confirmed booking and the kitchen approved (the message carries the old and new time and the money).

@@ -57,3 +57,22 @@ export function cancellationSourceQuote(input: { captured: number; processingCos
   if (managerRefund < 0 || serviceFeeReview < 0) throw new Error('Prior refunds exceed the captured source allocation');
   return { captured, processingCost, serviceFee, alreadyRefunded, managerRefund, serviceFeeReview, retainedUsedAddonCents, receipts };
 }
+
+/** A receipt can finish only its exact immutable reservation; aggregate totals are never proof. */
+export function verifiedReservedRefund(source: { id: number; paymentIntentId: string | null; currency: string; amount: string }, operation: Record<string, any>,
+  facts: { captured: number; currency: string; chargeId: string; refunds: Array<{ id: string; amount: number; status: string | null; currency?: string; charge?: unknown; payment_intent?: unknown; metadata: Record<string, string> | null }> }) {
+  if (source.paymentIntentId !== operation.intentId || facts.captured !== Number(source.amount) || facts.currency !== source.currency.toLowerCase()) throw Error('The reserved payment changed');
+  const matches = facts.refunds.filter(row => row.metadata?.refund_operation_id === operation.id);
+  if (!matches.length || matches.some(row => row.amount !== (operation.customerRefund ?? operation.managerRefund) || row.currency !== facts.currency
+    || row.charge !== facts.chargeId || row.payment_intent !== source.paymentIntentId
+    || !['succeeded', 'failed', 'canceled'].includes(row.status || ''))) throw Error('The provider refund attempts do not match the reservation');
+  const succeeded = matches.filter(row => row.status === 'succeeded');
+  if (succeeded.length !== 1) throw Error('Exactly one successful provider refund receipt is required');
+  const receipt = succeeded[0], m = receipt.metadata;
+  if (receipt.status !== 'succeeded' || receipt.charge !== facts.chargeId || receipt.payment_intent !== source.paymentIntentId || receipt.currency !== facts.currency
+    || receipt.amount !== (operation.customerRefund ?? operation.managerRefund) || m?.transaction_id !== String(source.id)
+    || Number(m?.customer_receives) !== receipt.amount || Number(m?.manager_debited) !== operation.managerRefund
+    || Number(m?.platform_service_fee_returned) !== (operation.platformRefund ?? 0)
+    || operation.platformFunding && Number(m?.kitchen_debt_cents) !== operation.kitchenDebtCents) throw Error('The provider receipt does not match the reserved refund');
+  return receipt;
+}

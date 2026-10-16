@@ -92,6 +92,7 @@ function extensionItem(ext: ExtensionRow, date: string, audience: DocumentAudien
 function refundReason(row: PaymentRow, receipt: Record<string, any>) {
   const m = meta(row);
   if (cents(receipt.platformGoodwillCents) > 0) return 'Goodwill refund from Local Cooks';
+  if ([m.cancellationRefundOperation, ...(m.cancellationRefundOperations || [])].some(operation => operation?.chefInitiated && operation.refundId === receipt.id)) return 'Add-on refund';
   if (m.cancellationRefundOperation?.refundId === receipt.id) return 'Cancellation refund';
   if (m.kitchenChangeId != null || receipt.kitchenChangeId != null) return 'Booking change refund';
   if (m.fullRefundRequest?.recoveredFromRefundId === receipt.id || m.fullRefundRequest?.status === 'approved') return 'Refund approved by Local Cooks';

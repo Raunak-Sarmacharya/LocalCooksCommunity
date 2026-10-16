@@ -23,7 +23,8 @@ export async function assertBookingMoneyWritable(target: {
       )
     SELECT f.id FROM booking_flags f WHERE f.resolved_at IS NULL AND f.booking_id IN (SELECT booking_id FROM linked_bookings)
     UNION ALL SELECT a.id FROM support_actions a WHERE a.booking_id IN (SELECT booking_id FROM linked_bookings)
-      AND a.status IN ('executing','recovery_required') AND a.action_type IN ('goodwill_refund','cancel_kitchen_caused','refund_captured_request','accept_cancellation_for_manager','claim_compensate','claim_withdraw')
+      AND a.status IN ('executing','recovery_required') AND a.action_type IN ('goodwill_refund','cancel_kitchen_caused','refund_captured_request','accept_cancellation_for_manager','claim_compensate','claim_withdraw','retry_refund','mark_refunded')
+      AND (a.action_type NOT IN ('retry_refund','mark_refunded') OR a.status = 'executing')
       AND a.operation_key <> COALESCE(${target.operationKey ?? null}, '')
     UNION ALL SELECT c.booking_id FROM kitchen_booking_changes c
       WHERE c.booking_id IN (SELECT booking_id FROM linked_bookings)

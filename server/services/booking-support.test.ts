@@ -8,7 +8,7 @@ vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.selec
   update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
 vi.mock('./booking-payment-decision', () => ({ decideAuthorizedBooking: state.provider, reconcileBookingDecision: state.provider }));
 vi.mock('./booking-cancellation-refund', () => ({ acceptCancellationRefund: state.provider, requestChefCancellation: state.provider,
-  refundSupportGoodwill: state.goodwill, cancelKitchenCausedBooking: state.provider,
+  refundSupportGoodwill: state.goodwill, cancelKitchenCausedBooking: state.provider, retryCancellationRefund: state.provider,
   readCancellationRefund: async () => ({ quoteHash: 'a'.repeat(64), parentVersion: state.booking.updatedAt.toISOString(), sources: [{ managerRefund: 9000 }] }) }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.queue, requeueBookingNotice: state.provider }));
 vi.mock('./visit-code-challenge', () => ({ chefVisitCodes: async () => state.codes,
@@ -23,7 +23,8 @@ vi.mock('./booking-support-flags', () => ({ changeBookingFlag: state.provider })
 vi.mock('./advance-reminders', () => ({ reminderVisitTimes: () => [{ start: new Date('2027-01-02T12:00:00Z'), end: new Date('2027-01-02T14:00:00Z') }] }));
 vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: async () => ({ id: 'pi_one', status: 'succeeded', amount: 10000, amount_received: 10000 }),
   getPaymentIntentRefunds: async () => state.receipts,
-  getCancellationPaymentFacts: async () => ({ captured: 10000, refunded: 0, processingCost: 320 }), getBookingCheckoutSession: async () => null }));
+  getCancellationPaymentFacts: async () => ({ captured: 10000, refunded: state.receipts.filter(row => row.status === 'succeeded').reduce((sum, row) => sum + row.amount, 0),
+    processingCost: 320, currency: 'cad', chargeId: 'ch_one', refunds: state.receipts }), getBookingCheckoutSession: async () => null }));
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: async (id: number) => state.names[id] ?? 'Manager' }));
 vi.mock('./kitchen-payout-service', () => ({ readKitchenPayout: async () => state.payout, releaseKitchenPayout: state.release }));
 const params = (condition: any) => condition ? new PgDialect().sqlToQuery(condition).params : [];
@@ -68,7 +69,7 @@ beforeEach(() => {
   state.booking = { id: 1, chefId: 4, kitchenId: 2, referenceCode: 'KB-TEST', status: 'confirmed', paymentStatus: 'paid', checkinStatus: 'not_checked_in',
     currency: 'CAD', paymentIntentId: 'pi_one', paymentDecision: null, createdAt: new Date(), updatedAt: new Date(),
     bookingDate: new Date('2027-01-02T00:00:00Z'), startTime: '09:00', endTime: '11:00', selectedSlots: [], cancellationPolicyHours: 24 };
-  state.payments = [{ id: 8, paymentIntentId: 'pi_one', amount: '10000', refundAmount: '0', serviceFee: '0', stripeProcessingFee: '320', managerRevenue: '9680', transferId: 'tr_one', status: 'succeeded' }];
+  state.payments = [{ id: 8, paymentIntentId: 'pi_one', amount: '10000', refundAmount: '0', serviceFee: '0', stripeProcessingFee: '320', managerRevenue: '9680', transferId: 'tr_one', status: 'succeeded', currency: 'CAD' }];
   state.provider.mockResolvedValue({ success: true }); state.issue.mockResolvedValue([{ code: '987654', nonce: 'private-nonce' }]);
   state.goodwill.mockImplementation(async () => { expect(['executing','recovery_required']).toContain(state.actions[0].status); return { refundId: 're_one', amountCents: 1000, paymentIntentId: 'pi_one' }; });
   state.queue.mockImplementation(async (_tx, bookingId, kind, title, message, actorId, metadata) => { state.events.push({ id: state.events.length + 1, bookingId, kind, title, message, actorId, metadata, createdAt: new Date(), completedAt: null }); });
@@ -350,6 +351,50 @@ describe('support operation reservation and notices', () => {
     result = await readBookingSupport(1);
     expect(result.availableActions.map(action => action.type)).toContain('issue_visit_code');
     expect(result.availableActions.map(action => action.type)).not.toContain('set_arrival_mode');
+  });
+});
+
+describe('automatic cancellation refund recovery actions', () => {
+  const operation = () => ({ id: 'chef-addon-1-8-31-original', bookingId: 1, managerId: 5, chefId: 4, intentId: 'pi_one', itemName: 'Commercial Oven',
+    status: 'recovery_required', customerRefund: 2055, managerRefund: 1933, platformRefund: 122, scope: { kind: 'equipment', id: 31 } });
+
+  it('offers and executes retry against the exact original operation while auditing a new support key', async () => {
+    state.payments[0].metadata = { cancellationRefundOperation: operation() };
+    expect(availableSupportActions(context()).map(row => row.type)).toContain('retry_refund');
+    expect(availableSupportActions(context()).map(row => row.type)).not.toContain('mark_refunded');
+    state.provider.mockResolvedValueOnce({ success: true, sources: [{ transactionId: 8, operation: { ...operation(), status: 'succeeded', refundId: 're_one', refunded: 2055 } }] });
+    const result = await executeBookingSupportAction(1, 77, input('retry_refund', { operationKey: 'support-retry-refund-1', amountCents: undefined,
+      reasonCode: 'payment_problem', details: { transactionId: 8, refundOperationId: operation().id } }));
+    expect(result.action.status).toBe('verified');
+    expect(state.provider).toHaveBeenCalledWith(1, 5, { selector: { transactionId: 8, refundOperationId: operation().id }, receiptOnly: false, supportOperationKey: 'support-retry-refund-1' });
+  });
+
+  it('offers mark-refunded only for one strict matching successful provider receipt and records that evidence without sending money', async () => {
+    state.payments[0].metadata = { cancellationRefundOperation: operation() };
+    state.receipts = [{ id: 're_verified', amount: 2055, status: 'succeeded', currency: 'cad', charge: 'ch_one', payment_intent: 'pi_one', metadata: {
+      refund_operation_id: operation().id, transaction_id: '8', customer_receives: '2055', manager_debited: '1933', platform_service_fee_returned: '122' } }];
+    const supportCase = await readBookingSupport(1);
+    expect(supportCase.availableActions.map(row => row.type)).toEqual(expect.arrayContaining(['retry_refund', 'mark_refunded']));
+    expect(supportCase.refundOperations).toContainEqual(expect.objectContaining({ transactionId: 8, refundOperationId: operation().id, hasReceipt: true }));
+    state.provider.mockResolvedValueOnce({ success: true, sources: [{ transactionId: 8, operation: { ...operation(), status: 'succeeded', refundId: 're_verified', refunded: 2055 } }] });
+    const result = await executeBookingSupportAction(1, 77, input('mark_refunded', { operationKey: 'support-mark-refunded-1', amountCents: undefined,
+      reasonCode: 'internal_review', note: 'Matched the successful Stripe receipt.', details: { transactionId: 8, refundOperationId: operation().id } }));
+    expect(result.action.status).toBe('verified');
+    expect(state.provider).toHaveBeenCalledWith(1, 5, { selector: { transactionId: 8, refundOperationId: operation().id }, receiptOnly: true, supportOperationKey: 'support-mark-refunded-1' });
+    expect(state.actions[0].providerRefs).toMatchObject({ refundId: 're_verified' });
+  });
+
+  it('refuses mark-refunded for missing, pending or contradictory evidence', async () => {
+    state.payments[0].metadata = { cancellationRefundOperation: operation() };
+    for (const receipt of [undefined,
+      { id: 're_pending', amount: 2055, status: 'pending', currency: 'cad', charge: 'ch_one', payment_intent: 'pi_one', metadata: { refund_operation_id: operation().id } },
+      { id: 're_wrong', amount: 2054, status: 'succeeded', currency: 'cad', charge: 'ch_one', payment_intent: 'pi_one', metadata: { refund_operation_id: operation().id, transaction_id: '8', customer_receives: '2054', manager_debited: '1933', platform_service_fee_returned: '121' } }]) {
+      state.receipts = receipt ? [receipt] : [];
+      await expect(executeBookingSupportAction(1, 77, input('mark_refunded', { operationKey: `support-mark-bad-${state.receipts.length}-${receipt?.id || 'none'}`, amountCents: undefined,
+        reasonCode: 'internal_review', details: { transactionId: 8, refundOperationId: operation().id } }))).rejects.toThrow('unavailable');
+      state.actions = [];
+    }
+    expect(state.provider).not.toHaveBeenCalled();
   });
 });
 

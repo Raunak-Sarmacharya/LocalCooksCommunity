@@ -128,6 +128,19 @@ describe("dialog validation", () => {
     expect(zonedLocalToIso("2026-10-16T09:00", "America/St_Johns")).toBe("2026-10-16T11:30:00.000Z");
     expect(zonedLocalToIso("2026-01-16T09:00", "America/St_Johns")).toBe("2026-01-16T12:30:00.000Z");
   });
+  it("selects the exact automatic refund for retry or receipt-only reconciliation and still requires a note", () => {
+    const refundOperations = [{ transactionId: 8, refundOperationId: "chef-addon-original-31", itemName: "Commercial Oven", amountCents: 2055, status: "recovery_required", acceptedAt: "2026-10-16T12:00:00.000Z", hasReceipt: true }];
+    const retry = { type: "retry_refund" as const, label: "Retry refund", moneyPreview: preview() };
+    const mark = { type: "mark_refunded" as const, label: "Mark refunded after checking Stripe", moneyPreview: preview() };
+    const c = baseCase({ refundOperations, availableActions: [retry, mark] });
+    const retryRequest = buildActionRequest("retry_refund", c, { ...initialForm("retry_refund", c), note: NOTE }, "support-149-retry-refund", false);
+    expect(retryRequest.ok && retryRequest.body.details).toEqual({ transactionId: 8, refundOperationId: "chef-addon-original-31" });
+    const markRequest = buildActionRequest("mark_refunded", c, { ...initialForm("mark_refunded", c), note: "Matched the successful Stripe receipt." }, "support-149-mark-refund", false);
+    expect(markRequest.ok && markRequest.body.details).toEqual({ transactionId: 8, refundOperationId: "chef-addon-original-31" });
+    mountDialog("mark_refunded", c);
+    expect(screen.getByLabelText("Refund to check")).toHaveTextContent(/Commercial Oven · \$20\.55 · Oct 16, 2026/);
+    expect(screen.getByText(/does not send money/i)).toBeVisible();
+  });
 });
 
 describe("kitchen payout after closeout", () => {
@@ -148,6 +161,15 @@ describe("kitchen payout after closeout", () => {
     expect(screen.getByText(/once the reported issue is settled/)).toBeVisible();
     const built = buildActionRequest("release_payout", c, { ...initialForm("release_payout", c), note: NOTE }, "support-149-abcdefgh", false);
     expect(built.ok && built.body).toMatchObject({ type: "release_payout", actingFor: "local_cooks" });
+  });
+});
+
+describe("recorded kitchen refund debt", () => {
+  it("shows the item, amount, status and manual-repayment rule without promising payout netting", () => {
+    render(<MoneyCard c={baseCase({ kitchenRefundDebts: [{ operationId: "debt-1", itemName: "Commercial Oven", amountCents: 1933, status: "open", recordedAt: "2026-10-16T12:00:00.000Z" }] })} />);
+    const debt = screen.getByTestId("kitchen-refund-debts");
+    expect(debt).toHaveTextContent("Commercial Oven · $19.33 · Awaiting repayment");
+    expect(debt).toHaveTextContent("Future payouts are not reduced automatically");
   });
 });
 
@@ -307,12 +329,14 @@ describe("times and facts", () => {
     expect(items()).toEqual(["payment"]);
   });
   it("says payment details could not load, and never shows code digits", () => {
-    const c = baseCase({ evidenceUnavailable: true });
-    render(<><PaymentEvidenceCard c={c} /><VisitCodesCard c={c} /></>);
-    expect(screen.getByTestId("evidence-unavailable")).toHaveTextContent("couldn’t load payment details");
-    expect(screen.getByText("The code digits are never shown here.")).toBeVisible();
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-14T12:00:00.000Z"));
-    try { expect(screen.getByText("Waiting to be used")).toBeVisible(); } finally { vi.useRealTimers(); }
+    try {
+      const c = baseCase({ evidenceUnavailable: true });
+      render(<><PaymentEvidenceCard c={c} /><VisitCodesCard c={c} /></>);
+      expect(screen.getByTestId("evidence-unavailable")).toHaveTextContent("couldn’t load payment details");
+      expect(screen.getByText("The code digits are never shown here.")).toBeVisible();
+      expect(screen.getByText("Waiting to be used")).toBeVisible();
+    } finally { vi.useRealTimers(); }
   });
   it("calls an unused code after the visit has ended 'Not used'", () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-17T12:00:00.000Z"));

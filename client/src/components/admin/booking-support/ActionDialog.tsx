@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { NativeSelect } from "./NativeSelect";
 import { fmtMoney, fmtMoneyWhole } from "./format";
+import { formatAdminDateTime } from "@/lib/admin-time";
 import { postAction, SupportApiError, type TokenGetter } from "./api";
 import {
   ACTION_SPECS, REQUEST_SOURCES, buildActionRequest, eligibleCodeTargets, initialForm, lifecycleEvents,
@@ -213,6 +214,14 @@ function ActionDialogContent({ action, supportCase: c, getFirebaseToken, onClose
             )}
           </Field>
 
+          {spec.fields.includes("refundOperation") && <Field label={t("bsRefundOperation")} htmlFor="bs-refund-operation">
+            <NativeSelect id="bs-refund-operation" value={form.refundOperation} disabled={readOnly} onChange={event => set("refundOperation", event.target.value)}>
+              {(c.refundOperations || []).filter(row => type !== "mark_refunded" || row.hasReceipt).map(row => <option key={row.refundOperationId} value={row.refundOperationId}>
+                {row.itemName} · {row.amountCents === null ? t("bsNotVerified") : fmtMoney(row.amountCents, currency)} · {formatAdminDateTime(row.acceptedAt, c.schedule)}
+              </option>)}
+            </NativeSelect>
+            <p className="text-sm text-muted-foreground">{t(type === "mark_refunded" ? "bsMarkRefundHelp" : "bsRetryRefundHelp")}</p>
+          </Field>}
           {/* Per-action details */}
           {spec.fields.includes("items") && items.length > 0 && (
             <fieldset className="space-y-2">
