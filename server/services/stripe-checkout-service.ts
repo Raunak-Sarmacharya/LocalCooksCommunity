@@ -75,6 +75,8 @@ export interface CreatePendingCheckoutSessionParams {
   locale?: Stripe.Checkout.SessionCreateParams.Locale;
   successUrl: string;
   cancelUrl: string;
+  /** Stable key for retry-safe provider session creation. */
+  providerIdempotencyKey?: string;
   /** All booking data to be stored in metadata - booking created in webhook */
   bookingData: {
     kitchenId: number;
@@ -100,6 +102,10 @@ export interface CreatePendingCheckoutSessionParams {
     replacesBookingId?: number;
     platform_fee_cents?: number;
     stripe_fee_cents?: number;
+    invitationId?: string;
+    invitationVersion?: number;
+    invitationListSubtotalCents?: number;
+    invitationOfferedSubtotalCents?: number;
   };
   /** Custom line item name shown to customer (default: 'Kitchen Session Booking') */
   lineItemName?: string;
@@ -144,6 +150,7 @@ export async function createPendingCheckoutSession(
     bookingData,
     lineItemName = 'Kitchen Session Booking',
     lineItemBreakdown,
+    providerIdempotencyKey,
   } = params;
 
   // This creates a new selection; fulfillment of recorded sessions stays compatible.
@@ -311,6 +318,12 @@ export async function createPendingCheckoutSession(
       ...(bookingData.cancellationPolicySnapshot ? (await import('./cancellation-policy-settings')).cancellationSnapshotMetadata(bookingData.cancellationPolicySnapshot) : {}),
       ...(bookingData.holdId ? { hold_id: bookingData.holdId } : {}),
       ...(bookingData.replacesBookingId ? { replaces_booking_id: String(bookingData.replacesBookingId) } : {}),
+      ...(bookingData.invitationId ? {
+        invitation_id: bookingData.invitationId,
+        invitation_version: String(bookingData.invitationVersion),
+        invitation_list_subtotal_cents: String(bookingData.invitationListSubtotalCents),
+        invitation_offered_subtotal_cents: String(bookingData.invitationOfferedSubtotalCents),
+      } : {}),
       ...(bookingData.windowStartTime ? { window_start_time: bookingData.windowStartTime } : {}),
       booking_price_cents: bookingPriceInCents.toString(),
       platform_fee_cents: (bookingData as any).platform_fee_cents 
@@ -390,7 +403,7 @@ export async function createPendingCheckoutSession(
       // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
       // Invoices are generated at capture time via payment_intent.succeeded webhook
       // Stripe will send receipt email when payment is actually captured
-    });
+    }, providerIdempotencyKey ? { idempotencyKey: providerIdempotencyKey } : undefined);
 
     if (!session.url) {
       throw new Error('Failed to create checkout session URL');
@@ -415,7 +428,7 @@ export async function expireAbandonedCheckoutSession(sessionId: string): Promise
   if (session.status === 'expired') return true;
   if (session.status !== 'open') return false;
   try {
-    await stripe.checkout.sessions.expire(sessionId);
+    await stripe.checkout.sessions.expire(sessionId, { idempotencyKey: `expire-checkout:${sessionId}` });
     return true;
   } catch (error) {
     // Checkout may have completed while the expiration request was in flight.

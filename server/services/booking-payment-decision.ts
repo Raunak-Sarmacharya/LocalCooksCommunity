@@ -317,7 +317,14 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     }
   });
   // The chef's receipt is issued from the captured payment row, after it committed (idempotent; never fails the decision).
-  if (decision.target === 'confirmed') await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(bookingId, 'booking_captured')).catch(() => undefined);
+  if (decision.target === 'confirmed') {
+    await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(bookingId, 'booking_captured')).catch(() => undefined);
+    const [confirmed] = await db.select({ invitationId: kitchenBookings.invitationId }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+    if (confirmed?.invitationId) {
+      const { recordFulfilledInvitation } = await import('./kitchen-invitations');
+      await recordFulfilledInvitation(confirmed.invitationId, bookingId);
+    }
+  }
   return { success: true, status: decision.target,
     authorizationVoided: decision.target === 'cancelled', recovered: false };
 }

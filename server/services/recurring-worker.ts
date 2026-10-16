@@ -143,6 +143,7 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'clockCloseout', run: async () => (await import('./clock-closeout')).sweepClockCloseout(3) },
         { name: 'closeoutPayouts', run: async () => (await import('./kitchen-payout-service')).releaseDuePayouts(3) },
         { name: 'bookingFeedback', run: async () => (await import('./booking-feedback-service')).sweepBookingFeedback(3) },
+        { name: 'invitationExpiry', run: async () => (await import('./kitchen-invitations')).sweepKitchenInvitationExpiry(3) },
         // Expiry reminders (30/7/0 days); the new-booking block itself is enforced at read time.
         { name: 'chefDocumentExpiry', run: async () => (await import('./chef-document-expiry')).sweepChefDocumentExpiry() },
         { name: 'tourOutcomes', run: async () => (await import('./tour-outcome-service')).remindUnrecordedTourOutcomes({ budgetMs: 5_000, maxTours: 3 }) },
@@ -156,6 +157,7 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'tour', budgetMs: deliveryTaskMs, run: () => deliverTourEvents(undefined, 1, deliveryTaskMs) },
         { name: 'outcome', budgetMs: deliveryTaskMs, run: () => deliverOutcomeEmails(1, deliveryTaskMs) },
         { name: 'chat', budgetMs: deliveryTaskMs, run: () => dispatchChatDigests(1, deliveryTaskMs) },
+        { name: 'invitations', budgetMs: deliveryTaskMs, run: async () => (await import('./kitchen-invitations')).deliverKitchenInvitationEvents(1) },
         // Retries access-ended and document-expiry notices that were not accepted inline.
         { name: 'access', budgetMs: deliveryTaskMs, run: async () => (await import('./location-access-notices')).dispatchAccessNotices() },
       ].map(task => ({ ...task, minBudgetMs: deliveryReserve() })), deliveryState, async () => { state.deliveryNext = deliveryState.nextTask; await save(); }, deadline - 8_000);

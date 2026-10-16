@@ -1,7 +1,7 @@
 import type Stripe from 'stripe';
 import { and, eq, getTableColumns } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchens, locations, storageBookings, storageListings, storageOverstayQuotes,
+import { kitchenBookings, kitchenInvitations, kitchenInvitationEvents, kitchens, locations, storageBookings, storageListings, storageOverstayQuotes,
   equipmentBookings, equipmentListings, paymentTransactions } from '@shared/schema';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
@@ -18,6 +18,36 @@ import { emailLocalDateTimeSentence } from '../email';
 import { completeReplacementSafely, noticeTimes, recordReplacementPending, replacedRequestForFulfillment, replacesBookingIdFrom } from './booking-replacement';
 import { recordReplacementWithdrawal } from './booking-payment-decision';
 import { registerKitchenCheckout, checkoutIncident, updateCheckoutIncident, resolveCheckoutConflict } from './kitchen-checkout-incidents';
+import { chefService } from '../domains/users/chef.service';
+
+async function invitationForCheckout(metadata: Record<string, string>, chefId: number, kitchenId: number) {
+  if (!metadata.invitation_id) return undefined;
+  const version = Number(metadata.invitation_version);
+  const [invitation] = await db.select().from(kitchenInvitations).where(eq(kitchenInvitations.id, metadata.invitation_id)).limit(1);
+  if (!invitation || invitation.chefId !== chefId || invitation.kitchenId !== kitchenId || invitation.version !== version
+    || !['accepted_pending_payment', 'accepted'].includes(invitation.status)
+    || invitation.listSubtotalCents !== Number(metadata.invitation_list_subtotal_cents)
+    || invitation.offeredSubtotalCents !== Number(metadata.invitation_offered_subtotal_cents))
+    throw new Error('Invitation checkout evidence is incomplete');
+  return invitation;
+}
+
+async function acceptFulfilledInvitation(invitation: typeof kitchenInvitations.$inferSelect | undefined, bookingId: number) {
+  if (!invitation) return;
+  const { decideAuthorizedBooking } = await import('./booking-payment-decision');
+  await decideAuthorizedBooking(bookingId, 'confirmed', [], [], invitation.managerId, undefined,
+    { message: `Pre-approved by kitchen invitation v${invitation.version}` });
+}
+
+async function markInvitationUnavailable(invitation?: typeof kitchenInvitations.$inferSelect) {
+  if (!invitation) return;
+  const [updated] = await db.update(kitchenInvitations).set({ status: 'unavailable', unavailableReason: 'These dates are no longer available.',
+    updatedAt: new Date() }).where(and(eq(kitchenInvitations.id, invitation.id), eq(kitchenInvitations.version, invitation.version),
+      eq(kitchenInvitations.status, 'accepted_pending_payment'))).returning();
+  if (updated) await db.insert(kitchenInvitationEvents).values({ invitationId: invitation.id, version: invitation.version,
+    kind: 'unavailable', actorRole: 'system', noticeKey: `${invitation.id}:${invitation.version}:unavailable`,
+    metadata: { action: 'invite_for_other_dates' } }).onConflictDoNothing();
+}
 
 /** The chef's own in-app notice for a new request; the manager keeps the review copy. */
 async function chefRequestCopy(booking: Parameters<typeof getBookingResponseDeadline>[0], reader: Parameters<typeof getBookingResponseDeadline>[1], kitchenName: string | null, timezone: string | null) {
@@ -37,6 +67,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   const kitchenId = Number(metadata.kitchen_id), chefId = Number(metadata.chef_id);
   if (!prices || !Number.isSafeInteger(kitchenId) || !Number.isSafeInteger(chefId) || session.amount_total !== intent.amount
     || session.currency !== 'cad' || !['requires_capture', 'succeeded'].includes(intent.status)) throw new Error('Checkout payment evidence is incomplete');
+  const invitation = await invitationForCheckout(metadata, chefId, kitchenId);
   await registerKitchenCheckout(session.id, chefId, kitchenId, metadata.booking_date.slice(0, 10));
   const recovery = await checkoutIncident(session.id);
   if (recovery?.chefId !== chefId || recovery.kitchenId !== kitchenId) throw Error('Checkout ownership changed');
@@ -46,9 +77,20 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: existing.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
     // A replayed webhook finishes a replacement the first delivery did not (idempotent).
     if (replacesId) await completeReplacementSafely(existing.id, replacesId);
+    await acceptFulfilledInvitation(invitation, existing.id);
     return existing.id;
   }
-  if (recovery.inventoryConflict) return resolveCheckoutConflict(session, intent, stripe);
+  if (invitation) {
+    const eligibility = await chefService.getApplicationStatusForBooking(chefId, invitation.locationId, kitchenId);
+    if (!eligibility.canBook) {
+      await markInvitationUnavailable(invitation);
+      return resolveCheckoutConflict(session, intent, stripe);
+    }
+  }
+  if (recovery.inventoryConflict) {
+    await markInvitationUnavailable(invitation);
+    return resolveCheckoutConflict(session, intent, stripe);
+  }
   const bookingDate = new Date(metadata.booking_date);
   const storageDates = JSON.parse(metadata.selected_storage || '[]') as { storageListingId: number; startDate: string; endDate: string }[];
   if (storageDates.length !== prices.s.length || !Number.isFinite(bookingDate.getTime())) throw new Error('Checkout dates are incomplete');
@@ -72,7 +114,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, kitchenId)).limit(1);
         if (!context?.managerId) throw new Error('Checkout manager not found');
         const [parent] = await tx.insert(kitchenBookings).values({ referenceCode: await generateReferenceCode('kitchen_booking'),
-          chefId, kitchenId, bookingDate, startTime: metadata.start_time, endTime: metadata.end_time,
+          chefId, kitchenId, invitationId: invitation?.id, bookingDate, startTime: metadata.start_time, endTime: metadata.end_time,
           operatingWindowStartTime: metadata.window_start_time || null,
           selectedSlots: parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time),
           pricingMode: metadata.pricing_mode === 'daily' ? 'daily' : 'hourly', status: 'pending', paymentStatus,
@@ -151,6 +193,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     createdBookingId = booking.id;
   } catch (error) {
     if (error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError) {
+      await markInvitationUnavailable(invitation);
       return resolveCheckoutConflict(session, intent, stripe);
     }
     await updateCheckoutIncident(session.id, { outcome: 'needs_support', paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, error: (error as Error).message });
@@ -158,5 +201,6 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   }
   // Outside the try: the new request already stands, so a replacement problem must never mark this checkout as failed.
   if (replacesId) await completeReplacementSafely(createdBookingId!, replacesId);
+  await acceptFulfilledInvitation(invitation, createdBookingId!);
   return createdBookingId!;
 }

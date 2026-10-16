@@ -1253,6 +1253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api", (await import("./routes/admin-booking-support")).default);
   app.use("/api", (await import("./routes/booking-feedback")).default);
   app.use("/api", (await import("./routes/booking-documents")).default);
+  app.use("/api", (await import("./routes/kitchen-invitations")).default);
   app.use("/api/manager", (await import("./routes/manager")).default);
 
   // Manager notifications routes
