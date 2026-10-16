@@ -23,7 +23,7 @@ const EXPIRY = [24, 48, 168] as const;
 export default function ManagerInvitationNewPage() {
   const { t, i18n } = useTranslation('booking');
   const search = new URLSearchParams(useSearch());
-  const locationId = Number(search.get('locationId')) || 0;
+  const locationId = Number(search.get('location')) || 0;
   const queryClient = useQueryClient();
   const locale = i18n.resolvedLanguage || 'en-CA';
   const money = (cents: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(cents / 100);

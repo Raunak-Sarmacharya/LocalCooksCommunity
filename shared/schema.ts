@@ -631,6 +631,19 @@ export const kitchenCheckoutIncidents = pgTable("kitchen_checkout_incidents", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Private manager notes about a customer at one location (migration 0092). Never returned to the customer.
+export const customerNotes = pgTable("customer_notes", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").notNull().references(() => locations.id, { onDelete: "cascade" }),
+  chefId: integer("chef_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authorId: integer("author_id").references(() => users.id, { onDelete: "set null" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, table => [index('customer_notes_customer_idx').on(table.locationId, table.chefId, table.createdAt)
+  .where(sql`${table.deletedAt} IS NULL`)]);
+
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   feedbackRequestedAt: timestamp('feedback_requested_at', { withTimezone: true }),

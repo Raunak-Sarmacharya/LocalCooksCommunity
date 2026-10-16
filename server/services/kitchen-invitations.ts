@@ -482,7 +482,7 @@ export async function deliverKitchenInvitationEvents(limit = 3) {
           expiresAt: invitation.expiresAt, timezone: invitation.timezone, reason: record.reason, actorRole: record.actorRole,
         });
         const path = reader === 'chef' ? `/invitation/${invitation.id}` : reader === 'admin' ? '/admin?section=booking-support'
-          : `/manager/invitations/new?chefId=${invitation.chefId}&locationId=${invitation.locationId}`;
+          : `/manager/invitations/new?chefId=${invitation.chefId}&location=${invitation.locationId}`;
         const actionLabel = tLocale(locale, 'booking:invEmailButton');
         await notificationService.create({
           userId: person.id, target: reader === 'chef' ? 'chef' : 'manager', locationId: invitation.locationId,

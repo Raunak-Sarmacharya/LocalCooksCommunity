@@ -1,5 +1,6 @@
 import { bookingWindowCap } from '../services/booking-policy-settings';
 import { validBookingWindowDays } from '@shared/kitchen-booking-policies';
+import managerCustomersRouter from './manager-customers';
 import { revokeManagerLocationAccess, futureAccessBookings, deliverAccessNotice } from "../services/location-access-notices";
 import { projectBookingCloseout, projectBookingCloseouts } from '../services/clock-closeout';
 import { readKitchenPayout, attachKitchenPayouts, upcomingKitchenPayouts } from '../services/kitchen-payout-service';
@@ -113,6 +114,7 @@ import {
 
 const router = Router();
 router.use(bookingAttendancePrivacy);
+router.use('/customers', managerCustomersRouter);
 
 async function verifyManagerOwnsOverstay(
   overstayRecordId: number,

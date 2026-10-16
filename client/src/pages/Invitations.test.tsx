@@ -3,7 +3,7 @@ vi.mock('@/layouts/ManagerBookingLayout', () => ({ default: ({ children }: { chi
 vi.mock('@/layouts/ChefDashboardLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('@/layouts/chef-shell-context', () => ({ useChefShellChrome: () => false }));
 vi.mock('@/lib/api', () => ({ getAuthHeaders: async () => ({ Authorization: 'Bearer fixture' }) }));
-const route = { search: '?chefId=380&locationId=47', id: 'inv-1' };
+const route = { search: '?chefId=380&location=47', id: 'inv-1' };
 vi.mock('wouter', () => ({
   Link: ({ href, children, ...rest }: any) => <a href={href} {...rest}>{children}</a>,
   useSearch: () => route.search, useRoute: () => [true, { id: route.id }], useLocation: () => ['/', vi.fn()],

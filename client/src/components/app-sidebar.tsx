@@ -49,6 +49,7 @@ const navData: { navMain: NavGroup[] } = {
                     url: "storage-bookings",
                     icon: managerNavIcons["storage-bookings"],
                 },
+                { labelKey: "navCustomers", url: "customers", icon: managerNavIcons.customers },
                 {
                     labelKey: "navRequests",
                     url: "applications",
@@ -169,7 +170,7 @@ export function AppSidebar({
                 {navData.navMain.map((group) => (
                     <SidebarGroup key={group.labelKey} className="px-2 py-0.5">
                         <SidebarMenu className="gap-1.5">
-                            {group.items.filter((item) => (item.url !== "bookings" || showBookings) && (item.url !== "storage-bookings" || showStorageBookings) && (item.url !== "applications" || showApplications) && (item.url !== "revenue" || showRevenue)).map((item) => {
+                            {group.items.filter((item) => (item.url !== "bookings" || showBookings) && (item.url !== "storage-bookings" || showStorageBookings) && ((item.url !== "applications" && item.url !== "customers") || showApplications) && (item.url !== "revenue" || showRevenue)).map((item) => {
                                 // Highlight only the destination, including breadcrumb child destinations.
                                 const isActive = activeView === item.url && !item.children?.some((child) => child.url === activeChildView);
                                 const hasActiveChild = !!item.children?.some((child) => child.url === activeView);

@@ -2,7 +2,8 @@
 import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, Calendar, Building2, Clock, Ban } from "@/components/ui/manager-icons"
+import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, Calendar, Building2, Clock, Ban, Users } from "@/components/ui/manager-icons"
+import { Link } from "wouter"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
@@ -307,6 +308,12 @@ export function getApplicationColumnsV2({
 
                                 <DropdownMenuItem onClick={() => onSelect(app)}>
                                     <Eye className="mr-2 h-4 w-4" />{mt("viewDetails")}</DropdownMenuItem>
+
+                                <DropdownMenuItem asChild>
+                                    <Link href={`/manager/customers/${app.chefId}?location=${app.locationId}`}>
+                                        <Users className="mr-2 h-4 w-4" />{mt("cuViewCustomer")}
+                                    </Link>
+                                </DropdownMenuItem>
 
                                 {canChat && onChat && (
                                     <DropdownMenuItem onClick={() => onChat(app)}>
