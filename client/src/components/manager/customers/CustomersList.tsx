@@ -134,7 +134,7 @@ export function CustomersList({ locations, selectedLocationId }: { locations: Sc
           return (
             <button key={filter} type="button" aria-pressed={active} onClick={() => change({ status: filter })}
               className={cn('inline-flex min-h-11 shrink-0 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                active ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}>
+                active ? 'border-primary bg-primary/10 font-medium text-foreground' : 'bg-background hover:bg-muted')}>
               {mt('cuFilterChip', { label: mt(filterLabel[filter]), count: counts ? counts[filter] : '…' })}
             </button>
           );

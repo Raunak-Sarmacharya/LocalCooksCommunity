@@ -119,7 +119,7 @@ export function CustomerPageView({ chefId, locationParam }: { chefId: number; lo
               {data.locations.map(item => (
                 <button key={item.id} type="button" aria-pressed={item.id === location.id} onClick={() => item.id !== location.id && navigate(customerHref(customer.chefId, item.id))}
                   className={cn('inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    item.id === location.id ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}>
+                    item.id === location.id ? 'border-primary bg-primary/10 font-medium text-foreground' : 'bg-background hover:bg-muted')}>
                   {mt('cuAccessChip', { status: mt(statusLabelKey[item.status]), location: item.name })}
                 </button>
               ))}
