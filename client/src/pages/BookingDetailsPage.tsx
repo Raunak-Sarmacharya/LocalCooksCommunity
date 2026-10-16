@@ -412,6 +412,8 @@ export default function BookingDetailsPage() {
 
   const reviewEquipmentCancellation = async (id: number, accept: boolean) => {
     if (!booking || !isManagerView) return;
+    // Accepting moves money, so it goes through the add-on's own refund quote (the server refuses the bare status change).
+    if (accept) { setCancellationRefundScope({ kind: 'equipment', id }); setCancellationRefundOpen(true); return; }
     setItemCancellationPending(true);
     try {
       const response = await fetch(`/api/manager/bookings/${booking.id}/status`, {
