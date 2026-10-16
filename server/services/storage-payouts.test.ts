@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type Stripe from 'stripe';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
@@ -7,19 +8,18 @@ import * as schema from '@shared/schema';
 
 // Real payout service, refund module, money guard, support flags and transfer engine on in-memory Postgres; Stripe is simulated.
 const h = vi.hoisted(() => ({ db: null as any, notices: vi.fn(), refunds: [] as any[], amountRefunded: 0, transfer: null as any, insufficient: false,
-  createTransfer: vi.fn(), reverse: vi.fn(), lostRefundResponse: false }));
+  createTransfer: vi.fn(), retrieveTransfer: vi.fn(), reverse: vi.fn(), lostRefundResponse: false }));
 vi.mock('../db', () => ({ db: new Proxy({}, { get: (_t, key) => typeof h.db[key] === 'function' ? h.db[key].bind(h.db) : h.db[key] }) }));
 vi.mock('./storage-rental-notices', () => ({ queueStorageRentalNotice: h.notices }));
 vi.mock('./booking-documents', () => ({ issueStorageDocumentsSafely: vi.fn(), issueBookingDocumentsSafely: vi.fn() }));
 vi.mock('./payout-document-evidence', () => ({ recordPayoutTransferEvidence: vi.fn() }));
 vi.mock('./payment-transactions-service', () => ({ addPaymentHistory: vi.fn() }));
-vi.mock('./stripe-checkout-fee-service', () => ({ getFeeConfig: async () => ({ platformCommissionRate: 0 }) }));
 vi.mock('./booking-cancellation-refund', () => ({
   kitchenFundingShortfall: (error: unknown) => /exceeds the verified unreversed|kitchen transfer reversal has insufficient balance/i.test(String((error as Error)?.message)),
   finalizeCancellationRefund: async (tx: any, source: any, op: any) => (await import('./storage-rental-money')).finalizeStorageRefund(tx, source, op) }));
 vi.mock('stripe', () => ({ default: class {
   charges = { retrieve: async () => ({ amount_refunded: h.amountRefunded }) };
-  transfers = { retrieve: vi.fn(), list: async function* () {}, listReversals: async function* () {}, create: h.createTransfer, createReversal: vi.fn() };
+  transfers = { retrieve: h.retrieveTransfer, list: async function* () {}, listReversals: async function* () {}, create: h.createTransfer, createReversal: vi.fn() };
 } }));
 vi.mock('./stripe-service', () => ({
   getStripePaymentAmounts: async () => ({ stripeAmount: 3550, stripeProcessingFee: 133, chargeId: 'ch_1' }),
@@ -43,9 +43,9 @@ import { assertBookingMoneyWritable } from './booking-money-guard';
 import { changeStorageFlag, handleBookingSupportWebhook } from './booking-support-flags';
 
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems, damageClaims,
-  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings } = schema;
+  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings, platformSettings } = schema;
 const tables = [kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems, damageClaims,
-  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings];
+  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings, platformSettings];
 const dialect = new PgDialect();
 let pg: PGlite;
 const endOfTerm = new Date('2026-10-20T02:30:00Z'); // start of Oct 20 in St. John's (NDT)
@@ -69,7 +69,7 @@ beforeAll(async () => {
 }, 120000);
 afterAll(async () => { await pg?.close(); vi.unstubAllEnvs(); });
 beforeEach(async () => {
-  vi.clearAllMocks(); h.refunds = []; h.amountRefunded = 0; h.transfer = null; h.insufficient = false; h.lostRefundResponse = false;
+  vi.clearAllMocks(); h.retrieveTransfer.mockReset(); h.refunds = []; h.amountRefunded = 0; h.transfer = null; h.insufficient = false; h.lostRefundResponse = false;
   h.createTransfer.mockImplementation(async (params: any) => { h.transfer = { id: 'tr_1', amount: params.amount }; return h.transfer; });
   for (const table of tables) await h.db.delete(table);
   await h.db.insert(users).values([{ id: 2, username: 'kitchen@example.invalid', role: 'manager', stripeConnectAccountId: 'acct_kitchen' },
@@ -122,6 +122,15 @@ describe('storage payout release', () => {
     expect((await payment()).transferId).toBe('tr_1');
     expect(events().filter(event => event === 'payout_released')).toHaveLength(1);
   });
+  it('reconciles an existing transfer using the locked connection for its fee and source reads', async () => {
+    await h.db.update(paymentTransactions).set({ transferId: 'tr_1', payoutReleasedAt: endOfTerm });
+    h.retrieveTransfer.mockResolvedValue({ id: 'tr_1', amount: 3317, amount_reversed: 0 });
+    const { transferToManagerForBooking } = await import('./stripe-transfer-service');
+    expect(await transferToManagerForBooking({ paymentTransactionId: 1, paymentIntentId: 'pi_1', chargeAmountCents: 3550,
+      actualStripeFeeCents: 133, chargeId: 'ch_1', transferGroup: 'pi_pi_1' }))
+      .toMatchObject({ transferred: true, transferId: 'tr_1', transferredCents: 3317 });
+    expect(h.createTransfer).not.toHaveBeenCalled();
+  });
   it('a problem the chef reported holds it (kitchen told once); resolving it releases', async () => {
     await h.db.insert(commitmentProblems).values({ id: 1, sourceKey: 'p', kind: 'live', storageBookingId: 7, reportedBy: 3, status: 'reported', description: 'x' });
     expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ deferred: true, reason: 'On hold: reported_issue' });
@@ -145,8 +154,10 @@ describe('storage payout release', () => {
     await expect(assertBookingMoneyWritable({ paymentIntentId: 'pi_1' })).rejects.toThrow('paused');
     await expect(refundRentalUnused(7, { cause: 'goodwill_lc', amountCents: 500, actorId: 9, operationKey: 'gw' })).rejects.toThrow('paused');
     expect(await releaseStorageTermPayout(1, 'test', endOfTerm)).toMatchObject({ transferred: true });
-    stripe.disputes.retrieve = async () => ({ id: 'du_1', payment_intent: 'pi_1', charge: 'ch_1', amount: 3550, currency: 'cad', status: 'lost' });
-    await handleBookingSupportWebhook({ ...event, type: 'charge.dispute.closed' }, stripe);
+    const dispute = { id: 'du_1', payment_intent: 'pi_1', charge: 'ch_1', amount: 3550, currency: 'cad', status: 'lost' };
+    const stripe = { disputes: { retrieve: vi.fn().mockResolvedValue(dispute) } } as unknown as Stripe;
+    expect(await handleBookingSupportWebhook({ type: 'charge.dispute.closed', data: { object: dispute } } as Stripe.Event, stripe))
+      .toMatchObject({ handled: true, linkedBookings: 1 });
     await expect(assertBookingMoneyWritable({ storageRentalId: 7 })).resolves.toBeUndefined();
     expect((await payment()).metadata.kitchenRefundDebts).toBeUndefined();
 
@@ -192,10 +203,10 @@ describe('storage refunds', () => {
     const base = { days: 3, subtotalCents: 3000, taxCents: 450, serviceFeeCents: 100, totalCents: 3550, paidAt: null, processingFeeCents: 133, refundedCents: 0, remainingKitchenCents: 3317 };
     const shares = storageRefundShares([{ ...base, id: 1, startsOn: '2026-10-17', endsOn: '2026-10-19' },
       { ...base, id: 2, startsOn: '2026-10-20', endsOn: '2026-10-22' }], reclaim);
-    expect([...shares.keys()]).toEqual([2, 1]);
+    expect(Array.from(shares.keys())).toEqual([2, 1]);
     expect(shares.get(2)).toMatchObject({ customer: 3550, managerDebited: 3450, feeReturned: 100 });
     expect(shares.get(1)).toMatchObject({ customer: 1183 });
-    expect([...storageRefundShares([{ ...base, id: 1, startsOn: '2026-10-17', endsOn: '2026-10-19' }], { ...reclaim, fromDate: '2026-10-20' })]).toEqual([]);
+    expect(Array.from(storageRefundShares([{ ...base, id: 1, startsOn: '2026-10-17', endsOn: '2026-10-19' }], { ...reclaim, fromDate: '2026-10-20' }))).toEqual([]);
   });
   it('before the payout lowers the transfer without any reversal', async () => {
     const result = await refundRentalUnused(7, reclaim);
