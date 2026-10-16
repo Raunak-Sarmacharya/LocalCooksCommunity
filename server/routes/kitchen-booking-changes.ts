@@ -17,7 +17,7 @@ const decision = z.object({ action: z.enum(['approve', 'decline', 'withdraw']), 
 const checkout = z.object({ returnPath: z.string().max(2000).optional() }).strict();
 
 function stripeClient() {
-  if (!process.env.STRIPE_SECRET_KEY) throw new KitchenChangeError('Payment provider is unavailable. No payment was started.', 503);
+  if (!process.env.STRIPE_SECRET_KEY) throw new KitchenChangeError('Payment provider is unavailable. No payment was started.', 503, 'paymentProviderUnavailable');
   return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
 }
 const optionalStripe = () => process.env.STRIPE_SECRET_KEY ? stripeClient() : null;
@@ -26,7 +26,7 @@ function returnUrl(path: string | undefined, bookingId: number) {
   const origin = getAppBaseUrl('chef');
   const url = new URL(path ?? `/booking/${bookingId}`, origin);
   if (path && !path.startsWith('/') || url.origin !== origin || !/^\/booking\/\d+(?:\/visit)?\/?$/.test(url.pathname))
-    throw new KitchenChangeError('Choose a booking page to return to.', 400);
+    throw new KitchenChangeError('Choose a booking page to return to.', 400, 'chooseReturnPage');
   url.search = ''; url.hash = '';
   return url.toString();
 }
@@ -34,12 +34,14 @@ function handler(work: (req: Request, id: number) => Promise<unknown>) {
   return async (req: Request, res: Response) => {
     try {
       const id = Number(req.params.id);
-      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid booking' });
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Choose a valid booking', code: 'chooseValidBooking' });
       res.json(await work(req, id));
     } catch (error) {
       const status = error instanceof KitchenChangeError ? error.status : error instanceof z.ZodError ? 400 : 500;
-      res.status(status).json({ error: error instanceof z.ZodError ? 'Review the date, consecutive hours and request fields.'
-        : error instanceof KitchenChangeError ? error.message : 'Booking changes could not be loaded or verified. Retry or contact Local Cooks.' });
+      // The client turns `code` into a `booking` i18n key; `error` stays the English fallback.
+      if (error instanceof KitchenChangeError) return res.status(status).json({ error: error.message, code: error.code, values: error.values ?? {} });
+      res.status(status).json({ error: error instanceof z.ZodError ? 'Review the date, consecutive hours and request fields.' : 'Booking changes could not be loaded or verified. Retry or contact Local Cooks.',
+        code: error instanceof z.ZodError ? 'reviewFields' : 'changeLoadFailed' });
     }
   };
 }

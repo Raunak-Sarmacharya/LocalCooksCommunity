@@ -61,6 +61,15 @@ describe('open change on the booking page', () => {
 });
 
 describe('Change date or time dialog', () => {
+  it('shows a coded server error in the reader’s own words, with the item named', async () => {
+    // The server sends English copy plus a stable code; the client must show the translated key, not the raw message.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false,
+      json: async () => ({ error: 'Stand mixer is not available at the new time. Choose another time.', code: 'equipmentUnavailable', values: { item: 'Stand mixer' } }) })));
+    render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={() => {}} onChanged={async () => {}} />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Stand mixer isn’t available at the new time. Choose another time.');
+    expect(alert).not.toHaveTextContent('Stand mixer is not available');
+  });
   it('explains why when the booking can no longer be changed', async () => {
     routes = { '/changes': { original, canRequest: { allowed: false, reason: 'Changes close at your refund deadline.' }, timezone: 'America/St_Johns' } };
     render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={() => {}} onChanged={async () => {}} />);
