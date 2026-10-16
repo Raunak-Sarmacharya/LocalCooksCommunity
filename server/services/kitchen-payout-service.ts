@@ -43,7 +43,8 @@ async function payoutContext(bookingId: number, tx: Tx, now: Date, released: boo
     || makeCloseoutSnapshot(row.booking, row.timezone, await closeoutTiming(row.locationId, tx));
   const closeout = reduceClockCloseout(row.booking, visits, saved, now);
   const result = await tx.execute(sql`SELECT
-    EXISTS(SELECT 1 FROM booking_flags WHERE booking_id = ${bookingId} AND resolved_at IS NULL) AS flag,
+    -- Pilot policy (Oct 16): Local Cooks absorbs chargebacks, so a dispute never holds a delivered session's payout.
+    EXISTS(SELECT 1 FROM booking_flags WHERE booking_id = ${bookingId} AND resolved_at IS NULL AND kind <> 'chargeback') AS flag,
     EXISTS(SELECT 1 FROM commitment_problems p JOIN kitchen_bookings kb ON kb.id = p.booking_id
       WHERE p.booking_id = ${bookingId} AND p.reported_by = kb.chef_id AND p.status <> 'resolved') AS issue,
     false AS resolved`);
@@ -250,7 +251,7 @@ async function attachWithExtensions<T extends { id: number; status?: string; clo
   const pending = sources.filter(source => source.payoutTiming === 'after_closeout' && !source.transferId).map(source => source.bookingId);
   const list = (values: number[]) => sql.join(values.map(id => sql`${id}`), sql`, `);
   const facts = pending.length ? (await db.execute(sql`SELECT kb.id AS booking_id,
-      EXISTS(SELECT 1 FROM booking_flags f WHERE f.booking_id = kb.id AND f.resolved_at IS NULL) AS flag,
+      EXISTS(SELECT 1 FROM booking_flags f WHERE f.booking_id = kb.id AND f.resolved_at IS NULL AND f.kind <> 'chargeback') AS flag,
       EXISTS(SELECT 1 FROM commitment_problems p WHERE p.booking_id = kb.id
         AND p.reported_by = kb.chef_id AND p.status <> 'resolved') AS issue,
       false AS resolved

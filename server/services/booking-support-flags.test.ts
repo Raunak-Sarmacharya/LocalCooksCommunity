@@ -29,7 +29,7 @@ const database: any = {
   } }),
   update: () => ({ set: (values: any) => ({ where: async (condition: any) => { Object.assign(state.flags.find(row => row.id === params(condition)[0]), values); } }) }),
 };
-import { changeBookingFlag, handleBookingSupportWebhook } from './booking-support-flags';
+import { chargebackCopy, changeBookingFlag, handleBookingSupportWebhook } from './booking-support-flags';
 const event = (type: string, object: any, account?: string) => ({ id: 'evt_one', type, data: { object }, account } as any);
 const stripe = () => ({ disputes: { retrieve: vi.fn(async () => state.currentDispute) },
   charges: { retrieve: vi.fn(async (id: string) => id === 'py_one' ? { source_transfer: 'tr_one' } : { status: 'succeeded', paid: true }) },
@@ -55,10 +55,23 @@ describe('verified financial webhooks', () => {
     await handleBookingSupportWebhook(event('charge.dispute.created', { id: 'dp_one', status: 'needs_response' }), stripe());
     expect(state.flags).toHaveLength(1); expect(state.queue).toHaveBeenCalledTimes(2);
   });
-  it('keeps a lost dispute frozen until staff reviews the funding outcome', async () => {
+  it('pilot policy: a lost dispute closes the flag (Local Cooks absorbs it) and tells admins plainly', async () => {
+    await handleBookingSupportWebhook(event('charge.dispute.created', { id: 'dp_one' }), stripe());
     state.currentDispute.status = 'lost';
     await handleBookingSupportWebhook(event('charge.dispute.closed', { id: 'dp_one' }), stripe());
-    expect(state.flags[0].resolvedAt).toBeNull();
+    expect(state.flags[0].resolvedAt).toBeInstanceOf(Date);
+    expect(state.queue.mock.calls[1][3]).toMatch(/^Chargeback lost · /);
+  });
+  it('the opening notice says the amount, reason, Stripe deadline and that the kitchen is still paid', () => {
+    const copy = chargebackCopy({ id: 'du_1', amount: 3050, currency: 'cad', reason: 'fraudulent', status: 'needs_response', livemode: false,
+      balance_transactions: [{ fee: 1500 }], evidence_details: { due_by: 1792886399 } } as any);
+    expect(copy.title).toBe('Chargeback · {reference} · $30.50');
+    expect(copy.message).toContain('(fraudulent)');
+    expect(copy.message).toMatch(/Respond in Stripe by Oct 24, 2026, 9:29\sp\.m\. Newfoundland Time/);
+    expect(copy.message).toContain('the kitchen is still paid');
+    expect(copy.message).toContain('https://dashboard.stripe.com/test/disputes/du_1');
+    expect(chargebackCopy({ id: 'du_1', amount: 3050, currency: 'cad', status: 'lost', livemode: false, balance_transactions: [{ fee: 1500 }] } as any).message)
+      .toContain('Local Cooks absorbs $30.50 plus the $15.00 dispute fee');
   });
   it('records a terminal incident first as a tombstone', async () => {
     state.currentDispute.status = 'won';

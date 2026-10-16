@@ -14,7 +14,8 @@ export async function lockBookingMoneySources(tx: Tx, bookingId: number) {
       OR s.kitchen_booking_id = ${bookingId} OR e.kitchen_booking_id = ${bookingId}
     ORDER BY p.id FOR UPDATE OF p`);
 }
-export async function changeBookingFlag(bookingId: number, kind: Kind, providerRef: string, resolved = false, actorId?: number, note?: string) {
+export async function changeBookingFlag(bookingId: number, kind: Kind, providerRef: string, resolved = false, actorId?: number, note?: string,
+  copy?: { title: string; message: string }) {
   return db.transaction(async tx => {
     await lockBookingMoneySources(tx, bookingId);
     const [booking] = await tx.select({ id: kitchenBookings.id, referenceCode: kitchenBookings.referenceCode }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).for('update');
@@ -30,8 +31,8 @@ export async function changeBookingFlag(bookingId: number, kind: Kind, providerR
       flagId = created.id;
     }
     const reference = booking.referenceCode || `KB-${bookingId}`;
-    await queueBookingLifecycleEvent(tx, bookingId, 'support_flag_changed', resolved ? 'Booking payment flag resolved' : 'Booking payment needs review',
-      `${reference}: ${resolved ? 'the payment flag has been resolved.' : 'a payment issue needs your review. Refunds and kitchen payments are paused for this booking.'}`,
+    await queueBookingLifecycleEvent(tx, bookingId, 'support_flag_changed', copy?.title.replace('{reference}', reference) ?? (resolved ? 'Booking payment flag resolved' : 'Booking payment needs review'),
+      copy?.message ?? `${reference}: ${resolved ? 'the payment flag has been resolved.' : 'a payment issue needs your review. Refunds and kitchen payments are paused for this booking.'}`,
       actorId, { recipientPolicy: 'admins', supportCase: true, flagId, kind, providerRef });
     if (kind === 'payout_failed' && !resolved) await queueBookingLifecycleEvent(tx, bookingId, 'support_payout_failed',
       `We couldn’t send your payout for ${reference}`, `We couldn’t send your payout for ${reference} — update your payout details. Local Cooks is here to help if you need a hand.`,
@@ -50,6 +51,20 @@ async function bookingsForSources(where: ReturnType<typeof eq>) {
   }
   return Array.from(new Set(ids));
 }
+/** Admin-only wording: what happened, the money, and when to answer in Stripe (admins may see Stripe links). */
+export function chargebackCopy(dispute: Stripe.Dispute) {
+  const money = (cents: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: (dispute.currency || 'cad').toUpperCase() }).format(cents / 100);
+  const fee = (dispute.balance_transactions || []).reduce((sum, txn) => sum + (txn.fee || 0), 0);
+  const link = `https://dashboard.stripe.com/${dispute.livemode ? '' : 'test/'}disputes/${dispute.id}`;
+  const due = dispute.evidence_details?.due_by ? new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/St_Johns' })
+    .format(new Date(dispute.evidence_details.due_by * 1000)) + ' Newfoundland Time' : 'the date shown in Stripe';
+  const reason = String(dispute.reason || 'general').replace(/_/g, ' ');
+  if (dispute.status === 'won') return { title: 'Chargeback won · {reference}', message: `The bank sided with Local Cooks; ${money(dispute.amount)} comes back${fee ? ` (the ${money(fee)} dispute fee doesn't)` : ''}. Refunds for this booking are unpaused. ${link}` };
+  if (dispute.status === 'lost') return { title: 'Chargeback lost · {reference}', message: `The bank sided with the cardholder. Local Cooks absorbs ${money(dispute.amount)}${fee ? ` plus the ${money(fee)} dispute fee` : ''}; the kitchen's payout is unaffected. ${link}` };
+  if (dispute.status === 'warning_closed') return { title: 'Card inquiry closed · {reference}', message: `The bank closed its inquiry without a chargeback. ${link}` };
+  return { title: `Chargeback · {reference} · ${money(dispute.amount)}`, message: `The cardholder's bank opened a chargeback (${reason}). Respond in Stripe by ${due}. Refunds for this booking are paused; the kitchen is still paid. If it's lost, Local Cooks absorbs it. ${link}` };
+}
+
 /** Called only after the webhook signature is verified. Event names are from Stripe EventTypes. */
 export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: Stripe) {
   if (['charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed'].includes(event.type)) {
@@ -57,9 +72,9 @@ export async function handleBookingSupportWebhook(event: Stripe.Event, stripe: S
     const dispute = await stripe.disputes.retrieve(data.id);
     const intentId = ref(dispute.payment_intent), chargeId = ref(dispute.charge);
     const ids = await bookingsForSources(or(eq(paymentTransactions.paymentIntentId, intentId || ''), eq(paymentTransactions.chargeId, chargeId || ''))!);
-    // A lost dispute leaves a funding question; staff resolves that hold after Dashboard review.
-    const closed = ['won', 'warning_closed'].includes(dispute.status);
-    for (const id of ids) await changeBookingFlag(id, 'chargeback', dispute.id, closed);
+    // Pilot policy (Oct 16): Local Cooks answers in the Stripe Dashboard and absorbs a lost dispute, so any close ends the flag.
+    const closed = ['won', 'lost', 'warning_closed'].includes(dispute.status);
+    for (const id of ids) await changeBookingFlag(id, 'chargeback', dispute.id, closed, undefined, undefined, chargebackCopy(dispute));
     return { handled: true, linkedBookings: ids.length };
   }
   if (event.type === 'transfer.reversed') {

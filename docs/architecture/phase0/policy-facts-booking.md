@@ -67,6 +67,16 @@ Status: `verified` (live on dev with real sandbox money) · `built` (code + test
 
 - **Lead decision, owner may override (Oct 16):** if a confirmed-booking change was refunded (cheaper new time) but the move can no longer be applied, Local Cooks can close it and the booking stays at the original time; the chef keeps the refund and Local Cooks absorbs the difference — the kitchen's payout is not reduced further. Rare recovery case only.
 
+## 5a. Chargebacks (card disputes)
+
+| Rule | Enforced in | Status |
+|---|---|---|
+| A chargeback flags the booking for Local Cooks within seconds of Stripe's notice; every admin gets an in-app notice with the amount, the bank's reason, the Stripe response deadline and a dashboard link (email only for admins with the toggle). | `booking-support-flags.ts` `chargebackCopy` | verified (Oct 16: KB-DJGQMP, $30.50 "fraudulent", flag + 5 admin notices); new wording built |
+| While a chargeback is open, refunds for that booking are paused (the bank already returned the money). | `booking-money-guard.ts` | built |
+| **Pilot (owner, Oct 16): Local Cooks absorbs chargebacks.** The kitchen is still paid for a delivered session; a lost dispute (amount + Stripe's $15 dispute fee) is Local Cooks' cost. | `kitchen-payout-service.ts` (chargeback flags don't hold payouts) | built |
+| Local Cooks answers chargebacks in the Stripe Dashboard with the booking's evidence (accepted policy, check-in/out, inspection, receipt, messages); Stripe also emails the account owner deadline reminders. A won, lost or closed dispute closes the flag and tells admins the outcome. | Stripe Dashboard; `booking-support-flags.ts` | built |
+| The chef's Terms already say they agree not to charge back unless Local Cooks mishandled the payment, and fraudulent chargebacks may end the account. No automatic booking pause yet (rare; admins act case by case). | `TermsContent.tsx:694` | open (later: pause new bookings like Turo) |
+
 ## 6. Open items before the policy page
 
 - Re-verify every `built` row live after the next deploy.

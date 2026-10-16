@@ -172,7 +172,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
         <DialogDescription>{data ? t('chgCurrent', { kitchen: kitchenName, when: f.schedule(data.original) }) : t('chgLoading')}</DialogDescription></DialogHeader>
       {!data ? (error ? <p role="alert" className="text-sm text-destructive">{error}</p> : <Loader2 className="h-5 w-5 animate-spin" aria-label={t('chgLoading')} />)
         : !data.canRequest.allowed ? <div className="space-y-3">
-          <p className="text-sm">{data.canRequest.code ? t(errorKey(data.canRequest.code), { ...data.canRequest.values, defaultValue: data.canRequest.reason }) : data.canRequest.reason || t('chgNotAllowed')}</p>
+          <p className="text-sm">{data.canRequest.code ? t(errorKey(data.canRequest.code), { ...data.canRequest.values, defaultValue: data.canRequest.reason || t('chgNotAllowed') }) : data.canRequest.reason || t('chgNotAllowed')}</p>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('chgClose')}</Button>
         </div>
         : <div className="space-y-4">
