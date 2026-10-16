@@ -98,6 +98,12 @@ describe('standalone storage request and Checkout', () => {
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
     expect(() => assertRentalAcceptance({ ...input, expectedTotalCents: 1 }, 3550, 1)).toThrow('price_changed');
   });
+  it('a newly created (active) listing can be rented, like the chef listing pages show it; drafts cannot (live #53)', async () => {
+    await h.db.update(storageListings).set({ status: 'active' });
+    expect(await quoteRental(3, input, now)).toMatchObject({ totalCents: 3550 });
+    await h.db.update(storageListings).set({ status: 'draft' });
+    await expect(quoteRental(3, input, now)).rejects.toMatchObject({ code: 'unavailable' });
+  });
   it('enforces approved chef, claim/holdover holds, start window and kitchen/platform max', async () => {
     h.canBook = false; await expect(quoteRental(3, input, now)).rejects.toMatchObject({ code: 'approval_required', status: 403 }); h.canBook = true;
     h.claim = true; await expect(quoteRental(3, input, now)).rejects.toMatchObject({ code: 'claim_hold' }); h.claim = false;
