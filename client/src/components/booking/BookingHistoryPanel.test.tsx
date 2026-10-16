@@ -38,13 +38,14 @@ it('shows a dated tour-style trail and refreshes after the booking changes', asy
 it('links a changed request to the booking on the other side', async () => {
   const events = [
     { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
-    { key: '2', kind: 'replaced_by', recordedAt: '2026-10-01T13:00:00Z', otherRef: 'KB-NEW222' },
+    { key: '2', kind: 'replaced_by', recordedAt: '2026-10-01T13:00:00Z', otherRef: 'KB-NEW222', otherBookingId: 12 },
     { key: '3', kind: 'replaces', recordedAt: '2026-10-01T13:00:01Z', otherRef: 'KB-OLD111' },
   ];
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events }) })));
   mount('chef');
-  expect(await screen.findByText('Replaced by KB-NEW222')).toBeInTheDocument();
-  expect(screen.getByText('Replaces KB-OLD111')).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: 'Replaced by KB-NEW222' })).toHaveAttribute('href', '/booking/12');
+  // Without the other booking's id (older events) the reference stays plain text.
+  expect(screen.getByText('Replaces KB-OLD111').tagName).toBe('P');
 });
 it('shows extra-time events from each side', async () => {
   const events = [

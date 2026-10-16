@@ -3642,5 +3642,9 @@
   "inspectFinish": "Terminer l’inspection",
   "inspectFinishHintPayout": "Rien à signaler ? Terminer envoie votre versement de {amount} dès maintenant.",
   "inspectFinishHintClaim": "Terminer clôt l’inspection. Votre réclamation pour dommages se poursuit séparément.",
-  "bnChangeRequest": "Modifier la demande"
+  "bnChangeRequest": "Modifier la demande",
+  "bnChefReplaced": "Vous avez modifié cette demande. Votre nouvelle demande est {ref}.",
+  "bnManagerReplaced": "{chef} a modifié cette demande. Sa nouvelle demande est {ref}.",
+  "bnViewNewRequest": "Voir la nouvelle demande",
+  "bdhPill_replaced": "Modifiée"
 }

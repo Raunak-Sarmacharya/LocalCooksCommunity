@@ -106,7 +106,7 @@ interface BookingDetails {
   selectedSlots?: Array<{ startTime: string; endTime: string }>;
   status: string;
   paymentStatus?: string;
-  paymentDecision?: { state?: string; amount?: number; target?: string; actorId?: number | null } | null;
+  paymentDecision?: { state?: string; amount?: number; target?: string; actorId?: number | null; replacedBy?: { bookingId?: number; reference?: string } | null } | null;
   cancellationPolicyHours?: number;
   cancellationRequestDeclinedAt?: string | null;
   specialNotes?: string;
@@ -1228,6 +1228,9 @@ export default function BookingDetailsPage() {
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
   // "Change request" (pending only): rebook first; the earlier request closes once the new one is sent.
+  // A request the chef changed: its replacement is where things continue.
+  const replacedBy = cancelCause === 'replaced' ? booking?.paymentDecision?.replacedBy : null;
+  const newRequestHref = replacedBy?.bookingId ? `${isManagerView ? '/manager' : ''}/booking/${replacedBy.bookingId}` : null;
   const changeRequestLink = booking && !isManagerView && booking.status === 'pending' && booking.paymentStatus === 'authorized' && !booking.paymentDecision
     ? changeRequestHref({ ...booking, locationId: booking.location?.id ?? booking.kitchen?.locationId }) : null;
   const chefName = booking?.chef?.fullName || booking?.chef?.username || t('bdhChefFallback');
@@ -1320,6 +1323,7 @@ export default function BookingDetailsPage() {
     canCancel: chefCanCancel, canChangeRequest: !!changeRequestLink && chefCanCancel, canAddToCalendar: booking?.status === 'confirmed' && !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
     canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
   } });
+    replacedByRef: newRequestHref ? replacedBy?.reference || `#${replacedBy?.bookingId}` : null,
   const primary = now.primary;
 
   const payableClaim = !isManagerView ? nowClaims(claims, false).find(chefCanPayClaim) : undefined;
@@ -1377,6 +1381,7 @@ export default function BookingDetailsPage() {
       case 'contact_local_cooks': return [{ key, label: t('bdContactSupport', { defaultValue: 'Contact Local Cooks' }), onSelect: goToHelp }];
       case 'find_another_time': return findAnotherTimeHref ? [{ key, label: t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
       case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
+      case 'view_new_request': return newRequestHref ? [{ key, label: t('bnViewNewRequest'), href: newRequestHref, onSelect: () => navigate(newRequestHref), testId: 'view-new-request' }] : [];
       case 'change_booking': return [{ key, label: t('bdhChangeBooking'), onSelect: openManagementDialog }];
       case 'manage_refund': return [{ key, label: t('bdhManageRefund'), onSelect: openManagementDialog }];
       case 'fix_record': return [{ key, label: t('fixTitle'), onSelect: () => openFix() }];

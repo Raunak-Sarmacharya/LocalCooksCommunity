@@ -15,7 +15,9 @@ export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; rec
   /** Extra-time events only: who started it (`ask` chef request, `offer` kitchen offer, `early` earlier start, `charge` kitchen charge) and the minutes involved. */
   extFlow?: ExtensionFlow; minutes?: number;
   /** `replaced_by` / `replaces` only: the booking reference on the other side of the link. */
-  otherRef?: string };
+  otherRef?: string;
+  /** `replaced_by` / `replaces` only: the other booking's id, for a link (its own page still checks access). */
+  otherBookingId?: number };
 export type ExtensionFlow = 'ask' | 'offer' | 'early' | 'charge';
 export type BookingHistoryResponse = { events: BookingHistoryEvent[]; complete: boolean };
 type Facts = { createdAt?: unknown; cancellationRequestedAt?: unknown; cancellationRequestDeclinedAt?: unknown;
@@ -75,6 +77,7 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     events.push({ key: record.key ?? 'event-' + record.id, kind: record.kind as BookingHistoryEvent['kind'], recordedAt,
       ...(amount ? { amountCents: amount } : {}),
       ...((record.kind === 'replaced_by' || record.kind === 'replaces') && typeof metadata.otherRef === 'string' && metadata.otherRef ? { otherRef: metadata.otherRef.slice(0, 40) } : {}),
+      ...((record.kind === 'replaced_by' || record.kind === 'replaces') && positiveId(Number(metadata.otherBookingId)) ? { otherBookingId: Number(metadata.otherBookingId) } : {}),
       ...(positiveId(metadata.visitId) ? { visitId: metadata.visitId } : {}),
       ...((itemKind === 'storage' || itemKind === 'equipment') && positiveId(itemId)
         ? { itemKind, itemId } : {}) });

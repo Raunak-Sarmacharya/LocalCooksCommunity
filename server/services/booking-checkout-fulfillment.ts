@@ -128,7 +128,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
         const deadlineAt = changing ? await getBookingResponseDeadline(parent, tx, context.timezone).then(value => value.toISOString()).catch(() => undefined) : undefined;
         if (replacesId) {
           if (changing) await recordReplacementWithdrawal(tx, replaced!.booking, {
-            bookingId: parent.id, reference: parent.referenceCode, ...(deadlineAt ? { deadlineAt } : {}) });
+            bookingId: parent.id, reference: parent.referenceCode, ...(deadlineAt ? { deadlineAt } : {}), holdCents: intent.amount, next: noticeTimes(parent) });
           // Durable even if the process dies before post-commit completion or the first notice can be queued.
           await recordReplacementPending(tx, parent.id, replacesId, replaced?.booking.referenceCode ?? null);
         }

@@ -11,6 +11,9 @@ describe('bookingCancelCause', () => {
   it('reads another actor as the kitchen declining', () => {
     expect(bookingCancelCause({ status: 'cancelled', chefId: 7, paymentDecision: { target: 'cancelled', actorId: 9 } })).toBe('declined');
   });
+  it('reads a release recorded for a replacement request as "replaced", before any actor rule', () => {
+    expect(bookingCancelCause({ status: 'cancelled', chefId: 7, paymentDecision: { target: 'cancelled', actorId: 7, replacedBy: { bookingId: 12 } } })).toBe('replaced');
+  });
   it('reads a decision without an actor as the 24 h expiry', () => {
     expect(bookingCancelCause({ status: 'cancelled', chefId: 7, paymentDecision: { target: 'cancelled' } })).toBe('expired');
   });

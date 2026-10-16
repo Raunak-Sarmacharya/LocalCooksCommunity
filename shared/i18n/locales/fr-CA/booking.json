@@ -975,5 +975,7 @@
   "chgDeclineConfirm": "Refuser le changement",
   "chgBack": "Retour",
   "crSuccessPending": "Votre nouvelle demande a été envoyée à {kitchen}. Nous vérifions votre demande précédente. Gardez cette page ouverte pour voir la mise à jour.",
-  "crSuccessSupport": "Votre nouvelle demande a été envoyée à {kitchen}. Local Cooks doit vérifier le paiement de votre demande précédente. Ne payez pas de nouveau. Contactez Local Cooks pour obtenir de l’aide."
+  "crSuccessSupport": "Votre nouvelle demande a été envoyée à {kitchen}. Local Cooks doit vérifier le paiement de votre demande précédente. Ne payez pas de nouveau. Contactez Local Cooks pour obtenir de l’aide.",
+  "historyCancelled_replaced": "Demande modifiée",
+  "rpUpdatedBodyFull": "Votre nouvelle demande est pour le {now}, avec {newAmount} en retenue. {kitchen} a jusqu’au {deadline} pour répondre. Votre retenue précédente de {amount} a été libérée. Les banques peuvent prendre quelques jours pour l’afficher."
 }

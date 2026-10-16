@@ -276,7 +276,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     if (Array.isArray(metadata.recipientIds) && !metadata.recipientIds.includes(person.id)) continue;
     const chef = person.id === context.chefId;
     const localCooks = person.role === 'admin';
-    const path = (chef ? `/booking/${bookingId}` : localCooks ? metadata.supportCase ? `/admin?section=booking-support&booking=${bookingId}` : adminBookingTransactionsPath(bookingId) : `/manager/booking/${bookingId}`)
+    // The chef's "Request updated" (on the withdrawn request) opens the new request, where things continue.
+    const replacementTarget = chef ? Number((metadata.replacementNotice as ReplacementNotice | undefined)?.newBookingId) : NaN;
+    const path = (chef ? `/booking/${Number.isSafeInteger(replacementTarget) && replacementTarget > 0 ? replacementTarget : bookingId}` : localCooks ? metadata.supportCase ? `/admin?section=booking-support&booking=${bookingId}` : adminBookingTransactionsPath(bookingId) : `/manager/booking/${bookingId}`)
       + (kind === 'feedback_requested' ? '#feedback' : kind === 'running_late' && !chef && !localCooks ? '?action=message' : '');
     const feedbackCopy = ['feedback_requested', 'feedback_flagged'].includes(kind)
       ? (await import('./booking-feedback-service')).bookingFeedbackNoticeCopy(kind, context.kitchenName, person.locale) : undefined;

@@ -76,11 +76,13 @@ describe('Local Cooks goodwill in the history', () => {
       { id: 2, kind: 'replaced_by', createdAt: '2026-10-01T13:00:00Z', metadata: { otherBookingId: 12, otherRef: 'KB-NEW222', intentId: 'private-payment' } },
       { id: 3, kind: 'replaces', createdAt: '2026-10-01T13:00:01Z', metadata: { otherBookingId: 9, otherRef: 'KB-OLD111' } },
     ]);
-    expect(history.events.map(event => [event.kind, event.otherRef])).toEqual([['requested', undefined], ['replaced_by', 'KB-NEW222'], ['replaces', 'KB-OLD111']]);
-    expect(JSON.stringify(history)).not.toMatch(/private-payment|otherBookingId/);
+    // The id is only a link target; the linked page still checks access.
+    expect(history.events.map(event => [event.kind, event.otherRef, event.otherBookingId])).toEqual([['requested', undefined, undefined], ['replaced_by', 'KB-NEW222', 12], ['replaces', 'KB-OLD111', 9]]);
+    expect(JSON.stringify(history)).not.toMatch(/private-payment/);
   });
   it('never carries a reference on other events', () => {
     const history = buildBookingHistory({}, [{ id: 1, kind: 'confirmed', createdAt: '2026-10-02T12:00:00Z', metadata: { otherRef: 'KB-X' } }]);
     expect(history.events[0].otherRef).toBeUndefined();
+    expect(history.events[0].otherBookingId).toBeUndefined();
   });
 });

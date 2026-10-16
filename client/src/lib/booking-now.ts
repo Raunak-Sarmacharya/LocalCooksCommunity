@@ -11,7 +11,7 @@ import type { BookingCancelCause } from './booking-cancel-cause';
 export type NowRole = 'chef' | 'manager';
 export type NowSecondary =
   | 'cancel_request' | 'change_request' | 'see_arrival_details' | 'add_to_calendar' | 'running_late' | 'arrived_early' | 'need_more_time'
-  | 'download_invoice' | 'contact_local_cooks' | 'find_another_time'
+  | 'download_invoice' | 'contact_local_cooks' | 'find_another_time' | 'view_new_request'
   | 'extension_tools' | 'change_booking' | 'fix_record' | 'record_left' | 'report_damage' | 'download_payout_statement' | 'manage_refund'
   | 'report_no_show' | 'i_was_there';
 export type NowAttention = 'extensions' | 'changes' | 'claims';
@@ -66,6 +66,8 @@ export interface BookingNowFacts {
   managerCanManage?: boolean;
   claimFilingOpen?: boolean;
   findAnotherTime?: boolean;
+  /** Reference of the request that replaced this one (the chef changed their request). */
+  replacedByRef?: string | null;
   /** Arrival details have been released to the chef (or the server is older and always released). */
   detailsReleased?: boolean;
 }
@@ -84,7 +86,7 @@ export interface BookingNowContent {
 type T = (key: string, options?: Record<string, unknown>) => string;
 
 function pillKey(phase: BookingHeaderPhase, role: NowRole, cause?: BookingCancelCause | null) {
-  if (phase === 'cancelled' && (cause === 'declined' || cause === 'expired')) return `bdhPill_${cause}`;
+  if (phase === 'cancelled' && (cause === 'declined' || cause === 'expired' || cause === 'replaced')) return `bdhPill_${cause}`;
   if (phase === 'checkout_review' && role === 'chef') return 'bdhPill_checkout_submitted';
   if (phase === 'checkin_open') return 'bdhPill_today';
   if (phase === 'time_ended_in_session') return 'bdhPill_time_ended_in_session';
@@ -98,6 +100,7 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
       return f.responseDeadline ? t('bnChefPending', { kitchen, deadline: f.responseDeadline }) : t('bdhNextChefPending', { kitchen });
     case 'cancellation_requested': return t('cancelCopy07');
     case 'cancelled':
+      if (f.cancelCause === 'replaced' && f.replacedByRef) return t('bnChefReplaced', { ref: f.replacedByRef });
       if (f.cancelCause === 'declined' || f.cancelCause === 'expired' || f.cancelCause === 'withdrawn') return t(`bdhNextChef_${f.cancelCause}`, { kitchen });
       return t('bdhNextChefCancelled');
     case 'confirmed':
@@ -147,6 +150,7 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
     case 'pending': return f.responseDeadline ? t('bnManagerPending', { deadline: f.responseDeadline }) : t('bdhNextManagerPending');
     case 'cancellation_requested': return t('bdhNextManagerCancellationRequested', { chef });
     case 'cancelled':
+      if (f.cancelCause === 'replaced' && f.replacedByRef) return t('bnManagerReplaced', { chef, ref: f.replacedByRef });
       if (f.cancelCause === 'declined' || f.cancelCause === 'expired' || f.cancelCause === 'withdrawn') return t(`bdhNextManager_${f.cancelCause}`, { chef });
       return t('bdhNextManagerCancelled');
     case 'confirmed': return f.arrivalMode === 'self' ? t('bnManagerUpcomingSelf', { chef }) : t('bdhNextManagerUpcoming', { chef });
@@ -202,7 +206,7 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
     case 'completed': if (f.canDownload) out.push('download_invoice'); break;
     case 'no_show': out.push('i_was_there'); break;
     case 'no_checkin': out.push('i_was_there'); break;
-    case 'cancelled': if (f.findAnotherTime) out.push('find_another_time'); break;
+    case 'cancelled': if (f.replacedByRef) out.push('view_new_request'); else if (f.findAnotherTime) out.push('find_another_time'); break;
   }
   return out;
 }
@@ -232,7 +236,7 @@ function managerSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSec
     // While the kitchen can answer, "They came" / "They didn't come" render as one equal pair under the question (the page's
     // attendance answer), not a header button plus a link; afterwards only the record fix remains.
     case 'no_checkin': if (!f.inspectionCanRespond) out.push('fix_record'); break;
-    case 'cancelled': if (f.managerCanManage) out.push('manage_refund'); break;
+    case 'cancelled': if (f.replacedByRef) out.push('view_new_request'); else if (f.managerCanManage) out.push('manage_refund'); break;
   }
   return out;
 }

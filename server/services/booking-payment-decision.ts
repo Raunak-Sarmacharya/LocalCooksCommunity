@@ -25,7 +25,9 @@ type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending
   /** A pending decision that replaying can never finish. Recovery stops retrying it; Local Cooks resolves it from the booking-support console. */
   deadEnd?: { kind: 'hold_canceled' | 'captured_before_release' | 'amount_mismatch'; at: string; receivedCents?: number };
   /** The chef withdrew this request because they sent this new one first ("Change request"). */
-  replacedBy?: { bookingId: number; reference: string | null; deadlineAt?: string };
+  replacedBy?: { bookingId: number; reference: string | null; deadlineAt?: string;
+    /** The new request's card hold and kitchen-local times, for the chef's "Request updated" notice. */
+    holdCents?: number; next?: { date: string; startTime: string; endTime: string } };
   /** Id of the dead-end decision a support action replaced with this one. */
   supersedes?: string };
 
@@ -307,7 +309,8 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
       decision!.actorId, { decisionId: decision!.id,
         ...(replaced ? { recipientPolicy: 'chef', requestOutcome: 'replaced', replacementNotice: { variant: 'updated', oldRef: booking!.referenceCode ?? undefined,
-          newRef: replaced.reference ?? undefined, holdCents: decision!.authorizedAmount, deadlineAt: replaced.deadlineAt } } : {}),
+          newRef: replaced.reference ?? undefined, holdCents: decision!.authorizedAmount, deadlineAt: replaced.deadlineAt,
+          newBookingId: replaced.bookingId, newHoldCents: replaced.holdCents, next: replaced.next } } : {}),
         ...(outcome ? { requestOutcome: outcome.kind, roleText: outcome.roleText, kitchenCaused: outcome.kind === 'declined' } : {}),
         ...(decision!.target === 'confirmed' ? { roleText: {
         manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Share the check-in code with them in person when they arrive.' + (paidTiming?.timing === 'after_closeout' ? ' Paid after the visit: as soon as you finish the inspection, or automatically 24 hours after it ends.' : '') } } } : {}) });

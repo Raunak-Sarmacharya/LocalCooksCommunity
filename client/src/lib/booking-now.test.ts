@@ -177,3 +177,17 @@ describe('booked time ended with no check-in recorded (WP-N)', () => {
     expect(closed.sentence).toMatch(/nothing changes for your payout/);
   });
 });
+
+describe('a request the chef changed (rebook first)', () => {
+  it('says "Changed", names the new request and opens it, on both sides', () => {
+    const replaced = { ...facts, status: 'cancelled', cancelCause: 'replaced' as const, replacedByRef: 'KB-NEW222' };
+    const chef = bookingNowContent({ phase: 'cancelled', role: 'chef', facts: replaced, t });
+    expect(t(chef.pill.key)).toBe('Changed');
+    expect(chef.sentence).toBe('You changed this request. Your new request is KB-NEW222.');
+    expect(chef.secondary).toEqual(['view_new_request']);
+    const kitchen = bookingNowContent({ phase: 'cancelled', role: 'manager', facts: replaced, t });
+    expect(kitchen.sentence).toBe('Ada Lovelace changed this request. Their new request is KB-NEW222.');
+    // A released hold has nothing to refund: the link replaces "Manage refund".
+    expect(kitchen.secondary).toEqual(['view_new_request']);
+  });
+});

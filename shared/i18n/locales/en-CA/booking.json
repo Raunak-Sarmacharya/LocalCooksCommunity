@@ -975,5 +975,7 @@
   "chgDeclineConfirm": "Decline change",
   "chgBack": "Back",
   "crSuccessPending": "Your new request is sent to {kitchen}. We’re checking your earlier request. Keep this page open for the update.",
-  "crSuccessSupport": "Your new request is sent to {kitchen}. Local Cooks needs to check the payment for your earlier request. Please don’t pay again. Contact Local Cooks for help."
+  "crSuccessSupport": "Your new request is sent to {kitchen}. Local Cooks needs to check the payment for your earlier request. Please don’t pay again. Contact Local Cooks for help.",
+  "historyCancelled_replaced": "Request changed",
+  "rpUpdatedBodyFull": "Your new request is for {now}, with {newAmount} on hold. {kitchen} has until {deadline} to answer. Your earlier hold of {amount} was released. Banks can take a few days to show it."
 }

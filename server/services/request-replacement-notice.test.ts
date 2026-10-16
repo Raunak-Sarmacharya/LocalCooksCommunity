@@ -31,7 +31,7 @@ describe('request replacement notices', () => {
     const notice = await requestReplacementNotice('en-CA', base, names);
     expect(notice.title).toBe('Sam Taylor changed their request');
     expect(notice.message).toContain('Now Fri, Jan 2, 10:00 a.m.–12:00 p.m. (was Fri, Jan 2, 10:00 a.m.–11:00 a.m.).');
-    expect(notice.message).toMatch(/answer by Jan 1, 2099.*11:30 a\.m\.$/);
+    expect(notice.message).toMatch(/answer by Jan 1, 2099.*11:30 a\.m\. Newfoundland Time\.$/);
     expect(notice.message).not.toContain('..');
   });
 
@@ -48,6 +48,12 @@ describe('request replacement notices', () => {
     expect(notice.message).toContain('Your earlier hold of $122.00 was released.');
     expect(notice.message).toContain('Banks can take a few days to show a released hold.');
     expect(notice.message).not.toMatch(/\bfree\b/i);
+  });
+
+  it('chef: with the new request recorded, names its time and hold, and the deadline with its zone', async () => {
+    const notice = await requestReplacementNotice('en-CA', { ...base, variant: 'updated', newBookingId: 9, newHoldCents: 6100 }, names);
+    expect(notice.message).toBe('Your new request is for Fri, Jan 2, 10:00 a.m.–12:00 p.m., with $61.00 on hold. Fixture Kitchen has until Jan 1, 2099, 11:30 a.m. Newfoundland Time to answer. Your earlier hold of $122.00 was released. Banks can take a few days to show it.');
+    for (const locale of ['fr-CA', 'uk']) expect((await requestReplacementNotice(locale, { ...base, variant: 'updated', newHoldCents: 6100 }, names)).message).not.toMatch(/\{\w+\}|rpUpdated/);
   });
 
   it('chef race: says the kitchen accepted the original first, that there are two bookings and that the new one can be withdrawn at no cost', async () => {

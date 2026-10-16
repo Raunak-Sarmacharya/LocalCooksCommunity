@@ -3642,5 +3642,9 @@
   "inspectFinish": "Завершити огляд",
   "inspectFinishHintPayout": "Немає зауважень? Після завершення ваша виплата {amount} надійде одразу.",
   "inspectFinishHintClaim": "Завершення закриває огляд. Ваша претензія щодо пошкоджень розглядається окремо.",
-  "bnChangeRequest": "Змінити запит"
+  "bnChangeRequest": "Змінити запит",
+  "bnChefReplaced": "Ви змінили цей запит. Ваш новий запит — {ref}.",
+  "bnManagerReplaced": "{chef}: цей запит змінено. Новий запит — {ref}.",
+  "bnViewNewRequest": "Переглянути новий запит",
+  "bdhPill_replaced": "Змінено"
 }

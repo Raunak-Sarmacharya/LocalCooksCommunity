@@ -3642,5 +3642,9 @@
   "inspectFinish": "Finish inspection",
   "inspectFinishHintPayout": "Nothing to report? Finishing sends your {amount} payout now.",
   "inspectFinishHintClaim": "Finishing closes the inspection. Your damage claim continues separately.",
-  "bnChangeRequest": "Change request"
+  "bnChangeRequest": "Change request",
+  "bnChefReplaced": "You changed this request. Your new request is {ref}.",
+  "bnManagerReplaced": "{chef} changed this request. Their new request is {ref}.",
+  "bnViewNewRequest": "View new request",
+  "bdhPill_replaced": "Changed"
 }

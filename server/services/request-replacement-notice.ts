@@ -26,6 +26,8 @@ export type ReplacementNotice = {
   /** Operating dates (YYYY-MM-DD) and HH:MM times of the earlier and the new request. */
   old?: { date: string; startTime: string; endTime: string };
   next?: { date: string; startTime: string; endTime: string };
+  /** `updated`: the new request (the chef's notice opens it) and its card hold in cents. */
+  newBookingId?: number; newHoldCents?: number;
 };
 
 function when(locale: string, value?: ReplacementNotice['old']) {
@@ -50,7 +52,9 @@ async function build(locale: string | null | undefined, notice: ReplacementNotic
   const t = (key: string, values?: Record<string, unknown>) => tLocale(locale, key, { ns: 'booking', ...values });
   const money = (cents = 0) => new Intl.NumberFormat(lng, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const deadline = notice.deadlineAt && Number.isFinite(Date.parse(notice.deadlineAt))
-    ? new Intl.DateTimeFormat(lng, { dateStyle: 'medium', timeStyle: 'short', timeZone: names.timezone || 'America/St_Johns' }).format(new Date(notice.deadlineAt)) : '';
+    // "Oct 17, 2026, 10:19 a.m. Newfoundland Time": a deadline always names its zone.
+    ? new Intl.DateTimeFormat(lng, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'longGeneric',
+      timeZone: names.timezone || 'America/St_Johns' }).format(new Date(notice.deadlineAt)) : '';
   const kitchen = names.kitchenName;
   const refs = { oldRef: notice.oldRef || '', newRef: notice.newRef || '' };
   switch (notice.variant) {
@@ -59,8 +63,10 @@ async function build(locale: string | null | undefined, notice: ReplacementNotic
       return { title: t('rpChangedTitle', { chef: names.chefName || t('dcV2Chef') }), message: t(deadline ? 'rpChangedBody' : 'rpChangedBodyNoDeadline', values) };
     }
     case 'updated': {
-      const values = { kitchen, deadline, amount: money(notice.holdCents) };
-      return { title: t('rpUpdatedTitle'), message: t(deadline ? 'rpUpdatedBody' : 'rpUpdatedBodyNoDeadline', values) };
+      const values = { kitchen, deadline, amount: money(notice.holdCents), now: when(lng, notice.next), newAmount: money(notice.newHoldCents) };
+      // Name the new request (when and what is on hold) whenever the producer recorded it.
+      const full = deadline && notice.next && notice.newHoldCents;
+      return { title: t('rpUpdatedTitle'), message: t(full ? 'rpUpdatedBodyFull' : deadline ? 'rpUpdatedBody' : 'rpUpdatedBodyNoDeadline', values) };
     }
     case 'two_bookings':
       return { title: t('rpTwoTitle'), message: t('rpTwoBody', { kitchen, ...refs }) };
