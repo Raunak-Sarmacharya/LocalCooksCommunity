@@ -363,5 +363,6 @@
   "bcRefundKeptManagerTitle": "Час бронювання не змінено · {reference}",
   "bcRefundKeptManagerBody": "Зміну від {chef} не вдалося завершити. Бронювання залишається на {old}. Це рішення не змінює вашу виплату.",
   "bcRefundKeptAdminTitle": "Зміну закрито зі збереженням повернення · {reference}",
-  "bcRefundKeptAdminBody": "Зміну від {chef} у {kitchen} з {old} на {new} не вдалося завершити. Бронювання залишається на {old}. Повернення {amount} залишається чинним і фінансується Local Cooks. Це відновлення не змінює виплату кухні."
+  "bcRefundKeptAdminBody": "Зміну від {chef} у {kitchen} з {old} на {new} не вдалося завершити. Бронювання залишається на {old}. Повернення {amount} залишається чинним і фінансується Local Cooks. Це відновлення не змінює виплату кухні.",
+  "bcRefundIfApprovedLine": "Якщо вони погодять, вам повернуть {amount}."
 }

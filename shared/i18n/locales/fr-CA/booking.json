@@ -1059,5 +1059,6 @@
   "refundReviewCardFee": "Frais de traitement de carte conservés",
   "chgDeadlineChefSame": "Votre date limite de remboursement reste le {when}.",
   "chgPayoutUpKitchen": "Votre versement augmente de {amount}, avant les frais de traitement de carte.",
-  "chgPayoutDownKitchen": "Votre versement diminue de {amount}."
+  "chgPayoutDownKitchen": "Votre versement diminue de {amount}.",
+  "chgDeadlineKitchenSame": "Sa date limite de remboursement reste le {when}."
 }

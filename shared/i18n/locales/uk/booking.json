@@ -1059,5 +1059,6 @@
   "refundReviewCardFee": "Утримана комісія за обробку картки",
   "chgDeadlineChefSame": "Ваш крайній термін повернення коштів залишається {when}.",
   "chgPayoutUpKitchen": "Ваша виплата зросте на {amount} (до комісії за обробку картки).",
-  "chgPayoutDownKitchen": "Ваша виплата зменшиться на {amount}."
+  "chgPayoutDownKitchen": "Ваша виплата зменшиться на {amount}.",
+  "chgDeadlineKitchenSame": "Крайній термін повернення коштів залишається {when}."
 }

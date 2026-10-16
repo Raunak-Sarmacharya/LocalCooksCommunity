@@ -87,7 +87,9 @@ export async function queueChangeNotices(tx: Tx, change: Change, event: ChangeNo
     deadline: dayAndClock(decisionBy, row.timezone!, locale),
     freeCancel: freeCancelAfter ? dayAndClock(new Date(freeCancelAfter), row.timezone!, locale) : '',
     amount: quote.payCents > 0 ? money(quote.payCents, currency, locale) : quote.refundCents > 0 ? money(quote.refundCents, currency, locale) : money(0, currency, locale),
-    hold: options.cardHoldCents ? tEmail(locale, 'bcHoldLine', { amount: money(options.cardHoldCents, currency, locale) }) : '',
+    // The chef's request line says what's held now, or what comes back if the kitchen approves a cheaper time.
+    hold: options.cardHoldCents ? tEmail(locale, 'bcHoldLine', { amount: money(options.cardHoldCents, currency, locale) })
+      : event === 'requested' && quote.refundCents > 0 ? tEmail(locale, 'bcRefundIfApprovedLine', { amount: money(quote.refundCents, currency, locale) }) : '',
     money: event === 'approved' ? (quote.payCents > 0 ? tEmail(locale, 'bcMoneyCharged', { amount: money(quote.payCents, currency, locale) })
       : quote.refundCents > 0 ? tEmail(locale, 'bcMoneyRefund', { amount: money(quote.refundCents, currency, locale) }) : tEmail(locale, 'bcMoneyNone')) : '',
     released: options.releasedCents ? tEmail(locale, 'bcReleasedLine', { amount: money(options.releasedCents, currency, locale) }) : '',

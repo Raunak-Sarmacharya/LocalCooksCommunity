@@ -363,5 +363,6 @@
   "bcRefundKeptManagerTitle": "Heure de réservation inchangée · {reference}",
   "bcRefundKeptManagerBody": "La modification demandée par {chef} n’a pas abouti. La réservation reste au {old}. Votre versement ne change pas à cause de cette décision.",
   "bcRefundKeptAdminTitle": "Modification fermée avec remboursement maintenu · {reference}",
-  "bcRefundKeptAdminBody": "La modification demandée par {chef} chez {kitchen}, du {old} au {new}, n’a pas abouti. La réservation reste au {old}. Le remboursement de {amount} est maintenu et financé par Local Cooks. Cette reprise ne change pas le versement de la cuisine."
+  "bcRefundKeptAdminBody": "La modification demandée par {chef} chez {kitchen}, du {old} au {new}, n’a pas abouti. La réservation reste au {old}. Le remboursement de {amount} est maintenu et financé par Local Cooks. Cette reprise ne change pas le versement de la cuisine.",
+  "bcRefundIfApprovedLine": "S’ils approuvent, vous recevrez {amount}."
 }

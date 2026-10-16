@@ -1059,5 +1059,6 @@
   "refundReviewCardFee": "Card processing fee kept",
   "chgDeadlineChefSame": "Your refund deadline stays {when}.",
   "chgPayoutUpKitchen": "Your payout goes up by {amount}, before the card processing fee.",
-  "chgPayoutDownKitchen": "Your payout goes down by {amount}."
+  "chgPayoutDownKitchen": "Your payout goes down by {amount}.",
+  "chgDeadlineKitchenSame": "Their refund deadline stays {when}."
 }

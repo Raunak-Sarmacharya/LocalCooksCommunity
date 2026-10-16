@@ -82,7 +82,8 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone,
         <p className="text-sm">{manager ? t('chgKitchenBody', { was, by: f.when(open.decisionBy) }) : t('chgChefBody', { kitchen: counterpart, by: f.when(open.decisionBy), was })}</p>
         <p className="text-sm">{priceLine}</p>
         {payout && <p className="text-sm" data-testid="change-kitchen-payout">{payout}</p>}
-        {open.freeCancelAfter && <p className="text-sm text-muted-foreground">{t(manager ? 'chgDeadlineKitchen' : 'chgDeadlineChef', { when: f.when(open.freeCancelAfter) })}</p>}
+        {open.freeCancelAfter && <p className="text-sm text-muted-foreground">{t(data?.freeCancelUntil && Date.parse(data.freeCancelUntil) === Date.parse(open.freeCancelAfter)
+          ? (manager ? 'chgDeadlineKitchenSame' : 'chgDeadlineChefSame') : (manager ? 'chgDeadlineKitchen' : 'chgDeadlineChef'), { when: f.when(open.freeCancelAfter) })}</p>}
       </>}
     {open.cardDeclined && !manager && <p className="text-sm font-medium">{t('chgCardDeclined')}</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
