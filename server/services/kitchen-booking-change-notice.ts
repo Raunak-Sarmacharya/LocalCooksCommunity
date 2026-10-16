@@ -101,7 +101,9 @@ export async function queueChangeNotices(tx: Tx, change: Change, event: ChangeNo
     const facts = factsFor(locale);
     // The kitchen's own line shows what it would get (± its share), never the chef's card total.
     const manager_ = audience === 'manager' && event === 'requested' ? { ...facts, amount: signed(kitchenAmountCents(quote), currency, locale) } : facts;
-    const actualPrefix = event === 'expired' && audience === 'chef' && !(change.policy as { sent?: boolean })?.sent ? 'bcUnsentExpiredChef' : prefix;
+    const actualPrefix = event === 'expired' && audience === 'chef' && !(change.policy as { sent?: boolean })?.sent ? 'bcUnsentExpiredChef'
+      // Same price: the kitchen reads "Your payout doesn't change", never "+$0.00".
+      : audience === 'manager' && event === 'requested' && kitchenAmountCents(quote) === 0 ? 'bcRequestedManagerSame' : prefix;
     const copy = changeNoticeCopy(actualPrefix, locale, manager_);
     await queueBookingLifecycleEvent(tx, change.bookingId, `booking_change_${kind}`, copy.title, copy.message, options.actorId,
       { recipientPolicy: audience, changeId: change.id, changeEvent: event, audience, changeRevision: change.revision,

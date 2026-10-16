@@ -353,7 +353,7 @@ describe('requesting a change and holding the time', () => {
     const sent = await events('booking_change_requested');
     expect(sent.map((event: any) => event.metadata.audience).sort()).toEqual(['chef', 'manager']);
     const toKitchen = sent.find((event: any) => event.metadata.audience === 'manager');
-    expect(toKitchen.message).toMatch(/asked to move KB-TEST10 from .* to .*\. Your payout would change by \$0\.00\. Answer by .*/);
+    expect(toKitchen.message).toMatch(/asked to move KB-TEST10 from .* to .*\. Same price, so your payout doesn’t change\. Answer by .*/);
     expect(toKitchen.message).toContain('Their refund deadline would move to');
     expect(toKitchen.message).not.toMatch(/free/i);
     const toChef = sent.find((event: any) => event.metadata.audience === 'chef');
