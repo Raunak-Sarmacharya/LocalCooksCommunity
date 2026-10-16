@@ -126,5 +126,21 @@
   "stCheckoutServiceFee": "????????? ????",
   "stCheckoutDays": "{count, plural, one {# ????} few {# ???} other {# ????}}",
   "stError_quote_expired": "??????? ?????????? ? ????????? ?? ???.",
-  "stCheckoutTax": "HST"
+  "stCheckoutTax": "HST",
+  "stNotMovedIn_Kitchen_Title": "{chef} не заселився",
+  "stNotMovedIn_Kitchen_Body": "Зберігання {chef} у {listing} почалося {start}, але нічого не привезено. Ви можете звільнити місце вже зараз.",
+  "stHoldoverWaived_Chef_Title": "Плату за перебування понад строк скасовано",
+  "stHoldoverWaived_Chef_Body": "{kitchen} скасувала плату за перебування понад строк для {listing}. За ці дні ви нічого не винні.",
+  "stError_exceeds_accrued": "Ця сума більша за нараховану. Введіть належну суму або меншу.",
+  "stError_holdover_not_started": "Днів понад строк ще не накопичилось.",
+  "stError_holdover_request_open": "Попередній запит на плату за перебування понад строк ще відкритий. Дочекайтеся оплати або рішення.",
+  "stError_not_active": "У цьому стані зберігання цю дію виконати не можна.",
+  "stError_final_notice_sent": "Остаточне повідомлення вже надіслано.",
+  "stError_final_notice_required": "Спершу Local Cooks має надіслати остаточне повідомлення.",
+  "stError_removal_too_early": "Ці речі не можна прибирати, доки не минув строк із остаточного повідомлення.",
+  "stError_disposal_disabled": "Для кухонь запис про вивезення вимкнено. Попросіть Local Cooks зробити запис.",
+  "stRemovalRecorded_Chef_Title": "Речі вивезено · {listing}",
+  "stRemovalRecorded_Chef_Body": "{kitchen} зафіксувала, що речі, залишені в {listing}, вивезено {date}, після остаточного повідомлення.",
+  "stRemovalRecorded_Kitchen_Title": "Вивезення зафіксовано · {listing}",
+  "stRemovalRecorded_Kitchen_Body": "Вивезення речей {chef} зафіксовано {date}."
 }

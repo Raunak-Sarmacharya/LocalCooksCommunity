@@ -310,6 +310,8 @@ export async function queueOverstayOutcome(tx: Transaction, history: typeof stor
   if (!(detection && inRecurringWorker()) && !['penalty_approved', 'penalty_waived', 'charge_pending', 'charge_failed', 'charge_succeeded', 'escalated', 'resolved'].includes(history.newStatus)) return;
   const [record] = await tx.select().from(storageOverstayRecords).where(eq(storageOverstayRecords.id, history.overstayRecordId)).limit(1);
   if (!record || history.newStatus !== record.status) return;
+  // Standalone-storage holdover requests and waivers are announced by the storage notices instead.
+  if (record.idempotencyKey.startsWith('holdover:') && ['penalty_approved', 'penalty_waived'].includes(record.status)) return;
   const { scheduleAdvanceReminders } = await import('./advance-reminders');
   await scheduleAdvanceReminders(tx, 'penalty', record.id);
   const [context] = await tx.select({ chefId: storageBookings.chefId, managerId: locations.managerId, notificationEmail: locations.notificationEmail }).from(storageBookings)

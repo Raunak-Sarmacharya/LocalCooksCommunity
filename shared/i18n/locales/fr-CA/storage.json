@@ -126,5 +126,21 @@
   "stCheckoutServiceFee": "Frais de service",
   "stCheckoutDays": "{count, plural, one {# jour} other {# jours}}",
   "stError_quote_expired": "Actualisez le devis et r?essayez.",
-  "stCheckoutTax": "TVH"
+  "stCheckoutTax": "TVH",
+  "stNotMovedIn_Kitchen_Title": "{chef} n’a pas emménagé",
+  "stNotMovedIn_Kitchen_Body": "L’entreposage de {chef} dans {listing} a commencé le {start} et rien n’a été déposé. Vous pouvez libérer l’unité dès maintenant.",
+  "stHoldoverWaived_Chef_Title": "Frais de dépassement annulés",
+  "stHoldoverWaived_Chef_Body": "{kitchen} a annulé les frais de dépassement pour {listing}. Vous ne devez rien pour ces jours.",
+  "stError_exceeds_accrued": "Ce montant dépasse ce qui s’est accumulé. Entrez le montant dû ou moins.",
+  "stError_holdover_not_started": "Aucun jour de dépassement ne s’est encore accumulé.",
+  "stError_holdover_request_open": "Une demande de frais de dépassement est encore ouverte. Attendez qu’elle soit payée ou tranchée.",
+  "stError_not_active": "Cet entreposage n’est pas dans un état qui permet cette action.",
+  "stError_final_notice_sent": "Le préavis final a déjà été envoyé.",
+  "stError_final_notice_required": "Local Cooks doit d’abord envoyer le préavis final.",
+  "stError_removal_too_early": "Ces objets ne peuvent pas être retirés avant la fin du délai du préavis final.",
+  "stError_disposal_disabled": "L’enregistrement du retrait est désactivé pour les cuisines. Demandez à Local Cooks de l’enregistrer.",
+  "stRemovalRecorded_Chef_Title": "Objets retirés · {listing}",
+  "stRemovalRecorded_Chef_Body": "{kitchen} a consigné le retrait, le {date}, des objets laissés dans {listing}, après le préavis final.",
+  "stRemovalRecorded_Kitchen_Title": "Retrait consigné · {listing}",
+  "stRemovalRecorded_Kitchen_Body": "Le retrait des objets de {chef} a été consigné le {date}."
 }

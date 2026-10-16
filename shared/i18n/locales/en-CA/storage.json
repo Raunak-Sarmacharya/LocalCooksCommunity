@@ -126,5 +126,21 @@
   "stCheckoutServiceFee": "Service fee",
   "stCheckoutDays": "{count, plural, one {# day} other {# days}}",
   "stError_quote_expired": "Refresh the quote and try again.",
-  "stCheckoutTax": "HST"
+  "stCheckoutTax": "HST",
+  "stNotMovedIn_Kitchen_Title": "{chef} hasn’t moved in",
+  "stNotMovedIn_Kitchen_Body": "{chef}’s storage in {listing} started {start} and nothing has been moved in. You can release the unit now.",
+  "stHoldoverWaived_Chef_Title": "Holdover charge waived",
+  "stHoldoverWaived_Chef_Body": "{kitchen} waived the holdover charge for {listing}. You owe nothing for those days.",
+  "stError_exceeds_accrued": "That is more than has built up. Enter the amount owed or less.",
+  "stError_holdover_not_started": "No holdover days have built up yet.",
+  "stError_holdover_request_open": "A holdover charge is still open. Wait until it is paid or decided first.",
+  "stError_not_active": "This storage isn’t in a state where that can be done.",
+  "stError_final_notice_sent": "The final notice was already sent.",
+  "stError_final_notice_required": "Local Cooks must send the final notice first.",
+  "stError_removal_too_early": "These items can’t be removed until their final-notice deadline has passed.",
+  "stError_disposal_disabled": "Recording removal is turned off for kitchens. Ask Local Cooks to record it.",
+  "stRemovalRecorded_Chef_Title": "Items removed · {listing}",
+  "stRemovalRecorded_Chef_Body": "{kitchen} recorded that items left in {listing} were removed on {date}, after the final notice.",
+  "stRemovalRecorded_Kitchen_Title": "Removal recorded · {listing}",
+  "stRemovalRecorded_Kitchen_Body": "Removal of {chef}’s items was recorded on {date}."
 }
