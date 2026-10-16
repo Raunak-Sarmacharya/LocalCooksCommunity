@@ -134,7 +134,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
             if (!recipient || recipient.username !== intent.recipientEmail || !(recipient.id === current.chefId || recipient.role === 'admin'))
               throw Error('Checkout recipient changed; Local Cooks must verify contact before recovery');
             recipientLocale = recipient.preferredLocale;
-            currentState = (await import('./kitchen-checkout-incidents')).checkoutOutcomeMessage(current, recipientLocale);
+            currentState = (await import('./kitchen-checkout-incidents')).checkoutOutcomeMessage(current, recipientLocale, recipient.id === current.chefId ? 'chef' : 'admin');
           } else if (kind === 'claim-outcome') {
             const [current] = await tx.select({ status: damageClaims.status }).from(damageClaims).where(eq(damageClaims.id, id)).limit(1);
             if (current) currentState = current.status.replaceAll('_', ' ');

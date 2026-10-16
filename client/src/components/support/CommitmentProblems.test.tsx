@@ -68,7 +68,7 @@ it.each(['reported','acknowledged','escalated','resolved'])('shows existing %s r
   expect(await screen.findByText(/Support request #4/)).toBeInTheDocument();
   expect(screen.queryByRole('button',{name:'Report a problem'})).not.toBeInTheDocument();
   expect(screen.getByRole('link',{name:'support@localcooks.ca'})).toHaveAttribute('href','mailto:support@localcooks.ca');
-  expect(!!screen.queryByText(/We’re still looking into this|Local Cooks has your report/)).toBe(status!=='resolved'); client.clear();
+  expect(!!screen.queryByText(/We’re still looking into this|Local Cooks has this report/)).toBe(status!=='resolved'); client.clear();
 });
 
 it('does not offer another staff member response controls before takeover', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('./kitchen-checkout-service', () => ({ getCheckinSettings: async () => ({ checkinWindowMinutesBefore: 15 }) }));
 vi.mock('./notification.service', () => ({ notificationService: { create: vi.fn(async () => {}) } }));
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Sam Chef' }));
 import { canReportProblem } from './commitment-problems';
 import { reminderVisitTimes } from './advance-reminders';
 import type { kitchenBookings } from '@shared/schema';
@@ -37,10 +38,10 @@ describe('participant reporting opens at check-in opening without an end cutoff'
 });
 
 describe('problem category', () => {
-  it.each(['equipment', 'safety', 'access'] as const)('queues a useful %s report email with kitchen, local time, description and link', async category => {
+  it.each(['equipment', 'safety', 'access'] as const)('queues a useful %s report email per reader: reporter, kitchen, Local Cooks', async category => {
     const { createProblem } = await import('./commitment-problems');
     const emails: any[] = [];
-    const booking = { id: 10, chefId: 3, kitchenId: 4, status: 'confirmed', bookingDate: new Date('2026-10-04'), startTime: '09:00', endTime: '12:00' };
+    const booking = { id: 10, referenceCode: 'KB-TEST10', chefId: 3, kitchenId: 4, status: 'confirmed', bookingDate: new Date('2026-10-04'), startTime: '09:00', endTime: '12:00' };
     const tx: any = {
       execute: vi.fn(async () => {}),
       select: () => {
@@ -62,13 +63,22 @@ describe('problem category', () => {
         description: 'The cooler stopped working.', category, sourceKey: 'test-report' });
       expect(emails).toHaveLength(category === 'access' ? 3 : 1);
       if (category === 'access') expect(emails.map(row => row.recipientRole)).toEqual(['chef', 'manager', 'admin']);
-      expect(emails[0].subject).toBe(category === 'safety' ? 'Safety issue reported — urgent · Booking #10' : `${category === 'access' ? 'Access' : 'Equipment'} problem reported · Booking #10`);
-      expect(emails[0].textBody).toContain(`Category: ${category === 'safety' ? 'Safety' : category === 'access' ? 'Access' : 'Equipment'}`);
-      expect(emails[0].textBody).toContain('Harbour Kitchen');
+      // The reporter: what was sent, to whom, when (kitchen-local, with the zone), under the booking's real reference.
+      expect(emails[0].subject).toBe('Report sent · KB-TEST10');
+      expect(emails[0].textBody).toContain('We sent your report to Harbour Kitchen and Local Cooks');
       expect(emails[0].textBody).toContain('Newfoundland Time');
       expect(emails[0].textBody).toContain('9:40');
-      expect(emails[0].textBody).toContain('The cooler stopped working.');
+      expect(emails[0].textBody).toContain('Reference: KB-TEST10');
       expect(emails[0].textBody).toContain('/booking/10');
+      expect(emails[0].textBody).not.toMatch(/KB-10|#10/);
+      if (category === 'access') {
+        // The kitchen: who, that they're at the door now, and what to do.
+        expect(emails[1].subject).toBe('Sam Chef can’t get in · KB-TEST10');
+        expect(emails[1].textBody).toContain('The cooler stopped working.');
+        expect(emails[1].textBody).toContain('They’re trying to get in for their 9:00 a.m. booking. Let them in or message them now.');
+        expect(emails[1].textBody).toContain('/manager/booking/10');
+        expect(emails[2].subject).toBe('Access problem · Sam Chef at Harbour Kitchen · KB-TEST10');
+      }
     } finally { vi.useRealTimers(); }
   });
   it('accepts the five categories, treats absence as null and rejects anything else', async () => {

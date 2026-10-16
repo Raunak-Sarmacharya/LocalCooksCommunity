@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { problemDestination, type ProblemHistory } from '@shared/commitment-problems';
 
-type Problem = {
+export type Problem = {
   id: number; bookingId: number | null; viewingId: number | null; kind: string; status: string; claimedBy: number | null;
   revision: number; description: string; history: ProblemHistory[]; category?: string | null
 };
@@ -21,7 +21,26 @@ async function problemRequest(path: string, method = 'GET', body?: unknown) {
   return result;
 }
 
-function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staff: boolean; role: string; actorId?: number }) {
+type ProblemsResult = { problems: Problem[]; reportingAvailable: boolean; reportingOpensAt?: string | null; actorId?: number };
+
+/** One cached read per commitment, shared by the support panel and the booking page's "can't get in" alert. */
+export function useCommitmentProblems(kind: 'booking' | 'tour' | undefined, id: number | undefined, role: string) {
+  const { t } = useTranslation('chef');
+  const path = `/api/commitment-problems${kind && id ? `/${kind}/${id}` : ''}`;
+  return useQuery<ProblemsResult>({
+    queryKey: ['commitment-problems', role, kind, id],
+    queryFn: async () => {
+      const result = await problemRequest(path);
+      if (Array.isArray(result)) return { problems: result, reportingAvailable: false };
+      if (!result || !Array.isArray(result.problems) || typeof result.reportingAvailable !== 'boolean') {
+        throw Error(t('problemCopy25'));
+      }
+      return result;
+    }, refetchInterval: 30000
+  });
+}
+
+function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem; staff: boolean; role: string; actorId?: number; here: boolean }) {
   const { t, i18n } = useTranslation('chef');
   const [note, setNote] = useState('');
   const queryClient = useQueryClient();
@@ -33,13 +52,16 @@ function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staf
   const ownsTask = problem.claimedBy === actorId;
   const history = staff ? problem.history : problem.history.filter(entry => !['claim', 'reassign'].includes(entry.action));
   const latestUpdate = history.filter(entry => entry.action !== 'report').at(-1);
+  const reporter = problem.history.find(entry => entry.action === 'report');
   return <article className="space-y-3 rounded-lg border p-4" aria-label={t('problemRequest', { id: problem.id })}>
-    <p className="font-medium">{kind === 'booking' ? t('problemCopy01') : t('problemCopy02')} #{id} · {t('problemRequest', { id: problem.id })} · {t(`problemStatus_${problem.status}`, { defaultValue: t('problemStatus_reported') })}</p>
+    {/* On its own booking page the card doesn't repeat the booking or link back to it. */}
+    <p className="font-medium">{!here && <>{kind === 'booking' ? t('problemCopy01') : t('problemCopy02')} #{id} · </>}{t('problemRequest', { id: problem.id })} · {t(`problemStatus_${problem.status}`, { defaultValue: t('problemStatus_reported') })}</p>
+    {!staff && reporter && <p className="text-xs text-muted-foreground">{reporter.actorId === actorId ? t('problemReportedByYou') : reporter.actorRole === 'manager' ? t('problemReportedByKitchen') : t('problemReportedByChef')}</p>}
     {problem.category && <p className={problem.category === 'safety' ? 'text-sm font-semibold text-destructive' : 'text-sm'}>{problem.category === 'safety' ? t('problemCopy03') : t(`problemCategory_${problem.category}`, { defaultValue: t('problemCategory_other') })}</p>}
     {staff && <p className="text-sm">{problem.claimedBy ? t('problemAssigned', { id: problem.claimedBy }) : t('problemCopy04')}</p>}
     <p className="whitespace-pre-wrap text-sm">{problem.description}</p>
     {latestUpdate && <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">{t('problemLatest', { note: latestUpdate.note })}</p>}
-    <a className="text-sm underline" href={problemDestination(kind, id, role)}>{t(kind === 'booking' ? 'problemOpenBooking' : 'problemOpenTour')}</a>
+    {!here && <a className="text-sm underline" href={problemDestination(kind, id, role)}>{t(kind === 'booking' ? 'problemOpenBooking' : 'problemOpenTour')}</a>}
     <details><summary className="cursor-pointer text-sm">{t('problemCopy05')}</summary>{history.map(entry => <p key={entry.revision} className="whitespace-pre-wrap border-t py-2 text-sm">{formatVisitTime(entry.at, Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} {friendlyTimezoneName(Intl.DateTimeFormat().resolvedOptions().timeZone, i18n.resolvedLanguage)} · {entry.actorId === actorId ? t('problemCopy06') : entry.actorRole === 'admin' ? t('problemCopy07') : entry.actorRole === 'manager' ? t('problemCopy08') : entry.actorRole === 'chef' ? t('problemCopy09') : t('problemCopy10')}: {entry.action === 'report' ? t('problemCopy11') : entry.note}</p>)}</details>
     {problem.status !== 'resolved' && <p className="text-sm">{problem.status === 'reported' ? t('problemCopy12') : t('problemCopy13')}</p>}
     {staff && problem.status !== 'resolved' && <div className="space-y-2">
@@ -79,17 +101,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
   const queryClient = useQueryClient();
   const path = `/api/commitment-problems${kind && id ? `/${kind}/${id}` : ''}`;
-  const query = useQuery<{ problems: Problem[]; reportingAvailable: boolean; reportingOpensAt?: string | null; actorId?: number }>({
-    queryKey: ['commitment-problems', role, kind, id],
-    queryFn: async () => {
-      const result = await problemRequest(path);
-      if (Array.isArray(result)) return { problems: result, reportingAvailable: false };
-      if (!result || !Array.isArray(result.problems) || typeof result.reportingAvailable !== 'boolean') {
-        throw Error(t('problemCopy25'));
-      }
-      return result;
-    }, refetchInterval: 30000
-  });
+  const query = useCommitmentProblems(kind, id, role);
   const report = useMutation({
     mutationFn: () => problemRequest(path, 'POST', { description, requestKey }),
     onSuccess: () => { setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
@@ -129,6 +141,6 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
     {report.isSuccess && <p role="status" className="text-sm">{t('problemCopy41')}</p>}
     {report.error && !reportOpen && <p role="alert" className="text-sm text-destructive">{report.error.message} {t('problemRetryDraft')}</p>}
     {query.isPending ? <p role="status">{t('problemCopy42')}</p> : query.error ? <p role="alert">{query.error.message} <button className="underline" onClick={() => void query.refetch()}>{t('problemCopy43')}</button></p>
-      : !hasProblems ? !kind && <p className="text-sm">{staff ? t('problemCopy44') : t('problemCopy45')}</p> : query.data!.problems.map(problem => <ProblemCard key={problem.id} problem={problem} staff={staff} role={role} actorId={query.data?.actorId} />)}
+      : !hasProblems ? !kind && <p className="text-sm">{staff ? t('problemCopy44') : t('problemCopy45')}</p> : query.data!.problems.map(problem => <ProblemCard key={problem.id} problem={problem} staff={staff} role={role} actorId={query.data?.actorId} here={!!kind && !!id} />)}
   </section>;
 }

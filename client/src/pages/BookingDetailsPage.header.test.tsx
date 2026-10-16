@@ -42,7 +42,7 @@ vi.mock("@/components/booking/BookingRefundPolicyNotice", () => ({ BookingRefund
 vi.mock("@/components/manager/bookings/BookingActionDialog", () => ({ BookingActionDialog: () => null }));
 vi.mock("@/components/manager/bookings/BookingManagementDialog", () => ({ BookingManagementDialog: () => null }));
 vi.mock("@/components/manager/bookings/ManagerInSessionBadge", () => ({ ManagerInSessionBadge: () => null, inSessionEnds: () => [] }));
-vi.mock("@/components/support/CommitmentProblems", () => ({ CommitmentProblems: () => null }));
+vi.mock("@/components/support/CommitmentProblems", () => ({ CommitmentProblems: () => null, useCommitmentProblems: () => ({ data: undefined }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({
   i18n: { language: "en-CA", resolvedLanguage: "en-CA" },
   t: (key: string, options?: any) => {

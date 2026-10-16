@@ -35,7 +35,7 @@ export function publicCheckoutOutcome(row: Incident) {
     moneyStatus: row.moneyStatus, refundId: row.refundId, lastCheckedAt: row.lastCheckedAt };
 }
 
-export function checkoutOutcomeMessage(row: Incident, locale?: string | null) {
+export function checkoutOutcomeMessage(row: Incident, locale?: string | null, audience: 'chef' | 'admin' = 'admin') {
   const language = resolveLocale(locale);
   const t = (key: string, options: Record<string, unknown> = {}) => tLocale(language, key, { ns: 'booking', ...options });
   const amount = row.amountCents == null ? '' : new Intl.NumberFormat(language, { style: 'currency', currency: row.currency.toUpperCase() }).format(row.amountCents / 100);
@@ -43,6 +43,8 @@ export function checkoutOutcomeMessage(row: Incident, locale?: string | null) {
     : row.moneyStatus === 'refunded' ? t('checkoutRefundSent', { amount })
     : row.moneyStatus === 'refund_pending' ? t('checkoutRefundPending', { amount }) : t('checkoutNeedsSupportDetail');
   const date = new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${row.operatingDate}T12:00:00Z`));
+  // Chefs never see payment-provider ids; Local Cooks needs the checkout reference to look the payment up.
+  if (audience === 'chef') return `${t(row.inventoryConflict ? 'checkoutSlotTaken' : 'checkoutNeedsSupport')}. ${money} ${t('checkoutDate', { date })}.${row.inventoryConflict ? ` ${t('checkoutOthersUnchanged')}` : ''}`;
   return `${t(row.inventoryConflict ? 'checkoutSlotTaken' : 'checkoutNeedsSupport')}. ${money} ${t('checkoutDate', { date })}. ${t('checkoutReference', { reference: row.sessionId })}.`;
 }
 
@@ -56,7 +58,7 @@ async function notifyIncident(tx: Tx, row: Incident) {
     const chef = person.id === row.chefId;
     const path = chef ? `/payment-success?session_id=${encodeURIComponent(row.sessionId)}` : '/admin?section=booking-support';
     const title = tLocale(person.preferredLocale, chef ? row.inventoryConflict ? 'checkoutSlotTaken' : 'checkoutNeedsSupport' : 'checkoutIncidents', { ns: 'booking' });
-    const message = checkoutOutcomeMessage(row, person.preferredLocale);
+    const message = checkoutOutcomeMessage(row, person.preferredLocale, chef ? 'chef' : 'admin');
     await notificationService.create({ userId: person.id, target: chef ? 'chef' : 'manager', type: 'system_announcement', priority: 'high',
       title, message, actionUrl: path, actionLabel: tLocale(person.preferredLocale, chef ? 'checkoutCheckAgain' : 'checkoutIncidents', { ns: 'booking' }),
       metadata: { checkoutIncidentId: row.id, sessionId: row.sessionId, paymentIntentId: row.paymentIntentId } }, tx);

@@ -11,6 +11,7 @@ import { KitchenCausedCancellation } from '@/components/booking/KitchenCausedCan
 import { BookingHistoryPanel } from '@/components/booking/BookingHistoryPanel';
 import { BookingFeedbackCard } from '@/components/booking/BookingFeedbackCard';
 import { CommitmentProblems } from '@/components/support/CommitmentProblems';
+import { OpenProblemAlert } from '@/components/support/OpenProblemAlert';
 import { ManagerDamageClaimEntry, claimFilingOpen } from '@/components/booking/ManagerDamageClaimEntry';
 import { BookingNowCard, ClampedBlock, NowClaimRows, chefCanPayClaim, closedClaimLine, closedClaims, nowClaims, type NowSecondaryLink } from '@/components/booking/BookingNowCard';
 import { BookingVisitRecord, type VisitTimelineEvent } from '@/components/booking/BookingVisitRecord';
@@ -1570,6 +1571,10 @@ export default function BookingDetailsPage() {
         </p>
       ) : undefined}
       attention={<>
+        {/* "Can't get in" / safety reports surface here while the visit is on; the support list below keeps the thread. */}
+        <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
+          timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
+          messageButton={messageButton()} onViewReport={goToHelp} />
         {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}`} bookingId={booking.id} manager={isManagerView}
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}
         {/* A payable claim comes first: unpaid after a final decision, it pauses new bookings. */}

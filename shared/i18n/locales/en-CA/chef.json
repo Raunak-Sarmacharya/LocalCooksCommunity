@@ -3041,7 +3041,7 @@
   "problemCopy09": "Chef",
   "problemCopy10": "Update",
   "problemCopy11": "Report received",
-  "problemCopy12": "Local Cooks has your report. You can follow updates and reply here.",
+  "problemCopy12": "Local Cooks has this report. You can follow updates and reply here.",
   "problemCopy13": "We’re still looking into this. See the latest reply above.",
   "problemCopy14": "Assign to me",
   "problemCopy15": "Reply shared with the chef and kitchen",
@@ -3646,5 +3646,17 @@
   "bnChefReplaced": "You changed this request. Your new request is {ref}.",
   "bnManagerReplaced": "{chef} changed this request. Their new request is {ref}.",
   "bnViewNewRequest": "View new request",
-  "bdhPill_replaced": "Changed"
+  "bdhPill_replaced": "Changed",
+  "kciVcNoAccessDraft": "Hi, I’m at {kitchen} for my booking and can’t get in. Can you let me in?",
+  "opaKitchenAccessTitle": "{chef} can’t get in",
+  "opaKitchenSafetyTitle": "{chef} reported a safety issue",
+  "opaKitchenLine": "Reported at {time}. Let them in or message them now. Local Cooks has been told too.",
+  "opaChefAccessTitle": "You told {kitchen} you can’t get in",
+  "opaChefAccessLine": "{kitchen} and Local Cooks were alerted at {time}. Message them if you’re still waiting. Don’t check in until you’re inside.",
+  "opaChefSafetyTitle": "You reported a safety issue",
+  "opaChefSafetyLine": "{kitchen} and Local Cooks were alerted at {time}. If anyone is in danger, call 911.",
+  "opaViewReport": "View report",
+  "problemReportedByYou": "Reported by you",
+  "problemReportedByChef": "Reported by the chef",
+  "problemReportedByKitchen": "Reported by the kitchen"
 }

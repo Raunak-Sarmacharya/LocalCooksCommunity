@@ -50,14 +50,14 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   const [busy, setBusy] = useState(false)
   const [chatError, setChatError] = useState("")
   const failed = t("kciVcMessageFailed", { defaultValue: "Could not open the conversation. Try again or contact Local Cooks." })
-  const messageKitchen = async () => {
+  const messageKitchen = async (draft: string) => {
     if (busy) return
     setBusy(true); setChatError("")
     try {
       const response = await fetch(`/api/bookings/${bookingId}/conversation`, { method: "POST", headers: await getAuthHeaders(), credentials: "include" })
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result.conversationId) throw new Error(result.error || failed)
-      setChat({ conversationId: result.conversationId, draft: t("kciVcAskNewDraft", { defaultValue: "Hi, I need a new check-in code for my booking at {kitchen}.", kitchen: kitchenName }) })
+      setChat({ conversationId: result.conversationId, draft })
     } catch (error) {
       setChatError(error instanceof Error ? error.message : failed)
     } finally { setBusy(false) }
@@ -75,28 +75,34 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
   })()
   const tap = "min-h-11 w-full sm:w-auto whitespace-normal h-auto py-2"
 
-  const message = (
-    <>
-      <Button type="button" variant="outline" className={tap} disabled={busy} onClick={() => void messageKitchen()}>
+  // One conversation dialog for every "Message kitchen" on this field.
+  const chatDialog = (
+    <Dialog open={!!chat} onOpenChange={open => { if (!open) setChat(null) }}>
+      <DialogContent showCloseButton className="flex h-[85dvh] w-[calc(100%_-_1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0">
+        <div className="min-w-0 shrink-0 border-b px-5 py-4 pr-14">
+          <DialogTitle>{t("kciVcMessageKitchen", { defaultValue: "Message kitchen" })}</DialogTitle>
+          <DialogDescription>{kitchenName}</DialogDescription>
+        </div>
+        {chat && <div className="min-h-0 flex-1 overflow-hidden">
+          <UnifiedChatView userId={chefId} role="chef" initialDraft={chat.draft} initialConversationId={chat.conversationId} hideConversationList />
+        </div>}
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Can't get in: message the kitchen right here (pre-written), or report it so the kitchen and Local Cooks are both alerted.
+  const noAccess = (draft: string) => <div className="space-y-2" data-testid="visit-no-access">
+    <p className="text-sm text-muted-foreground">{t("kciAcNoAccess", { defaultValue: "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen." })}</p>
+    <div className="flex flex-wrap items-start gap-2">
+      <Button type="button" variant="outline" className={tap} disabled={busy} onClick={() => void messageKitchen(draft)}>
         <MessageSquare className="h-4 w-4 mr-2 shrink-0" />
         {busy ? t("kciVcOpening", { defaultValue: "Opening conversation…" }) : t("kciVcMessageKitchen", { defaultValue: "Message kitchen" })}
       </Button>
-      {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
-      <Dialog open={!!chat} onOpenChange={open => { if (!open) setChat(null) }}>
-        <DialogContent showCloseButton className="flex h-[85dvh] w-[calc(100%_-_1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0">
-          <div className="min-w-0 shrink-0 border-b px-5 py-4 pr-14">
-            <DialogTitle>{t("kciVcMessageKitchen", { defaultValue: "Message kitchen" })}</DialogTitle>
-            <DialogDescription>{kitchenName}</DialogDescription>
-          </div>
-          {chat && <div className="min-h-0 flex-1 overflow-hidden">
-            <UnifiedChatView userId={chefId} role="chef" initialDraft={chat.draft} initialConversationId={chat.conversationId} hideConversationList />
-          </div>}
-        </DialogContent>
-      </Dialog>
-    </>
-  )
-
-  const noAccess = <div><p className="text-sm text-muted-foreground">{t("kciAcNoAccess", { defaultValue: "Can't get inside or find staff? Contact the kitchen. Don't confirm arrival until you're at the kitchen." })}</p>{canReportProblem && <BookingProblemReport bookingId={bookingId} initialCategory="access" />}</div>
+      {canReportProblem && <BookingProblemReport bookingId={bookingId} initialCategory="access" />}
+    </div>
+    {chatError && <p role="alert" className="text-sm text-destructive">{chatError}</p>}
+    {chatDialog}
+  </div>
 
   if (gate === "self") {
     return (
@@ -114,8 +120,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
           ? t("kciVcLockedAsk", { defaultValue: "Ask the kitchen for a new check-in code" })
           : t("kciVcRevoked", { defaultValue: "This check-in code is no longer valid. Contact the kitchen." })}</p>
         {gate === "locked" && <p className="text-sm text-muted-foreground">{t("kciVcLocked", { defaultValue: "Too many incorrect check-in codes. Your check-in details are kept while you wait." })}</p>}
-        {noAccess}
-        {message}
+        {noAccess(t("kciVcAskNewDraft", { defaultValue: "Hi, I need a new check-in code for my booking at {kitchen}.", kitchen: kitchenName }))}
         {gate === "locked" && <a className="flex min-h-11 items-center text-sm underline underline-offset-4" href={localCooksSupportHref({ bookingId, role: "chef", situation: "Visit code locked" })}>{t("kciAcGetHelp", { defaultValue: "Get help from Local Cooks" })}</a>}
       </div>
     )
@@ -142,7 +147,7 @@ export function VisitCodeField({ gate, state, value, onChange, problem, disabled
         onChange={event => onChange(event.target.value.replace(/\D/g, "").slice(0, VISIT_CODE_LENGTH))}
       />
       <p id={`${id}-hint`} className="text-sm text-muted-foreground">{t("kciVcHint", { defaultValue: "Kitchen staff will give you your check-in code when you arrive." })}</p>
-      {noAccess}
+      {noAccess(t("kciVcNoAccessDraft", { kitchen: kitchenName }))}
       <div id={`${id}-status`} aria-live="polite" className="space-y-1">
         {problemText && <p className="text-sm text-destructive">{problemText}</p>}
         {showAttempts && <p className="text-sm text-muted-foreground">{attemptsText(attemptsLeft)}</p>}

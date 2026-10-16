@@ -41,10 +41,13 @@ describe('checkout return states', () => {
     await mount({ state: 'slot_taken', moneyStatus });
     expect(screen.getByRole('heading', { name: en.checkoutSlotTaken })).toBeInTheDocument(); expect(screen.getByText(text)).toBeInTheDocument();
     expect(screen.getByText(/Jan 1, 2099/)).toBeInTheDocument();
+    // A taken time never touches what the chef already has (e.g. a request they were changing that the kitchen accepted first).
+    expect(screen.getByText(en.checkoutOthersUnchanged)).toBeInTheDocument();
   });
-  it('surfaces a recovery case with the original checkout reference', async () => {
+  it('surfaces a recovery case; the checkout reference goes to support, never onto the page', async () => {
     await mount({ state: 'needs_support' }); expect(screen.getByText(en.checkoutNeedsSupportDetail)).toBeInTheDocument();
-    expect(screen.getByText('Checkout reference: cs_requested')).toBeInTheDocument();
+    expect(screen.queryByText(/cs_requested/)).not.toBeInTheDocument();
+    expect(decodeURIComponent(screen.getByRole('link', { name: en.supportContact }).getAttribute('href') || '')).toContain('Checkout: cs_requested');
   });
   it('does not invent payment success when the checkout reference is missing', async () => {
     window.history.replaceState({}, '', '/payment-success?bookingId=999'); await mount();

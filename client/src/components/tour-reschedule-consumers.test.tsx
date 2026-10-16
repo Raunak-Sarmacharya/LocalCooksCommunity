@@ -15,7 +15,7 @@ vi.mock('@/components/ui/select', () => ({
   SelectItem: ({ value, children, disabled }: any) => <option value={value} disabled={disabled}>{children}</option>,
 }));
 vi.mock('@/components/ui/data-table', () => ({ DataTable: ({ data, onRowClick }: any) => <button onClick={() => onRowClick(data[0])}>Open tour</button> }));
-vi.mock('@/components/support/CommitmentProblems', () => ({ CommitmentProblems: () => null }));
+vi.mock('@/components/support/CommitmentProblems', () => ({ CommitmentProblems: () => null, useCommitmentProblems: () => ({ data: undefined }) }));
 vi.mock('@/components/chat/TourChatButton', () => ({ TourChatButton: () => null }));
 vi.mock('@/i18n/manager', () => ({ mt: (key: string, options?: any) => key === 'tourProposalOption' ? `Option ${options.number}` : key }));
 vi.mock('react-i18next', async importOriginal => ({ ...await importOriginal<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string, fallback?: any) => typeof fallback === 'string' ? fallback : fallback?.defaultValue || key }) }));

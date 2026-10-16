@@ -3041,7 +3041,7 @@
   "problemCopy09": "Chef",
   "problemCopy10": "Mise à jour",
   "problemCopy11": "Signalement reçu",
-  "problemCopy12": "Local Cooks a reçu votre signalement. Suivez les mises à jour et répondez ici.",
+  "problemCopy12": "Local Cooks a reçu ce signalement. Vous pouvez suivre les mises à jour et répondre ici.",
   "problemCopy13": "Nous examinons encore la situation. Consultez la dernière réponse ci-dessus.",
   "problemCopy14": "M’attribuer",
   "problemCopy15": "Réponse partagée avec le chef et la cuisine",
@@ -3646,5 +3646,17 @@
   "bnChefReplaced": "Vous avez modifié cette demande. Votre nouvelle demande est {ref}.",
   "bnManagerReplaced": "{chef} a modifié cette demande. Sa nouvelle demande est {ref}.",
   "bnViewNewRequest": "Voir la nouvelle demande",
-  "bdhPill_replaced": "Modifiée"
+  "bdhPill_replaced": "Modifiée",
+  "kciVcNoAccessDraft": "Bonjour, je suis à {kitchen} pour ma réservation et je ne peux pas entrer. Pouvez-vous m’ouvrir ?",
+  "opaKitchenAccessTitle": "{chef} ne peut pas entrer",
+  "opaKitchenSafetyTitle": "{chef} a signalé un problème de sécurité",
+  "opaKitchenLine": "Signalé à {time}. Faites entrer la personne ou écrivez-lui maintenant. Local Cooks a aussi été averti.",
+  "opaChefAccessTitle": "Vous avez indiqué à {kitchen} que vous ne pouvez pas entrer",
+  "opaChefAccessLine": "{kitchen} et Local Cooks ont été avertis à {time}. Écrivez-leur si vous attendez toujours. Ne faites pas l’enregistrement avant d’être à l’intérieur.",
+  "opaChefSafetyTitle": "Vous avez signalé un problème de sécurité",
+  "opaChefSafetyLine": "{kitchen} et Local Cooks ont été avertis à {time}. Si quelqu’un est en danger, appelez le 911.",
+  "opaViewReport": "Voir le signalement",
+  "problemReportedByYou": "Signalé par vous",
+  "problemReportedByChef": "Signalé par le chef",
+  "problemReportedByKitchen": "Signalé par la cuisine"
 }

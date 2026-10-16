@@ -3041,7 +3041,7 @@
   "problemCopy09": "Кухар",
   "problemCopy10": "Оновлення",
   "problemCopy11": "Повідомлення отримано",
-  "problemCopy12": "Local Cooks отримав повідомлення. Стежте за оновленнями й відповідайте тут.",
+  "problemCopy12": "Local Cooks отримав це повідомлення. Тут можна стежити за оновленнями й відповідати.",
   "problemCopy13": "Ми ще розглядаємо ситуацію. Остання відповідь — вище.",
   "problemCopy14": "Призначити мені",
   "problemCopy15": "Відповідь для кухаря й кухні",
@@ -3646,5 +3646,17 @@
   "bnChefReplaced": "Ви змінили цей запит. Ваш новий запит — {ref}.",
   "bnManagerReplaced": "{chef}: цей запит змінено. Новий запит — {ref}.",
   "bnViewNewRequest": "Переглянути новий запит",
-  "bdhPill_replaced": "Змінено"
+  "bdhPill_replaced": "Змінено",
+  "kciVcNoAccessDraft": "Вітаю, я біля {kitchen} на своє бронювання і не можу увійти. Чи можете впустити мене?",
+  "opaKitchenAccessTitle": "{chef} не може увійти",
+  "opaKitchenSafetyTitle": "{chef} повідомляє про проблему з безпекою",
+  "opaKitchenLine": "Повідомлено о {time}. Впустіть людину або напишіть їй зараз. Local Cooks також повідомлено.",
+  "opaChefAccessTitle": "Ви повідомили {kitchen}, що не можете увійти",
+  "opaChefAccessLine": "{kitchen} і Local Cooks отримали сповіщення о {time}. Напишіть їм, якщо досі чекаєте. Не реєструйте прибуття, доки не опинитеся всередині.",
+  "opaChefSafetyTitle": "Ви повідомили про проблему з безпекою",
+  "opaChefSafetyLine": "{kitchen} і Local Cooks отримали сповіщення о {time}. Якщо комусь загрожує небезпека, телефонуйте 911.",
+  "opaViewReport": "Переглянути повідомлення",
+  "problemReportedByYou": "Ви повідомили",
+  "problemReportedByChef": "Повідомив кухар",
+  "problemReportedByKitchen": "Повідомила кухня"
 }

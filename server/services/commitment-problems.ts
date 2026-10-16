@@ -15,6 +15,8 @@ import { reminderVisitTimes } from './advance-reminders';
 import { DomainError } from '../shared/errors/domain-error';
 import { operationalEmailAllowed } from './admin-email-preferences';
 import { isPlatformEmailRecipientBlocked } from '../email-recipient-policy';
+import { ensureServerI18n, tLocale } from '../i18n';
+import { getUserDisplayName } from '../utils/user-display';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Problem = typeof commitmentProblems.$inferSelect;
@@ -45,12 +47,14 @@ export async function problemContext(tx: Tx, kind: 'booking' | 'tour', id: numbe
     const checkinWindowMinutesBefore = savedCloseout(row.booking.visitDuties)?.checkinWindowMinutesBefore
       ?? saved?.checkinWindowMinutesBefore ?? (await getCheckinSettings(row.locationId, tx)).checkinWindowMinutesBefore;
     return { checkinWindowMinutesBefore, chefId: row.booking.chefId, managerId: row.managerId, kitchenId: row.booking.kitchenId,
-      status: row.booking.status, wasConfirmed, scheduledStart, timezone: row.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchenName };
+      status: row.booking.status, wasConfirmed, scheduledStart, timezone: row.timezone || DEFAULT_TIMEZONE, kitchenName: row.kitchenName,
+      reference: row.booking.referenceCode || `KB-${id}` };
   }
   const [row] = await tx.select({ tour: kitchenViewings, managerId: locations.managerId }).from(kitchenViewings)
     .innerJoin(locations, eq(locations.id, kitchenViewings.locationId)).where(eq(kitchenViewings.id, id)).limit(1);
   return row && { chefId: row.tour.chefId, managerId: row.managerId,
-    kitchenId: row.tour.targetedKitchenId, status: row.tour.status, wasConfirmed: hasTourConfirmation(row.tour), scheduledStart: row.tour.scheduledAt, timezone: DEFAULT_TIMEZONE, kitchenName: null };
+    kitchenId: row.tour.targetedKitchenId, status: row.tour.status, wasConfirmed: hasTourConfirmation(row.tour), scheduledStart: row.tour.scheduledAt, timezone: DEFAULT_TIMEZONE, kitchenName: null,
+    reference: `TOUR-${id}` };
 }
 
 export function authorizeProblem(context: { chefId: number | null; managerId: number | null } | undefined, actor: Actor) {
@@ -68,6 +72,37 @@ export function canReportProblem(context: { chefId: number | null; managerId: nu
     && (actor.role === 'chef' && actor.id === context.chefId || actor.role === 'manager' && actor.id === context.managerId);
 }
 
+type ProblemContext = NonNullable<Awaited<ReturnType<typeof problemContext>>>;
+
+/** Per-reader wording for a new live report. Chefs see the kitchen's name, kitchens see the chef's name. */
+async function liveReportCopy(tx: Tx, problem: Problem, context: ProblemContext, kind: 'booking' | 'tour') {
+  await ensureServerI18n();
+  const reporterIsChef = problem.reportedBy === context.chefId;
+  const chefName = context.chefId ? await getUserDisplayName(context.chefId, 'chef', tx) : '';
+  const kitchenName = context.kitchenName || '';
+  const category = problem.category || 'other';
+  return (person: typeof users.$inferSelect, role: 'chef' | 'manager' | 'admin') => {
+    const locale = person.preferredLocale;
+    const t = (key: string, values: Record<string, unknown> = {}) => tLocale(locale, key, { ns: 'booking', ...values });
+    const time = emailLocalDateTime(problem.createdAt || new Date(), context.timezone, locale || 'en-CA');
+    const reporter = reporterIsChef ? chefName || t('cpnTheChef') : kitchenName || t('cpnTheKitchen');
+    const categoryName = t(`cpnCat_${category}`);
+    const values = { ref: context.reference, time, kitchen: kitchenName || t('cpnTheKitchen'), category: categoryName };
+    if (role === 'admin') return { title: t(category === 'safety' ? 'cpnAdminSafetyTitle' : 'cpnAdminTitle', { ...values, name: reporter }),
+      message: `${t('cpnReportedAt', { name: reporter, time })}
+${problem.description}` };
+    if (person.id === problem.reportedBy) return { title: t('cpnSentTitle', values),
+      message: t('cpnSentBody', { ...values, other: reporterIsChef ? kitchenName || t('cpnTheKitchen') : chefName || t('cpnTheChef') }) };
+    const start = kind === 'booking' && context.scheduledStart ? new Intl.DateTimeFormat(locale || 'en-CA', { timeZone: context.timezone, hour: 'numeric', minute: '2-digit' }).format(context.scheduledStart) : '';
+    const access = category === 'access' && reporterIsChef && start;
+    return { title: t(category === 'safety' ? 'cpnSafetyTitle' : category === 'access' ? 'cpnAccessTitle' : 'cpnOtherTitle', { ...values, name: reporter }),
+      message: `${t('cpnReportedAt', { name: reporter, time })}
+${problem.description}
+
+${access ? t('cpnAccessNext', { start }) : t('cpnOtherNext')}` };
+  };
+}
+
 async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   const kind = problem.bookingId ? 'booking' : 'tour', id = problem.bookingId || problem.viewingId!;
   const context = await problemContext(tx, kind, id);
@@ -75,26 +110,31 @@ async function queueProblemNotice(tx: Tx, problem: Problem, action: string) {
   const people = await tx.select().from(users).where(or(context.chefId ? eq(users.id, context.chefId) : undefined,
     context.managerId ? eq(users.id, context.managerId) : undefined, eq(users.role, 'admin')));
   const categoryLabel = problemCategoryLabel(problem.category);
-  const title = action === 'report' ? problem.category === 'safety' ? `Safety issue reported — urgent · ${kind === 'booking' ? 'Booking' : 'Tour'} #${id}`
-    : `${categoryLabel || 'Other'} problem reported · ${kind === 'booking' ? 'Booking' : 'Tour'} #${id}`
-    : `${kind === 'booking' ? 'Booking' : 'Tour'} #${id}: ${categoryLabel || 'Support'} problem ${problemStatusLabel(problem.status).toLowerCase()}`;
+  const ref = context.reference;
+  const title = action === 'report' ? problem.category === 'safety' ? `Safety issue reported — urgent · ${ref}`
+    : `${categoryLabel || 'Other'} problem reported · ${ref}`
+    : `${ref}: ${categoryLabel || 'Support'} problem ${problemStatusLabel(problem.status).toLowerCase()}`;
   const last = (problem.history as ProblemHistory[]).at(-1);
   const time = emailLocalDateTime(problem.createdAt || new Date(), context.timezone);
-  const message = `Kitchen: ${context.kitchenName || 'See commitment details'}\nReported: ${time}\n${categoryLabel ? `Category: ${categoryLabel}\n` : ''}${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow your support request for updates and replies.'}`;
+  const message = `Kitchen: ${context.kitchenName || 'See commitment details'}\nReported: ${time}\n${categoryLabel ? `Category: ${categoryLabel}\n` : ''}${problem.description}\n${last?.action === 'report' ? 'Report received.' : last?.note || ''}\n${problem.status === 'resolved' ? 'This support request has been resolved. View the response in your booking or tour.' : 'Follow the support request for updates and replies.'}`;
   const assignmentOnly = ['claim', 'reassign'].includes(action);
+  // A live report (e.g. "can't get in" at check-in) is worded per reader: the reporter, the other side, Local Cooks.
+  const live = action === 'report' && problem.kind === 'live' ? await liveReportCopy(tx, problem, context, kind) : undefined;
   for (const person of people) {
     const role = person.role === 'admin' ? 'admin' : person.id === context.chefId ? 'chef' : 'manager';
+    const copy = live?.(person, role);
+    const personTitle = copy?.title ?? title, personMessage = copy?.message ?? message;
     // Internal assignment changes do not ask participants to act or change their report's public status.
     if (assignmentOnly && role !== 'admin') continue;
     const path = problemDestination(kind, id, role);
     await notificationService.create({ userId: person.id, target: role === 'chef' ? 'chef' : 'manager', type: 'system_announcement',
-      priority: 'high', title, message,
+      priority: 'high', title: personTitle, message: personMessage,
       actionUrl: path, actionLabel: role === 'admin' ? 'Claim or review problem' : 'View problem', metadata: { problemId: problem.id, revision: problem.revision } }, tx);
     // Keep admin bell alerts for everyone; only opted-in admins receive email.
     if (assignmentOnly || !operationalEmailAllowed(person) || isPlatformEmailRecipientBlocked(person.username)) continue;
-    const content = renderTransactionalEmail({ to: person.username || '', locale: person.preferredLocale, subject: title, recipientName: person.username || 'there', message, facts: [{ label: 'Kitchen', value: context.kitchenName || 'See commitment details' }, { label: 'Reference', value: `${kind === 'booking' ? 'KB' : 'TOUR'}-${id}` }, { label: 'Reported', value: time }], actionLabel: role === 'admin' ? 'Review problem' : 'View problem', actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
+    const content = renderTransactionalEmail({ to: person.username || '', locale: person.preferredLocale, subject: personTitle, recipientName: person.username || 'there', message: personMessage, facts: [{ label: 'Kitchen', value: context.kitchenName || 'See commitment details' }, { label: 'Reference', value: ref }, { label: 'Reported', value: time }], actionLabel: role === 'admin' ? 'Review problem' : 'View problem', actionUrl: `${getAppBaseUrl(role === 'admin' ? 'admin' : role === 'chef' ? 'chef' : 'kitchen')}${path}` });
     await tx.insert(emailLogs).values({ recipientEmail: person.username || '', recipientUserId: person.id, recipientRole: role,
-      subject: title, category: 'lifecycle_outcome', status: 'queued', previewText: message,
+      subject: personTitle, category: 'lifecycle_outcome', status: 'queued', previewText: personMessage,
       trackingId: `problem-outcome:${problem.id}:${problem.revision}:${person.id}`,
       textBody: content.text, htmlBody: content.html });
   }
