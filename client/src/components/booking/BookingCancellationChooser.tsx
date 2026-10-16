@@ -186,7 +186,8 @@ export function BookingCancellationChooser({ bookingId, status, paymentStatus, i
                   {quote.snapshot && !lateCancel && <div className="mt-3 border-t pt-2"><p className="text-xs font-medium">{policyT(quote.snapshot.version === 0 ? 'cpOriginal' : 'cpFrozen')}</p><CancellationPolicySummary policy={quote.snapshot} timezone={quote.snapshot.timezone} startAt={quote.snapshot.sessions[0]?.startAt} processingFeeCents={quote.feeRetainedCents} /></div>}
                 </details>
               </> : <p>{policyT('cpFeePending')}</p> : <Loader2 className="h-4 w-4 animate-spin" aria-label={t('cancelCopy40')} />}
-              {items.length > 0 && <p className="text-xs text-muted-foreground">{policyT('cpAddons')}</p>}
+              {/* Storage has its own move-out rule; a booking with only equipment just says it's included. */}
+              {items.length > 0 && <p className="text-xs text-muted-foreground">{policyT(items.some(item => item.kind === 'storage') ? 'cpAddons' : 'cpAddonsEquipmentOnly')}</p>}
             </div> : scope === 'items' && unpaid ? <div className="rounded-xl border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">{t('cancelCopy16')}</div>
               : equipmentTargets.length > 0 || storageSelected ? <div className="space-y-2 rounded-xl border bg-muted/30 p-3 text-sm" aria-live="polite">
                 {equipmentTargets.length > 0 && (addonFeePending ? <p>{policyT('cpAddonFeePending', { items: addonList })}</p>
