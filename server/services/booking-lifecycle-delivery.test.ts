@@ -587,3 +587,26 @@ it.each([0, 5000])('cancellation delivers recipient copy and only retained kitch
   expect(emails[1].content.text).not.toContain('$0.00');
   expect(emails[0].content.text).not.toContain('that time is open again');
 });
+
+it('an add-on removal tells the chef about the refund, the kitchen about its payout and Local Cooks the facts, each in its own words', async () => {
+  vi.clearAllMocks(); state.database = tx; state.payout = null;
+  state.people = [{ id: 3, profile: { fullName: 'Sam' } }, { id: 2, profile: { fullName: 'Maya' } }];
+  state.rows = [[{ chefId: 3, managerId: 2, kitchenName: 'Harbour Kitchen', bookingDate: new Date('2026-10-14'), startTime: '09:00', timezone: 'UTC', referenceCode: 'KB-OVEN1' }],
+    [{ id: 3, email: 'chef@example.test', role: 'chef', locale: 'en-CA' }, { id: 2, email: 'manager@example.test', role: 'manager', locale: 'en-CA' },
+      { id: 4, email: 'test_admin@localcooks.ca', role: 'admin', adminEmailNotifications: true, locale: 'en-CA' }]];
+  await queueBookingLifecycleEvent(tx, 10, 'addon_removed', 'Commercial Oven removed', 'Commercial Oven was removed from KB-OVEN1.', 3,
+    { itemKind: 'equipment', itemId: 31, addonRemoval: { state: 'removed', itemName: 'Commercial Oven', refundCents: 2055, kitchenRefundCents: 1933, feeCents: 67 } });
+  const by = (id: number) => state.notify.mock.calls.find(call => call[0].userId === id)![0];
+  expect(by(3).title).toBe('Commercial Oven removed from your booking');
+  expect(by(3).message).toBe('Your $20.55 refund for Harbour Kitchen on Oct 14, 2026, 9:00 a.m. is on its way. Banks usually show it within 5–10 business days.');
+  expect(by(2).title).toBe('Sam removed Commercial Oven');
+  expect(by(2).message).toBe('Sam removed the Commercial Oven from KB-OVEN1 (Oct 14, 2026, 9:00 a.m.). Your payout changes by −$19.33.');
+  expect(by(4).title).toBe('Add-on removed · KB-OVEN1');
+  expect(by(4).message).toMatch(/Sam removed Commercial Oven at Harbour Kitchen.*Refunded \$20\.55\. Kitchen payout −\$19\.33\. Card fee kept: \$0\.67\./);
+  for (const id of [2, 3]) expect(JSON.stringify(by(id))).not.toMatch(/#31|#10|pi_|re_|booking_cancelled/);
+  expect(by(3).type).toBe('system_announcement');
+  const emails = state.insert.mock.calls[0][0].emails;
+  expect(emails.map((email: any) => email.to)).toEqual(['chef@example.test', 'manager@example.test', 'test_admin@localcooks.ca']);
+  expect(emails[0].content.text).toContain('Your $20.55 refund for Harbour Kitchen'); expect(emails[1].content.text).toContain('Your payout changes by −$19.33.');
+  expect(emails[2].content.text).toContain('Kitchen payout');
+});

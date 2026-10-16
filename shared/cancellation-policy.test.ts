@@ -59,4 +59,16 @@ describe('frozen Food Corridor cancellation policy', () => {
     ] });
     expect(result.chefRefundCents).toBe(1); expect(result.perComponent.map(item => item.refundCents)).toEqual([1, 0]);
   });
+  it('keeps a component whose refund was already paid exactly as paid, while the rest is re-quoted', () => {
+    // An add-on removed earlier (before the deadline) was refunded in full; cancelling inside the window refunds 50% of the rest only.
+    const components = [{ id: 'kitchen:1', kind: 'kitchen' as const, sessionIndex: 0, kitchenCents: 9500, platformCents: 578 }, { id: 'equipment:2', kind: 'equipment' as const, sessionIndex: 0, kitchenCents: 2000, platformCents: 122 }];
+    const settledComponents = { 'equipment:2': { refundCents: 2055, kitchenRefundCents: 1933 } };
+    const base = { capturedCents: 12200, processingFeeCents: 384, components, cancelAt: '2026-11-01T11:30:00Z', alreadyRefundedCents: 2055, alreadyKitchenRefundedCents: 1933, alreadyPlatformRefundedCents: 122 };
+    const without = quote({ ...base });
+    const settled = quote({ ...base, settledComponents });
+    expect(settled.chefRefundCents).toBe(4881);
+    expect(without.chefRefundCents).toBeLessThan(settled.chefRefundCents);
+    expect(settled.perComponent.find(item => item.id === 'equipment:2')).toMatchObject({ refundCents: 2055, kitchenRefundCents: 1933, platformRefundCents: 122, refundPercent: 100 });
+    expect(settled.chefRefundCents + settled.alreadyRefundedCents + settled.retainedCents).toBe(12200);
+  });
 });

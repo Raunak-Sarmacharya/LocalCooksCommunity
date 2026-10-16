@@ -35,6 +35,7 @@ vi.mock('./kitchen-checkout-service', () => ({ processExpiredKitchenCheckoutRevi
 vi.mock('./clock-closeout', () => ({ sweepClockCloseout: () => task('clockCloseout') }));
 vi.mock('./booking-feedback-service', () => ({ sweepBookingFeedback: () => task('bookingFeedback') }));
 vi.mock('./kitchen-payout-service', () => ({ releaseDuePayouts: () => task('closeoutPayouts'), recoverCaptureTransfers: () => task('captureTransfers') }));
+vi.mock('./booking-cancellation-refund', () => ({ recoverChefAddonRefunds: () => task('addonRefundRecovery') }));
 vi.mock('./chef-document-expiry', () => ({ sweepChefDocumentExpiry: () => task('chefDocumentExpiry') }));
 vi.mock('./location-access-notices', () => ({ dispatchAccessNotices: () => task('access') }));
 vi.mock('./tour-outcome-service', () => ({ remindUnrecordedTourOutcomes: () => task('tourOutcomes') }));
@@ -72,7 +73,7 @@ describe('whole invocation admission, fair checkpoints and task isolation', () =
     expect(configuredInvocationMs).toBe(30_000); expect(workerSafetyReserveMs).toBe(4_000);
     expect(result).toMatchObject({ taskFailures: [], deferred: false });
     expect(state.calls).toEqual(expect.arrayContaining(['advance', 'booking', 'tour', 'outcome', 'chat', 'reconcile:booking', 'reconcile:tour',
-      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
+      'overstays', 'claims', 'paymentRecovery', 'checkoutRecovery', 'claimPayments', 'captureTransfers', 'addonRefundRecovery', 'authorizations', 'storageCheckout', 'cancellations', 'clockCloseout', 'closeoutPayouts', 'bookingFeedback', 'chefDocumentExpiry', 'access', 'tourOutcomes', 'kitchenChanges']));
     expect(state.calls.filter(name => name === 'clockCloseout')).toHaveLength(1);
     expect(state.calls.filter(name => name === 'closeoutPayouts')).toHaveLength(1);
     expect(state.calls).not.toContain('kitchenCheckout'); expect(state.calls).not.toContain('visitCheckout');

@@ -69,13 +69,14 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                   ? t(`historyCancelled_${cancelCause}` as 'historyCancelled_declined')
                   : event.kind === 'goodwill_refunded' && event.amountCents
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
+                    : event.kind === 'addon_removed' ? (event.refundedCents ? t('historyAddonRemovedRefund', { item: event.itemName, amount: money(event.refundedCents) }) : t('historyAddonRemoved', { item: event.itemName }))
                     : event.kind.startsWith('ext_') ? extensionText(event)
                     : role === 'chef' && event.kind === 'checkout_requested' ? t('historyYouCheckedOut')
                     : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>
               </div>
               {event.visitId && <p className="text-muted-foreground">{t('historyVisit', { id: event.visitId })}</p>}
-              {event.itemKind && <p className="text-muted-foreground">{t(`historyItem_${event.itemKind}` as const, { id: event.itemId })}</p>}
+              {event.itemKind && event.kind !== 'addon_removed' && <p className="text-muted-foreground">{t(`historyItem_${event.itemKind}` as const, { id: event.itemId })}</p>}
             </li>)}
           </ol>
           {limit && all.length > limit && <Button variant="link" size="sm" className="mt-2 h-auto px-0 text-xs text-foreground underline" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>

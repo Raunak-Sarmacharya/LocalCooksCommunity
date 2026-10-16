@@ -21,6 +21,8 @@ import { closeoutNoticeKinds, currentCloseoutEmail, type CloseoutNoticeKind } fr
 import { operationalEmailAllowed, operationalEmailAllowedForUser, adminEmailAllowedForUser, recordAdminEmailSuppression } from './admin-email-preferences';
 import { kitchenPayoutNotice, kitchenCheckoutPayoutNotice, managerVisitNotice, managerRunningLateNotice } from './kitchen-payout-notice';
 import { cancellationNotice, type CancellationNotice } from './cancellation-notice';
+import { addonRemovalNotice, type AddonRemovalNotice } from './addon-removal-notice';
+import type { AdminBookingFacts } from './admin-booking-notice';
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Email = { key: string; to: string; url: string; adminRecipient?: boolean; content?: Parameters<typeof sendEmail>[0]; confirmation?: Parameters<typeof generateBookingConfirmationEmail>[0]; afterFailedAttempts?: boolean; facts?: ReturnType<typeof bookingEmailFacts>; locale?: string | null; recipientName?: string };
@@ -308,16 +310,18 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     // A producer may word the in-app notice per role; email content is rendered separately.
     const kitchenCaused = metadata.kitchenCaused === true && chef;
     const kitchenPath = kitchenCaused ? `/kitchen-preview/${context.locationId}?kitchenId=${context.kitchenId}` : undefined;
-    const roleText = metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.cancellationNotice as CancellationNotice),
-        chefName: nameOf(context.chefId), kitchenName: context.kitchenName,
-        date: `${new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(context.bookingDate)}, ${emailClock(context.startTime, person.locale || 'en-CA')}` })
+    const visitWhen = () => `${new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(context.bookingDate)}, ${emailClock(context.startTime, person.locale || 'en-CA')}`;
+    const roleText = metadata.addonRemoval ? await addonRemovalNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.addonRemoval as AddonRemovalNotice),
+        chefName: nameOf(context.chefId), kitchenName: context.kitchenName, reference: String(context.referenceCode || `#${bookingId}`), date: visitWhen() })
+      : metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.cancellationNotice as CancellationNotice),
+        chefName: nameOf(context.chefId), kitchenName: context.kitchenName, date: visitWhen() })
       : (metadata.roleText as Record<string, { title: string; message: string }> | undefined)?.[chef ? 'chef' : 'manager'];
     const roleActionLabel = (roleText as { actionLabel?: string } | undefined)?.actionLabel;
     const adminCopy = localCooks && adminTracked ? adminBookingNotice(kind, { chef: nameOf(context.chefId) || 'The chef', kitchen: context.kitchenName,
       reference: String(context.referenceCode || `#${bookingId}`), message, locale: person.locale,
       when: [context.bookingDate ? new Intl.DateTimeFormat(person.locale || 'en-CA', { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(context.bookingDate)) : '',
         context.startTime ? emailClock(context.startTime, person.locale || 'en-CA') : ''].filter(Boolean).join(', '),
-      cancellation: metadata.cancellationNotice as CancellationNotice | undefined, requestExpired: metadata.requestExpired === true,
+      cancellation: metadata.cancellationNotice as CancellationNotice | undefined, addon: metadata.addonRemoval as AdminBookingFacts['addon'], requestExpired: metadata.requestExpired === true,
       requestOutcome: ['declined', 'withdrawn', 'support'].includes(String(metadata.requestOutcome)) ? metadata.requestOutcome as 'declined' | 'withdrawn' | 'support' : undefined,
       payoutCents: typeof metadata.amountCents === 'number' ? metadata.amountCents : undefined,
       holdReason: typeof metadata.holdReason === 'string' ? metadata.holdReason : null }) : undefined;
@@ -328,7 +332,7 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     if (metadata.emailRecipientPolicy !== 'none' && (arrivalNotice || person.email && operationalEmailAllowed(person)) && (adminCopy || metadata.emailRecipientPolicy !== 'manager' || person.id === context.managerId)) {
       const url = `${getAppBaseUrl(chef ? 'chef' : localCooks ? 'admin' : 'kitchen')}${path}`;
       emails.push({ key: String(person.id), to: person.email, url, adminRecipient: localCooks, locale: person.locale, recipientName: nameOf(person.id) || 'there', facts: bookingEmailFacts({ ...context, timezone: context.timezone || DEFAULT_TIMEZONE, locationAddress: context.locationAddress || undefined, bookingId, locale: person.locale }), ...(arrivalNotice ? { afterFailedAttempts } : {}),
-        ...(closedCopy || metadata.cancellationNotice || metadata.requestOutcome ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
+        ...(closedCopy || metadata.cancellationNotice || metadata.addonRemoval || metadata.requestOutcome ? { content: renderTransactionalEmail({ to: person.email, locale: person.locale,
           recipientName: nameOf(person.id), subject: closedCopy?.title ?? roleText?.title ?? title,
           heading: closedCopy?.title ?? roleText?.title ?? title, message: closedCopy?.message ?? roleText?.message ?? message,
           facts: [], actionLabel: roleActionLabel || 'View booking', actionUrl: url }) } : {}),

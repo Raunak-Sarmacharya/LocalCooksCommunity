@@ -55,7 +55,9 @@ export function additionalCancellationRefund(input: { capturedCents: number; fee
 export type CancellationComponent = { id: string; kind: 'kitchen' | 'equipment' | 'storage'; sessionIndex: number; kitchenCents: number; platformCents: number };
 export type CancellationInput = { cancelAt: string | Date; confirmedAt: string | Date | null; capturedCents: number; processingFeeCents: number | null;
   components: CancellationComponent[]; startedComponents?: string[]; cause: 'chef' | 'kitchen' | 'no_show' | 'support_exception';
-  alreadyRefundedCents?: number; alreadyKitchenRefundedCents?: number; alreadyPlatformRefundedCents?: number };
+  alreadyRefundedCents?: number; alreadyKitchenRefundedCents?: number; alreadyPlatformRefundedCents?: number;
+  /** Components whose refund was already decided and paid (an add-on the chef removed earlier): their amounts stay as paid and are not re-quoted. */
+  settledComponents?: Record<string, { refundCents: number; kitchenRefundCents: number }> };
 export function quoteCancellation(snapshot: CancellationPolicySnapshot, input: CancellationInput) {
   const cancelAt = instant(input.cancelAt), captured = cents(input.capturedCents);
   const refunded = cents(input.alreadyRefundedCents ?? 0), kitchenRefunded = cents(input.alreadyKitchenRefundedCents ?? 0), platformRefunded = cents(input.alreadyPlatformRefundedCents ?? 0);
@@ -87,13 +89,17 @@ export function quoteCancellation(snapshot: CancellationPolicySnapshot, input: C
       feeCents: fees[index], reasonCode: started && !remedy ? item.kind === 'storage' ? 'used_storage' : 'session_started' : 'policy_tier' };
   });
   // Round once for the charge, then distribute its cents; splitting into add-ons must not increase a refund.
-  const numerators = components.map(item => BigInt(item.pool) * BigInt(item.refundPercent));
+  const settled = input.settledComponents ?? {};
+  const numerators = components.map(item => settled[item.id] ? BigInt(0) : BigInt(item.pool) * BigInt(item.refundPercent));
   const cumulativeTarget = Number((numerators.reduce((sum, item) => sum + item, BigInt(0)) + BigInt(50)) / BigInt(100));
   const refunds = numerators.map(numerator => Number(numerator / BigInt(100)));
   let rounding = cumulativeTarget - refunds.reduce((sum, item) => sum + item, 0);
   const order = numerators.map((numerator, index) => ({ index, remainder: numerator % BigInt(100) })).sort((a, b) => a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1);
   for (const row of order) { if (!rounding) break; refunds[row.index]++; rounding--; }
   const perComponent = components.map(({ pool, ...item }, index) => {
+    const fixed = settled[item.id];
+    if (fixed) return { ...item, refundPercent: pool ? Math.min(100, Math.round(cents(fixed.refundCents) * 100 / pool)) : 0, refundCents: fixed.refundCents,
+      kitchenRefundCents: cents(fixed.kitchenRefundCents), platformRefundCents: fixed.refundCents - fixed.kitchenRefundCents };
     const refundCents = refunds[index], kitchenRefundCents = roundRatio(refundCents, item.kitchenCents - item.feeCents, pool);
     return { ...item, refundCents, kitchenRefundCents, platformRefundCents: refundCents - kitchenRefundCents };
   });
