@@ -113,6 +113,14 @@ describe("chef: Need more time?", () => {
     fireEvent.click(screen.getByRole("button", { name: "Message Harbour Kitchen" }));
     expect(onMessage).toHaveBeenCalled();
   });
+  it.each([["closing", "Harbour Kitchen closes when your booking ends, so there’s no extra time to add."], ["turnover", "Harbour Kitchen needs the time after your booking to get ready for the next chef."],
+    ["max_length", "You’ve reached Harbour Kitchen’s longest booking for one day."]])("no time free because of %s says the real reason (#128)", async (noTimeReason, text) => {
+    responses.push({ match: /\/extensions$/, method: "GET", body: state({ options: [], noTimeFree: true, noTimeReason }) });
+    mount(vi.fn());
+    fireEvent.click(screen.getByRole("button", { name: "Need more time?" }));
+    expect(await screen.findByText(content => content.includes(text))).toBeInTheDocument();
+    expect(screen.queryByText(/booked right after you/)).not.toBeInTheDocument();
+  });
   it("outside the last hour it explains when to add time and waits for an explicit message click", async () => {
     responses.push({ match: /\/extensions$/, method: "GET", body: state({ canRequest: false }) });
     const onMessage = vi.fn();

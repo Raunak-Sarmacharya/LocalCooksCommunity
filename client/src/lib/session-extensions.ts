@@ -14,7 +14,9 @@ export type EarlyOption = { minutes: number; startTime: string; startAt: string;
 export type ExtensionState = { enabled: boolean; autoApprove: boolean; timezone: string; kitchenName: string; currency: string
   options: ExtensionOption[]; earlyOptions?: EarlyOption[]; startAt?: string | null; beforeStart?: boolean; extraTime: { actualMinutes: number; minutes: number; maximumAmountCents: number; amountCents: number; kitchenGrossCents: number } | null
   visitId: number | null; endAt: string | null; checkoutAt: string | null; inSession: boolean; canRequest: boolean; hasSavedCard: boolean
-  unavailableReason: string | null; noTimeFree: boolean; history: ExtensionItem[]; serverNow: string }
+  unavailableReason: string | null; noTimeFree: boolean; history: ExtensionItem[]; serverNow: string
+  /** Why no extra time fits: closing time, the kitchen's longest booking, the next booking or its turnover time. */
+  noTimeReason?: 'closing' | 'max_length' | 'booked' | 'turnover' | null }
 export type ExtensionResult = { extension: ExtensionItem; requiresAction?: boolean; clientSecret?: string; cardFailed?: boolean; checkoutRequired?: boolean; checkoutUrl?: string }
 
 async function call<T>(url: string, method: "GET" | "POST", body?: unknown, fallback = "Something went wrong. Nothing new was charged."): Promise<T> {

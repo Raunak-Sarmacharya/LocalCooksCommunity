@@ -19,7 +19,7 @@ import { db } from '../db';
 import { kitchenAvailability, kitchenBookingExtensions, kitchenBookings, kitchenBookingVisits,
   kitchenCheckoutHolds, kitchenDateOverrides, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
 import { appendExtensionSlot, earlierSessionSnapshot, earlyStartOptions, extendedSessionSnapshot, extensionDeadline, extraTimeChargeOpen,
-  extraTimeQuote, inEarlyStartWindow, inExtensionWindow, prependEarlySlot, sessionExtensionOptions, validExtensionMinutes,
+  extraTimeQuote, inEarlyStartWindow, inExtensionWindow, prependEarlySlot, sessionExtensionBlocker, sessionExtensionOptions, type NoTimeReason, validExtensionMinutes,
   type EarlyStartOption, type ExtensionKind, type ExtensionOperation, type ExtensionOption } from '@shared/session-extension';
 import { absoluteOperatingSlotInterval, occupiedIntervals, timeToMinutes } from '@shared/operating-hours';
 import { makeCloseoutSnapshot, recordedDepartureAt, reduceClockCloseout, savedCloseout, snapshotBookedHours, type VisitCloseout } from '@shared/clock-closeout';
@@ -129,6 +129,13 @@ async function available(tx: Tx, row: Context, visit: VisitCloseout, now: Date, 
   return sessionExtensionOptions({ ...facts, windowStartTime: row.booking.operatingWindowStartTime || facts.window.startTime,
     windowEndTime: facts.window.endTime, endTime: visit.endTime, endAt: visit.scheduledEndAt, timezone: row.timezone!, ...await priceTerms(tx, row) });
 }
+/** When no option fits: the first blocker, for the chef's "no time free" sentence. */
+async function noTimeReason(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null) {
+  const facts = await scheduleFacts(tx, row, visit, now, excludeHoldId);
+  if (!facts) return null;
+  return sessionExtensionBlocker({ ...facts, windowStartTime: row.booking.operatingWindowStartTime || facts.window.startTime,
+    windowEndTime: facts.window.endTime, endTime: visit.endTime, endAt: visit.scheduledEndAt, timezone: row.timezone!, ...await priceTerms(tx, row) });
+}
 /** Earlier starts (15-minute steps) for a visit that has not started; the same availability rules in reverse. */
 async function availableEarly(tx: Tx, row: Context, visit: VisitCloseout, now: Date, excludeHoldId?: string | null): Promise<EarlyStartOption[]> {
   const facts = await scheduleFacts(tx, row, visit, now, excludeHoldId);
@@ -212,13 +219,17 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
   const staleHoldId = clock ? history.find(ext => openActive(ext, clock.visit.blockIndex) && overdue(ext))?.holdId ?? null : null;
   const manager = actor.role === 'manager' || actor.role === 'admin';
   let options: ExtensionOption[] = [], earlyOptions: EarlyStartOption[] = [], extraTime: ReturnType<typeof extraTimeQuote> | null = null, unavailableReason: string | null = null;
+  let blocker: NoTimeReason | null = null;
   const beforeStart = !!clock && isBeforeStart(row, clock.visit, now);
   const inSession = !!clock && isInSession(row, clock.visit, clock.evidence, now, false);
   // Owner (Oct 14): the chef can ask for more time any time while checked in; the kitchen still approves. No last-hour gate.
   const finalHour = inSession;
   if (enabled && clock) try {
     await assertBookingMoneyWritable({ bookingId }, tx);
-    if ((manager ? inSession : finalHour) && !history.some(ext => stillOpen(ext, clock.visit.blockIndex))) options = await available(tx, row, clock.visit, now, staleHoldId);
+    if ((manager ? inSession : finalHour) && !history.some(ext => stillOpen(ext, clock.visit.blockIndex))) {
+      options = await available(tx, row, clock.visit, now, staleHoldId);
+      if (!options.length) blocker = await noTimeReason(tx, row, clock.visit, now, staleHoldId);
+    }
     if (manager && beforeStart && !history.some(ext => stillOpen(ext, clock.visit.blockIndex))) earlyOptions = await availableEarly(tx, row, clock.visit, now, staleHoldId);
     if (manager && extraTimeChargeOpen(now, clock.checkout, clock.visit.scheduledEndAt, overstayGraceMinutes(row))
       && !history.some(ext => ext.blockIndex === clock.visit.blockIndex && ext.kind === 'extra_time' && !['declined', 'cancelled'].includes(ext.status))) {
@@ -232,7 +243,7 @@ export async function readSessionExtensions(bookingId: number, actor: ExtensionA
     timezone: row.timezone, kitchenName: row.kitchen.name, currency: row.booking.currency, options, earlyOptions, extraTime,
     visitId: clock?.visit.visitId ?? null, endAt: clock?.visit.scheduledEndAt ?? null, startAt: clock?.visit.scheduledStartAt ?? null, beforeStart, checkoutAt: clock?.checkout ? new Date(clock.checkout).toISOString() : null,
     inSession, canRequest: finalHour, hasSavedCard: !!row.booking.stripeCustomerId && !!row.booking.stripePaymentMethodId,
-    unavailableReason, noTimeFree: !unavailableReason && (manager ? inSession : finalHour) && !options.length && !history.some(ext => !!clock && stillOpen(ext, clock.visit.blockIndex)),
+    unavailableReason, noTimeReason: blocker, noTimeFree: !unavailableReason && (manager ? inSession : finalHour) && !options.length && !history.some(ext => !!clock && stillOpen(ext, clock.visit.blockIndex)),
     history: shown, serverNow: now.toISOString() };
 }
 

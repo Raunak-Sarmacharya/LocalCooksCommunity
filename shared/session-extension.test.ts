@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validExtensionMinutes, extraTimeQuote, extensionDeadline, extensionPrice, sessionExtensionOptions, extendedSessionSnapshot, appendExtensionSlot, inExtensionWindow, extraTimeChargeOpen, earlyStartOptions, billedMinutes, defaultFree, inEarlyStartWindow, earlierSessionSnapshot, prependEarlySlot } from './session-extension';
+import { validExtensionMinutes, extraTimeQuote, extensionDeadline, extensionPrice, sessionExtensionOptions, extendedSessionSnapshot, appendExtensionSlot, inExtensionWindow, extraTimeChargeOpen, earlyStartOptions, billedMinutes, defaultFree, inEarlyStartWindow, earlierSessionSnapshot, prependEarlySlot, sessionExtensionBlocker } from './session-extension';
 import { absoluteOperatingSlotInterval } from './operating-hours';
 const ratios = { subtotalCents: 10000, taxCents: 1500, commissionCents: 500 };
 const input = { operatingDate: '2026-10-14', windowStartTime: '08:00', windowEndTime: '20:00', endTime: '16:00', endAt: '2026-10-14T18:30:00Z', timezone: 'America/St_Johns', durationMinutes: 120, maxMinutes: null, occupied: [], hourlyRateCents: 2500, ratios };
@@ -134,4 +134,14 @@ it('applies the turnover buffer to extensions and early starts in instants (59 b
   const early = { ...input, startTime: '14:00', startAt };
   expect(earlyStartOptions({ ...early, turnoverOccupied: previous(59) }).some(o => o.minutes === 30)).toBe(false);
   expect(earlyStartOptions({ ...early, turnoverOccupied: previous(60) }).some(o => o.minutes === 30)).toBe(true);
+});
+
+describe('why no extra time fits', () => {
+  it('names the first blocker: closing, the longest booking, the next booking, its turnover time; none when time is free', () => {
+    expect(sessionExtensionBlocker({ ...input, endTime: '20:00', endAt: '2026-10-14T22:30:00Z' })).toBe('closing');
+    expect(sessionExtensionBlocker({ ...input, maxMinutes: 120 })).toBe('max_length');
+    expect(sessionExtensionBlocker({ ...input, occupied: [absoluteOperatingSlotInterval(input.operatingDate, { startTime: '16:00', endTime: '17:00' }, '08:00')] })).toBe('booked');
+    expect(sessionExtensionBlocker({ ...input, turnoverOccupied: [{ start: Date.parse('2026-10-14T19:00:00Z'), end: Date.parse('2026-10-14T20:00:00Z') }] })).toBe('turnover');
+    expect(sessionExtensionBlocker(input)).toBeNull();
+  });
 });

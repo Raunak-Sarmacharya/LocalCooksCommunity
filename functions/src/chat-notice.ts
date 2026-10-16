@@ -84,7 +84,9 @@ export async function resolveChatNoticeContext(db: ChatSql, conversationId: stri
   const role = chef ? 'chef' : 'manager';
   const names = [row.sender_profile?.displayName, row.sender_profile?.fullName,
     message.senderRole === 'chef' ? row.sender_application_name : null];
-  const senderName = names.find(name => typeof name === 'string' && name.trim() && !name.includes('@'))?.trim()
+  // Chefs see the kitchen's (location's) name for messages from its manager; kitchens see the chef's name.
+  const senderName = message.senderRole === 'manager' && typeof row.location_name === 'string' && row.location_name.trim() ? row.location_name.trim()
+    : names.find(name => typeof name === 'string' && name.trim() && !name.includes('@'))?.trim()
     || (message.senderRole === 'chef' ? 'your chef' : 'your kitchen manager');
   return { recipientId: chef ? row.chef_id : row.manager_id, recipientRole: role,
     recipientEmail: chef ? row.chef_email : row.manager_email, senderName: message.senderRole === 'admin' ? 'Local Cooks' : senderName,

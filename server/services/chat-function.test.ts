@@ -169,6 +169,8 @@ describe('actual service-account trigger wired to real canonical transactional p
     state.message = { ...state.message, senderId: 7, senderRole: 'manager', senderFirebaseUid: 'new-manager' };
     Object.assign(state.person, { manager_id: 7, manager_uid: 'new-manager', sender_uid: 'new-manager', sender_role: 'manager' });
     await fire(); expect(inserts()[0][0]).toContain('chef_notifications'); expect(inserts()[0][1][0]).toBe(3);
+    // Chefs see the kitchen's name, never "your kitchen manager".
+    expect(inserts()[0][1][1]).toBe('New message from Harbour Kitchen');
   });
   it('keeps verified Local Cooks replies distinct', async () => {
     state.message = { ...state.message, senderId: 1, senderRole: 'admin', senderFirebaseUid: 'actual-admin' };

@@ -67,6 +67,26 @@ export function sessionExtensionOptions(input: {
   return options;
 }
 
+export type NoTimeReason = 'closing' | 'max_length' | 'booked' | 'turnover';
+/** Why not even the first step fits (same checks, same order as `sessionExtensionOptions`), so the chef reads the real reason. */
+export function sessionExtensionBlocker(input: Parameters<typeof sessionExtensionOptions>[0]): NoTimeReason | null {
+  const end = minutesInOperatingWindow(input.endTime, input.windowStartTime);
+  let closing = timeToMinutes(input.windowEndTime);
+  if (closing <= timeToMinutes(input.windowStartTime)) closing += 1440;
+  const minutes = EXTENSION_STEP_MINUTES;
+  if (end + minutes > closing) return 'closing';
+  if (input.maxMinutes != null && input.durationMinutes + minutes > input.maxMinutes) return 'max_length';
+  const normalized = (end + minutes) % 1440;
+  const endTime = `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+  const matches = matchingLocalInstants(calendarDateForOperatingTime(input.operatingDate, endTime, input.windowStartTime), endTime, input.timezone);
+  const oldEndMs = Date.parse(input.endAt);
+  if (matches.length !== 1 || !Number.isFinite(oldEndMs)) return null;
+  const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime: input.endTime, endTime }, input.windowStartTime);
+  if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) return 'booked';
+  if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: oldEndMs, end: matches[0] }, 60))) return 'turnover';
+  return null;
+}
+
 export function extraTimeQuote(endAt: string, checkoutAt: string, hourlyRateCents: number, ratios: Parameters<typeof extensionPrice>[2], loweredAmountCents?: number) {
   const elapsed = Date.parse(checkoutAt) - Date.parse(endAt);
   if (!Number.isFinite(elapsed) || elapsed <= 0) throw Error('Recorded checkout must be later than the booked end');
