@@ -12,8 +12,8 @@ import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
  * the backstop. Sending twice (or the worker winning the race) is harmless: each expiry re-checks its row under lock.
  */
 export const deadlineScheduledEvent = 'localcooks/deadline.scheduled';
-export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change';
-export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change'];
+export type DeadlineKind = 'extension' | 'booking_request' | 'closeout' | 'kitchen_change' | 'storage_request';
+export const deadlineKinds: readonly DeadlineKind[] = ['extension', 'booking_request', 'closeout', 'kitchen_change', 'storage_request'];
 /** Runs just after the deadline so "now >= deadline" holds even with small clock differences. */
 export const deadlineGraceMs = 5_000;
 /** Inngest sleeps are bounded (plan limits); anything further out is picked up by the tick, then re-armed. */
@@ -58,6 +58,9 @@ async function expiryStripe(): Promise<Stripe | null> {
 
 /** The timer's work: one id, the same idempotent expiry the worker runs. Throws on failure so Inngest retries it. */
 export async function runDeadlineExpiry(kind: DeadlineKind, id: number, now = new Date()) {
+  if (kind === 'storage_request') {
+    return { kind, ...await (await import('./storage-rentals')).expireRental(id, now) };
+  }
   if (kind === 'extension') {
     const stripe = await expiryStripe();
     if (!stripe) return { kind, skipped: 'stripe_unconfigured' };

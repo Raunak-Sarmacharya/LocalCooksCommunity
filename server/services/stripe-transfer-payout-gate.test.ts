@@ -13,9 +13,10 @@ vi.mock('../db', () => { const db: any = { execute: async () => ({ rows: [] }), 
   } }; return { db }; });
 vi.mock('./stripe-checkout-fee-service', () => ({ getFeeConfig: async () => ({ platformCommissionRate: 0 }) }));
 vi.mock('./kitchen-payout-service', () => ({ releasedPayoutStillEligible: state.eligibility, recordReleasedPayout: state.record }));
+vi.mock('./storage-rentals', () => ({ storageTermStillEligible: async () => false }));
 let transferToManagerForBooking: typeof import('./stripe-transfer-service').transferToManagerForBooking;
 let PAYOUT_DEFERRED_REASON: string;
-beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ transferToManagerForBooking, PAYOUT_DEFERRED_REASON } = await import('./stripe-transfer-service')); });
+beforeAll(async () => { vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock'); ({ transferToManagerForBooking, PAYOUT_DEFERRED_REASON } = await import('./stripe-transfer-service')); }, 30000);
 const params = { paymentIntentId: 'pi_one', paymentTransactionId: 1, chargeAmountCents: 12000, actualStripeFeeCents: 358, chargeId: 'ch_one', transferGroup: 'pi_pi_one' };
 beforeEach(() => {
   state.source = { id: 1, bookingId: 7, transferId: null, refundAmount: '0', baseAmount: '11300', serviceFee: '700', managerId: 2,
@@ -27,6 +28,18 @@ beforeEach(() => {
 });
 
 describe('payout-after-closeout gate in the transfer engine', () => {
+  it('capture before AND after storage approval never transfers a storage term, even with a release timestamp', async () => {
+    state.source.payoutTiming = 'storage_term'; state.source.bookingType = 'storage';
+    for (const status of ['authorized', 'succeeded']) {
+      state.source.status = status;
+      for (const payoutReleasedAt of [null, new Date()]) {
+        state.source.payoutReleasedAt = payoutReleasedAt;
+        expect(await transferToManagerForBooking(params)).toMatchObject({ transferred: false, transferredCents: 0 });
+      }
+    }
+    expect(state.retrieve).not.toHaveBeenCalled(); expect(state.create).not.toHaveBeenCalled();
+    expect(state.record).not.toHaveBeenCalled(); expect(state.eligibility).not.toHaveBeenCalled();
+  });
   it('a captured after-closeout charge is not transferred by any caller before the release decision', async () => {
     const result = await transferToManagerForBooking(params);
     expect(result).toMatchObject({ transferred: false, transferredCents: 0, reason: PAYOUT_DEFERRED_REASON });

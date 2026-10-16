@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   expireExtension: vi.fn(async (..._args: unknown[]) => ({ expired: true })),
   lazyExpire: vi.fn(async (..._args: unknown[]) => true),
   expireChange: vi.fn(async (..._args: unknown[]) => ({ expired: true })),
+  expireStorage: vi.fn(async (..._args: unknown[]) => ({ changed: true })),
   persist: vi.fn(async (..._args: unknown[]) => ({ changed: true })),
   release: vi.fn(async (..._args: unknown[]) => ({ success: true })),
   rows: [] as Array<Record<string, unknown>>,
@@ -18,6 +19,7 @@ vi.mock('../logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.
 vi.mock('../lifecycle-inngest', () => ({ inngest: { send: state.send } }));
 vi.mock('stripe', () => ({ default: class { paymentIntents = {}; } }));
 vi.mock('./session-extensions', () => ({ expireSessionExtension: state.expireExtension }));
+vi.mock('./storage-rentals', () => ({ expireRental: state.expireStorage }));
 vi.mock('./kitchen-booking-changes', () => ({ expireKitchenChangeForBooking: state.expireChange, changeProviderStripe: async () => ({ paymentIntents: {} }) }));
 vi.mock('./auth-expiry-service', () => ({ lazyExpireKitchenBookingAuth: state.lazyExpire }));
 vi.mock('./clock-closeout', () => ({ persistBookingCloseout: state.persist }));
@@ -80,6 +82,11 @@ describe('scheduleBookingRequestTimer: the kitchen response deadline', () => {
 });
 
 describe('runDeadlineExpiry: the same idempotent per-item expiry the worker uses', () => {
+  it('storage_request dispatches to the storage expiry with the exact clock', async () => {
+    const now = new Date('2026-10-17T12:00:00Z');
+    expect(await runDeadlineExpiry('storage_request', 7, now)).toEqual({ kind: 'storage_request', changed: true });
+    expect(state.expireStorage).toHaveBeenCalledWith(7, now);
+  });
   it('extension: expires that one id with the supplied clock', async () => {
     const now = new Date('2026-10-15T20:31:01Z');
     await expect(runDeadlineExpiry('extension', 10, now)).resolves.toEqual({ kind: 'extension', expired: true });
@@ -170,7 +177,7 @@ describe('deadline-timer Inngest function', () => {
     const { deadlineTimer } = await load();
     expect(deadlineTimer).toBeDefined();
     const source = (await import('node:fs')).readFileSync(new URL('../lifecycle-inngest.ts', import.meta.url), 'utf8');
-    expect(source).toContain('functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, deadlineTimer]');
+    expect(source).toContain('functions: [lifecycleTick, startingChatEmail, bookingNoticeDelivery, invitationNoticeDelivery, deadlineTimer]');
     expect(source).toContain('triggers: [{ event: deadlineScheduledEvent }]');
   });
 });
