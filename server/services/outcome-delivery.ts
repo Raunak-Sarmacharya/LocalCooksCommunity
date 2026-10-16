@@ -60,7 +60,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
     const result = await db.transaction(async tx => {
       const [intent] = await tx.select().from(emailLogs).where(and(eq(emailLogs.category, 'lifecycle_outcome'),
         inArray(emailLogs.status, ['queued', 'failed']), onlyLogId ? eq(emailLogs.id, onlyLogId) : undefined,
-        sql`(${emailLogs.trackingId} LIKE 'checkout-outcome:%' OR ${emailLogs.trackingId} LIKE 'claim-outcome:%' OR ${emailLogs.trackingId} LIKE 'payment-outcome:%' OR ${emailLogs.trackingId} LIKE 'overstay-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-outcome:%' OR ${emailLogs.trackingId} LIKE 'problem-outcome:%')`,
+        sql`(${emailLogs.trackingId} LIKE 'checkout-outcome:%' OR ${emailLogs.trackingId} LIKE 'claim-outcome:%' OR ${emailLogs.trackingId} LIKE 'payment-outcome:%' OR ${emailLogs.trackingId} LIKE 'overstay-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-outcome:%' OR ${emailLogs.trackingId} LIKE 'storage-rental:%' OR ${emailLogs.trackingId} LIKE 'problem-outcome:%')`,
         attempted.length ? sql`${emailLogs.id} NOT IN (${sql.join(attempted.map(id => sql`${id}`), sql`,`)})` : undefined,
         onlyLogId ? undefined : sql`(${emailLogs.retriedAt} IS NULL OR ${emailLogs.retriedAt} < CURRENT_TIMESTAMP - interval '1 minute')`))
         .orderBy(sql`${emailLogs.retriedAt} ASC NULLS FIRST`, asc(emailLogs.id)).limit(1).for('update', { skipLocked: true });
@@ -99,6 +99,7 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
           const id = Number(identity);
           let currentState = 'unavailable; contact Local Cooks';
           let problemContent: Parameters<typeof sendEmail>[0] | undefined;
+          let storageContent: Parameters<typeof sendEmail>[0] | undefined;
           let recipientLocale: string | null | undefined;
           if (kind === 'problem-outcome') {
             const [current] = await tx.select().from(commitmentProblems).where(eq(commitmentProblems.id, id)).limit(1);
@@ -144,12 +145,27 @@ export async function deliverOutcomeEmails(limit = 10, budgetMs = 20_000, onlyLo
           } else if (kind === 'storage-outcome') {
             const [current] = await tx.select({ status: storageBookings.status }).from(storageBookings).where(eq(storageBookings.id, id)).limit(1);
             if (current) currentState = current.status;
+          } else if (kind === 'storage-rental') {
+            // Standalone storage notices: the recipient must still belong to the rental (or be an opted-in admin).
+            const [rental] = await tx.select({ chefId: storageBookings.chefId, managerId: locations.managerId }).from(storageBookings)
+              .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+              .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+              .innerJoin(locations, eq(locations.id, kitchens.locationId))
+              .where(eq(storageBookings.id, id)).limit(1);
+            const [recipient] = intent.recipientUserId ? await tx.select().from(users).where(eq(users.id, intent.recipientUserId)).limit(1) : [];
+            const stillOnRental = !!rental && !!recipient && recipient.username === intent.recipientEmail
+              && (recipient.role === 'admin' ? recipient.adminEmailNotifications === true
+                : recipient.id === rental.chefId || recipient.id === rental.managerId);
+            if (!stillOnRental) throw Error('Storage rental recipient changed; Local Cooks must verify contact before recovery');
+            recipientLocale = recipient.preferredLocale;
+            // The stored notice already has its own shell; resend it verbatim, without the recorded-outcome prefix.
+            storageContent = { to: intent.recipientEmail, subject: intent.subject, text: intent.textBody || '', html: intent.htmlBody || undefined };
           } else {
             const result = await tx.execute(sql`SELECT status FROM payment_transactions WHERE id = ${id}`);
             if (result.rows[0]) currentState = String(result.rows[0].status).replaceAll('_', ' ');
           }
           const note = `Recorded outcome notice from ${emailLocalDateTimeSentence(intent.createdAt, undefined, recipientLocale || 'en-CA')}. Current state: ${currentState}. Historical money evidence below remains unchanged. Use the current page for available actions and current deadlines; older instructions may be obsolete.`;
-          sent = await sendEmail(problemContent || bookingDeliveryEmail({ to: intent.recipientEmail, subject: intent.subject,
+          sent = await sendEmail(storageContent || problemContent || bookingDeliveryEmail({ to: intent.recipientEmail, subject: intent.subject,
             text: `${note}\n\n${intent.textBody || ''}` }, 'lifecycle_outcome_attempt'),
             { trackingId: intent.trackingId!, emailType: 'lifecycle_outcome_attempt', durableDelivery: true, retryOfId: intent.id });
         }

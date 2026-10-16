@@ -1,0 +1,103 @@
+{
+  "stTheChef": "The chef",
+  "stTheKitchen": "The kitchen",
+  "stView": "View storage",
+  "stFactKitchen": "Kitchen",
+  "stFactListing": "Listing",
+  "stFactReference": "Reference",
+
+  "stRequested_Chef_Title": "Request sent · {kitchen}",
+  "stRequested_Chef_Body": "Your card is on hold for {amount}. {kitchen} answers by {deadline}.",
+  "stRequested_Kitchen_Title": "{chef} wants storage · {listing}",
+  "stRequested_Kitchen_Body": "{chef} asked for {listing} {start}–{end}. Answer by {deadline}.",
+
+  "stApproved_Chef_Title": "Approved · {listing}",
+  "stApproved_Chef_Body": "{unit} at {kitchen}. Starts {start}. Your card was charged {amount}.",
+
+  "stDeclined_Chef_Title": "Not approved · {kitchen}",
+  "stDeclined_Chef_Body": "Your card hold was released. Nothing was charged.",
+
+  "stExpired_Chef_Title": "Request expired · {kitchen}",
+  "stExpired_Chef_Body": "{kitchen} didn’t answer in time. Your card hold was released.",
+  "stExpired_Kitchen_Title": "Storage request expired",
+  "stExpired_Kitchen_Body": "{chef}’s request for {listing} expired. The card hold was released.",
+
+  "stMoveInDue_Chef_Title": "Move in to {listing}",
+  "stMoveInDue_Chef_Body": "Your storage starts {start}. Add move-in photos to record the unit’s condition.",
+
+  "stMovedIn_Kitchen_Title": "{chef} moved in",
+  "stMovedIn_Kitchen_Body": "{chef} moved into {listing} · {photos, plural, one {# photo} other {# photos}} added.",
+
+  "stEnding_Chef_Title": "Paid through {paidThrough}",
+  "stEnding_Chef_Body": "{days, plural, =0 {Extend now} one {Extend 1 day} other {Extend # days}} · {amount}.",
+  "stEnding_Kitchen_Title": "Storage ending soon · {listing}",
+  "stEnding_Kitchen_Body": "{chef}’s storage is paid through {paidThrough}. They can extend until then.",
+
+  "stExtended_Chef_Title": "Paid through {paidThrough}",
+  "stExtended_Chef_Body": "You paid {amount}. Your storage runs to {paidThrough}.",
+  "stExtended_Kitchen_Title": "{chef} extended storage",
+  "stExtended_Kitchen_Body": "{chef} extended {listing} to {paidThrough} · {amount} charged.",
+
+  "stGraceStarted_Chef_Title": "Grace period started",
+  "stGraceStarted_Chef_Body": "Your paid days ended. Extend by {graceEndsOn} at the same price.",
+  "stGraceStarted_Kitchen_Title": "{chef} is in grace",
+  "stGraceStarted_Kitchen_Body": "{chef} can extend {listing} at the same price until {graceEndsOn}.",
+
+  "stHoldoverStarted_Chef_Title": "Your storage is past its paid time",
+  "stHoldoverStarted_Chef_Body": "{daily} per day may be charged by {kitchen}.",
+  "stHoldoverStarted_Kitchen_Title": "{chef} is past paid time",
+  "stHoldoverStarted_Kitchen_Body": "{chef}’s storage is past {paidThrough}. Raise a charge or waive it.",
+
+  "stHoldoverCharge_Chef_Title": "Holdover charge · {amount}",
+  "stHoldoverCharge_Chef_Body": "Pay {amount} for {days, plural, one {1 day} other {# days}}, or dispute by {deadline}.",
+
+  "stReclaim_Chef_Title": "Move out by {byDate}",
+  "stReclaim_Chef_Body": "{kitchen} asks you to move out by {byDate}. You’ll be refunded {amount}.",
+  "stReclaim_Kitchen_Title": "You asked {chef} to move out",
+  "stReclaim_Kitchen_Body": "{chef} must move out by {byDate}. Unused days ({amount}) are refunded.",
+
+  "stMoveOutRequested_Chef_Title": "Move-out requested",
+  "stMoveOutRequested_Chef_Body": "{kitchen} will inspect {listing} and confirm you’ve cleared it.",
+  "stMoveOutRequested_Kitchen_Title": "{chef} requested move-out",
+  "stMoveOutRequested_Kitchen_Body": "{chef} asked to move out of {listing}. Inspect the unit and confirm clearance.",
+
+  "stCleared_Chef_Title": "Move-out cleared",
+  "stCleared_Chef_Body": "{kitchen} confirmed you cleared {listing}. Holdover charges stop at {date}.",
+  "stCleared_Kitchen_Title": "You cleared {chef}’s unit",
+  "stCleared_Kitchen_Body": "{listing} is empty. {chef}’s storage ended on {date}.",
+
+  "stReopened_Chef_Title": "Items still here",
+  "stReopened_Chef_Body": "{kitchen} found items in {listing}. Your storage is active again from {date}.",
+  "stReopened_Kitchen_Title": "You reopened {chef}’s storage",
+  "stReopened_Kitchen_Body": "{chef}’s storage is active again from {date}. Holdover resumes from the original date.",
+
+  "stRemovalReview_Chef_Title": "Items may be removed",
+  "stRemovalReview_Chef_Body": "{kitchen} opened a removal review for {listing}. Move out or extend to keep your items.",
+  "stRemovalReview_Kitchen_Title": "Removal review · {listing}",
+  "stRemovalReview_Kitchen_Body": "{chef}’s storage is in removal review. You may act after the final-notice deadlines.",
+
+  "stFinalNotice_Chef_Title": "Final notice · {listing}",
+  "stFinalNotice_Chef_Body": "Local Cooks sent a final notice. Perishables may be removed after {perishableDate}; other items after {otherDate}. {photos, plural, one {# photo} other {# photos}} on file.",
+  "stFinalNotice_Kitchen_Title": "Final notice sent · {listing}",
+  "stFinalNotice_Kitchen_Body": "You may act after {perishableDate} for perishables and {otherDate} for other items.",
+
+  "stRefundIssued_Chef_Title": "Refund on its way · {amount}",
+  "stRefundIssued_Chef_Body": "Your refund of {amount} is on its way. Banks usually show it within 5–10 business days.",
+  "stRefundIssued_Kitchen_Title": "Payout reduced · {amount}",
+  "stRefundIssued_Kitchen_Body": "{chef}’s refund of {amount} comes out of your payout for {listing}.",
+
+  "stPayoutScheduled_Kitchen_Title": "You’ll be paid {amount}",
+  "stPayoutScheduled_Kitchen_Body": "You’ll be paid {amount} on {payoutDate} for {chef}’s storage {start}–{end}.",
+
+  "stPayoutReleased_Kitchen_Title": "You’ve been paid {amount}",
+  "stPayoutReleased_Kitchen_Body": "You’ve been paid {amount} for {chef}’s storage {start}–{end}. It’s on its way to your bank.",
+
+  "stPayoutOnHold_Kitchen_Title": "Your payout is on hold",
+  "stPayoutOnHold_Kitchen_Body": "{amount} for {chef}’s storage is on hold while Local Cooks reviews an open issue.",
+
+  "stKitchenDebt_Kitchen_Title": "Refund couldn’t be taken back",
+  "stKitchenDebt_Kitchen_Body": "{amount} couldn’t be taken back from your Stripe balance. You owe Local Cooks {amount}.",
+
+  "stOfferExtension_Chef_Title": "{kitchen} offers more time",
+  "stOfferExtension_Chef_Body": "{kitchen} offers {days, plural, one {1 more day} other {# more days}} for {amount}. Extend to keep your items."
+}
