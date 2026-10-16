@@ -4,7 +4,9 @@ import { completeCardAction } from "@/lib/session-extensions"
 import { friendlyTimezoneName } from "@shared/timezone-utils"
 
 export type StorageAvailability = { listingId: number; name: string; storageType: string; dailyPriceCents: number; maxTermDays: number
-  availability: { state: "now" | "full" | "from"; from?: string }; kitchenName?: string; locationId?: number; timezone?: string }
+  availability: { state: "now" | "full" | "from"; from?: string }; kitchenName?: string; locationId?: number; timezone?: string
+  /** Listing details (owner §7 item 11); any may be missing on older listings, so each is shown only when present. */
+  unitCount?: number; sizeLabel?: string | null; accessType?: string | null; temperatureRange?: string | null; notes?: string | null; photos?: string[] }
 export type StorageQuote = { listingId: number; startOn: string; days: number; endOn: string; dailyPriceCents: number; subtotalCents: number
   taxCents: number; serviceFeeCents: number; totalCents: number; maxTermDays: number; taxRatePercent: number; quotedAt: string
   acceptedTermsVersion: string; disclosureVersion: string; cancellationPolicy: { version: number; noticeHours: number; lateChargePercent: number } }
@@ -42,7 +44,7 @@ export const quoteExtension = (id: number, days: number) => call<ExtensionQuote>
  * never sees "quote expired". A changed total stops here and is shown; it is never charged silently.
  */
 export async function requestRental(input: { listingId: number; startOn: string; days: number; requestKey: string; acceptedTotalCents: number }) {
-  const fresh = await quoteRental(input)
+  const fresh = await quoteRental({ listingId: input.listingId, startOn: input.startOn, days: input.days })
   if (fresh.totalCents !== input.acceptedTotalCents) return { priceChanged: fresh }
   const { checkoutUrl } = await call<{ checkoutUrl: string }>(base, "POST", { listingId: input.listingId, startOn: input.startOn, days: input.days,
     requestKey: input.requestKey, expectedTotalCents: fresh.totalCents, acceptedTermsVersion: fresh.acceptedTermsVersion,
@@ -80,8 +82,9 @@ type T = (key: string, options?: Record<string, unknown>) => string
 export function rentalStatus(rental: StorageRental, t: T, locale: string): { pill: string; tone: "neutral" | "good" | "warn" | "bad" | "muted"; sentence: string } {
   const kitchen = rental.kitchen.name, first = rental.terms[0]
   const end = storageDay(rental.paidThrough, locale), start = storageDay(rental.startOn, locale)
-  if (rental.state === "requested") return { pill: t("stcPillRequested"), tone: "neutral", sentence: t("stcStatusRequested", { kitchen,
-    deadline: rental.responseDeadline ? kitchenMoment(rental.responseDeadline, rentalTimezone(rental), locale) : "", amount: cad(first?.totalCents ?? 0, locale) }) }
+  if (rental.state === "requested") return { pill: t("stcPillRequested"), tone: "neutral", sentence: rental.responseDeadline
+    ? t("stcStatusRequested", { kitchen, deadline: kitchenMoment(rental.responseDeadline, rentalTimezone(rental), locale), amount: cad(first?.totalCents ?? 0, locale) })
+    : t("stcStatusRequestedSoon", { kitchen, amount: cad(first?.totalCents ?? 0, locale) }) }
   if (rental.state === "reserved") return { pill: t("stcPillReserved"), tone: "good", sentence: t("stcStatusReserved", { unit: rental.unitLabel, start }) }
   if (rental.state === "move_out_requested") return { pill: t("stcPillMoveOut"), tone: "neutral", sentence: t("stcStatusMoveOut", { kitchen }) }
   if (rental.state === "removal_review") return { pill: t("stcPillRemoval"), tone: "bad", sentence: t("stcStatusRemoval") }

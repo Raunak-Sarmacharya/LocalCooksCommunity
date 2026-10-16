@@ -93,6 +93,7 @@ describe('storage listing routes', () => {
     const res = response();
     await handlerFor('/chef/kitchens/:kitchenId/storage-availability')({ params: { kitchenId: '1' } }, res);
     expect(res.json).toHaveBeenCalledWith([{ listingId: 9, name: 'Shelf', storageType: 'dry', dailyPriceCents: 500, maxTermDays: 7, availability: { state: 'now' },
+      unitCount: 2, sizeLabel: null, accessType: null, temperatureRange: null, notes: null, photos: [],
       kitchenName: undefined, locationId: 5, timezone: 'America/St_Johns' }]);
   });
 });

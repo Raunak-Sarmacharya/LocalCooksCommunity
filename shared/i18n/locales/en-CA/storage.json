@@ -239,5 +239,16 @@
   "stcRentNamed": "Rent storage: {listing}",
   "stcAddTitle": "Need storage too?",
   "stcAddBody": "{kitchen} rents storage by the day, from {amount}/day.",
-  "stcAdd": "Add storage"
+  "stcAdd": "Add storage",
+  "stcStatusRequestedSoon": "{kitchen} answers within 24 hours. Your card is on hold for {amount}.",
+  "stcAboutListing": "About this storage",
+  "stcKind_dry": "Dry storage",
+  "stcKind_cold": "Cooler",
+  "stcKind_freezer": "Freezer",
+  "stcUnits": "{count, plural, one {# unit} other {# units}}",
+  "stcAccess_kitchen_hours": "Access during kitchen hours",
+  "stcAccess_anytime": "Access anytime",
+  "stcAccess_by_arrangement": "Access by arrangement with the kitchen",
+  "stcTemperature": "Kept at {range}",
+  "stcNotes": "From the kitchen: {notes}"
 }

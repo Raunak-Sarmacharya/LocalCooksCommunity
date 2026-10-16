@@ -846,8 +846,8 @@ function KitchenInventoryPair({
   kitchen: PublicKitchen;
   hasEquipment: boolean;
   hasStorage: boolean;
-  /** "Rent storage" / "Apply to this kitchen first" under the storage list. */
-  storageCta?: ReactNode;
+  /** "Rent storage" / "Apply to this kitchen first" under the storage list (compact in the overview card). */
+  storageCta?: (compact: boolean) => ReactNode;
   openModal?: "equipment" | "storage" | null;
   onOpenModalChange?: (modal: "equipment" | "storage" | null) => void;
   kitchenTermsUrl?: string | null;
@@ -953,7 +953,7 @@ function KitchenInventoryPair({
             <div className="min-h-0 flex-1 overflow-hidden">
               <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
             </div>
-            {storageCta}
+            {storageCta?.(true)}
             {storage.length > CARD_PREVIEW_COUNT && (
               <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
                 <InventoryShowAllButton
@@ -2243,7 +2243,7 @@ interface KitchenDetailsSectionProps {
   cancellationPolicyHours?: number | null;
   cancellationPolicyMessage?: string | null;
   kitchenTermsUrl?: string | null;
-  storageCta?: ReactNode;
+  storageCta?: (compact: boolean) => ReactNode;
 }
 
 function KitchenDetailsSection({
@@ -2456,7 +2456,7 @@ function KitchenDetailsSection({
                     transition={{ duration: 0.2 }}
                   >
                     <KitchenStorageSections kitchen={kitchen} />
-                    {storageCta}
+                    {storageCta?.(false)}
                   </motion.div>
                 </TabsContent>
               )}
@@ -3815,7 +3815,7 @@ export default function KitchenPreviewPage() {
                   cancellationPolicyHours={selectedKitchen.cancellationPolicyHours ?? location.cancellationPolicyHours}
                   cancellationPolicyMessage={location.cancellationPolicyMessage}
                   kitchenTermsUrl={location.kitchenTermsUrl}
-                  storageCta={!applicationLoading && <StorageRentCta kitchenId={selectedKitchen.id} canBook={canBook} onApply={handleApplyClick} />}
+                  storageCta={compact => !applicationLoading && <StorageRentCta kitchenId={selectedKitchen.id} canBook={canBook} onApply={handleApplyClick} compact={compact} />}
                 />
               ) : (
                 <motion.div

@@ -239,5 +239,16 @@
   "stcRentNamed": "Louer : {listing}",
   "stcAddTitle": "Besoin d’entreposage aussi?",
   "stcAddBody": "{kitchen} loue de l’entreposage à la journée, à partir de {amount}/jour.",
-  "stcAdd": "Ajouter de l’entreposage"
+  "stcAdd": "Ajouter de l’entreposage",
+  "stcStatusRequestedSoon": "{kitchen} répond d’ici 24 heures. Un montant de {amount} est retenu sur votre carte.",
+  "stcAboutListing": "À propos de cet entreposage",
+  "stcKind_dry": "Entreposage sec",
+  "stcKind_cold": "Réfrigérateur",
+  "stcKind_freezer": "Congélateur",
+  "stcUnits": "{count, plural, one {# unité} other {# unités}}",
+  "stcAccess_kitchen_hours": "Accès pendant les heures de la cuisine",
+  "stcAccess_anytime": "Accès en tout temps",
+  "stcAccess_by_arrangement": "Accès sur entente avec la cuisine",
+  "stcTemperature": "Gardé à {range}",
+  "stcNotes": "De la cuisine : {notes}"
 }

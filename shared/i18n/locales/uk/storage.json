@@ -239,5 +239,16 @@
   "stcRentNamed": "Орендувати: {listing}",
   "stcAddTitle": "Потрібне ще й зберігання?",
   "stcAddBody": "{kitchen} здає місце для зберігання подобово — від {amount}/день.",
-  "stcAdd": "Додати зберігання"
+  "stcAdd": "Додати зберігання",
+  "stcStatusRequestedSoon": "{kitchen} відповість протягом 24 годин. На вашій картці утримано {amount}.",
+  "stcAboutListing": "Про це місце зберігання",
+  "stcKind_dry": "Сухе зберігання",
+  "stcKind_cold": "Холодильник",
+  "stcKind_freezer": "Морозильник",
+  "stcUnits": "{count, plural, one {# місце} few {# місця} many {# місць} other {# місця}}",
+  "stcAccess_kitchen_hours": "Доступ у години роботи кухні",
+  "stcAccess_anytime": "Доступ у будь-який час",
+  "stcAccess_by_arrangement": "Доступ за домовленістю з кухнею",
+  "stcTemperature": "Температура {range}",
+  "stcNotes": "Від кухні: {notes}"
 }

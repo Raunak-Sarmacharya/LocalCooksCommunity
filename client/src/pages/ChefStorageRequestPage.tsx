@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StoragePageShell } from "@/components/storage/StoragePageShell"
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from "@/components/booking/CheckoutCancellationDisclosure"
-import type { PolicyResponse } from "@/components/booking/CancellationPolicySummary"
+import { PublishedCancellationPolicySummary, type PolicyResponse } from "@/components/booking/CancellationPolicySummary"
+import { StorageListingDetails } from "@/components/storage/StorageRentCta"
 import { apiGet } from "@/lib/api"
 import { newRequestKey } from "@/lib/session-extensions"
 import { cad, quoteRental, requestRental, storageAvailability, storageDay, type StorageQuote } from "@/lib/storage-rentals"
@@ -93,11 +94,13 @@ export default function ChefStorageRequestPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{listing.name}</h1>
         <p className="text-sm text-muted-foreground">{t("stcAtKitchenPrice", { kitchen, amount: cad(listing.dailyPriceCents, locale) })}</p>
       </header>
+      <section className="rounded-2xl border p-4 sm:p-5" aria-label={t("stcAboutListing")}><StorageListingDetails row={listing} showName={false} /></section>
 
       {approvalNeeded ? <section className="space-y-3 rounded-2xl border p-5" data-testid="storage-apply-first">
         <h2 className="text-base font-semibold">{t("stcApplyTitle")}</h2>
         <p className="text-sm leading-relaxed">{t("stcApplyBody", { kitchen })}</p>
         <p className="text-sm text-muted-foreground">{t("stcDiscNoAuto")} {t("stcDiscDays")}</p>
+        <PublishedCancellationPolicySummary kitchenId={kitchenId} />
         <Button className="min-h-12 w-full sm:w-auto" onClick={() => navigate(listing.locationId ? `/apply-kitchen/${listing.locationId}?kitchenId=${kitchenId}` : "/dashboard?view=discover-kitchens")}>{t("stcApply")}</Button>
       </section> : step === 1 ? <>
         <fieldset className="space-y-3 rounded-2xl border p-4 sm:p-5">
