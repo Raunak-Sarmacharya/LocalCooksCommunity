@@ -11,6 +11,7 @@ import { logger } from "../logger";
 
 import Stripe from 'stripe';
 import { assertBookingMoneyWritable } from './booking-money-guard';
+import { successfulRefundAttempt } from '@shared/cancellation-refund';
 import { assertWorkerTime, inRecurringWorker, workerRemaining } from './worker-context';
 
 // Initialize Stripe client
@@ -928,19 +929,29 @@ export async function reverseTransferAndRefund(
     // receipt for this immutable operation still wins over a new funding check.
     if (options.idempotencyKey) {
       let receipt: Stripe.Refund | undefined;
+      const attempts: Stripe.Refund[] = [];
       for await (const candidate of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
         if (candidate.metadata?.refund_operation_id !== options.idempotencyKey) continue;
         if (candidate.amount !== amount || candidate.currency !== charge.currency || candidate.charge !== chargeId) throw new Error('Conflicting refund receipts require financial review.');
+        if (candidate.payment_intent && candidate.payment_intent !== paymentIntentId
+          || ['transaction_id', 'customer_receives', 'manager_debited', 'platform_service_fee_returned', 'kitchen_debt_cents']
+            .some(key => options.metadata?.[key] !== undefined && candidate.metadata?.[key] !== options.metadata[key]))
+          throw new Error('Conflicting refund receipts require financial review.');
+        attempts.push(candidate);
         // Booking changes (provider-only) reconcile a pending/failed receipt themselves; a terminal retry uses a new key.
         if (options.providerOnly) { if (receipt) throw new Error('Conflicting refund receipts require financial review.'); receipt = candidate; continue; }
         if (candidate.status === 'succeeded') {
           if (receipt) throw new Error('Conflicting refund receipts require financial review.');
           receipt = candidate;
-        } else if (!['failed', 'canceled'].includes(candidate.status || '')
-          // A terminal failure is only set aside by an explicit support retry that brings a fresh refund key.
-          || !(options.refundIdempotencyKey && options.refundIdempotencyKey !== options.idempotencyKey)) {
+        } else if (!['failed', 'canceled'].includes(candidate.status || '')) {
           throw new Error(`Refund ${candidate.id} is not verified as complete (${candidate.status || 'unknown'}). Verify this original operation before retrying.`);
         }
+      }
+      if (!options.providerOnly) {
+        successfulRefundAttempt(attempts, options.idempotencyKey);
+        // Without a verified success, only explicit support can retry terminal attempts with a fresh key.
+        if (attempts.length && !receipt && !(options.refundIdempotencyKey && options.refundIdempotencyKey !== options.idempotencyKey))
+          throw new Error(`Refund ${attempts[0].id} is not verified as complete (${attempts[0].status || 'unknown'}). Verify this original operation before retrying.`);
       }
       if (receipt) {
         await recordRefundPayoutEvidence(stripe, options.sourceConnection, paymentIntentId, receipt.id, options.reversalOperationKey || options.idempotencyKey, undefined, undefined, options.providerOnly);
@@ -1070,9 +1081,15 @@ export async function reverseTransferAndRefund(
     let recoveredRefund: Stripe.Refund | undefined;
     if (options?.idempotencyKey) {
       refundParams.metadata = { ...refundParams.metadata, refund_operation_id: options.idempotencyKey };
+      const attempts: Stripe.Refund[] = [];
       for await (const receipt of stripe.refunds.list({ charge: chargeId, limit: 100 })) {
         if (receipt.metadata?.refund_operation_id !== options.idempotencyKey) continue;
         if (receipt.amount !== amount || receipt.currency !== charge.currency || receipt.charge !== chargeId) throw new Error('Conflicting refund receipts require financial review.');
+        if (receipt.payment_intent && receipt.payment_intent !== paymentIntentId
+          || ['transaction_id', 'customer_receives', 'manager_debited', 'platform_service_fee_returned', 'kitchen_debt_cents']
+            .some(key => options.metadata?.[key] !== undefined && receipt.metadata?.[key] !== options.metadata[key]))
+          throw new Error('Conflicting refund receipts require financial review.');
+        attempts.push(receipt);
         if (receipt.status === 'succeeded') {
           if (recoveredRefund) throw new Error('Conflicting refund receipts require financial review.');
           recoveredRefund = receipt;
@@ -1080,6 +1097,7 @@ export async function reverseTransferAndRefund(
           throw new Error(`Refund ${receipt.id} is not verified as complete (${receipt.status || 'unknown'}). Verify this original operation before retrying.`);
         }
       }
+      successfulRefundAttempt(attempts, options.idempotencyKey);
     }
     const refundKey = options?.refundIdempotencyKey || (options?.idempotencyKey ? `${options.idempotencyKey}-refund` : undefined);
     const refund = recoveredRefund || await stripe.refunds.create(refundParams, refundKey ? { idempotencyKey: refundKey } : undefined);

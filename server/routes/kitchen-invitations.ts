@@ -24,7 +24,8 @@ import { chefService } from '../domains/users/chef.service';
 import { bookingService } from '../domains/bookings/booking.service';
 import { reserveKitchenCheckout, bindKitchenCheckout, releaseKitchenCheckout } from '../services/kitchen-checkout-holds';
 import { createPendingCheckoutSession, expireAbandonedCheckoutSession } from '../services/stripe-checkout-service';
-import { checkoutCancellationSnapshot, publishedCancellationPolicy } from '../services/cancellation-policy-settings';
+import { checkoutCancellationSnapshot } from '../services/cancellation-policy-settings';
+import { tLocale } from '../i18n';
 
 const router = Router();
 async function markUnavailable(row: typeof kitchenInvitations.$inferSelect, reason: string) {
@@ -90,7 +91,7 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
   if (row.status === 'accepted_pending_payment' && row.stripeSessionId) {
     if (!await expireAbandonedCheckoutSession(row.stripeSessionId)) throw new InvitationError('Your payment is still being processed. Refresh in a minute.', 409, 'payment_in_progress');
     if (row.holdId) await releaseKitchenCheckout(row.holdId);
-    await releaseInvitationCheckout(row.id, row.version);
+    await releaseInvitationCheckout(row.id, row.version, row.stripeSessionId);
     row = await getInvitationForChef(row.id, chefId);
   }
   if (row.status !== 'sent' || row.expiresAt <= new Date()) throw new InvitationError('This invitation is no longer payable.', 409);
@@ -110,9 +111,18 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
   const [chef] = await db.select({ email: users.username }).from(users).where(eq(users.id, chefId)).limit(1);
   if (!manager?.account) throw new InvitationError('The kitchen cannot accept payments yet.', 409);
   if (!chef?.email) throw new InvitationError('Customer email not found.', 400);
-  const policy = await publishedCancellationPolicy(row.kitchenId);
-  const cancellation = await checkoutCancellationSnapshot(row.kitchenId, row.date, row.startTime,
-    availability.windowStartTime, row.timezone, true, policy.version);
+  let cancellation: Awaited<ReturnType<typeof checkoutCancellationSnapshot>>;
+  try {
+    cancellation = await checkoutCancellationSnapshot(row.kitchenId, row.date, row.startTime,
+      availability.windowStartTime, row.timezone, req.body?.cancellationPolicyAccepted, req.body?.cancellationPolicyVersion,
+      req.body?.cancellationDisclosureVersion);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Review and accept the current cancellation policy before payment')
+      throw new InvitationError(tLocale(req.neonUser!.preferredLocale, 'invPolicyChanged', { ns: 'booking' }), 409, 'policy_changed');
+    throw error;
+  }
+  const cutoff = Date.parse(cancellation.sessions[0].startAt) - (cancellation.noticeHours * 60 + 37) * 60_000;
+  if (Date.now() >= cutoff) throw new InvitationError(tLocale(req.neonUser!.preferredLocale, 'invCheckoutCutoff', { ns: 'booking' }), 409, 'checkout_cutoff');
   const pricing = await invitationCheckoutPricing(row, req.body?.equipmentIds);
   const holdId = await reserveKitchenCheckout(row.kitchenId, chefId, row.date, slots, availability.windowStartTime, row.pricingMode === 'daily');
   const baseUrl = `${req.protocol}://${req.get('host')}`;

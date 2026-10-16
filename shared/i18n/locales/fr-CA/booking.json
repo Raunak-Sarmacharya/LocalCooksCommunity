@@ -414,6 +414,8 @@
   "cpPublish": "Enregistrer la politique",
   "cpSaved": "Politique enregistrée",
   "cpError": "Impossible de charger la politique d’annulation. Veuillez réessayer.",
+  "invPolicyChanged": "La politique d’annulation a changé. Consultez la politique mise à jour avant de payer.",
+  "invCheckoutCutoff": "La date limite de paiement de cette invitation est dépassée selon la politique d’annulation actuelle. Demandez à la cuisine de vous proposer un autre créneau.",
   "cpAck": "J’ai lu et j’accepte cette politique d’annulation.",
   "cpShort": "Cette réservation commence dans moins de {hours} heures. Après confirmation, vous payez {charge} en cas d’annulation. Vous pouvez retirer la demande en attente; la retenue sur votre carte est libérée.",
   "cpExact": "Remboursement : {refund} (votre paiement moins les frais de traitement de carte de {fee}).",

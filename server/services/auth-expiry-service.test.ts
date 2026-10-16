@@ -12,7 +12,7 @@ vi.mock('../db', () => {
     let table = '', joined = false, condition: any;
     const rows = () => {
       if (condition) state.queries.push(new PgDialect().sqlToQuery(condition));
-      return table === 'platform_settings' ? state.settings : table === 'kitchens' ? [{ timezone: 'UTC' }]
+      return table === 'platform_settings' ? state.settings : table === 'kitchen_invitations' ? [{ managerId: 2 }] : table === 'kitchens' ? [{ timezone: 'UTC' }]
         : table === 'kitchen_bookings' ? joined ? [{ booking: state.booking, kitchen: { id: 4, name: 'Test kitchen' }, location: { id: 2, timezone: 'UTC' } }]
           : [state.booking] : [];
     };
@@ -53,6 +53,14 @@ describe('R5 authorization enforcement (all external effects mocked)', () => {
     expect((await getBookingResponseDeadline(state.booking)).toISOString()).toBe('2026-10-14T18:00:00.000Z');
     state.booking.paymentDecision = { state: 'pending' }; vi.setSystemTime(new Date('2026-10-15T00:00:00Z'));
     expect(await lazyExpireKitchenBookingAuth(state.booking)).toBe(false); expect(state.decide).not.toHaveBeenCalled();
+  });
+  it('attempts pre-approved invitation acceptance instead of expiring a stranded invitation booking', async () => {
+    state.booking.invitationId = 'inv_one'; vi.setSystemTime(new Date('2026-10-15T00:00:00Z'));
+    expect(await lazyExpireKitchenBookingAuth(state.booking)).toBe(false);
+    expect(state.decide).toHaveBeenCalledWith(1, 'confirmed', [], [], 2);
+    state.decide.mockRejectedValueOnce(new Error('Provider unavailable'));
+    expect(await lazyExpireKitchenBookingAuth(state.booking)).toBe(false);
+    expect(state.decide.mock.calls.every(call => call[1] === 'confirmed')).toBe(true);
   });
   it('queues warm role-specific expiry copy only in the verified release transaction', async () => {
     await sendAuthExpiryNotification(3, 1, 'kitchen_booking', 4, db as any, '2026-10-14T19:00:00Z');

@@ -26,20 +26,18 @@ export async function reconcilePaymentRefundReceipts(intentId: string, connectio
     throw new Error('Refund facts changed while waiting for the source lock; reload provider evidence.');
   const saved = (source.metadata || {}) as Record<string, any>;
   const localReceipts = (saved.refunds || []).map((item: any) => ({ ...item, id: item.id || item.refundId }));
-  const money = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts });
   const operation = saved.cancellationRefundOperation;
+  const providerReceipt = operation && operation.status !== 'succeeded'
+    && facts.refunds.some(refund => refund.metadata?.refund_operation_id === operation.id)
+    ? verifiedReservedRefund(source, operation, facts) : undefined;
+  const money = cancellationSourceQuote({ ...facts, serviceFee: Number(source.serviceFee), localReceipts });
   let reconciledOperation = operation;
-  if (operation && operation.status !== 'succeeded') {
-    const matches = facts.refunds.filter(refund => refund.metadata?.refund_operation_id === operation.id);
-    if (matches.length > 1) throw new Error('Multiple receipts match the reserved refund');
-    if (matches[0]) {
-      const providerReceipt = verifiedReservedRefund(source, operation, facts);
-      const receipt = money.receipts.find(item => item.id === providerReceipt.id)!;
-      if (receipt.managerDebited !== operation.managerRefund || receipt.platformServiceFeeReturned !== (operation.platformRefund ?? 0) || receipt.customerReceived !== (operation.customerRefund ?? operation.managerRefund))
-        throw new Error('Refund receipt differs from the reserved cancellation allocation');
-      if (operation.platformFunding && Number(providerReceipt.metadata?.kitchen_debt_cents) !== operation.kitchenDebtCents) throw new Error('Kitchen funding evidence differs from the reserved debt');
-      reconciledOperation = { ...operation, status: 'succeeded', refunded: receipt.customerReceived, refundId: receipt.id, verifiedAt: new Date().toISOString(), error: null };
-    }
+  if (providerReceipt) {
+    const receipt = money.receipts.find(item => item.id === providerReceipt.id)!;
+    if (receipt.managerDebited !== operation.managerRefund || receipt.platformServiceFeeReturned !== (operation.platformRefund ?? 0) || receipt.customerReceived !== (operation.customerRefund ?? operation.managerRefund))
+      throw new Error('Refund receipt differs from the reserved cancellation allocation');
+    if (operation.platformFunding && Number(providerReceipt.metadata?.kitchen_debt_cents) !== operation.kitchenDebtCents) throw new Error('Kitchen funding evidence differs from the reserved debt');
+    reconciledOperation = { ...operation, status: 'succeeded', refunded: receipt.customerReceived, refundId: receipt.id, verifiedAt: new Date().toISOString(), error: null };
   }
   const recovery = saved.refundRecovery;
   const recoveredReceipt = recovery ? facts.refunds.find(refund => refund.metadata?.refund_operation_id === recovery.attemptKey) : null;

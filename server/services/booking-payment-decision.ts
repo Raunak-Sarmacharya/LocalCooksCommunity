@@ -67,7 +67,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
   let decision = booking.paymentDecision as Decision | null;
   if (!decision && target === 'confirmed' && booking.status === 'pending' && booking.paymentStatus === 'authorized') {
     const { lazyExpireKitchenBookingAuth } = await import('./auth-expiry-service');
-    if (booking.createdAt && new Date() >= await getBookingResponseDeadline(booking)) {
+    if (!booking.invitationId && booking.createdAt && new Date() >= await getBookingResponseDeadline(booking)) {
       // Release the hold now rather than leaving it for the next worker tick.
       await lazyExpireKitchenBookingAuth(booking);
       throw new BookingRequestExpired();
@@ -110,7 +110,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       if (current?.paymentDecision) return current.paymentDecision as Decision;
       if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
         || current.updatedAt.getTime() !== booking.updatedAt.getTime()) throw new Error('Booking changed; refresh before deciding');
-      if (target === 'confirmed' && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))
+      if (target === 'confirmed' && !current.invitationId && current.createdAt && new Date() >= await getBookingResponseDeadline(current, tx))
         throw new BookingRequestExpired();
       const storage = await tx.select().from(storageBookings).where(eq(storageBookings.kitchenBookingId, bookingId)).for('update');
       const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, bookingId)).for('update');
@@ -295,7 +295,10 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
       stripeStatus: intent.status, ...(decision!.target === 'confirmed' ? { paidAt: new Date() } : {}), updatedAt: new Date() })
       .where(eq(paymentTransactions.paymentIntentId, decision!.intentId));
     // New confirmations only: one staffed arrival challenge per arrival target, same transaction as the status change.
-    if (decision!.target === 'confirmed') await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
+    if (decision!.target === 'confirmed') {
+      await ensureChallengesForBooking(tx, bookingId, decision!.actorId);
+      if (booking!.invitationId) await (await import('./kitchen-invitations')).recordFulfilledInvitation(booking!.invitationId, bookingId, tx);
+    }
     if (decision!.expiry) await (await import('./auth-expiry-service')).sendAuthExpiryNotification(booking!.chefId, bookingId, 'kitchen_booking', booking!.kitchenId, tx, decision!.expiry.responseDeadlineAt);
     else {
     const [paidTiming] = decision!.target === 'confirmed' ? await tx.select({ timing: paymentTransactions.payoutTiming }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1) : [];
@@ -320,11 +323,6 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
   // The chef's receipt is issued from the captured payment row, after it committed (idempotent; never fails the decision).
   if (decision.target === 'confirmed') {
     await import('./booking-documents').then(documents => documents.issueBookingDocumentsSafely(bookingId, 'booking_captured')).catch(() => undefined);
-    const [confirmed] = await db.select({ invitationId: kitchenBookings.invitationId }).from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
-    if (confirmed?.invitationId) {
-      const { recordFulfilledInvitation } = await import('./kitchen-invitations');
-      await recordFulfilledInvitation(confirmed.invitationId, bookingId);
-    }
   }
   return { success: true, status: decision.target,
     authorizationVoided: decision.target === 'cancelled', recovered: false };

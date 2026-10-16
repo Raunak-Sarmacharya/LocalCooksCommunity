@@ -150,7 +150,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
           const { releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
           await releaseKitchenCheckout(expiredSession.metadata.hold_id);
           const { releaseInvitationCheckout } = await import('../services/kitchen-invitations');
-          await releaseInvitationCheckout(expiredSession.metadata.invitation_id, Number(expiredSession.metadata.invitation_version));
+          await releaseInvitationCheckout(expiredSession.metadata.invitation_id, Number(expiredSession.metadata.invitation_version), expiredSession.id);
         }
         break;
       }

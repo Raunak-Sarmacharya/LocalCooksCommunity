@@ -17,7 +17,7 @@ import { getBookingResponseDeadline } from './booking-response-deadline';
 import { emailLocalDateTimeSentence } from '../email';
 import { completeReplacementSafely, noticeTimes, recordReplacementPending, replacedRequestForFulfillment, replacesBookingIdFrom } from './booking-replacement';
 import { recordReplacementWithdrawal } from './booking-payment-decision';
-import { registerKitchenCheckout, checkoutIncident, updateCheckoutIncident, resolveCheckoutConflict } from './kitchen-checkout-incidents';
+import { registerKitchenCheckout, checkoutIncident, updateCheckoutIncident, recordCheckoutConflict, resolveCheckoutConflict } from './kitchen-checkout-incidents';
 import { chefService } from '../domains/users/chef.service';
 
 async function invitationForCheckout(metadata: Record<string, string>, chefId: number, kitchenId: number) {
@@ -25,7 +25,7 @@ async function invitationForCheckout(metadata: Record<string, string>, chefId: n
   const version = Number(metadata.invitation_version);
   const [invitation] = await db.select().from(kitchenInvitations).where(eq(kitchenInvitations.id, metadata.invitation_id)).limit(1);
   if (!invitation || invitation.chefId !== chefId || invitation.kitchenId !== kitchenId || invitation.version !== version
-    || !['accepted_pending_payment', 'accepted'].includes(invitation.status)
+    || !['accepted_pending_payment', 'accepted', 'unavailable'].includes(invitation.status)
     || invitation.listSubtotalCents !== Number(metadata.invitation_list_subtotal_cents)
     || invitation.offeredSubtotalCents !== Number(metadata.invitation_offered_subtotal_cents))
     throw new Error('Invitation checkout evidence is incomplete');
@@ -83,7 +83,8 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   }
   if (invitation) {
     const eligibility = await chefService.getApplicationStatusForBooking(chefId, invitation.locationId, kitchenId);
-    if (!eligibility.canBook) {
+    if (!eligibility.canBook || invitation.status === 'unavailable') {
+      await recordCheckoutConflict(session.id);
       await markInvitationUnavailable(invitation);
       return resolveCheckoutConflict(session, intent, stripe);
     }

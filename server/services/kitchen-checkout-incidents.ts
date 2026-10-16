@@ -145,7 +145,12 @@ export async function reconcileKitchenCheckout(sessionId: string, stripe = check
   const intent = session.payment_intent;
   if (!intent || typeof intent === 'string') throw Error('Checkout payment evidence is unavailable');
   const [booking] = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.paymentIntentId, intent.id), eq(kitchenBookings.chefId, row.chefId))).limit(1);
-  if (booking) return updateCheckoutIncident(sessionId, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, lastCheckedAt: new Date() });
+  if (booking) {
+    await updateCheckoutIncident(sessionId, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, lastCheckedAt: new Date() });
+    if (booking.invitationId && booking.status === 'pending' && booking.paymentStatus === 'authorized' && !booking.paymentDecision)
+      await (await import('./booking-checkout-fulfillment')).fulfillQuotedKitchenBooking(session, intent, stripe);
+    return;
+  }
   if (row.inventoryConflict) return resolveCheckoutConflict(session, intent, stripe);
   if (!['requires_capture', 'succeeded'].includes(intent.status)) throw Error('Completed checkout payment needs review');
   if (!session.metadata.addon_prices) throw Error('Legacy checkout requires Local Cooks review of its quoted items');
@@ -155,7 +160,11 @@ export async function reconcileKitchenCheckout(sessionId: string, stripe = check
 export async function recoverKitchenCheckouts(limit = 3) {
   const key = 'checkoutRecovery', pageSize = Math.min(limit, 3);
   const rows = await db.select().from(kitchenCheckoutIncidents).where(and(
-    notInArray(kitchenCheckoutIncidents.outcome, ['booking_created', 'closed']),
+    or(notInArray(kitchenCheckoutIncidents.outcome, ['booking_created', 'closed']),
+      and(eq(kitchenCheckoutIncidents.outcome, 'booking_created'), sql`EXISTS (SELECT 1 FROM ${kitchenBookings}
+        WHERE ${kitchenBookings.id} = ${kitchenCheckoutIncidents.bookingId} AND ${kitchenBookings.invitationId} IS NOT NULL
+        AND ${kitchenBookings.status} = 'pending' AND ${kitchenBookings.paymentStatus} = 'authorized'
+        AND ${kitchenBookings.paymentDecision} IS NULL)`)),
     or(eq(kitchenCheckoutIncidents.moneyStatus, 'unverified'), eq(kitchenCheckoutIncidents.moneyStatus, 'refund_pending')),
     workerAfter(key, kitchenCheckoutIncidents.id))).orderBy(asc(kitchenCheckoutIncidents.id)).limit(pageSize);
   await workerPageEnd(key, rows.length, pageSize);
