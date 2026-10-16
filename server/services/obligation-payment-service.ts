@@ -71,8 +71,9 @@ export async function checkoutObligation(stripe: Stripe, kind: ObligationKind, i
     .where(and(eq(table.id, id), or(isNull(table.paymentRoute), eq(table.paymentRoute, 'off_session')),
       isNull(table.stripeCheckoutSessionId),
       sql`${table.status}::text IN ('charge_failed','approved','partially_approved','chef_accepted','penalty_approved','escalated')`,
-      ...(kind === 'overstay_penalty' ? [sql`${storageOverstayRecords.itemsRemovedAt} IS NOT NULL
-        AND ${storageOverstayRecords.chefDisputeDeadline} <= CURRENT_TIMESTAMP
+      // A standalone-storage holdover request ('holdover:' key) can be paid at once on-session; only an open dispute pauses it.
+      ...(kind === 'overstay_penalty' ? [sql`(${storageOverstayRecords.idempotencyKey} LIKE 'holdover:%'
+        OR ${storageOverstayRecords.itemsRemovedAt} IS NOT NULL AND ${storageOverstayRecords.chefDisputeDeadline} <= CURRENT_TIMESTAMP)
         AND (${storageOverstayRecords.chefDisputedAt} IS NULL OR ${storageOverstayRecords.disputeReviewedAt} IS NOT NULL)`] : [])))
     .returning({ id: table.id });
   if (!acquired) throw new Error('Another payment is already in progress');

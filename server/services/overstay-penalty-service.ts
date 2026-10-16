@@ -1835,7 +1835,8 @@ export async function createPenaltyPaymentCheckout(
     }
 
     const penaltyAmountCents = overstayRecord.finalPenaltyCents ?? overstayRecord.calculatedPenaltyCents ?? 0;
-    const taxRatePercent = Number(kitchen?.taxRatePercent || 0);
+    // Storage-v1 holdover uses the HST rate frozen when the rental was approved, like its paid terms.
+    const taxRatePercent = storageV1 ? Number((booking.rentalTerms as { taxRatePercent?: number }).taxRatePercent || 0) : Number(kitchen?.taxRatePercent || 0);
     const penaltyTaxCents = Math.round(penaltyAmountCents * taxRatePercent / 100);
     const storageName = listing?.name || 'Storage';
     const kitchenName = kitchen?.name || 'Kitchen';

@@ -5,13 +5,14 @@
  */
 import { and, asc, eq, like, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchens, locations, platformSettings, storageBookings, storageListings, storageOverstayHistory, storageOverstayRecords } from '@shared/schema';
+import { kitchens, locations, storageBookings, storageListings, storageOverstayHistory, storageOverstayRecords } from '@shared/schema';
 import { addDays, daysBetween, DISPOSAL_OTHER_DAYS, DISPOSAL_PERISHABLE_HOURS, localDayStart, localToday, occupancyRange,
   REMOVAL_REVIEW_DAYS, rentalPhase, termPrice, toDateRange } from '@shared/storage-rental';
 import { logger } from '../logger';
 import { generateReferenceCode } from '../reference-code';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { processManagerDecision } from './overstay-penalty-service';
+import { storageSettings } from './storage-settings';
 import { queueStorageRentalNotice, type StorageNoticeEvent, type StorageNoticeFacts } from './storage-rental-notices';
 import { expireRental, StorageRentalError } from './storage-rentals';
 import { workerAfter, workerPageEnd, workerRecord } from './worker-context';
@@ -32,7 +33,7 @@ const dates = (r: Rental) => ({ rentalState: r.rentalState!, termStart: r.termSt
   releasedOn: r.releasedOn, needsCleaning: r.needsCleaning });
 function phaseOf(r: Rental, today: string) {
   const f = r.rentalTerms as Frozen;
-  return rentalPhase({ ...dates(r), dailyPriceCents: f.dailyPriceCents, taxRatePercent: f.taxRatePercent }, today);
+  return rentalPhase({ ...dates(r), dailyPriceCents: f.dailyPriceCents, taxRatePercent: f.taxRatePercent }, today)!; // callers lock reserved, active or removal_review rentals
 }
 const withTax = (baseCents: number, taxRatePercent: number) => baseCents + Math.round((baseCents * taxRatePercent) / 100);
 /** Largest pre-tax amount whose total with tax does not exceed what the kitchen entered. */
@@ -98,7 +99,7 @@ async function sweepOne(id: number, now: Date) {
       plan(sent, 'move_in_due', reach([1, 3]), due);
       plan(sent, 'not_moved_in', reach([7]), due);
     } else {
-      const phase = phaseOf(rental, today)!;
+      const phase = phaseOf(rental, today);
       const end = phase.effectiveEnd, base = { paidThrough: end, timezone };
       if (phase.phase === 'current' || phase.phase === 'ending_soon') {
         const steps = [14, 7, 2, 0].filter(n => today >= addDays(end, -n));
@@ -119,7 +120,7 @@ async function sweepOne(id: number, now: Date) {
       }
     }
     for (const item of due) await queueStorageRentalNotice(tx, id, item.event, { timezone, ...item.facts, eventKey: item.key });
-    if (sent.size !== (f.noticesSent ?? []).length) await tx.update(storageBookings).set({ rentalTerms: { ...f, noticesSent: [...sent] } }).where(eq(storageBookings.id, id));
+    if (sent.size !== (f.noticesSent ?? []).length) await tx.update(storageBookings).set({ rentalTerms: { ...f, noticesSent: Array.from(sent) } }).where(eq(storageBookings.id, id));
   });
 }
 
@@ -150,7 +151,7 @@ export async function sweepStorageRentals(limit = 3, now = new Date()) {
 async function holdoverState(tx: Tx, rental: Rental, now: Date) {
   if (!['active', 'removal_review'].includes(rental.rentalState!)) fail('not_active');
   const f = rental.rentalTerms as Frozen, phase = phaseOf(rental, localToday(now, rental.timezone!));
-  if (!phase || phase.holdoverDays < 1) fail('holdover_not_started');
+  if (phase.holdoverDays < 1) fail('holdover_not_started');
   const records = await tx.select({ status: storageOverstayRecords.status, days: storageOverstayRecords.daysOverdue, key: storageOverstayRecords.idempotencyKey })
     .from(storageOverstayRecords).where(and(eq(storageOverstayRecords.storageBookingId, rental.id), like(storageOverstayRecords.idempotencyKey, `holdover:${rental.id}:%`)));
   if (records.some(r => OPEN_HOLDOVER.includes(r.status))) fail('holdover_request_open');
@@ -224,24 +225,10 @@ export async function openRemovalReview(rentalId: number, now = new Date()) {
     const rental = await lockRental(tx, rentalId);
     if (rental.rentalState !== 'active') fail('not_active');
     const today = localToday(now, rental.timezone!);
-    if (phaseOf(rental, today)!.phase !== 'holdover') fail('holdover_not_started');
+    if (phaseOf(rental, today).phase !== 'holdover') fail('holdover_not_started');
     await openReview(tx, rental, today, now, null);
     return { state: 'removal_review' as const };
   });
-}
-
-/**
- * The extension flow (WP-ST5) calls this after it has moved paid_through: a chef who pays back through today leaves the
- * review and the unit returns to normal occupancy. Returns whether the rental changed.
- */
-export async function restoreFromRemovalReview(tx: Tx, rentalId: number, now = new Date()) {
-  const rental = await lockRental(tx, rentalId);
-  if (rental.rentalState !== 'removal_review' || rental.paidThrough! < localToday(now, rental.timezone!)) return false;
-  const review = (rental.removalReview ?? {}) as Review;
-  await tx.update(storageBookings).set({ rentalState: 'active', updatedAt: now,
-    removalReview: { ...review, closedAt: now.toISOString(), closedReason: 'extended' },
-    occupancy: toDateRange(occupancyRange({ ...dates(rental), rentalState: 'active' }, localToday(now, rental.timezone!))!) }).where(eq(storageBookings.id, rentalId));
-  return true;
 }
 
 export async function sendFinalNotice(rentalId: number, adminId: number, input: { photos: string[]; items: Array<{ name: string; qty: number; perishable: boolean }> }, now = new Date()) {
@@ -275,8 +262,7 @@ export async function recordRemoval(rentalId: number, actor: { id: number; role:
     if (rental.rentalState !== 'removal_review' || !review) fail('not_active');
     if (!review!.finalNoticeAt) fail('final_notice_required');
     if (actor.role === 'manager') {
-      const [toggle] = await tx.select({ value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.key, 'storage_kitchen_disposal_enabled'));
-      if (toggle?.value !== 'true') fail('disposal_disabled', 403);
+      if (!(await storageSettings(tx)).kitchenDisposalEnabled) fail('disposal_disabled', 403);
     }
     const open = review!.items.map((item, index) => ({ item, index })).filter(({ item }) => !item.removedAt);
     const chosen = input.all ? open : (input.itemIndexes ?? []).map(index => open.find(entry => entry.index === index) ?? fail('invalid_details', 400));

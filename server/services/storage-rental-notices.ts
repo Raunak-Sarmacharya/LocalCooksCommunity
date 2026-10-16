@@ -171,8 +171,8 @@ export async function queueStorageRentalNotice(tx: Tx, rentalId: number, event: 
       byDate: date(facts.byDate),
       graceEndsOn: date(facts.graceEndsOn),
       payoutDate: date(facts.payoutDate),
-      perishableDate: date(facts.perishablesAfter),
-      otherDate: date(facts.othersAfter),
+      perishableDate: deadline(facts.perishablesAfter),
+      otherDate: deadline(facts.othersAfter),
       date: date(facts.date),
       deadline: deadline(facts.deadline),
     };
