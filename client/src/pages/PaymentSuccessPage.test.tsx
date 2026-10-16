@@ -24,6 +24,17 @@ describe('checkout return states', () => {
     await act(async () => { vi.advanceTimersByTime(60_000); });
     expect(fetcher).toHaveBeenCalledTimes(1); expect(window.location.pathname).toBe('/payment-success');
   });
+  it('an invitation reads "Confirming" until the booking is confirmed, then "Your booking is confirmed" (live #194)', async () => {
+    await mount({ state: 'request_created', bookingId: 194, invitation: true, confirmed: false });
+    expect(screen.getByText(en.checkoutConfirmingDetail)).toBeInTheDocument();
+    expect(screen.queryByText(en.checkoutRequestCreatedDetail)).not.toBeInTheDocument();
+    fetcher.mockResolvedValue({ ok: true, json: async () => ({ ...result, state: 'request_created', bookingId: 194, invitation: true, confirmed: true }) });
+    await act(async () => { vi.advanceTimersByTime(2_000); });
+    expect(screen.getByRole('heading', { name: en.checkoutConfirmed })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.checkoutViewBooking })).toHaveAttribute('href', '/booking/194');
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it('shows our booking reference, not the Stripe checkout id, once the request exists (live #181)', async () => {
     await mount({ state: 'request_created', bookingId: 42, referenceCode: 'KB-ABC123' });
     expect(screen.getByText('Booking reference: KB-ABC123')).toBeInTheDocument();

@@ -1181,5 +1181,9 @@
   "invN_sent_admin_title": "Запрошення надіслано · {kitchen} → {customer}",
   "invN_sent_admin_body": "{when}. Час кухні {price}. Разом {total}. Відкрите до {expiry}.",
   "invN_sent_admin_discount_title": "Запрошення надіслано · {kitchen} → {customer}",
-  "invN_sent_admin_discount_body": "{when}. Час кухні {price} (звичайна ціна {list}). Разом {total}. Відкрите до {expiry}."
+  "invN_sent_admin_discount_body": "{when}. Час кухні {price} (звичайна ціна {list}). Разом {total}. Відкрите до {expiry}.",
+  "checkoutConfirmed": "Ваше бронювання підтверджено",
+  "checkoutConfirmedDetail": "Усе готово. Деталі прибуття та квитанція — у вашому бронюванні.",
+  "checkoutConfirmingDetail": "Оплату отримано. Підтверджуємо бронювання — це займе кілька секунд.",
+  "checkoutViewBooking": "Переглянути бронювання"
 }

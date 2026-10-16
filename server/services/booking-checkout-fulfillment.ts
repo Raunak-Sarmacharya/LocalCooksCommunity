@@ -47,6 +47,7 @@ async function markInvitationUnavailable(invitation?: typeof kitchenInvitations.
   if (updated) await db.insert(kitchenInvitationEvents).values({ invitationId: invitation.id, version: invitation.version,
     kind: 'unavailable', actorRole: 'system', noticeKey: `${invitation.id}:${invitation.version}:unavailable`,
     metadata: { afterPayment: true } }).onConflictDoNothing();
+  if (updated) (await import('./kitchen-invitations')).wakeInvitationDelivery(invitation.id);
 }
 
 /** The chef's own in-app notice for a new request; the manager keeps the review copy. */

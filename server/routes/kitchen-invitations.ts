@@ -14,6 +14,7 @@ import {
   invitationCheckoutPricing,
   invitationDto,
   releaseInvitationCheckout,
+  wakeInvitationDelivery,
   listKitchenInvitations,
   previewKitchenInvitation,
   replaceKitchenInvitation,
@@ -32,6 +33,7 @@ async function markUnavailable(row: typeof kitchenInvitations.$inferSelect, reas
   if (updated) await db.insert(kitchenInvitationEvents).values({ invitationId: row.id, version: row.version,
     kind: 'unavailable', actorRole: 'system', noticeKey: `${row.id}:${row.version}:unavailable`,
     metadata: { reason } }).onConflictDoNothing();
+  if (updated) wakeInvitationDelivery(row.id);
 }
 const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => async (req: Request, res: Response) => {
   try { await fn(req, res); }

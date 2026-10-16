@@ -73,7 +73,7 @@ export default function ChefInvitationPage() {
     const pricing = equipmentIds.length > 0 && !quote.data;
     const day = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${invitation.date}T12:00:00Z`));
     const time = `${formatTime(invitation.startTime, locale)}–${formatTime(invitation.endTime, locale)} · ${friendlyTimezoneName(invitation.timezone, locale)}`;
-    const expires = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: invitation.timezone }).format(new Date(invitation.expiresAt));
+    const expires = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: invitation.timezone }).format(new Date(invitation.expiresAt)) + ` (${friendlyTimezoneName(invitation.timezone, locale)})`;
     const findTime = `/book/${invitation.kitchen.locationId}?kitchenId=${invitation.kitchen.id}`;
     const closed = !['sent', 'accepted_pending_payment'].includes(invitation.status);
     body = <div className="mx-auto max-w-2xl space-y-6" data-testid="chef-invitation">

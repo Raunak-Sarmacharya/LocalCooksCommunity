@@ -25,6 +25,7 @@ import { ensureServerI18n, tLocale } from '../i18n';
 import { sendEmail } from '../email';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { operationalEmailAllowed } from './admin-email-preferences';
+import { isE2eOutboundSuppressed } from '../e2e-outbound-guard';
 
 export const invitationStatuses = [
   'sent', 'accepted_pending_payment', 'accepted', 'declined', 'withdrawn', 'expired', 'superseded', 'unavailable',
@@ -117,9 +118,12 @@ export async function previewKitchenInvitation(managerId: number, input: Invitat
   const availability = useDaily ? dailyAvailability : hourlyAvailability;
   const slots = availability.slots || [];
   const pricingMode = useDaily || Number(ctx.hourlyRate || 0) <= 0 ? 'daily' as const : 'hourly' as const;
+  // An unavailable time still gets priced by the hours asked for, so the kitchen reads "not available", not a price error.
+  const [startH, startM] = input.startTime.split(':').map(Number), [endH, endM] = input.endTime.split(':').map(Number);
+  const requestedHours = ((endH * 60 + endM - startH * 60 - startM + 1440) % 1440) / 60;
   const listSubtotalCents = pricingMode === 'daily'
     ? Math.round(Number(ctx.dailyRate || 0))
-    : Math.round(Number(ctx.hourlyRate || 0)) * slots.length;
+    : Math.round(Math.round(Number(ctx.hourlyRate || 0)) * (slots.length || requestedHours));
   const offeredSubtotalCents = offeredInvitationSubtotal(listSubtotalCents, input.discount);
   const taxCents = Math.round(offeredSubtotalCents * Number(ctx.taxRatePercent || 0) / 100);
   const fees = await calculateCheckoutFeesAsync(offeredSubtotalCents, { taxAmountCents: taxCents });
@@ -159,6 +163,15 @@ async function event(tx: any, invitation: { id: string; version: number }, kind:
     invitationId: invitation.id, version: invitation.version, kind, actorId, actorRole, reason, metadata,
     noticeKey: `${invitation.id}:${invitation.version}:${kind}:${randomUUID()}`,
   });
+  wakeInvitationDelivery(invitation.id);
+}
+
+/** Best-effort wakeup (debounced well past the producing commit); the outbox row and the backstop tick stay authoritative. */
+export function wakeInvitationDelivery(invitationId: string) {
+  if (!process.env.INNGEST_EVENT_KEY || isE2eOutboundSuppressed()) return;
+  void import('../lifecycle-inngest')
+    .then(({ inngest, invitationNoticeEvent }) => inngest.send({ name: invitationNoticeEvent, data: { invitationId } }))
+    .catch(error => console.warn('[Invitations] Delivery wakeup not sent; the backstop tick will deliver', error instanceof Error ? error.message : error));
 }
 
 export async function createKitchenInvitation(managerId: number, input: InvitationInput & { requestKey: string }) {

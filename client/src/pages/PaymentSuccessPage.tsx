@@ -40,7 +40,8 @@ export default function PaymentSuccessPage() {
         if (result.sessionId !== sessionId || !['request_created', 'verifying', 'slot_taken', 'needs_support'].includes(result.state)) throw Error('Checkout response mismatch');
         if (cancelled) return;
         setOutcome(result);
-        const replacementPending = result.state === 'request_created' && ['pending', 'releasing'].includes(result.replacement?.outcome || '');
+        // An invitation is confirmed right after its booking is created; keep checking until that lands.
+        const replacementPending = result.state === 'request_created' && (['pending', 'releasing'].includes(result.replacement?.outcome || '') || !!result.invitation && !result.confirmed);
         if (!replacementPending && (result.state !== 'verifying' || attempt >= 15)) return;
       } catch {
         if (cancelled) return;
@@ -55,7 +56,8 @@ export default function PaymentSuccessPage() {
   const state = unavailable ? 'needs_support' : outcome?.state || 'verifying';
   const amount = outcome?.amountCents == null ? null : new Intl.NumberFormat(i18n.language, { style: 'currency', currency: outcome.currency.toUpperCase() }).format(outcome.amountCents / 100);
   const money = outcome?.moneyStatus;
-  const description = state === 'request_created' ? t('checkoutRequestCreatedDetail')
+  const confirmed = state === 'request_created' && !!outcome?.confirmed;
+  const description = confirmed ? t('checkoutConfirmedDetail') : state === 'request_created' ? t(outcome?.invitation ? 'checkoutConfirmingDetail' : 'checkoutRequestCreatedDetail')
     : state === 'verifying' ? t('checkoutVerifyingDetail')
     : state === 'slot_taken' && money === 'hold_released' ? t('checkoutHoldReleased')
     : state === 'slot_taken' && amount && money === 'refunded' ? t('checkoutRefundSent', { amount })
@@ -63,7 +65,7 @@ export default function PaymentSuccessPage() {
     : t('checkoutNeedsSupportDetail');
   return <main className="min-h-screen flex items-center justify-center bg-background px-6 py-12">
     <section className="w-full max-w-md space-y-5" aria-live="polite">
-      <h1 className="text-xl font-semibold">{t(state === 'request_created' ? 'checkoutRequestCreated' : state === 'slot_taken' ? 'checkoutSlotTaken' : state === 'verifying' ? 'checkoutVerifying' : 'checkoutNeedsSupport')}</h1>
+      <h1 className="text-xl font-semibold">{t(confirmed ? 'checkoutConfirmed' : state === 'request_created' ? 'checkoutRequestCreated' : state === 'slot_taken' ? 'checkoutSlotTaken' : state === 'verifying' ? 'checkoutVerifying' : 'checkoutNeedsSupport')}</h1>
       <p className="text-sm text-muted-foreground">{description}</p>
       {amount && <p className="text-sm font-medium">{amount}</p>}
       {outcome?.operatingDate && <p className="text-sm">{t('checkoutDate', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${outcome.operatingDate}T12:00:00Z`)) })}</p>}
@@ -71,7 +73,7 @@ export default function PaymentSuccessPage() {
       {state === 'slot_taken' && <p className="text-sm">{t('checkoutOthersUnchanged')}</p>}
       {/* Payment-provider ids never show to chefs; "Contact Local Cooks" carries them to support. */}
       {outcome?.referenceCode && <p className="text-sm">{t('checkoutBookingReference', { reference: outcome.referenceCode })}</p>}
-      {state === 'request_created' && outcome?.bookingId && <Button asChild><Link href={`/booking/${outcome.bookingId}`}>{t('checkoutViewRequest')}</Link></Button>}
+      {state === 'request_created' && outcome?.bookingId && <Button asChild><Link href={`/booking/${outcome.bookingId}`}>{t(confirmed ? 'checkoutViewBooking' : 'checkoutViewRequest')}</Link></Button>}
       {(state !== 'request_created' || outcome?.replacement && ['pending', 'releasing', 'needs_support'].includes(outcome.replacement.outcome)) && <div className="flex flex-wrap items-center gap-4">
         <Button variant="outline" onClick={() => setRefresh(value => value + 1)}>{t('checkoutCheckAgain')}</Button>
         <ContactLocalCooks role="chef" situation={description} checkoutReference={sessionId} paymentReference={outcome?.paymentIntentId} />

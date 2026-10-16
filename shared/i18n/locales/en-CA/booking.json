@@ -1181,5 +1181,9 @@
   "invN_sent_admin_title": "Invitation sent · {kitchen} → {customer}",
   "invN_sent_admin_body": "{when}. Kitchen time {price}. Total {total}. Open until {expiry}.",
   "invN_sent_admin_discount_title": "Invitation sent · {kitchen} → {customer}",
-  "invN_sent_admin_discount_body": "{when}. Kitchen time {price} (listed {list}). Total {total}. Open until {expiry}."
+  "invN_sent_admin_discount_body": "{when}. Kitchen time {price} (listed {list}). Total {total}. Open until {expiry}.",
+  "checkoutConfirmed": "Your booking is confirmed",
+  "checkoutConfirmedDetail": "You’re all set. Arrival details and your receipt are in your booking.",
+  "checkoutConfirmingDetail": "Payment received. We’re confirming your booking now — this takes a few seconds.",
+  "checkoutViewBooking": "View your booking"
 }
