@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
@@ -63,6 +63,8 @@ function ProblemCard({ problem, staff, role, actorId }: { problem: Problem; staf
 
 type ProblemsProps = {
   kind?: 'booking' | 'tour'; id?: number; canReport?: boolean; staff?: boolean; role?: 'chef' | 'manager' | 'admin'; embedded?: boolean;
+  /** Opens the report from elsewhere on the page (a new `openToken` each time), with a title and prompt framed for the situation. */
+  intent?: { openToken: number; title: string; hint: string };
 };
 
 export function CommitmentProblems(props: ProblemsProps) {
@@ -70,7 +72,7 @@ export function CommitmentProblems(props: ProblemsProps) {
   return <ProblemsPanel key={`${props.role || 'chef'}:${props.kind || 'queue'}:${props.id || ''}`} {...props} />;
 }
 
-function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'chef', embedded = false }: ProblemsProps) {
+function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'chef', embedded = false, intent }: ProblemsProps) {
   const { t } = useTranslation('chef');
   const [description, setDescription] = useState('');
   const [reportOpen, setReportOpen] = useState(false);
@@ -93,6 +95,8 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
     onSuccess: () => { setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
   });
   const reportingAvailable = canReport && query.data?.reportingAvailable && !!kind && !!id;
+  const openToken = intent?.openToken;
+  useEffect(() => { if (openToken) setReportOpen(true); }, [openToken]);
   const hasProblems = !!query.data?.problems.length;
   const heading = staff || hasProblems ? t('problemHeading') : t('problemHelp');
   if (embedded && !hasProblems && !reportingAvailable && !query.error) return null;
@@ -107,8 +111,8 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
     <Dialog open={reportOpen} onOpenChange={setReportOpen}>
       {reportingAvailable && <DialogTrigger asChild><Button variant="outline" disabled={report.isPending}>{t('problemCopy32')}</Button></DialogTrigger>}
       <DialogContent showCloseButton>
-        <DialogHeader><DialogTitle>{t('problemCopy32')}</DialogTitle>
-          <DialogDescription>{t('problemShared', { id, kind: t(kind === 'tour' ? 'problemCopy02' : 'problemCopy01') })}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{intent?.title || t('problemCopy32')}</DialogTitle>
+          <DialogDescription>{intent?.hint || t('problemShared', { id, kind: t(kind === 'tour' ? 'problemCopy02' : 'problemCopy01') })}</DialogDescription></DialogHeader>
         {reportingAvailable ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (description.trim().length >= 10 && !report.isPending) report.mutate(); }}>
           <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`report-${kind}-${id}`}>{t('problemCopy33')}</label>
             <Textarea id={`report-${kind}-${id}`} value={description} maxLength={2000} disabled={report.isPending} onChange={event => setDescription(event.target.value)} aria-describedby={`report-hint-${kind}-${id}`} />

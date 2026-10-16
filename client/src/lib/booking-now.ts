@@ -125,7 +125,8 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
       // Hidden claims are omitted from the chef response, so a cleared inspection cannot promise “all good”.
       return t('booking:bnVisitComplete');
     case 'visit_ended': return t('bdhNextChefMissed');
-    case 'no_show': return t('kciStatusNoShow');
+    // Name the kitchen; the chef's way to contest it is the "I was there" report (Local Cooks reviews).
+    case 'no_show': return t('bnChefNoShowReported', { kitchen });
     // Before the kitchen answers: no money statement (owner, Oct 15); "No-shows aren't refunded" is in the accepted terms.
     case 'no_checkin': return f.startClock ? t('bnChefNoCheckin', { kitchen, time: f.startClock }) : t('bnChefNoCheckinNoTime', { kitchen });
     case 'issue': return t('bnChefIssue', { kitchen });
@@ -167,7 +168,7 @@ function managerSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): s
       if (f.inspectionOutcome === 'manager_cleared' && f.inspectedOn) return t('bnManagerCompletedInspected', { date: f.inspectedOn });
       if (f.inspectionOutcome === 'auto_closed_uninspected') return t('bnManagerCompletedNoInspection');
       return t('bdhNextManagerCompleted');
-    case 'no_show': return t('bdhNextManagerNoShow');
+    case 'no_show': return t('bnManagerNoShowReported', { chef });
     case 'no_checkin': return f.inspectionCanRespond && f.inspectionDue
       ? t('bnManagerNoCheckinAsk', { chef, time: f.inspectionDue }) : t('bnManagerNoCheckinClosed', { chef });
     case 'issue': return t('bnManagerIssue');
@@ -196,7 +197,7 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
       break;
     case 'in_session': out.push('need_more_time'); break;
     case 'completed': if (f.canDownload) out.push('download_invoice'); break;
-    case 'no_show': out.push('contact_local_cooks'); break;
+    case 'no_show': out.push('i_was_there'); break;
     case 'no_checkin': out.push('i_was_there'); break;
     case 'cancelled': if (f.findAnotherTime) out.push('find_another_time'); break;
   }
@@ -225,8 +226,9 @@ function managerSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSec
       if (f.canDownload) out.push('download_payout_statement');
       break;
     case 'no_show': out.push('fix_record'); break;
-    // "They came" is the primary; "They didn't come" sits beside it while the kitchen can still answer.
-    case 'no_checkin': out.push(f.inspectionCanRespond ? 'report_no_show' : 'fix_record'); break;
+    // While the kitchen can answer, "They came" / "They didn't come" render as one equal pair under the question (the page's
+    // attendance answer), not a header button plus a link; afterwards only the record fix remains.
+    case 'no_checkin': if (!f.inspectionCanRespond) out.push('fix_record'); break;
     case 'cancelled': if (f.managerCanManage) out.push('manage_refund'); break;
   }
   return out;

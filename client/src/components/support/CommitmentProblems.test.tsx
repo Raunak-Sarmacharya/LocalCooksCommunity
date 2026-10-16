@@ -170,3 +170,10 @@ it('closes a successful report and shows its persisted public trail to chef and 
   expect(screen.getByText('Show replies')).toBeInTheDocument();
   expect(screen.queryByText('Private assignment')).not.toBeInTheDocument(); client.clear();
 });
+it('opens straight on a framed report when the page asks (the chef’s "I was there" after a no-show)', async () => {
+  const fetcher=vi.fn(async () => ({ ok:true,json:async () => ({problems:[],reportingAvailable:true}) }));
+  const client=mount({kind:'booking',id:182,canReport:true,embedded:true,intent:{ openToken:1,title:'Tell us you were there',hint:'Say when you arrived at PHASE0 Main Kitchen.' }},fetcher);
+  expect(await screen.findByRole('dialog')).toHaveTextContent('Tell us you were there');
+  expect(screen.getByRole('dialog')).toHaveTextContent('Say when you arrived at PHASE0 Main Kitchen.');
+  expect(screen.getByRole('textbox')).toBeInTheDocument(); client.clear();
+});

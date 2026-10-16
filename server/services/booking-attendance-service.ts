@@ -1,3 +1,4 @@
+import { getUserDisplayName } from '../utils/user-display';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, kitchenBookingExtensions, bookingLifecycleEvents, kitchens, locations, paymentHistory, paymentTransactions } from '@shared/schema';
@@ -136,25 +137,36 @@ export async function recordBookingAttendance(bookingId: number, actor: Attendan
       await tx.update(kitchenBookings).set({ feedbackRequestedAt: now }).where(eq(kitchenBookings.id, bookingId));
     // No status/completion/checkout/financial/inventory mutation here.
     const title = input.action === 'report_no_show' ? 'No-show reported' : input.action === 'report_attended' ? 'Visit confirmed as attended' : 'Visit update withdrawn';
-    const shared = message ? ` Message from ${actor.role === 'manager' ? 'kitchen manager' : 'Local Cooks'}: ${message}` : '';
+    const chefName = context.booking.chefId ? await getUserDisplayName(context.booking.chefId, 'chef', tx) : 'The chef';
+    const by = actor.role === 'manager' ? context.kitchenName : 'Local Cooks';
+    const shared = message ? ` Note from ${by}: ${withFullStop(message)}` : '';
+    // The base text is what Local Cooks (admins) read; chef and kitchen get their own wording through roleText.
+    const reported = input.action === 'report_no_show' ? `${by} reported that ${chefName} didn’t come`
+      : input.action === 'report_attended' ? `${by} confirmed that ${chefName} came` : `${by} withdrew its attendance report for ${chefName}`;
     await queueBookingLifecycleEvent(tx, bookingId, input.action, title,
-      `${title} for booking #${bookingId}${visit ? `, visit ${visit.blockIndex + 1}` : ''}.${shared} If this doesn’t look right, contact Local Cooks. Open the booking to see the update and reply.`,
+      `${reported}${visit ? ` (visit ${visit.blockIndex + 1})` : ''}.${shared}`,
       actor.id, { ...(visit ? { visitId: visit.id } : {}), ...(input.action === 'report_no_show' ? { policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false } : {}),
-        ...(input.action !== 'withdraw_attendance' ? { roleText: attendanceRoleText(input.action, context.kitchenName, shared) } : {}) });
+        ...(input.action !== 'withdraw_attendance' ? { roleText: attendanceRoleText(input.action, context.kitchenName, chefName, message ? withFullStop(message) : '', by) } : {}) });
   });
   return readBookingAttendance(bookingId, actor);
 }
 
 /** WP-N: what each side reads after the kitchen answers "Did they come?". The policy sentence matches the chef page. */
 /** Owner (Oct 15): no-shows are not refunded at any kitchen; the chef accepted that at checkout (disclosure v2). */
-export function attendanceRoleText(action: 'report_no_show' | 'report_attended', kitchen: string, message = '') {
-  // The kitchen's own note, closed with a full stop so the next sentence reads cleanly.
-  const shared = message && !/[.!?]$/.test(message.trim()) ? `${message}.` : message;
+export function attendanceRoleText(action: 'report_no_show' | 'report_attended', kitchen: string, chef: string, note = '', by = kitchen) {
+  // The chef reads the note as the kitchen's (or Local Cooks'); the kitchen wrote it, so it reads "Your note".
+  const toChef = note ? ` Note from ${by}: ${note}` : '', toKitchen = note && by === kitchen ? ` Your note: ${note}` : note ? ` Note from ${by}: ${note}` : '';
   return action === 'report_no_show' ? {
-    chef: { title: `${kitchen} reported you didn’t arrive`, message: `${kitchen} reported you didn’t arrive. No-shows aren’t refunded.${shared} If you were there, tell us from the booking page.` },
-    manager: { title: 'No-show recorded', message: `You recorded that the chef didn’t come.${shared} Local Cooks may contact you if the chef disagrees.` },
+    chef: { title: `${kitchen} reported you didn’t arrive`, message: `${kitchen} reported you didn’t arrive. No-shows aren’t refunded.${toChef} If you were there, tell us from the booking page.` },
+    manager: { title: `No-show reported · ${chef}`, message: `You reported that ${chef} didn’t come. They’ve been told.${toKitchen} If they disagree, Local Cooks will review it with you.` },
   } : {
-    chef: { title: `${kitchen} confirmed your visit`, message: `${kitchen} confirmed you were there.${shared}` },
-    manager: { title: 'Visit confirmed', message: `You confirmed the chef came.${shared}` },
+    chef: { title: `${kitchen} confirmed your visit`, message: `${kitchen} confirmed you were there.${toChef}` },
+    manager: { title: `Visit confirmed · ${chef}`, message: `You confirmed ${chef} came.${toKitchen}` },
   };
+}
+
+/** Ends a free-text note with one full stop ("…arrived. (Test.)" stays as written). */
+function withFullStop(text: string) {
+  const trimmed = text.trim();
+  return /[.!?]["'”’)\]]*$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }

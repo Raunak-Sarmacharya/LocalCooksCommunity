@@ -2831,7 +2831,7 @@
   "fixNoteOptional": "Note to {chef} (optional)",
   "fixNoteHint": "{chef} sees this in their booking and email. Keep it factual.",
   "fixPlaceholder": "e.g. We waited until 10:30 a.m. and called at 10:15 but couldn’t reach you.",
-  "fixPolicy": "No-shows follow your cancellation policy: no refund is due. If {chef} disputes it, Local Cooks reviews.",
+  "fixPolicy": "No-shows aren’t refunded. If {chef} disputes it, Local Cooks reviews it.",
   "fixInternal": "Internal note (only Local Cooks sees this)",
   "fixBack": "Back",
   "fixRetry": "Try again",
@@ -3632,5 +3632,11 @@
   "bdViewPayoutDocuments": "View payout statements",
   "inspectWindowClosedReport": "The inspection window has closed. You can still report damage or extra cleaning until {date}.",
   "sxOfferOpen": "{kitchen} already offered you more time. Accept or decline that offer above.",
-  "bdPayoutDocsEmpty": "Payout statements appear here once your payout is sent."
+  "bdPayoutDocsEmpty": "Payout statements appear here once your payout is sent.",
+  "bnChefNoShowReported": "{kitchen} reported you didn’t come. No-shows aren’t refunded. Were you there? Tell us and Local Cooks will review it.",
+  "bnManagerNoShowReported": "You reported that {chef} didn’t come. They’ve been told. If they disagree, Local Cooks will review it with you.",
+  "bnIWasThereTitle": "Tell us you were there",
+  "bnIWasThereHint": "Say when you arrived at {kitchen} and who you saw or spoke to. Local Cooks reviews it alongside the kitchen’s report.",
+  "bdContactSupport": "Contact Local Cooks",
+  "fixIntroPreset": "{chef} gets a notification, and the booking history keeps a record."
 }

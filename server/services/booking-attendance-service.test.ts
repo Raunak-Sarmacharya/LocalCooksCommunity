@@ -14,6 +14,7 @@ vi.mock('../db', () => {
 });
 vi.mock('./notification.service', () => ({ notificationService: { create: (...args: any[]) => state.notify(...args) } }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: (...args: any[]) => state.notify(...args) }));
+vi.mock('../utils/user-display', () => ({ getUserDisplayName: async () => 'Sam Chef' }));
 import { readBookingAttendance, readBookingHistory, recordBookingAttendance } from './booking-attendance-service';
 const timestamp = '2026-10-02T10:00:00.000Z';
 const actor = { id: 2, role: 'manager' as const };
@@ -144,7 +145,12 @@ describe('explicit booking attendance statements (mocked database only)', () => 
     const roleText = state.notify.mock.calls[0][6].roleText;
     expect(roleText.chef.title).toBe('PHASE0 Main Kitchen reported you didn’t arrive');
     // Owner (Oct 15): never refunded at any kitchen (50% or 100% late charge), disclosed at checkout.
-    expect(roleText.chef.message).toBe('PHASE0 Main Kitchen reported you didn’t arrive. No-shows aren’t refunded. Message from kitchen manager: Chef did not attend. If you were there, tell us from the booking page.');
+    // Chefs see the kitchen's name, kitchens the chef's; the note reads once with one full stop.
+    expect(roleText.chef.message).toBe('PHASE0 Main Kitchen reported you didn’t arrive. No-shows aren’t refunded. Note from PHASE0 Main Kitchen: Chef did not attend. If you were there, tell us from the booking page.');
+    expect(roleText.manager).toEqual({ title: 'No-show reported · Sam Chef',
+      message: 'You reported that Sam Chef didn’t come. They’ve been told. Your note: Chef did not attend. If they disagree, Local Cooks will review it with you.' });
+    // The base text is Local Cooks' (admin) version: who reported whom, in plain words.
+    expect(state.notify.mock.calls[0][4]).toBe('PHASE0 Main Kitchen reported that Sam Chef didn’t come. Note from PHASE0 Main Kitchen: Chef did not attend.');
     expect(roleText.chef.message).not.toMatch(/%/);
     expect(state.notify.mock.calls[0][6]).toMatchObject({ policyTreatment: 'cancellation_at_start', moneyEffectsApplied: false });
   });

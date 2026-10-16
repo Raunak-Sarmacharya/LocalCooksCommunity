@@ -8,7 +8,7 @@ export const ADMIN_BOOKING_KINDS = new Set([
   'requested', 'confirmed', 'cancelled', 'cancellation_reviewed', 'storage_cancellation_reviewed', 'refund_issued',
   'payout_released', 'payout_on_hold', 'payment_recovery_needed',
   // Problems
-  'report_attended', 'checkout_claim_filed',
+  'report_attended', 'report_no_show', 'checkout_claim_filed',
 ]);
 
 type Cancellation = { cause?: 'chef' | 'kitchen'; refundCents?: number; feeCents?: number; kitchenShareRetainedCents?: number; feePending?: boolean };
@@ -52,6 +52,9 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       return { title: `Payment needs attention · ${facts.reference}`, message: `${who}. ${facts.message}` };
     case 'report_attended':
       return { title: `Attendance reported · ${facts.reference}`, message: `${who}. ${facts.message}` };
+    // No refund follows (owner, Oct 15); the chef can contest it with "I was there", which reaches support.
+    case 'report_no_show':
+      return { title: `No-show reported · ${facts.chef}`, message: `${who}. ${facts.message} No-shows aren’t refunded. If the chef says they were there, it comes to support as a problem report.` };
     case 'checkout_claim_filed':
       return { title: `Issue reported at checkout · ${facts.reference}`, message: `${who}. ${facts.message}` };
   }

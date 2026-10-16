@@ -2831,7 +2831,7 @@
   "fixNoteOptional": "Note pour {chef} (facultatif)",
   "fixNoteHint": "{chef} verra cette note dans sa réservation et par courriel. Décrivez les faits.",
   "fixPlaceholder": "Ex. : Nous avons attendu jusqu’à 10 h 30 du matin et appelé à 10 h 15 sans pouvoir vous joindre.",
-  "fixPolicy": "Les absences suivent votre politique d’annulation : aucun remboursement n’est dû. Si {chef} conteste, Local Cooks examine la situation.",
+  "fixPolicy": "Les absences ne sont pas remboursées. Si {chef} conteste, Local Cooks examine la situation.",
   "fixInternal": "Note interne (visible seulement par Local Cooks)",
   "fixBack": "Retour",
   "fixRetry": "Réessayer",
@@ -3623,7 +3623,7 @@
   "bnTheyCame": "La personne est venue",
   "bnTheyDidntCome": "La personne n’est pas venue",
   "bnIWasThere": "J’étais là",
-  "bnDidTheyCome": "La personne est-elle venue?",
+  "bnDidTheyCome": "Cette personne est-elle venue ?",
   "bnChefNoCheckinNoTime": "Nous n’avons vu aucune arrivée enregistrée pour votre réservation chez {kitchen}. Si vous étiez là, dites-le-nous.",
   "bnManagerRunningLate": "{chef} aura environ {duration} de retard. Sa réservation se termine toujours à {end}.",
   "sxLapsed": "{kitchen} n’a pas répondu à temps. La retenue de {amount} est en cours de libération — vous ne serez pas débité.",
@@ -3632,5 +3632,11 @@
   "bdViewPayoutDocuments": "Voir les relevés de paiement",
   "inspectWindowClosedReport": "La période d’inspection est terminée. Vous pouvez encore signaler des dommages ou un nettoyage supplémentaire jusqu’au {date}.",
   "sxOfferOpen": "{kitchen} vous a déjà offert plus de temps. Acceptez ou refusez cette offre ci-dessus.",
-  "bdPayoutDocsEmpty": "Les relevés de paiement apparaissent ici une fois votre paiement envoyé."
+  "bdPayoutDocsEmpty": "Les relevés de paiement apparaissent ici une fois votre paiement envoyé.",
+  "bnChefNoShowReported": "{kitchen} a signalé votre absence. Les absences ne sont pas remboursées. Vous étiez là ? Dites-le-nous et Local Cooks examinera la situation.",
+  "bnManagerNoShowReported": "Vous avez signalé que {chef} n’est pas venu. Cette personne a été prévenue. En cas de désaccord, Local Cooks examinera la situation avec vous.",
+  "bnIWasThereTitle": "Dites-nous que vous étiez là",
+  "bnIWasThereHint": "Indiquez à quelle heure vous êtes arrivé à {kitchen} et qui vous avez vu ou à qui vous avez parlé. Local Cooks l’examine avec le signalement de la cuisine.",
+  "bdContactSupport": "Contacter Local Cooks",
+  "fixIntroPreset": "{chef} reçoit une notification et l’historique de la réservation en garde une trace."
 }

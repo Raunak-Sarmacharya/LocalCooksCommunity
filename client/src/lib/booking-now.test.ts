@@ -147,12 +147,20 @@ describe('booked time ended with no check-in recorded (WP-N)', () => {
     expect(now.primary).toBeNull();
     expect(now.attention).toEqual([]);
   });
+  it('after a no-show report the chef can still say "I was there" (names the kitchen, no raw key)', () => {
+    const chef = bookingNowContent({ phase: 'no_show', role: 'chef', facts, t });
+    expect(chef.secondary).toEqual(['i_was_there']);
+    expect(chef.sentence).toMatch(/reported you didn’t come\. No-shows aren’t refunded\. Were you there\?/);
+    const kitchen = bookingNowContent({ phase: 'no_show', role: 'manager', facts, t });
+    expect(kitchen.sentence).toMatch(/^You reported that Ada Lovelace didn’t come\. They’ve been told\./);
+  });
   it('asks the kitchen "Did they come?" until the window closes, then states it', () => {
     const open = bookingNowContent({ phase: 'no_checkin', role: 'manager', facts, t });
     expect(t(open.pill.key)).toBe('No check-in recorded');
     expect(open.sentence).toBe('No check-in from Ada Lovelace. Did they come? Tell us by Jan 16, 12:00 p.m.');
     expect(open.primary).toBe('answer_attendance');
-    expect(open.secondary).toEqual(['report_no_show']);
+    // Both answers render as one equal pair under the question (page-level), so no secondary link.
+    expect(open.secondary).toEqual([]);
     const closed = bookingNowContent({ phase: 'no_checkin', role: 'manager', facts: { ...facts, inspectionCanRespond: false }, t });
     expect(closed.primary).toBeNull();
     expect(closed.secondary).toEqual(['fix_record']);

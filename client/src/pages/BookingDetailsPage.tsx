@@ -301,6 +301,8 @@ export default function BookingDetailsPage() {
   const [fixOpen, setFixOpen] = useState(false);
   // "Record when they left" opens Fix the visit record straight on the departure choice.
   const [fixAction, setFixAction] = useState<'departure' | 'report_attended' | 'report_no_show' | undefined>();
+  // Each "I was there" tap opens the booking's problem report, framed for a disputed no-show.
+  const [iWasThereOpen, setIWasThereOpen] = useState(0);
   const [lateOpen, setLateOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
   const [extTools, setExtTools] = useState<ExtensionTool[]>([]);
@@ -1330,7 +1332,7 @@ export default function BookingDetailsPage() {
     else if (primary === 'answer_attendance') openFix('report_attended');
   };
   const primaryBusy = (primary === 'review_request' && isUpdatingStatus) || (primary === 'review_cancellation' && isManagementProcessing);
-  const primaryButton = (testId: string, className?: string) => primary && (
+  const primaryButton = (testId: string, className?: string) => primary && primary !== 'answer_attendance' && (
     <Button type="button" className={cn('min-h-11', className)} data-testid={testId} data-primary-action="true" onClick={runPrimary} disabled={primaryBusy}>
       {primaryBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
       {primaryLabel}
@@ -1365,7 +1367,7 @@ export default function BookingDetailsPage() {
       case 'arrived_early': return [{ key, label: t('bnArrivedEarly', { kitchen: kitchenName }), icon: MessageSquare, onSelect: () => void openBookingConversation() }];
       case 'need_more_time': return booking ? [{ key, label: t('bnNeedMoreTime'), onSelect: () => navigate(`/booking/${booking.id}/visit`) }] : [];
       case 'download_invoice': case 'download_payout_statement': return [{ key, label: downloadLabel, icon: Download, onSelect: () => void handleDownloadInvoice() }];
-      case 'contact_local_cooks': return [{ key, label: t('bdContactSupport'), onSelect: goToHelp }];
+      case 'contact_local_cooks': return [{ key, label: t('bdContactSupport', { defaultValue: 'Contact Local Cooks' }), onSelect: goToHelp }];
       case 'find_another_time': return findAnotherTimeHref ? [{ key, label: t('bdhFindAnotherTime'), href: findAnotherTimeHref, onSelect: () => navigate(findAnotherTimeHref), testId: 'find-another-time' }] : [];
       case 'extension_tools': return extTools.map(tool => ({ key: `tool-${tool}`, label: toolLabel(tool), onSelect: () => setExtTool(tool) }));
       case 'change_booking': return [{ key, label: t('bdhChangeBooking'), onSelect: openManagementDialog }];
@@ -1374,7 +1376,7 @@ export default function BookingDetailsPage() {
       case 'record_left': return [{ key, label: t('bdhOverstayRecordLeft'), icon: LogOut, onSelect: () => openFix('departure') }];
       case 'report_no_show': return [{ key, label: t('bnTheyDidntCome'), onSelect: () => openFix('report_no_show'), testId: 'they-didnt-come' }];
       // The chef contests a missing check-in through the booking's problem report (Local Cooks reviews; it sees the kitchen's answer).
-      case 'i_was_there': return [{ key, label: t('bnIWasThere'), onSelect: goToHelp, testId: 'i-was-there' }];
+      case 'i_was_there': return [{ key, label: t('bnIWasThere'), onSelect: () => { goToHelp(); setIWasThereOpen(open => open + 1); }, testId: 'i-was-there' }];
       case 'report_damage': return !claimsQuery.data ? [] : alreadyReported
         ? [{ key, label: policyT('dcV2AlreadyReported'), muted: true, href: '/manager/dashboard?view=support' }]
         : [{ key, label: policyT('dcV2Report'), onSelect: () => setClaimOpen(true) }];
@@ -1568,6 +1570,12 @@ export default function BookingDetailsPage() {
         )}
       </>}
       body={<>
+        {primary === 'answer_attendance' && (
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t('bnDidTheyCome')} data-testid="attendance-answer">
+            <Button type="button" variant="outline" className="min-h-11" data-testid="they-came" onClick={() => openFix('report_attended')}>{t('bnTheyCame')}</Button>
+            <Button type="button" variant="outline" className="min-h-11" data-testid="they-didnt-come" onClick={() => openFix('report_no_show')}>{t('bnTheyDidntCome')}</Button>
+          </div>
+        )}
         {now.body === 'preparation' && chefBeforeArrival && booking.location?.instructionsReleased === false && (
           <p className="rounded-xl bg-muted/30 px-4 py-3 text-sm" data-testid="now-body">{t(booking.arrivalMode === 'self' ? 'bnWhatToExpectSelf' : 'bnWhatToExpect')}</p>
         )}
@@ -1805,7 +1813,7 @@ export default function BookingDetailsPage() {
       headline={paymentHeadline ? { label: paymentHeadline.label, amount: formatCurrency(paymentHeadline.cents) } : null}
       refundRequest={isManagerView ? <RefundRequestStatus request={booking.paymentTransaction?.metadata?.fullRefundRequest} /> : undefined}
       payoutLine={statusSource === 'payout' && booking.payout ? <KitchenPayoutStatus variant="line" payout={booking.payout} timezone={booking.location?.timezone} currency={booking.currency || 'CAD'} chefName={chefName}
-        stage={['cancelled', 'no_show', 'issue', 'completed', 'pending', 'cancellation_requested'].includes(phase) ? 'closed' : ['checkout_review', 'visit_ended'].includes(phase) ? (inspectionCanRespond ? 'inspect' : 'closed') : 'before_checkout'} /> : undefined}
+        stage={['cancelled', 'no_show', 'no_checkin', 'issue', 'completed', 'pending', 'cancellation_requested'].includes(phase) ? 'closed' : ['checkout_review', 'visit_ended'].includes(phase) ? (inspectionCanRespond ? 'inspect' : 'closed') : 'before_checkout'} /> : undefined}
       status={paymentMessage}
       moreInfoLabel={t('bdPaymentMoreInfo', { defaultValue: 'More about payment status' })}
       pendingDecision={booking.paymentDecision?.state === 'pending' ? <p>{t('bdRecordedDecisionAmount', { amount: formatCurrency(booking.paymentDecision.amount || 0) })}</p> : undefined}
@@ -1844,7 +1852,8 @@ export default function BookingDetailsPage() {
         <a className="flex min-h-11 min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href={localCooksSupportHref({ bookingId: booking.id, bookingReference: booking.referenceCode, role: isManagerView ? "manager" : "chef", situation: "Booking or payment help" })}><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all">support@localcooks.ca</span></a>
         <a className="flex min-h-11 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
       </div>
-      <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded />
+      <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded
+        intent={!isManagerView && iWasThereOpen ? { openToken: iWasThereOpen, title: t('bnIWasThereTitle'), hint: t('bnIWasThereHint', { kitchen: kitchenName }) } : undefined} />
     </Card>
   );
 

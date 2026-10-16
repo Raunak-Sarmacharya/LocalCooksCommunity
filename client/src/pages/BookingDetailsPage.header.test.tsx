@@ -423,18 +423,19 @@ describe("no check-in recorded", () => {
       attendance: "unknown", scheduledStartAt: "2030-01-15T13:30:00Z", scheduledEndAt: "2030-01-15T15:30:00Z",
       inspection: { outcome: canRespond ? "due" : "auto_closed_uninspected", dueAt: "2030-01-15T15:30:00Z", deadline: "2030-01-16T15:30:00Z",
         closedAt: canRespond ? null : "2030-01-16T15:30:00Z", canRespond } }] } });
-  it("kitchen: not Completed; asks Did they come? with They came (primary) and They didn't come", async () => {
+  it("kitchen: not Completed; asks Did they come? with They came / They didn't come as an equal pair under the question", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(START + 4 * 3_600_000);
     h.manager = true; h.booking = missed();
     render(<BookingDetailsPage />);
     expect(await screen.findByTestId("booking-next-step")).toHaveTextContent(/^No check-in from Ada Lovelace\. Did they come\? Tell us by /);
     expect(screen.getAllByText("No check-in recorded").length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toMatch(/Completed|This visit is closed|Report damage/);
-    const primary = screen.getByTestId("booking-header").querySelector("[data-primary-action]")!;
-    expect(primary).toHaveTextContent("They came");
-    fireEvent.click(primary);
+    // Neither answer is promoted to the header: the kitchen picks one of two equal buttons right under the question.
+    expect(screen.getByTestId("booking-header").querySelector("[data-primary-action]")).toBeNull();
+    const pair = screen.getByTestId("attendance-answer");
+    fireEvent.click(within(pair).getByRole("button", { name: "They came" }));
     expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_attended" });
-    fireEvent.click(within(screen.getByTestId("now-secondary")).getByRole("button", { name: "They didn’t come" }));
+    fireEvent.click(within(pair).getByRole("button", { name: "They didn’t come" }));
     expect(h.attendance).toMatchObject({ fixOpen: true, fixAction: "report_no_show" });
   });
   it("kitchen: after the window closes it simply reads No check-in recorded, with no question", async () => {

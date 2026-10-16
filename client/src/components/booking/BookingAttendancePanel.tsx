@@ -118,6 +118,8 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
     if (!open) { setPresetApplied(false); return; }
     if (!presetApplied && fixAction && presetVisible) { setAction(fixAction); setPresetApplied(true); }
   }, [open, fixAction, presetVisible, presetApplied]);
+  // Opened from "They came" / "They didn't come": the kitchen already chose, so no chooser intro and no Back.
+  const preset = presetApplied && action === fixAction && (action === 'report_no_show' || action === 'report_attended');
   const visitPicker = data && data.visits.length > 1 && <label className="block text-sm">{t('bookingAttendanceVisit')}
     <select className="ml-2 max-w-full rounded border bg-background p-2" value={visitId ?? ''} disabled={saving} onChange={event => { setVisitId(event.target.value ? Number(event.target.value) : undefined); reset(); }}>
       <option value="">{t('bookingAttendanceChooseVisit')}</option>{data.visits.map((visit, index) => <option key={visit.id} value={visit.id}>{t('fixVisitRange', { number: index + 1, start: formatTime(visit.startTime, locale), end: formatTime(visit.endTime, locale) })}</option>)}
@@ -130,14 +132,14 @@ export function BookingAttendancePanel({ bookingId, manager, localCooks = false,
       {(manager || localCooks) && data && <Dialog open={open} onOpenChange={value => { if (!saving) { setOpen(value); reset(); } }}>
         {!controlled && <DialogTrigger asChild><Button variant="outline" size="sm">{t(localCooks ? 'fixTitleSupport' : 'fixTitle')}</Button></DialogTrigger>}
         <DialogContent showCloseButton className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{action ? t(labels[action], { chef }) : t('fixTitle')}</DialogTitle><DialogDescription>{t('fixIntro', { chef })}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{action ? t(labels[action], { chef }) : t('fixTitle')}</DialogTitle><DialogDescription>{t(preset ? 'fixIntroPreset' : 'fixIntro', { chef })}</DialogDescription></DialogHeader>
           {localCooks && <p className="text-sm text-muted-foreground">{t('fixActingFor')}</p>}
           {visitPicker}
           {!action ? <div className="space-y-2">{options.filter(option => option.visible).map(option => <button key={option.value} type="button" className="flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setAction(option.value)}>
             <option.icon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
             <span><span className="block text-sm font-medium">{t(labels[option.value], { chef })}</span><span className="mt-1 block text-sm text-muted-foreground">{t(option.hint, { chef })}</span></span>
           </button>)}</div> : <div className="space-y-4">
-            <Button variant="ghost" disabled={saving} onClick={reset}>{t('fixBack')}</Button>
+            {!preset && <Button variant="ghost" disabled={saving} onClick={reset}>{t('fixBack')}</Button>}
             {action === 'arrival' || action === 'departure' ? <VisitAssistancePanel key={`${targetId}-${action}`} bookingId={bookingId} updatedAt={data.updatedAt}
               visits={selected ? [selected] : []} timezone={zone} fixedAction={action} scheduledStart={action === 'arrival' ? clock?.scheduledStartAt : undefined} chefName={chef}
               onSaved={() => saved('fixSaved')} /> : action === 'support' ? <CommitmentProblems kind="booking" id={bookingId} role={localCooks ? 'admin' : 'manager'} canReport /> : <form className="space-y-4" onSubmit={event => { event.preventDefault(); void save(); }}>
