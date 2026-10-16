@@ -22,6 +22,7 @@ import { bookingNowContent, NOW_SECONDARY_VISIBLE } from '@/lib/booking-now';
 import { formatBookedDuration } from '@/lib/booked-duration';
 import { friendlyDate, friendlyDateTime } from '@/lib/friendly-date';
 import { claimMoney, claimPayByDate, claimWhen, claimRequest, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimBookingHeld } from '@shared/damage-claims';
 import { canReportRunningLate } from '@shared/running-late';
 import { cn } from '@/lib/utils';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
@@ -1184,7 +1185,8 @@ export default function BookingDetailsPage() {
     </InfoChip>;
   };
   // Owner (WP-R): the kitchen's figure stays an estimate until its payout statement is issued at settlement.
-  const payoutTitle = booking?.paymentStatus === 'authorized' || (bookingDocuments && !bookingDocuments.statementIssued) ? t('bdEstimatedPayout', { defaultValue: 'Estimated payout' }) : t('bdYourPayout', { defaultValue: 'Your payout' });
+  // Once the transfer is sent the amount is final, even before the closing statement is issued.
+  const payoutTitle = booking?.paymentStatus === 'authorized' || (bookingDocuments && !bookingDocuments.statementIssued && booking?.payout?.status !== 'sent') ? t('bdEstimatedPayout', { defaultValue: 'Estimated payout' }) : t('bdYourPayout', { defaultValue: 'Your payout' });
   const chefTotalLabel = booking?.paymentStatus === 'authorized' ? t('bdAmountAuthorized') : t('bdAmountCharged');
   // Headline figure reuses the same shared breakdown builders the itemized list renders (display only).
   const paymentCaptured = ['paid', 'partially_refunded', 'refunded'].includes(booking?.paymentStatus || '');
@@ -1318,6 +1320,7 @@ export default function BookingDetailsPage() {
     claimStage: latestClaim && !settledClaim ? (['chef_disputed', 'under_review'].includes(latestClaim.status) ? 'reviewing'
       : latestClaim.upheldAt && latestClaim.chefOwes && ['approved', 'partially_approved', 'chef_accepted'].includes(latestClaim.status) ? 'decided' : undefined) : undefined,
     claimAmount: latestClaim ? claimMoney(latestClaim.amountCents, i18n.language) : undefined,
+    claimPaused: !!latestClaim && claimBookingHeld(latestClaim),
     claimPayBy: latestClaim?.upheldAt ? claimPayByDate(latestClaim.upheldAt, latestClaim.visitEvidence?.timezone || tz || 'America/St_Johns', i18n.language) : undefined,
     settledClaim, hasClaim: claimsQuery.isPending || claimsQuery.isError || !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft'),
     inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
@@ -1365,7 +1368,7 @@ export default function BookingDetailsPage() {
   const openFix = (action?: 'departure' | 'report_attended' | 'report_no_show') => { setFixAction(action); setFixOpen(true); };
   // With issued documents the action scrolls to the Receipts list (handleDownloadInvoice), so it names that list, never a "final invoice".
   const downloadLabel = bookingDocuments ? t(isManagerView ? 'bdViewPayoutDocuments' : 'bdViewReceipts')
-    : isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' && phase !== 'no_checkin' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
+    : isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' && phase !== 'no_checkin' && phase !== 'no_show' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
 
   // Secondary row: at most three links; the rest join the ⋯ menu.
   const toolLabel = (tool: ExtensionTool) => bt(tool === 'offer' ? 'sxbOfferMore' : tool === 'early_start' ? 'sxbLetStartEarly' : 'sxbChargeExtra');
@@ -1574,7 +1577,7 @@ export default function BookingDetailsPage() {
         {/* "Can't get in" / safety reports surface here while the visit is on; the support list below keeps the thread. */}
         <OpenProblemAlert bookingId={booking.id} role={isManagerView ? 'manager' : 'chef'} chefName={chefName} kitchenName={kitchenName}
           timezone={tz || 'America/St_Johns'} active={booking.status === 'confirmed' && !!visitBounds && nowMs < visitBounds.endAt.getTime()}
-          messageButton={messageButton()} onViewReport={goToHelp} />
+          checkedIn={!!booking.checkinStatus && booking.checkinStatus !== 'not_checked_in'} messageButton={messageButton()} onViewReport={goToHelp} />
         {now.attention.includes('changes') && <KitchenBookingChanges variant="now" timezone={booking.location?.timezone} key={`changes-${booking.id}`} bookingId={booking.id} manager={isManagerView}
           onChanged={async () => { await reloadBookingDetails(); await queryClient.invalidateQueries(); }} />}
         {/* A payable claim comes first: unpaid after a final decision, it pauses new bookings. */}
@@ -1870,7 +1873,7 @@ export default function BookingDetailsPage() {
         <a className="flex min-h-11 items-center gap-2 text-foreground underline-offset-4 hover:underline" href="tel:+17096318480"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" />+1 (709) 631-8480</a>
       </div>
       <CommitmentProblems kind="booking" id={booking.id} role={isManagerView ? 'manager' : 'chef'} canReport embedded
-        intent={!isManagerView && iWasThereOpen ? { openToken: iWasThereOpen, title: t('bnIWasThereTitle'), hint: t('bnIWasThereHint', { kitchen: kitchenName }) } : undefined} />
+        intent={!isManagerView && iWasThereOpen ? { openToken: iWasThereOpen, title: t('bnIWasThereTitle'), hint: t('bnIWasThereHint', { kitchen: kitchenName }), label: t('bnIWasThereLabel'), category: 'attendance' } : undefined} />
     </Card>
   );
 

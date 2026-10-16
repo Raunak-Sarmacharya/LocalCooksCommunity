@@ -86,7 +86,7 @@ function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem
 type ProblemsProps = {
   kind?: 'booking' | 'tour'; id?: number; canReport?: boolean; staff?: boolean; role?: 'chef' | 'manager' | 'admin'; embedded?: boolean;
   /** Opens the report from elsewhere on the page (a new `openToken` each time), with a title and prompt framed for the situation. */
-  intent?: { openToken: number; title: string; hint: string };
+  intent?: { openToken: number; title: string; hint: string; label?: string; category?: string };
 };
 
 export function CommitmentProblems(props: ProblemsProps) {
@@ -103,7 +103,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
   const path = `/api/commitment-problems${kind && id ? `/${kind}/${id}` : ''}`;
   const query = useCommitmentProblems(kind, id, role);
   const report = useMutation({
-    mutationFn: () => problemRequest(path, 'POST', { description, requestKey }),
+    mutationFn: () => problemRequest(path, 'POST', { description, requestKey, ...(intent?.category ? { category: intent.category } : {}) }),
     onSuccess: () => { setReportOpen(false); setDescription(''); setRequestKey(crypto.randomUUID()); void queryClient.invalidateQueries({ queryKey: ['commitment-problems'] }); }
   });
   const reportingAvailable = canReport && query.data?.reportingAvailable && !!kind && !!id;
@@ -126,7 +126,7 @@ function ProblemsPanel({ kind, id, canReport = false, staff = false, role = 'che
         <DialogHeader><DialogTitle>{intent?.title || t('problemCopy32')}</DialogTitle>
           <DialogDescription>{intent?.hint || t('problemShared', { id, kind: t(kind === 'tour' ? 'problemCopy02' : 'problemCopy01') })}</DialogDescription></DialogHeader>
         {reportingAvailable ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (description.trim().length >= 10 && !report.isPending) report.mutate(); }}>
-          <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`report-${kind}-${id}`}>{t('problemCopy33')}</label>
+          <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`report-${kind}-${id}`}>{intent?.label || t('problemCopy33')}</label>
             <Textarea id={`report-${kind}-${id}`} value={description} maxLength={2000} disabled={report.isPending} onChange={event => setDescription(event.target.value)} aria-describedby={`report-hint-${kind}-${id}`} />
             <p id={`report-hint-${kind}-${id}`} className="text-xs text-muted-foreground">{t('problemCopy34')}</p></div>
           {report.error && <p role="alert" className="text-sm text-destructive">{report.error.message}</p>}

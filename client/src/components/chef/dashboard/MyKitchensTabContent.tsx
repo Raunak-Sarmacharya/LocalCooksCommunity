@@ -19,6 +19,7 @@ import { kitchenPreviewHref } from "@/lib/kitchen-preview-url";
 import { mergeEquipmentSummaries, mergeStorageSummaries } from "@/lib/kitchen-grid-card";
 import { cn } from "@/lib/utils";
 import { Icon } from "@iconify/react";
+import { useClaimBookingHold } from "@/components/booking/DamageClaimCards";
 
 interface MyKitchensTabContentProps {
   kitchenApplications: KitchenApplicationWithLocation[];
@@ -44,7 +45,10 @@ export default function MyKitchensTabContent({
   onOpenBookingSheet,
   onOpenChat,
 }: MyKitchensTabContentProps) {
-  const { t } = useTranslation("chef");
+  const { t, i18n } = useTranslation("chef");
+  // An unpaid, decided claim pauses new bookings everywhere: "Book" becomes the way to pay it.
+  const heldClaim = useClaimBookingHold().data;
+  const holdClaim = heldClaim?.held ? heldClaim.claims[0] : undefined;
 
   return (
     <div className="space-y-8">
@@ -163,6 +167,19 @@ export default function MyKitchensTabContent({
                     <Clock className="mr-1 h-3 w-3" />
                     {display.label}
                   </Badge>
+                );
+              } else if (holdClaim && (app.current_tier ?? 1) >= 3) {
+                primary = (
+                  <Button
+                    variant="outline"
+                    className={outlineActionClass}
+                    data-testid="pay-to-book"
+                    onClick={() => { window.location.href = `/booking/${holdClaim.bookingId}`; }}
+                  >
+                    {holdClaim.amountCents
+                      ? t("apptabPayToBook", { amount: new Intl.NumberFormat(i18n?.language || "en-CA", { style: "currency", currency: "CAD" }).format(holdClaim.amountCents / 100) })
+                      : t("apptabPayToBookNoAmount")}
+                  </Button>
                 );
               } else if ((app.current_tier ?? 1) >= 3) {
                 primary = (

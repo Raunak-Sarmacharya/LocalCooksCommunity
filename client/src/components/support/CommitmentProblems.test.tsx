@@ -172,8 +172,11 @@ it('closes a successful report and shows its persisted public trail to chef and 
 });
 it('opens straight on a framed report when the page asks (the chef’s "I was there" after a no-show)', async () => {
   const fetcher=vi.fn(async () => ({ ok:true,json:async () => ({problems:[],reportingAvailable:true}) }));
-  const client=mount({kind:'booking',id:182,canReport:true,embedded:true,intent:{ openToken:1,title:'Tell us you were there',hint:'Say when you arrived at PHASE0 Main Kitchen.' }},fetcher);
+  const client=mount({kind:'booking',id:182,canReport:true,embedded:true,intent:{ openToken:1,title:'Tell us you were there',hint:'Say when you arrived at PHASE0 Main Kitchen.',label:'When did you arrive, and what happened?',category:'attendance' }},fetcher);
   expect(await screen.findByRole('dialog')).toHaveTextContent('Tell us you were there');
   expect(screen.getByRole('dialog')).toHaveTextContent('Say when you arrived at PHASE0 Main Kitchen.');
-  expect(screen.getByRole('textbox')).toBeInTheDocument(); client.clear();
+  fireEvent.change(screen.getByLabelText('When did you arrive, and what happened?'),{target:{value:'Arrived at 9:55 and the manager let me in.'}});
+  fireEvent.click(screen.getByRole('button',{name:'Send report'}));
+  // The report carries the attendance category, so the kitchen reads "{chef} says they were there".
+  await waitFor(() => expect(fetcher.mock.calls.some(([, init]: any) => init?.method==='POST' && JSON.parse(init.body).category==='attendance')).toBe(true)); client.clear();
 });

@@ -6,6 +6,7 @@ import { operationalEmailAllowed } from './admin-email-preferences';
 import { getAppBaseUrl } from '../config';
 import { getUserDisplayName } from '../utils/user-display';
 import { chefCanSeeClaim, kitchenOnlyClaimActions, type Claim, type ClaimTx } from './damage-claims-v2';
+import { CLAIM_BOOKING_HOLD_MS } from '@shared/damage-claims';
 
 /** Participant copy and delivery are scoped to the recipient; admin review routing stays separate. */
 export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history: typeof damageClaimHistory.$inferSelect) {
@@ -33,6 +34,9 @@ export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history:
     const kitchen = claim.visitEvidence?.kitchenName || t('Kitchen');
     const deadline = new Intl.DateTimeFormat(locale, { timeZone: claim.visitEvidence?.timezone || 'America/St_Johns',
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(claim.chefResponseDeadline);
+    // The chef's last day to pay before new bookings pause (kitchen-local date).
+    const payBy = claim.upheldAt ? new Intl.DateTimeFormat(locale, { timeZone: claim.visitEvidence?.timezone || 'America/St_Johns', month: 'short', day: 'numeric' })
+      .format(new Date(new Date(claim.upheldAt).getTime() + CLAIM_BOOKING_HOLD_MS)) : '';
     const title = t('NoticeTitle', { kitchen, amount });
     const debt = claim.fundedBy === 'local_cooks' ? t(claim.chefOwes ? 'ChefOwes' : 'WriteOff') : '';
     // First-review messages are for the kitchen; the chef only hears Local Cooks' final decisions.
@@ -46,7 +50,7 @@ export async function queueDamageClaimNotice(tx: ClaimTx, claim: Claim, history:
     // and the chef on an upheld/reduced final decision (never first-review exchanges, which `shared` already blanks).
     const reason = chef ? (event === 'upheld' ? shared : '') : (['sent', 'closed', 'upheld'].includes(event) ? publicMessage : '');
     const message = participant
-      ? `${t(roleKey, { kitchen, chef: chefName && chefName !== 'A chef' ? chefName : t('Chef'), amount, deadline, reduction, message: publicMessage }).replace(/\.\.$/, '.')}${reason ? ` ${reason}` : ''}`
+      ? `${t(roleKey, { kitchen, chef: chefName && chefName !== 'A chef' ? chefName : t('Chef'), amount, deadline, payBy, reduction, message: publicMessage }).replace(/\.\.$/, '.')}${reason ? ` ${reason}` : ''}`
       : `${t(`Notice_${event}`, { kitchen, amount, deadline })} ${debt} ${shared}`.trim();
     const path = person.role === 'admin' ? `/admin?section=booking-support&booking=${claim.kitchenBookingId}`
       : chef ? `/booking/${claim.kitchenBookingId}` : `/manager/booking/${claim.kitchenBookingId}`;

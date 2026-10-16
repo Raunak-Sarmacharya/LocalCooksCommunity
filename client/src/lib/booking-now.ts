@@ -51,6 +51,8 @@ export interface BookingNowFacts {
   claimStage?: 'reviewing' | 'decided';
   claimAmount?: string;
   claimPayBy?: string;
+  /** The pay-by date passed: new bookings are paused until the chef pays. */
+  claimPaused?: boolean;
   inspectionOutcome?: string | null;
   inspectedOn?: string | null;
   /** Booking status, for the few rules that depend on it beyond the phase. */
@@ -118,6 +120,7 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
       if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
       if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
       if (f.claimStage === 'reviewing') return t('booking:bnChefClaimReviewing');
+      if (f.claimStage === 'decided' && f.claimAmount && f.claimPaused) return t('booking:bnChefClaimPaused', { amount: f.claimAmount });
       if (f.claimStage === 'decided' && f.claimAmount && f.claimPayBy) return t('booking:bnChefClaimDecided', { amount: f.claimAmount, date: f.claimPayBy });
       if (f.claimDeadline) return t('booking:bnChefClaimOpen', { kitchen, date: f.claimDeadline });
       return f.checkoutClock ? t('bnChefCheckoutSubmitted', { time: f.checkoutClock }) : t('bnChefCheckoutSubmittedNoTime');
@@ -125,6 +128,7 @@ function chefSentence(phase: BookingHeaderPhase, f: BookingNowFacts, t: T): stri
       if (f.settledClaim?.outcome === 'chef_paid') return t('booking:bnChefClaimPaid', { amount: f.settledClaim.amount });
       if (f.settledClaim?.outcome === 'closed') return t('booking:bnChefClaimClosed');
       if (f.claimStage === 'reviewing') return t('booking:bnChefClaimReviewing');
+      if (f.claimStage === 'decided' && f.claimAmount && f.claimPaused) return t('booking:bnChefClaimPaused', { amount: f.claimAmount });
       if (f.claimStage === 'decided' && f.claimAmount && f.claimPayBy) return t('booking:bnChefClaimDecided', { amount: f.claimAmount, date: f.claimPayBy });
       if (f.claimDeadline) return t('booking:bnChefClaimOpen', { kitchen, date: f.claimDeadline });
       // Hidden claims are omitted from the chef response, so a cleared inspection cannot promise “all good”.

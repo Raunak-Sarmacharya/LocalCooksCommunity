@@ -3658,5 +3658,10 @@
   "opaViewReport": "Voir le signalement",
   "problemReportedByYou": "Signalé par vous",
   "problemReportedByChef": "Signalé par le chef",
-  "problemReportedByKitchen": "Signalé par la cuisine"
+  "problemReportedByKitchen": "Signalé par la cuisine",
+  "opaKitchenSafetyLine": "Signalé à {time}. Allez voir la personne maintenant. Local Cooks a aussi été averti. Si quelqu’un est en danger, appelez le 911.",
+  "apptabPayToBook": "Payez {amount} pour réserver de nouveau",
+  "apptabPayToBookNoAmount": "Réglez les frais en attente pour réserver de nouveau",
+  "problemCategory_attendance": "Présent pour la réservation",
+  "bnIWasThereLabel": "Quand êtes-vous arrivé et que s’est-il passé ?"
 }

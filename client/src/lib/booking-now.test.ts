@@ -191,3 +191,12 @@ describe('a request the chef changed (rebook first)', () => {
     expect(kitchen.secondary).toEqual(['view_new_request']);
   });
 });
+
+describe('a decided claim after its pay-by date', () => {
+  it('says bookings are paused instead of "pay by {date} to keep booking"', () => {
+    const paused = bookingNowContent({ phase: 'completed', role: 'chef', facts: { ...facts, claimStage: 'decided', claimAmount: '$40.00', claimPayBy: 'Oct 16', claimPaused: true }, t });
+    expect(paused.sentence).toBe('$40.00 is due. New bookings are paused until it’s paid.');
+    const before = bookingNowContent({ phase: 'completed', role: 'chef', facts: { ...facts, claimStage: 'decided', claimAmount: '$40.00', claimPayBy: 'Oct 16' }, t });
+    expect(before.sentence).toMatch(/Pay by Oct 16 to keep booking/);
+  });
+});

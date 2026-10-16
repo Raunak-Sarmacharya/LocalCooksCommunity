@@ -311,7 +311,9 @@ export async function queueBookingLifecycleEvent(tx: Transaction, bookingId: num
     // A producer may word the in-app notice per role; email content is rendered separately.
     const kitchenCaused = metadata.kitchenCaused === true && chef;
     const kitchenPath = kitchenCaused ? `/kitchen-preview/${context.locationId}?kitchenId=${context.kitchenId}` : undefined;
-    const roleText = metadata.replacementNotice ? await requestReplacementNotice(person.locale, metadata.replacementNotice as ReplacementNotice,
+    // A new request: the kitchen's notice says who asked, for when, and by when to answer (the email carries the full details).
+    const kitchenRequest = kind === 'requested' && request && !chef && !localCooks && !metadata.replacementNotice ? kitchenRequestNotice(person.locale, request) : undefined;
+    const roleText = kitchenRequest ? kitchenRequest : metadata.replacementNotice ? await requestReplacementNotice(person.locale, metadata.replacementNotice as ReplacementNotice,
         { chefName: nameOf(context.chefId), kitchenName: context.kitchenName, timezone: context.timezone })
       : metadata.cancellationNotice ? await cancellationNotice(chef ? 'chef' : 'manager', person.locale, { ...(metadata.cancellationNotice as CancellationNotice),
         chefName: nameOf(context.chefId), kitchenName: context.kitchenName,
@@ -611,4 +613,18 @@ export async function deliverBookingLifecycleEvents(limit = 10, budgetMs = 20_00
     if (!failed) completed++;
   }
   return { completed };
+}
+
+/** "New request from Sam · Sun, Oct 25, 1:00 p.m." — kitchen-local times; the deadline names its zone. */
+export function kitchenRequestNotice(locale: string | null | undefined, request: { bookingDate: Date | string; startTime: string; endTime: string; timezone?: string; chefName: string;
+  responseDeadline?: Date | string | null; totalCents?: number; paymentState?: string }) {
+  const lng = locale || 'en-CA';
+  const day = new Intl.DateTimeFormat(lng, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(request.bookingDate));
+  const when = `${day}, ${emailClock(request.startTime, lng)}–${emailClock(request.endTime, lng)}`;
+  const deadline = request.responseDeadline && Number.isFinite(new Date(request.responseDeadline).getTime())
+    ? new Intl.DateTimeFormat(lng, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'longGeneric', timeZone: request.timezone || DEFAULT_TIMEZONE }).format(new Date(request.responseDeadline)) : '';
+  const t = (key: string, values: Record<string, unknown>) => tLocale(locale, key, { ns: 'booking', ...values });
+  const held = request.paymentState === 'held';
+  return { title: t('nrKitchenTitle', { chef: request.chefName, when: `${day}, ${emailClock(request.startTime, lng)}` }),
+    message: t(held ? (deadline ? 'nrKitchenBodyHeld' : 'nrKitchenBodyHeldNoDeadline') : (deadline ? 'nrKitchenBodyPaid' : 'nrKitchenBodyPaidNoDeadline'), { chef: request.chefName, when, deadline }).replace(/\.\.(?=\s|$)/g, '.') };
 }

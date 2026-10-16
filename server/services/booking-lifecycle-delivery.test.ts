@@ -608,3 +608,18 @@ it.each([0, 5000])('cancellation delivers recipient copy and only retained kitch
   expect(emails[1].content.text).not.toContain('$0.00');
   expect(emails[0].content.text).not.toContain('that time is open again');
 });
+
+describe('kitchen notice for a new request', () => {
+  it('names the chef, the time and the answer-by time with its zone, in each language', async () => {
+    const { ensureServerI18n } = await import('../i18n');
+    await ensureServerI18n();
+    const { kitchenRequestNotice } = await import('./booking-lifecycle-delivery');
+    const request = { bookingDate: new Date('2026-10-25T12:00:00Z'), startTime: '13:00', endTime: '14:00', timezone: 'America/St_Johns', chefName: 'Sam Chef',
+      responseDeadline: new Date('2026-10-17T13:25:00Z'), paymentState: 'held' };
+    const notice = kitchenRequestNotice('en-CA', request);
+    expect(notice.title).toBe('New request from Sam Chef · Sun, Oct 25, 1:00 p.m.');
+    expect(notice.message).toBe('Sam Chef asked for Sun, Oct 25, 1:00 p.m.–2:00 p.m. Their card is on hold. Answer by Oct 17, 2026, 10:55 a.m. Newfoundland Time, or the request expires and the hold is released.');
+    expect(kitchenRequestNotice('en-CA', { ...request, responseDeadline: null }).message).toBe('Sam Chef asked for Sun, Oct 25, 1:00 p.m.–2:00 p.m. Their card is on hold until you answer.');
+    for (const locale of ['fr-CA', 'uk']) expect(kitchenRequestNotice(locale, request).message).not.toMatch(/\{\w+\}|nrKitchen|Sun|Answer/);
+  });
+});

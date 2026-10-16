@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { claimRequest, claimMoney, claimPayByDate, claimWhen, type DamageClaimCardData } from '@/lib/damage-claims';
-import type { ClaimLine } from '@shared/damage-claims';
+import { claimBookingHeld, type ClaimLine } from '@shared/damage-claims';
 const ClaimPayment = lazy(() => import('./DamageClaimPayment'));
 
 export function ClaimEvidence({ claim }: { claim: DamageClaimCardData }) {
@@ -68,7 +68,7 @@ export function DamageClaimCard({ claim, manager = false, hideTitle = false, onC
     {claim.kitchenReply && <p className="text-sm whitespace-pre-wrap"><strong>{t('dcV2KitchenReply')}: </strong>{claim.kitchenReply}</p>}
     <ClaimEvidence claim={claim} />
     {!manager && claim.status === 'submitted' && <p className="text-sm">{t('dcV2RespondBy', { when: claimWhen(claim.deadline, claim.visitEvidence?.timezone || 'America/St_Johns', i18n.language) })}</p>}
-    {!manager && canPay && <p className="text-sm">{claim.upheldAt ? t('dcV2FinalConsequence', { date: claimPayByDate(claim.upheldAt, claim.visitEvidence?.timezone || 'America/St_Johns', i18n.language) }) : t('dcV2ChefNext')}</p>}
+    {!manager && canPay && <p className="text-sm">{claim.upheldAt && claimBookingHeld(claim) ? t('dcV2PausedConsequence', { amount }) : claim.upheldAt ? t('dcV2FinalConsequence', { date: claimPayByDate(claim.upheldAt, claim.visitEvidence?.timezone || 'America/St_Johns', i18n.language) }) : t('dcV2ChefNext')}</p>}
     <div className="flex flex-wrap gap-3">{canPay && <Button onClick={() => setPayOpen(true)}>{t('dcV2Pay', { amount })}</Button>}
       {responseAllowed && <Button variant="outline" onClick={() => setResponding(value => !value)}>{t(manager ? 'dcV2Reply' : 'dcV2Dispute')}</Button>}
     </div>
@@ -89,11 +89,31 @@ export function BookingDamageClaims({ bookingId, manager = false }: { bookingId:
   if (query.isError) return <p role="alert" className="text-sm">{t('dcV2LoadFailed')} <Button variant="link" onClick={() => void query.refetch()}>{t('dcV2Retry')}</Button></p>;
   return <div className="space-y-4">{query.data?.claims?.map(claim => <DamageClaimCard key={claim.id} claim={claim} manager={manager} onChanged={() => void query.refetch()} />)}</div>;
 }
+/** Whether an unpaid, decided claim pauses new bookings. One cached read for the banner, the dashboard and the booking flow. */
+export function useClaimBookingHold() {
+  // Refreshes on focus and every minute, so paying elsewhere lifts it without a manual refresh.
+  return useQuery({ queryKey: ['damage-claim-booking-hold'], queryFn: () => claimRequest<{ held: boolean; claims: Array<{ id: number; bookingId: number; kitchenName: string; amountCents?: number }> }>('/chef/damage-claims/booking-hold'),
+    refetchOnWindowFocus: true, refetchInterval: 60_000, staleTime: 15_000, retry: false });
+}
+
+/** The booking flow while bookings are paused: the banner above says why; this says what unlocks it. */
+export function ClaimHoldBookingPaused({ onBack }: { onBack: () => void }) {
+  const { t, i18n } = useTranslation('booking');
+  const claim = useClaimBookingHold().data?.claims?.[0];
+  const amount = claim?.amountCents ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(claim.amountCents / 100) : null;
+  return <div className="mx-auto max-w-md space-y-4 py-16 text-center" data-testid="booking-paused-claim">
+    <p className="text-base font-medium">{t('dcV2HoldFlowTitle')}</p>
+    <p className="text-sm text-muted-foreground">{amount ? t('dcV2HoldFlowBody', { amount }) : t('dcV2HoldFlowBodyNoAmount')}</p>
+    <div className="flex flex-wrap justify-center gap-2">
+      {claim && <Button asChild><a href={`/booking/${claim.bookingId}`}>{t('dcV2HoldPay')}</a></Button>}
+      <Button variant="outline" onClick={onBack}>{t('dcV2HoldBack')}</Button>
+    </div>
+  </div>;
+}
+
 export function DamageClaimBookingHoldBanner() {
   const { t, i18n } = useTranslation('booking');
-  // Refreshes on focus and every minute, so paying elsewhere lifts it without a manual refresh.
-  const query = useQuery({ queryKey: ['damage-claim-booking-hold'], queryFn: () => claimRequest<{ held: boolean; claims: Array<{ id: number; bookingId: number; kitchenName: string; amountCents?: number }> }>('/chef/damage-claims/booking-hold'),
-    refetchOnWindowFocus: true, refetchInterval: 60_000, staleTime: 15_000, retry: false });
+  const query = useClaimBookingHold();
   if (!query.data?.held) return null;
   const money = (cents: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   return <aside role="status" data-testid="claim-booking-hold" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm space-y-2">

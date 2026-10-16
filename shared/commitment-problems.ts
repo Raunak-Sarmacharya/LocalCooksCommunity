@@ -4,13 +4,15 @@ export type ProblemHistory = { revision: number; at: string; actorId: number; ac
 
 /** Safety first; the order is also the order shown to participants. */
 export const problemCategories = ['safety', 'access', 'equipment', 'cleanliness', 'other'] as const;
-export type ProblemCategory = typeof problemCategories[number];
+/** Not offered in the report dialog: sent only by "I was there" (a chef disputing a no-show or a missing check-in). */
+export const ATTENDANCE_CATEGORY = 'attendance' as const;
+export type ProblemCategory = typeof problemCategories[number] | typeof ATTENDANCE_CATEGORY;
 export function parseProblemCategory(value: unknown): ProblemCategory | null | undefined {
   if (value === undefined || value === null || value === '') return null;
-  return typeof value === 'string' && (problemCategories as readonly string[]).includes(value) ? value as ProblemCategory : undefined;
+  return typeof value === 'string' && ((problemCategories as readonly string[]).includes(value) || value === ATTENDANCE_CATEGORY) ? value as ProblemCategory : undefined;
 }
 export function problemCategoryLabel(category: string | null | undefined) {
-  return category ? ({ safety: 'Safety', access: 'Access', equipment: 'Equipment', cleanliness: 'Cleanliness', other: 'Other' } as Record<string, string>)[category] || category : '';
+  return category ? ({ safety: 'Safety', access: 'Access', equipment: 'Equipment', cleanliness: 'Cleanliness', other: 'Other', attendance: 'Attendance' } as Record<string, string>)[category] || category : '';
 }
 
 export function problemStatusLabel(status: string) {

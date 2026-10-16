@@ -38,7 +38,7 @@ describe('participant reporting opens at check-in opening without an end cutoff'
 });
 
 describe('problem category', () => {
-  it.each(['equipment', 'safety', 'access'] as const)('queues a useful %s report email per reader: reporter, kitchen, Local Cooks', async category => {
+  it.each(['equipment', 'safety', 'access', 'attendance'] as const)('queues a useful %s report email per reader: reporter, kitchen, Local Cooks', async category => {
     const { createProblem } = await import('./commitment-problems');
     const emails: any[] = [];
     const booking = { id: 10, referenceCode: 'KB-TEST10', chefId: 3, kitchenId: 4, status: 'confirmed', bookingDate: new Date('2026-10-04'), startTime: '09:00', endTime: '12:00' };
@@ -49,7 +49,7 @@ describe('problem category', () => {
         const q: any = { from: (value: any) => { table = value[Symbol.for('drizzle:Name')]; return q; },
           innerJoin: () => q, where: () => q, limit: () => q,
           then: (resolve: any) => resolve(table === 'kitchen_bookings' ? [{ booking, managerId: 2, timezone: 'America/St_Johns', kitchenName: 'Harbour Kitchen' }]
-            : table === 'users' ? [{ id: 3, username: 'chef@example.test', role: 'chef' }, ...(category === 'access' ? [{ id: 2, username: 'kitchen@example.test', role: 'manager' }, { id: 1, username: 'staff@example.test', role: 'admin', adminEmailNotifications: true }] : [])] : []) };
+            : table === 'users' ? [{ id: 3, username: 'chef@example.test', role: 'chef' }, ...(['access', 'attendance'].includes(category) ? [{ id: 2, username: 'kitchen@example.test', role: 'manager' }, { id: 1, username: 'staff@example.test', role: 'admin', adminEmailNotifications: true }] : [])] : []) };
         return q;
       },
       insert: (table: any) => ({ values: (value: any) => {
@@ -61,7 +61,7 @@ describe('problem category', () => {
     try {
       await createProblem(tx, { kind: 'live', commitment: 'booking', id: 10, actor: { id: 3, role: 'chef' },
         description: 'The cooler stopped working.', category, sourceKey: 'test-report' });
-      expect(emails).toHaveLength(category === 'access' ? 3 : 1);
+      expect(emails).toHaveLength(['access', 'attendance'].includes(category) ? 3 : 1);
       if (category === 'access') expect(emails.map(row => row.recipientRole)).toEqual(['chef', 'manager', 'admin']);
       // The reporter: what was sent, to whom, when (kitchen-local, with the zone), under the booking's real reference.
       expect(emails[0].subject).toBe('Report sent · KB-TEST10');
@@ -78,6 +78,11 @@ describe('problem category', () => {
         expect(emails[1].textBody).toContain('They’re trying to get in for their 9:00 a.m. booking. Let them in or message them now.');
         expect(emails[1].textBody).toContain('/manager/booking/10');
         expect(emails[2].subject).toBe('Access problem · Sam Chef at Harbour Kitchen · KB-TEST10');
+      }
+      if (category === 'attendance') {
+        expect(emails[1].subject).toBe('Sam Chef says they were there · KB-TEST10');
+        expect(emails[1].textBody).toContain('Local Cooks will review both sides before anything is charged or paid.');
+        expect(emails[2].subject).toBe('Attendance problem · Sam Chef at Harbour Kitchen · KB-TEST10');
       }
     } finally { vi.useRealTimers(); }
   });

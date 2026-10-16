@@ -95,11 +95,12 @@ ${problem.description}` };
       message: t('cpnSentBody', { ...values, other: reporterIsChef ? kitchenName || t('cpnTheKitchen') : chefName || t('cpnTheChef') }) };
     const start = kind === 'booking' && context.scheduledStart ? new Intl.DateTimeFormat(locale || 'en-CA', { timeZone: context.timezone, hour: 'numeric', minute: '2-digit' }).format(context.scheduledStart) : '';
     const access = category === 'access' && reporterIsChef && start;
-    return { title: t(category === 'safety' ? 'cpnSafetyTitle' : category === 'access' ? 'cpnAccessTitle' : 'cpnOtherTitle', { ...values, name: reporter }),
+    const attendance = category === 'attendance';
+    return { title: t(category === 'safety' ? 'cpnSafetyTitle' : category === 'access' ? 'cpnAccessTitle' : attendance ? 'cpnAttendanceTitle' : 'cpnOtherTitle', { ...values, name: reporter }),
       message: `${t('cpnReportedAt', { name: reporter, time })}
 ${problem.description}
 
-${access ? t('cpnAccessNext', { start }) : t('cpnOtherNext')}` };
+${access ? t('cpnAccessNext', { start }) : attendance ? t('cpnAttendanceNext') : t('cpnOtherNext')}` };
   };
 }
 

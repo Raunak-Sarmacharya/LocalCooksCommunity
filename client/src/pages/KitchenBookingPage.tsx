@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import KitchenBookingFlow from "@/components/booking/KitchenBookingFlow";
+import { ClaimHoldBookingPaused, useClaimBookingHold } from "@/components/booking/DamageClaimCards";
 import { replacesFromSearch } from "@/lib/change-request";
 import { Button } from "@/components/ui/button";
 import { chefOutlineCtaClass } from "@/lib/chef-cta";
@@ -27,6 +28,7 @@ export default function KitchenBookingPage() {
   const initialEquipment = searchParams.get('equipment') || undefined;
   // "Change request": send this booking first; the earlier pending request closes once it is sent.
   const replacesBookingId = replacesFromSearch(window.location.search);
+  const claimHold = useClaimBookingHold();
 
   const { data: locationData, isLoading, isError } = useQuery({
     queryKey: [`/api/public/locations/${locationId}/details`],
@@ -135,6 +137,9 @@ export default function KitchenBookingPage() {
         </Button>
       </div>
     );
+  } else if (claimHold.data?.held) {
+    // An unpaid claim pauses new bookings (incl. changing a request): say so before any time is chosen, not at checkout.
+    body = <ClaimHoldBookingPaused onBack={() => navigate("/dashboard")} />;
   } else {
     body = (
       <KitchenBookingFlow

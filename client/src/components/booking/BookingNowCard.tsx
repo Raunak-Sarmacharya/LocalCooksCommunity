@@ -13,6 +13,7 @@ import { SmartImage } from '@/components/ui/smart-image';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DamageClaimCard } from '@/components/booking/DamageClaimCards';
 import { claimMoney, claimPayByDate, claimWhen, type DamageClaimCardData } from '@/lib/damage-claims';
+import { claimBookingHeld } from '@shared/damage-claims';
 import type { BookingPillTone } from '@/lib/booking-header-state';
 import { cn } from '@/lib/utils';
 
@@ -163,7 +164,7 @@ export function NowClaimRows({ claims, manager, chefName, timezone, allowPrimary
         const disputable = ['submitted', 'under_review'].includes(claim.status);
         return <NowAttentionRow key={claim.id} data-testid="claim-attention">
           <p className="text-sm font-medium">{tb('dcV2ClaimTitle', { kitchen: kitchenOf(claim), amount: amount(claim) })}</p>
-          <p className="text-xs text-muted-foreground">{claim.upheldAt ? tc('bnClaimUpheldChef', { date: claimPayByDate(claim.upheldAt, zone(claim), i18n.language) })
+          <p className="text-xs text-muted-foreground">{claim.upheldAt && claimBookingHeld(claim) ? tb('dcV2PausedShort') : claim.upheldAt ? tc('bnClaimUpheldChef', { date: claimPayByDate(claim.upheldAt, zone(claim), i18n.language) })
             : claim.status === 'submitted' ? tb('dcV2RespondBy', { when: claimWhen(claim.deadline, zone(claim), i18n.language) }) : tb(`dcV2Status_${claim.status}`, { defaultValue: claim.status })}</p>
           <div className="flex flex-wrap gap-2">
             {payInBarFor !== claim.id && <Button type="button" className="min-h-11" variant={primary ? 'default' : 'outline'} {...(primary ? { 'data-primary-action': 'true' } : {})}

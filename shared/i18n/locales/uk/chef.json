@@ -3658,5 +3658,10 @@
   "opaViewReport": "Переглянути повідомлення",
   "problemReportedByYou": "Ви повідомили",
   "problemReportedByChef": "Повідомив кухар",
-  "problemReportedByKitchen": "Повідомила кухня"
+  "problemReportedByKitchen": "Повідомила кухня",
+  "opaKitchenSafetyLine": "Повідомлено о {time}. Перевірте, що сталося, зараз. Local Cooks також повідомлено. Якщо комусь загрожує небезпека, телефонуйте 911.",
+  "apptabPayToBook": "Сплатіть {amount}, щоб бронювати знову",
+  "apptabPayToBookNoAmount": "Сплатіть відкритий платіж, щоб бронювати знову",
+  "problemCategory_attendance": "Був(-ла) на бронюванні",
+  "bnIWasThereLabel": "Коли ви прибули і що сталося?"
 }

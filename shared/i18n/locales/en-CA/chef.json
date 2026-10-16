@@ -3658,5 +3658,10 @@
   "opaViewReport": "View report",
   "problemReportedByYou": "Reported by you",
   "problemReportedByChef": "Reported by the chef",
-  "problemReportedByKitchen": "Reported by the kitchen"
+  "problemReportedByKitchen": "Reported by the kitchen",
+  "opaKitchenSafetyLine": "Reported at {time}. Check on them now. Local Cooks has been told too. If anyone is in danger, call 911.",
+  "apptabPayToBook": "Pay {amount} to book again",
+  "apptabPayToBookNoAmount": "Pay the open charge to book again",
+  "problemCategory_attendance": "Was there for the booking",
+  "bnIWasThereLabel": "When did you arrive, and what happened?"
 }

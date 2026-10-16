@@ -37,4 +37,12 @@ describe('urgent report at the top of the booking', () => {
     data.problems = [report()];
     expect(mount('manager', false).container).toBeEmptyDOMElement();
   });
+  it('a "can’t get in" alert ends once the chef is checked in; a safety report stays', () => {
+    const inside = (problems: unknown[]) => { data.problems = problems; return render(<OpenProblemAlert bookingId={189} role="manager" chefName="Sam Chef" kitchenName="Harbour Kitchen"
+      timezone="America/St_Johns" active checkedIn messageButton={null} onViewReport={() => {}} />); };
+    expect(inside([report()]).container).toBeEmptyDOMElement();
+    expect(inside([report({ category: 'safety' })]).container).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId('open-problem-alert')).toHaveTextContent('Check on them now.');
+    expect(screen.getByTestId('open-problem-alert')).not.toHaveTextContent('Let them in');
+  });
 });

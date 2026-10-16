@@ -143,7 +143,7 @@ it.each(['chef', 'manager'] as const)('checkout history uses the %s voice', asyn
     { key: 'checkout', kind: 'checkout_requested', recordedAt: '2026-10-15T12:00:00Z' },
   ] }) })));
   const { client } = mount(role);
-  expect(await screen.findByText(role === 'chef' ? 'You checked out' : 'Checkout requested')).toBeInTheDocument();
-  expect(screen.queryByText(role === 'chef' ? 'Checkout requested' : 'You checked out')).not.toBeInTheDocument();
+  expect(await screen.findByText(role === 'chef' ? 'You checked out' : 'Checked out')).toBeInTheDocument();
+  expect(screen.queryByText(role === 'chef' ? 'Checked out' : 'You checked out')).not.toBeInTheDocument();
   client.clear();
 });
