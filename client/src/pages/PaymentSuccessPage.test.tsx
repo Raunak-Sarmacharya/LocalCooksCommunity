@@ -59,3 +59,72 @@ describe('checkout return states', () => {
     expect(fetcher).toHaveBeenCalledTimes(17);
   });
 });
+
+describe('checkout return after "Change request"', () => {
+  const replacement = (outcome: string, extra = {}) => ({ outcome, oldBookingId: 10, oldReference: 'KB-OLD111', newReference: 'KB-NEW222', kitchenName: 'Harbour Kitchen', ...extra });
+  const created = { state: 'request_created', bookingId: 42, referenceCode: 'KB-NEW222' };
+  it('says the earlier request was withdrawn and its hold released', async () => {
+    await mount({ ...created, replacement: replacement('withdrawn') });
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('Your earlier request KB-OLD111 was withdrawn and its card hold released. Banks can take a few days to show a released hold.');
+  });
+  it('race: the kitchen accepted the original first, so it says there are two bookings and links to the earlier one', async () => {
+    await mount({ ...created, replacement: replacement('two_bookings') });
+    const result = screen.getByTestId('change-request-result');
+    expect(result).toHaveTextContent('Harbour Kitchen accepted your original request KB-OLD111 before your change was sent. You now have two bookings. Cancel the one you don’t need. The new request KB-NEW222 can be withdrawn at no cost.');
+    expect(screen.getByRole('link', { name: en.crViewEarlier })).toHaveAttribute('href', '/booking/10');
+    expect(screen.getByRole('link', { name: en.checkoutViewRequest })).toHaveAttribute('href', '/booking/42');
+  });
+  it('says plainly when the earlier hold is still being released', async () => {
+    await mount({ ...created, replacement: replacement('releasing') });
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('We’re releasing the card hold for your earlier request KB-OLD111. Your new request is sent. You don’t need to do anything.');
+  });
+  it('says there was nothing to withdraw when the earlier request had already ended', async () => {
+    await mount({ ...created, replacement: replacement('ended') });
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('Your earlier request KB-OLD111 had already ended, so there was nothing to withdraw.');
+  });
+  it('shows nothing extra for an ordinary request, or for a checkout that did not create a request', async () => {
+    await mount(created);
+    expect(screen.queryByTestId('change-request-result')).toBeNull();
+    cleanup();
+    await mount({ state: 'slot_taken', moneyStatus: 'hold_released', replacement: replacement('withdrawn') });
+    expect(screen.queryByTestId('change-request-result')).toBeNull();
+  });
+  it('never shows a Stripe id for the earlier request', async () => {
+    await mount({ ...created, replacement: replacement('two_bookings') });
+    expect(document.body.textContent).not.toMatch(/(pi|cs)_[A-Za-z0-9]+/);
+  });
+
+  it.each(['pending', 'releasing'])('keeps polling an unresolved %s pair until the two-booking warning is available', async status => {
+    await mount({ ...created, replacement: replacement(status) });
+    fetcher.mockResolvedValue({ ok: true, json: async () => ({ ...result, ...created, replacement: replacement('two_bookings') }) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('You now have two bookings.');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('continues refreshing a release beyond the ordinary verification retry window, with a slower interval', async () => {
+    await mount({ ...created, replacement: replacement('releasing') });
+    await act(async () => { await vi.advanceTimersByTimeAsync(32_000); });
+    expect(fetcher).toHaveBeenCalledTimes(16);
+    fetcher.mockResolvedValue({ ok: true, json: async () => ({ ...result, ...created, replacement: replacement('withdrawn') }) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(fetcher).toHaveBeenCalledTimes(17);
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('was withdrawn and its card hold released');
+  });
+
+  it('offers support for a parked payment case without claiming the hold was released', async () => {
+    await mount({ ...created, replacement: replacement('needs_support') });
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('Local Cooks needs to check the payment');
+    expect(screen.getByRole('link', { name: en.supportContact })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.checkoutCheckAgain })).toBeInTheDocument();
+  });
+
+  it('uses neutral wording and retains the link when an earlier request has no public reference', async () => {
+    await mount({ ...created, replacement: replacement('two_bookings', { oldReference: null }) });
+    expect(screen.getByTestId('change-request-result')).toHaveTextContent('your original request');
+    expect(screen.getByTestId('change-request-result').textContent).not.toMatch(/#10|request 10/);
+    expect(screen.getByRole('link', { name: en.crViewEarlier })).toHaveAttribute('href', '/booking/10');
+  });
+});

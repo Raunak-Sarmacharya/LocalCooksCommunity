@@ -3,7 +3,8 @@ const kinds = ['requested', 'confirmed', 'cancelled', 'cancellation_requested', 
   'checkin_recorded', 'checkout_requested', 'checkout_cleared', 'checkout_claim_filed',
   'report_no_show', 'report_attended', 'withdraw_attendance', 'kitchen_change_requested', 'kitchen_change_applied',
   'kitchen_change_declined', 'kitchen_change_withdrawn', 'kitchen_change_expired',
-  'ext_requested', 'ext_offered', 'ext_approved', 'ext_accepted', 'ext_paid', 'ext_declined', 'ext_expired', 'ext_withdrawn', 'ext_refunded'] as const;
+  'ext_requested', 'ext_offered', 'ext_approved', 'ext_accepted', 'ext_paid', 'ext_declined', 'ext_expired', 'ext_withdrawn', 'ext_refunded',
+  'replaced_by', 'replaces'] as const;
 /** Same-instant events read in lifecycle order (requested before confirmed), then by key. */
 export function compareHistoryEvents(a: { kind: string; recordedAt: string; key: string }, b: { kind: string; recordedAt: string; key: string }): number {
   const rank = (kind: string) => { const index = (kinds as readonly string[]).indexOf(kind); return index < 0 ? kinds.length : index; };
@@ -12,7 +13,9 @@ export function compareHistoryEvents(a: { kind: string; recordedAt: string; key:
 export type BookingHistoryEvent = { key: string; kind: typeof kinds[number]; recordedAt: string; visitId?: number; itemKind?: 'storage' | 'equipment'; itemId?: number;
   /** Cents; on `goodwill_refunded` (a Local Cooks-funded refund; the kitchen payout is unchanged) and extra-time money events. */ amountCents?: number;
   /** Extra-time events only: who started it (`ask` chef request, `offer` kitchen offer, `early` earlier start, `charge` kitchen charge) and the minutes involved. */
-  extFlow?: ExtensionFlow; minutes?: number };
+  extFlow?: ExtensionFlow; minutes?: number;
+  /** `replaced_by` / `replaces` only: the booking reference on the other side of the link. */
+  otherRef?: string };
 export type ExtensionFlow = 'ask' | 'offer' | 'early' | 'charge';
 export type BookingHistoryResponse = { events: BookingHistoryEvent[]; complete: boolean };
 type Facts = { createdAt?: unknown; cancellationRequestedAt?: unknown; cancellationRequestDeclinedAt?: unknown;
@@ -71,6 +74,7 @@ export function buildBookingHistory(booking: Facts, records: RecordedEvent[], vi
     if (record.kind === 'goodwill_refunded' && !amount) continue;
     events.push({ key: record.key ?? 'event-' + record.id, kind: record.kind as BookingHistoryEvent['kind'], recordedAt,
       ...(amount ? { amountCents: amount } : {}),
+      ...((record.kind === 'replaced_by' || record.kind === 'replaces') && typeof metadata.otherRef === 'string' && metadata.otherRef ? { otherRef: metadata.otherRef.slice(0, 40) } : {}),
       ...(positiveId(metadata.visitId) ? { visitId: metadata.visitId } : {}),
       ...((itemKind === 'storage' || itemKind === 'equipment') && positiveId(itemId)
         ? { itemKind, itemId } : {}) });

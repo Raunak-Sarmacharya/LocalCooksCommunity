@@ -37,3 +37,11 @@ it.each([undefined, 'fr-CA'] as const)('uses Book and explains the manual hold (
   expect(request.custom_text.submit.message.length).toBeLessThanOrEqual(1200);
   expect(request.locale).toBe(locale);
 });
+
+it('carries the request being changed in the session metadata, and only when there is one', async () => {
+  await create({ ...params, bookingData: { ...params.bookingData, replacesBookingId: 10 } });
+  expect(state.create.mock.calls[0][0].metadata.replaces_booking_id).toBe('10');
+  state.create.mockClear();
+  await create(params);
+  expect(state.create.mock.calls[0][0].metadata).not.toHaveProperty('replaces_booking_id');
+});

@@ -50,8 +50,8 @@ export async function withKitchenDayLock<T>(kitchenId: number, operatingDate: st
   }
 }
 
-export async function getActiveKitchenHolds(kitchenId: number, operatingDate?: string) {
-  return db.select().from(kitchenCheckoutHolds).where(and(
+export async function getActiveKitchenHolds(kitchenId: number, operatingDate?: string, reader: Pick<typeof db, 'select'> = db) {
+  return reader.select().from(kitchenCheckoutHolds).where(and(
     eq(kitchenCheckoutHolds.kitchenId, kitchenId),
     ...(operatingDate ? [eq(kitchenCheckoutHolds.operatingDate, operatingDate)] : []),
     gt(kitchenCheckoutHolds.expiresAt, new Date()),
@@ -60,15 +60,18 @@ export async function getActiveKitchenHolds(kitchenId: number, operatingDate?: s
 
 export async function hasInventoryConflict(
   kitchenId: number, operatingDate: string, slots: OperatingSlot[], windowStartTime: string, excludeHoldId?: string,
+  /** A pending request the chef is replacing: its own slots do not block the replacement. */
+  excludeBookingId?: number,
+  reader: Pick<typeof db, 'select'> = db,
 ): Promise<boolean> {
   const [bookings, holds] = await Promise.all([
-    db.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId)),
-    getActiveKitchenHolds(kitchenId),
+    reader.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId)),
+    getActiveKitchenHolds(kitchenId, undefined, reader),
   ]);
   const policy = await kitchenBookingPolicies(kitchenId);
   const interval = (date: string, slot: OperatingSlot, anchor: string) => operatingSlotInstants(date, slot, anchor, policy.timezone);
   const occupied = bookings
-    .filter(booking => booking.status !== 'cancelled')
+    .filter(booking => booking.status !== 'cancelled' && booking.id !== excludeBookingId)
     .flatMap(booking => occupiedIntervals(booking).map(slot => interval(
       (slot as { date?: string }).date || booking.bookingDate.toISOString().slice(0, 10), slot, booking.operatingWindowStartTime || booking.startTime,
     )));
@@ -84,14 +87,14 @@ export async function hasInventoryConflict(
 
 export async function reserveKitchenCheckout(
   kitchenId: number, chefId: number, operatingDate: string, slots: OperatingSlot[], windowStartTime: string,
-  fullDay = false,
+  fullDay = false, excludeBookingId?: number,
 ): Promise<string> {
   return withKitchenDayLock(kitchenId, operatingDate, async () => {
     if (!slots.length) throw new KitchenSlotUnavailableError();
     const { bookingService } = await import('../domains/bookings/booking.service');
     const availability = await bookingService.validateBookingAvailability(
       kitchenId, new Date(`${operatingDate}T12:00:00Z`), slots[0].startTime, slots[slots.length - 1].endTime,
-      { selectedSlots: slots, fullDay },
+      { selectedSlots: slots, fullDay, ...(excludeBookingId ? { excludeBookingId, keepAdvanceWindow: true } : {}) },
     );
     if (!availability.valid || availability.windowStartTime !== windowStartTime) {
       throw new KitchenSlotUnavailableError();
@@ -101,7 +104,7 @@ export async function reserveKitchenCheckout(
       eq(kitchenCheckoutHolds.operatingDate, operatingDate),
       lte(kitchenCheckoutHolds.expiresAt, new Date()),
     ));
-    if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime)) {
+    if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime, undefined, excludeBookingId)) {
       throw new KitchenSlotUnavailableError();
     }
     const id = randomUUID();
@@ -132,6 +135,8 @@ export async function fulfillKitchenCheckout<T>(
   holdId: string | undefined, sessionId: string, kitchenId: number, operatingDate: string,
   slots: OperatingSlot[], windowStartTime: string, createBooking: () => Promise<T>,
   findExisting?: () => Promise<T | undefined>,
+  /** The request this checkout replaces. Its slots are ignored only while it is still an undecided pending request. */
+  replacesBookingId?: number,
 ): Promise<T> {
   return withKitchenDayLock(kitchenId, operatingDate, async () => {
     try {
@@ -144,7 +149,14 @@ export async function fulfillKitchenCheckout<T>(
           throw new KitchenHoldMissingError();
         }
       }
-      if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime, holdId)) {
+      let excludeBookingId: number | undefined;
+      if (replacesBookingId) {
+        // Read under the day lock. A request mid-acceptance (decision recorded) keeps its slots: the replacement then conflicts normally.
+        const [old] = await db.select({ status: kitchenBookings.status, paymentDecision: kitchenBookings.paymentDecision }).from(kitchenBookings)
+          .where(and(eq(kitchenBookings.id, replacesBookingId), eq(kitchenBookings.kitchenId, kitchenId))).limit(1);
+        if (old?.status === 'pending' && !old.paymentDecision) excludeBookingId = replacesBookingId;
+      }
+      if (await hasInventoryConflict(kitchenId, operatingDate, slots, windowStartTime, holdId, excludeBookingId)) {
         throw new KitchenSlotUnavailableError();
       }
       const booking = await createBooking();

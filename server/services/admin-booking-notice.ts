@@ -6,7 +6,7 @@
 export const ADMIN_BOOKING_KINDS = new Set([
   // Bookings & money
   'requested', 'confirmed', 'cancelled', 'cancellation_reviewed', 'storage_cancellation_reviewed', 'refund_issued',
-  'payout_released', 'payout_on_hold', 'payment_recovery_needed',
+  'payout_released', 'payout_on_hold', 'payment_recovery_needed', 'booking_changed',
   // Problems
   'report_attended', 'report_no_show', 'checkout_claim_filed',
 ]);
@@ -14,7 +14,8 @@ export const ADMIN_BOOKING_KINDS = new Set([
 type Cancellation = { cause?: 'chef' | 'kitchen'; refundCents?: number; feeCents?: number; kitchenShareRetainedCents?: number; feePending?: boolean };
 export type AdminBookingFacts = {
   chef: string; kitchen: string; reference: string; when: string; message: string; locale?: string | null;
-  cancellation?: Cancellation; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support'; payoutCents?: number; holdReason?: string | null;
+  cancellation?: Cancellation; requestExpired?: boolean; requestOutcome?: 'declined' | 'withdrawn' | 'support' | 'replaced'; payoutCents?: number;
+  /** A new request that replaces an earlier one of the same chef ("Change request"). */ replacesRef?: string; replacedByRef?: string; holdReason?: string | null;
 };
 
 export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { title: string; message: string } | undefined {
@@ -23,12 +24,13 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
   const who = `${facts.chef} at ${facts.kitchen} · ${facts.when} · ${facts.reference}`;
   switch (kind) {
     case 'requested':
-      return { title: `New booking request · ${facts.chef}`, message: `${who}. The chef's card is on hold until the kitchen responds.` };
+      return { title: `New booking request · ${facts.chef}`, message: `${who}. The chef's card is on hold until the kitchen responds.${facts.replacesRef ? ` (replaces ${facts.replacesRef})` : ''}` };
     case 'confirmed':
       return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. The kitchen accepted and the chef's card was charged.` };
     case 'cancelled': {
       if (facts.requestExpired) return { title: `Request expired · ${facts.chef}`, message: `${who}. The kitchen didn't respond in time; the card hold was released.` };
       if (facts.requestOutcome === 'declined') return { title: `Request declined · ${facts.chef}`, message: `${who}. ${facts.kitchen} declined the request; the card hold was released.` };
+      if (facts.requestOutcome === 'replaced') return { title: `Request replaced · ${facts.chef}`, message: `${who}. The chef sent a new request${facts.replacedByRef ? ` (${facts.replacedByRef})` : ''} in its place; the card hold was released.` };
       if (facts.requestOutcome === 'withdrawn') return { title: `Request withdrawn · ${facts.chef}`, message: `${who}. The chef withdrew the request; the card hold was released.` };
       if (facts.requestOutcome === 'support') return { title: `Request released by Local Cooks · ${facts.chef}`, message: `${who}. Local Cooks released the request; the card hold was released.` };
       const c = facts.cancellation;
@@ -44,6 +46,9 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       return { title: `Cancellation request answered · ${facts.reference}`, message: `${who}. ${facts.message}` };
     case 'refund_issued':
       return { title: `Refund issued · ${facts.reference}`, message: `${who}. ${facts.message}` };
+    // The chef moved a confirmed booking and the kitchen approved (the message carries the old and new time and the money).
+    case 'booking_changed':
+      return { title: `Booking changed · ${facts.reference}`, message: `${who}. ${facts.message}` };
     case 'payout_released':
       return { title: `Payout sent · ${facts.kitchen}${facts.payoutCents ? ` · ${money(facts.payoutCents)}` : ''}`, message: `${who}. Transferred to the kitchen's Stripe account.` };
     case 'payout_on_hold':

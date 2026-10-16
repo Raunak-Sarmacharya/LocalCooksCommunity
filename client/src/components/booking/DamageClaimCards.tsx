@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,14 +90,18 @@ export function BookingDamageClaims({ bookingId, manager = false }: { bookingId:
   return <div className="space-y-4">{query.data?.claims?.map(claim => <DamageClaimCard key={claim.id} claim={claim} manager={manager} onChanged={() => void query.refetch()} />)}</div>;
 }
 export function DamageClaimBookingHoldBanner() {
-  const { t } = useTranslation('booking');
-  const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['damage-claim-booking-hold'], queryFn: () => claimRequest<{ held: boolean; claims: Array<{ id: number; bookingId: number; kitchenName: string }> }>('/chef/damage-claims/booking-hold'),
+  const { t, i18n } = useTranslation('booking');
+  // Refreshes on focus and every minute, so paying elsewhere lifts it without a manual refresh.
+  const query = useQuery({ queryKey: ['damage-claim-booking-hold'], queryFn: () => claimRequest<{ held: boolean; claims: Array<{ id: number; bookingId: number; kitchenName: string; amountCents?: number }> }>('/chef/damage-claims/booking-hold'),
     refetchOnWindowFocus: true, refetchInterval: 60_000, staleTime: 15_000, retry: false });
   if (!query.data?.held) return null;
-  return <aside role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm space-y-2">
-    {query.data.claims.map(claim => <p key={claim.id}>{t('dcV2HoldBanner', { kitchen: claim.kitchenName || t('dcV2Kitchen') })} <a className="underline" href={`/booking/${claim.bookingId}`}>{t('dcV2View')}</a></p>)}
-    <p>{t('dcV2ExistingBookingsSafe')}</p><a className="underline" href="/dashboard?view=support">{t('dcV2Contact')}</a>
-    <Button variant="link" onClick={() => void queryClient.invalidateQueries({ queryKey: ['damage-claim-booking-hold'] })}>{t('dcV2Refresh')}</Button>
+  const money = (cents: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'CAD' }).format(cents / 100);
+  return <aside role="status" data-testid="claim-booking-hold" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm space-y-2">
+    {query.data.claims.map(claim => <div key={claim.id} className="space-y-1">
+      <p className="font-medium">{claim.amountCents ? t('dcV2HoldTitle', { amount: money(claim.amountCents), kitchen: claim.kitchenName || t('dcV2Kitchen') })
+        : t('dcV2HoldBanner', { kitchen: claim.kitchenName || t('dcV2Kitchen') })}</p>
+      <a className="font-medium underline underline-offset-4" href={`/booking/${claim.bookingId}`}>{t('dcV2HoldPay')}</a>
+    </div>)}
+    <p className="text-muted-foreground">{t('dcV2ExistingBookingsSafe')} <a className="underline underline-offset-4" href="/dashboard?view=support">{t('dcV2Contact')}</a></p>
   </aside>;
 }

@@ -26,7 +26,7 @@ vi.mock("@/components/ui/smart-image", () => ({ SmartImage: () => null }));
 vi.mock("@/components/booking/ClockCloseoutSummary", () => ({ ClockCloseoutSummary: () => null }));
 vi.mock("@/components/booking/BookingPreparation", () => ({ default: () => <p>What to expect</p> }));
 const nothing = vi.hoisted(() => () => null);
-vi.mock("@/components/booking/KitchenBookingChanges", () => ({ KitchenBookingChanges: nothing }));
+vi.mock("@/components/booking/KitchenBookingChanges", () => ({ KitchenBookingChanges: nothing, ChangeBookingDialog: nothing }));
 vi.mock("@/components/booking/BookingCancellationChooser", () => ({ BookingCancellationChooser: nothing }));
 vi.mock("@/components/booking/BookingHistoryPanel", () => ({ BookingHistoryPanel: nothing }));
 // Stand-ins with content, as the real panels always render a status line inside the Visit card.

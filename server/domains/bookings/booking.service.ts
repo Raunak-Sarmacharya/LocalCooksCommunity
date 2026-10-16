@@ -454,6 +454,8 @@ export class BookingService {
             // Server-owned post-confirmation change context; never forwarded from client input.
             excludeBookingId?: number;
             excludeHoldId?: string;
+            // With excludeBookingId: still enforce the kitchen's advance-booking window (a chef replacing their own request).
+            keepAdvanceWindow?: boolean;
         } = {}
     ): Promise<{ valid: boolean; error?: string; slots?: BookingInterval[]; windowStartTime?: string }> {
         try {
@@ -510,7 +512,7 @@ export class BookingService {
 
             const dateStr = bookingDate.toISOString().split('T')[0];
             // Kitchen-initiated confirmed changes use excludeBookingId and bypass only the advance window.
-            if (!options.excludeBookingId && dateStr > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) {
+            if ((!options.excludeBookingId || options.keepAdvanceWindow) && dateStr > bookingWindowLastDate(policy.maxAdvanceBookingDays, policy.timezone)) {
                 return { valid: false, error: `This kitchen takes bookings up to ${policy.maxAdvanceBookingDays} days ahead.` };
             }
             const timezone = policy.timezone;
@@ -631,7 +633,8 @@ export class BookingService {
         }
     }
 
-    async getAllTimeSlotsWithBookingInfo(kitchenId: number, date: Date): Promise<Array<{
+    /** `excludeBookingId`: the chef's own pending request being changed; its slots show as free to them. */
+    async getAllTimeSlotsWithBookingInfo(kitchenId: number, date: Date, excludeBookingId?: number): Promise<Array<{
         time: string;
         available: number;
         capacity: number;
@@ -674,7 +677,7 @@ export class BookingService {
 
             const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
 
-            const bookings = await this.getBookingsByKitchen(kitchenId);
+            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.id !== excludeBookingId);
             const dateStr = date.toISOString().split('T')[0];
 
             const slotBookingCounts = new Map<string, number>();
@@ -857,7 +860,8 @@ export class BookingService {
     async getMonthBookableAvailability(
         kitchenId: number,
         year: number,
-        month: number
+        month: number,
+        excludeBookingId?: number
     ): Promise<Record<string, boolean>> {
         const policy = await kitchenBookingPolicies(kitchenId);
         const scheduleMap = await kitchenService.getMonthAvailability(kitchenId, year, month);
@@ -867,7 +871,7 @@ export class BookingService {
         const [weeklyAvailability, overrides, bookings, holds] = await Promise.all([
             kitchenService.getKitchenAvailability(kitchenId),
             kitchenService.getKitchenDateOverrides(kitchenId, monthStart, monthEnd),
-            this.getBookingsByKitchen(kitchenId),
+            this.getBookingsByKitchen(kitchenId).then(rows => rows.filter(booking => booking.id !== excludeBookingId)),
             db.select().from(kitchenCheckoutHolds).where(and(
                 eq(kitchenCheckoutHolds.kitchenId, kitchenId), gt(kitchenCheckoutHolds.expiresAt, new Date()),
             )),

@@ -8,13 +8,15 @@ import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 import { parseCheckoutCancellationPolicy, parseCheckoutSlots } from './checkout-metadata';
 import { cancellationSnapshotFromMetadata } from './cancellation-policy-settings';
-import { fulfillKitchenCheckout, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
+import { fulfillKitchenCheckout, hasInventoryConflict, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
 import { storageListingAwaitingRemoval } from './booking-linked-cancellation';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
 import { getBookingResponseDeadline } from './booking-response-deadline';
 import { emailLocalDateTimeSentence } from '../email';
+import { completeReplacementSafely, noticeTimes, recordReplacementPending, replacedRequestForFulfillment, replacesBookingIdFrom } from './booking-replacement';
+import { recordReplacementWithdrawal } from './booking-payment-decision';
 import { registerKitchenCheckout, checkoutIncident, updateCheckoutIncident, resolveCheckoutConflict } from './kitchen-checkout-incidents';
 
 /** The chef's own in-app notice for a new request; the manager keeps the review copy. */
@@ -39,8 +41,11 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   const recovery = await checkoutIncident(session.id);
   if (recovery?.chefId !== chefId || recovery.kitchenId !== kitchenId) throw Error('Checkout ownership changed');
   const [existing] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, intent.id)).limit(1);
+  const replacesId = replacesBookingIdFrom(metadata);
   if (existing) {
     await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: existing.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
+    // A replayed webhook finishes a replacement the first delivery did not (idempotent).
+    if (replacesId) await completeReplacementSafely(existing.id, replacesId);
     return existing.id;
   }
   if (recovery.inventoryConflict) return resolveCheckoutConflict(session, intent, stripe);
@@ -51,12 +56,18 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
   const paymentStatus = authorized ? 'authorized' as const : 'paid' as const;
   const customerId = typeof intent.customer === 'string' ? intent.customer : intent.customer?.id;
   const paymentMethodId = typeof intent.payment_method === 'string' ? intent.payment_method : intent.payment_method?.id;
+  let createdBookingId: number | undefined;
   try {
     const booking = await fulfillKitchenCheckout(metadata.hold_id, session.id, kitchenId, metadata.booking_date.slice(0, 10),
       parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time), metadata.window_start_time || metadata.start_time,
       () => db.transaction(async tx => {
         // Another fulfillment may have recorded a conflict while this caller waited for inventory.
         if ((await checkoutIncident(session.id))?.inventoryConflict) throw new KitchenSlotUnavailableError();
+        // Acceptance uses this same row lock. Recheck inventory if it won after the exclusion read.
+        const replaced = replacesId ? await replacedRequestForFulfillment(tx, replacesId, chefId, kitchenId) : undefined;
+        if (replacesId && !replaced?.live && await hasInventoryConflict(kitchenId, metadata.booking_date.slice(0, 10),
+          parseCheckoutSlots(metadata.selected_slots, metadata.start_time, metadata.end_time), metadata.window_start_time || metadata.start_time, metadata.hold_id, undefined, tx))
+          throw new KitchenSlotUnavailableError();
         const [context] = await tx.select({ managerId: locations.managerId, kitchenName: kitchens.name, timezone: locations.timezone }).from(kitchens)
           .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, kitchenId)).limit(1);
         if (!context?.managerId) throw new Error('Checkout manager not found');
@@ -111,17 +122,33 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
               ...storageItems.map(item => ({ kind: 'storage' as const, bookingId: Number(item.storageBookingId), subtotalCents: Number(item.totalPrice) })),
               ...equipmentItems.map(item => ({ kind: 'equipment' as const, bookingId: Number(item.equipmentBookingId), subtotalCents: Number(item.totalPrice) })),
             ], terms.tax) } });
+        // "Change request": while the earlier request is still undecided, the kitchen gets ONE notice for the pair, on this request,
+        // and the chef's own notice comes with the earlier request's release. Otherwise this is an ordinary new request.
+        const changing = !!replaced?.live;
+        const deadlineAt = changing ? await getBookingResponseDeadline(parent, tx, context.timezone).then(value => value.toISOString()).catch(() => undefined) : undefined;
+        if (replacesId) {
+          if (changing) await recordReplacementWithdrawal(tx, replaced!.booking, {
+            bookingId: parent.id, reference: parent.referenceCode, ...(deadlineAt ? { deadlineAt } : {}) });
+          // Durable even if the process dies before post-commit completion or the first notice can be queued.
+          await recordReplacementPending(tx, parent.id, replacesId, replaced?.booking.referenceCode ?? null);
+        }
         await queueBookingLifecycleEvent(tx, parent.id, 'requested', 'New kitchen booking request',
           authorized ? `A new kitchen booking request is ready to review. The chef’s card is on hold and will only be charged if the kitchen accepts.`
             : `A new kitchen booking request is ready to review. The checkout payment has been received.`, chefId,
-          authorized ? { roleText: { chef: await chefRequestCopy(parent, tx, context.kitchenName, context.timezone) } } : undefined);
+          {
+            ...(replaced?.booking.referenceCode ? { replacesRef: replaced.booking.referenceCode } : {}),
+            ...(changing ? { notificationRecipientPolicy: 'manager', emailRecipientPolicy: 'manager', replacementNotice: { variant: 'changed',
+              oldRef: replaced!.booking.referenceCode ?? undefined, newRef: parent.referenceCode ?? undefined,
+              old: noticeTimes(replaced!.booking), next: noticeTimes(parent), deadlineAt } }
+              : authorized ? { roleText: { chef: await chefRequestCopy(parent, tx, context.kitchenName, context.timezone) } } : {}),
+          });
         return parent;
       }), async () => {
         const [existing] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, intent.id)).limit(1);
         return existing;
-      });
+      }, replacesId);
     await updateCheckoutIncident(session.id, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, lastCheckedAt: new Date() });
-    return booking.id;
+    createdBookingId = booking.id;
   } catch (error) {
     if (error instanceof KitchenHoldMissingError || error instanceof KitchenSlotUnavailableError) {
       return resolveCheckoutConflict(session, intent, stripe);
@@ -129,4 +156,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     await updateCheckoutIncident(session.id, { outcome: 'needs_support', paymentIntentId: intent.id, amountCents: intent.amount, currency: session.currency, error: (error as Error).message });
     throw error;
   }
+  // Outside the try: the new request already stands, so a replacement problem must never mark this checkout as failed.
+  if (replacesId) await completeReplacementSafely(createdBookingId!, replacesId);
+  return createdBookingId!;
 }

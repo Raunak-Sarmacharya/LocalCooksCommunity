@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet } from '@/lib/api';
 import { CancellationPolicySummary, type PolicyResponse } from './CancellationPolicySummary';
 import { CheckoutCancellationDisclosure, CheckoutConsentNotice } from './CheckoutCancellationDisclosure';
+import { ChangeRequestBanner, ChangeRequestConsentLine, useReplacedRequest } from './ChangeRequestNotice';
 import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
 import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
@@ -289,6 +290,8 @@ export interface KitchenBookingFlowProps {
   initialNotes?: string;
   initialStorage?: string;
   initialEquipment?: string;
+  /** "Change request": the chef's pending request that is withdrawn once this new one is sent. */
+  replacesBookingId?: number;
   onCancel: () => void;
   onComplete?: (bookingId?: number) => void;
   /**
@@ -358,6 +361,7 @@ export default function KitchenBookingFlow({
   initialNotes,
   initialStorage,
   initialEquipment,
+  replacesBookingId,
   onCancel,
   onComplete,
   registerLeaveGuard,
@@ -369,6 +373,10 @@ export default function KitchenBookingFlow({
   const { guard, gate } = useEmailVerificationGuard();
   // Read up front: a chef who cannot book is told why before they pick dates, not after checkout.
   const { eligibility } = useBookingEligibility(locationId);
+  // "Change request": the earlier pending request this booking replaces (shown in the banner and the consent block).
+  const { data: replacedRequest } = useReplacedRequest(replacesBookingId);
+  // Its own hours are free for the chef while changing it (the server ignores `replaces` unless it is theirs and still pending).
+  const replacesQuery = replacesBookingId ? `&replaces=${replacesBookingId}` : '';
   const bookingBlocked = !!eligibility && !eligibility.canBook;
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -649,7 +657,7 @@ export default function KitchenBookingFlow({
       const chunks = await Promise.all(
         months.map(async ({ year, month }) => {
           const response = await fetch(
-            `/api/chef/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
+            `/api/chef/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}${replacesQuery}`,
             {
               credentials: "include",
               headers,
@@ -761,7 +769,7 @@ export default function KitchenBookingFlow({
       }
 
       // Fetch slots
-      const response = await fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${date}`, {
+      const response = await fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${date}${replacesQuery}`, {
         credentials: "include",
         headers,
         cache: 'no-store',
@@ -1255,6 +1263,7 @@ export default function KitchenBookingFlow({
             endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
           })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
+          ...(replacesBookingId ? { replacesBookingId } : {}),
         }),
       });
 
@@ -2256,6 +2265,7 @@ export default function KitchenBookingFlow({
               )}
             </Button>
           </div>
+          {replacesBookingId && replacedRequest ? <ChangeRequestConsentLine request={replacedRequest} /> : null}
           {grandTotal > 0 && acceptedPolicy && <CheckoutConsentNotice buttonLabel={t("sheetCheckoutButton", "Checkout")} onShowPolicy={showPolicyDetails} />}
         </div>
       );
@@ -2293,6 +2303,7 @@ export default function KitchenBookingFlow({
     <>
       <div className="space-y-4 lg:flex lg:h-[calc(100dvh-9rem)] lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-hidden">
         <BookingEligibilityBanner eligibility={eligibility} locationName={locationName} />
+        {replacesBookingId && replacedRequest ? <ChangeRequestBanner request={replacedRequest} /> : null}
         {/* ReUI c-stepper-10 — equal columns, title + description, line separators */}
         {isFlowReady ? (
           <Stepper

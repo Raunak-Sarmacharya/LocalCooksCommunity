@@ -39,7 +39,8 @@ vi.mock('../db', () => {
   return { db: database(mocks.state) };
 });
 vi.mock('../utils/user-display', () => ({ getUserDisplayName: vi.fn(async () => 'Sam Taylor') }));
-import { decideAuthorizedBooking, BookingRequestExpired } from './booking-payment-decision';
+import { decideAuthorizedBooking, recordReplacementWithdrawal, BookingRequestExpired } from './booking-payment-decision';
+import { db } from '../db';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 describe('durable booking capture recovery (isolated Stripe and transaction model)', () => {
   beforeEach(() => {
@@ -174,5 +175,73 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     mocks.capture.mockRejectedValue(new Error('timeout'));
     await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow('timeout');
     expect(expiry.lazy).not.toHaveBeenCalled();
+  });
+  // "Change request": the chef's earlier request is withdrawn because the new one was sent.
+  describe('withdrawing a request the chef replaced', () => {
+    const replacedBy = { bookingId: 11, reference: 'KB-NEW222', deadlineAt: '2099-01-01T15:00:00.000Z' };
+    it('records the immutable withdrawal using stored payment evidence, with no provider call inside the transaction', async () => {
+      mocks.state.payment_transactions[0].amount = '2440';
+      await db.transaction(async tx => {
+        const [original] = await tx.select().from(kitchenBookings).for('update');
+        await recordReplacementWithdrawal(tx, original, replacedBy);
+        expect(mocks.intent).not.toHaveBeenCalled();
+        expect(mocks.cancel).not.toHaveBeenCalled();
+      });
+      expect(mocks.state.kitchen_bookings[0].paymentDecision).toMatchObject({ target: 'cancelled', state: 'pending', replacedBy,
+        authorizedAmount: 2440, storage: [{ id: 2, status: 'cancelled' }] });
+      await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow('different payment decision');
+      expect(mocks.capture).not.toHaveBeenCalled();
+    });
+
+    it('never exposes an internal booking id in replacement recovery copy when no public reference exists', async () => {
+      mocks.state.kitchen_bookings[0].referenceCode = null;
+      mocks.cancel.mockRejectedValue(new Error('timeout'));
+      await expect(decideAuthorizedBooking(1, 'cancelled', [], [], 3, undefined, { replacedBy })).rejects.toThrow();
+      const recovery = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(call => call[2] === 'payment_recovery_needed')!;
+      expect(recovery[4]).toContain('your earlier request yet');
+      expect(recovery[4]).not.toMatch(/#1|booking 1|request 1/);
+    });
+    beforeEach(() => { mocks.state.kitchen_bookings[0].referenceCode = 'KB-OLD111'; });
+    it('releases the hold, tells only the chef (Request updated facts) and not the kitchen', async () => {
+      mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      await expect(decideAuthorizedBooking(1, 'cancelled', [], [], 3, undefined, { replacedBy })).resolves.toMatchObject({ success: true, status: 'cancelled', authorizationVoided: true });
+      expect(mocks.cancel).toHaveBeenCalledWith('pi_fixture');
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'cancelled', paymentStatus: 'failed', paymentDecision: { state: 'complete', replacedBy } });
+      const call = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(entry => entry[2] === 'cancelled')!;
+      const metadata = call[6] as Record<string, any>;
+      expect(metadata).toMatchObject({ recipientPolicy: 'chef', requestOutcome: 'replaced',
+        replacementNotice: { variant: 'updated', oldRef: 'KB-OLD111', newRef: 'KB-NEW222', holdCents: 2440, deadlineAt: '2099-01-01T15:00:00.000Z' } });
+      // Not the generic "request withdrawn" copy to either side, and never a notice to the kitchen.
+      expect(metadata.roleText).toBeUndefined();
+      expect(metadata.recipientPolicy).not.toBe('participants');
+    });
+    it('keeps the replaced context when a Stripe failure is retried by recovery (no options passed the second time)', async () => {
+      mocks.cancel.mockRejectedValueOnce(new Error('Stripe timeout'));
+      mocks.intent.mockResolvedValue({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 });
+      await expect(decideAuthorizedBooking(1, 'cancelled', [], [], 3, undefined, { replacedBy })).rejects.toThrow('Stripe timeout');
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentDecision: { state: 'pending', replacedBy } });
+      // Recovery: the old booking stays pending with a recorded release; the chef and Local Cooks hear, the kitchen does not.
+      const recovery = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(entry => entry[2] === 'payment_recovery_needed')!;
+      expect(recovery[3]).toBe('We’re releasing your earlier hold');
+      expect(recovery[6]).toMatchObject({ recipientPolicy: 'chef', supportCase: true, replacementNotice: { variant: 'releasing', oldRef: 'KB-OLD111', newRef: 'KB-NEW222' } });
+      mocks.intent.mockReset().mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      await decideAuthorizedBooking(1, 'cancelled');
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'cancelled', paymentDecision: { state: 'complete', replacedBy } });
+      const cancelled = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(entry => entry[2] === 'cancelled')!;
+      expect(cancelled[6]).toMatchObject({ requestOutcome: 'replaced', recipientPolicy: 'chef' });
+    });
+    it('an ordinary withdrawal is unchanged: role-specific copy for both sides', async () => {
+      mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      await decideAuthorizedBooking(1, 'cancelled', [], [], 3);
+      const metadata = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(entry => entry[2] === 'cancelled')![6] as Record<string, any>;
+      expect(metadata.requestOutcome).toBe('withdrawn');
+      expect(metadata.roleText.manager.title).toContain('withdrew their request');
+      expect(metadata.replacementNotice).toBeUndefined();
+    });
   });
 });

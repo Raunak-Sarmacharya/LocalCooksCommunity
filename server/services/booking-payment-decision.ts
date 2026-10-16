@@ -24,8 +24,27 @@ type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending
   equipment: { id: number; status: 'confirmed' | 'cancelled' }[]; startedAt: string; completedAt?: string;
   /** A pending decision that replaying can never finish. Recovery stops retrying it; Local Cooks resolves it from the booking-support console. */
   deadEnd?: { kind: 'hold_canceled' | 'captured_before_release' | 'amount_mismatch'; at: string; receivedCents?: number };
+  /** The chef withdrew this request because they sent this new one first ("Change request"). */
+  replacedBy?: { bookingId: number; reference: string | null; deadlineAt?: string };
   /** Id of the dead-end decision a support action replaced with this one. */
   supersedes?: string };
+
+/** Caller holds the original booking FOR UPDATE. Persist the withdrawal with the new booking; Stripe runs after commit. */
+export async function recordReplacementWithdrawal(tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  booking: typeof kitchenBookings.$inferSelect, replacedBy: NonNullable<Decision['replacedBy']>) {
+  if (booking.status !== 'pending' || booking.paymentStatus !== 'authorized' || booking.paymentDecision || !booking.paymentIntentId)
+    throw new BookingTermsReviewRequired();
+  const storage = await tx.select().from(storageBookings).where(eq(storageBookings.kitchenBookingId, booking.id)).for('update');
+  const equipment = await tx.select().from(equipmentBookings).where(eq(equipmentBookings.kitchenBookingId, booking.id)).for('update');
+  const [payment] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, booking.paymentIntentId)).limit(1);
+  const authorizedAmount = Number(payment?.amount);
+  if (!Number.isSafeInteger(authorizedAmount) || authorizedAmount <= 0) throw new BookingTermsReviewRequired();
+  const decision: Decision = { id: randomUUID(), target: 'cancelled', state: 'pending', intentId: booking.paymentIntentId,
+    actorId: booking.chefId ?? undefined, amount: 0, subtotal: 0, tax: 0, commission: 0, taxRate: 0, authorizedAmount,
+    storage: storage.map(item => ({ id: item.id, status: 'cancelled' })),
+    equipment: equipment.map(item => ({ id: item.id, status: 'cancelled' })), startedAt: new Date().toISOString(), replacedBy };
+  await tx.update(kitchenBookings).set({ paymentDecision: decision, updatedAt: new Date() }).where(eq(kitchenBookings.id, booking.id));
+}
 
 /** A request past its manager response deadline can no longer be confirmed. Reads no longer
  * expire requests lazily, so the decision command enforces the deadline itself instead of
@@ -40,7 +59,7 @@ export class BookingRequestExpired extends BookingTermsReviewRequired {
 /** Persist one immutable decision before Stripe; retries reconcile that same decision. */
 export async function decideAuthorizedBooking(bookingId: number, target: 'confirmed' | 'cancelled',
   storageActions: ItemAction[] = [], equipmentActions: ItemAction[] = [], actorId?: number, expiry?: Decision['expiry'],
-  options: { supersedeDeadEnd?: boolean; message?: string } = {}) {
+  options: { supersedeDeadEnd?: boolean; message?: string; replacedBy?: Decision['replacedBy'] } = {}) {
   const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!booking?.paymentIntentId) throw new BookingTermsReviewRequired();
   let decision = booking.paymentDecision as Decision | null;
@@ -122,7 +141,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal, actorId, expiry,
         ...capture, authorizedAmount: terms.authorizedAmount, taxRate: terms.rate, storage: storagePlan,
         equipment: equipmentPlan, startedAt: new Date().toISOString(),
-        ...(target === 'cancelled' && options.message?.trim() ? { declineMessage: options.message.trim().slice(0, 500) } : {}) };
+        ...(target === 'cancelled' && options.message?.trim() ? { declineMessage: options.message.trim().slice(0, 500) } : {}),
+        ...(target === 'cancelled' && options.replacedBy ? { replacedBy: options.replacedBy } : {}) };
       // The webhook needs this split before capture to calculate the manager transfer.
       const [transaction] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
       if (!transaction && target === 'confirmed') throw new BookingTermsReviewRequired();
@@ -156,9 +176,13 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       const [existing] = await tx.select().from(bookingLifecycleEvents).where(and(eq(bookingLifecycleEvents.bookingId, bookingId),
         eq(bookingLifecycleEvents.kind, 'payment_recovery_needed'), sql`${bookingLifecycleEvents.metadata}->>'decisionId' = ${decision!.id}`)).limit(1);
       if (existing) return;
-      await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', 'Local Cooks is checking your payment',
-        `Local Cooks is checking the payment for booking #${bookingId}. Please don’t pay again. Open the booking for the latest update.`,
-        decision!.actorId, { decisionId: decision!.id });
+      // A replaced request: the new request stands, so only the chef (and Local Cooks) hear about the hold still being released.
+      const replaced = decision!.replacedBy;
+      await queueBookingLifecycleEvent(tx, bookingId, 'payment_recovery_needed', replaced ? 'We’re releasing your earlier hold' : 'Local Cooks is checking your payment',
+        replaced ? `Your new request is sent. We couldn’t release the hold for your earlier request${parent?.referenceCode ? ` ${parent.referenceCode}` : ''} yet. We’ll keep trying, and Local Cooks has been told. Please don’t pay again.`
+          : `Local Cooks is checking the payment for ${parent?.referenceCode || 'this booking'}. Please don’t pay again. Open the booking for the latest update.`,
+        decision!.actorId, { decisionId: decision!.id, ...(replaced ? { recipientPolicy: 'chef', supportCase: true,
+          replacementNotice: { variant: 'releasing', oldRef: parent?.referenceCode ?? undefined, newRef: replaced.reference ?? undefined } } : {}) });
     }).catch(() => { /* The persisted decision remains the source of truth during a database outage. */ });
     throw error;
   }
@@ -274,12 +298,17 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
     else {
     const [paidTiming] = decision!.target === 'confirmed' ? await tx.select({ timing: paymentTransactions.payoutTiming }).from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1) : [];
     // An unaccepted request released by someone: say who, to each side (never the generic "cancelled … storage" text).
-    const outcome = decision!.target === 'cancelled' ? await requestOutcome(tx, booking!, decision!.actorId, decision!.declineMessage) : undefined;
+    const outcome = decision!.target === 'cancelled' && !decision!.replacedBy ? await requestOutcome(tx, booking!, decision!.actorId, decision!.declineMessage) : undefined;
+    // Replaced by the chef's new request: the kitchen hears once, about the new request; the chef reads "Request updated".
+    const replaced = decision!.target === 'cancelled' ? decision!.replacedBy : undefined;
     await queueBookingLifecycleEvent(tx, bookingId, decision!.target,
       decision!.target === 'confirmed' ? 'Kitchen booking confirmed' : 'Kitchen booking cancelled',
       decision!.target === 'confirmed' ? `The kitchen confirmed your booking. Arrival details will be in your booking.`
         : `The kitchen booking is cancelled and the card hold has been released. Storage in use stays reserved until the kitchen confirms your belongings have been collected.`,
-      decision!.actorId, { decisionId: decision!.id, ...(outcome ? { requestOutcome: outcome.kind, roleText: outcome.roleText, kitchenCaused: outcome.kind === 'declined' } : {}),
+      decision!.actorId, { decisionId: decision!.id,
+        ...(replaced ? { recipientPolicy: 'chef', requestOutcome: 'replaced', replacementNotice: { variant: 'updated', oldRef: booking!.referenceCode ?? undefined,
+          newRef: replaced.reference ?? undefined, holdCents: decision!.authorizedAmount, deadlineAt: replaced.deadlineAt } } : {}),
+        ...(outcome ? { requestOutcome: outcome.kind, roleText: outcome.roleText, kitchenCaused: outcome.kind === 'declined' } : {}),
         ...(decision!.target === 'confirmed' ? { roleText: {
         manager: { title: 'Booking confirmed', message: 'You confirmed this booking and the chef’s card was charged. Share the check-in code with them in person when they arrive.' + (paidTiming?.timing === 'after_closeout' ? ' Paid after the visit: as soon as you finish the inspection, or automatically 24 hours after it ends.' : '') } } } : {}) });
     }
@@ -299,7 +328,7 @@ async function markDecisionDeadEnd(bookingId: number, decision: Decision, kind: 
     await tx.update(kitchenBookings).set({ paymentDecision: { ...current, deadEnd: { kind, at: new Date().toISOString(), ...(receivedCents !== undefined ? { receivedCents } : {}) } } })
       .where(eq(kitchenBookings.id, bookingId));
     if (kind === 'amount_mismatch') await queueBookingLifecycleEvent(tx, bookingId, 'support_updated', 'A captured payment does not match the confirmed amount',
-      `${booking?.referenceCode || `#${bookingId}`}: the card was charged $${((receivedCents ?? 0) / 100).toFixed(2)} but the confirmation expected $${(decision.amount / 100).toFixed(2)}. Retrying cannot fix this. Review the payment in support, then use Check the saved payment decision once it is settled.`,
+      `${booking?.referenceCode || 'This booking'}: the card was charged $${((receivedCents ?? 0) / 100).toFixed(2)} but the confirmation expected $${(decision.amount / 100).toFixed(2)}. Retrying cannot fix this. Review the payment in support, then use Check the saved payment decision once it is settled.`,
       decision.actorId, { recipientPolicy: 'admins', supportCase: true, decisionId: decision.id });
   }).catch(() => { /* Best effort: the decision stays pending and the next replay marks it again. */ });
 }

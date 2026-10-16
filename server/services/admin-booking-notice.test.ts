@@ -13,7 +13,25 @@ describe('admin booking notices', () => {
       message: 'Sam Chef at PHASE0 Main Kitchen · Oct 15, 9:45 p.m. · KB-DHP7MC. PHASE0 Main Kitchen reported that Sam Chef didn’t come. Note from PHASE0 Main Kitchen: Nobody arrived. No-shows aren’t refunded. If the chef says they were there, it comes to support as a problem report.',
     });
   });
+  it('tracks a confirmed booking that the chef moved, with the reference in the title and the old and new time in the message', () => {
+    expect(ADMIN_BOOKING_KINDS.has('booking_changed')).toBe(true);
+    expect(adminBookingNotice('booking_changed', { ...facts, message: 'The chef changed the booking from Mon, Oct 26, 9:00 a.m.-11:00 a.m. to Wed, Oct 28, 9:00 a.m.-12:00 p.m., and the kitchen approved. The chef paid $48.00 more.' })).toEqual({
+      title: 'Booking changed · KB-DHP7MC',
+      message: 'Sam Chef at PHASE0 Main Kitchen · Oct 15, 9:45 p.m. · KB-DHP7MC. The chef changed the booking from Mon, Oct 26, 9:00 a.m.-11:00 a.m. to Wed, Oct 28, 9:00 a.m.-12:00 p.m., and the kitchen approved. The chef paid $48.00 more.',
+    });
+  });
   it('ignores routine milestones', () => {
     expect(adminBookingNotice('service_ended', facts)).toBeUndefined();
+  });
+  // "Change request": the chef sends a new request first; the old one closes after. Local Cooks reads both as one story.
+  it('says which earlier request a new request replaces', () => {
+    const notice = adminBookingNotice('requested', { ...facts, replacesRef: 'KB-OLD111' });
+    expect(notice?.message).toContain('(replaces KB-OLD111)');
+    expect(adminBookingNotice('requested', facts)?.message).not.toMatch(/replaces/);
+  });
+  it('words the earlier request’s closing as replaced, not as a plain withdrawal', () => {
+    const notice = adminBookingNotice('cancelled', { ...facts, requestOutcome: 'replaced', replacedByRef: 'KB-NEW222' });
+    expect(notice?.title).toBe('Request replaced · Sam Chef');
+    expect(notice?.message).toContain('The chef sent a new request (KB-NEW222) in its place; the card hold was released.');
   });
 });

@@ -44,6 +44,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatPhoneForDisplay, normalizePhoneNumber } from "@shared/phone-validation";
 import { ArrowLeft, MapPin, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, Phone, Mail, Receipt, LogIn, LogOut, Camera, FileWarning, Clock, MoreHorizontal, MessageSquare, CalendarPlus, CalendarX, ClipboardCheck, LifeBuoy } from "lucide-react";
+import { changeRequestHref } from "@/lib/change-request";
 import { arrivalRecorded, bookedMinutes, bookingHeaderPhase, canCancelOrChange, canMessage, contactVisible, initials, timeRange, type BookingHeaderPhase } from "@/lib/booking-header-state";
 import { bookingCancelCause } from '@/lib/booking-cancel-cause';
 import { bookingReference } from '@/lib/booking-reference';
@@ -1226,6 +1227,9 @@ export default function BookingDetailsPage() {
   const cancelCause = booking ? bookingCancelCause({ status: booking.status, chefId: booking.chefId, paymentDecision: booking.paymentDecision }) : null;
   const findAnotherTimeHref = booking && !isManagerView && (cancelCause === 'declined' || cancelCause === 'expired') && (booking.location?.id ?? booking.kitchen?.locationId)
     ? `/book/${booking.location?.id ?? booking.kitchen?.locationId}?kitchenId=${booking.kitchenId}` : null;
+  // "Change request" (pending only): rebook first; the earlier request closes once the new one is sent.
+  const changeRequestLink = booking && !isManagerView && booking.status === 'pending' && booking.paymentStatus === 'authorized' && !booking.paymentDecision
+    ? changeRequestHref({ ...booking, locationId: booking.location?.id ?? booking.kitchen?.locationId }) : null;
   const chefName = booking?.chef?.fullName || booking?.chef?.username || t('bdhChefFallback');
   const kitchenName = booking?.kitchen?.name || t('bdKitchenBookingFallback');
   const visitActive = !!booking && (['checked_in', 'checkout_requested'].includes(booking.checkinStatus || '') || (booking.visits || []).some(visit => ['checked_in', 'checkout_requested'].includes(visit.checkinStatus)));
@@ -1313,7 +1317,7 @@ export default function BookingDetailsPage() {
     claimPayBy: latestClaim?.upheldAt ? claimPayByDate(latestClaim.upheldAt, latestClaim.visitEvidence?.timezone || tz || 'America/St_Johns', i18n.language) : undefined,
     settledClaim, hasClaim: claimsQuery.isPending || claimsQuery.isError || !!claims?.some(claim => claim.claimVersion === 2 && claim.status !== 'draft'),
     inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
-    canCancel: chefCanCancel, canAddToCalendar: booking?.status === 'confirmed' && !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
+    canCancel: chefCanCancel, canChangeRequest: !!changeRequestLink && chefCanCancel, canAddToCalendar: booking?.status === 'confirmed' && !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
     canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
   } });
   const primary = now.primary;
@@ -1362,6 +1366,7 @@ export default function BookingDetailsPage() {
   const toolLabel = (tool: ExtensionTool) => bt(tool === 'offer' ? 'sxbOfferMore' : tool === 'early_start' ? 'sxbLetStartEarly' : 'sxbChargeExtra');
   const secondaryLinks: NowSecondaryLink[] = now.secondary.flatMap((key): NowSecondaryLink[] => {
     switch (key) {
+      case 'change_request': return changeRequestLink ? [{ key, label: t('bnChangeRequest'), href: changeRequestLink, onSelect: () => navigate(changeRequestLink), testId: 'change-request' }] : [];
       case 'cancel_request': return [{ key, label: t('bnCancelRequest'), onSelect: () => setCancelOpen(true) }];
       case 'see_arrival_details': return booking ? [{ key, label: t('bnSeeArrivalDetails'), onSelect: () => navigate(`/booking/${booking.id}/visit`) }] : [];
       case 'add_to_calendar': return [{ key, label: t('bdhAddToCalendar'), icon: CalendarPlus, onSelect: addToCalendar }];

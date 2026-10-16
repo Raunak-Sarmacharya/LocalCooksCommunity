@@ -7,6 +7,16 @@ import { useFirebaseAuth } from '@/hooks/use-auth';
 import { ContactLocalCooks } from '@/components/support/ContactLocalCooks';
 import type { CheckoutOutcome } from '@shared/checkout-outcome';
 
+/** "Change request": how the earlier request ended, in plain words, with a way to both bookings when there are two. */
+function ReplacementResult({ replacement, t }: { replacement: NonNullable<CheckoutOutcome['replacement']>; t: (key: string, options?: Record<string, unknown>) => string }) {
+  const values = { kitchen: replacement.kitchenName || t('checkoutTheKitchen'), oldRef: replacement.oldReference || '', newRef: replacement.newReference || '' };
+  const key = { pending: 'crSuccessPending', withdrawn: 'crSuccessWithdrawn', releasing: 'crSuccessReleasing', two_bookings: 'crSuccessTwo', ended: 'crSuccessEnded', needs_support: 'crSuccessSupport' }[replacement.outcome];
+  return <div className={replacement.outcome === 'two_bookings' ? 'space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3' : 'space-y-2'} data-testid="change-request-result">
+    <p className="text-sm">{t(key, values)}</p>
+    {replacement.outcome === 'two_bookings' && <p className="text-sm"><Link className="underline" href={`/booking/${replacement.oldBookingId}`}>{t('crViewEarlier')}</Link></p>}
+  </div>;
+}
+
 export default function PaymentSuccessPage() {
   useFirebaseAuth();
   const { t: translate, i18n } = useTranslation('booking');
@@ -30,12 +40,13 @@ export default function PaymentSuccessPage() {
         if (result.sessionId !== sessionId || !['request_created', 'verifying', 'slot_taken', 'needs_support'].includes(result.state)) throw Error('Checkout response mismatch');
         if (cancelled) return;
         setOutcome(result);
-        if (result.state !== 'verifying' || attempt >= 15) return;
+        const replacementPending = result.state === 'request_created' && ['pending', 'releasing'].includes(result.replacement?.outcome || '');
+        if (!replacementPending && (result.state !== 'verifying' || attempt >= 15)) return;
       } catch {
         if (cancelled) return;
         if (attempt >= 15) { setUnavailable(true); return; }
       }
-      timer = setTimeout(() => void load(attempt + 1), 2000);
+      timer = setTimeout(() => void load(attempt + 1), attempt >= 15 ? 10_000 : 2000);
     };
     void load();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
@@ -56,10 +67,11 @@ export default function PaymentSuccessPage() {
       <p className="text-sm text-muted-foreground">{description}</p>
       {amount && <p className="text-sm font-medium">{amount}</p>}
       {outcome?.operatingDate && <p className="text-sm">{t('checkoutDate', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${outcome.operatingDate}T12:00:00Z`)) })}</p>}
+      {state === 'request_created' && outcome?.replacement && <ReplacementResult replacement={outcome.replacement} t={t} />}
       {outcome?.referenceCode ? <p className="text-sm">{t('checkoutBookingReference', { reference: outcome.referenceCode })}</p>
         : sessionId && state !== 'request_created' && <p className="text-sm break-all">{t('checkoutReference', { reference: sessionId })}</p>}
       {state === 'request_created' && outcome?.bookingId && <Button asChild><Link href={`/booking/${outcome.bookingId}`}>{t('checkoutViewRequest')}</Link></Button>}
-      {state !== 'request_created' && <div className="flex flex-wrap items-center gap-4">
+      {(state !== 'request_created' || outcome?.replacement && ['pending', 'releasing', 'needs_support'].includes(outcome.replacement.outcome)) && <div className="flex flex-wrap items-center gap-4">
         <Button variant="outline" onClick={() => setRefresh(value => value + 1)}>{t('checkoutCheckAgain')}</Button>
         <ContactLocalCooks role="chef" situation={description} checkoutReference={sessionId} paymentReference={outcome?.paymentIntentId} />
       </div>}

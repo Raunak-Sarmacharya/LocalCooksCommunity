@@ -127,6 +127,16 @@ it('never offers calendar on a pending request, even when a caller supplies the 
   expect(bookingNowContent({ phase: 'pending', role: 'chef', facts, t }).secondary).not.toContain('add_to_calendar');
 });
 
+it('offers "Change request" before "Cancel request" on a pending request, only when the page allows it', () => {
+  const secondary = (extra: Partial<BookingNowFacts>) => bookingNowContent({ phase: 'pending', role: 'chef', facts: { ...facts, ...extra }, t }).secondary;
+  expect(secondary({ canCancel: true, canChangeRequest: true })).toEqual(['change_request', 'cancel_request']);
+  expect(secondary({ canCancel: true })).toEqual(['cancel_request']);
+  expect(secondary({ canCancel: false, canChangeRequest: false })).toEqual([]);
+  // Never for the kitchen, and never once the request is answered.
+  expect(bookingNowContent({ phase: 'pending', role: 'manager', facts: { ...facts, canChangeRequest: true }, t }).secondary).not.toContain('change_request');
+  expect(bookingNowContent({ phase: 'confirmed', role: 'chef', facts: { ...facts, canChangeRequest: true }, t }).secondary).not.toContain('change_request');
+});
+
 it.each(['checkout_review', 'completed'] as const)('chef %s reflects a visible claim instead of promising all set', phase => {
   const content = (extra: Partial<BookingNowFacts>) => bookingNowContent({ phase, role: 'chef', facts: { ...facts, ...extra }, t }).sentence;
   expect(content({ claimDeadline: 'Oct 18 at 3:30 p.m.' })).toBe('Harbour Kitchen reported damage or extra cleaning. Pay or dispute by Oct 18 at 3:30 p.m.');

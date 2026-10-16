@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import KitchenBookingFlow from "@/components/booking/KitchenBookingFlow";
+import { replacesFromSearch } from "@/lib/change-request";
 import { Button } from "@/components/ui/button";
 import { chefOutlineCtaClass } from "@/lib/chef-cta";
 import type { ChefBreadcrumb } from "@/lib/chef-nav-sections";
@@ -24,6 +25,8 @@ export default function KitchenBookingPage() {
   const initialNotes = searchParams.get('notes') || undefined;
   const initialStorage = searchParams.get('storage') || undefined;
   const initialEquipment = searchParams.get('equipment') || undefined;
+  // "Change request": send this booking first; the earlier pending request closes once it is sent.
+  const replacesBookingId = replacesFromSearch(window.location.search);
 
   const { data: locationData, isLoading, isError } = useQuery({
     queryKey: [`/api/public/locations/${locationId}/details`],
@@ -144,6 +147,7 @@ export default function KitchenBookingPage() {
         initialNotes={initialNotes}
         initialStorage={initialStorage}
         initialEquipment={initialEquipment}
+        replacesBookingId={replacesBookingId}
         onCancel={handleCancel}
         onComplete={handleComplete}
         registerLeaveGuard={registerLeaveGuard}

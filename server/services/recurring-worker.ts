@@ -128,6 +128,8 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
         { name: 'claimHolds', run: async () => (await import('./damage-claims-v2')).notifyDamageClaimBookingHolds() },
         { name: 'paymentRecovery', run: async () => (await import('./booking-payment-decision')).recoverPendingBookingDecisions(3) },
         { name: 'checkoutRecovery', run: async () => (await import('./kitchen-checkout-incidents')).recoverKitchenCheckouts(3) },
+        // A changed pending request whose earlier request couldn't be withdrawn yet (hold not released): finish it.
+        { name: 'replacementRetry', run: async () => (await import('./booking-replacement')).retryStuckReplacements(3) },
         { name: 'kitchenChanges', run: async () => (await import('./kitchen-booking-changes')).expireKitchenChanges(3) },
         // Session extensions: expire stale requests/offers, escalate unanswered extra-time charges, finish committed payments.
         { name: 'sessionExtensionExpiry', run: async () => { const stripe = await sessionExtensionStripe();

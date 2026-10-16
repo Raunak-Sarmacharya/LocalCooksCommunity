@@ -96,6 +96,8 @@ export interface CreatePendingCheckoutSessionParams {
     cancellationPolicySnapshot?: import('@shared/cancellation-policy').CancellationPolicySnapshot;
     holdId?: string;
     windowStartTime?: string;
+    /** "Change request": the chef's pending request that is withdrawn once this one is sent (verified by the route). */
+    replacesBookingId?: number;
     platform_fee_cents?: number;
     stripe_fee_cents?: number;
   };
@@ -308,6 +310,7 @@ export async function createPendingCheckoutSession(
       ...(bookingData.cancellationPolicyHours != null ? { cancellation_policy_hours: String(bookingData.cancellationPolicyHours) } : {}),
       ...(bookingData.cancellationPolicySnapshot ? (await import('./cancellation-policy-settings')).cancellationSnapshotMetadata(bookingData.cancellationPolicySnapshot) : {}),
       ...(bookingData.holdId ? { hold_id: bookingData.holdId } : {}),
+      ...(bookingData.replacesBookingId ? { replaces_booking_id: String(bookingData.replacesBookingId) } : {}),
       ...(bookingData.windowStartTime ? { window_start_time: bookingData.windowStartTime } : {}),
       booking_price_cents: bookingPriceInCents.toString(),
       platform_fee_cents: (bookingData as any).platform_fee_cents 

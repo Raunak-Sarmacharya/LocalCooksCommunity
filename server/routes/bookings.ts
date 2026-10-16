@@ -3131,6 +3131,18 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             return res.status(400).json({ error: "Missing required booking fields" });
         }
 
+        // "Change request": the earlier pending request must be this chef's, for this kitchen, and still undecided. Checked before any session exists.
+        let replacesBookingId: number | undefined;
+        if (req.body.replacesBookingId !== undefined && req.body.replacesBookingId !== null) {
+            const { assertReplaceableRequest, ReplacementError } = await import('../services/booking-replacement');
+            try {
+                replacesBookingId = (await assertReplaceableRequest(Number(req.body.replacesBookingId), chefId, Number(kitchenId))).id;
+            } catch (error) {
+                if (error instanceof ReplacementError) return res.status(error.status).json({ error: error.message, code: 'request_not_replaceable' });
+                throw error;
+            }
+        }
+
         // Get kitchen details
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
         if (!kitchenDetails || !kitchenDetails.isActive || kitchenDetails.listingStatus !== "active") {
@@ -3169,6 +3181,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             {
                 selectedSlots,
                 fullDay: selectedPricingMode === 'daily',
+                // The request being changed does not block its own replacement (10-11 can become 10-12).
+                ...(replacesBookingId ? { excludeBookingId: replacesBookingId, keepAdvanceWindow: true } : {}),
             }
         );
 
@@ -3336,7 +3350,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         const cancellationPolicySnapshot = await checkoutCancellationSnapshot(kitchenId, bookingDateStr, startTime,
             availabilityCheck.windowStartTime!, location.timezone || 'America/St_Johns', cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion);
         const holdId = await reserveKitchenCheckout(kitchenId, chefId, bookingDateStr, bookingSlots,
-            availabilityCheck.windowStartTime!, selectedPricingMode === 'daily');
+            availabilityCheck.windowStartTime!, selectedPricingMode === 'daily', replacesBookingId);
         let checkoutSession: Awaited<ReturnType<typeof createPendingCheckoutSession>>;
         try {
         checkoutSession = await createPendingCheckoutSession({
@@ -3367,6 +3381,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 cancellationPolicySnapshot,
                 holdId,
                 windowStartTime: availabilityCheck.windowStartTime,
+                replacesBookingId,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
                 stripe_fee_cents: feeCalculation.stripeProcessingFeeInCents,
             },
@@ -3698,7 +3713,9 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         const { readKitchenCheckoutResult } = await import('../services/kitchen-checkout-incidents');
         const result = await readKitchenCheckoutResult(req.params.sessionId, req.neonUser!.id);
         if (!result) return res.status(404).json({ error: "Checkout not found for this account" });
-        return res.json(result);
+        // "Change request": say plainly how the earlier request ended (withdrawn, kitchen accepted it first, already ended, still releasing).
+        const replacement = result.bookingId ? await (await import('../services/booking-replacement')).readReplacementOutcome(result.bookingId, req.neonUser!.id) : null;
+        return res.json(replacement ? { ...result, replacement } : result);
     } catch (error) {
         logger.error("Error reading checkout result:", error);
         return res.status(503).json({ error: "Checkout verification is temporarily unavailable. Keep your checkout reference and contact Local Cooks." });

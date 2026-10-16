@@ -26,7 +26,7 @@ vi.mock("@/components/ui/smart-image", () => ({ SmartImage: () => null }));
 vi.mock("@/components/booking/ClockCloseoutSummary", () => ({ ClockCloseoutSummary: () => <p>Arrival not recorded</p> }));
 vi.mock("@/components/booking/BookingPreparation", () => ({ default: () => <p>What to expect</p> }));
 const nothing = vi.hoisted(() => () => null);
-vi.mock("@/components/booking/KitchenBookingChanges", () => ({ KitchenBookingChanges: nothing }));
+vi.mock("@/components/booking/KitchenBookingChanges", () => ({ KitchenBookingChanges: nothing, ChangeBookingDialog: nothing }));
 vi.mock("@/components/booking/BookingCancellationChooser", () => ({ BookingCancellationChooser: nothing }));
 vi.mock("@/components/booking/BookingHistoryPanel", () => ({ BookingHistoryPanel: nothing }));
 vi.mock("@/components/booking/BookingAttendancePanel", () => ({ BookingAttendancePanel: nothing }));
@@ -76,6 +76,34 @@ describe("pending booking page", () => {
     // The hold explanation lives on the payment card, once.
     expect(await screen.findByTestId("payment-card")).not.toHaveTextContent("Total paid");
     expect(screen.queryByText("Arrival not recorded")).not.toBeInTheDocument();
+  });
+
+  it("offers Change request next to Cancel request, linking to the pre-filled flow for the same kitchen", async () => {
+    h.booking = { ...base(), selectedSlots: [{ startTime: "10:00", endTime: "11:00" }, { startTime: "11:00", endTime: "12:00" }], specialNotes: "Bring pans" };
+    render(<BookingDetailsPage />);
+    const link = await screen.findByRole("link", { name: "Change request" });
+    const url = new URL(link.getAttribute("href")!, "https://chef.example");
+    expect(url.pathname).toBe("/book/3");
+    expect(url.searchParams.get("kitchenId")).toBe("2");
+    expect(url.searchParams.get("replaces")).toBe("5");
+    expect(url.searchParams.get("date")).toBe("2030-01-15");
+    expect(url.searchParams.get("slots")).toBe("10:00,11:00");
+    expect(screen.getByRole("button", { name: chef.bnCancelRequest })).toBeInTheDocument();
+  });
+
+  it("offers no Change request to the kitchen, once the request is answered, or while a decision is in flight", async () => {
+    h.manager = true;
+    const { unmount } = render(<BookingDetailsPage />);
+    await screen.findByTestId("booking-next-step");
+    expect(screen.queryByRole("link", { name: "Change request" })).not.toBeInTheDocument();
+    unmount(); h.manager = false;
+    for (const patch of [{ status: "confirmed", paymentStatus: "paid" }, { paymentDecision: { state: "pending", target: "confirmed" } }]) {
+      h.booking = { ...base(), ...patch };
+      const view = render(<BookingDetailsPage />);
+      await screen.findByTestId("booking-next-step");
+      expect(screen.queryByRole("link", { name: "Change request" })).not.toBeInTheDocument();
+      view.unmount();
+    }
   });
 
   it("labels the header date as the booking date, not the visit date", async () => {

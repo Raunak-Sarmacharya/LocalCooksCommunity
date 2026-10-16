@@ -274,6 +274,26 @@ router.get("/chef/profiles", requireChef, async (req: Request, res: Response) =>
     }
 });
 
+/** "Change request": the chef's own undecided request for this kitchen does not block its replacement. Anything else is ignored. */
+async function replacedRequestId(req: Request, kitchenId: number): Promise<number | undefined> {
+    // "Change date or time" on a confirmed booking: the chef's own booking doesn't block its own new time (10–11 → 10–12).
+    // The server re-validates the destination on preview and approval; this only shapes what the picker shows.
+    const changing = Number(req.query.changing);
+    if (Number.isSafeInteger(changing) && changing > 0) {
+        const { kitchenBookings } = await import('@shared/schema');
+        const { and, eq } = await import('drizzle-orm');
+        const [own] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(and(eq(kitchenBookings.id, changing),
+            eq(kitchenBookings.chefId, req.neonUser!.id), eq(kitchenBookings.kitchenId, kitchenId), eq(kitchenBookings.status, 'confirmed'))).limit(1);
+        return own?.id;
+    }
+    const raw = Number(req.query.replaces);
+    if (!Number.isSafeInteger(raw) || raw <= 0) return undefined;
+    try {
+        const { assertReplaceableRequest } = await import('../services/booking-replacement');
+        return (await assertReplaceableRequest(raw, req.neonUser!.id, kitchenId)).id;
+    } catch { return undefined; }
+}
+
 // Get ALL time slots with booking info (capacity aware)
 router.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, res: Response) => {
     try {
@@ -294,7 +314,7 @@ router.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, 
             return res.status(400).json({ error: "Invalid date format" });
         }
 
-        const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
+        const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate, await replacedRequestId(req, kitchenId));
 
         res.json(slotsInfo);
     } catch (error: any) {
@@ -328,7 +348,7 @@ router.get("/chef/kitchens/:kitchenId/month-availability", requireChef, async (r
             return res.status(400).json({ error: "Invalid year or month (month must be 0-11)" });
         }
 
-        const availability = await bookingService.getMonthBookableAvailability(kitchenId, yearNum, monthNum);
+        const availability = await bookingService.getMonthBookableAvailability(kitchenId, yearNum, monthNum, await replacedRequestId(req, kitchenId));
         res.json(availability);
     } catch (error: any) {
         logger.error("Error fetching month availability:", error);

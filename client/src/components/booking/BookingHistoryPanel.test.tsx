@@ -7,7 +7,7 @@ vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () =
 vi.mock('react-i18next', async () => {
   const { default: locale } = await import('../../../../shared/i18n/locales/en-CA/booking.json');
   return { useTranslation: () => ({ i18n: { resolvedLanguage: 'en-CA' }, t: (key: string, options?: any) =>
-    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef|minutes)\}/g, (_m, key) => String(options?.[key])) }) };
+    String(key.split('.').reduce((value: any, part) => value?.[part], locale) || key).replace('{{id}}', String(options?.id)).replace(/\{(amount|chef|minutes|ref)\}/g, (_m, key) => String(options?.[key])) }) };
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 function mount(role: 'chef' | 'manager' = 'chef', chefName: string | null = null) {
@@ -34,6 +34,17 @@ it('shows a dated tour-style trail and refreshes after the booking changes', asy
   expect(fetcher).toHaveBeenCalledWith('/api/chef/bookings/10/history', { headers: { Authorization: 'Bearer fixture-token' }, cache: 'no-store' });
   view.rerender(tree('second'));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2)); client.clear();
+});
+it('links a changed request to the booking on the other side', async () => {
+  const events = [
+    { key: '1', kind: 'requested', recordedAt: '2026-10-01T12:00:00Z' },
+    { key: '2', kind: 'replaced_by', recordedAt: '2026-10-01T13:00:00Z', otherRef: 'KB-NEW222' },
+    { key: '3', kind: 'replaces', recordedAt: '2026-10-01T13:00:01Z', otherRef: 'KB-OLD111' },
+  ];
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ complete: true, events }) })));
+  mount('chef');
+  expect(await screen.findByText('Replaced by KB-NEW222')).toBeInTheDocument();
+  expect(screen.getByText('Replaces KB-OLD111')).toBeInTheDocument();
 });
 it('shows extra-time events from each side', async () => {
   const events = [

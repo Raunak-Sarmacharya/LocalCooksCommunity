@@ -10,7 +10,7 @@ import type { BookingCancelCause } from './booking-cancel-cause';
 
 export type NowRole = 'chef' | 'manager';
 export type NowSecondary =
-  | 'cancel_request' | 'see_arrival_details' | 'add_to_calendar' | 'running_late' | 'arrived_early' | 'need_more_time'
+  | 'cancel_request' | 'change_request' | 'see_arrival_details' | 'add_to_calendar' | 'running_late' | 'arrived_early' | 'need_more_time'
   | 'download_invoice' | 'contact_local_cooks' | 'find_another_time'
   | 'extension_tools' | 'change_booking' | 'fix_record' | 'record_left' | 'report_damage' | 'download_payout_statement' | 'manage_refund'
   | 'report_no_show' | 'i_was_there';
@@ -57,6 +57,8 @@ export interface BookingNowFacts {
   status?: string;
   // Gates computed by the page (server rules stay on the server).
   canCancel?: boolean;
+  /** Chef, pending request: "Change request" (rebook first; the old request closes once the new one is sent). */
+  canChangeRequest?: boolean;
   canAddToCalendar?: boolean;
   runningLateOpen?: boolean;
   canMessage?: boolean;
@@ -181,6 +183,7 @@ function chefSecondary(phase: BookingHeaderPhase, f: BookingNowFacts): NowSecond
   const out: NowSecondary[] = [];
   switch (phase) {
     case 'pending':
+      if (f.canChangeRequest) out.push('change_request');
       if (f.canCancel) out.push('cancel_request');
       break;
     case 'confirmed':

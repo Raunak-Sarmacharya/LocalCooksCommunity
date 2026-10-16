@@ -70,6 +70,7 @@ export function BookingHistoryPanel({ id, version, reference, role, timezone, ca
                   : event.kind === 'goodwill_refunded' && event.amountCents
                     ? t(role === 'manager' ? 'historyGoodwill_manager' : 'historyGoodwill_chef', { amount: money(event.amountCents), chef: chefName || t('historyChefFallback') })
                     : event.kind.startsWith('ext_') ? extensionText(event)
+                    : event.kind === 'replaced_by' || event.kind === 'replaces' ? t(event.kind === 'replaced_by' ? 'historyReplacedBy' : 'historyReplaces', { ref: event.otherRef ?? '' })
                     : role === 'chef' && event.kind === 'checkout_requested' ? t('historyYouCheckedOut')
                     : t(`historyEvents.${event.kind}` as const)}</p>
                 <time dateTime={event.recordedAt} title={when(event.recordedAt)} className="text-[10px] leading-4 text-muted-foreground sm:whitespace-nowrap sm:text-right">{when(event.recordedAt, true)}</time>

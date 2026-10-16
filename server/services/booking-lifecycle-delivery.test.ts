@@ -181,6 +181,27 @@ describe('booking lifecycle recipients and durable email evidence', () => {
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'manager_decision', 10);
     expect(scheduleBookingRequestTimer).toHaveBeenCalledWith(tx, 10); // the exact response deadline is armed (WP-T)
   });
+
+  it('keeps the changed-request email wording and the useful request details for the kitchen', async () => {
+    state.people = [{ id: 3, profile: { fullName: 'Maya Chen' } }];
+    state.rows[0] = [{ chefId: 3, managerId: 2, timezone: 'UTC', kitchenName: 'Harbour Kitchen', referenceCode: null,
+      bookingDate: new Date('2099-01-02'), startTime: '10:00', endTime: '12:00' }];
+    state.rows.push([{ booking: { id: 10, kitchenId: 4, chefId: 3, paymentIntentId: 'pi_fixture', status: 'pending', createdAt: new Date('2099-01-01T10:00:00Z'),
+      referenceCode: null, bookingDate: new Date('2099-01-02'), startTime: '10:00', endTime: '12:00', specialNotes: 'Need the prep table' },
+      kitchen: { name: 'Harbour Kitchen' }, location: { timezone: 'UTC', name: 'Harbour', address: '12 Water Street' } }]);
+    state.rows.push([{ status: 'authorized', amount: '2440' }]);
+    await queueBookingLifecycleEvent(tx, 10, 'requested', 'Request received', 'Review request', 3, {
+      notificationRecipientPolicy: 'manager', emailRecipientPolicy: 'manager', replacementNotice: { variant: 'changed',
+        old: { date: '2099-01-02', startTime: '10:00', endTime: '11:00' }, next: { date: '2099-01-02', startTime: '10:00', endTime: '12:00' },
+        deadlineAt: '2099-01-01T15:00:00Z' } });
+    const email = state.insert.mock.calls[0][0].emails.find((email: any) => email.key === '2').content;
+    expect(email.subject).toBe('Maya Chen changed their request');
+    for (const detail of ['Now Fri, Jan 2', '(was Fri, Jan 2', 'answer by Jan 1, 2099', 'Harbour Kitchen', '12 Water Street', 'Need the prep table', '$24.40'])
+      expect(email.text).toContain(detail);
+    expect(email.text).not.toMatch(/KB-10|#10|pi_fixture/);
+    const admin = state.notify.mock.calls.find(call => call[0].userId === 1)?.[0];
+    expect(admin?.message || '').not.toContain('#10');
+  });
   it('uses expiry role copy and an environment-aware Find another time link', async () => {
     await queueBookingLifecycleEvent(tx, 10, 'cancelled', 'Booking request expired', 'Chef expiry copy', undefined,
       { requestExpired: true, kitchenPath: '/kitchen-preview/5?kitchenId=4', roleText: {

@@ -3588,18 +3588,19 @@ export function bookingEmailFacts(data: BookingEmailContext, timeLabel?: string)
     ...(data.locationAddress ? [fact('bookingAddress', data.locationAddress)] : []),
     ...(data.bookingDate ? [fact('bookingDate', emailDate(data.bookingDate, locale))] : []),
     ...(timeLabel || data.startTime && data.endTime ? [fact('bookingTime', `${timeLabel || `${emailClock(data.startTime!, locale)}–${emailClock(data.endTime!, locale)}`} · ${emailZoneName(data.timezone, locale)}`)] : []),
-    ...(data.referenceCode || data.bookingId ? [fact('bookingReference', data.referenceCode || `KB-${data.bookingId}`)] : []),
+    ...(data.referenceCode ? [fact('bookingReference', data.referenceCode)] : []),
   ];
 }
 
 function renderBookingNotice(data: BookingEmailContext, input: {
   to: string; recipientName: string; key: string; action: string; url: string;
+  copy?: { title: string; message: string };
   params?: Record<string, unknown>; actions?: { label: string; url: string }[]; messageKey?: string; timeLabel?: string; facts?: { label: string; value: string }[];
 }) {
   const params = { kitchen: data.kitchenName || data.locationName, ...input.params };
-  const heading = tEmail(data.locale, `${input.key}Heading`, params);
+  const heading = input.copy?.title ?? tEmail(data.locale, `${input.key}Heading`, params);
   return renderTransactionalEmail({ to: input.to, recipientName: input.recipientName, locale: data.locale,
-    subject: heading, heading, message: tEmail(data.locale, input.messageKey || `${input.key}Body`, params),
+    subject: heading, heading, message: input.copy?.message ?? tEmail(data.locale, input.messageKey || `${input.key}Body`, params),
     facts: [...bookingEmailFacts(data, input.timeLabel), ...(input.facts || [])], actionLabel: tEmail(data.locale, input.action), actionUrl: input.url, actions: input.actions });
 }
 
@@ -3613,11 +3614,11 @@ export function bookingResponseDeadline(createdAt: Date | string, startAt?: Date
     windowHours: AUTH_EXPIRY_HOURS, bufferHours: startAt === undefined ? 0 : bufferHours });
 }
 
-export const generateBookingNotificationEmail = (data: BookingRequestEmailDetails & { managerEmail: string; managerName?: string; bookingId: number }): EmailContent => {
+export const generateBookingNotificationEmail = (data: BookingRequestEmailDetails & { managerEmail: string; managerName?: string; bookingId: number }, copy?: { title: string; message: string }): EmailContent => {
   const calendar = bookingCalendarParts(data, data.managerEmail, data.kitchenName, data.locationAddress || data.kitchenName, '', data.timezone || DEFAULT_TIMEZONE);
   const deadline = data.responseDeadline ? emailLocalDateTimeSentence(data.responseDeadline, data.timezone, data.locale || 'en-CA') : tEmail(data.locale, 'bookingDeadlineOnPage');
   return renderBookingNotice(data, { to: data.managerEmail, recipientName: data.managerName || tEmail(data.locale, "bookingManager"),
-    key: 'bookingNewRequest', messageKey: data.paymentState && data.paymentState !== 'held' ? 'bookingNewRequestPendingBody' : undefined, params: { chef: data.chefName, deadline }, action: 'bookingReviewRequest',
+    key: 'bookingNewRequest', copy, messageKey: data.paymentState && data.paymentState !== 'held' ? 'bookingNewRequestPendingBody' : undefined, params: { chef: data.chefName, deadline }, action: 'bookingReviewRequest',
     url: getSubdomainUrl('kitchen') + (data.bookingId ? '/manager/booking/' + data.bookingId : '/dashboard?view=bookings'),
     timeLabel: calendar.timeLabel, facts: [...(data.specialNotes ? [{ label: tEmail(data.locale, 'bookingChefMessage'), value: data.specialNotes }] : []),
       ...(data.totalCents != null ? [{ label: tEmail(data.locale, data.paymentState === 'paid' ? 'bookingTotalPaid' : data.paymentState === 'pending' ? 'bookingEstimatedTotal' : 'bookingTotalHold'), value: `CAD $${(data.totalCents / 100).toFixed(2)}` }] : [])] });
