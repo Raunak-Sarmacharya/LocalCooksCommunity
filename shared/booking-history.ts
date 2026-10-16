@@ -63,9 +63,25 @@ export function extensionHistoryEvents(rows: ExtensionRow[]): BookingHistoryEven
   return events;
 }
 
+/** The change engine's per-reader event kinds → the one history kind for that step. */
+const changeHistoryKinds: Record<string, BookingHistoryEvent['kind'] | undefined> = {
+  booking_change_requested: 'kitchen_change_requested', booking_change_approved: 'kitchen_change_applied',
+  booking_change_declined: 'kitchen_change_declined', booking_change_withdrawn: 'kitchen_change_withdrawn',
+  booking_change_expired: 'kitchen_change_expired' };
+
 export function buildBookingHistory(booking: Facts, records: RecordedEvent[], visits: Array<Facts & { id: number }> = [], extensions: ExtensionRow[] = []): BookingHistoryResponse {
   const events: BookingHistoryEvent[] = extensionHistoryEvents(extensions);
-  for (const record of records) {
+  const seenChanges = new Set<string>();
+  for (const raw of records) {
+    // Booking changes are recorded once per reader (chef, kitchen); history shows each step once, under its public kind.
+    const changeKind = changeHistoryKinds[raw.kind];
+    const changeId = changeKind && raw.metadata && typeof raw.metadata === 'object' ? String((raw.metadata as Record<string, unknown>).changeId ?? '') : '';
+    if (changeKind) {
+      const seen = `${changeId || raw.id}:${changeKind}`;
+      if (seenChanges.has(seen)) continue;
+      seenChanges.add(seen);
+    }
+    const record = changeKind ? { ...raw, kind: changeKind, key: raw.key ?? `change-${changeId || raw.id}-${changeKind}` } : raw;
     const recordedAt = instant(record.createdAt);
     if (!recordedAt || !kinds.includes(record.kind as BookingHistoryEvent['kind'])) continue;
     const metadata = record.metadata && typeof record.metadata === 'object' ? record.metadata as Record<string, unknown> : {};

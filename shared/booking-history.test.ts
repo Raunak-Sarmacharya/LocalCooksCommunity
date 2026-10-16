@@ -104,3 +104,16 @@ describe('add-on removals in the history', () => {
     expect(JSON.stringify(history)).not.toMatch(/processing|pi_|re_/);
   });
 });
+
+describe('booking changes in the history', () => {
+  it('shows each change step once, though the engine records one event per reader', () => {
+    const history = buildBookingHistory({}, [
+      { id: 1, kind: 'booking_change_requested', createdAt: '2026-10-16T17:18:15Z', metadata: { changeId: 'c1', audience: 'manager' } },
+      { id: 2, kind: 'booking_change_requested', createdAt: '2026-10-16T17:18:15Z', metadata: { changeId: 'c1', audience: 'chef' } },
+      { id: 3, kind: 'booking_change_approved', createdAt: '2026-10-16T17:24:57Z', metadata: { changeId: 'c1', audience: 'chef' } },
+      { id: 4, kind: 'booking_change_approved', createdAt: '2026-10-16T17:24:57Z', metadata: { changeId: 'c1', audience: 'manager' } },
+      { id: 5, kind: 'booking_change_requested', createdAt: '2026-10-17T09:00:00Z', metadata: { changeId: 'c2' } },
+    ]);
+    expect(history.events.map(event => event.kind)).toEqual(['kitchen_change_requested', 'kitchen_change_applied', 'kitchen_change_requested']);
+  });
+});
