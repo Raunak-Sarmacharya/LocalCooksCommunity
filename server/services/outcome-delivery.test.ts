@@ -39,6 +39,25 @@ describe('checkout incident outcome delivery', () => {
     else expect(state.send.mock.calls[0][0].text).toContain('Your refund of $24.40 was sent');
   });
 });
+describe('standalone storage rental outcome delivery', () => {
+  // The stored notice already has its own shell; delivery re-checks the recipient and resends it verbatim.
+  it.each([false, true])('delivers a queued storage notice only while its recipient still belongs to the rental (changed=%s)', async changed => {
+    state.tables.storage_bookings = [{ id: 5, chefId: changed ? 99 : 3, managerId: 2 }];
+    state.tables.email_logs = [{ id: 1, recipientEmail: 'chef@example.test', recipientUserId: 3, recipientRole: 'chef',
+      category: 'lifecycle_outcome', status: 'queued', subject: 'Paid through Oct 27, 2026',
+      trackingId: 'storage-rental:5:ending:d14:3', textBody: 'Paid through Oct 27, 2026 · Extend 14 days · $140.00.',
+      htmlBody: '<p>Paid through Oct 27, 2026 · Extend 14 days · $140.00.</p>', createdAt: new Date(), retryCount: 0 }];
+    state.send.mockResolvedValue(true);
+    expect(await deliverOutcomeEmails(1)).toEqual({ completed: changed ? 0 : 1 });
+    if (changed) expect(state.send).not.toHaveBeenCalled();
+    else {
+      const [content] = state.send.mock.calls[0];
+      expect(content.text).toContain('Extend 14 days');
+      expect(content.text).not.toContain('Recorded outcome notice');
+      expect(content.html).toContain('Extend 14 days');
+    }
+  });
+});
 vi.mock('./overstay-defaults-service', () => ({ getOverstayDisputeWindowHours: async () => 48 }));
 
 const name = (table: any) => table[Symbol.for('drizzle:Name')];

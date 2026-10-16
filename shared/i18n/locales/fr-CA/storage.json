@@ -1,0 +1,103 @@
+{
+  "stTheChef": "La personne cuisinière",
+  "stTheKitchen": "La cuisine",
+  "stView": "Voir l’entreposage",
+  "stFactKitchen": "Cuisine",
+  "stFactListing": "Espace",
+  "stFactReference": "Référence",
+
+  "stRequested_Chef_Title": "Demande envoyée · {kitchen}",
+  "stRequested_Chef_Body": "Votre carte est bloquée pour {amount}. {kitchen} répond d’ici {deadline}.",
+  "stRequested_Kitchen_Title": "{chef} veut de l’espace · {listing}",
+  "stRequested_Kitchen_Body": "{chef} a demandé {listing} du {start} au {end}. Répondez d’ici {deadline}.",
+
+  "stApproved_Chef_Title": "Approuvé · {listing}",
+  "stApproved_Chef_Body": "{unit} chez {kitchen}. Début le {start}. Votre carte a été débitée de {amount}.",
+
+  "stDeclined_Chef_Title": "Non approuvé · {kitchen}",
+  "stDeclined_Chef_Body": "Le blocage de votre carte a été libéré. Rien n’a été débité.",
+
+  "stExpired_Chef_Title": "Demande expirée · {kitchen}",
+  "stExpired_Chef_Body": "{kitchen} n’a pas répondu à temps. Le blocage de votre carte a été libéré.",
+  "stExpired_Kitchen_Title": "Demande d’entreposage expirée",
+  "stExpired_Kitchen_Body": "La demande de {chef} pour {listing} a expiré. Le blocage de la carte a été libéré.",
+
+  "stMoveInDue_Chef_Title": "Installez-vous dans {listing}",
+  "stMoveInDue_Chef_Body": "Votre entreposage commence le {start}. Ajoutez des photos d’arrivée pour consigner l’état de l’unité.",
+
+  "stMovedIn_Kitchen_Title": "{chef} s’est installé",
+  "stMovedIn_Kitchen_Body": "{chef} s’est installé dans {listing} · {photos, plural, one {# photo} other {# photos}} ajoutée(s).",
+
+  "stEnding_Chef_Title": "Payé jusqu’au {paidThrough}",
+  "stEnding_Chef_Body": "{days, plural, =0 {Prolongez maintenant} one {Prolongez 1 jour} other {Prolongez # jours}} · {amount}.",
+  "stEnding_Kitchen_Title": "Entreposage bientôt terminé · {listing}",
+  "stEnding_Kitchen_Body": "L’entreposage de {chef} est payé jusqu’au {paidThrough}. La personne peut prolonger d’ici là.",
+
+  "stExtended_Chef_Title": "Payé jusqu’au {paidThrough}",
+  "stExtended_Chef_Body": "Vous avez payé {amount}. Votre entreposage va jusqu’au {paidThrough}.",
+  "stExtended_Kitchen_Title": "{chef} a prolongé l’entreposage",
+  "stExtended_Kitchen_Body": "{chef} a prolongé {listing} jusqu’au {paidThrough} · {amount} débité.",
+
+  "stGraceStarted_Chef_Title": "Période de grâce commencée",
+  "stGraceStarted_Chef_Body": "Vos jours payés sont terminés. Prolongez d’ici le {graceEndsOn} au même prix.",
+  "stGraceStarted_Kitchen_Title": "{chef} est en période de grâce",
+  "stGraceStarted_Kitchen_Body": "{chef} peut prolonger {listing} au même prix jusqu’au {graceEndsOn}.",
+
+  "stHoldoverStarted_Chef_Title": "Votre entreposage dépasse le temps payé",
+  "stHoldoverStarted_Chef_Body": "{daily} par jour peuvent être facturés par {kitchen}.",
+  "stHoldoverStarted_Kitchen_Title": "{chef} dépasse le temps payé",
+  "stHoldoverStarted_Kitchen_Body": "L’entreposage de {chef} dépasse le {paidThrough}. Facturez des frais ou renoncez-y.",
+
+  "stHoldoverCharge_Chef_Title": "Frais de dépassement · {amount}",
+  "stHoldoverCharge_Chef_Body": "Payez {amount} pour {days, plural, one {1 jour} other {# jours}}, ou contestez d’ici {deadline}.",
+
+  "stReclaim_Chef_Title": "Déménagez d’ici le {byDate}",
+  "stReclaim_Chef_Body": "{kitchen} vous demande de déménager d’ici le {byDate}. Vous serez remboursé de {amount}.",
+  "stReclaim_Kitchen_Title": "Vous avez demandé à {chef} de déménager",
+  "stReclaim_Kitchen_Body": "{chef} doit déménager d’ici le {byDate}. Les jours inutilisés ({amount}) sont remboursés.",
+
+  "stMoveOutRequested_Chef_Title": "Déménagement demandé",
+  "stMoveOutRequested_Chef_Body": "{kitchen} inspectera {listing} et confirmera que tout est vidé.",
+  "stMoveOutRequested_Kitchen_Title": "{chef} a demandé à déménager",
+  "stMoveOutRequested_Kitchen_Body": "{chef} a demandé à quitter {listing}. Inspectez l’unité et confirmez qu’elle est vidée.",
+
+  "stCleared_Chef_Title": "Déménagement confirmé",
+  "stCleared_Chef_Body": "{kitchen} a confirmé que vous avez vidé {listing}. Les frais de dépassement s’arrêtent au {date}.",
+  "stCleared_Kitchen_Title": "Vous avez vidé l’unité de {chef}",
+  "stCleared_Kitchen_Body": "{listing} est vide. L’entreposage de {chef} s’est terminé le {date}.",
+
+  "stReopened_Chef_Title": "Des objets sont encore là",
+  "stReopened_Chef_Body": "{kitchen} a trouvé des objets dans {listing}. Votre entreposage reprend le {date}.",
+  "stReopened_Kitchen_Title": "Vous avez rouvert l’entreposage de {chef}",
+  "stReopened_Kitchen_Body": "L’entreposage de {chef} reprend le {date}. Les frais de dépassement reprennent à la date initiale.",
+
+  "stRemovalReview_Chef_Title": "Des objets peuvent être enlevés",
+  "stRemovalReview_Chef_Body": "{kitchen} a ouvert un examen d’enlèvement pour {listing}. Déménagez ou prolongez pour garder vos objets.",
+  "stRemovalReview_Kitchen_Title": "Examen d’enlèvement · {listing}",
+  "stRemovalReview_Kitchen_Body": "L’entreposage de {chef} est en examen d’enlèvement. Vous pouvez agir après les délais du préavis final.",
+
+  "stFinalNotice_Chef_Title": "Préavis final · {listing}",
+  "stFinalNotice_Chef_Body": "Local Cooks a envoyé un préavis final. Les denrées périssables peuvent être enlevées après le {perishableDate}; les autres objets après le {otherDate}. {photos, plural, one {# photo} other {# photos}} au dossier.",
+  "stFinalNotice_Kitchen_Title": "Préavis final envoyé · {listing}",
+  "stFinalNotice_Kitchen_Body": "Vous pouvez agir après le {perishableDate} pour les denrées périssables et après le {otherDate} pour les autres objets.",
+
+  "stRefundIssued_Chef_Title": "Remboursement en route · {amount}",
+  "stRefundIssued_Chef_Body": "Votre remboursement de {amount} est en route. Les banques l’affichent habituellement en 5 à 10 jours ouvrables.",
+  "stRefundIssued_Kitchen_Title": "Versement réduit · {amount}",
+  "stRefundIssued_Kitchen_Body": "Le remboursement de {amount} à {chef} est retenu sur votre versement pour {listing}.",
+
+  "stPayoutScheduled_Kitchen_Title": "Vous serez payé {amount}",
+  "stPayoutScheduled_Kitchen_Body": "Vous serez payé {amount} le {payoutDate} pour l’entreposage de {chef} du {start} au {end}.",
+
+  "stPayoutReleased_Kitchen_Title": "Vous avez été payé {amount}",
+  "stPayoutReleased_Kitchen_Body": "Vous avez été payé {amount} pour l’entreposage de {chef} du {start} au {end}. C’est en route vers votre banque.",
+
+  "stPayoutOnHold_Kitchen_Title": "Votre versement est en attente",
+  "stPayoutOnHold_Kitchen_Body": "{amount} pour l’entreposage de {chef} sont en attente pendant que Local Cooks examine un problème ouvert.",
+
+  "stKitchenDebt_Kitchen_Title": "Le remboursement n’a pas pu être repris",
+  "stKitchenDebt_Kitchen_Body": "{amount} n’a pas pu être repris de votre solde Stripe. Vous devez {amount} à Local Cooks.",
+
+  "stOfferExtension_Chef_Title": "{kitchen} offre plus de temps",
+  "stOfferExtension_Chef_Body": "{kitchen} offre {days, plural, one {1 jour de plus} other {# jours de plus}} pour {amount}. Prolongez pour garder vos objets."
+}
