@@ -20,7 +20,7 @@ vi.mock('./notification.service', () => ({ notificationService: { create: vi.fn(
 vi.mock('../email', () => ({ renderTransactionalEmail: vi.fn() }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `SB-${randomUUID()}` }));
 vi.mock('../config', () => ({ getAppBaseUrl: () => 'https://example.invalid' }));
-vi.mock('./booking-money-guard', () => ({ assertBookingMoneyWritable: vi.fn() }));
+vi.mock('./booking-money-guard', () => ({ assertBookingMoneyWritable: vi.fn(), BookingMoneyFrozen: class extends Error {} }));
 
 import { quoteExtension, payExtension, syncStorageTerm, recoverStorageTerms, handleStorageTermWebhook } from './storage-extensions';
 
@@ -154,6 +154,17 @@ describe('storage extension payment operations', () => {
     await syncStorageTerm(7, (await extension()).id, 3, provider, now);
     expect(stripe.paymentIntents.create).toHaveBeenCalledTimes(1); expect(await rows(paymentTransactions)).toHaveLength(1);
     expect(await rental()).toMatchObject({ paidThrough: '2026-10-21' });
+  });
+  it('an abandoned 3DS attempt is cancelled after an hour, restoring occupancy and freeing the unit for a new tap', async () => {
+    await actionIntent();
+    expect(await recoverStorageTerms(provider, 3, new Date(now.getTime() + 20 * 60000))).toEqual({ processed: 1, errors: 0 });
+    expect(await extension()).toMatchObject({ status: 'awaiting_payment' }); expect(stripe.paymentIntents.cancel).not.toHaveBeenCalled();
+    await recoverStorageTerms(provider, 3, new Date(now.getTime() + 61 * 60000));
+    expect(stripe.paymentIntents.cancel).toHaveBeenCalledTimes(1);
+    expect(await extension()).toMatchObject({ status: 'failed', operation: { state: 'done' } });
+    expect(await rental()).toMatchObject({ paidThrough: '2026-10-18', occupancy: '[2026-10-01,2026-10-24)' });
+    expect(await rows(paymentTransactions)).toHaveLength(0); expect(h.notices).not.toHaveBeenCalled();
+    expect(await pay({ requestKey: 'second_try_key' })).toMatchObject({ paid: true });
   });
   it('blocks another request while an attempt is open and rejects another chef', async () => {
     await actionIntent();

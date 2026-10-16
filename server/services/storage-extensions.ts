@@ -6,7 +6,7 @@ import { db } from '../db';
 import { kitchens, locations, paymentTransactions, storageBookings, storageListings, storageRentalTerms } from '@shared/schema';
 import { addDays, extensionLimit, localDayStart, localToday, occupancyRange, rangesOverlap, termPayoutEligibleAt,
   termPrice, toDateRange, type RentalDates } from '@shared/storage-rental';
-import { assertBookingMoneyWritable } from './booking-money-guard';
+import { assertBookingMoneyWritable, BookingMoneyFrozen } from './booking-money-guard';
 import { calculateCheckoutFeesAsync } from './stripe-checkout-fee-service';
 import { queueStorageRentalNotice } from './storage-rental-notices';
 import { storageSettings } from './storage-settings';
@@ -41,14 +41,15 @@ async function context(reader: Reader, rentalId: number, chefId?: number, lock =
   const [place] = await reader.select({ listing: storageListings, kitchen: kitchens, managerId: locations.managerId })
     .from(storageListings).innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(storageListings.id, rental.storageListingId));
-  if (!place?.managerId || !rental.timezone || !rental.termStart || !rental.paidThrough || !rental.unitIndex) fail('unavailable');
-  return { rental, ...place };
+  if (!place?.managerId || !rental.chefId || !rental.timezone || !rental.termStart || !rental.paidThrough || !rental.unitIndex) fail('unavailable');
+  return { rental, chefId: rental.chefId, ...place };
 }
 type Context = Awaited<ReturnType<typeof context>>;
 
 /** Storage flags must apply even before WP-ST6's shared money guard learns the standalone storage parent. */
 async function moneyWritable(reader: Reader, row: Context) {
-  await assertBookingMoneyWritable({ paymentIntentId: row.rental.paymentIntentId ?? undefined }, reader);
+  try { await assertBookingMoneyWritable({ paymentIntentId: row.rental.paymentIntentId ?? undefined }, reader); }
+  catch (error) { if (error instanceof BookingMoneyFrozen) fail('payment_review'); throw error; }
   const blocked = await reader.execute(sql`SELECT id FROM booking_flags WHERE storage_booking_id = ${row.rental.id} AND resolved_at IS NULL
     UNION ALL SELECT id FROM support_actions WHERE storage_booking_id = ${row.rental.id} AND status IN ('executing','recovery_required') LIMIT 1`);
   if (blocked.rows.length) fail('payment_review');
@@ -117,7 +118,7 @@ async function savedTerm(reader: Reader, termId: number) {
   return term;
 }
 async function result(term: Term, now: Date) {
-  if (term.status === 'paid') return { paid: true as const, rental: await readRental(term.rentalId, { id: (await context(db, term.rentalId)).rental.chefId, role: 'chef' }, now) };
+  if (term.status === 'paid') return { paid: true as const, rental: await readRental(term.rentalId, { id: (await context(db, term.rentalId)).chefId, role: 'chef' }, now) };
   if (['failed', 'cancelled'].includes(term.status)) return { cardFailed: true as const };
   return fail('decision_pending');
 }
@@ -168,7 +169,7 @@ async function checkoutExtension(stripe: StorageExtensionStripe, term: Term, now
   if (now.getTime() >= Date.parse(op.decidedAt) + 32 * 60_000) return reconcileStorageTerm(stripe, term.id, now);
   await moneyWritable(db, row);
   await ensureServerI18n();
-  const m = metadata(term, row.rental.chefId), url = `${getAppBaseUrl('chef')}/storage/${term.rentalId}?storageTerm=${term.id}`;
+  const m = metadata(term, row.chefId), url = `${getAppBaseUrl('chef')}/storage/${term.rentalId}?storageTerm=${term.id}`;
   const session = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'],
     ...(op.customerId ? { customer: op.customerId } : { customer_creation: 'always' }), metadata: m,
     expires_at: Math.floor(Date.parse(op.decidedAt) / 1000) + 32 * 60,
@@ -213,7 +214,7 @@ export async function reconcileStorageTerm(stripe: StorageExtensionStripe, termI
     try {
       intent = await stripe.paymentIntents.create({ amount: term.totalCents, currency: 'cad', customer: op.customerId!, payment_method: op.paymentMethodId!,
         payment_method_types: ['card'], capture_method: 'automatic', confirm: true, off_session: false, use_stripe_sdk: true,
-        metadata: metadata(term, row.rental.chefId) }, { idempotencyKey: op.key });
+        metadata: metadata(term, row.chefId) }, { idempotencyKey: op.key });
     } catch (error) {
       intent = (error as { payment_intent?: Stripe.PaymentIntent }).payment_intent;
       if (!intent?.id) throw error;
@@ -221,8 +222,10 @@ export async function reconcileStorageTerm(stripe: StorageExtensionStripe, termI
   } else if (!intent) intent = await findTermIntent(stripe, term);
   if (intent) {
     verifyIntent(intent, term, row);
-    // A declined intent must be terminal before its unit hold is released. Checkout owns its retries until expiry.
-    if (intent.status === 'requires_payment_method' && (!op.checkout || session?.status === 'expired'))
+    // A declined or abandoned intent must be terminal before its unit hold is released. Checkout owns its retries until expiry.
+    const open = ['requires_payment_method', 'requires_action', 'requires_confirmation'].includes(intent.status);
+    const abandoned = now.getTime() - Date.parse(op.decidedAt) >= 60 * 60_000;
+    if (open && (op.checkout ? session?.status === 'expired' : intent.status === 'requires_payment_method' || abandoned))
       intent = await stripe.paymentIntents.cancel(intent.id, {}, { idempotencyKey: `${op.key}:cancel` });
     verifyIntent(intent, term, row);
   }
