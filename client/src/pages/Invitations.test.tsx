@@ -18,6 +18,9 @@ import ChefInvitationPage from './ChefInvitationPage';
 import { ChefInvitationsBanner } from '@/components/booking/ChefInvitationsBanner';
 import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 
+// An overnight kitchen: 9:00 a.m. to 1:00 a.m. (12:00 a.m. is the last hour of the same operating day).
+const overnight = [...Array.from({ length: 15 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`), '00:00']
+  .map(time => ({ time, available: 1, isFullyBooked: time === '12:00' }));
 const pricing = { listSubtotalCents: 5000, offeredSubtotalCents: 4000, discount: { type: 'amount', value: 1000 }, taxCents: 600, serviceFeeCents: 280, totalCents: 4880, managerEstimatedPayoutCents: 4459 };
 const invitation = (over: Record<string, unknown> = {}) => ({ id: 'inv-1', version: 1, status: 'sent', kitchen: { id: 54, name: 'Harbour Kitchen', locationId: 47, locationName: 'Water St', photoUrl: null },
   chef: null, date: '2026-10-27', startTime: '10:00', endTime: '12:00', timezone: 'America/St_Johns', pricing, note: 'Tuesday mornings are quiet.',
@@ -41,7 +44,7 @@ const mount = (node: React.ReactNode) => render(<QueryClientProvider client={new
 describe('kitchen: invite to book', () => {
   it('previews the exact price the chef will see (list price struck through), then sends it once', async () => {
     routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
-      [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
+      [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }], [/\/api\/manager\/invitations$/, invitation()]];
     mount(<ManagerInvitationNewPage />);
     expect(await screen.findByRole('option', { name: 'Sam Chef' })).toBeInTheDocument();
@@ -58,9 +61,24 @@ describe('kitchen: invite to book', () => {
     expect(await screen.findByTestId('invitation-sent')).toHaveTextContent('Invitation sent to Sam Chef');
     expect(calls.filter(call => call.url.endsWith('/api/manager/invitations') && call.method === 'POST')).toHaveLength(1);
   });
+  it("offers the kitchen's own hours for that day, overnight included, and marks booked hours", async () => {
+    routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
+      [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: true, warnings: [] }],
+      [/\/api\/manager\/invitations\?/, { invitations: [] }]];
+    mount(<ManagerInvitationNewPage />);
+    await screen.findByRole('option', { name: 'Sam Chef' });
+    expect(screen.getByLabelText('Start time')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-26' } });
+    expect(await screen.findByRole('option', { name: '12:00 a.m.' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '12:00 p.m. · booked' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '23:00' } });
+    fireEvent.change(screen.getByLabelText('Length'), { target: { value: '2' } });
+    expect(screen.getAllByRole('option').filter(option => (option as HTMLOptionElement).value === '3' && option.closest('select') === screen.getByLabelText('Length'))).toHaveLength(0);
+    await waitFor(() => expect(calls.filter(call => call.url.includes('/preview')).at(-1)?.body).toMatchObject({ startTime: '23:00', endTime: '01:00' }));
+  });
   it('an unavailable time explains why and cannot be sent', async () => {
     routes = [[/eligible-chefs/, { chefs: [{ id: 380, name: 'Sam Chef' }] }], [/\/api\/manager\/kitchens\/47$/, [{ id: 54, name: 'Harbour Kitchen' }]],
-      [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
+      [/\/slots\?date=/, overnight], [/invitations\/preview/, { pricing, expiresAt: '2026-10-18T13:00:00Z', available: false, unavailableReason: 'Sam Chef already has a request for this time.', warnings: [] }],
       [/\/api\/manager\/invitations\?/, { invitations: [] }]];
     mount(<ManagerInvitationNewPage />);
     await screen.findByRole('option', { name: 'Sam Chef' });

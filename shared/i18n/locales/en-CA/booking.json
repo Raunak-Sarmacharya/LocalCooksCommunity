@@ -1259,5 +1259,8 @@
   "checkoutConfirmed": "Your booking is confirmed",
   "checkoutConfirmedDetail": "You’re all set. Arrival details and your receipt are in your booking.",
   "checkoutConfirmingDetail": "Payment received. We’re confirming your booking now — this takes a few seconds.",
-  "checkoutViewBooking": "View your booking"
+  "checkoutViewBooking": "View your booking",
+  "invChooseDateFirst": "Choose a date first",
+  "invClosedDay": "The kitchen is closed this day",
+  "invSlotTaken": "{time} · booked"
 }

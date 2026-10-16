@@ -13,7 +13,6 @@ import { getAuthHeaders } from '@/lib/api';
 import { addHours, invitationOpen, invitationRequest, type Invitation, type InvitationDraft, type InvitationPreview } from '@/lib/invitations';
 
 type Kitchen = { id: number; name: string };
-const START_TIMES = Array.from({ length: 17 }, (_, i) => `${String(i + 6).padStart(2, '0')}:00`);
 const EXPIRY = [24, 48, 168] as const;
 
 /**
@@ -45,6 +44,18 @@ export default function ManagerInvitationNewPage() {
     return (await response.json()) as Kitchen[];
   } });
   useEffect(() => { if (!kitchenId && kitchens.data?.length) setKitchenId(kitchens.data[0].id); }, [kitchens.data, kitchenId]);
+  // The kitchen's own hours that day, in operating order (an overnight window lists 12:00 a.m. after 11:00 p.m.).
+  const daySlots = useQuery({ queryKey: ['invitation-slots', kitchenId, date], enabled: kitchenId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    queryFn: () => invitationRequest<Array<{ time: string; available: number; isFullyBooked: boolean }>>(`/api/public/kitchens/${kitchenId}/slots?date=${date}`) });
+  const slotTimes = (daySlots.data || []).map(slot => slot.time);
+  const isFree = (time: string) => daySlots.data?.some(slot => slot.time === time && !slot.isFullyBooked && slot.available > 0);
+  // Longest run of free hours from the chosen start (up to 12); unknown until the day's hours load.
+  const freeRun = slotTimes.slice(slotTimes.indexOf(start)).findIndex(time => !isFree(time));
+  const maxHours = !slotTimes.includes(start) ? 12 : Math.max(1, Math.min(12, freeRun === -1 ? slotTimes.length - slotTimes.indexOf(start) : freeRun));
+  useEffect(() => {
+    if (slotTimes.length && !slotTimes.includes(start)) setStart(slotTimes.find(isFree) || slotTimes[0]);
+  }, [daySlots.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (hours > maxHours) setHours(maxHours); }, [maxHours, hours]);
   const sentList = useQuery({ queryKey: ['invitations-sent', locationId, chefId], enabled: locationId > 0 && chefId > 0,
     queryFn: () => invitationRequest<{ invitations: Invitation[] }>(`/api/manager/invitations?locationId=${locationId}&chefId=${chefId}`) });
 
@@ -52,8 +63,8 @@ export default function ManagerInvitationNewPage() {
   const discount = discountType === 'none' || !(amount > 0) ? undefined
     : { type: discountType, value: discountType === 'amount' ? Math.round(amount * 100) : amount } as const;
   const draft: InvitationDraft | null = useMemo(() => chefId && kitchenId && /^\d{4}-\d{2}-\d{2}$/.test(date)
-    ? { chefId, kitchenId, date, startTime: start, endTime: addHours(start, hours), expiresInHours: expires, ...(discount ? { discount } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
-    : null, [chefId, kitchenId, date, start, hours, expires, discount?.type, discount?.value, note]);
+    && slotTimes.includes(start) ? { chefId, kitchenId, date, startTime: start, endTime: addHours(start, hours), expiresInHours: expires, ...(discount ? { discount } : {}), ...(note.trim() ? { note: note.trim() } : {}) }
+    : null, [chefId, kitchenId, date, start, hours, expires, discount?.type, discount?.value, note, daySlots.data]);
 
   // Live preview: the exact price the chef will see, availability, and the kitchen's estimated payout.
   useEffect(() => {
@@ -132,12 +143,14 @@ export default function ManagerInvitationNewPage() {
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className={field}>{t('invDate')}<Input type="date" className="mt-1 min-h-11" value={date} onChange={event => setDate(event.target.value)} required /></label>
                 <label className={field}>{t('invStart')}
-                  <select className={box} value={start} onChange={event => setStart(event.target.value)}>
-                    {START_TIMES.map(time => <option key={time} value={time}>{formatTime(time, locale)}</option>)}
+                  <select className={box} value={start} disabled={!slotTimes.length} onChange={event => setStart(event.target.value)}>
+                    {!slotTimes.length && <option value={start}>{t(date && daySlots.isSuccess ? 'invClosedDay' : 'invChooseDateFirst')}</option>}
+                    {slotTimes.map(time => <option key={time} value={time} disabled={!isFree(time)}>
+                      {isFree(time) ? formatTime(time, locale) : t('invSlotTaken', { time: formatTime(time, locale) })}</option>)}
                   </select></label>
                 <label className={field}>{t('invLength')}
                   <select className={box} value={hours} onChange={event => setHours(Number(event.target.value))}>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{t('chgHoursOption', { count: n })}</option>)}
+                    {Array.from({ length: maxHours }, (_, i) => i + 1).map(n => <option key={n} value={n}>{t('chgHoursOption', { count: n })}</option>)}
                   </select></label>
               </div>
             </section>

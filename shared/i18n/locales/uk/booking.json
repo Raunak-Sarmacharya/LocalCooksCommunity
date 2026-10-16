@@ -1259,5 +1259,8 @@
   "checkoutConfirmed": "Ваше бронювання підтверджено",
   "checkoutConfirmedDetail": "Усе готово. Деталі прибуття та квитанція — у вашому бронюванні.",
   "checkoutConfirmingDetail": "Оплату отримано. Підтверджуємо бронювання — це займе кілька секунд.",
-  "checkoutViewBooking": "Переглянути бронювання"
+  "checkoutViewBooking": "Переглянути бронювання",
+  "invChooseDateFirst": "Спершу виберіть дату",
+  "invClosedDay": "Цього дня кухня зачинена",
+  "invSlotTaken": "{time} · заброньовано"
 }
