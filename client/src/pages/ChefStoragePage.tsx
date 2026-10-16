@@ -1,0 +1,79 @@
+/** "My storage" (WP-ST10): one card per rental — kitchen, shelf, one plain status sentence, at most one primary action. */
+import { useState } from "react"
+import { Link } from "wouter"
+import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { StoragePageShell } from "@/components/storage/StoragePageShell"
+import { PendingOverstayPenalties } from "@/components/chef/PendingOverstayPenalties"
+import { useChefKitchenApplications } from "@/hooks/use-chef-kitchen-applications"
+import { CURRENT_STATES, TONE_CLASS, can, listRentals, rentalStatus, type StorageRental } from "@/lib/storage-rentals"
+import { cn } from "@/lib/utils"
+
+export const STORAGE_LIST_KEY = ["/api/chef/storage-rentals"] as const
+
+export function RentalCard({ rental }: { rental: StorageRental }) {
+  const { t: tt, i18n } = useTranslation("storage")
+  const t = tt as unknown as (key: string, options?: Record<string, unknown>) => string
+  const status = rentalStatus(rental, t, i18n.language)
+  const urgent = can(rental, "extend") && (rental.phase === "grace" || rental.phase === "holdover" || rental.phase === "ending_soon")
+  return <article className="rounded-2xl border bg-card p-4 sm:p-5" data-testid={`storage-card-${rental.id}`}>
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="truncate text-[15px] font-semibold"><Link className="hover:underline focus-visible:underline" href={`/storage/${rental.id}`}>{rental.kitchen.name}</Link></h3>
+        <p className="truncate text-sm text-muted-foreground">{t("stcListingUnit", { listing: rental.listing.name, unit: rental.unitLabel })}</p>
+      </div>
+      <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-medium", TONE_CLASS[status.tone])}>{status.pill}</span>
+    </div>
+    <p className="mt-3 text-sm leading-relaxed">{status.sentence}</p>
+    <div className="mt-4 flex flex-wrap gap-2">
+      {urgent
+        ? <Button asChild className="min-h-11 w-full sm:w-auto"><Link href={`/storage/${rental.id}?extend=1`}>{t("stcExtend")}</Link></Button>
+        : <Button asChild variant="outline" className="min-h-11 w-full sm:w-auto"><Link href={`/storage/${rental.id}`}>{t("stcView")}</Link></Button>}
+    </div>
+  </article>
+}
+
+export default function ChefStoragePage() {
+  const { t: tt } = useTranslation("storage")
+  const t = tt as unknown as (key: string, options?: Record<string, unknown>) => string
+  // Back from Stripe: the request lands with the webhook, a moment later — keep looking briefly.
+  const [returned] = useState(() => new URLSearchParams(window.location.search).has("session_id"))
+  const query = useQuery({ queryKey: STORAGE_LIST_KEY, queryFn: listRentals,
+    refetchInterval: q => returned && (q.state.dataUpdateCount ?? 0) < 10 ? 3000 : false })
+  const { applications } = useChefKitchenApplications()
+  const rentals = query.data ?? []
+  const current = rentals.filter(rental => CURRENT_STATES.includes(rental.state)).reverse()
+  const past = rentals.filter(rental => !CURRENT_STATES.includes(rental.state)).reverse()
+  const approved = applications.filter(app => app.status === "approved" && app.location)
+
+  return <StoragePageShell>
+    <header className="space-y-1">
+      <h1 className="text-2xl font-semibold tracking-tight">{t("stcTitle")}</h1>
+      <p className="text-sm text-muted-foreground">{t("stcIntro")}</p>
+    </header>
+    {returned && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{t("stcReturned")}</p>}
+    <PendingOverstayPenalties title={t("stcHoldoverTitle")} />
+    {query.isPending ? <div className="space-y-3" role="status" aria-label={t("stcLoading")}>
+      {[0, 1].map(index => <Skeleton key={index} className="h-[148px] w-full rounded-2xl" />)}
+    </div> : query.error ? <div role="alert" className="space-y-3 rounded-2xl border p-5">
+      <p className="text-sm">{t("stcLoadError")}</p>
+      <Button variant="outline" className="min-h-11" onClick={() => void query.refetch()}>{t("stcRetry")}</Button>
+    </div> : !rentals.length ? <section className="space-y-4 rounded-2xl border border-dashed p-5">
+      <p className="text-[15px] font-medium">{t("stcEmpty")}</p>
+      <p className="text-sm text-muted-foreground">{t("stcEmptyHint")}</p>
+      {approved.length > 0 && <ul className="space-y-2">
+        {approved.map(app => <li key={app.id}><Button asChild variant="outline" className="min-h-11 w-full justify-between sm:w-auto">
+          <Link href={`/kitchen-preview/${app.location!.id}`}>{t("stcSeeStorageAt", { kitchen: app.location!.name })}</Link></Button></li>)}
+      </ul>}
+      <Button asChild className="min-h-11 w-full sm:w-auto"><Link href="/dashboard?view=discover-kitchens">{t("stcFindKitchen")}</Link></Button>
+    </section> : <>
+      {current.length > 0 && <section className="space-y-3" aria-labelledby="storage-current"><h2 id="storage-current" className="text-base font-semibold">{t("stcCurrent")}</h2>
+        <ul className="space-y-3">{current.map(rental => <li key={rental.id}><RentalCard rental={rental} /></li>)}</ul></section>}
+      {past.length > 0 && <section className="space-y-3" aria-labelledby="storage-past"><h2 id="storage-past" className="text-base font-semibold">{t("stcPast")}</h2>
+        <ul className="space-y-3">{past.map(rental => <li key={rental.id}><RentalCard rental={rental} /></li>)}</ul></section>}
+      <p><Link className="text-sm underline underline-offset-2" href="/dashboard?view=discover-kitchens">{t("stcRentMore")}</Link></p>
+    </>}
+  </StoragePageShell>
+}

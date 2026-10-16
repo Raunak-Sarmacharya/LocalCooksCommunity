@@ -24,7 +24,7 @@ async function problemRequest(path: string, method = 'GET', body?: unknown) {
 type ProblemsResult = { problems: Problem[]; reportingAvailable: boolean; reportingOpensAt?: string | null; actorId?: number };
 
 /** One cached read per commitment, shared by the support panel and the booking page's "can't get in" alert. */
-export function useCommitmentProblems(kind: 'booking' | 'tour' | undefined, id: number | undefined, role: string) {
+export function useCommitmentProblems(kind: 'booking' | 'tour' | 'storage' | undefined, id: number | undefined, role: string) {
   const { t } = useTranslation('chef');
   const path = `/api/commitment-problems${kind && id ? `/${kind}/${id}` : ''}`;
   return useQuery<ProblemsResult>({
@@ -84,7 +84,7 @@ function ProblemCard({ problem, staff, role, actorId, here }: { problem: Problem
 }
 
 type ProblemsProps = {
-  kind?: 'booking' | 'tour'; id?: number; canReport?: boolean; staff?: boolean; role?: 'chef' | 'manager' | 'admin'; embedded?: boolean;
+  kind?: 'booking' | 'tour' | 'storage'; id?: number; canReport?: boolean; staff?: boolean; role?: 'chef' | 'manager' | 'admin'; embedded?: boolean;
   /** Opens the report from elsewhere on the page (a new `openToken` each time), with a title and prompt framed for the situation. */
   intent?: { openToken: number; title: string; hint: string; label?: string; category?: string };
 };

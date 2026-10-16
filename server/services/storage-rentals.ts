@@ -123,7 +123,7 @@ export async function createRentalCheckout(chefId: number, input: RentalCheckout
     line_items: [item(`${q.ctx.listing.name} · ${q.ctx.kitchen.name} · ${input.startOn}–${q.endOn} (${tLocale(locale, 'stCheckoutDays', { ns: 'storage', count: input.days })})`, q.price.subtotalCents),
       ...(q.price.taxCents ? [item(tLocale(locale, 'stCheckoutTax', { ns: 'storage' }), q.price.taxCents)] : []), ...(q.price.serviceFeeCents ? [item(tLocale(locale, 'stCheckoutServiceFee', { ns: 'storage' }), q.price.serviceFeeCents)] : [])],
     success_url: `${getAppBaseUrl('chef')}/storage?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${getAppBaseUrl('chef')}/storage/new?listingId=${input.listingId}` },
+    cancel_url: `${getAppBaseUrl('chef')}/storage/new?kitchenId=${q.ctx.kitchen.id}&listingId=${input.listingId}` },
   { idempotencyKey: `storage-rental:${chefId}:${input.requestKey}` });
   sandbox(session);
   return { checkoutUrl: session.url };

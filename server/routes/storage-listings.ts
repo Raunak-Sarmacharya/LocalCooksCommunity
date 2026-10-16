@@ -346,6 +346,10 @@ router.get("/chef/kitchens/:kitchenId/storage-availability", requireChef, async 
             dailyPriceCents: listing.basePrice != null ? Number(listing.basePrice) : 0,
             maxTermDays: listingMaxTermDays(settings.maxTermDays, listing.maxTermDays),
             availability: listingAvailability(listing.unitCount ?? 1, occupied.get(listing.id) ?? [], today),
+            // The chef request page names the kitchen, applies at its location and counts days in its timezone.
+            kitchenName: kitchen.name,
+            locationId: kitchen.locationId,
+            timezone: location?.timezone || "America/St_Johns",
         })));
     } catch (error: any) {
         logger.error("Error getting storage availability:", error);

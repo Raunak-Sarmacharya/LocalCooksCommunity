@@ -3745,9 +3745,9 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         if (!result) return res.status(404).json({ error: "Checkout not found for this account" });
         // "Change request": say plainly how the earlier request ended (withdrawn, kitchen accepted it first, already ended, still releasing).
         const replacement = result.bookingId ? await (await import('../services/booking-replacement')).readReplacementOutcome(result.bookingId, req.neonUser!.id) : null;
-        const [booking] = result.bookingId ? await db.select({ status: kitchenBookings.status, invitationId: kitchenBookings.invitationId })
+        const [booking] = result.bookingId ? await db.select({ status: kitchenBookings.status, invitationId: kitchenBookings.invitationId, kitchenId: kitchenBookings.kitchenId })
             .from(kitchenBookings).where(eq(kitchenBookings.id, result.bookingId)).limit(1) : [];
-        const status = booking ? { invitation: !!booking.invitationId, confirmed: booking.status === 'confirmed' } : {};
+        const status = booking ? { invitation: !!booking.invitationId, confirmed: booking.status === 'confirmed', kitchenId: booking.kitchenId } : {};
         return res.json({ ...result, ...status, ...(replacement ? { replacement } : {}) });
     } catch (error) {
         logger.error("Error reading checkout result:", error);

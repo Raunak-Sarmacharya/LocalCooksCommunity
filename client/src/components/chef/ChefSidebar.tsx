@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
+import { useLocation } from "wouter"
 import type { TFunction } from "i18next"
 import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher"
 import { Icon } from "@iconify/react"
@@ -61,8 +62,11 @@ export function ChefSidebar({
         return name.slice(0, 2).toUpperCase()
     }
 
+    const [, navigate] = useLocation()
     const handleViewChange = (view: string) => {
-        onViewChange(view)
+        // "My storage" is its own route, not a dashboard tab.
+        if (view === "storage") navigate("/storage")
+        else onViewChange(view)
         if (isMobile) {
             setOpenMobile(false)
         }
