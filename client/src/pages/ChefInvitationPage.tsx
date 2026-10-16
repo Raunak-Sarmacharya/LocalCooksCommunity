@@ -14,6 +14,7 @@ import { apiGet } from '@/lib/api';
 import { formatTime } from '@/lib/formatters';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { invitationRequest, type Invitation } from '@/lib/invitations';
+import { CANCELLATION_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
 
 /** The chef's view of a kitchen's invitation: what, when, the exact price, the note, and pay or decline. */
 export default function ChefInvitationPage() {
@@ -45,12 +46,18 @@ export default function ChefInvitationPage() {
 
   const money = (cents: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(cents / 100);
   const pay = async () => {
-    if (!query.data || paying) return;
+    if (!query.data || !policy.data?.policy || paying) return;
     setPaying(true); setError('');
     try {
-      const { url } = await invitationRequest<{ url: string }>(`/api/chef/invitations/${encodeURIComponent(id)}/checkout`, { equipmentIds });
+      const { url } = await invitationRequest<{ url: string }>(`/api/chef/invitations/${encodeURIComponent(id)}/checkout`, {
+        equipmentIds, cancellationPolicyAccepted: true, cancellationPolicyVersion: policy.data.policy.version,
+        cancellationDisclosureVersion: CANCELLATION_DISCLOSURE_VERSION,
+      });
       window.location.assign(url);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t('invPayFailed')); setPaying(false); void query.refetch(); }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('invPayFailed')); setPolicyOpen(true);
+      await Promise.all([policy.refetch(), query.refetch()]); setPaying(false);
+    }
   };
   const decline = async () => {
     if (!query.data || busy) return;
@@ -137,7 +144,7 @@ export default function ChefInvitationPage() {
             <Button variant="destructive" disabled={busy} onClick={() => void decline()}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('invDecline')}</Button>
           </div>
         </div> : <div className="flex flex-wrap gap-2">
-          {invitation.canPay !== false && <Button className="min-h-11" disabled={paying || pricing || quote.isError} onClick={() => void pay()} data-primary-action="true">
+          {invitation.canPay !== false && <Button className="min-h-11" disabled={paying || pricing || quote.isError || !policy.data?.policy || policy.isFetching} onClick={() => void pay()} data-primary-action="true">
             {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('invPay', { amount: money(p.totalCents) })}</Button>}
           {invitation.canDecline !== false && <Button className="min-h-11" variant="outline" onClick={() => setDeclining(true)}>{t('invDecline')}</Button>}
           <Button asChild className="min-h-11" variant="ghost"><Link href="/dashboard?view=messages">{t('invAskQuestion')}</Link></Button>

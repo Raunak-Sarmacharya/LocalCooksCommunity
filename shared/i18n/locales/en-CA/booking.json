@@ -414,6 +414,8 @@
   "cpPublish": "Save cancellation policy",
   "cpSaved": "Cancellation policy saved",
   "cpError": "We couldn’t load the cancellation policy. Please try again.",
+  "invPolicyChanged": "The cancellation policy changed. Review the updated policy before paying.",
+  "invCheckoutCutoff": "This invitation is past the checkout deadline for the current cancellation policy. Ask the kitchen for another time.",
   "cpAck": "I've read and accept this cancellation policy.",
   "cpShort": "This booking starts within {hours} hours. Once the kitchen confirms, you pay {charge} if you cancel. You can withdraw while the request is pending; your card hold is released.",
   "cpExact": "Refund: {refund} (your payment minus the {fee} card processing fee).",

@@ -20,6 +20,7 @@ import { workerAfter, workerBatch, workerRecord, workerPageEnd, inRecurringWorke
 import { db } from "../db";
 import {
   kitchenBookings,
+  kitchenInvitations,
   storageBookings as storageBookingsTable,
   equipmentBookings as equipmentBookingsTable,
   pendingStorageExtensions,
@@ -60,6 +61,13 @@ async function expireKitchenAuthorization(bookingId: number, paymentIntentId: st
   if ((current?.paymentDecision as { state?: string } | null)?.state === 'pending') return false;
   if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
     || current.paymentIntentId !== paymentIntentId) return false;
+  if (current.invitationId) {
+    const [invitation] = await db.select({ managerId: kitchenInvitations.managerId }).from(kitchenInvitations)
+      .where(eq(kitchenInvitations.id, current.invitationId)).limit(1);
+    if (!invitation) throw new Error('Invitation checkout evidence is incomplete');
+    await (await import('./booking-payment-decision')).decideAuthorizedBooking(bookingId, 'confirmed', [], [], invitation.managerId);
+    return false;
+  }
   const deadline = await getBookingResponseDeadline(current);
   if (now < deadline) return false;
   const { decideAuthorizedBooking } = await import('./booking-payment-decision');

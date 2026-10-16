@@ -17,14 +17,36 @@ const cents = (value: unknown) => {
   return result;
 };
 
+type ProviderRefund = { id: string; amount: number; status: string | null; currency?: string; charge?: unknown;
+  payment_intent?: unknown; metadata: Record<string, string> | null };
+
+/** Terminal attempts belong to a retry only when one success has the same immutable operation and allocation. */
+export function successfulRefundAttempt(refunds: ProviderRefund[], operationId: string) {
+  const attempts = refunds.filter(row => row.metadata?.refund_operation_id === operationId);
+  const successes = attempts.filter(row => row.status === 'succeeded');
+  if (successes.length > 1 || attempts.some(row => !['succeeded', 'failed', 'canceled'].includes(row.status || '')))
+    throw Error('Conflicting refund receipts require financial review.');
+  const success = successes[0];
+  if (success && attempts.some(row => row.amount !== success.amount || row.currency !== success.currency
+    || row.charge !== success.charge || row.payment_intent !== success.payment_intent
+    || ['transaction_id', 'customer_receives', 'manager_debited', 'platform_service_fee_returned', 'kitchen_debt_cents',
+      'platform_goodwill_cents', 'platform_processing_cost_cents', 'kitchen_change_id', 'type']
+      .some(key => row.metadata?.[key] !== success.metadata?.[key]))) throw Error('Conflicting refund receipts require financial review.');
+  return success;
+}
+
 /** Aggregate refunded totals cannot establish who funded a refund. */
 export function cancellationSourceQuote(input: { captured: number; processingCost: number; serviceFee: number; refunded: number;
-  refunds: Array<{ id: string; amount: number; status: string | null; metadata: Record<string, string> | null }>; localReceipts?: RefundReceipt[];
+  refunds: ProviderRefund[]; localReceipts?: RefundReceipt[];
   retainedUsedAddonCents?: number }) {
   const captured = cents(input.captured), processingCost = cents(input.processingCost), serviceFee = cents(input.serviceFee);
   if (processingCost + serviceFee > captured) throw new Error('Captured source cannot fund its retained fees');
   const receipts: RefundReceipt[] = [];
   for (const refund of input.refunds) {
+    const operationReceipt = refund.metadata?.refund_operation_id
+      ? successfulRefundAttempt(input.refunds, refund.metadata.refund_operation_id) : undefined;
+    if (['failed', 'canceled'].includes(refund.status || '') && refund.metadata?.refund_operation_id
+      && operationReceipt) continue;
     // A terminal failed change refund is closed only by its verified support-authorized replacement.
     if (['failed', 'canceled'].includes(refund.status || '') && input.refunds.some(other => other.status === 'succeeded'
       && other.metadata?.refund_replaces_id === refund.id && other.metadata?.type === 'kitchen_booking_change'
@@ -66,9 +88,9 @@ export function verifiedReservedRefund(source: { id: number; paymentIntentId: st
   if (!matches.length || matches.some(row => row.amount !== (operation.customerRefund ?? operation.managerRefund) || row.currency !== facts.currency
     || row.charge !== facts.chargeId || row.payment_intent !== source.paymentIntentId
     || !['succeeded', 'failed', 'canceled'].includes(row.status || ''))) throw Error('The provider refund attempts do not match the reservation');
-  const succeeded = matches.filter(row => row.status === 'succeeded');
-  if (succeeded.length !== 1) throw Error('Exactly one successful provider refund receipt is required');
-  const receipt = succeeded[0], m = receipt.metadata;
+  const receipt = successfulRefundAttempt(matches, operation.id);
+  if (!receipt) throw Error('Exactly one successful provider refund receipt is required');
+  const m = receipt.metadata;
   if (receipt.status !== 'succeeded' || receipt.charge !== facts.chargeId || receipt.payment_intent !== source.paymentIntentId || receipt.currency !== facts.currency
     || receipt.amount !== (operation.customerRefund ?? operation.managerRefund) || m?.transaction_id !== String(source.id)
     || Number(m?.customer_receives) !== receipt.amount || Number(m?.manager_debited) !== operation.managerRefund

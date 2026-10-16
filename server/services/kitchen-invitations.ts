@@ -396,29 +396,29 @@ export async function adminInvitationAction(id: string, adminId: number, action:
   return invitationDto(row, 'admin', new Date(), admin?.locale || 'en-CA');
 }
 
-export async function releaseInvitationCheckout(invitationId: string | undefined, version: number | undefined) {
+export async function releaseInvitationCheckout(invitationId: string | undefined, version: number | undefined, sessionId: string) {
   if (!invitationId || !Number.isSafeInteger(version)) return;
   const [row] = await db.update(kitchenInvitations).set({ status: 'sent', version: version! + 1, holdId: null, stripeSessionId: null, updatedAt: new Date() })
     .where(and(eq(kitchenInvitations.id, invitationId), eq(kitchenInvitations.version, version!),
-      eq(kitchenInvitations.status, 'accepted_pending_payment'))).returning();
+      eq(kitchenInvitations.status, 'accepted_pending_payment'), eq(kitchenInvitations.stripeSessionId, sessionId))).returning();
   if (row) await db.insert(kitchenInvitationEvents).values({ invitationId, version: row.version, kind: 'payment_abandoned',
     actorId: row.chefId, actorRole: 'chef', noticeKey: `${invitationId}:${row.version}:payment_abandoned`,
     metadata: {} }).onConflictDoNothing();
 }
 
 export async function releaseInvitationCheckoutByHold(holdId: string) {
-  const [row] = await db.select({ id: kitchenInvitations.id, version: kitchenInvitations.version })
+  const [row] = await db.select({ id: kitchenInvitations.id, version: kitchenInvitations.version, stripeSessionId: kitchenInvitations.stripeSessionId })
     .from(kitchenInvitations).where(eq(kitchenInvitations.holdId, holdId)).limit(1);
-  if (row) await releaseInvitationCheckout(row.id, row.version);
+  if (row?.stripeSessionId) await releaseInvitationCheckout(row.id, row.version, row.stripeSessionId);
 }
 
-export async function recordFulfilledInvitation(invitationId: string, bookingId: number) {
-  const [row] = await db.select().from(kitchenInvitations).where(eq(kitchenInvitations.id, invitationId)).limit(1);
+export async function recordFulfilledInvitation(invitationId: string, bookingId: number, tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) {
+  const [row] = await tx.select().from(kitchenInvitations).where(eq(kitchenInvitations.id, invitationId)).limit(1);
   if (!row) return;
-  const [updated] = await db.update(kitchenInvitations).set({ status: 'accepted', bookingId, updatedAt: new Date() })
+  const [updated] = await tx.update(kitchenInvitations).set({ status: 'accepted', bookingId, updatedAt: new Date() })
     .where(and(eq(kitchenInvitations.id, invitationId), eq(kitchenInvitations.version, row.version),
       eq(kitchenInvitations.status, 'accepted_pending_payment'))).returning();
-  if (updated) await db.insert(kitchenInvitationEvents).values({ invitationId, version: row.version,
+  if (updated) await tx.insert(kitchenInvitationEvents).values({ invitationId, version: row.version,
     kind: 'accepted', actorId: row.managerId, actorRole: 'manager',
     noticeKey: `${invitationId}:${row.version}:accepted`, metadata: { bookingId, preApproved: true } }).onConflictDoNothing();
 }
