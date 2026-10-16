@@ -23,6 +23,12 @@ describe('complete user deletion', () => {
     expect(position('tour_repeat_authorizations')).toBeLessThan(position('kitchen_viewings'));
     expect(position('tour_feedback_responses')).toBeLessThan(position('kitchen_viewings'));
     expect(position('storage_overstay_quotes')).toBeLessThan(position('storage_listings'));
+    expect(position('kitchen_invitation_events')).toBeLessThan(position('kitchen_invitations'));
+    expect(position('kitchen_invitations')).toBeLessThan(position('kitchen_bookings'));
+    expect(position('kitchen_invitations')).toBeLessThan(position('kitchens'));
+    expect(position('storage_rental_terms')).toBeLessThan(position('payment_transactions'));
+    expect(position('storage_rental_terms')).toBeLessThan(position('storage_bookings'));
+    expect(position('customer_notes')).toBeLessThan(position('locations'));
     expect(position('kitchens')).toBeLessThan(position('locations'));
   });
 
@@ -35,6 +41,10 @@ describe('complete user deletion', () => {
     expect(booking.sql).not.toContain('checkout_approved_by');
     expect(targets.map(t => t.table)).toContain('locations');
     expect(targets.map(t => t.table)).toContain('payment_transactions');
+    expect(targets.map(t => t.table)).toContain('kitchen_invitations');
+    expect(targets.map(t => t.table)).toContain('kitchen_invitation_events');
+    expect(targets.map(t => t.table)).toContain('customer_notes');
+    expect(targets.map(t => t.table)).toContain('storage_rental_terms');
   });
 
   it('uses bound parameters, real RETURNING rows, and preserves global settings', async () => {
@@ -47,6 +57,8 @@ describe('complete user deletion', () => {
     expect(counts.kitchen_bookings).toBe(3);
     expect(statements.some(s => s.sql.startsWith('DELETE FROM "platform_settings"'))).toBe(false);
     expect(statements.some(s => s.sql.includes('UPDATE "platform_settings" SET "updated_by" = NULL'))).toBe(true);
+    expect(statements.some(s => s.sql.includes('UPDATE "customer_notes" SET "author_id" = NULL'))).toBe(true);
+    expect(statements.some(s => s.sql.includes('UPDATE "storage_bookings" SET "decided_by" = NULL'))).toBe(true);
   });
 
   it('scopes audit-trigger exceptions to the deletion transaction', async () => {
@@ -72,9 +84,16 @@ describe('history-safe account deletion', () => {
     const { tx, statements } = createTx();
     await deleteUserDependents(tx, 42, { keepHistory: true });
     const deleted = statements.filter(s => s.sql.startsWith('DELETE FROM')).map(s => s.sql);
-    for (const table of ['payment_transactions', 'damage_claims', 'storage_bookings', 'equipment_bookings', 'storage_overstay_records', 'kitchen_booking_visits'])
+    for (const table of ['payment_transactions', 'damage_claims', 'storage_bookings', 'equipment_bookings', 'storage_overstay_records', 'kitchen_booking_visits', 'storage_rental_terms'])
       expect(deleted.some(sql => sql.startsWith(`DELETE FROM "${table}"`))).toBe(false);
+    const notes = deleted.find(sql => sql.startsWith('DELETE FROM "customer_notes"'));
+    expect(notes).toContain('chef_id');
+    expect(notes).toContain('location_id');
+    expect(notes).not.toContain('author_id');
     expect(deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_bookings"'))).toContain("booking_type = 'manager_blocked'");
+    const invitations = deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_invitations"'));
+    expect(invitations).toContain("booking_type <> 'manager_blocked'");
+    expect(deleted.find(sql => sql.startsWith('DELETE FROM "kitchen_invitation_events"'))).toContain('invitation_id IN');
   });
 
   it('anonymizes the person, archives owned locations and kitchens, and keeps every booking row', async () => {
@@ -87,8 +106,11 @@ describe('history-safe account deletion', () => {
     const userUpdate = statements.find(s => s.sql.startsWith('UPDATE users SET username'))!;
     expect(userUpdate.sql).toContain('firebase_uid = NULL');
     expect(userUpdate.params).toContain(anonymizedUsername(42));
-    for (const table of ['kitchen_bookings', 'payment_transactions', 'damage_claims', 'users', 'kitchens', 'locations', 'storage_bookings', 'equipment_bookings'])
+    for (const table of ['kitchen_bookings', 'payment_transactions', 'damage_claims', 'users', 'kitchens', 'locations', 'storage_bookings', 'equipment_bookings', 'customer_notes', 'storage_rental_terms'])
       expect(sqls.some(s => s.startsWith(`DELETE FROM "${table}"`))).toBe(false);
+    const openInvitations = statements.find(s => s.sql.startsWith('DELETE FROM "kitchen_invitations"'))!;
+    expect(openInvitations.sql).toContain('booking_id IS NULL');
+    expect(statements.some(s => s.sql.startsWith('DELETE FROM "kitchen_invitation_events"'))).toBe(true);
     expect(isAnonymizedUsername(anonymizedUsername(42))).toBe(true);
     expect(isAnonymizedUsername('chef@example.com')).toBe(false);
   });

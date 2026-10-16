@@ -43,7 +43,8 @@ type FrozenTerms = { version: string; dailyPriceCents: number; taxRatePercent: n
 
 async function context(listingId: number, reader: Reader) {
   const [listing] = await reader.select().from(storageListings).where(eq(storageListings.id, listingId));
-  if (!listing || !listing.isActive || listing.status !== 'approved' || listing.pricingModel !== 'daily') fail('unavailable');
+  // Same visibility rule as the chef listing pages: an approved or active listing is live.
+  if (!listing || !listing.isActive || !['approved', 'active'].includes(listing.status) || listing.pricingModel !== 'daily') fail('unavailable');
   const [place] = await reader.select({ kitchen: kitchens, location: locations }).from(kitchens)
     .innerJoin(locations, eq(locations.id, kitchens.locationId)).where(eq(kitchens.id, listing.kitchenId));
   if (!place?.location.managerId) fail('unavailable');
