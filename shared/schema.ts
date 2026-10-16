@@ -1429,6 +1429,7 @@ export const storageListings = pgTable("storage_listings", {
   // Standalone storage rentals (migration 0093): identical units of this listing; NULL max = platform max
   unitCount: integer("unit_count").default(1).notNull(),
   maxTermDays: integer("max_term_days"),
+  sizeLabel: text("size_label"), // Free text such as "One shelf, 36 in wide" (migration 0095)
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

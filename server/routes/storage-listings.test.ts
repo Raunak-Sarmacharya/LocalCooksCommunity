@@ -52,7 +52,47 @@ describe('storage listing input', () => {
   });
 });
 
+describe('simplified listing form input', () => {
+  const base = { name: 'Shelf', storageType: 'dry', dailyPriceCents: 500 };
+
+  it('defaults access to kitchen hours and accepts only the three options on write', () => {
+    expect(validateStorageListingInput(base, 30).value).toMatchObject({ accessType: 'kitchen_hours' });
+    for (const accessType of ['kitchen_hours', 'anytime', 'by_arrangement']) {
+      expect(validateStorageListingInput({ ...base, accessType }, 30).value).toMatchObject({ accessType });
+    }
+    expect(validateStorageListingInput({ ...base, accessType: 'shelving-unit' }, 30).error).toMatch(/Access/);
+    expect(validateStorageListingInput({ accessType: 'my own words' }, 30, true).error).toMatch(/Access/);
+    expect(validateStorageListingInput({ isActive: false }, 30, true).value).not.toHaveProperty('accessType');
+  });
+
+  it('forces a one-day minimum and drops size in cubic feet and the overstay settings', () => {
+    const { value } = validateStorageListingInput({ ...base, minimumBookingDuration: 9, totalVolume: 12, pricePerCubicFoot: 3, overstayGracePeriodDays: 4,
+      overstayPenaltyRate: '0.5', overstayMaxPenaltyDays: 10, overstayPolicyText: 'x' }, 30);
+    expect(value).toMatchObject({ minimumBookingDuration: 1, bookingDurationUnit: 'daily' });
+    for (const key of ['totalVolume', 'pricePerCubicFoot', 'overstayGracePeriodDays', 'overstayPenaltyRate', 'overstayMaxPenaltyDays', 'overstayPolicyText']) expect(value).not.toHaveProperty(key);
+  });
+
+  it('keeps a trimmed size label, clears an empty one and checks photos', () => {
+    expect(validateStorageListingInput({ ...base, sizeLabel: '  One shelf, 36 in wide ' }, 30).value).toMatchObject({ sizeLabel: 'One shelf, 36 in wide' });
+    expect(validateStorageListingInput({ ...base, sizeLabel: '  ' }, 30).value).toMatchObject({ sizeLabel: null });
+    expect(validateStorageListingInput({ ...base, sizeLabel: 'x'.repeat(121) }, 30).error).toMatch(/Size/);
+    expect(validateStorageListingInput({ ...base, photos: ['https://img/1.jpg'] }, 30).value).toMatchObject({ photos: ['https://img/1.jpg'] });
+    expect(validateStorageListingInput({ ...base, photos: [1] }, 30).error).toMatch(/Photos/);
+  });
+});
+
 describe('storage listing routes', () => {
+  it('saves the size label and ignores removed fields when creating', async () => {
+    mocks.create.mockResolvedValue({ id: 9 });
+    const res = response();
+    await handlerFor('/manager/storage-listings')({ neonUser: { id: 1 }, body: { kitchenId: 1, ...{ name: 'Cooler', storageType: 'cold', dailyPriceCents: 700 },
+      accessType: 'anytime', sizeLabel: 'Half rack', temperatureRange: '35–40 °F', minimumBookingDuration: 7, overstayGracePeriodDays: 9 } }, res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    const saved = mocks.create.mock.calls[0][0];
+    expect(saved).toMatchObject({ kitchenId: 1, accessType: 'anytime', sizeLabel: 'Half rack', temperatureRange: '35–40 °F', minimumBookingDuration: 1 });
+    expect(saved).not.toHaveProperty('overstayGracePeriodDays');
+  });
+
   it('rejects a 45-day listing before it is written', async () => {
     const res = response();
     await handlerFor('/manager/storage-listings')({ neonUser: { id: 1 }, body: { kitchenId: 1, name: 'Shelf', storageType: 'dry', dailyPriceCents: 500, maxTermDays: 45 } }, res);
