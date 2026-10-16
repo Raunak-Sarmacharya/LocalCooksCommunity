@@ -3627,5 +3627,7 @@
   "bnChefNoCheckinNoTime": "We didn’t see a check-in for your booking at {kitchen}. If you were there, let us know.",
   "bnManagerRunningLate": "{chef} is running about {duration} late. Their booking still ends at {end}.",
   "sxLapsed": "{kitchen} didn’t answer in time. Your {amount} hold is being released — you won’t be charged.",
-  "sxAskAgain": "Ask again"
+  "sxAskAgain": "Ask again",
+  "bdViewReceipts": "View receipts",
+  "bdViewPayoutDocuments": "View payout statements"
 }

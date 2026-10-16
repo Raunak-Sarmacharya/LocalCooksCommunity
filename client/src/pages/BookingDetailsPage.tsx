@@ -1348,7 +1348,9 @@ export default function BookingDetailsPage() {
     downloadBookingIcs(`LocalCooks-${booking.referenceCode || booking.id}.ics`, ics);
   };
   const openFix = (action?: 'departure' | 'report_attended' | 'report_no_show') => { setFixAction(action); setFixOpen(true); };
-  const downloadLabel = isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' && phase !== 'no_checkin' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
+  // With issued documents the action scrolls to the Receipts list (handleDownloadInvoice), so it names that list, never a "final invoice".
+  const downloadLabel = bookingDocuments ? t(isManagerView ? 'bdViewPayoutDocuments' : 'bdViewReceipts')
+    : isManagerView ? t('bdDownloadPayoutStatement') : t(booking?.status === 'completed' && phase !== 'no_checkin' ? 'bdDownloadFinalInvoice' : 'bdDownloadReceipt');
 
   // Secondary row: at most three links; the rest join the ⋯ menu.
   const toolLabel = (tool: ExtensionTool) => bt(tool === 'offer' ? 'sxbOfferMore' : tool === 'early_start' ? 'sxbLetStartEarly' : 'sxbChargeExtra');

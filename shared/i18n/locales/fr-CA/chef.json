@@ -3627,5 +3627,7 @@
   "bnChefNoCheckinNoTime": "Nous n’avons vu aucune arrivée enregistrée pour votre réservation chez {kitchen}. Si vous étiez là, dites-le-nous.",
   "bnManagerRunningLate": "{chef} aura environ {duration} de retard. Sa réservation se termine toujours à {end}.",
   "sxLapsed": "{kitchen} n’a pas répondu à temps. La retenue de {amount} est en cours de libération — vous ne serez pas débité.",
-  "sxAskAgain": "Redemander"
+  "sxAskAgain": "Redemander",
+  "bdViewReceipts": "Voir les reçus",
+  "bdViewPayoutDocuments": "Voir les relevés de paiement"
 }

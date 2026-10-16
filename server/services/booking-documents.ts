@@ -388,9 +388,15 @@ const CLOSED_INSPECTIONS = ['manager_cleared', 'auto_closed_uninspected', 'legac
 async function visitsClosed(bookingId: number) {
   try {
     const { projectBookingCloseouts } = await import('./clock-closeout');
-    const [projected] = await projectBookingCloseouts([{ id: bookingId }]) as Array<{ closeout?: { phase: string; visits: Array<{ inspection: { outcome: string } }> } }>;
+    const [projected] = await projectBookingCloseouts([{ id: bookingId }]) as Array<{ closeout?: { phase: string;
+      visits: Array<{ scheduledEndAt: string; inspection: { outcome: string; dueAt: string } }> } }>;
     const closeout = projected?.closeout;
-    return !!closeout && closeout.phase === 'ended' && closeout.visits.every(visit => CLOSED_INSPECTIONS.includes(visit.inspection.outcome));
+    if (!closeout || closeout.phase !== 'ended' || !closeout.visits.every(visit => CLOSED_INSPECTIONS.includes(visit.inspection.outcome))) return false;
+    // The kitchen may still report damage for 72 h after departure (even after the inspection closed): the statement is
+    // final only once every visit's claim window has passed. Later of booked end / inspection due → never issued early.
+    const { CLAIM_WINDOW_MS } = await import('@shared/damage-claims');
+    const now = Date.now();
+    return closeout.visits.every(visit => Math.max(Date.parse(visit.scheduledEndAt) || 0, Date.parse(visit.inspection.dueAt) || 0) + CLAIM_WINDOW_MS <= now);
   } catch (error) {
     logger.warn('[Documents] Closeout unavailable; the statement waits', { bookingId, error });
     return false;

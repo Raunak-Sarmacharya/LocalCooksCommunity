@@ -2192,13 +2192,13 @@ export default function KitchenBookingFlow({
   const continueButtonLabel = () => {
     if (currentStep === "calendar") {
       return selectedDate
-        ? t("sheetSelectTimeSlotsButton", "Select Time Slots")
-        : t("sheetSelectDateToContinueButton", "Select a date to continue");
+        ? t("sheetSelectTimeSlotsButton", "Choose hours")
+        : t("sheetSelectDateToContinueButton", "Choose a date");
     }
     if (currentStep === "slots") {
       return selectedSlots.length > 0
         ? t("sheetContinueButton", "Continue")
-        : t("sheetSelectTimeSlotsToContinueButton", "Select time slots to continue");
+        : t("sheetSelectTimeSlotsToContinueButton", "Choose your hours");
     }
     if (currentStep === "equipment" || currentStep === "storage") {
       const next = goToStepRelative(currentStep, 1);
@@ -2274,7 +2274,7 @@ export default function KitchenBookingFlow({
             {cancelButton}
             {previousButton}
             <Button
-              className={chefPrimaryCtaClass(cn("min-h-[44px] min-w-0 flex-1 px-3 sm:px-5", !canGoPrevious && "col-span-2 sm:col-auto"))}
+              className={chefPrimaryCtaClass(cn("h-auto min-h-[44px] min-w-0 flex-1 whitespace-normal px-3 py-2 text-center leading-tight sm:px-5", !canGoPrevious && "col-span-2 sm:col-auto"))}
               onClick={goToNextStep}
               disabled={continueDisabled}
             >
