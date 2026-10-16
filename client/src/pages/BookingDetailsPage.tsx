@@ -1322,8 +1322,8 @@ export default function BookingDetailsPage() {
     inspectionOutcome, inspectedOn: inspectedAt ? formatShortDate(inspectedAt) : null,
     canCancel: chefCanCancel, canChangeRequest: !!changeRequestLink && chefCanCancel, canAddToCalendar: booking?.status === 'confirmed' && !!visitBounds && upcoming, runningLateOpen, canMessage: messageAllowed,
     canDownload, managerCanManage, claimFilingOpen: claimWindowOpen, findAnotherTime: !!findAnotherTimeHref,
-  } });
     replacedByRef: newRequestHref ? replacedBy?.reference || `#${replacedBy?.bookingId}` : null,
+  } });
   const primary = now.primary;
 
   const payableClaim = !isManagerView ? nowClaims(claims, false).find(chefCanPayClaim) : undefined;
