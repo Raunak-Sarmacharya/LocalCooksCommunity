@@ -3,10 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ kitchen: vi.fn(), storage: vi.fn(), equipment: vi.fn() }));
 vi.mock("../domains/kitchens/kitchen.service", () => ({ kitchenService: { getKitchenById: mocks.kitchen } }));
 vi.mock("../domains/inventory/inventory.service", () => ({ inventoryService: { getStorageListingsByKitchen: mocks.storage, getEquipmentListingsByKitchen: mocks.equipment } }));
-vi.mock("../domains/locations/location.service", () => ({ locationService: {} }));
+vi.mock("../domains/locations/location.service", () => ({ locationService: { getLocationById: vi.fn().mockResolvedValue({ timezone: "America/St_Johns" }) } }));
 vi.mock("../firebase-auth-middleware", () => ({ requireFirebaseAuthWithUser: vi.fn(), requireManager: vi.fn() }));
 vi.mock("./middleware", () => ({ requireChef: vi.fn() }));
 vi.mock("../services/overstay-defaults-service", () => ({ getOverstayLocationDefaults: vi.fn() }));
+vi.mock("../services/storage-settings", () => ({
+  storageSettings: vi.fn().mockResolvedValue({ maxTermDays: 30, kitchenDisposalEnabled: false }),
+  listingMaxTermDays: (platformMaxDays: number, listingMaxDays: number | null) => (listingMaxDays == null ? platformMaxDays : Math.min(platformMaxDays, listingMaxDays)),
+}));
+vi.mock("../services/storage-availability", () => ({
+  availabilityToday: () => "2026-10-16",
+  listingAvailability: () => ({ state: "now" }),
+  occupancyByListing: vi.fn().mockResolvedValue(new Map()),
+}));
 
 import storageRouter from "./storage-listings";
 import equipmentRouter from "./equipment";

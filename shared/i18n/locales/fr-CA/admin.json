@@ -275,5 +275,17 @@
   "bsKitchenDebtTitle": "Montant dû par la cuisine à Local Cooks",
   "bsKitchenDebtOpen": "En attente de remboursement",
   "bsKitchenDebtAwaiting": "Remboursement en cours de vérification",
-  "bsKitchenDebtHelp": "Contactez la cuisine pour convenir du remboursement. Les prochains versements ne sont pas réduits automatiquement."
+  "bsKitchenDebtHelp": "Contactez la cuisine pour convenir du remboursement. Les prochains versements ne sont pas réduits automatiquement.",
+  "storageCardTitle": "Entreposage",
+  "storageCardBody": "Prix des locations d’entreposage et ce que les cuisines peuvent faire des objets abandonnés.",
+  "storageMaxDays": "Durée maximale qu’une personne cuisinière peut payer (jours)",
+  "storageDaysUnit": "jours",
+  "storageMaxDaysHelp": "De 1 à 30 jours. Une cuisine peut fixer une durée plus courte pour un espace.",
+  "storageDisposal": "Élimination des objets abandonnés par la cuisine",
+  "storageDisposalNote": "À activer après l’avis juridique.",
+  "storageSave": "Enregistrer les paramètres d’entreposage",
+  "storageSaving": "Enregistrement…",
+  "storageSaved": "Paramètres d’entreposage mis à jour.",
+  "storageSaveFailed": "Les paramètres d’entreposage n’ont pas pu être enregistrés.",
+  "storageDaysRange": "Le nombre de jours doit être entre 1 et 30."
 }

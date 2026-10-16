@@ -34,3 +34,12 @@ it('stays quiet until a choice changes, then keeps the current policy when confi
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep current policy' }));
   expect(api.put).not.toHaveBeenCalled();
 });
+it('says the policy also covers storage rentals only when the kitchen has a storage listing', async () => {
+  api.get.mockImplementation((path: string) => Promise.resolve(path.includes('storage-listings') ? [{ id: 1 }] : policy));
+  mount();
+  expect(await screen.findByText('This policy also applies to storage rentals.')).toBeInTheDocument();
+});
+it('keeps the storage line hidden when the kitchen has no storage listing', async () => {
+  mount(); await waitFor(() => expect(screen.getByLabelText('Free cancellation until')).toBeEnabled());
+  expect(screen.queryByText('This policy also applies to storage rentals.')).not.toBeInTheDocument();
+});

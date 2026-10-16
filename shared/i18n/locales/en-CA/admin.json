@@ -275,5 +275,17 @@
   "bsKitchenDebtTitle": "Kitchen amount owed to Local Cooks",
   "bsKitchenDebtOpen": "Awaiting repayment",
   "bsKitchenDebtAwaiting": "Refund still being checked",
-  "bsKitchenDebtHelp": "Record and contact the kitchen to arrange repayment. Future payouts are not reduced automatically."
+  "bsKitchenDebtHelp": "Record and contact the kitchen to arrange repayment. Future payouts are not reduced automatically.",
+  "storageCardTitle": "Storage",
+  "storageCardBody": "How storage rentals are priced and what kitchens may do with abandoned items.",
+  "storageMaxDays": "Longest term a chef can pay for (days)",
+  "storageDaysUnit": "days",
+  "storageMaxDaysHelp": "From 1 to 30 days. A kitchen can set a shorter term for one listing.",
+  "storageDisposal": "Kitchen disposal of abandoned items",
+  "storageDisposalNote": "Turn on after counsel review.",
+  "storageSave": "Save storage settings",
+  "storageSaving": "Saving…",
+  "storageSaved": "Storage settings updated.",
+  "storageSaveFailed": "Storage settings could not be saved.",
+  "storageDaysRange": "Days must be between 1 and 30."
 }

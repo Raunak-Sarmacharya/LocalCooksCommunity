@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { AlertCircle, Clock, DollarSign, RefreshCw, Save, TrendingUp } from "lucide-react";
+import { apiGet, apiPut } from "@/lib/api";
+import { useTranslation } from "react-i18next";
+import { AlertCircle, Clock, DollarSign, Package, RefreshCw, Save, TrendingUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { LifecycleSettings } from '../LifecycleSettings';
 import { CancellationSettings } from '../CancellationSettings';
@@ -17,10 +19,16 @@ import { SessionExtensionsPlatformSwitch } from '@/components/manager/settings/S
 
 export function PlatformSettingsSection() {
   const { toast } = useToast();
+  const { t } = useTranslation('admin');
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCancellation, setIsSavingCancellation] = useState(false);
   const [isSavingTimeWindows, setIsSavingTimeWindows] = useState(false);
+  const [isSavingStorage, setIsSavingStorage] = useState(false);
+
+  // Platform storage settings: the longest term a chef can pay for, and kitchen disposal.
+  const [storageMaxDays, setStorageMaxDays] = useState('30');
+  const [storageDisposalEnabled, setStorageDisposalEnabled] = useState(false);
 
   // Kitchen time window defaults state.
   // Checkout review window stays admin-only (no manager override). Kitchen
@@ -256,6 +264,42 @@ export function PlatformSettingsSection() {
       return;
     }
     cancellationMutation.mutate(hours);
+  };
+
+  // ── Storage settings ───────────────────────────────────────────────────
+  const { data: storageConfig, isLoading: storageLoading } = useQuery<{ maxTermDays: number; kitchenDisposalEnabled: boolean }>({
+    queryKey: ['/api/admin/storage-settings'],
+    queryFn: () => apiGet('/admin/storage-settings'),
+  });
+
+  useEffect(() => {
+    if (storageConfig) {
+      setStorageMaxDays(String(storageConfig.maxTermDays));
+      setStorageDisposalEnabled(storageConfig.kitchenDisposalEnabled);
+    }
+  }, [storageConfig]);
+
+  const storageMutation = useMutation({
+    mutationFn: async (settings: { maxTermDays: number; kitchenDisposalEnabled: boolean }) => apiPut('/admin/storage-settings', settings),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/storage-settings'] });
+      toast({ title: 'Success', description: t('storageSaved') });
+      setIsSavingStorage(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Error', description: err.message || t('storageSaveFailed'), variant: 'destructive' });
+      setIsSavingStorage(false);
+    },
+  });
+
+  const handleSaveStorage = () => {
+    const days = parseInt(storageMaxDays, 10);
+    if (isNaN(days) || days < 1 || days > 30) {
+      toast({ title: 'Validation Error', description: t('storageDaysRange'), variant: 'destructive' });
+      return;
+    }
+    setIsSavingStorage(true);
+    storageMutation.mutate({ maxTermDays: days, kitchenDisposalEnabled: storageDisposalEnabled });
   };
 
   const handleSave = () => {
@@ -580,6 +624,54 @@ export function PlatformSettingsSection() {
               <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</>
             ) : (
               <><Save className="h-4 w-4 mr-2" />Save Time Window Defaults</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Storage Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100">
+              <Package className="h-5 w-5 text-teal-600" />
+            </div>
+            <div>
+              <CardTitle>{t('storageCardTitle')}</CardTitle>
+              <CardDescription>{t('storageCardBody')}</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label>{t('storageMaxDays')}</Label>
+            <NumericInput
+              suffix={t('storageDaysUnit')}
+              value={storageMaxDays}
+              onValueChange={setStorageMaxDays}
+              className="max-w-32"
+              disabled={storageLoading}
+            />
+            <p className="text-xs text-muted-foreground">{t('storageMaxDaysHelp')}</p>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>{t('storageDisposal')}</Label>
+              <p className="text-xs text-muted-foreground">{t('storageDisposalNote')}</p>
+            </div>
+            <Switch
+              checked={storageDisposalEnabled}
+              onCheckedChange={setStorageDisposalEnabled}
+              disabled={storageLoading}
+            />
+          </div>
+
+          <Button onClick={handleSaveStorage} disabled={isSavingStorage || storageLoading} size="sm">
+            {isSavingStorage ? (
+              <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />{t('storageSaving')}</>
+            ) : (
+              <><Save className="h-4 w-4 mr-2" />{t('storageSave')}</>
             )}
           </Button>
         </CardContent>
