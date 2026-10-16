@@ -891,5 +891,6 @@
   "cpConsent": "By selecting {button}, you agree to the {policy} and the {terms}.",
   "cpConsentPolicy": "cancellation policy",
   "cpConsentTerms": "Local Cooks terms",
-  "cpRefundReference": "Reference {reference}. Questions? Contact Local Cooks."
+  "cpRefundReference": "Reference {reference}. Questions? Contact Local Cooks.",
+  "sxbBilledAs": "Billed as {minutes} minutes (extra time is billed in 30-minute blocks)."
 }

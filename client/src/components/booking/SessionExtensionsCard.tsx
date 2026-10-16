@@ -116,7 +116,8 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
 
   const act = async (key: string, work: () => Promise<unknown>, success?: string) => {
     setBusy(key); setError(""); setNotice("")
-    try { const result = await work() as { cardFailed?: boolean }; if (result?.cardFailed) setError(t("sxbCardFailed")); else if (success) setNotice(success); setRequestKey(newRequestKey()); await load(); await onChanged?.() }
+    try { const result = await work() as { cardFailed?: boolean }; // A declined card is shown once, on its row (with "Pay with another card"), not again as a page alert.
+    if (result?.cardFailed) setNotice(""); else if (success) setNotice(success); setRequestKey(newRequestKey()); await load(); await onChanged?.() }
     catch (failure) { setError(failure instanceof Error ? failure.message : t("sxbFailed", { defaultValue: "That didn’t go through. Nothing new was charged." })); await load() }
     finally { setBusy(null) }
   }
@@ -209,6 +210,8 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
           ? t("sxbEarlyOffer", { defaultValue: "{kitchen} can let you start {early} early, at {time} · {amount}", kitchen, early: minutesText(item.minutes), time: clock(item.endAt), amount: cash(item.amountCents) })
           : t("sxbOffer", { defaultValue: "{kitchen} offered you {duration} (until {time}) · {amount}",
           kitchen, duration: duration(item.minutes), time: clock(item.endAt), amount: cash(item.amountCents) })}</p>
+        {!item.free && item.minutes % 30 !== 0 && <p className="text-xs text-muted-foreground" data-testid="extension-billed-note">
+          {t("sxbBilledAs", { defaultValue: "Billed as {minutes} minutes (extra time is billed in 30-minute blocks).", minutes: Math.ceil(item.minutes / 30) * 30 })}</p>}
         {item.cardFailedAt ? <p role="alert" className="text-sm">{t("sxbCardFailed")}</p> : <p className="text-xs text-muted-foreground">{t("sxbPaymentHint")}</p>}
         <div className="flex flex-wrap gap-2">
           <Button type="button" className={tap} {...answer(`accept-${item.id}`)} disabled={!!busy} onClick={() => void act(`accept-${item.id}`, () => decide(item, "accept", { expectedAmountCents: item.amountCents }),
@@ -295,6 +298,9 @@ export function SessionExtensionsCard({ bookingId, manager, chefName, onChanged,
         <p className="text-sm font-medium tabular-nums" data-testid="extension-pick-summary">{pick.kind === "early_start"
           ? t("sxbSummaryStart", { defaultValue: "Starts at {time} · {amount}", time: clock(pick.at), amount: pick.free ? t("sxbFree", { defaultValue: "Free" }) : cash(pick.amountCents) })
           : t("sxbSummaryUntil", { defaultValue: "Until {time} · {amount}", time: clock(pick.at), amount: pick.free ? t("sxbFree", { defaultValue: "Free" }) : cash(pick.amountCents) })}</p>
+        {/* Extra time is billed in 30-minute blocks (Peerspace): say so when the pick is shorter than its billed length. */}
+        {!pick.free && pick.minutes % 30 !== 0 && <p className="text-xs text-muted-foreground" data-testid="extension-billed-note">
+          {t("sxbBilledAs", { defaultValue: "Billed as {minutes} minutes (extra time is billed in 30-minute blocks).", minutes: Math.ceil(pick.minutes / 30) * 30 })}</p>}
         <legend className="text-sm font-medium">{t("sxbChargeChoice", { defaultValue: "Free, or charge {chef}?", chef: chefName })}</legend>
         <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="extra-time-charge" checked={pick.free} onChange={() => setPick({ ...pick, free: true })} />
           {t("sxbFree", { defaultValue: "Free" })}</label>

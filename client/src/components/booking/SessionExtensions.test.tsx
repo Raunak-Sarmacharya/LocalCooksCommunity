@@ -175,8 +175,12 @@ describe("booking page: extra time", () => {
     responses.push({ match: /\/extensions$/, body: state({ history: [item({ kind: 'extra_time', status: 'offered' })] }) },
       { match: /\/decision$/, method: 'POST', body: { cardFailed: true, extension: item({ kind: 'extra_time', status: 'offered', cardFailedAt: END }) } });
     render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Pay $30.00' }));
+    const pay = await screen.findByRole('button', { name: 'Pay $30.00' });
+    // The server saves the failure, so the reload shows it on the row (once — no second page alert).
+    responses[0].body = state({ history: [item({ kind: 'extra_time', status: 'offered', cardFailedAt: END })] });
+    fireEvent.click(pay);
     expect(await screen.findByRole('alert')).toHaveTextContent('Your saved card was declined. Nothing was charged.');
+    expect(screen.getAllByText('Your saved card was declined. Nothing was charged.')).toHaveLength(1);
     expect(screen.queryByText('Paid. Thank you!')).not.toBeInTheDocument();
   });
   it('accepting a paid offer keeps a confirmation on screen after the offer closes (#93)', async () => {
@@ -188,6 +192,11 @@ describe("booking page: extra time", () => {
     fireEvent.click(accept);
     expect(await screen.findByRole('status')).toHaveTextContent('Time added — you now have until 5:00 p.m. $30.00 was charged.');
     expect(screen.queryByRole('button', { name: 'Accept & pay $30.00' })).not.toBeInTheDocument();
+  });
+  it('a 15-minute paid offer says it is billed as 30 minutes (live #181)', async () => {
+    responses.push({ match: /\/extensions$/, body: state({ history: [item({ kind: 'offer', status: 'offered', minutes: 15, amountCents: 1526 })] }) });
+    render(<SessionExtensionsCard bookingId={10} manager={false} chefName="Maya" />);
+    expect(await screen.findByTestId('extension-billed-note')).toHaveTextContent('Billed as 30 minutes (extra time is billed in 30-minute blocks).');
   });
   it('paid offers without a saved card go directly to Checkout', async () => {
     responses.push({ match: /\/extensions$/, body: state({ hasSavedCard: false, history: [item({ kind: 'offer', status: 'offered' })] }) },

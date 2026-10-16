@@ -3449,7 +3449,7 @@
   "sxWaiting": "En attente de {kitchen} · nous vous tiendrons au courant",
   "sxWaitingDetail": "Vous avez demandé à rester jusqu’à {time} ({duration}). {amount} est retenu et n’est débité que si {kitchen} accepte; sinon, la retenue est libérée.",
   "sxConfirmed": "Vous avez jusqu’à {time}.",
-  "sxChargedNote": "{amount} a été débité de votre carte enregistrée.",
+  "sxChargedNote": "{amount} a été débité de votre carte.",
   "sxMessageKitchen": "Écrire à {kitchen}",
   "sxDeclined": "{kitchen} n’a pas pu prolonger. Votre carte n’a pas été débitée.",
   "sxBookedAfter": "La cuisine est réservée juste après vous. Écrivez à {kitchen}.",

@@ -891,5 +891,6 @@
   "cpConsent": "Натискаючи «{button}», ви погоджуєтеся з {policy} та {terms}.",
   "cpConsentPolicy": "умовами скасування",
   "cpConsentTerms": "умовами Local Cooks",
-  "cpRefundReference": "Номер {reference}. Запитання? Зверніться до Local Cooks."
+  "cpRefundReference": "Номер {reference}. Запитання? Зверніться до Local Cooks.",
+  "sxbBilledAs": "Оплачується як {minutes} хвилин (додатковий час оплачується блоками по 30 хвилин)."
 }

@@ -3449,7 +3449,7 @@
   "sxWaiting": "Чекаємо на {kitchen} · ми повідомимо вас",
   "sxWaitingDetail": "Ви попросили залишитися до {time} ({duration}). {amount} заблоковано й буде списано лише якщо {kitchen} погодить; інакше блокування знімуть.",
   "sxConfirmed": "У вас є час до {time}.",
-  "sxChargedNote": "З вашої збереженої картки списано {amount}.",
+  "sxChargedNote": "З вашої картки списано {amount}.",
   "sxMessageKitchen": "Написати {kitchen}",
   "sxDeclined": "{kitchen} не може продовжити час. Кошти з картки не списано.",
   "sxBookedAfter": "Кухню заброньовано одразу після вас. Напишіть {kitchen}.",

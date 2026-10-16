@@ -3449,7 +3449,7 @@
   "sxWaiting": "Waiting for {kitchen} · we’ll let you know",
   "sxWaitingDetail": "You asked to stay until {time} ({duration}). {amount} is on hold and is charged only if {kitchen} approves; otherwise the hold is released.",
   "sxConfirmed": "You have until {time}.",
-  "sxChargedNote": "{amount} was charged to your saved card.",
+  "sxChargedNote": "{amount} was charged to your card.",
   "sxMessageKitchen": "Message {kitchen}",
   "sxDeclined": "{kitchen} couldn’t extend this time. Your card wasn’t charged.",
   "sxBookedAfter": "The kitchen is booked right after you. Message {kitchen}.",
