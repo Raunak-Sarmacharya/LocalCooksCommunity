@@ -327,7 +327,7 @@
   "bcReleasedLine": "La retenue de {amount} sur votre carte a été levée.",
   "bcMessageLine": "{kitchen} précise : {message}",
   "bcRequestedManagerTitle": "Demande de modification · {reference}",
-  "bcRequestedManagerBody": "{chef} demande de déplacer {reference} de {old} à {new} · vous recevriez {amount} · Répondez avant {deadline}. Leur annulation gratuite passerait à {freeCancel}.",
+  "bcRequestedManagerBody": "{chef} demande de déplacer {reference} de {old} à {new}. Votre versement changerait de {amount}. Répondez d’ici le {deadline}. Sa date limite de remboursement passerait au {freeCancel}.",
   "bcRequestedChefTitle": "Demande de modification envoyée · {reference}",
   "bcRequestedChefBody": "Demande de modification envoyée à {kitchen} · ils ont jusqu’à {deadline} pour répondre. {hold}",
   "bcApprovedChefTitle": "Modification approuvée · {reference}",

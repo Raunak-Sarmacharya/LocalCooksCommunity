@@ -327,7 +327,7 @@
   "bcReleasedLine": "Your card hold of {amount} was released.",
   "bcMessageLine": "{kitchen} says: {message}",
   "bcRequestedManagerTitle": "Change request · {reference}",
-  "bcRequestedManagerBody": "{chef} asked to move {reference} from {old} to {new} · you’d get {amount} · Answer by {deadline}. Their free cancellation would move to {freeCancel}.",
+  "bcRequestedManagerBody": "{chef} asked to move {reference} from {old} to {new}. Your payout would change by {amount}. Answer by {deadline}. Their refund deadline would move to {freeCancel}.",
   "bcRequestedChefTitle": "Change request sent · {reference}",
   "bcRequestedChefBody": "Change request sent to {kitchen} · they have until {deadline} to answer. {hold}",
   "bcApprovedChefTitle": "Change approved · {reference}",

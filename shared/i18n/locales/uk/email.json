@@ -327,7 +327,7 @@
   "bcReleasedLine": "Блокування {amount} на вашій картці знято.",
   "bcMessageLine": "{kitchen} пише: {message}",
   "bcRequestedManagerTitle": "Запит на зміну · {reference}",
-  "bcRequestedManagerBody": "{chef} просить перенести {reference} з {old} на {new} · ви отримаєте {amount} · Дайте відповідь до {deadline}. Їхнє безкоштовне скасування зміститься на {freeCancel}.",
+  "bcRequestedManagerBody": "{chef} просить перенести {reference} з {old} на {new}. Ваша виплата зміниться на {amount}. Дайте відповідь до {deadline}. Крайній термін повернення коштів зміститься на {freeCancel}.",
   "bcRequestedChefTitle": "Запит на зміну надіслано · {reference}",
   "bcRequestedChefBody": "Запит на зміну надіслано до {kitchen} · вони можуть відповісти до {deadline}. {hold}",
   "bcApprovedChefTitle": "Зміну схвалено · {reference}",

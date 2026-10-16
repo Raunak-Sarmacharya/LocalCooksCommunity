@@ -1057,5 +1057,7 @@
   "refundReviewKitchenShare": "З виплати кухні",
   "refundReviewServiceFeeShare": "З комісії Local Cooks",
   "refundReviewCardFee": "Утримана комісія за обробку картки",
-  "chgDeadlineChefSame": "Ваш крайній термін повернення коштів залишається {when}."
+  "chgDeadlineChefSame": "Ваш крайній термін повернення коштів залишається {when}.",
+  "chgPayoutUpKitchen": "Ваша виплата зросте на {amount} (до комісії за обробку картки).",
+  "chgPayoutDownKitchen": "Ваша виплата зменшиться на {amount}."
 }

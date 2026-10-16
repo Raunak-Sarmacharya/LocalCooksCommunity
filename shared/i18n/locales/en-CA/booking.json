@@ -1057,5 +1057,7 @@
   "refundReviewKitchenShare": "From the kitchen payout",
   "refundReviewServiceFeeShare": "From the Local Cooks service fee",
   "refundReviewCardFee": "Card processing fee kept",
-  "chgDeadlineChefSame": "Your refund deadline stays {when}."
+  "chgDeadlineChefSame": "Your refund deadline stays {when}.",
+  "chgPayoutUpKitchen": "Your payout goes up by {amount}, before the card processing fee.",
+  "chgPayoutDownKitchen": "Your payout goes down by {amount}."
 }

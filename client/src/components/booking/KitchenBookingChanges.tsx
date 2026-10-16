@@ -15,7 +15,8 @@ import { NowAttentionRow } from './BookingNowCard';
 /** Chef changes a confirmed booking (owner, Oct 16): request → kitchen approves → difference charged or refunded. Server: WP-RS. */
 type Money = { oldTotalCents: number; newTotalCents: number; payCents: number; refundCents: number; feeKeptCents: number; currency: string };
 type Change = { id: string; state: string; revision: number; original: ChangeSchedule; destination: ChangeSchedule; money: Money;
-  decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean };
+  decisionBy: string; freeCancelAfter?: string; canDecide: boolean; canWithdraw: boolean; cardDeclined?: boolean;
+  /** Kitchen view only: its payout change in cents (+ more, − less), before the card processing fee. */ kitchenPayoutChangeCents?: number };
 type Changes = { original: ChangeSchedule; canRequest: { allowed: boolean; reason?: string; until?: string }; open?: Change; timezone: string | null;
   /** The kitchen's booking length limits (hours), same as new bookings. */ limits?: { minHours: number; maxHours: number };
   /** The current refund deadline, to say whether a change moves it. */ freeCancelUntil?: string };
@@ -68,6 +69,8 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone,
     window.location.assign(result.url);
   });
   const m = open.money, now = f.schedule(open.destination), was = f.schedule(open.original);
+  const payout = manager && typeof open.kitchenPayoutChangeCents === 'number' && open.kitchenPayoutChangeCents !== 0
+    ? t(open.kitchenPayoutChangeCents > 0 ? 'chgPayoutUpKitchen' : 'chgPayoutDownKitchen', { amount: f.money(Math.abs(open.kitchenPayoutChangeCents), m.currency) }) : '';
   const priceLine = m.payCents > 0 ? t(manager ? 'chgPriceUpKitchen' : 'chgHoldChef', { amount: f.money(m.payCents, m.currency) })
     : m.refundCents > 0 ? t(manager ? 'chgPriceDownKitchen' : 'chgRefundIfApproved', { amount: f.money(m.refundCents, m.currency) })
     : t('chgSamePrice');
@@ -78,6 +81,7 @@ export function KitchenBookingChanges({ bookingId, manager, onChanged, timezone,
       : <>
         <p className="text-sm">{manager ? t('chgKitchenBody', { was, by: f.when(open.decisionBy) }) : t('chgChefBody', { kitchen: counterpart, by: f.when(open.decisionBy), was })}</p>
         <p className="text-sm">{priceLine}</p>
+        {payout && <p className="text-sm" data-testid="change-kitchen-payout">{payout}</p>}
         {open.freeCancelAfter && <p className="text-sm text-muted-foreground">{t(manager ? 'chgDeadlineKitchen' : 'chgDeadlineChef', { when: f.when(open.freeCancelAfter) })}</p>}
       </>}
     {open.cardDeclined && !manager && <p className="text-sm font-medium">{t('chgCardDeclined')}</p>}
@@ -143,7 +147,8 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
     setBusy(true); setError('');
     try {
       await api(`/api/bookings/${bookingId}/changes`, { destination: preview.destination, quoteHash: preview.quoteHash, requestKey });
-      await onChanged(); onOpenChange(false);
+      // Sent: close at once; the page refreshes behind it (waiting on every query kept the dialog open for seconds).
+      onOpenChange(false); void onChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('chgError')); }
     finally { setBusy(false); }
   };

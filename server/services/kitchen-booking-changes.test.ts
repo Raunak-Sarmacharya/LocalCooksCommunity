@@ -353,8 +353,9 @@ describe('requesting a change and holding the time', () => {
     const sent = await events('booking_change_requested');
     expect(sent.map((event: any) => event.metadata.audience).sort()).toEqual(['chef', 'manager']);
     const toKitchen = sent.find((event: any) => event.metadata.audience === 'manager');
-    expect(toKitchen.message).toMatch(/asked to move KB-TEST10 from .* to .* · you’d get \$0\.00 · Answer by .*/);
-    expect(toKitchen.message).toContain('Their free cancellation would move to');
+    expect(toKitchen.message).toMatch(/asked to move KB-TEST10 from .* to .*\. Your payout would change by \$0\.00\. Answer by .*/);
+    expect(toKitchen.message).toContain('Their refund deadline would move to');
+    expect(toKitchen.message).not.toMatch(/free/i);
     const toChef = sent.find((event: any) => event.metadata.audience === 'chef');
     expect(toChef.message).toMatch(/^Change request sent to Test Kitchen · they have until .* to answer\.$/);
     expect(toChef.metadata.emailRecipientPolicy).toBe('none'); // the chef already sees it on screen: in-app only
@@ -375,7 +376,7 @@ describe('requesting a change and holding the time', () => {
     const chefNotice = (await events('booking_change_requested')).find((event: any) => event.metadata.audience === 'chef');
     expect(chefNotice.message).toContain('$48.00 is on hold on your card.');
     const kitchenNotice = (await events('booking_change_requested')).find((event: any) => event.metadata.audience === 'manager');
-    expect(kitchenNotice.message).toContain('you’d get +$46.00'); // kitchen share incl. tax, never the chef's card total
+    expect(kitchenNotice.message).toContain('Your payout would change by +$46.00.'); // kitchen share incl. tax, never the chef's card total
     expect(await h.db.select().from(paymentTransactions).then((rows: any[]) => rows.length)).toBe(1); // nothing recorded as paid
     await bookingUnchanged();
   });

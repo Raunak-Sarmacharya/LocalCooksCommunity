@@ -46,11 +46,12 @@ describe('open change on the booking page', () => {
     expect(screen.getByRole('button', { name: 'Pay with another card · $30.50' })).toBeInTheDocument();
   });
   it('kitchen: who asked, the money, the refund deadline it would move, Approve / Decline with an optional note', async () => {
-    routes = { '/changes': { original, canRequest: { allowed: false }, open: open({ canDecide: true, canWithdraw: false }), timezone: 'America/St_Johns' } };
+    routes = { '/changes': { original, canRequest: { allowed: false }, open: open({ canDecide: true, canWithdraw: false, kitchenPayoutChangeCents: 2875 }), timezone: 'America/St_Johns' } };
     render(<KitchenBookingChanges bookingId={10} manager counterpart="Sam Chef" onChanged={async () => {}} />);
     const row = await screen.findByTestId('booking-change-open');
     expect(row).toHaveTextContent(/Sam Chef asked to move this booking to/);
     expect(row).toHaveTextContent(/The chef pays \$30\.50 more if you approve\./);
+    expect(screen.getByTestId('change-kitchen-payout')).toHaveTextContent('Your payout goes up by $28.75, before the card processing fee.');
     expect(row).toHaveTextContent(/Their refund deadline would move to/);
     fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
     fireEvent.change(screen.getByLabelText('Message to Sam Chef (optional)'), { target: { value: 'Closed that day.' } });

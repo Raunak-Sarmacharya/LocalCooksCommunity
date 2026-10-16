@@ -39,7 +39,7 @@ import { lockBookingMoneySources } from './booking-support-flags';
 import { scheduleAdvanceReminders } from './advance-reminders';
 import { scheduleDeadlineTimer } from './deadline-timer';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
-import { queueAdminBookingChanged, queueChangeNotices, type ChangeNoticeEvent, type ChangeNoticeOptions } from './kitchen-booking-change-notice';
+import { kitchenAmountCents, queueAdminBookingChanged, queueChangeNotices, type ChangeNoticeEvent, type ChangeNoticeOptions } from './kitchen-booking-change-notice';
 import { logger } from '../logger';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -379,6 +379,8 @@ export function changeDto(change: Change, viewer: { actor?: ChangeActor; manager
     money: publicChangeMoney(quoteOf(change)), decisionBy: change.decisionBy.toISOString(), freeCancelAfter: m.freeCancelAfter,
     canDecide: manager && SENT_OPEN.includes(state) && now.getTime() < change.decisionBy.getTime() && !m.operation?.state?.startsWith('pending'),
     canWithdraw: chef && [...SENT_OPEN, ...PAYMENT_OPEN].includes(state), ...(m.cardDeclined ? { cardDeclined: true } : {}),
+    // The kitchen sees its own payout change (never the chef's card details); the chef never sees the kitchen's share.
+    ...(manager ? { kitchenPayoutChangeCents: kitchenAmountCents(quoteOf(change)) } : {}),
     createdAt: change.createdAt.toISOString(), steps: (change.history as Array<{ state: string; message: string; at: string }>).map(step => ({ state: step.state, message: step.message, at: step.at })),
     ...extra };
 }
