@@ -105,3 +105,12 @@ See the final section (filled in after the checks).
 - `npx tsc --noEmit -p tsconfig.json`, run once (17 min): **3 errors, all in new code** (`open` possibly null in the accept
   check; a list-row type widening that made `Booking[]` unassignable to the agenda rows). Fixed in the follow-up commit and
   re-verified with the affected suites (104 + 46 passed); the full compiler was not run a second time (one-run rule).
+
+### Fix-round verification (Oct 17)
+
+- Server: 38 files, 856 tests run (855 + the updated replacement expectation, then 34/34 in that file); client: 11 files, 270 passed.
+- Every new test was run against the previous code and failed there (dialog server total, review example, support refusals,
+  replacement outcome, private fields / list projections, hold ended).
+- Full `npx tsc --noEmit -p tsconfig.json`, run once: **1 error** (`decision.proposal` not narrowed by `.includes`, line 466).
+  Fixed with optional chaining (same behaviour). A targeted type-check of `booking-payment-decision.ts` and its import graph then
+  passed with 0 errors, and the affected suites passed (134); the full compiler was not run a second time.
