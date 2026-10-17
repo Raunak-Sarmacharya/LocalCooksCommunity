@@ -16,11 +16,12 @@ import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, CreditCard, Calendar, Building2 } from "lucide-react";
-import { format } from "date-fns";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { formatCurrency as formatCad } from "@shared/i18n";
 import { ct } from "@/i18n/chef-ns";
+import { storageDay } from "@/lib/storage-rentals";
+import { friendlyTimezoneName } from "@shared/timezone-utils";
 
 interface PendingPenalty {
   itemsRemovedAt: string | null;
@@ -43,7 +44,22 @@ interface PendingPenalty {
   penaltyAmountCents: number;
   isResolved?: boolean;
   isPaid?: boolean;
+  idempotencyKey?: string | null;
 }
+
+const isHoldover = (p: PendingPenalty) => !!p.idempotencyKey?.startsWith('holdover:');
+// The shared rule returns English messages for the server; the chef sees these keys instead.
+const RULE_KEYS: Record<string, string> = {
+  'Collection is paused for admin review of the chef dispute': 'ovhRuleDisputeReview',
+  'Manager-confirmed removal is required before payment': 'ovhRuleRemoval',
+  'The final penalty notice must be sent before collection': 'ovhRuleNotice',
+  'The chef dispute window is still open': 'ovhRuleWindow',
+};
+// A moment in the chef's own clock, with the zone name.
+const localMoment = (at: string, locale: string) => {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return `${new Intl.DateTimeFormat(locale, { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(at))} (${friendlyTimezoneName(zone, locale)})`;
+};
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   try {
@@ -95,7 +111,7 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create payment session');
+        throw new Error(errorData.error || ct('ovhPayFailed'));
       }
       return response.json();
     },
@@ -118,9 +134,9 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
         method: 'POST', credentials: 'include', headers: await getAuthHeaders(), body: JSON.stringify({ reason: disputeReason }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to dispute penalty');
+      if (!response.ok) throw new Error(result.error || ct('ovhDisputeFailed'));
     },
-    onSuccess: () => { setDisputeId(null); setDisputeReason(''); refetch(); toast.success('Collection paused for admin review'); },
+    onSuccess: () => { setDisputeId(null); setDisputeReason(''); refetch(); toast.success(ct('ovhDisputed')); },
     onError: (error: Error) => toast.error(error.message),
   });
   const pendingPenalties = penalties.filter(p => !p.isResolved);
@@ -147,6 +163,9 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
     return null; // Silently fail - don't show error to user
   }
 
+  const allHoldover = pendingPenalties.every(isHoldover);
+  const loc = i18n.language;
+
   // Only show pending penalties - resolved ones show on storage cards
   return (
     <Card className="border border-destructive/30">
@@ -157,21 +176,19 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
             {title ?? t("overstayPenaltiesTitle", "Outstanding Overstay Penalties")}
           </CardTitle>
           <InfoChip variant="destructive">
-            {t("overstayPaymentRequired", "Payment required")}
+            {allHoldover ? t("ovhChip") : t("overstayPaymentRequired", "Payment required")}
           </InfoChip>
         </div>
         <CardDescription>
-          {t("overstayPenaltiesDesc", {
-            count: pendingPenalties.length,
-            defaultValue:
-              pendingPenalties.length === 1
-                ? "You have 1 pending penalty that requires payment."
-                : `You have ${pendingPenalties.length} pending penalties that require payment.`,
-          })}
+          {allHoldover ? t("ovhDesc") : t("overstayPenaltiesDesc", { count: pendingPenalties.length })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {pendingPenalties.map((penalty) => (
+        {pendingPenalties.map((penalty) => {
+          const holdover = isHoldover(penalty);
+          const ruleKey = RULE_KEYS[overstayCollectionError(penalty) ?? ''];
+          const amount = formatCad(penalty.penaltyAmountCents, { locale: loc });
+          return (
           <div
             key={penalty.overstayId}
             className="rounded-[1.35rem] border p-4 space-y-3"
@@ -186,6 +203,11 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
                   </InfoChip>
                 </div>
 
+                {holdover ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t("ovhBody", { kitchen: penalty.kitchenName, amount, days: penalty.daysOverdue, paidThrough: storageDay(penalty.bookingEndDate.slice(0, 10), loc) })}
+                  </p>
+                ) : <>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Building2 className="h-3.5 w-3.5" />
@@ -195,8 +217,7 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
                     <Calendar className="h-3.5 w-3.5" />
                     <span>
                       {t("overstayEndedOn", {
-                        date: format(new Date(penalty.bookingEndDate), "MMM d, yyyy"),
-                        defaultValue: `Ended ${format(new Date(penalty.bookingEndDate), "MMM d, yyyy")}`,
+                        date: storageDay(penalty.bookingEndDate.slice(0, 10), loc, true),
                       })}
                     </span>
                   </div>
@@ -210,11 +231,12 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
                     })}
                   </InfoChip>
                 </div>
+                </>}
               </div>
 
               <div className="text-right space-y-2">
                 <div className="text-xl font-bold">
-                  {formatCad(penalty.penaltyAmountCents, { locale: i18n.language })}
+                  {amount}
                 </div>
                 <Button
                   size="sm"
@@ -224,37 +246,37 @@ export function PendingOverstayPenalties({ title }: { title?: string } = {}) {
                   <CreditCard className="h-4 w-4 mr-1" />
                   {payMutation.isPending
                     ? t("processing", "Processing...")
-                    : t("payNow", "Pay Now")}
+                    : holdover ? t("ovhPay", { amount }) : t("payNow", "Pay Now")}
                 </Button>
               </div>
             </div>
 
-            {overstayCollectionError(penalty) && <p className="text-sm">{overstayCollectionError(penalty)}</p>}
+            {overstayCollectionError(penalty) && <p className="text-sm">{ruleKey ? ct(ruleKey) : overstayCollectionError(penalty)}</p>}
             {penalty.status === 'penalty_approved' && penalty.chefDisputeDeadline && Date.now() < new Date(penalty.chefDisputeDeadline).getTime() && (
               <div className="space-y-2">
-                <Button variant="outline" onClick={() => { setDisputeId(penalty.overstayId); setDisputeReason(''); }}>Dispute final amount</Button>
+                <Button variant="outline" onClick={() => { setDisputeId(penalty.overstayId); setDisputeReason(''); }}>{holdover ? t("ovhDispute") : t("ovhLegacyDispute")}</Button>
                 {disputeId === penalty.overstayId && <>
-                  <Textarea aria-label="Dispute reason" value={disputeReason} onChange={event => setDisputeReason(event.target.value)} placeholder="Explain why you disagree with this amount" />
-                  <Button disabled={disputeMutation.isPending || disputeReason.trim().length < 10} onClick={() => disputeMutation.mutate(penalty.overstayId)}>Send for admin review</Button>
+                  <Textarea aria-label={t("ovhReasonLabel")} value={disputeReason} onChange={event => setDisputeReason(event.target.value)} placeholder={holdover ? t("ovhReasonPrompt") : t("ovhLegacyPrompt")} />
+                  <Button disabled={disputeMutation.isPending || disputeReason.trim().length < 10} onClick={() => disputeMutation.mutate(penalty.overstayId)}>{holdover ? t("ovhSend") : t("ovhLegacySend")}</Button>
                 </>}
               </div>
             )}
-            {penalty.chefDisputeDeadline && <p className="text-sm">Dispute deadline: {new Date(penalty.chefDisputeDeadline).toLocaleString()}</p>}
-            {penalty.penaltyApprovedAt && <p className="text-xs text-muted-foreground border-t pt-2">
+            {penalty.chefDisputeDeadline && <p className="text-sm">{t(holdover ? "ovhDeadline" : "ovhLegacyDeadline", { date: localMoment(penalty.chefDisputeDeadline, loc) })}</p>}
+            {!holdover && penalty.penaltyApprovedAt && <p className="text-xs text-muted-foreground border-t pt-2">
               {t("overstayApprovedOn", {
-                date: format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a"),
-                defaultValue: `Approved on ${format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a")}`,
+                date: localMoment(penalty.penaltyApprovedAt, loc),
               })}
             </p>}
           </div>
-        ))}
+          );
+        })}
 
-        <p className="text-xs text-muted-foreground text-center pt-2">
+        {!allHoldover && <p className="text-xs text-muted-foreground text-center pt-2">
           {t(
             "overstayPenaltiesFooter",
             "Please pay your outstanding penalties to maintain good standing and continue using storage facilities."
           )}
-        </p>
+        </p>}
       </CardContent>
     </Card>
   );

@@ -194,7 +194,7 @@ export function StorageCheckoutDialog({
           {/* Checklist Items */}
           {storageCheckoutItems.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">{t("coChecklistLabel")}</Label>
+              <Label className="text-sm font-medium">{t("coMoveOutChecklist")}</Label>
               {storageCheckoutItems.map((item: ChecklistItem, index: number) => (
                 <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
                   <Checkbox
