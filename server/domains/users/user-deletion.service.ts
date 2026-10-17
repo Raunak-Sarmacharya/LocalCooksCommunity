@@ -54,7 +54,6 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "kitchen_booking_attendance_events", where: sql`actor_id = ${id} OR booking_id IN (${bookingIds}) OR visit_id IN (SELECT id FROM kitchen_booking_visits WHERE booking_id IN (${bookingIds}))` },
     { table: "booking_lifecycle_events", where: sql`actor_id = ${id} OR booking_id IN (${bookingIds})` },
     { table: "kitchen_booking_changes", where: sql`manager_id = ${id} OR booking_id IN (${bookingIds})` },
-    { table: "storage_overstay_quotes", where: sql`chef_id = ${id} OR storage_listing_id IN (SELECT id FROM storage_listings WHERE kitchen_id IN (${kitchenIds}))` },
     { table: "tour_feedback_responses", where: sql`respondent_id = ${id} OR viewing_id IN (${viewingIds})` },
     { table: "tour_repeat_authorizations", where: sql`granted_by = ${id} OR revoked_by = ${id} OR source_tour_id IN (${viewingIds}) OR used_by_tour_id IN (${viewingIds})` },
     { table: "damage_claims", where: sql`chef_id = ${id} OR manager_id = ${id} OR location_id IN (${locationIds}) OR kitchen_booking_id IN (${bookingIds}) OR storage_booking_id IN (${storageIds}) OR kitchen_booking_visit_id IN (SELECT id FROM kitchen_booking_visits WHERE booking_id IN (${bookingIds}))` },
@@ -63,7 +62,6 @@ export function userDeletionTargets(id: number): Array<{ table: string; where: S
     { table: "storage_rental_terms", where: sql`rental_id IN (${storageIds}) OR payment_transaction_id IN (SELECT id FROM payment_transactions WHERE chef_id = ${id} OR manager_id = ${id} OR (booking_type IN ('kitchen', 'bundle') AND booking_id IN (${bookingIds})) OR (booking_type = 'storage' AND booking_id IN (${storageIds})) OR (booking_type = 'equipment' AND booking_id IN (${equipmentIds})))` },
     // booking_id on the payment ledger is polymorphic, not a foreign key.
     { table: "payment_transactions", where: sql`chef_id = ${id} OR manager_id = ${id} OR (booking_type IN ('kitchen', 'bundle') AND booking_id IN (${bookingIds})) OR (booking_type = 'storage' AND booking_id IN (${storageIds})) OR (booking_type = 'equipment' AND booking_id IN (${equipmentIds}))` },
-    { table: "pending_storage_extensions", where: sql`manager_id = ${id} OR storage_booking_id IN (${storageIds})` },
     { table: "storage_bookings", where: sql`id IN (${storageIds})` },
     { table: "equipment_bookings", where: sql`id IN (${equipmentIds})` },
     { table: "kitchen_booking_visits", where: sql`booking_id IN (${bookingIds})` },

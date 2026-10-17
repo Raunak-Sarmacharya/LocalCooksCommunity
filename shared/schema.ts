@@ -1410,7 +1410,6 @@ export const storageListings = pgTable("storage_listings", {
 
   // Availability
   isActive: boolean("is_active").default(true).notNull(),
-  availabilityCalendar: jsonb("availability_calendar").default({}), // Blocked dates, maintenance windows
 
   // Compliance & documentation
   certifications: jsonb("certifications").default([]),
@@ -1423,9 +1422,6 @@ export const storageListings = pgTable("storage_listings", {
   insuranceRequired: boolean("insurance_required").default(false),
 
   // Overstay penalty configuration (manager-controlled)
-  overstayGracePeriodDays: integer("overstay_grace_period_days"), // Null inherits location/platform defaults
-  overstayPenaltyRate: numeric("overstay_penalty_rate"),
-  overstayMaxPenaltyDays: integer("overstay_max_penalty_days"),
   overstayPolicyText: text("overstay_policy_text"), // Custom policy text shown to chefs
 
   // Standalone storage rentals (migration 0093): identical units of this listing; NULL max = platform max
@@ -1460,7 +1456,6 @@ export const insertStorageListingSchema = createInsertSchema(storageListings, {
   documents: z.array(z.string()).optional(),
   houseRules: z.array(z.string()).optional(),
   prohibitedItems: z.array(z.string()).optional(),
-  availabilityCalendar: z.record(z.any()).optional(),
 }).omit({
   id: true,
   createdAt: true,
@@ -1502,7 +1497,6 @@ export const updateStorageListingSchema = z.object({
   documents: z.array(z.string()).optional(),
   houseRules: z.array(z.string()).optional(),
   prohibitedItems: z.array(z.string()).optional(),
-  availabilityCalendar: z.record(z.any()).optional(),
 });
 
 export const updateStorageListingStatusSchema = z.object({
@@ -1619,7 +1613,6 @@ export const storageBookings = pgTable("storage_bookings", {
   id: serial("id").primaryKey(),
   referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. SB-X3P2NR
   storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "restrict" }).notNull(),
-  overstayTerms: jsonb("overstay_terms"), // Frozen terms; null legacy rows require review
   kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "restrict" }), // NULLABLE - storage can be booked independently
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef making the booking
   startDate: timestamp("start_date").notNull(),
@@ -1664,7 +1657,7 @@ export const storageBookings = pgTable("storage_bookings", {
   cancellationAcceptedAt: timestamp('cancellation_accepted_at'),
 
   // Standalone rental (migration 0093). Dates are kitchen-local days; paid_through is inclusive.
-  rentalState: text("rental_state").$type<'requested' | 'declined' | 'expired' | 'withdrawn' | 'reserved' | 'active' | 'move_out_requested' | 'removal_review' | 'ended'>(),
+  rentalState: text("rental_state").$type<'requested' | 'declined' | 'expired' | 'withdrawn' | 'reserved' | 'active' | 'move_out_requested' | 'removal_review' | 'ended'>().notNull(),
   endReason: text("end_reason").$type<'cleared' | 'auto_cleared' | 'claim' | 'cancelled' | 'kitchen_reclaim' | 'admin_ended' | 'unit_released' | 'legacy'>(),
   unitIndex: integer("unit_index"),
   termStart: date("term_start"),
@@ -1714,14 +1707,6 @@ export const storageRentalTerms = pgTable('storage_rental_terms', {
 }, table => [uniqueIndex('storage_rental_terms_rental_id_seq_key').on(table.rentalId, table.seq),
   uniqueIndex('storage_terms_one_open').on(table.rentalId).where(sql`${table.status} IN ('awaiting_payment','authorized')`)]);
 export type StorageRentalTerm = typeof storageRentalTerms.$inferSelect;
-
-export const storageOverstayQuotes = pgTable('storage_overstay_quotes', {
-  id: text('id').primaryKey(),
-  chefId: integer('chef_id').references(() => users.id, { onDelete: "cascade" }).notNull(),
-  storageListingId: integer('storage_listing_id').references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
-  terms: jsonb('terms').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
 
 // Zod validation schemas for storage bookings
 export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
@@ -2180,35 +2165,6 @@ export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
 export type UpdatePaymentTransaction = z.infer<typeof updatePaymentTransactionSchema>;
 export type PaymentHistory = typeof paymentHistory.$inferSelect;
-
-// ===== PENDING STORAGE EXTENSIONS TABLE =====
-// Tracks pending storage extension requests awaiting payment and manager approval
-export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
-  id: serial("id").primaryKey(),
-  referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. EXT-B4R7TY
-  storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
-  newEndDate: timestamp("new_end_date").notNull(),
-  extensionDays: integer("extension_days").notNull(),
-  extensionBasePriceCents: integer("extension_base_price_cents").notNull(),
-  extensionServiceFeeCents: integer("extension_service_fee_cents").notNull(),
-  extensionTotalPriceCents: integer("extension_total_price_cents").notNull(),
-  stripeSessionId: text("stripe_session_id").notNull(),
-  stripePaymentIntentId: text("stripe_payment_intent_id"),
-  // Status flow: pending (awaiting payment) -> paid (awaiting approval) -> approved/rejected -> completed/refunded
-  status: text("status").notNull().default("pending"), // pending, paid, approved, rejected, completed, refunded, failed, expired
-  // Manager approval fields
-  managerId: integer("manager_id").references(() => users.id),
-  approvedAt: timestamp("approved_at"),
-  rejectedAt: timestamp("rejected_at"),
-  rejectionReason: text("rejection_reason"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
-});
-
-// Type exports for pending storage extensions
-export type PendingStorageExtension = typeof pendingStorageExtensions.$inferSelect;
-export type InsertPendingStorageExtension = typeof pendingStorageExtensions.$inferInsert;
 
 // ===== OVERSTAY STATUS ENUM =====
 export const overstayStatusEnum = pgEnum('overstay_status', [

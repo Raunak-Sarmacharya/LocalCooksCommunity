@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenBookingVisits, kitchens, locations, paymentTransactions, equipmentBookings, equipmentListings, storageBookings, pendingStorageExtensions } from '@shared/schema';
+import { kitchenBookings, kitchenBookingVisits, kitchens, locations, paymentTransactions, equipmentBookings, equipmentListings, storageBookings } from '@shared/schema';
 import { bookingChangeSchedule, kitchenRescheduleCutoff } from '@shared/kitchen-booking-change';
 import { cancellationSourceQuote, isCancellationReservationSource } from '@shared/cancellation-refund';
 import { DomainError } from '../shared/errors/domain-error';
@@ -334,9 +334,8 @@ async function context(tx: Tx, bookingId: number, actorId: number, role: 'manage
       ...(equipment.length ? [and(eq(paymentTransactions.bookingType, 'equipment'), inArray(paymentTransactions.bookingId, equipment.map(item => item.id)))] : [])));
     if (currentIds.length !== sources.length || currentIds.some(item => !sources.some(source => source.id === item.id))) throw new Error('Linked payment sources changed; refresh before deciding');
   }
-  const extensions = storage.length ? await tx.select().from(pendingStorageExtensions).where(inArray(pendingStorageExtensions.storageBookingId, storage.map(item => item.id))) : [];
   const reservationSources = sources.filter(source => isCancellationReservationSource(source,
-    [parent.paymentIntentId, ...storage.map(item => item.paymentIntentId), ...equipment.map(item => item.paymentIntentId)], extensions.map(item => item.stripePaymentIntentId), parent.paymentIntentId));
+    [parent.paymentIntentId, ...storage.map(item => item.paymentIntentId), ...equipment.map(item => item.paymentIntentId)], [], parent.paymentIntentId));
   const intentIds = reservationSources.map(source => source.paymentIntentId).filter(Boolean);
   if (new Set(intentIds).size !== intentIds.length) throw new Error('Duplicate captured source identity requires Local Cooks review before cancellation');
   return { parent, kitchenName: row.kitchenName, managerId: row.managerId!, timezone: row.timezone || 'America/St_Johns', storage, equipment, sources: reservationSources };

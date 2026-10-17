@@ -6,13 +6,11 @@ import {
   users,
   kitchenBookings,
   storageBookings,
-  storageOverstayQuotes,
   equipmentBookings,
   locations,
   kitchens,
   storageListings,
   equipmentListings,
-  pendingStorageExtensions,
 } from "@shared/schema";
 import { eq, and, ne, notInArray, inArray, isNull, or, type AnyColumn, type SQL } from "drizzle-orm";
 import { logger } from "../logger";
@@ -21,7 +19,6 @@ import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
 import { generateReferenceCode } from "../reference-code";
 import { parseCheckoutSlots, parseCheckoutCancellationPolicy } from "../services/checkout-metadata";
-import { isStorageOverstayTerms } from '@shared/storage-overstay-terms';
 
 const router = Router();
 
@@ -575,24 +572,6 @@ async function handleCheckoutSessionCompleted(
       allMetadata: metadata 
     });
     
-    if (metadata.type === "storage_extension") {
-      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`, {
-        paymentIntentId,
-        chargeId,
-        stripeCustomerId,
-        stripePaymentMethodId,
-      });
-      await handleStorageExtensionPaymentCompleted(
-        session.id,
-        paymentIntentId,
-        chargeId,
-        metadata,
-        stripeCustomerId,
-        stripePaymentMethodId,
-        isManualCapture,
-      );
-    }
-
     // Handle overstay penalty payment
     if (metadata.type === "overstay_penalty") {
       logger.info(`[Webhook] Processing overstay penalty payment for session ${session.id}`);
@@ -665,7 +644,6 @@ async function handleCheckoutSessionCompleted(
         const durationHours = parseFloat(metadata.duration_hours || "1");
         const specialNotes = metadata.special_notes || null;
         const selectedSlots = parseCheckoutSlots(metadata.selected_slots, startTime, endTime);
-        const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
 
         logger.operational(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
@@ -675,7 +653,7 @@ async function handleCheckoutSessionCompleted(
           startTime,
           endTime,
           selectedSlotsCount: selectedSlots.length,
-          selectedStorageCount: selectedStorage.length,
+          
           selectedEquipmentCount: selectedEquipmentIds.length,
         });
 
@@ -827,88 +805,6 @@ async function handleCheckoutSessionCompleted(
           }
         }
 
-        // Create storage bookings if any were selected
-        const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
-        if (selectedStorage && selectedStorage.length > 0) {
-          for (const storage of selectedStorage) {
-            try {
-              const [storageListing] = await db
-                .select()
-                .from(storageListings)
-                .where(eq(storageListings.id, storage.storageListingId))
-                .limit(1);
-              
-              if (storageListing) {
-                const quoteId = metadata[`storage_quote_${storage.storageListingId}`];
-                const [overstayQuote] = quoteId ? await db.select().from(storageOverstayQuotes)
-                  .where(and(eq(storageOverstayQuotes.id, quoteId), eq(storageOverstayQuotes.chefId, chefId),
-                    eq(storageOverstayQuotes.storageListingId, storage.storageListingId))).limit(1) : [];
-                const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
-                const minDays = storageListing.minimumBookingDuration || 1;
-                const storageStartDate = new Date(storage.startDate);
-                const storageEndDate = new Date(storage.endDate);
-                const days = Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60 * 24));
-                const effectiveDays = Math.max(days, minDays);
-                
-                let priceCents = basePriceCents * effectiveDays;
-                if (storageListing.pricingModel === 'hourly') {
-                  const durationHoursStorage = Math.max(1, Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60)));
-                  priceCents = basePriceCents * durationHoursStorage;
-                } else if (storageListing.pricingModel === 'monthly-flat') {
-                  priceCents = basePriceCents;
-                }
-
-                // Storage bookings now require manager approval (like kitchen bookings)
-                // Status is 'pending' until manager confirms
-                // AUTH-THEN-CAPTURE: Storage paymentStatus mirrors kitchen booking:
-                // 'authorized' for manual capture (held, not charged), 'paid' for auto capture
-                // This is critical for:
-                // 1. Accurate payment tracking across all booking types
-                // 2. Off-session charging for overstay penalties (needs stripeCustomerId + stripePaymentMethodId)
-                // 3. Dispute resolution (needs paymentIntentId to reference the original charge)
-                const sbRefCode = await generateReferenceCode('storage_booking');
-                const [storageBooking] = await db
-                  .insert(storageBookings)
-                  .values({
-                    referenceCode: sbRefCode,
-                    kitchenBookingId: booking.id,
-                    storageListingId: storageListing.id,
-                    overstayTerms: overstayQuote ? { ...(overstayQuote.terms as Record<string, unknown>),
-                      acceptedAt: new Date().toISOString() } : null,
-                    chefId,
-                    startDate: storageStartDate,
-                    endDate: storageEndDate,
-                    status: 'pending', // Requires manager approval
-                    totalPrice: priceCents.toString(),
-                    pricingModel: storageListing.pricingModel || 'daily',
-                    paymentStatus: bookingPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
-                    paymentIntentId: paymentIntentId || null, // Link to the kitchen booking payment
-                    serviceFee: '0',
-                    currency: 'CAD',
-                    stripeCustomerId: stripeCustomerId || null,
-                    stripePaymentMethodId: stripePaymentMethodId || null,
-                  })
-                  .returning();
-
-                if (storageBooking) {
-                  storageItemsForJson.push({
-                    id: storageBooking.id,
-                    storageListingId: storageListing.id,
-                    name: storageListing.name || 'Storage',
-                    storageType: storageListing.storageType || 'other',
-                    totalPrice: priceCents,
-                    startDate: storageStartDate.toISOString(),
-                    endDate: storageEndDate.toISOString(),
-                  });
-                }
-              }
-            } catch (storageItemError) {
-              logger.error(`[Webhook] Error creating storage booking for listing ${storage.storageListingId}:`, storageItemError as Error);
-            }
-          }
-          logger.info(`[Webhook] Created ${storageItemsForJson.length}/${selectedStorage.length} storage bookings for booking ${booking.id}`);
-        }
-
         // Create equipment bookings if any were selected
         const equipmentItemsForJson: Array<{id: number, equipmentListingId: number, name: string, totalPrice: number}> = [];
         if (selectedEquipmentIds && selectedEquipmentIds.length > 0) {
@@ -959,12 +855,11 @@ async function handleCheckoutSessionCompleted(
         }
 
         // Update booking with storage and equipment items JSONB
-        if (storageItemsForJson.length > 0 || equipmentItemsForJson.length > 0) {
+        if (equipmentItemsForJson.length > 0) {
           try {
             await db
               .update(kitchenBookings)
               .set({
-                storageItems: storageItemsForJson,
                 equipmentItems: equipmentItemsForJson,
                 updatedAt: new Date(),
               })
@@ -1038,7 +933,6 @@ async function handleCheckoutSessionCompleted(
                   // ENTERPRISE STANDARD: Include storage_items in PT metadata
                   // This enables the View Details endpoint to identify which storage bookings
                   // belong to this kitchen booking payment (vs. extensions paid separately)
-                  ...(storageItemsForJson.length > 0 ? { storage_items: storageItemsForJson } : {}),
                   ...(equipmentItemsForJson.length > 0 ? { equipment_items: equipmentItemsForJson } : {}),
                 },
               }, db);
@@ -1309,25 +1203,6 @@ async function handleCheckoutSessionCompleted(
       try {
         const bookingId = parseInt(metadata.booking_id);
         if (!isNaN(bookingId)) {
-          const [termsOwner] = await db.select({ chefId: kitchenBookings.chefId }).from(kitchenBookings)
-            .where(eq(kitchenBookings.id, bookingId)).limit(1);
-          if (termsOwner?.chefId != null) {
-            for (const [key, quoteId] of Object.entries(metadata)) {
-              if (!key.startsWith('storage_booking_quote_') || !quoteId) continue;
-              const storageBookingId = Number(key.slice('storage_booking_quote_'.length));
-              if (!Number.isSafeInteger(storageBookingId) || storageBookingId <= 0) continue;
-              const [storage] = await db.select().from(storageBookings).where(and(eq(storageBookings.id, storageBookingId),
-                eq(storageBookings.kitchenBookingId, bookingId), eq(storageBookings.chefId, termsOwner.chefId))).limit(1);
-              if (!storage) continue;
-              const [quote] = await db.select().from(storageOverstayQuotes).where(and(eq(storageOverstayQuotes.id, quoteId),
-                eq(storageOverstayQuotes.chefId, termsOwner.chefId), eq(storageOverstayQuotes.storageListingId, storage.storageListingId))).limit(1);
-              if (!quote || !isStorageOverstayTerms(quote.terms)) throw new Error('Storage checkout quote is missing or invalid');
-              if (isStorageOverstayTerms(storage.overstayTerms) && !storage.overstayTerms.acceptedAt) {
-                await db.update(storageBookings).set({ overstayTerms: { ...quote.terms, acceptedAt: new Date().toISOString() } })
-                  .where(and(eq(storageBookings.id, storage.id), eq(storageBookings.chefId, termsOwner.chefId)));
-              }
-            }
-          }
           const paymentSucceeded = expandedSession.payment_status === "paid";
           const newPaymentStatus = paymentSucceeded ? "paid" : "processing";
           
@@ -1464,367 +1339,6 @@ async function handleCheckoutSessionCompleted(
     });
     // Acknowledging an unfulfilled kitchen checkout prevents Stripe from retrying it.
     if (session.metadata?.type === 'kitchen_booking') throw error;
-  }
-}
-
-// Helper function to update storage booking with Stripe IDs for off-session charging
-async function updateStorageBookingStripeIds(
-  storageBookingId: number,
-  chefId: number,
-  stripeCustomerId: string | undefined,
-  stripePaymentMethodId: string | undefined,
-) {
-  logger.info(`🔒 [OFF-SESSION] updateStorageBookingStripeIds called:`, {
-    storageBookingId,
-    chefId,
-    stripeCustomerId: stripeCustomerId || 'UNDEFINED',
-    stripePaymentMethodId: stripePaymentMethodId || 'UNDEFINED',
-  });
-  logger.info(`[Webhook] Updating storage booking ${storageBookingId} with Stripe IDs:`, {
-    stripeCustomerId: stripeCustomerId || 'undefined',
-    stripePaymentMethodId: stripePaymentMethodId || 'undefined',
-  });
-
-  if (stripeCustomerId || stripePaymentMethodId) {
-    try {
-      await db
-        .update(storageBookings)
-        .set({
-          stripeCustomerId: stripeCustomerId || null,
-          stripePaymentMethodId: stripePaymentMethodId || null,
-          updatedAt: new Date(),
-        })
-        .where(eq(storageBookings.id, storageBookingId));
-      logger.info(`[Webhook] Updated storage booking ${storageBookingId} with Stripe IDs for off-session charging`);
-    } catch (updateError) {
-      logger.warn(`[Webhook] Could not update storage booking with Stripe IDs:`, updateError as Error);
-    }
-  }
-
-  // Also save to users table
-  if (stripeCustomerId && !isNaN(chefId)) {
-    try {
-      await db
-        .update(users)
-        .set({
-          stripeCustomerId: stripeCustomerId,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, chefId));
-      logger.info(`[Webhook] Saved Stripe Customer ID to user ${chefId}: ${stripeCustomerId}`);
-    } catch (userUpdateError) {
-      logger.warn(`[Webhook] Could not save Stripe Customer ID to user:`, userUpdateError as Error);
-    }
-  }
-}
-
-// Handle storage extension payment completion
-// ENTERPRISE-GRADE: Create pending_storage_extensions and payment_transactions ONLY when payment succeeds
-// AUTH-THEN-CAPTURE: Also handles authorized (manual capture) payments
-async function handleStorageExtensionPaymentCompleted(
-  sessionId: string,
-  paymentIntentId: string | undefined,
-  chargeId: string | undefined,
-  metadata: Record<string, string>,
-  stripeCustomerId: string | undefined,
-  stripePaymentMethodId: string | undefined,
-  isManualCapture: boolean = false,
-) {
-  try {
-    const { bookingService } = await import(
-      "../domains/bookings/booking.service"
-    );
-
-    const storageBookingId = parseInt(metadata.storage_booking_id);
-    const newEndDate = new Date(metadata.new_end_date);
-    const extensionDays = parseInt(metadata.extension_days);
-    const chefId = parseInt(metadata.chef_id);
-    const managerId = parseInt(metadata.manager_id);
-    const extensionBasePriceCents = parseInt(metadata.extension_base_price_cents || "0");
-    const extensionServiceFeeCents = parseInt(metadata.extension_service_fee_cents || "0");
-    const extensionTotalPriceCents = parseInt(metadata.extension_total_price_cents || "0");
-    const extensionCustomerTotalCents = parseInt(
-      metadata.extension_customer_total_cents || String(extensionTotalPriceCents + extensionServiceFeeCents),
-    );
-    const extensionTaxCents = parseInt(metadata.tax_cents || "0");
-    const managerReceivesCents = parseInt(metadata.manager_receives_cents || "0");
-
-    if (
-      isNaN(storageBookingId) ||
-      isNaN(newEndDate.getTime()) ||
-      isNaN(extensionDays)
-    ) {
-      logger.error("[Webhook] Invalid storage extension metadata:", metadata);
-      return;
-    }
-
-    // Check if extension already exists for this session (idempotency)
-    const existingExtension = await bookingService.getPendingStorageExtension(
-      storageBookingId,
-      sessionId,
-    );
-
-    if (existingExtension) {
-      // Already processed - but still update Stripe IDs if we have them
-      if (existingExtension.status === "paid" || existingExtension.status === "authorized" || existingExtension.status === "completed" || existingExtension.status === "approved") {
-        logger.info(
-          `[Webhook] Storage extension already processed for session ${sessionId} (status: ${existingExtension.status})`,
-        );
-        // Still update storage booking with Stripe IDs for off-session charging
-        await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
-        return;
-      }
-      // Update existing record if it was somehow created with pending status
-      const extensionStatus = isManualCapture ? "authorized" : "paid";
-      await bookingService.updatePendingStorageExtension(existingExtension.id, {
-        status: extensionStatus,
-        stripePaymentIntentId: paymentIntentId,
-      });
-      logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to ${extensionStatus}`);
-      // Still update storage booking with Stripe IDs for off-session charging
-      await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
-      return;
-    }
-
-    // ENTERPRISE-GRADE: Create pending_storage_extensions record NOW (after payment succeeds/authorized)
-    // AUTH-THEN-CAPTURE: 'authorized' for manual capture, 'paid' for auto capture
-    const extensionPaymentStatus = isManualCapture ? "authorized" : "paid";
-    const pendingExtension = await bookingService.createPendingStorageExtension({
-      storageBookingId,
-      newEndDate,
-      extensionDays,
-      extensionBasePriceCents,
-      extensionServiceFeeCents,
-      extensionTotalPriceCents,
-      stripeSessionId: sessionId,
-      stripePaymentIntentId: paymentIntentId,
-      status: extensionPaymentStatus,
-    });
-
-    logger.info(`[Webhook] Created pending_storage_extensions ${pendingExtension.id} for storage booking ${storageBookingId}`);
-
-    // Update storage booking with Stripe IDs for off-session charging
-    await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
-
-    // Create payment_transactions record with full Stripe data
-    try {
-      const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
-      const { getStripePaymentAmounts } = await import("../services/stripe-service");
-
-      // CRITICAL: Log payment intent for debugging
-      logger.info(`[Webhook] Creating payment_transactions for storage extension with paymentIntentId: ${paymentIntentId}, chargeId: ${chargeId}`);
-
-      // AUTH-THEN-CAPTURE: Use 'authorized' for manual capture, 'succeeded' for auto capture
-      const extPtStatus = isManualCapture ? "authorized" : "succeeded";
-      const ptRecord = await createPaymentTransaction({
-        bookingId: storageBookingId,
-        bookingType: "storage",
-        chefId: isNaN(chefId) ? null : chefId,
-        managerId: isNaN(managerId) ? null : managerId,
-        amount: extensionCustomerTotalCents,
-        baseAmount: extensionBasePriceCents,
-        serviceFee: extensionServiceFeeCents,
-        taxAmount: extensionTaxCents,
-        managerRevenue: managerReceivesCents || (extensionTotalPriceCents - extensionServiceFeeCents),
-        currency: "CAD",
-        paymentIntentId, // CRITICAL: Must be saved for Stripe fee syncing
-        chargeId, // Also save charge ID
-        status: extPtStatus,
-        stripeStatus: extPtStatus,
-        metadata: {
-          checkout_session_id: sessionId,
-          storage_booking_id: storageBookingId.toString(),
-          storage_extension_id: pendingExtension.id.toString(),
-          extension_days: extensionDays.toString(),
-          new_end_date: newEndDate.toISOString(),
-          // Include base price for accurate tax calculation in transaction history
-          extension_base_price_cents: extensionBasePriceCents.toString(),
-          taxAmount: extensionTaxCents.toString(),
-          taxRatePercent: metadata.tax_rate_percent || "0",
-        },
-      }, db);
-
-      // Update with Stripe amounts if available
-      // AUTH-THEN-CAPTURE: Skip fee sync for manual capture — no balance_transaction exists yet.
-      //                    Transfer happens later when manager captures (payment_intent.succeeded webhook).
-      if (ptRecord && paymentIntentId && !isManualCapture) {
-        // Get manager's Stripe Connect account for fee lookup
-        let managerConnectAccountId: string | undefined;
-        if (!isNaN(managerId)) {
-          try {
-            const [manager] = await db
-              .select({ stripeConnectAccountId: users.stripeConnectAccountId })
-              .from(users)
-              .where(eq(users.id, managerId))
-              .limit(1);
-            if (manager?.stripeConnectAccountId) {
-              managerConnectAccountId = manager.stripeConnectAccountId;
-            }
-          } catch {
-            logger.warn(`[Webhook] Could not fetch manager Connect account for storage extension`);
-          }
-        }
-
-        const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
-        if (stripeAmounts) {
-          await updatePaymentTransaction(ptRecord.id, {
-            paidAt: new Date(),
-            lastSyncedAt: new Date(),
-            stripeAmount: stripeAmounts.stripeAmount,
-            stripeNetAmount: stripeAmounts.stripeNetAmount,
-            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
-            stripePlatformFee: stripeAmounts.stripePlatformFee,
-          }, db);
-
-          // SEPARATE CHARGES + TRANSFERS: Create transfer to manager now.
-          // payment_intent.succeeded handler also runs this (idempotent).
-          if (managerConnectAccountId && stripeAmounts.stripeProcessingFee > 0) {
-            try {
-              const { transferToManagerForBooking } = await import('../services/stripe-transfer-service');
-              const transferResult = await transferToManagerForBooking({
-                paymentIntentId,
-                paymentTransactionId: ptRecord.id,
-                chargeAmountCents: stripeAmounts.stripeAmount,
-                actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
-                chargeId: chargeId || stripeAmounts.chargeId || undefined,
-                transferGroup: `pi_${paymentIntentId}`,
-              });
-              if (transferResult.transferred) {
-                await updatePaymentTransaction(ptRecord.id, {
-                  serviceFee: transferResult.platformCommissionCents,
-                  managerRevenue: transferResult.originalManagerNetCents ?? transferResult.transferredCents,
-                  stripePlatformFee: transferResult.platformCommissionCents,
-                  stripeNetAmount: transferResult.transferredCents,
-                  metadata: {
-                    checkout_session_id: sessionId,
-                    storage_booking_id: storageBookingId.toString(),
-                    storage_extension_id: pendingExtension.id.toString(),
-                    extension_days: extensionDays.toString(),
-                    new_end_date: newEndDate.toISOString(),
-                    extension_base_price_cents: extensionBasePriceCents.toString(),
-                    manager_connect_account_id: managerConnectAccountId,
-                    transfer: {
-                      transferred: true,
-                      transferredAt: new Date().toISOString(),
-                      source: 'checkout.session.completed',
-                      transferId: transferResult.transferId,
-                      actualStripeFeeCents: transferResult.actualStripeFeeCents,
-                      platformCommissionCents: transferResult.platformCommissionCents,
-                      feeWithheldCents: transferResult.feeWithheldCents,
-                      transferredCents: transferResult.transferredCents,
-                    },
-                  },
-                }, db);
-                logger.info(`[Webhook] Storage extension ${pendingExtension.id}: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager (transferId=${transferResult.transferId})`);
-              }
-            } catch (transferErr) {
-              logger.error(`[Webhook] Storage extension ${pendingExtension.id}: Transfer error for ${paymentIntentId} (will retry on charge.updated):`, transferErr);
-            }
-          }
-
-          logger.info(`[Webhook] Updated payment_transactions with Stripe amounts for storage extension`);
-        }
-      }
-
-      logger.info(`[Webhook] Created payment_transactions for storage extension ${pendingExtension.id}`);
-    } catch (ptError) {
-      logger.warn(`[Webhook] Could not create payment_transactions for storage extension:`, ptError as any);
-    }
-
-    logger.info(`[Webhook] Storage extension payment received - awaiting manager approval:`, {
-      storageBookingId,
-      extensionDays,
-      newEndDate: newEndDate.toISOString(),
-      sessionId,
-      paymentIntentId,
-      status: "paid",
-    });
-
-    // Send notification emails for storage extension payment
-    try {
-      const { sendEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail } = await import("../email");
-      
-      // Get storage booking details for email
-      const [storageBooking] = await db
-        .select({
-          storageName: storageListings.name,
-          chefId: storageBookings.chefId,
-          chefEmail: users.username,
-          locationId: kitchens.locationId,
-        })
-        .from(storageBookings)
-        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-        .innerJoin(users, eq(storageBookings.chefId, users.id))
-        .where(eq(storageBookings.id, storageBookingId))
-        .limit(1);
-
-      if (storageBooking) {
-        // Get location notification email
-        const [location] = await db
-          .select({
-            id: locations.id,
-            notificationEmail: locations.notificationEmail,
-            name: locations.name,
-            managerId: locations.managerId,
-          })
-          .from(locations)
-          .where(eq(locations.id, storageBooking.locationId))
-          .limit(1);
-
-        // Send email to manager
-        if (location?.notificationEmail) {
-          const managerEmail = generateStorageExtensionPendingApprovalEmail({
-            managerEmail: location.notificationEmail,
-            chefName: storageBooking.chefEmail,
-            storageName: storageBooking.storageName,
-            extensionDays,
-            newEndDate,
-            totalPrice: extensionTotalPriceCents,
-            locationName: location.name,
-          });
-          await sendEmail(managerEmail);
-          logger.info(`[Webhook] Sent storage extension pending approval email to manager: ${location.notificationEmail}`);
-        }
-
-        // Send email to chef
-        const chefEmail = generateStorageExtensionPaymentReceivedEmail({
-          chefEmail: storageBooking.chefEmail,
-          chefName: storageBooking.chefEmail,
-          storageName: storageBooking.storageName,
-          extensionDays,
-          newEndDate,
-          totalPrice: extensionTotalPriceCents,
-        });
-        await sendEmail(chefEmail);
-        logger.info(`[Webhook] Sent storage extension payment received email to chef: ${storageBooking.chefEmail}`);
-
-        // Send in-app notification to manager about pending extension
-        if (location.managerId) {
-          try {
-            await notificationService.notifyManagerStorageExtensionPending({
-              managerId: location.managerId,
-              locationId: location.id,
-              storageBookingId,
-              storageName: storageBooking.storageName,
-              extensionDays,
-              newEndDate: typeof newEndDate === 'string' ? newEndDate : new Date(newEndDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-              chefName: storageBooking.chefEmail,
-            });
-            logger.info(`[Webhook] Created in-app notification for manager about storage extension`);
-          } catch (notifError) {
-            logger.error(`[Webhook] Error creating storage extension in-app notification:`, notifError);
-          }
-        }
-      }
-    } catch (emailError) {
-      logger.error(`[Webhook] Error sending storage extension notification emails:`, emailError as any);
-    }
-  } catch (error: any) {
-    logger.error(
-      `[Webhook] Error processing storage extension payment:`,
-      error,
-    );
   }
 }
 
@@ -2133,20 +1647,6 @@ async function handlePaymentIntentSucceeded(
           and(
             eq(equipmentBookings.paymentIntentId, paymentIntent.id),
             paymentStatusCanBecomePaid(equipmentBookings.paymentStatus),
-          ),
-        );
-
-      // AUTH-THEN-CAPTURE: Also update pending_storage_extensions from 'authorized' to 'paid'
-      await tx
-        .update(pendingStorageExtensions)
-        .set({
-          status: "paid",
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(pendingStorageExtensions.stripePaymentIntentId, paymentIntent.id),
-            eq(pendingStorageExtensions.status, "authorized"),
           ),
         );
     });
@@ -2494,21 +1994,6 @@ async function handlePaymentIntentCanceled(
           and(
             eq(equipmentBookings.paymentIntentId, paymentIntent.id),
             notInArray(equipmentBookings.paymentStatus, excludedStatuses),
-          ),
-        );
-
-      // AUTH-THEN-CAPTURE: Also update pending_storage_extensions from 'authorized' to 'rejected'
-      await tx
-        .update(pendingStorageExtensions)
-        .set({
-          status: "rejected",
-          rejectionReason: "Payment authorization cancelled",
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(pendingStorageExtensions.stripePaymentIntentId, paymentIntent.id),
-            eq(pendingStorageExtensions.status, "authorized"),
           ),
         );
     });

@@ -358,33 +358,6 @@ router.get("/invoices/storage/:storageBookingId", requireChef, async (req: Reque
 
         // Check if this is a storage extension by looking at metadata
         let extensionDetails = null;
-        const metadata = transaction.metadata as Record<string, any> | undefined;
-        if (metadata?.storage_extension_id) {
-            const extensionId = parseInt(String(metadata.storage_extension_id));
-            if (!isNaN(extensionId)) {
-                const extensionResult = await db.execute(sql`
-                    SELECT 
-                        pse.id,
-                        pse.extension_days,
-                        pse.extension_base_price_cents,
-                        pse.extension_total_price_cents,
-                        pse.new_end_date,
-                        sl.name as storage_name,
-                        sl.base_price as daily_rate_cents,
-                        sl.storage_type::text as storage_type
-                    FROM pending_storage_extensions pse
-                    JOIN storage_bookings sb ON pse.storage_booking_id = sb.id
-                    JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-                    WHERE pse.id = ${extensionId}
-                    LIMIT 1
-                `);
-                const extensionRows = extensionResult.rows || extensionResult;
-                if (Array.isArray(extensionRows) && extensionRows.length > 0) {
-                    extensionDetails = extensionRows[0];
-                }
-            }
-        }
-
         // Get chef info
         let chef = null;
         const chefResult = await db.execute(sql`

@@ -120,7 +120,6 @@ export async function runRecurringWorker(cancellations: () => Promise<unknown>, 
       const tasks: Task[] = [
         ...reminderSources.map(source => ({ name: `reconcile:${source}`,
           run: () => reconcileRecurringSource(source, state.cursors[`reconcile:${source}`] || 0) })),
-        { name: 'overstays', run: async () => (await import('./overstay-penalty-service')).detectOverstays() },
         { name: 'expiredClaims', run: async () => (await import('./damage-claim-service')).processExpiredClaims() },
         { name: 'claimMoney', run: async () => (await import('./damage-claim-money')).recoverDamageClaimMoney(3) },
         { name: 'captureTransfers', run: async () => (await import('./kitchen-payout-service')).recoverCaptureTransfers(3) },

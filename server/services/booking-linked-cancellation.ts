@@ -24,16 +24,10 @@ export async function cancelLinkedBookingDates(tx: Parameters<Parameters<typeof 
   await revokeForBooking(tx, bookingId, 'booking_cancelled');
   // A chef's open change request closes with the booking; its time hold is released here, its card hold by the worker.
   await (await import('./kitchen-booking-changes')).withdrawOpenKitchenChangesInTx(tx, bookingId);
-  const storage = await tx.update(storageBookings).set({ status: cancelledStorageStatus, cancellationAcceptedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(storageBookings.kitchenBookingId, bookingId), ne(storageBookings.status, 'completed'))).returning();
   await tx.update(equipmentBookings).set({ status: 'cancelled', updatedAt: new Date() })
     .where(and(eq(equipmentBookings.kitchenBookingId, bookingId), ne(equipmentBookings.status, 'completed')));
   const [parent] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (parent) await tx.update(kitchenBookings).set({
-    storageItems: (parent.storageItems as any[] || []).map(entry => {
-      const item = storage.find(row => row.id === (entry.storageBookingId ?? entry.id));
-      return item ? { ...entry, rejected: true, status: item.status, cancellationRequested: false } : entry;
-    }),
     equipmentItems: (parent.equipmentItems as any[] || []).map(entry => ({ ...entry, rejected: true,
       status: entry.status === 'completed' ? 'completed' : 'cancelled', cancellationRequested: false })),
     updatedAt: new Date(),

@@ -48,7 +48,6 @@ const connection: any = {
         if (name === 'kitchens') return resolve([{ managerId: state.managerId }]);
         if (name === 'storage_bookings') return resolve(state.storage);
         if (name === 'equipment_bookings') return resolve(state.equipment);
-        if (name === 'pending_storage_extensions') return resolve(state.extensions);
         if (name === 'kitchen_booking_visits') return resolve(state.visits);
         if (name === 'equipment_listings') return resolve([{ name: 'Commercial Oven' }]);
         if (name === 'payment_transactions') {

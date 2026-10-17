@@ -1,7 +1,7 @@
 import type Stripe from 'stripe';
-import { and, eq, getTableColumns } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { kitchenBookings, kitchenInvitations, kitchenInvitationEvents, kitchens, locations, storageBookings, storageListings, storageOverstayQuotes,
+import { kitchenBookings, kitchenInvitations, kitchenInvitationEvents, kitchens, locations,
   equipmentBookings, equipmentListings, paymentTransactions } from '@shared/schema';
 import { bookingCaptureTerms } from '@shared/booking-capture-terms';
 import { bookingAddonPrices } from '@shared/booking-addon-prices';
@@ -11,7 +11,6 @@ import { cancellationSnapshotFromMetadata } from './cancellation-policy-settings
 import { fulfillKitchenCheckout, hasInventoryConflict, KitchenHoldMissingError, KitchenSlotUnavailableError } from './kitchen-checkout-holds';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { generateReferenceCode } from '../reference-code';
-import { storageListingAwaitingRemoval } from './booking-linked-cancellation';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
 import { getBookingResponseDeadline } from './booking-response-deadline';
 import { emailLocalDateTimeSentence } from '../email';
@@ -94,8 +93,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
     return resolveCheckoutConflict(session, intent, stripe);
   }
   const bookingDate = new Date(metadata.booking_date);
-  const storageDates = JSON.parse(metadata.selected_storage || '[]') as { storageListingId: number; startDate: string; endDate: string }[];
-  if (storageDates.length !== prices.s.length || !Number.isFinite(bookingDate.getTime())) throw new Error('Checkout dates are incomplete');
+  if (!Number.isFinite(bookingDate.getTime())) throw new Error('Checkout dates are incomplete');
   const authorized = intent.status === 'requires_capture';
   const paymentStatus = authorized ? 'authorized' as const : 'paid' as const;
   const customerId = typeof intent.customer === 'string' ? intent.customer : intent.customer?.id;
@@ -125,24 +123,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           cancellationPolicyHours: parseCheckoutCancellationPolicy(metadata.cancellation_policy_hours),
           cancellationPolicySnapshot: cancellationSnapshotFromMetadata(metadata),
           specialNotes: metadata.special_notes || null, stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId }).returning();
-        const storageItems: Record<string, unknown>[] = [], equipmentItems: Record<string, unknown>[] = [];
-        for (const [listingId, price] of prices.s) {
-          const [listing] = await tx.select({ ...getTableColumns(storageListings), awaitingRemoval: storageListingAwaitingRemoval }).from(storageListings)
-            .where(and(eq(storageListings.id, listingId), eq(storageListings.kitchenId, kitchenId))).limit(1);
-          if (listing?.awaitingRemoval) throw new KitchenSlotUnavailableError();
-          const dates = storageDates.find(item => item.storageListingId === listingId);
-          if (!listing || !dates || !Number.isFinite(Date.parse(dates.startDate)) || !Number.isFinite(Date.parse(dates.endDate))) throw new Error('Quoted storage is unavailable');
-          const [quote] = await tx.select().from(storageOverstayQuotes).where(and(eq(storageOverstayQuotes.id, metadata[`storage_quote_${listingId}`] || ''),
-            eq(storageOverstayQuotes.chefId, chefId), eq(storageOverstayQuotes.storageListingId, listingId))).limit(1);
-          if (!quote) throw new Error('Accepted storage terms are unavailable');
-          const [item] = await tx.insert(storageBookings).values({ referenceCode: await generateReferenceCode('storage_booking'),
-            kitchenBookingId: parent.id, chefId, storageListingId: listingId, startDate: new Date(dates.startDate), endDate: new Date(dates.endDate),
-            status: 'pending', paymentStatus, paymentIntentId: intent.id, totalPrice: String(price), pricingModel: listing.pricingModel,
-            overstayTerms: { ...(quote.terms as object), acceptedAt: new Date().toISOString() },
-            stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId }).returning();
-          storageItems.push({ id: item.id, storageBookingId: item.id, storageListingId: listingId, name: listing.name,
-            storageType: listing.storageType, totalPrice: price, startDate: dates.startDate, endDate: dates.endDate });
-        }
+        const equipmentItems: Record<string, unknown>[] = [];
         for (const [listingId, price] of prices.e) {
           const [listing] = await tx.select().from(equipmentListings).where(and(eq(equipmentListings.id, listingId), eq(equipmentListings.kitchenId, kitchenId))).limit(1);
           if (!listing) throw new Error('Quoted equipment is unavailable');
@@ -151,7 +132,7 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
             totalPrice: String(price), pricingModel: 'daily', damageDeposit: '0' }).returning();
           equipmentItems.push({ id: item.id, equipmentBookingId: item.id, equipmentListingId: listingId, name: listing.equipmentType, totalPrice: price });
         }
-        await tx.update(kitchenBookings).set({ storageItems, equipmentItems }).where(eq(kitchenBookings.id, parent.id));
+        await tx.update(kitchenBookings).set({ equipmentItems }).where(eq(kitchenBookings.id, parent.id));
         await tx.insert(paymentTransactions).values({ bookingId: parent.id, bookingType: 'kitchen', chefId, managerId: context.managerId,
           amount: String(intent.amount), baseAmount: String(terms.subtotal + terms.tax), taxAmount: String(terms.tax), serviceFee: String(terms.commission),
           managerRevenue: String(terms.subtotal + terms.tax),
@@ -160,10 +141,9 @@ export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Sessi
           netAmount: String(intent.amount), paymentIntentId: intent.id,
           status: authorized ? 'authorized' : 'succeeded', stripeStatus: intent.status,
           metadata: { checkout_session_id: session.id, fee_model: metadata.fee_model, taxRatePercent: terms.rate,
-            platformCommission: terms.commission, storage_items: storageItems, equipment_items: equipmentItems,
+            platformCommission: terms.commission, equipment_items: equipmentItems,
             componentAllocationVersion: 'original-tax-largest-remainder-v1', capturedComponentAllocations: capturedComponentAllocations([
-              { kind: 'kitchen', bookingId: parent.id, subtotalCents: terms.subtotal - [...storageItems, ...equipmentItems].reduce((sum, item) => sum + Number(item.totalPrice), 0) },
-              ...storageItems.map(item => ({ kind: 'storage' as const, bookingId: Number(item.storageBookingId), subtotalCents: Number(item.totalPrice) })),
+              { kind: 'kitchen', bookingId: parent.id, subtotalCents: terms.subtotal - equipmentItems.reduce((sum, item) => sum + Number(item.totalPrice), 0) },
               ...equipmentItems.map(item => ({ kind: 'equipment' as const, bookingId: Number(item.equipmentBookingId), subtotalCents: Number(item.totalPrice) })),
             ], terms.tax) } });
         // "Change request": while the earlier request is still undecided, the kitchen gets ONE notice for the pair, on this request,

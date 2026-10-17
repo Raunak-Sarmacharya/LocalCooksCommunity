@@ -375,12 +375,11 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-06T12:00:00Z')); vi.clearAllMocks(); state.adminEmailEnabled = true; vi.stubEnv('NODE_ENV', 'development'); state.rows = [
     [{ chefId: 3, managerId: 2 }], [{ id: 3, email: 'chef@example.test', role: 'chef' }, { id: 2, email: 'manager@example.test', role: 'manager' }],
     [confirmed()], [{ amount: '1220', tax: '150', fee: '70', payout: '1080' }],
-    [{ name: 'Approved cold storage', item: { totalPrice: '500', startDate: new Date('2026-10-07'), endDate: new Date('2026-10-10') } }],
     [{ name: 'Approved oven', item: { totalPrice: '200' } }],
-    [], [], // declined equipment / storage at approval (none here)
+    [], // declined equipment at approval (none here)
   ]; state.people = state.rows[1]; });
   it('names a requested add-on the kitchen declined in the confirmation (live #169: oven declined, chef not told)', async () => {
-    state.rows[6] = [{ name: 'Commercial Oven' }];
+    state.rows[5] = [{ name: 'Commercial Oven' }];
     await queueBookingLifecycleEvent(tx, 10, 'confirmed', 'Confirmed', 'Captured');
     const emails = state.insert.mock.calls[0][0].emails;
     expect(emails[0].content.text).toContain('Not included: Commercial Oven — the kitchen couldn’t provide it, so you weren’t charged for it.');
@@ -392,7 +391,7 @@ describe('real rich renderer at the persisted confirmation boundary', () => {
     expect(scheduleAdvanceReminders).toHaveBeenCalledWith(tx, 'booking', 10);
     const emails = state.insert.mock.calls[0][0].emails;
     expect(emails[0].content.text).toContain('Total paid: CAD $12.20');
-    expect(emails[0].content.text).toContain('2026-10-07–2026-10-10');
+    expect(emails[0].content.text).toContain('Approved oven');
     expect(emails[0].content.text).not.toContain('Check in for each visit');
     // No Stripe fee recorded yet: the staff estimate subtracts the display estimate (2.9% + $0.30 of $12.20 = $0.65), as the kitchen page does.
     expect(emails[1].content.text).toContain('Estimated payout: CAD $10.15');

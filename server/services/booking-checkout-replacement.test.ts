@@ -33,7 +33,7 @@ import { fulfillKitchenCheckout } from './kitchen-checkout-holds';
 
 const metadata = { kitchen_id: '4', chef_id: '3', booking_date: '2099-01-01', start_time: '10:00', end_time: '12:00',
   total_price_cents: '2000', tax_cents: '300', platform_fee_cents: '140', tax_rate_percent: '15', fee_model: 'separate-charge-commission-v1',
-  addon_prices: '{"s":[],"e":[]}', selected_storage: '[]', hourly_rate_cents: '1000', duration_hours: '2' };
+  addon_prices: '{"s":[],"e":[]}', hourly_rate_cents: '1000', duration_hours: '2' };
 const session = (extra: Record<string, string> = {}): any => ({ id: 'cs_fixture', amount_total: 2440, currency: 'cad', metadata: { ...metadata, ...extra } });
 const intent: any = { id: 'pi_fixture', status: 'requires_capture', amount: 2440 };
 const oldRequest = { id: 10, referenceCode: 'KB-OLD', bookingDate: new Date('2099-01-01T12:00:00Z'), startTime: '10:00', endTime: '11:00' };

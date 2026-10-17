@@ -217,12 +217,3 @@ describe('removal review', () => {
     expect(await recordRemoval(7, { id: 9, role: 'admin' }, { all: true }, at('2026-10-28T00:00:00Z'))).toMatchObject({ state: 'ended' });
   });
 });
-
-describe('legacy overstay detection', () => {
-  it('leaves storage-v1 rentals to the lifecycle rules', async () => {
-    await seed({ endDate: at('2026-09-01T03:00:00Z'), status: 'confirmed' });
-    const { detectOverstays } = await import('./overstay-penalty-service');
-    expect(await detectOverstays()).toEqual([]);
-    expect(await rows(storageOverstayRecords)).toHaveLength(0);
-  });
-});

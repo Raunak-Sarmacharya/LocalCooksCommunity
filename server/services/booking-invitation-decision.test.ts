@@ -50,14 +50,13 @@ describe('atomic invitation capture completion', () => {
   beforeEach(() => {
     vi.resetAllMocks(); mocks.failFinalize = false;
     Object.assign(mocks.state, { kitchen_bookings: [{ id: 1, chefId: 3, kitchenId: 4, status: 'pending', paymentStatus: 'authorized',
-      paymentIntentId: 'pi_fixture', updatedAt: new Date('2026-10-02'), storageItems: [{ storageBookingId: 2 }], equipmentItems: [] }],
-      storage_bookings: [{ id: 2, chefId: 3, kitchenBookingId: 1, totalPrice: '1000', status: 'pending', storageListingId: 8 }],
-      equipment_bookings: [], payment_transactions: [{ id: 7, paymentIntentId: 'pi_fixture', metadata: {} }] });
+      paymentIntentId: 'pi_fixture', updatedAt: new Date('2026-10-02'), storageItems: [], equipmentItems: [{ equipmentBookingId: 2 }] }],
+      equipment_bookings: [{ id: 2, chefId: 3, kitchenBookingId: 1, totalPrice: '1000', status: 'pending', equipmentListingId: 8 }],
+      payment_transactions: [{ id: 7, paymentIntentId: 'pi_fixture', metadata: {} }] });
     mocks.intent.mockResolvedValue({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 });
     mocks.session.mockResolvedValue({ status: 'complete', currency: 'cad', amount_total: 2440,
       metadata: { type: 'kitchen_booking', chef_id: '3', kitchen_id: '4', fee_model: 'separate-charge-commission-v1',
-        total_price_cents: '2000', tax_cents: '300', tax_rate_percent: '15', platform_fee_cents: '140', addon_prices: '{"s":[[8,1000]],"e":[]}',
-        selected_storage: '[{"storageListingId":8}]' } });
+        total_price_cents: '2000', tax_cents: '300', tax_rate_percent: '15', platform_fee_cents: '140', addon_prices: '{"s":[],"e":[[8,1000]]}' } });
   });
   it('rolls back invitation, booking and decision completion together and recovers the original capture', async () => {
     mocks.state.kitchen_bookings[0].invitationId = 'inv_one';

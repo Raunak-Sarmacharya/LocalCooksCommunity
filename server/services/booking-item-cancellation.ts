@@ -9,8 +9,8 @@ export class BookingItemCancellationError extends Error {
   constructor(message: string, readonly status = 409) { super(message); }
 }
 
-export async function cancelBookingItem(kind: 'storage' | 'equipment', id: number, chefId: number, reason?: string) {
-  const table = kind === 'storage' ? storageBookings : equipmentBookings;
+export async function cancelBookingItem(kind: 'equipment', id: number, chefId: number, reason?: string) {
+  const table = equipmentBookings;
   const [item] = await db.select().from(table).where(and(eq(table.id, id), eq(table.chefId, chefId))).limit(1);
   if (!item) throw new BookingItemCancellationError('Booking item not found', 404);
   if (!item.kitchenBookingId) throw new BookingItemCancellationError('Local Cooks must review this historical standalone booking.');
@@ -30,16 +30,11 @@ export async function cancelBookingItem(kind: 'storage' | 'equipment', id: numbe
     const paid = ['paid', 'partially_refunded'].includes(current.paymentStatus || '');
     if (!unpaid && !paid) throw new BookingItemCancellationError('The payment outcome needs Local Cooks review before this item can be cancelled.');
     const status = unpaid ? 'cancelled' as const : 'cancellation_requested' as const;
-    if (kind === 'storage') await tx.update(storageBookings).set({ status,
-      ...(paid ? { cancellationRequestedAt: new Date(), cancellationRequestReason: reason?.trim() || null } : {}),
-      updatedAt: new Date() }).where(eq(storageBookings.id, id));
-    else await tx.update(equipmentBookings).set({ status, updatedAt: new Date() }).where(eq(equipmentBookings.id, id));
-    const snapshotKey = kind === 'storage' ? 'storageItems' : 'equipmentItems';
-    const itemKey = kind === 'storage' ? 'storageBookingId' : 'equipmentBookingId';
-    await tx.update(kitchenBookings).set({ [snapshotKey]: (parent[snapshotKey] as Record<string, unknown>[] || [])
-      .map(entry => (entry[itemKey] ?? entry.id) === id ? { ...entry, status, ...(unpaid ? { rejected: true } : {}) } : entry),
+    await tx.update(equipmentBookings).set({ status, updatedAt: new Date() }).where(eq(equipmentBookings.id, id));
+    await tx.update(kitchenBookings).set({ equipmentItems: (parent.equipmentItems as Record<string, unknown>[] || [])
+      .map(entry => (entry.equipmentBookingId ?? entry.id) === id ? { ...entry, status, ...(unpaid ? { rejected: true } : {}) } : entry),
       updatedAt: new Date() }).where(eq(kitchenBookings.id, parent.id));
-    const title = unpaid ? `${kind === 'storage' ? 'Storage' : 'Equipment'} add-on cancelled` : `${kind === 'storage' ? 'Storage' : 'Equipment'} cancellation requested`;
+    const title = unpaid ? 'Equipment add-on cancelled' : 'Equipment cancellation requested';
     const message = `${title} for booking #${parent.id}, item #${id}. Your kitchen time and other add-ons stay reserved. ${unpaid
       ? 'Your card hold stays in place. Only accepted items will be charged when the booking is confirmed.'
       : 'The kitchen will review your cancellation request and refund separately.'}${reason?.trim() ? ` Note from the chef: ${reason.trim()}` : ''}`;

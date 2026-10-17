@@ -80,9 +80,12 @@ export async function getDeletionBlockers(exec: { execute: (q: SQL) => Promise<{
       ? sql`dc.location_id = ${scope.locationId} OR dc.kitchen_booking_id IN (SELECT kb.id FROM kitchen_bookings kb WHERE ${bw})`
       : sql`dc.kitchen_booking_id IN (SELECT kb.id FROM kitchen_bookings kb WHERE ${bw})
         OR dc.storage_booking_id IN (SELECT sb.id FROM storage_bookings sb WHERE sb.storage_listing_id IN (SELECT id FROM storage_listings WHERE kitchen_id IN ${kitchensOfScope(scope)}))`;
+  const rentalScope = scope.kind === "user"
+    ? sql`(sb.chef_id = ${scope.userId} OR sl.kitchen_id IN ${kitchensOfScope(scope)})`
+    : sql`sl.kitchen_id IN ${kitchensOfScope(scope)}`;
   const moneyScope = scope.kind === "user"
-    ? sql`(kb.id IS NOT NULL OR pt.chef_id = ${scope.userId} OR pt.manager_id = ${scope.userId})`
-    : sql`kb.id IS NOT NULL`;
+    ? sql`(kb.id IS NOT NULL OR sb.id IS NOT NULL OR pt.chef_id = ${scope.userId} OR pt.manager_id = ${scope.userId})`
+    : sql`(kb.id IS NOT NULL OR sb.id IS NOT NULL)`;
   const incidentScope = scope.kind === "user" ? sql`i.chef_id = ${scope.userId} OR i.kitchen_id IN ${kitchensOfScope(scope)}` : sql`i.kitchen_id IN ${kitchensOfScope(scope)}`;
 
   const upcoming = await exec.execute(sql`
@@ -97,14 +100,16 @@ export async function getDeletionBlockers(exec: { execute: (q: SQL) => Promise<{
     ORDER BY dc.id LIMIT ${REF_LIMIT}`);
   // Authorized/processing money, a pending charge on a live booking, a refund still being recovered, or a payout not yet sent.
   const money = await exec.execute(sql`
-    SELECT pt.id, kb.reference_code, kb.id AS kb_id, COUNT(*) OVER()::int AS total
+    SELECT pt.id, COALESCE(kb.reference_code, sb.reference_code) AS reference_code, kb.id AS kb_id, COUNT(*) OVER()::int AS total
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type IN ('kitchen', 'bundle') AND kb.id = pt.booking_id AND (${bw})
+    LEFT JOIN storage_listings sl ON sl.id = (SELECT storage_listing_id FROM storage_bookings WHERE id = pt.booking_id AND pt.booking_type = 'storage')
+    LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND sb.id = pt.booking_id AND (${rentalScope})
     WHERE ${moneyScope} AND (
       pt.status::text IN ('authorized', 'processing')
-      OR (pt.status::text = 'pending' AND kb.status::text <> 'cancelled')
+      OR (pt.status::text = 'pending' AND (kb.status::text <> 'cancelled' OR sb.rental_state IN ('requested', 'reserved', 'active', 'move_out_requested', 'removal_review')))
       OR COALESCE(pt.metadata->'cancellationRefundOperation'->>'status', '') IN ('executing', 'recovery_required')
-      OR (pt.status::text IN ('succeeded', 'partially_refunded') AND pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL
+      OR (pt.status::text IN ('succeeded', 'partially_refunded') AND pt.payout_timing IN ('after_closeout', 'storage_term') AND pt.transfer_id IS NULL
           AND COALESCE(pt.metadata->>'payoutNoEntitlement', 'false') <> 'true')
     ) ORDER BY pt.id LIMIT ${REF_LIMIT}`);
   const actions = await exec.execute(sql`
@@ -116,9 +121,6 @@ export async function getDeletionBlockers(exec: { execute: (q: SQL) => Promise<{
     FROM kitchen_checkout_incidents i
     WHERE (${incidentScope}) AND i.outcome IN ('inventory_conflict', 'needs_support', 'verifying')
       AND i.money_status IN ('unverified', 'refund_pending') ORDER BY i.id LIMIT ${REF_LIMIT}`);
-  const rentalScope = scope.kind === "user"
-    ? sql`(sb.chef_id = ${scope.userId} OR sl.kitchen_id IN ${kitchensOfScope(scope)})`
-    : sql`sl.kitchen_id IN ${kitchensOfScope(scope)}`;
   const rentals = await exec.execute(sql`
     SELECT sb.id, sb.reference_code, sb.term_start, COUNT(*) OVER()::int AS total
     FROM storage_bookings sb

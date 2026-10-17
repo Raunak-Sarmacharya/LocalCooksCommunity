@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { kitchenBookings, storageBookings, equipmentBookings, paymentTransactions } from '@shared/schema';
+import { kitchenBookings, equipmentBookings, paymentTransactions } from '@shared/schema';
 const mocks = vi.hoisted(() => ({ intent: vi.fn(), session: vi.fn(), capture: vi.fn(), cancel: vi.fn(),
   state: {} as Record<string, any[]>, failFinalize: false }));
 vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: mocks.intent, getBookingCheckoutSession: mocks.session,
@@ -46,21 +46,20 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
   beforeEach(() => {
     vi.resetAllMocks(); mocks.failFinalize = false;
     Object.assign(mocks.state, { kitchen_bookings: [{ id: 1, chefId: 3, kitchenId: 4, status: 'pending', paymentStatus: 'authorized',
-      paymentIntentId: 'pi_fixture', updatedAt: new Date('2026-10-02'), storageItems: [{ storageBookingId: 2 }], equipmentItems: [] }],
-      storage_bookings: [{ id: 2, chefId: 3, kitchenBookingId: 1, totalPrice: '1000', status: 'pending', storageListingId: 8 }],
-      equipment_bookings: [], payment_transactions: [{ id: 7, paymentIntentId: 'pi_fixture', metadata: {} }] });
+      paymentIntentId: 'pi_fixture', updatedAt: new Date('2026-10-02'), storageItems: [], equipmentItems: [{ equipmentBookingId: 2 }] }],
+      equipment_bookings: [{ id: 2, chefId: 3, kitchenBookingId: 1, totalPrice: '1000', status: 'pending', equipmentListingId: 8 }],
+      payment_transactions: [{ id: 7, paymentIntentId: 'pi_fixture', metadata: {} }] });
     mocks.intent.mockResolvedValue({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 });
     mocks.session.mockResolvedValue({ status: 'complete', currency: 'cad', amount_total: 2440,
       metadata: { type: 'kitchen_booking', chef_id: '3', kitchen_id: '4', fee_model: 'separate-charge-commission-v1',
-        total_price_cents: '2000', tax_cents: '300', tax_rate_percent: '15', platform_fee_cents: '140', addon_prices: '{"s":[[8,1000]],"e":[]}',
-        selected_storage: '[{"storageListingId":8}]' } });
+        total_price_cents: '2000', tax_cents: '300', tax_rate_percent: '15', platform_fee_cents: '140', addon_prices: '{"s":[],"e":[[8,1000]]}' } });
   });
   it('leaves the booking pending and retains its frozen decision after capture timeout', async () => {
     mocks.capture.mockRejectedValue(new Error('timeout'));
-    await expect(decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }])).rejects.toThrow('timeout');
+    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('timeout');
     expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'authorized',
       paymentDecision: { state: 'pending', amount: 1220, subtotal: 1000, commission: 70, tax: 150 } });
-    expect(mocks.state.storage_bookings[0].status).toBe('pending');
+    expect(mocks.state.equipment_bookings[0].status).toBe('pending');
   });
   it('records captured money when capture wins a cancellation release, without releasing linked resources', async () => {
     mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
@@ -70,7 +69,7 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     await expect(decideAuthorizedBooking(1, 'cancelled')).rejects.toThrow('Paid funds are recorded');
     expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'paid', paymentDecision: { target: 'cancelled', state: 'pending' } });
     expect(mocks.state.payment_transactions[0]).toMatchObject({ status: 'succeeded', stripeStatus: 'succeeded' });
-    expect(mocks.state.storage_bookings[0]).toMatchObject({ kitchenBookingId: 1, status: 'pending' });
+    expect(mocks.state.equipment_bookings[0]).toMatchObject({ kitchenBookingId: 1, status: 'pending' });
     expect(mocks.capture).not.toHaveBeenCalled();
     expect(vi.mocked(queueBookingLifecycleEvent).mock.calls.some(call => call[2] === 'payment_recovery_needed')).toBe(true);
   });
@@ -79,15 +78,15 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
       .mockResolvedValue({ id: 'pi_fixture', status: 'succeeded', amount_received: 1220 });
     mocks.failFinalize = true;
-    await expect(decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }])).rejects.toThrow('DB unavailable');
+    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('DB unavailable');
     expect(mocks.state.kitchen_bookings[0].status).toBe('pending');
     mocks.failFinalize = false;
     await expect(decideAuthorizedBooking(1, 'confirmed')).resolves.toMatchObject({ success: true });
     expect(mocks.capture).toHaveBeenCalledTimes(1);
     expect(mocks.capture).toHaveBeenCalledWith('pi_fixture', 1220, undefined, expect.stringMatching(/^booking-decision:/));
     expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', totalPrice: '1000',
-      serviceFee: '70', storageItems: [{ storageBookingId: 2, rejected: true }], paymentDecision: { state: 'complete' } });
-    expect(mocks.state.storage_bookings[0]).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
+      serviceFee: '70', equipmentItems: [{ equipmentBookingId: 2, rejected: true }], paymentDecision: { state: 'complete' } });
+    expect(mocks.state.equipment_bookings[0]).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
   });
   it('does not confirm a processing payment', async () => {
     mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
@@ -104,13 +103,13 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     vi.mocked(queueBookingLifecycleEvent).mockImplementationOnce(async tx => {
       const [booking] = await tx.select().from(kitchenBookings);
       const [payment] = await tx.select().from(paymentTransactions);
-      const [storage] = await tx.select().from(storageBookings);
+      const [equipment] = await tx.select().from(equipmentBookings);
       expect(booking).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', paymentDecision: { state: 'complete', amount: 1220 } });
       // A declined add-on never inflates the kitchen share (live #169: $57.50 shown for a $30.50 capture).
       expect(payment).toMatchObject({ status: 'succeeded', amount: '1220', managerRevenue: '1150' });
-      expect(storage).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
+      expect(equipment).toMatchObject({ status: 'cancelled', paymentStatus: 'failed' });
     });
-    await decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }]);
+    await decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }]);
     expect(queueBookingLifecycleEvent).toHaveBeenCalledWith(expect.anything(), 1, 'confirmed', expect.any(String), expect.any(String), undefined, expect.objectContaining({ decisionId: expect.any(String) }));
   });
   it('does not change a persisted approval into rejection', async () => {
@@ -160,7 +159,13 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
   it('blocks partial capture when original item prices are missing', async () => {
     const session = await mocks.session(); delete session.metadata.addon_prices;
     mocks.session.mockResolvedValue(session);
-    await expect(decideAuthorizedBooking(1, 'confirmed', [{ storageBookingId: 2, action: 'cancelled' }])).rejects.toThrow('original checkout terms');
+    await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }])).rejects.toThrow('original checkout terms');
+    expect(mocks.capture).not.toHaveBeenCalled();
+  });
+  it('sends a checkout that priced storage before the cutover to review instead of capturing it', async () => {
+    const session = await mocks.session(); session.metadata.addon_prices = '{"s":[[9,500]],"e":[[8,1000]]}';
+    mocks.session.mockResolvedValue(session);
+    await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow('original checkout terms');
     expect(mocks.capture).not.toHaveBeenCalled();
   });
   it('refuses to confirm a request past its 24-hour response deadline and releases the hold', async () => {
@@ -188,7 +193,7 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
         expect(mocks.cancel).not.toHaveBeenCalled();
       });
       expect(mocks.state.kitchen_bookings[0].paymentDecision).toMatchObject({ target: 'cancelled', state: 'pending', replacedBy,
-        authorizedAmount: 2440, storage: [{ id: 2, status: 'cancelled' }] });
+        authorizedAmount: 2440, storage: [], equipment: [{ id: 2, status: 'cancelled' }] });
       await expect(decideAuthorizedBooking(1, 'confirmed')).rejects.toThrow('different payment decision');
       expect(mocks.capture).not.toHaveBeenCalled();
     });

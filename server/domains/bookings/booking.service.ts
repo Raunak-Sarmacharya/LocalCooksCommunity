@@ -77,13 +77,6 @@ export class BookingService {
         // Final approval and current access are required for every new booking.
         const kitchen = await kitchenService.getKitchenById(data.kitchenId);
         if (!kitchen) throw new Error("Kitchen not found");
-        const selectedStorageIds = data.selectedStorage?.map(item => item.storageListingId) || data.selectedStorageIds || [];
-        if (selectedStorageIds.length) {
-            const { inventoryService } = await import('../inventory/inventory.service');
-            for (const id of selectedStorageIds) if ((await inventoryService.getStorageListingById(id))?.awaitingRemoval)
-                throw new Error('This storage is awaiting confirmed removal and cannot be reserved yet.');
-        }
-
         const pricingMode = data.pricingMode ?? 'hourly';
         if (pricingMode !== 'hourly' && pricingMode !== 'daily') throw new Error('Invalid pricing mode');
         const availability = await this.validateBookingAvailability(data.kitchenId, data.bookingDate, data.startTime, data.endTime, {
@@ -145,125 +138,6 @@ export class BookingService {
             pricingMode,
             paymentStatus: data.paymentStatus || 'pending'
         });
-
-        // 5. Create Storage Bookings
-        let storageTotalCents = 0;
-        const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
-        
-        // Use selectedStorage with explicit dates if available, otherwise fall back to selectedStorageIds
-        if (data.selectedStorage && data.selectedStorage.length > 0) {
-            try {
-                const { inventoryService } = await import('../inventory/inventory.service');
-                
-                for (const storage of data.selectedStorage) {
-                    const listing = await inventoryService.getStorageListingById(storage.storageListingId);
-                    if (listing) {
-                        // DB stores basePrice in cents
-                        const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || '0')));
-                        const minDays = listing.minimumBookingDuration || 1;
-                        
-                        const storageStartDate = new Date(storage.startDate);
-                        const storageEndDate = new Date(storage.endDate);
-                        const days = Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60 * 24));
-                        const effectiveDays = Math.max(days, minDays);
-                        
-                        let priceCents = listingBasePriceCents * effectiveDays;
-                        if (listing.pricingModel === 'hourly') {
-                            const durationHours = Math.max(1, Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60)));
-                            priceCents = listingBasePriceCents * durationHours;
-                        } else if (listing.pricingModel === 'monthly-flat') {
-                            priceCents = listingBasePriceCents;
-                        }
-
-                        // Create Storage Booking Record with explicit dates
-                        // Status must be 'pending' — manager approval required before confirmation
-                        const storageBooking = await this.repo.createStorageBooking({
-                            kitchenBookingId: booking.id,
-                            storageListingId: listing.id,
-                            chefId: data.chefId,
-                            startDate: storageStartDate,
-                            endDate: storageEndDate,
-                            status: 'pending',
-                            totalPrice: priceCents.toString(),
-                            pricingModel: listing.pricingModel || 'daily',
-                            serviceFee: '0',
-                            currency: pricing.currency
-                        });
-                        
-                        if (storageBooking) {
-                            storageItemsForJson.push({
-                                id: storageBooking.id,
-                                storageListingId: listing.id,
-                                name: listing.name || 'Storage',
-                                storageType: listing.storageType || 'other',
-                                totalPrice: priceCents,
-                                startDate: storageStartDate.toISOString(),
-                                endDate: storageEndDate.toISOString()
-                            });
-                        }
-                        
-                        storageTotalCents += priceCents;
-                    }
-                }
-            } catch (err) {
-                logger.error('Error creating storage bookings with explicit dates:', err);
-            }
-        } else if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
-            // Fallback: use selectedStorageIds with booking date as both start and end
-            try {
-                const { inventoryService } = await import('../inventory/inventory.service');
-                
-                for (const storageId of data.selectedStorageIds) {
-                    const listing = await inventoryService.getStorageListingById(storageId);
-                    if (listing) {
-                        let priceCents = 0;
-                        // DB stores basePrice in cents
-                        const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || '0')));
-
-                        if (listing.pricingModel === 'hourly') {
-                            const duration = calculateDurationHours(data.startTime, data.endTime);
-                            const effectiveDuration = Math.max(1, Math.ceil(duration));
-                            priceCents = listingBasePriceCents * effectiveDuration;
-                        } else {
-                            // Flat rate (daily/monthly/per-use) - simplified for MVP
-                             priceCents = listingBasePriceCents;
-                        }
-
-                        // Create Storage Booking Record
-                        // Status must be 'pending' — manager approval required before confirmation
-                        const storageBooking = await this.repo.createStorageBooking({
-                            kitchenBookingId: booking.id,
-                            storageListingId: listing.id,
-                            chefId: data.chefId,
-                            startDate: data.bookingDate,
-                            endDate: data.bookingDate, // Single day for hourly
-                            status: 'pending',
-                            totalPrice: priceCents.toString(),
-                            pricingModel: listing.pricingModel || 'daily',
-                            serviceFee: '0', // No service fee for customer
-                            currency: pricing.currency
-                        });
-                        
-                        // Add to storage_items JSONB array for denormalized storage
-                        if (storageBooking) {
-                            storageItemsForJson.push({
-                                id: storageBooking.id,
-                                storageListingId: listing.id,
-                                name: listing.name || 'Storage',
-                                storageType: listing.storageType || 'other',
-                                totalPrice: priceCents,
-                                startDate: storageBooking.startDate?.toISOString?.() || data.bookingDate.toISOString(),
-                                endDate: storageBooking.endDate?.toISOString?.() || data.bookingDate.toISOString()
-                            });
-                        }
-                        
-                        storageTotalCents += priceCents;
-                    }
-                }
-            } catch (err) {
-                logger.error('Error creating storage bookings:', err);
-            }
-        }
 
         // 6. Create Equipment Bookings
         let equipmentTotalCents = 0;
@@ -327,7 +201,7 @@ export class BookingService {
         // ServiceFee = serviceFeeCents (Wait, strictly kitchen fee? or should it be total fee? 
         // Manager expects 5% of TOTAL volume? Usually yes.
         // So recalculated Service Fee = (Kitchen + Storage + Equipment) * 5%.
-        const grandTotalCents = pricing.totalPriceCents + storageTotalCents + equipmentTotalCents;
+        const grandTotalCents = pricing.totalPriceCents + equipmentTotalCents;
         const newServiceFeeCents = await calculatePlatformFeeDynamic(grandTotalCents);
 
         // Update booking with total price, service fee, storage_items and equipment_items JSONB
@@ -336,7 +210,6 @@ export class BookingService {
         await this.repo.updateKitchenBooking(booking.id, {
             totalPrice: grandTotalCents.toString(),
             serviceFee: newServiceFeeCents.toString(),
-            storageItems: storageItemsForJson,
             equipmentItems: equipmentItemsForJson
         });
 
@@ -725,133 +598,6 @@ export class BookingService {
         return this.repo.getStorageBookingById(id);
     }
 
-    async extendStorageBooking(id: number, newEndDate: Date) {
-        // Logic ported from storage-firebase.ts
-        const booking = await this.repo.getStorageBookingById(id);
-        if (!booking) throw new Error(`Storage booking with id ${id} not found`);
-
-        if (booking.status === 'cancelled') throw new Error('Cannot extend a cancelled booking');
-        if (booking.status === 'completed') throw new Error('Cannot extend a completed booking. Storage has already been cleared.');
-
-        const currentEndDate = new Date(booking.endDate);
-        if (newEndDate <= currentEndDate) throw new Error('New end date must be after the current end date');
-
-        const extensionDays = Math.ceil((newEndDate.getTime() - currentEndDate.getTime()) / (1000 * 60 * 60 * 24));
-        const minDays = booking.minimumBookingDuration || 1;
-
-        if (extensionDays < minDays) throw new Error(`Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}`);
-
-        // Service fee rate
-        const { getServiceFeeRate } = await import('../../services/pricing-service');
-        const serviceFeeRate = await getServiceFeeRate();
-
-        // booking.basePrice is in dollars or cents? 
-        // In BookingRepository.getStorageBookingById, we do NOT format basePrice.
-        // Wait, let's look at BookingRepository again (Step 860).
-        // I copied logic: returns booking (raw) with joins.
-        // Ah, `storage-firebase` getStorageBookingById returns formatted object.
-        // My `BookingRepository` returns raw object from `db.select`. it does NOT format anything unless I mapped it. 
-        // I did NOT map it in `getStorageBookingById` in Step 860. I just returned `booking || null`.
-        // BUT I DID map it in `getStorageBookingsByChefId`.
-        // So `getStorageBookingById` returns basePrice as string (cents).
-
-        const basePricePerDayDollars = booking.basePrice ? parseFloat(booking.basePrice.toString()) / 100 : 0;
-
-        const extensionBasePrice = basePricePerDayDollars * extensionDays;
-        const extensionServiceFee = extensionBasePrice * serviceFeeRate;
-        const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
-
-        // Convert to cents
-        const extensionTotalPriceCents = Math.round(extensionTotalPrice * 100);
-        const extensionServiceFeeCents = Math.round(extensionServiceFee * 100);
-
-        const existingTotalPriceCents = Math.round(parseFloat((booking.totalPrice || '0').toString()));
-        const existingServiceFeeCents = Math.round(parseFloat((booking.serviceFee || '0').toString()));
-
-        const newTotalPriceCents = existingTotalPriceCents + extensionTotalPriceCents;
-        const newServiceFeeCents = existingServiceFeeCents + extensionServiceFeeCents;
-
-        await this.repo.updateStorageBooking(id, {
-            endDate: newEndDate,
-            totalPrice: newTotalPriceCents.toString(),
-            serviceFee: newServiceFeeCents.toString(),
-        });
-
-        const updatedBooking = await this.repo.getStorageBookingById(id);
-
-        // Also update the storageItems JSONB in the associated kitchen booking
-        // so that manager view shows the extended dates
-        if (booking.kitchenBookingId) {
-            try {
-                const kitchenBooking = await this.repo.getKitchenBookingById(booking.kitchenBookingId);
-                if (kitchenBooking && kitchenBooking.storageItems && Array.isArray(kitchenBooking.storageItems)) {
-                    // Find and update the storage item with matching storageListingId
-                    const updatedStorageItems = kitchenBooking.storageItems.map((item: any) => {
-                        if (item.storageListingId === booking.storageListingId || item.id === id) {
-                            return {
-                                ...item,
-                                endDate: newEndDate.toISOString(),
-                                totalPrice: newTotalPriceCents, // Update price too
-                            };
-                        }
-                        return item;
-                    });
-                    
-                    await this.repo.updateKitchenBooking(booking.kitchenBookingId, {
-                        storageItems: updatedStorageItems,
-                    });
-                    
-                    logger.info(`[BookingService] Updated storageItems JSONB in kitchen booking ${booking.kitchenBookingId} for storage extension`, {
-                        storageBookingId: id,
-                        newEndDate: newEndDate.toISOString(),
-                    });
-                }
-            } catch (error) {
-                // Log but don't fail the extension - the storage_bookings table is the source of truth
-                logger.warn(`[BookingService] Failed to update storageItems JSONB in kitchen booking: ${error}`);
-            }
-        }
-
-        // Return structured response matching legacy format expected by frontend/logic
-        return {
-            ...updatedBooking,
-            // We should format money fields if the caller expects dollars, but here we return mixed struct?
-            // storage-firebase returned formatted dollars.
-            // I should probably stick to returning what DB returns but add the extensionDetails.
-            extensionDetails: {
-                extensionDays,
-                extensionBasePrice,
-                extensionServiceFee,
-                extensionTotalPrice,
-                newEndDate: newEndDate.toISOString()
-            }
-        };
-    }
-
-    // ===== PENDING STORAGE EXTENSIONS =====
-
-    async createPendingStorageExtension(data: {
-        storageBookingId: number;
-        newEndDate: Date;
-        extensionDays: number;
-        extensionBasePriceCents: number;
-        extensionServiceFeeCents: number;
-        extensionTotalPriceCents: number;
-        stripeSessionId: string;
-        stripePaymentIntentId?: string;
-        status: string;
-    }) {
-        return this.repo.createPendingStorageExtension(data);
-    }
-
-    async getPendingStorageExtension(storageBookingId: number, stripeSessionId: string) {
-        return this.repo.getPendingStorageExtension(storageBookingId, stripeSessionId);
-    }
-
-    async updatePendingStorageExtension(id: number, updates: { status: string; stripePaymentIntentId?: string; completedAt?: Date }) {
-        return this.repo.updatePendingStorageExtension(id, updates);
-    }
-
     /**
      * Month availability where a day is true only if at least one bookable slot remains
      * (not fully booked, and not in the past for today).
@@ -965,18 +711,6 @@ export class BookingService {
         }
 
         return result;
-    }
-
-    /**
-     * @deprecated Use overstayPenaltyService.detectOverstays() instead.
-     * This method is kept for backward compatibility but no longer auto-charges.
-     * The new system requires manager approval before any charges.
-     */
-    async processOverstayerPenalties(_maxDaysToCharge: number = 7) {
-        logger.warn('[DEPRECATED] processOverstayerPenalties called - use overstayPenaltyService instead');
-        // Redirect to new detection system
-        const { overstayPenaltyService } = await import('../../services/overstay-penalty-service');
-        return overstayPenaltyService.detectOverstays();
     }
 }
 

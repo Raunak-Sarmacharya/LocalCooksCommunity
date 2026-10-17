@@ -20,10 +20,6 @@ vi.mock('stripe', () => ({
     checkout = { sessions: { create: state.create } };
   },
 }));
-vi.mock('./storage-overstay-terms-service', () => ({
-  saveStorageOverstayQuote: vi.fn(),
-  describeStorageOverstayTerms: vi.fn(),
-}));
 
 describe('kitchen invitation checkout metadata', () => {
   beforeAll(() => { process.env.STRIPE_SECRET_KEY = 'sk_test_fake'; });
@@ -40,7 +36,7 @@ describe('kitchen invitation checkout metadata', () => {
         kitchenId: 54, chefId: 8, bookingDate: '2026-11-03T12:00:00.000Z',
         startTime: '09:00', endTime: '11:00',
         selectedSlots: [{ startTime: '09:00', endTime: '10:00' }, { startTime: '10:00', endTime: '11:00' }],
-        selectedStorage: [], selectedEquipmentIds: [], totalPriceCents: 10_000, taxCents: 500,
+        selectedEquipmentIds: [], totalPriceCents: 10_000, taxCents: 500,
         hourlyRateCents: 5_000, durationHours: 2, pricingMode: 'hourly',
         holdId: 'hold-1', windowStartTime: '09:00', platform_fee_cents: 350,
         invitationId: 'invite-1', invitationVersion: 3,

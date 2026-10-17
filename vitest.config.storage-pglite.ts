@@ -5,7 +5,7 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['server/services/storage-move-in-out.test.ts', 'shared/storage-rental.pglite.check.ts', 'server/services/storage-rentals.test.ts', 'server/services/storage-extensions.test.ts', 'server/services/storage-payouts.test.ts'],
+    include: ['server/services/storage-move-in-out.test.ts', 'shared/storage-rental.pglite.check.ts', 'server/services/storage-rentals.test.ts', 'server/services/storage-extensions.test.ts', 'server/services/storage-payouts.test.ts', 'server/services/deletion-guard.pglite.test.ts'],
     testTimeout: 60000,
     hookTimeout: 120000,
   },

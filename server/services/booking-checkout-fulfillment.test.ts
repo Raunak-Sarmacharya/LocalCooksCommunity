@@ -29,25 +29,22 @@ import { fulfillQuotedKitchenBooking } from './booking-checkout-fulfillment';
 const session: any = { id: 'cs_fixture', amount_total: 2440, currency: 'cad', metadata: {
   kitchen_id: '4', chef_id: '3', booking_date: '2099-01-01', start_time: '10:00', end_time: '11:00',
   total_price_cents: '2000', tax_cents: '300', platform_fee_cents: '140', tax_rate_percent: '15',
-  fee_model: 'separate-charge-commission-v1', addon_prices: '{"s":[[8,1000]],"e":[]}',
-  selected_storage: '[{"storageListingId":8,"startDate":"2099-01-01","endDate":"2099-01-02"}]', storage_quote_8: 'quote_fixture',
+  fee_model: 'separate-charge-commission-v1', addon_prices: '{"s":[],"e":[[8,1000]]}',
   hourly_rate_cents: '1000', duration_hours: '1' } };
 const intent: any = { id: 'pi_fixture', status: 'requires_capture', amount: 2440 };
 describe('atomic quoted checkout fulfillment', () => {
   beforeEach(() => {
     vi.resetAllMocks(); state.next = 100;
-    Object.assign(state.rows, { kitchen_bookings: [], storage_bookings: [], equipment_bookings: [], payment_transactions: [],
-      kitchens: [{ id: 4, managerId: 2 }], storage_listings: [{ id: 8, kitchenId: 4, name: 'Storage', pricingModel: 'daily', basePrice: '9999' }],
-      storage_overstay_quotes: [{ id: 'quote_fixture', chefId: 3, storageListingId: 8, terms: { approved: 'original' } }] });
+    Object.assign(state.rows, { kitchen_bookings: [], equipment_bookings: [], payment_transactions: [],
+      kitchens: [{ id: 4, managerId: 2 }], equipment_listings: [{ id: 8, kitchenId: 4, equipmentType: 'Oven', sessionRate: '9999' }] });
   });
   it('keeps quoted prices after listing rates change and duplicates no items on retry', async () => {
     const id = await fulfillQuotedKitchenBooking(session, intent, {} as any);
-    expect(state.rows.storage_bookings[0].totalPrice).toBe('1000');
-    expect(state.rows.storage_bookings[0].overstayTerms.approved).toBe('original');
+    expect(state.rows.equipment_bookings[0].totalPrice).toBe('1000');
     expect(state.rows.payment_transactions).toHaveLength(1);
     expect(await fulfillQuotedKitchenBooking(session, intent, {} as any)).toBe(id);
     expect(state.rows.kitchen_bookings).toHaveLength(1);
-    expect(state.rows.storage_bookings).toHaveLength(1);
+    expect(state.rows.equipment_bookings).toHaveLength(1);
     expect(state.event).toHaveBeenCalledOnce();
   });
   it('persists the exact accepted policy from session metadata even after a kitchen edits it', async () => {
@@ -63,7 +60,7 @@ describe('atomic quoted checkout fulfillment', () => {
     state.event.mockRejectedValueOnce(new Error('delivery unavailable'));
     await expect(fulfillQuotedKitchenBooking(session, intent, {} as any)).rejects.toThrow('delivery unavailable');
     expect(state.rows.kitchen_bookings).toHaveLength(0);
-    expect(state.rows.storage_bookings).toHaveLength(0);
+    expect(state.rows.equipment_bookings).toHaveLength(0);
     expect(state.rows.payment_transactions).toHaveLength(0);
     await fulfillQuotedKitchenBooking(session, intent, {} as any);
     expect(state.rows.kitchen_bookings).toHaveLength(1);

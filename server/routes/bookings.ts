@@ -81,6 +81,8 @@ async function withdrawExtensionsAfterCheckout(bookingId: number, visitId?: numb
 }
 
 const router = Router();
+// Storage left kitchen booking checkout (ST12); refuse an old client's selection instead of silently dropping it.
+const STORAGE_SEPARATE = "Storage is now rented on its own. Remove storage from this kitchen booking and rent it from the Storage page.";
 router.get('/kitchens/:id/cancellation-policy', async (req, res) => {
     try {
         const { publishedCancellationPolicy, cancellationSettings } = await import('../services/cancellation-policy-settings');
@@ -177,7 +179,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
         const isManager = role === 'manager';
         // Chef = anyone who isn't admin or manager (includes isChef flag users)
 
-        const { storageBookings: sb, pendingStorageExtensions, storageOverstayRecords, damageClaims, storageListings: sl } = await import("@shared/schema");
+        const { storageBookings: sb, storageOverstayRecords, damageClaims, storageListings: sl } = await import("@shared/schema");
 
         const parsedId = isNumeric ? parseInt(code, 10) : null;
 
@@ -227,22 +229,6 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .limit(1);
             if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : `/dashboard` });
         } 
-        if (prefix === 'EXT' || isNumeric) {
-            const [ext] = await db.select({ id: pendingStorageExtensions.id, referenceCode: pendingStorageExtensions.referenceCode })
-                .from(pendingStorageExtensions)
-                .innerJoin(sb, eq(pendingStorageExtensions.storageBookingId, sb.id))
-                .innerJoin(sl, eq(sb.storageListingId, sl.id))
-                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .where(
-                    and(
-                        isNumeric ? eq(pendingStorageExtensions.id, parsedId!) : eq(pendingStorageExtensions.referenceCode, code),
-                        isAdmin ? undefined : isManager ? eq(locations.managerId, user.id) : eq(sb.chefId, user.id),
-                    )
-                )
-                .limit(1);
-            if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${ext.referenceCode}` : `/dashboard` });
-        } 
         if (prefix === 'OP' || isNumeric) {
             const [record] = await db.select({ id: storageOverstayRecords.id, referenceCode: storageOverstayRecords.referenceCode })
                 .from(storageOverstayRecords)
@@ -279,21 +265,6 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
     }
 });
 
-// Get chef's storage bookings
-router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Response) => {
-    try {
-        const storageBookings = await bookingService.getStorageBookingsByChef(req.neonUser!.id);
-        const { storageDuties } = await import('../services/visit-duties');
-        res.json(await Promise.all(storageBookings.map(async booking => {
-            const duties = await storageDuties(booking.id);
-            return { ...booking, visitDuties: duties, storageCheckinEnabled: duties.arrival.enabled, storageCheckoutEnabled: duties.departure.enabled };
-        })));
-    } catch (error) {
-        logger.error("Error fetching storage bookings:", error);
-        res.status(500).json({ error: "Failed to fetch storage bookings" });
-    }
-});
-
 // Get chef's equipment bookings (mirrors storage-bookings pattern)
 router.get("/chef/equipment-bookings", requireChef, async (req: Request, res: Response) => {
     try {
@@ -302,75 +273,6 @@ router.get("/chef/equipment-bookings", requireChef, async (req: Request, res: Re
     } catch (error) {
         logger.error("Error fetching equipment bookings:", error);
         res.status(500).json({ error: "Failed to fetch equipment bookings" });
-    }
-});
-
-// IMPORTANT: Static routes MUST be defined before parameterized routes
-// Otherwise Express matches "expiring" as :id and returns 400
-// Get expiring storage bookings for chef (for notifications)
-router.get("/chef/storage-bookings/expiring", requireChef, async (req: Request, res: Response) => {
-    try {
-        const chefId = req.neonUser!.id;
-        const daysAhead = parseInt(req.query.days as string) || 3;
-        
-        const storageBookings = await bookingService.getStorageBookingsByChef(chefId);
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const expiringBookings = storageBookings.filter((booking: any) => {
-            // Only confirmed bookings can expire — pending (not yet approved),
-            // cancelled, and completed bookings should not show expiry warnings
-            if (booking.status !== 'confirmed') return false;
-            
-            const endDate = new Date(booking.endDate);
-            endDate.setHours(0, 0, 0, 0);
-            
-            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            
-            return daysUntilExpiry <= daysAhead && daysUntilExpiry >= -7;
-        }).map((booking: any) => {
-            const endDate = new Date(booking.endDate);
-            endDate.setHours(0, 0, 0, 0);
-            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            
-            return {
-                ...booking,
-                daysUntilExpiry,
-                isExpired: daysUntilExpiry < 0,
-                isExpiringSoon: daysUntilExpiry >= 0 && daysUntilExpiry <= 2,
-            };
-        });
-        
-        res.json(expiringBookings);
-    } catch (error: any) {
-        logger.error("Error fetching expiring storage bookings:", error);
-        res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
-    }
-});
-
-// Get a single storage booking
-router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: Response) => {
-    try {
-        const id = parseInt(req.params.id);
-        if (isNaN(id) || id <= 0) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-        }
-
-        const booking = await bookingService.getStorageBookingById(id);
-        if (!booking) {
-            return res.status(404).json({ error: "Storage booking not found" });
-        }
-
-        // Verify the booking belongs to this chef
-        if (booking.chefId !== req.neonUser!.id) {
-            return res.status(403).json({ error: "You don't have permission to view this booking" });
-        }
-
-        res.json(booking);
-    } catch (error: any) {
-        logger.error("Error fetching storage booking:", error);
-        res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
     }
 });
 
@@ -407,319 +309,6 @@ router.put('/chef/equipment-bookings/:id/cancel', requireChef, async (req, res) 
         res.status(503).json({ error: 'Cancellation could not be saved; refresh before retrying.' });
     }
 });
-
-router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
-    try {
-        const id = parseInt(req.params.id);
-        const { reason } = req.body || {};
-
-        if (isNaN(id) || id <= 0) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-        }
-
-        const { storageBookings } = await import("@shared/schema");
-
-        // Fetch storage booking with location info for manager notification
-        const rows = await db
-            .select({
-                id: storageBookings.id,
-                status: storageBookings.status,
-                chefId: storageBookings.chefId,
-                storageListingId: storageBookings.storageListingId,
-                updatedAt: storageBookings.updatedAt,
-                paymentStatus: storageBookings.paymentStatus,
-                paymentIntentId: storageBookings.paymentIntentId,
-                kitchenBookingId: storageBookings.kitchenBookingId,
-                startDate: storageBookings.startDate,
-                endDate: storageBookings.endDate,
-                locationId: locations.id,
-                locationName: locations.name,
-                managerId: locations.managerId,
-                notificationEmail: locations.notificationEmail,
-                storageName: storageListings.name,
-            })
-            .from(storageBookings)
-            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-            .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .where(
-                and(
-                    eq(storageBookings.id, id),
-                    eq(storageBookings.chefId, req.neonUser!.id)
-                )
-            )
-            .limit(1);
-
-        if (rows.length === 0) {
-            return res.status(404).json({ error: "Storage booking not found" });
-        }
-
-        const booking = rows[0];
-        if (booking.kitchenBookingId) {
-            if (reason !== undefined && (typeof reason !== 'string' || reason.length > 2000))
-                return res.status(400).json({ error: 'Invalid cancellation message' });
-            return res.json(await cancelBookingItem('storage', id, req.neonUser!.id, reason));
-        }
-
-        if (booking.kitchenBookingId) {
-            const [parent] = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.id, booking.kitchenBookingId),
-                eq(kitchenBookings.chefId, req.neonUser!.id))).limit(1);
-            if (!parent) return res.status(409).json({ error: 'Local Cooks must review the linked kitchen booking.' });
-            if ((parent.paymentDecision as { state?: string } | null)?.state === 'pending')
-                return res.status(409).json({ error: 'A payment decision is being reconciled. Local Cooks must review this booking before changing its items.' });
-            const { createBookingDateTime } = await import('@shared/timezone-utils');
-            const operatingDate = parent.bookingDate.toISOString().slice(0, 10);
-            const calendarDate = parent.operatingWindowStartTime
-                ? calendarDateForOperatingTime(operatingDate, parent.startTime, parent.operatingWindowStartTime) : operatingDate;
-            const deadline = createBookingDateTime(calendarDate, parent.startTime, 'America/St_Johns').getTime()
-                - (parent.cancellationPolicyHours ?? 24) * 3600000;
-            if (Date.now() > deadline) return res.status(400).json({ error: 'The agreed kitchen booking cancellation deadline has passed.' });
-        }
-
-        if (booking.status === 'cancelled') {
-            return res.status(400).json({ error: "Storage booking is already cancelled" });
-        }
-        if (booking.status === 'cancellation_requested') {
-            return res.status(400).json({ error: "A cancellation request is already pending for this storage booking" });
-        }
-        if (booking.status === 'completed') {
-            return res.status(400).json({ error: "Cannot cancel a completed storage booking" });
-        }
-
-        // ── TIER 1: Pending or Authorized → Immediate cancel ──────────────────
-        if (['pending', 'authorized'].includes(booking.paymentStatus || '') && booking.status === 'pending') {
-            if (!booking.kitchenBookingId && booking.paymentIntentId && booking.paymentStatus === 'authorized') {
-                try {
-                    const { cancelPaymentIntent } = await import('../services/stripe-service');
-                    await cancelPaymentIntent(booking.paymentIntentId);
-                    logger.info(`[Cancel Storage] Voided authorization for storage booking ${id} (PI: ${booking.paymentIntentId})`);
-                    await db.update(storageBookings)
-                        .set({ paymentStatus: 'failed', updatedAt: new Date() })
-                        .where(eq(storageBookings.id, id));
-                } catch (voidError) {
-                    logger.error(`[Cancel Storage] Error voiding auth for storage booking ${id}:`, voidError);
-                    return res.status(409).json({ error: 'The payment hold could not be verified as released. Local Cooks must review this cancellation.' });
-                }
-            }
-
-            await db.transaction(async tx => {
-                if (booking.kitchenBookingId) {
-                    const [parent] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, booking.kitchenBookingId)).limit(1).for('update');
-                    if ((parent?.paymentDecision as { state?: string } | null)?.state === 'pending')
-                        throw new Error('Payment reconciliation is in progress. Local Cooks must review this booking.');
-                }
-                const [changed] = await tx.update(storageBookings)
-                    .set({ status: 'cancelled', updatedAt: new Date() })
-                    .where(and(eq(storageBookings.id, id), eq(storageBookings.chefId, req.neonUser!.id), eq(storageBookings.status, 'pending')))
-                    .returning({ id: storageBookings.id });
-                if (!changed) throw new Error('Storage booking changed; refresh before cancelling');
-            });
-
-            // Notify manager (fire-and-forget)
-            sendStorageCancellationNotification(booking, id, 'cancelled').catch(err =>
-                logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
-            );
-
-            return res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled successfully.' });
-        }
-
-        // Captured payments use the same locked quote and durable refund operation.
-        if (booking.status === 'confirmed' && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')) {
-            await db.transaction(async tx => {
-            const [changed] = await tx.update(storageBookings)
-                .set({
-                    status: 'cancellation_requested',
-                    cancellationRequestedAt: new Date(),
-                    cancellationRequestReason: reason || null,
-                    updatedAt: new Date(),
-                })
-                .where(and(eq(storageBookings.id, id), eq(storageBookings.status, 'confirmed'), eq(storageBookings.updatedAt, booking.updatedAt))).returning({ id: storageBookings.id });
-            if (!changed) throw new Error('Storage booking changed; refresh before requesting cancellation');
-            const { scheduleAdvanceReminders } = await import('../services/advance-reminders');
-            await scheduleAdvanceReminders(tx, 'storage_cancellation_review', id);
-            });
-
-            // Sync JSONB on parent kitchen booking so manager table reflects status
-            syncStorageItemStatusInKitchenBooking(id, 'cancellation_requested').catch(err =>
-                logger.error(`[Cancel Storage] JSONB sync error for storage booking ${id}:`, err)
-            );
-
-            sendStorageCancellationNotification(booking, id, 'cancellation_requested').catch(err =>
-                logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
-            );
-
-            return res.json({
-                success: true,
-                action: 'cancellation_requested',
-                message: 'Your cancellation request has been submitted to the kitchen manager for review.',
-            });
-        }
-
-        // Fallback
-        await db.update(storageBookings)
-            .set({ status: 'cancelled', updatedAt: new Date() })
-            .where(eq(storageBookings.id, id));
-
-        sendStorageCancellationNotification(booking, id, 'cancelled').catch(err =>
-            logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
-        );
-
-        res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled.' });
-    } catch (error) {
-        if (error instanceof BookingItemCancellationError) return res.status(error.status).json({ error: error.message });
-        logger.error("Error cancelling storage booking:", error);
-        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel storage booking" });
-    }
-});
-
-// ── Notification helper for storage cancellation flows ────────────────────
-async function sendStorageCancellationNotification(
-    booking: {
-        chefId: number | null; storageName: string | null; locationName: string | null;
-        managerId: number | null; notificationEmail: string | null;
-        startDate: Date; endDate: Date;
-    },
-    bookingId: number,
-    action: 'cancelled' | 'cancellation_requested',
-) {
-    try {
-        const chef = booking.chefId ? await userService.getUser(booking.chefId) : null;
-        if (!chef) return;
-
-        const isCancellationRequest = action === 'cancellation_requested';
-        const storageName = booking.storageName || 'Storage';
-
-        // In-app notification for manager
-        if (booking.managerId) {
-            const title = isCancellationRequest ? 'Storage Cancellation Request' : 'Storage Booking Cancelled';
-            const message = isCancellationRequest
-                ? `${chef.username || 'A chef'} has requested to cancel their storage booking for ${storageName}.`
-                : `${chef.username || 'A chef'} has cancelled their storage booking for ${storageName}.`;
-
-            await notificationService.create({
-                userId: booking.managerId,
-                target: 'manager',
-                type: isCancellationRequest ? 'booking_cancellation_request' : 'booking_cancelled',
-                title,
-                message,
-                metadata: { storageBookingId: bookingId, chefId: booking.chefId },
-            });
-        }
-
-        // In-app notification for chef
-        if (booking.chefId) {
-            const title = isCancellationRequest ? 'Cancellation Request Submitted' : 'Storage Booking Cancelled';
-            const message = isCancellationRequest
-                ? `Your cancellation request for ${storageName} has been sent to the kitchen manager for review.`
-                : `Your storage booking for ${storageName} has been cancelled.`;
-
-            await notificationService.create({
-                userId: booking.chefId,
-                target: 'chef',
-                type: isCancellationRequest ? 'booking_cancellation_request' : 'booking_cancelled',
-                title,
-                message,
-                metadata: { storageBookingId: bookingId },
-            });
-        }
-
-        // Email notifications for storage cancellation
-        try {
-            const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email');
-            const formattedStartDate = new Date(booking.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            const cancellationReason = isCancellationRequest ? 'Cancellation requested by chef' : 'Storage booking cancelled by chef';
-
-            // Email to chef
-            if (chef?.username) {
-                await sendEmail(generateBookingCancellationEmail({
-                    chefEmail: chef.username,
-                    chefName: chef.username,
-                    kitchenName: storageName,
-                    bookingDate: formattedStartDate,
-                    startTime: '',
-                    endTime: '',
-                    cancellationReason,
-                }));
-                logger.info(`[Storage Cancel] Sent cancellation email to chef for storage booking ${bookingId}`);
-            }
-
-            // Email to manager
-            const managerEmail = booking.notificationEmail;
-            if (managerEmail) {
-                await sendEmail(generateBookingCancellationNotificationEmail({
-                    managerEmail,
-                    chefName: chef?.username || 'Chef',
-                    kitchenName: storageName,
-                    bookingDate: formattedStartDate,
-                    startTime: '',
-                    endTime: '',
-                    cancellationReason: isCancellationRequest
-                        ? `${chef?.username || 'A chef'} has requested to cancel their storage booking for ${storageName}.`
-                        : `${chef?.username || 'A chef'} has cancelled their storage booking for ${storageName}.`,
-                }));
-                logger.info(`[Storage Cancel] Sent cancellation notification email to manager for storage booking ${bookingId}`);
-            }
-        } catch (emailError) {
-            logger.error(`[Storage Cancel] Error sending cancellation emails for storage booking ${bookingId}:`, emailError);
-        }
-    } catch (error) {
-        logger.error(`[sendStorageCancellationNotification] Error for storage booking ${bookingId}:`, error);
-    }
-}
-
-// ── Sync storage item status in parent kitchen_bookings JSONB ──────────────
-// When a storage booking's status changes (cancellation_requested, cancelled, confirmed),
-// update the JSONB snapshot on the parent kitchen booking so the manager's table view reflects it.
-export async function syncStorageItemStatusInKitchenBooking(
-    storageBookingId: number,
-    newStatus: string,
-) {
-    try {
-        const { storageBookings: sbTable, kitchenBookings: kbTable } = await import("@shared/schema");
-        // Find the parent kitchen booking
-        const [sb] = await db
-            .select({ kitchenBookingId: sbTable.kitchenBookingId })
-            .from(sbTable)
-            .where(eq(sbTable.id, storageBookingId))
-            .limit(1);
-
-        if (!sb?.kitchenBookingId) return;
-
-        const [kb] = await db
-            .select({ storageItems: kbTable.storageItems })
-            .from(kbTable)
-            .where(eq(kbTable.id, sb.kitchenBookingId))
-            .limit(1);
-
-        if (!kb) return;
-
-        const items: any[] = Array.isArray(kb.storageItems) ? [...kb.storageItems] : [];
-        let updated = false;
-        for (const item of items) {
-            // Match by storageBookingId or id (both patterns exist in JSONB)
-            const itemId = item.storageBookingId || item.id;
-            if (itemId === storageBookingId) {
-                item.cancellationRequested = newStatus === 'cancellation_requested';
-                item.status = newStatus;
-                // Mark as rejected when cancelled so Rentals column shows strikethrough
-                if (newStatus === 'cancelled') {
-                    item.rejected = true;
-                }
-                updated = true;
-                break;
-            }
-        }
-
-        if (updated) {
-            await db.update(kbTable)
-                .set({ storageItems: items, updatedAt: new Date() })
-                .where(eq(kbTable.id, sb.kitchenBookingId));
-            logger.info(`[syncStorageItemStatus] Updated JSONB for storage ${storageBookingId} → ${newStatus} on kb ${sb.kitchenBookingId}`);
-        }
-    } catch (err) {
-        logger.error(`[syncStorageItemStatus] Error syncing storage ${storageBookingId}:`, err);
-    }
-}
 
 // ============================================================================
 // DAILY SCHEDULED TASKS ENDPOINT (Cron Sweep — Safety Net)
@@ -788,583 +377,6 @@ const runScheduledLifecycleTasks = async (req: Request, res: Response) => {
 // Vercel cron invokes GET; retain POST for existing authenticated callers.
 router.get("/detect-overstays", runScheduledLifecycleTasks);
 router.post("/detect-overstays", runScheduledLifecycleTasks);
-
-// DEPRECATED: Old penalty processing endpoint - kept for backward compatibility
-// Use the new manager-controlled workflow instead
-router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: Request, res: Response) => {
-    try {
-        // MED-4 Security: Require CRON_SECRET or admin auth for deprecated endpoint
-        const cronSecret = process.env.CRON_SECRET;
-        const authHeader = req.headers.authorization;
-        const isAdmin = req.neonUser?.role === 'admin';
-        if (!isAdmin && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
-            return res.status(401).json({ error: "Unauthorized" });
-        }
-        logger.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
-        
-        const results = await overstayPenaltyService.detectOverstays();
-
-        res.json({
-            success: true,
-            processed: results.length,
-            bookings: results,
-            message: `Detected ${results.length} overstay situations. Use manager dashboard to approve charges.`,
-            deprecationWarning: "This endpoint is deprecated. Use POST /api/detect-overstays instead.",
-        });
-    } catch (error: any) {
-        logger.error("Error processing overstayer penalties:", error);
-        res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
-    }
-});
-
-// Calculate storage extension pricing (preview before checkout)
-router.post("/chef/storage-bookings/:id/extension-preview", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
-    try {
-        const id = parseInt(req.params.id);
-        if (isNaN(id) || id <= 0) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-        }
-
-        const { newEndDate } = req.body;
-        if (!newEndDate) {
-            return res.status(400).json({ error: "newEndDate is required" });
-        }
-
-        // Verify the booking belongs to this chef
-        const booking = await bookingService.getStorageBookingById(id);
-        if (!booking) {
-            return res.status(404).json({ error: "Storage booking not found" });
-        }
-
-        if (booking.chefId !== req.neonUser!.id) {
-            return res.status(403).json({ error: "You don't have permission to extend this booking" });
-        }
-
-        if (booking.status === 'pending') {
-            return res.status(400).json({ error: "Cannot extend a booking that hasn't been approved yet. Please wait for manager approval." });
-        }
-
-        if (booking.status === 'cancelled') {
-            return res.status(400).json({ error: "Cannot extend a cancelled booking" });
-        }
-
-        // INDUSTRY STANDARD: Block extensions on completed bookings (checkout cleared)
-        if (booking.status === 'completed') {
-            return res.status(400).json({ error: "Cannot extend a completed booking. Storage has already been cleared." });
-        }
-
-        // INDUSTRY STANDARD: Block extensions on bookings with active overstay penalties
-        // Self-storage law: tenant must settle outstanding balance before renewing/extending
-        {
-            const { storageOverstayRecords } = await import("@shared/schema");
-            const [activeOverstay] = await db
-                .select({ id: storageOverstayRecords.id, status: storageOverstayRecords.status })
-                .from(storageOverstayRecords)
-                .where(and(
-                    eq(storageOverstayRecords.storageBookingId, id),
-                    inArray(storageOverstayRecords.status, ['pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
-                ))
-                .limit(1);
-
-            if (activeOverstay) {
-                return res.status(400).json({
-                    error: "Cannot extend this booking. There is an active overstay penalty that must be resolved first.",
-                    code: "ACTIVE_OVERSTAY",
-                    overstayStatus: activeOverstay.status,
-                });
-            }
-        }
-
-        const newEndDateObj = new Date(newEndDate);
-        if (isNaN(newEndDateObj.getTime())) {
-            return res.status(400).json({ error: "Invalid date format for newEndDate" });
-        }
-
-        const currentEndDate = new Date(booking.endDate);
-        if (newEndDateObj <= currentEndDate) {
-            return res.status(400).json({ error: "New end date must be after current end date" });
-        }
-
-        // Calculate extension pricing
-        const extensionDays = Math.ceil((newEndDateObj.getTime() - currentEndDate.getTime()) / (1000 * 60 * 60 * 24));
-        const minDays = booking.minimumBookingDuration || 1;
-
-        if (extensionDays < minDays) {
-            return res.status(400).json({ 
-                error: `Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}` 
-            });
-        }
-
-        // Get base price per day (stored in cents)
-        const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
-        const basePricePerDayDollars = basePricePerDayCents / 100;
-
-        const extensionBasePriceDollars = basePricePerDayDollars * extensionDays;
-        const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
-        
-        // Get tax rate from kitchen (consistent with kitchen bookings)
-        // Storage is associated with a kitchen, so we use the kitchen's tax rate
-        const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
-        let taxRatePercent = 0;
-        if (storageListing) {
-            const kitchen = await kitchenService.getKitchenById(storageListing.kitchenId);
-            if (kitchen && kitchen.taxRatePercent) {
-                taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
-            }
-        }
-        
-        // Calculate tax (same formula as kitchen bookings)
-        const extensionTaxCents = Math.round((extensionBasePriceCents * taxRatePercent) / 100);
-        const extensionTaxDollars = extensionTaxCents / 100;
-        const extensionTotalPriceDollars = extensionBasePriceDollars + extensionTaxDollars;
-
-        res.json({
-            storageBookingId: id,
-            currentEndDate: currentEndDate.toISOString(),
-            newEndDate: newEndDateObj.toISOString(),
-            extensionDays,
-            basePricePerDay: basePricePerDayDollars,
-            extensionBasePrice: extensionBasePriceDollars,
-            taxRatePercent,
-            extensionTax: extensionTaxDollars,
-            extensionTotalPrice: extensionTotalPriceDollars,
-            currency: 'CAD',
-        });
-    } catch (error: any) {
-        logger.error("Error calculating extension preview:", error);
-        res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
-    }
-});
-
-// Create Stripe Checkout session for storage extension
-router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
-    try {
-        const id = parseInt(req.params.id);
-        if (isNaN(id) || id <= 0) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-        }
-
-        const { newEndDate } = req.body;
-        if (!newEndDate) {
-            return res.status(400).json({ error: "newEndDate is required" });
-        }
-
-        // Verify the booking belongs to this chef
-        const booking = await bookingService.getStorageBookingById(id);
-        if (!booking) {
-            return res.status(404).json({ error: "Storage booking not found" });
-        }
-
-        if (booking.chefId !== req.neonUser!.id) {
-            return res.status(403).json({ error: "You don't have permission to extend this booking" });
-        }
-
-        if (booking.status === 'pending') {
-            return res.status(400).json({ error: "Cannot extend a booking that hasn't been approved yet. Please wait for manager approval." });
-        }
-
-        if (booking.status === 'cancelled') {
-            return res.status(400).json({ error: "Cannot extend a cancelled booking" });
-        }
-
-        // INDUSTRY STANDARD: Block extensions on completed bookings (checkout cleared)
-        if (booking.status === 'completed') {
-            return res.status(400).json({ error: "Cannot extend a completed booking. Storage has already been cleared." });
-        }
-
-        // INDUSTRY STANDARD: Block extensions on bookings with active overstay penalties
-        // Self-storage law: tenant must settle outstanding balance before renewing/extending
-        {
-            const { storageOverstayRecords } = await import("@shared/schema");
-            const [activeOverstay] = await db
-                .select({ id: storageOverstayRecords.id, status: storageOverstayRecords.status })
-                .from(storageOverstayRecords)
-                .where(and(
-                    eq(storageOverstayRecords.storageBookingId, id),
-                    inArray(storageOverstayRecords.status, ['pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
-                ))
-                .limit(1);
-
-            if (activeOverstay) {
-                return res.status(400).json({
-                    error: "Cannot extend this booking. There is an active overstay penalty that must be resolved first.",
-                    code: "ACTIVE_OVERSTAY",
-                    overstayStatus: activeOverstay.status,
-                });
-            }
-        }
-
-        const newEndDateObj = new Date(newEndDate);
-        if (isNaN(newEndDateObj.getTime())) {
-            return res.status(400).json({ error: "Invalid date format for newEndDate" });
-        }
-
-        const currentEndDate = new Date(booking.endDate);
-        if (newEndDateObj <= currentEndDate) {
-            return res.status(400).json({ error: "New end date must be after current end date" });
-        }
-
-        // Calculate extension pricing
-        const extensionDays = Math.ceil((newEndDateObj.getTime() - currentEndDate.getTime()) / (1000 * 60 * 60 * 24));
-        const minDays = booking.minimumBookingDuration || 1;
-
-        if (extensionDays < minDays) {
-            return res.status(400).json({ 
-                error: `Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}` 
-            });
-        }
-
-        // Get base price per day (stored in cents)
-        const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
-        const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
-
-        // Get manager's Stripe Connect account through storage listing -> kitchen -> location -> manager
-        const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
-        if (!storageListing) {
-            return res.status(404).json({ error: "Storage listing not found" });
-        }
-
-        const kitchen = await kitchenService.getKitchenById(storageListing.kitchenId);
-        if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-        }
-
-        // Calculate tax (consistent with kitchen bookings - customer pays base + tax)
-        const taxRatePercent = kitchen.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
-        const extensionTaxCents = Math.round((extensionBasePriceCents * taxRatePercent) / 100);
-        const totalWithTaxCents = extensionBasePriceCents + extensionTaxCents;
-
-        // Platform commission on subtotal only (not tax)
-        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = await calculateCheckoutFeesAsync(extensionBasePriceCents, {
-            taxAmountCents: extensionTaxCents,
-        });
-        const extensionCustomerTotalCents = totalWithTaxCents + feeCalculation.platformCommissionInCents;
-
-        const location = await locationService.getLocationById(kitchen.locationId);
-        if (!location) {
-            return res.status(404).json({ error: "Location not found" });
-        }
-
-        // Get manager's Stripe Connect account
-        const manager = await userService.getUser(location.managerId);
-        if (!manager) {
-            return res.status(404).json({ error: "Manager not found" });
-        }
-
-        const managerStripeAccountId = manager.stripeConnectAccountId;
-        if (!managerStripeAccountId) {
-            return res.status(400).json({ 
-                error: "Manager has not set up Stripe payments. Please contact the kitchen manager." 
-            });
-        }
-
-        // Get chef's email (username is used as email in this system)
-        const chef = await userService.getUser(req.neonUser!.id);
-        if (!chef || !chef.username) {
-            return res.status(400).json({ error: "Chef email not found" });
-        }
-        const chefEmail = chef.username; // Username is the email in this system
-
-        // Get base URL for success/cancel URLs
-        const baseUrl = getBaseUrl(req);
-
-        // ENTERPRISE-GRADE: Do NOT create pending_storage_extensions or payment_transactions here
-        // These will be created in webhook when payment succeeds
-        // This follows Stripe's recommended pattern and eliminates orphan records from abandoned checkouts
-
-        // Create Stripe Checkout session with all extension data in metadata
-        const { createCheckoutSession } = await import('../services/stripe-checkout-service');
-
-        const checkoutSession = await createCheckoutSession({
-            bookingPriceInCents: totalWithTaxCents,
-            platformFeeInCents: feeCalculation.platformCommissionInCents,
-            managerStripeAccountId,
-            customerEmail: chefEmail,
-            bookingId: id, // Using storage booking ID for legacy compatibility
-            currency: 'cad',
-            successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
-            cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
-            lineItemName: 'Storage Extension',
-            metadata: {
-                type: 'storage_extension',
-                storage_booking_id: id.toString(),
-                extension_days: extensionDays.toString(),
-                new_end_date: newEndDateObj.toISOString(),
-                current_end_date: currentEndDate.toISOString(),
-                chef_id: req.neonUser!.id.toString(),
-                kitchen_id: kitchen.id.toString(),
-                location_id: location.id.toString(),
-                manager_id: location.managerId.toString(),
-                extension_base_price_cents: extensionBasePriceCents.toString(),
-                extension_service_fee_cents: feeCalculation.platformCommissionInCents.toString(),
-                extension_total_price_cents: totalWithTaxCents.toString(),
-                extension_customer_total_cents: extensionCustomerTotalCents.toString(),
-                manager_receives_cents: (extensionBasePriceCents + extensionTaxCents - feeCalculation.stripeProcessingFeeInCents).toString(),
-                tax_cents: extensionTaxCents.toString(),
-                tax_rate_percent: taxRatePercent.toString(),
-            },
-        });
-
-        logger.info(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
-
-        // Return response (consistent with kitchen bookings - shows base + tax, not platform fee)
-        res.json({
-            sessionUrl: checkoutSession.sessionUrl,
-            sessionId: checkoutSession.sessionId,
-            extension: {
-                storageBookingId: id,
-                extensionDays,
-                extensionBasePrice: extensionBasePriceCents / 100,
-                taxRatePercent,
-                extensionTax: extensionTaxCents / 100,
-                serviceFee: feeCalculation.platformCommissionInCents / 100,
-                extensionTotalPrice: totalWithTaxCents / 100,
-                amountCharged: extensionCustomerTotalCents / 100,
-                newEndDate: newEndDateObj.toISOString(),
-            },
-            booking: {
-                price: extensionBasePriceCents / 100,
-                tax: extensionTaxCents / 100,
-                serviceFee: feeCalculation.platformCommissionInCents / 100,
-                total: extensionCustomerTotalCents / 100,
-            },
-        });
-    } catch (error: any) {
-        logger.error("Error creating storage extension checkout:", error);
-        res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
-    }
-});
-
-// Get chef's pending storage extension requests
-router.get("/chef/storage-extensions/pending", requireChef, async (req: Request, res: Response) => {
-    try {
-        const chefId = req.neonUser!.id;
-
-        // Import schema
-        const { pendingStorageExtensions, storageBookings, storageListings } = await import("@shared/schema");
-
-        // Get all pending extensions for this chef's storage bookings
-        const extensions = await db
-            .select({
-                id: pendingStorageExtensions.id,
-                storageBookingId: pendingStorageExtensions.storageBookingId,
-                newEndDate: pendingStorageExtensions.newEndDate,
-                extensionDays: pendingStorageExtensions.extensionDays,
-                extensionBasePriceCents: pendingStorageExtensions.extensionBasePriceCents,
-                extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
-                status: pendingStorageExtensions.status,
-                createdAt: pendingStorageExtensions.createdAt,
-                approvedAt: pendingStorageExtensions.approvedAt,
-                rejectedAt: pendingStorageExtensions.rejectedAt,
-                rejectionReason: pendingStorageExtensions.rejectionReason,
-                stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
-                // Storage booking details
-                currentEndDate: storageBookings.endDate,
-                storageName: storageListings.name,
-                storageType: storageListings.storageType,
-                kitchenName: kitchens.name,
-            })
-            .from(pendingStorageExtensions)
-            .innerJoin(storageBookings, eq(pendingStorageExtensions.storageBookingId, storageBookings.id))
-            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-            .where(eq(storageBookings.chefId, chefId))
-            .orderBy(desc(pendingStorageExtensions.createdAt));
-
-        // ── Lazy evaluation: expire any authorized extensions past 24-hour window ──
-        const { lazyExpireStorageExtensionAuth } = await import(
-            "../services/auth-expiry-service"
-        );
-        for (const ext of extensions) {
-            if (ext.status === "authorized") {
-                const wasExpired = await lazyExpireStorageExtensionAuth({
-                    id: ext.id,
-                    status: ext.status,
-                    stripePaymentIntentId: ext.stripePaymentIntentId,
-                    createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
-                    storageBookingId: ext.storageBookingId,
-                });
-                if (wasExpired) {
-                    (ext as any).status = "expired";
-                }
-            }
-        }
-
-        res.json(extensions);
-    } catch (error: any) {
-        logger.error("Error fetching chef's pending storage extensions:", error);
-        res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
-    }
-});
-
-// Sync storage extension status from Stripe (for when webhook doesn't fire)
-router.post("/storage-extensions/:id/sync", requireChef, async (req: Request, res: Response) => {
-    try {
-        const extensionId = parseInt(req.params.id);
-        const chefId = req.neonUser!.id;
-
-        if (isNaN(extensionId) || extensionId <= 0) {
-            return res.status(400).json({ error: "Invalid extension ID" });
-        }
-
-        const { pendingStorageExtensions, storageBookings } = await import("@shared/schema");
-
-        // Get the extension and verify ownership
-        const [extension] = await db
-            .select({
-                id: pendingStorageExtensions.id,
-                storageBookingId: pendingStorageExtensions.storageBookingId,
-                stripeSessionId: pendingStorageExtensions.stripeSessionId,
-                status: pendingStorageExtensions.status,
-                chefId: storageBookings.chefId,
-            })
-            .from(pendingStorageExtensions)
-            .innerJoin(storageBookings, eq(pendingStorageExtensions.storageBookingId, storageBookings.id))
-            .where(eq(pendingStorageExtensions.id, extensionId))
-            .limit(1);
-
-        if (!extension) {
-            return res.status(404).json({ error: "Extension not found" });
-        }
-
-        if (extension.chefId !== chefId) {
-            return res.status(403).json({ error: "Not authorized" });
-        }
-
-        // Only sync if still pending
-        if (extension.status !== "pending") {
-            return res.json({ 
-                message: "Extension already processed", 
-                status: extension.status 
-            });
-        }
-
-        // Check Stripe session status
-        const Stripe = (await import("stripe")).default;
-        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-        if (!stripeSecretKey) {
-            return res.status(500).json({ error: "Stripe not configured" });
-        }
-
-        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2026-02-25.clover" });
-        const session = await stripe.checkout.sessions.retrieve(extension.stripeSessionId, {
-            expand: ["payment_intent"],
-        });
-
-        if (session.payment_status === "paid") {
-            // Extract payment intent ID
-            let paymentIntentId: string | undefined;
-            if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
-                paymentIntentId = session.payment_intent.id;
-            } else if (typeof session.payment_intent === "string") {
-                paymentIntentId = session.payment_intent;
-            }
-
-            // Update to paid status
-            await db
-                .update(pendingStorageExtensions)
-                .set({
-                    status: "paid",
-                    stripePaymentIntentId: paymentIntentId,
-                    updatedAt: new Date(),
-                })
-                .where(eq(pendingStorageExtensions.id, extensionId));
-
-            logger.info(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
-
-            return res.json({
-                success: true,
-                message: "Extension status synced - now awaiting manager approval",
-                status: "paid",
-            });
-        } else if (session.status === "expired") {
-            await db
-                .update(pendingStorageExtensions)
-                .set({
-                    status: "expired",
-                    updatedAt: new Date(),
-                })
-                .where(eq(pendingStorageExtensions.id, extensionId));
-
-            return res.json({
-                success: true,
-                message: "Session expired",
-                status: "expired",
-            });
-        }
-
-        return res.json({
-            message: "Payment not yet completed",
-            stripeStatus: session.payment_status,
-            sessionStatus: session.status,
-        });
-    } catch (error: any) {
-        logger.error("Error syncing storage extension:", error);
-        res.status(500).json({ error: error.message || "Failed to sync extension" });
-    }
-});
-
-// Legacy extend endpoint (kept for backward compatibility, but now requires payment)
-router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request, res: Response) => {
-    try {
-        const id = parseInt(req.params.id);
-        if (isNaN(id) || id <= 0) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-        }
-
-        const { newEndDate, paymentConfirmed, stripeSessionId } = req.body;
-        if (!newEndDate) {
-            return res.status(400).json({ error: "newEndDate is required" });
-        }
-
-        // Verify the booking belongs to this chef
-        const booking = await bookingService.getStorageBookingById(id);
-        if (!booking) {
-            return res.status(404).json({ error: "Storage booking not found" });
-        }
-
-        if (booking.chefId !== req.neonUser!.id) {
-            return res.status(403).json({ error: "You don't have permission to extend this booking" });
-        }
-
-        if (booking.status === 'cancelled') {
-            return res.status(400).json({ error: "Cannot extend a cancelled booking" });
-        }
-
-        const newEndDateObj = new Date(newEndDate);
-        if (isNaN(newEndDateObj.getTime())) {
-            return res.status(400).json({ error: "Invalid date format for newEndDate" });
-        }
-
-        // If payment not confirmed, redirect to checkout flow
-        if (!paymentConfirmed) {
-            return res.status(402).json({ 
-                error: "Payment required",
-                message: "Please use the /extension-checkout endpoint to create a payment session",
-                checkoutEndpoint: `/api/chef/storage-bookings/${id}/extension-checkout`,
-            });
-        }
-
-        // Compatibility consumer only: the authorized manager/payment flow has
-        // already applied a completed extension. Never mutate terms from a client flag.
-        if (typeof stripeSessionId !== 'string' || !stripeSessionId) return res.status(402).json({ error: 'A completed extension reference is required', checkoutEndpoint: `/api/chef/storage-bookings/${id}/extension-checkout` });
-        const pendingExtension = await bookingService.getPendingStorageExtension(id, stripeSessionId);
-        if (!pendingExtension || pendingExtension.status !== 'completed' ||
-            new Date(pendingExtension.newEndDate).getTime() !== newEndDateObj.getTime() || new Date(booking.endDate).getTime() < newEndDateObj.getTime())
-            return res.status(409).json({ error: 'This extension has not been completed for these dates. Refresh the current storage booking.' });
-        const extendedBooking = booking;
-
-        res.json({
-            success: true,
-            booking: extendedBooking,
-            message: `Storage booking extended successfully to ${newEndDateObj.toLocaleDateString()}`,
-        });
-    } catch (error: any) {
-        logger.error("Error extending storage booking:", error);
-        res.status(500).json({ error: error.message || "Failed to extend storage booking" });
-    }
-});
 
 // ============================================================================
 // STORAGE CHECKOUT WORKFLOW (Hybrid Verification System)
@@ -2790,8 +1802,9 @@ async function sendCancellationNotifications(
 // Create PaymentIntent for booking (custom flow)
 router.post("/payments/create-intent", requireChef, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser!.id;
+        if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
             return res.status(400).json({ error: "Missing required booking fields" });
@@ -2830,39 +1843,6 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         // Calculate kitchen booking price (pass pool for compatibility)
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
         let totalPriceCents = kitchenPricing.totalPriceCents;
-
-        // Calculate storage add-ons
-        if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
-            for (const storage of selectedStorage) {
-                try {
-                    const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
-                    if (storageListing?.awaitingRemoval) return res.status(409).json({ error: 'This storage is awaiting confirmed removal and cannot be reserved yet.' });
-
-                    if (storageListing) {
-                        // Parse basePrice as numeric (stored in cents in database)
-                        const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
-                        const minDays = storageListing.minimumBookingDuration || 1;
-
-                        const startDate = new Date(storage.startDate);
-                        const endDate = new Date(storage.endDate);
-                        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-                        const effectiveDays = Math.max(days, minDays);
-
-                        let storagePrice = basePriceCents * effectiveDays;
-                        if (storageListing.pricingModel === 'hourly') {
-                            const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
-                            storagePrice = basePriceCents * durationHours;
-                        } else if (storageListing.pricingModel === 'monthly-flat') {
-                            storagePrice = basePriceCents;
-                        }
-
-                        totalPriceCents += storagePrice;
-                    }
-                } catch (error) {
-                    logger.error('Error calculating storage price:', error);
-                }
-            }
-        }
 
         // Calculate equipment add-ons
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
@@ -2949,7 +1929,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             bookingDate: String(bookingDate),
             startTime: String(startTime),
             endTime: String(endTime),
-            hasStorage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
+            hasStorage: "false",
             hasEquipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
             taxCents: String(taxCents),
             taxRatePercent: String(taxRatePercent)
@@ -2983,7 +1963,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 approved_subtotal: String(totalPriceCents),
                 cancellation_policy_hours: String(policySnapshot.noticeHours),
                 approved_tax: String(taxCents),
-                has_storage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
+                has_storage: "false",
                 has_equipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
                 kitchen_id: String(kitchenId),
                 chef_id: String(chefId)
@@ -3164,8 +2144,9 @@ router.post("/chef/bookings/checkout/cancel", requireChef, async (req: Request, 
 
 router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds, cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedEquipmentIds, cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion } = req.body;
         const chefId = req.neonUser!.id;
+        if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
             return res.status(400).json({ error: "Missing required booking fields" });
@@ -3299,42 +2280,6 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         let totalPriceCents = calculateKitchenBasePrice(selectedPricingMode, hourlyRateCents, dailyRateCents, effectiveDurationHours);
 
         // Calculate storage add-ons — track individual prices for Stripe line items
-        const storageIds: number[] = [];
-        const storageLineItems: Array<{ name: string; priceCents: number; listingId: number }> = [];
-        if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
-            for (const storage of selectedStorage) {
-                try {
-                    const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
-                    if (storageListing?.awaitingRemoval) return res.status(409).json({ error: 'This storage is awaiting confirmed removal and cannot be reserved yet.' });
-                    if (storageListing) {
-                        storageIds.push(storage.storageListingId);
-                        const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
-                        const minDays = storageListing.minimumBookingDuration || 1;
-                        const startDate = new Date(storage.startDate);
-                        const endDate = new Date(storage.endDate);
-                        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-                        const effectiveDays = Math.max(days, minDays);
-
-                        let storagePrice = basePriceCents * effectiveDays;
-                        if (storageListing.pricingModel === 'hourly') {
-                            const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
-                            storagePrice = basePriceCents * durationHours;
-                        } else if (storageListing.pricingModel === 'monthly-flat') {
-                            storagePrice = basePriceCents;
-                        }
-                        totalPriceCents += storagePrice;
-                        storageLineItems.push({
-                            listingId: storage.storageListingId,
-                            name: `Storage: ${storageListing.name || storageListing.storageType || 'Storage Unit'}`,
-                            priceCents: storagePrice,
-                        });
-                    }
-                } catch (error) {
-                    logger.error('Error calculating storage price:', error);
-                }
-            }
-        }
-
         // Calculate equipment add-ons — track individual prices for Stripe line items
         const equipmentLineItems: Array<{ name: string; priceCents: number; listingId: number }> = [];
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
@@ -3409,7 +2354,6 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 endTime,
                 selectedSlots: bookingSlots,
                 specialNotes,
-                selectedStorage: selectedStorage || [],
                 selectedEquipmentIds: selectedEquipmentIds || [],
                 totalPriceCents,
                 taxCents,
@@ -3429,7 +2373,6 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             lineItemBreakdown: {
                 kitchenPriceCents: kitchenOnlyPriceCents,
                 kitchenLabel,
-                storageItems: storageLineItems,
                 equipmentItems: equipmentLineItems,
                 taxCents,
                 taxLabel,
@@ -3478,8 +2421,9 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 // Create a booking
 router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
+        if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
         
         logger.info(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
 
@@ -3619,17 +2563,6 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             paymentIntentStatus = paymentIntent.status;
         }
 
-        // Extract storage IDs from selectedStorage array (frontend sends objects with storageListingId)
-        // Also support legacy selectedStorageIds for backwards compatibility
-        const storageIds = selectedStorageIds && selectedStorageIds.length > 0
-            ? selectedStorageIds
-            : (selectedStorage && Array.isArray(selectedStorage) 
-                ? selectedStorage.map((s: any) => s.storageListingId).filter(Boolean)
-                : []);
-        
-        logger.info(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
-
-        // Create booking with PENDING status - requires manager approval
         const { withKitchenDayLock } = await import('../services/kitchen-checkout-holds');
         const booking = await withKitchenDayLock(kitchenId, bookingDateStr, () => bookingService.createKitchenBooking({
             kitchenId,
@@ -3645,7 +2578,6 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             specialNotes,
             cancellationPolicyHours: acceptedCancellationHours,
             cancellationPolicySnapshot: acceptedPolicySnapshot,
-            selectedStorage: selectedStorage || [], // Pass storage with explicit dates
             selectedEquipmentIds: selectedEquipmentIds || []
         }));
 
