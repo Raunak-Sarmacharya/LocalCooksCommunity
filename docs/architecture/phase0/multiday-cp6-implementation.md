@@ -137,3 +137,34 @@ dispatch to the day engine, the remaining refusals, goodwill and support day sco
 - The parent's first-day projection (`booking_date`/`start_time`) stays on the original first day after it is dropped (the
   frozen deadline anchor); occupancy, reminders and codes read the active visits.
 - No push, deploy, migration application, Stripe, Vercel or Inngest action was performed.
+
+## Fix round (Oct 17, 2026)
+
+Addresses the independent CP6 money review (which confirmed no single-day refund changed and the worked examples). Every
+fix has a test that **fails on the previous code** (`e325ca75`): with the new tests kept and only the non-test source files
+restored to `e325ca75`, all **23** new fix-round tests failed; with the fixes, all pass. Fixes committed as `00ab3116`.
+
+**Ledger change (behind M1, M4, L1, L5).** Each allocation now keeps a list of refund records (`evidence.refunds`), and every
+path sums them per funder (kitchen, Local Cooks service fee, absorbed card fee, goodwill counted against the part) instead of
+treating an allocation as refunded once. Records are only appended, never rewritten. CP6 had not been used on dev (multi-day
+creation is off), so no stored data is migrated.
+
+| Item | Fix | Test |
+|---|---|---|
+| M1 | In kitchen mode a day selects every allocation with anything left and refunds the rest of its full share: kitchen = gross − card-fee share − already debited, Local Cooks returns the remaining service fee and absorbs the remaining card fee. An item the chef removed after the deadline is therefore topped up to its full price. | `dated-booking-cp6` › M1: the kitchen cancelling a day tops up an item the chef removed late… |
+| M2 | `cancelKitchenCausedBooking` sends only a **confirmed** dated booking to the day engine. A request charged after it was declined or withdrawn goes through the existing whole-charge refund. For a per-day charge that refund passes `installmentReversals: []` (no day transfer can exist; it refuses if one does) and closes every installment as `noEntitlement`. | `dated-booking-cp6` › M2: a dated request charged after it was declined is refunded in full… |
+| M3 | `reverseTransferAndRefund` uses a fresh Stripe key only when Stripe lists every earlier attempt of that operation as failed or canceled, and then the key is derived from the latest failed attempt (`{op}-refund-after-{refundId}`), so concurrent retries after the same failure share one key. Otherwise the original key is reused and Stripe returns the in-flight refund. This applies to single-day and day refunds alike (it is in the shared engine). | `stripe-refund-recovery` › M3 (single-day and day refund): the support retry reuses the original key…; only after Stripe shows the attempt failed… (4 tests) |
+| M4 | `refundDatedDay` and `POST /manager/bookings/:id/days/:visitId/refund`: a kitchen-paid extra refund for one day, split over that day's allocations by their remaining kitchen share. It is never more than that share or what the charge has left, and no card or service fee comes back with it (the one-day kitchen-refund semantics). It goes through the same reservation, retry and reconcile path, plus a `refund_issued` notice. A later chef drop of that day counts it toward the policy refund (`max(0, policy − refunded)`, kitchen part first). | `dated-booking-cp6` › M4: the kitchen refunds more for one day…; M4: an extra refund counts toward a later drop… |
+| L1 | Chef-policy refunds store their `percent × pool` numerator. A new drop rounds once over all chef-policy drops of the same charge (cumulative target minus the cents already refunded), with largest remainder within the drop. | `dated-booking-cp6` › L1 in both orders: 10657 + 10656 = 21313 |
+| L2 | Support's "kitchen can't host" recovery checks the receipts under the day-refund key `kitchen-day-refund:{booking}:{key}:{source}`. | `booking-support` › L2 |
+| L3 | On a dated booking, "kitchen can't host" is offered while any active day hasn't started; earlier used days, completed equipment and goodwill no longer remove it (it covers the remaining days only). | `booking-support` › L3 |
+| L4 | `assignOutsideRefund` and the new support action `assign_outside_refund` (audited through `support_actions` plus payment history `outside_refund_assigned`). Support can debit one day's kitchen share (that day only; a paid day becomes recorded kitchen debt) or mark the refund Local Cooks-funded. Then the refund is reconciled, `refundsAllocated` accepts it and day payouts resume. The action is offered only while an unassigned refund holds the payouts. | `dated-booking-cp6` › L4 (both variants); `booking-support` › L4 |
+| L5 | Unused Local Cooks goodwill (goodwill receipts minus goodwill already counted by earlier day operations) is counted toward the next day refund: Local Cooks' service-fee part first, then the absorbed fee, then the kitchen's part, never below $0 and never blocking a drop. The amount counted is saved on the operation. Policy register updated (lead decision). | `dated-booking-cp6` › L5 ($5 goodwill → $208.13; $300 goodwill → $0 then $126.26) |
+| L6 | Day, item and extra-refund notices carry `noticeDay`. Delivery uses it for the chef/kitchen copy, the Local Cooks summary and the email facts. The Today board keeps a dated booking while a later active day remains and lists only current active days, each with its own date. Claims' recent bookings key on the latest active day that has ended (cancelled days excluded). Shared helpers are in `shared/dated-visits.ts`. | `booking-lifecycle-delivery` › CP6 L6; `dated-booking-cp6` › L6; `dated-booking-board` (4) |
+| L7 | When a day refund's receipt is verified, each non-debt day reversal records `reversals[operation]` and `reversedCents` on that installment, once per operation; revenue already nets `reversedCents`. | `dated-booking-cp6` › L7 |
+
+The routes' new SQL (Today board, claims) is covered through their shared helpers, not through a route-level test.
+
+### Fix-round verification
+
+Recorded below after the full suite and the single `tsc` run.
