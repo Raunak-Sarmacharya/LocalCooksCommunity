@@ -15,6 +15,7 @@ import { StorageCheckinDialog } from "@/components/booking/StorageCheckinDialog"
 import { StorageCheckoutDialog } from "@/components/booking/StorageCheckoutDialog"
 import { CommitmentProblems } from "@/components/support/CommitmentProblems"
 import { PendingOverstayPenalties } from "@/components/chef/PendingOverstayPenalties"
+import { StorageDamageClaims } from "@/components/booking/DamageClaimCards"
 import { STORAGE_LIST_KEY } from "@/pages/ChefStoragePage"
 import { TONE_CLASS, cad, can, readRental, rentalStatus, storageDay, withdrawRental, type StorageRental } from "@/lib/storage-rentals"
 import { cn } from "@/lib/utils"
@@ -93,6 +94,8 @@ export default function ChefStorageRentalPage() {
             </li>)}
           </ul>
         </section>
+
+        <StorageDamageClaims storageRentalId={rental.id} heading={t("stcClaimsTitle")} />
 
         {can(rental, "report_problem") && <CommitmentProblems kind="storage" id={rental.id} canReport />}
         <p><Link className="text-sm underline underline-offset-2" href="/storage">{t("stcBackToStorage")}</Link></p>

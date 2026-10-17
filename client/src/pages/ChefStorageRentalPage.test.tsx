@@ -13,6 +13,7 @@ vi.mock("@/components/booking/StorageCheckinDialog", () => ({ StorageCheckinDial
 vi.mock("@/components/booking/StorageCheckoutDialog", () => ({ StorageCheckoutDialog: () => null }))
 vi.mock("@/components/support/CommitmentProblems", () => ({ CommitmentProblems: ({ kind }: { kind: string }) => <div data-testid="problems">{kind}</div> }))
 vi.mock("@/components/chef/PendingOverstayPenalties", () => ({ PendingOverstayPenalties: ({ title }: { title?: string }) => <div data-testid="holdover">{title}</div> }))
+vi.mock("@/components/booking/DamageClaimCards", () => ({ StorageDamageClaims: ({ storageRentalId }: { storageRentalId: number }) => <div data-testid="storage-claims">{storageRentalId}</div> }))
 vi.mock("@/pages/ChefStoragePage", () => ({ STORAGE_LIST_KEY: ["/api/chef/storage-rentals"] }))
 
 import ChefStorageRentalPage from "./ChefStorageRentalPage"

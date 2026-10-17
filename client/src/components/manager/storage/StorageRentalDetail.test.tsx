@@ -2,13 +2,32 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en-CA" } }) }));
+const claimState = vi.hoisted(() => ({ filing: null as null | Record<string, unknown>, claims: [] as unknown[] }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, opts?: any) => opts?.when ? `${key}:${opts.when}` : key, i18n: { language: "en-CA" } }) }));
 vi.mock("wouter", () => ({ Link: ({ href, children }: any) => <a href={href}>{children}</a>, useParams: () => ({ id: "5" }) }));
 vi.mock("@/lib/api", () => ({ getAuthHeaders: async () => ({ Authorization: "Bearer fixture" }) }));
+vi.mock("@/lib/damage-claims", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/damage-claims")>();
+  return {
+    ...actual,
+    claimRequest: async (path: string) => {
+      if (path.includes("filing-context")) {
+        return claimState.filing ?? { allowed: false, deadline: "", endedAt: "", timezone: "America/St_Johns", kitchenName: "", before: [], after: [] };
+      }
+      if (path.includes("/claims")) return { claims: claimState.claims };
+      return {};
+    },
+    claimWhen: () => "Oct 20, 12:00 p.m.",
+  };
+});
+vi.mock("@/components/booking/DamageClaimSheet", () => ({
+  DamageClaimSheet: ({ open, storageRentalId }: { open?: boolean; storageRentalId?: number }) =>
+    open ? <div data-testid="claim-sheet">sheet:{storageRentalId}</div> : null,
+}));
 
 import { StorageRentalDetail } from "./StorageRentalDetail";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); claimState.filing = null; claimState.claims = []; });
 
 const rental = {
   id: 5, ref: "SB-5", kitchen: { id: 1, name: "Harbour" }, listing: { id: 1, name: "Shelf" }, chef: { id: 3, name: "Morgan Lee" },
@@ -71,4 +90,29 @@ it("previews the server refund amount before confirmation and retains exact cent
   fireEvent.change(screen.getByLabelText('stReasonLabel'), { target: { value: 'Courtesy refund' } });
   fireEvent.click(screen.getByRole('button', { name: 'stConfirm' }));
   await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/refund') && JSON.parse(init?.body || '{}').amountCents === 1234)).toBe(true));
+});
+
+it("shows the report damage button only while the filing context allows it", async () => {
+  renderDetail();
+  expect(await screen.findByText("stMoneyHeading")).toBeInTheDocument();
+  expect(screen.queryByTestId("storage-claim-report")).toBeNull();
+
+  claimState.filing = {
+    allowed: true,
+    deadline: "2026-10-20T15:00:00.000Z",
+    endedAt: "2026-10-17T15:00:00.000Z",
+    timezone: "America/St_Johns",
+    kitchenName: "Harbour",
+    before: [],
+    after: [],
+  };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  cleanup();
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => rental })));
+  render(<QueryClientProvider client={client}><StorageRentalDetail rentalId={5} /></QueryClientProvider>);
+  expect(await screen.findByTestId("storage-claim-report")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "dcV2Report" })).toBeInTheDocument();
+  expect(screen.getByText(/dcV2FileBy/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "dcV2Report" }));
+  expect(await screen.findByTestId("claim-sheet")).toHaveTextContent("sheet:5");
 });

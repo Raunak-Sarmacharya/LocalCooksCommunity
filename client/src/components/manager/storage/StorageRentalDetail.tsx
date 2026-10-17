@@ -4,6 +4,7 @@
  * Evidence photos, the money per paid term with its payout status, and the "More" actions the DTO
  * allows — each stating its consequence, with the amount and date, before it is sent.
  */
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "wouter";
@@ -16,9 +17,12 @@ import { SmartImage } from "@/components/ui/smart-image";
 import { ChevronLeft, Image as ImageIcon } from "@/components/ui/manager-icons";
 import { StorageStatusChip } from "@/components/manager/storage/StorageStatusChip";
 import { StorageMoreActions } from "@/components/manager/storage/StorageMoreActions";
+import { DamageClaimSheet } from "@/components/booking/DamageClaimSheet";
+import { StorageDamageClaims } from "@/components/booking/DamageClaimCards";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatBookingDate, formatCurrency } from "@/lib/formatters";
 import { getAuthHeaders } from "@/lib/api";
+import { claimRequest, claimWhen, type FilingContext } from "@/lib/damage-claims";
 import { chipForRental, formatKitchenDateTime, occupiesUnit, termPayout, type StorageRental } from "@/lib/storage-board";
 import type { RentalState } from "@shared/storage-rental";
 
@@ -32,6 +36,8 @@ const STATE_KEY: Partial<Record<RentalState, string>> = {
 
 export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
   const { t, i18n } = useTranslation("storage");
+  const { t: claimT } = useTranslation("booking");
+  const [claimOpen, setClaimOpen] = useState(false);
   const query = useQuery<StorageRental>({
     queryKey: ["/api/manager/storage-rentals", rentalId],
     enabled: Number.isFinite(rentalId) && rentalId > 0,
@@ -40,6 +46,12 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
       if (!response.ok) throw new Error(t("stDetailError"));
       return response.json();
     },
+  });
+  const filing = useQuery({
+    queryKey: ["damage-claim-filing", "storage", rentalId],
+    enabled: Number.isFinite(rentalId) && rentalId > 0 && !!query.data,
+    retry: false,
+    queryFn: () => claimRequest<FilingContext>(`/manager/storage-rentals/${rentalId}/claims/filing-context`),
   });
 
   const rental = query.data;
@@ -96,7 +108,15 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
           {rental.chef?.name ? ` · ${rental.chef.name}` : ""}
         </p>
         <p className="text-sm">{formatBookingDate(rental.startOn)} – {formatBookingDate(rental.paidThrough)}</p>
-        <div className="pt-1"><StorageMoreActions rental={rental} onDone={() => void query.refetch()} /></div>
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <StorageMoreActions rental={rental} onDone={() => void query.refetch()} />
+          {filing.data?.allowed && (
+            <div className="space-y-1" data-testid="storage-claim-report">
+              <Button variant="outline" onClick={() => setClaimOpen(true)}>{claimT("dcV2Report")}</Button>
+              <p className="text-sm text-muted-foreground">{claimT("dcV2FileBy", { when: claimWhen(filing.data.deadline, filing.data.timezone, i18n.language) })}</p>
+            </div>
+          )}
+        </div>
       </header>
 
       <Card>
@@ -155,6 +175,19 @@ export function StorageRentalDetail({ rentalId }: { rentalId: number }) {
           })}
         </CardContent>
       </Card>
+
+      <StorageDamageClaims storageRentalId={rental.id} manager heading={t("stClaimsHeading")} />
+
+      {claimOpen && (
+        <DamageClaimSheet
+          storageRentalId={rental.id}
+          chefName={rental.chef?.name || t("stTheChef")}
+          hideTrigger
+          open={claimOpen}
+          onOpenChange={setClaimOpen}
+          onFiled={() => { setClaimOpen(false); void query.refetch(); void filing.refetch(); }}
+        />
+      )}
     </div>
   );
 }
