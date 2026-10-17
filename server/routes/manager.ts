@@ -4755,7 +4755,7 @@ router.post(
           })), proposed])) throw new OperatingScheduleOverlapError();
           {
             const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate,
-              status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
+              status: kitchenBookings.status, selectedSlots: kitchenBookings.selectedSlots }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
             affectedIds.push(...activeBookingIdsOnOperatingDate(bookings, specificDate));
           }
           pending.push(id);
@@ -4843,7 +4843,7 @@ router.put(
           })))) throw new OperatingScheduleOverlapError();
           {
             const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate,
-              status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
+              status: kitchenBookings.status, selectedSlots: kitchenBookings.selectedSlots }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
             affectedIds.push(...activeBookingIdsOnOperatingDate(bookings, dateKey));
           }
           matching.push(row);
@@ -4924,8 +4924,8 @@ router.delete(
           if (!row.isAvailable) await syncTourClosure(tx, row.kitchenId, row.specificDate.toISOString().slice(0, 10),
             source.timezone || DEFAULT_TIMEZONE, row.reason, undefined);
           const dateKey = row.specificDate.toISOString().slice(0, 10);
-          const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status })
-            .from(kitchenBookings).where(eq(kitchenBookings.kitchenId, row.kitchenId));
+          const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status,
+            selectedSlots: kitchenBookings.selectedSlots }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, row.kitchenId));
           await queueScheduleProblems(tx, { kitchenId: row.kitchenId, actorId: req.neonUser!.id,
             bookingIds: activeBookingIdsOnOperatingDate(bookings, dateKey), tourIds: await affectedTours(tx, row.kitchenId, [dateKey]),
             change: { removedOverrideId: row.id }, description: `Kitchen availability changed for ${dateKey}. Please review this request to confirm your visit arrangements.` });
@@ -6327,7 +6327,7 @@ router.put('/availability/weekly', requireFirebaseAuthWithUser, requireManager, 
         }).formatToParts(new Date()).map(part => [part.type, part.value]));
         const todayKey = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
         const existingBookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate,
-          status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
+          status: kitchenBookings.status, selectedSlots: kitchenBookings.selectedSlots }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
         const affectedIds = bookingsAffectedByWeeklyChange(weekly, days, overrides, existingBookings, todayKey);
         const acknowledged = Array.isArray(acknowledgedBookingIds) && acknowledgedBookingIds.every(Number.isSafeInteger)
           ? [...acknowledgedBookingIds].sort((a: number, b: number) => a - b) : [];
@@ -6423,8 +6423,8 @@ router.post(
         if (hasOverlappingOperatingDays(nextWeekly, overrides.map(row => ({ ...row,
           startTime: row.startTime || '00:00', endTime: row.endTime || '00:00',
         })))) throw new OperatingScheduleOverlapError();
-        const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status })
-          .from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
+        const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate, status: kitchenBookings.status,
+          selectedSlots: kitchenBookings.selectedSlots }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
         const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
         const affectedIds = bookingsAffectedByWeeklyChange(weekly, nextWeekly, overrides, bookings, todayKey);
         const acknowledged = Array.isArray(acknowledgedBookingIds) && acknowledgedBookingIds.every(Number.isSafeInteger)

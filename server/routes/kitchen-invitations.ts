@@ -18,8 +18,10 @@ import {
   listKitchenInvitations,
   previewKitchenInvitation,
   replaceKitchenInvitation,
+  savedInvitationOverride,
   withdrawKitchenInvitation,
 } from '../services/kitchen-invitations';
+import { WeeklyChefHoursLimitError } from '../services/kitchen-booking-quota';
 import { chefService } from '../domains/users/chef.service';
 import { bookingService } from '../domains/bookings/booking.service';
 import { reserveKitchenCheckout, bindKitchenCheckout, releaseKitchenCheckout } from '../services/kitchen-checkout-holds';
@@ -40,6 +42,7 @@ const asyncRoute = (fn: (req: Request, res: Response) => Promise<unknown>) => as
   try { await fn(req, res); }
   catch (error) {
     if (error instanceof InvitationError) return res.status(error.status).json({ error: error.message, code: error.code });
+    if (error instanceof WeeklyChefHoursLimitError) return res.status(409).json(error.body());
     console.error('[Kitchen invitations]', error);
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Invitation operation failed.' });
   }
@@ -101,8 +104,10 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
     throw new InvitationError(eligibility.message || 'You may not book at this location.', 409, 'recipient_ineligible');
   }
   const slots = row.selectedSlots as Array<{ startTime: string; endTime: string }>;
+  // The invitation's frozen buffer and any kitchen override saved on it (never anything from this chef request).
+  const holdOptions = { bufferMinutes: row.bufferMinutesSnapshot, override: savedInvitationOverride(row) };
   const availability = await bookingService.validateBookingAvailability(row.kitchenId, new Date(`${row.date}T12:00:00Z`),
-    row.startTime, row.endTime, { selectedSlots: slots, fullDay: row.pricingMode === 'daily' });
+    row.startTime, row.endTime, { selectedSlots: slots, fullDay: row.pricingMode === 'daily', ...holdOptions });
   if (!availability.valid || !availability.windowStartTime) {
     await markUnavailable(row, availability.error || 'These dates are no longer available.');
     throw new InvitationError(availability.error || 'These dates are no longer available.', 409, 'invitation_unavailable');
@@ -124,7 +129,7 @@ router.post('/chef/invitations/:id/checkout', requireChef, requireNoUnpaidPenalt
   const cutoff = Date.parse(cancellation.sessions[0].startAt) - (cancellation.noticeHours * 60 + 37) * 60_000;
   if (Date.now() >= cutoff) throw new InvitationError(tLocale(req.neonUser!.preferredLocale, 'invCheckoutCutoff', { ns: 'booking' }), 409, 'checkout_cutoff');
   const pricing = await invitationCheckoutPricing(row, req.body?.equipmentIds);
-  const holdId = await reserveKitchenCheckout(row.kitchenId, chefId, row.date, slots, availability.windowStartTime, row.pricingMode === 'daily');
+  const holdId = await reserveKitchenCheckout(row.kitchenId, chefId, row.date, slots, availability.windowStartTime, row.pricingMode === 'daily', undefined, holdOptions);
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   let session: Awaited<ReturnType<typeof createPendingCheckoutSession>> | undefined;
   try {

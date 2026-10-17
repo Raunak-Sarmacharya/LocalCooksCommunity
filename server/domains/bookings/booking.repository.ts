@@ -66,9 +66,12 @@ export class BookingRepository {
     // ===== KITCHEN BOOKINGS =====
 
     async createKitchenBooking(data: InsertKitchenBooking) {
+        // Every new booking keeps the buffer that applied when it was made (owner, Oct 17).
+        const bufferMinutesSnapshot = data.bufferMinutesSnapshot !== undefined ? data.bufferMinutesSnapshot
+            : (await (await import('../../services/booking-policy-settings')).kitchenBookingPolicies(data.kitchenId)).bookingBufferMinutes;
         const [booking] = await db
             .insert(kitchenBookings)
-            .values(data)
+            .values({ ...data, bufferMinutesSnapshot })
             .returning();
         return this.mapKitchenBookingToDTO(booking);
     }
@@ -430,35 +433,6 @@ export class BookingRepository {
             .orderBy(desc(kitchenBookings.createdAt));
     }
 
-    async findConflictingBookings(kitchenId: number, date: Date, startTime: string, endTime: string, excludeBookingId?: number) {
-        // Basic overlap logic: (StartA < EndB) and (EndA > StartB)
-        // Since time is string HH:MM, we compare string directly IF dates match.
-        // KitchenBookings has bookingDate (timestamp) + startTime/endTime (strings).
-        // Conflict is strictly if same date + time overlap.
-
-        // Convert date object to YYYY-MM-DD for comparison
-        const dateStr = date.toISOString().split('T')[0];
-
-        const conditions = [
-            eq(kitchenBookings.kitchenId, kitchenId),
-            not(eq(kitchenBookings.status, 'cancelled')),
-            sql`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
-            sql`${kitchenBookings.startTime} < ${endTime}`,
-            sql`${kitchenBookings.endTime} > ${startTime}`
-        ];
-
-        if (excludeBookingId) {
-            conditions.push(not(eq(kitchenBookings.id, excludeBookingId)));
-        }
-
-        const conflicts = await db
-            .select()
-            .from(kitchenBookings)
-            .where(and(...conditions));
-
-        return conflicts;
-    }
-
     async getStorageBookingsByChefId(chefId: number) {
         const result = await db
             .select({
@@ -739,6 +713,8 @@ function getKitchenBookingSelection() {
         endTime: kitchenBookings.endTime,
         selectedSlots: kitchenBookings.selectedSlots,
         operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
+        bufferMinutesSnapshot: kitchenBookings.bufferMinutesSnapshot,
+        scheduleRevision: kitchenBookings.scheduleRevision,
         pricingMode: kitchenBookings.pricingMode,
         status: kitchenBookings.status,
         specialNotes: kitchenBookings.specialNotes,

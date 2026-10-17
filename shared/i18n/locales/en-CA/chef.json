@@ -3671,6 +3671,7 @@
   "sxNoTimeClosing": "{kitchen} closes when your booking ends, so there’s no extra time to add. Message them if you need a few minutes.",
   "sxNoTimeMaxLength": "You’ve reached {kitchen}’s longest booking for one day. Message them if you need more time.",
   "sxNoTimeTurnover": "{kitchen} needs the time after your booking to get ready for the next chef. Message them if you need a few minutes.",
+  "sxNoTimeWeeklyLimit": "You have reached your weekly hours at {kitchen}. Message them if you need more time.",
   "shellMyStorage": "My storage",
   "blMyStorage": "Renting storage? See My storage",
   "coMoveOutChecklist": "Move-out checklist",

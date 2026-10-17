@@ -1,4 +1,5 @@
-import { calendarDateForBookingTime, occupiedIntervals } from './operating-hours';
+import { calendarDateForOperatingTime } from './operating-hours';
+import { datedOccupiedSlots } from './booking-occupancy';
 import { matchingLocalInstants } from './booking-dst';
 import { DEFAULT_TIMEZONE } from './timezone-utils';
 
@@ -17,17 +18,16 @@ type BookingWindow = {
   selectedSlots?: unknown; operatingWindowStartTime?: string | null;
 };
 
-/** Context only: tours can be hosted during bookings. Never consume booking capacity. */
-export function tourBookingOverlaps(bookings: BookingWindow[], kitchenId: number, start: Date, durationMinutes: number): TourBookingOverlap[] {
+/** Context only: tours can be hosted during bookings. Never consume booking capacity. Every dated day of a booking counts. */
+export function tourBookingOverlaps(bookings: BookingWindow[], kitchenId: number, start: Date, durationMinutes: number, timezone = DEFAULT_TIMEZONE): TourBookingOverlap[] {
   const end = start.getTime() + durationMinutes * 60_000;
   return bookings.flatMap(booking => {
     if (booking.kitchenId !== kitchenId || !['pending', 'confirmed', 'cancellation_requested'].includes(booking.status)) return [];
-    const date = (booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : booking.bookingDate).slice(0, 10);
-    return occupiedIntervals(booking).flatMap(slot => {
-      const startDate = calendarDateForBookingTime(date, slot.startTime, booking.operatingWindowStartTime);
-      const endDate = calendarDateForBookingTime(date, slot.endTime, booking.operatingWindowStartTime, slot.startTime);
-      const starts = matchingLocalInstants(startDate, slot.startTime, DEFAULT_TIMEZONE);
-      const ends = matchingLocalInstants(endDate, slot.endTime, DEFAULT_TIMEZONE);
+    return datedOccupiedSlots(booking).flatMap(slot => {
+      const startDate = calendarDateForOperatingTime(slot.date, slot.startTime, slot.windowStartTime);
+      const endDate = calendarDateForOperatingTime(slot.date, slot.endTime, slot.windowStartTime);
+      const starts = matchingLocalInstants(startDate, slot.startTime, timezone);
+      const ends = matchingLocalInstants(endDate, slot.endTime, timezone);
       if (!starts.length || !ends.length) throw new Error('An active booking has an invalid local time. Review its schedule before accepting this tour.');
       // Historical ambiguous wall times have no saved occurrence: show their full possible interval.
       const earliest = starts[0], latest = ends.at(-1)!;

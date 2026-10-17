@@ -670,7 +670,7 @@ async function handleCheckoutSessionCompleted(
           const { fulfillKitchenCheckout } = await import('../services/kitchen-checkout-holds');
           const directBooking = await fulfillKitchenCheckout(
             metadata.hold_id, session.id, kitchenId, bookingDate.toISOString().slice(0, 10),
-            selectedSlots, metadata.window_start_time || startTime, async () => {
+            selectedSlots, metadata.window_start_time || startTime, async saved => {
           const [created] = await db
             .insert(kitchenBookings)
             .values({
@@ -698,6 +698,7 @@ async function handleCheckoutSessionCompleted(
               // ENTERPRISE STANDARD: Store Stripe customer/payment info for off-session damage claim charging
               stripeCustomerId: stripeCustomerId || null,
               stripePaymentMethodId: stripePaymentMethodId || null,
+              bufferMinutesSnapshot: saved.bufferMinutesSnapshot,
             })
             .returning();
           if (!created) throw new Error('Direct DB insert returned no result');

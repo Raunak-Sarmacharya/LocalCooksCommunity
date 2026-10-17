@@ -44,7 +44,8 @@ export const validExtensionMinutes = (minutes: unknown): minutes is number =>
 export function sessionExtensionOptions(input: {
   operatingDate: string; windowStartTime: string; windowEndTime: string; endTime: string; endAt: string; timezone: string;
   durationMinutes: number; maxMinutes: number | null; occupied: Array<{ start: number; end: number }>;
-  turnoverOccupied?: InstantInterval[];
+  /** Other bookings/holds with the pair buffer to keep from each (the larger of the two saved buffers; legacy callers: 60). */
+  turnoverOccupied?: Array<InstantInterval & { bufferMinutes?: number }>;
   hourlyRateCents: number; ratios: Parameters<typeof extensionPrice>[2];
 }): ExtensionOption[] {
   const end = minutesInOperatingWindow(input.endTime, input.windowStartTime);
@@ -61,13 +62,13 @@ export function sessionExtensionOptions(input: {
     if (matches.length !== 1 || matches[0] - oldEndMs !== minutes * 60_000) break;
     const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime: input.endTime, endTime }, input.windowStartTime);
     if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) break;
-    if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: oldEndMs, end: matches[0] }, 60))) break;
+    if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: oldEndMs, end: matches[0] }, slot.bufferMinutes ?? 60))) break;
     options.push({ minutes, endTime, endAt: new Date(matches[0]).toISOString(), ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
   }
   return options;
 }
 
-export type NoTimeReason = 'closing' | 'max_length' | 'booked' | 'turnover';
+export type NoTimeReason = 'closing' | 'max_length' | 'booked' | 'turnover' | 'weekly_limit';
 /** Why not even the first step fits (same checks, same order as `sessionExtensionOptions`), so the chef reads the real reason. */
 export function sessionExtensionBlocker(input: Parameters<typeof sessionExtensionOptions>[0]): NoTimeReason | null {
   const end = minutesInOperatingWindow(input.endTime, input.windowStartTime);
@@ -83,7 +84,7 @@ export function sessionExtensionBlocker(input: Parameters<typeof sessionExtensio
   if (matches.length !== 1 || !Number.isFinite(oldEndMs)) return null;
   const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime: input.endTime, endTime }, input.windowStartTime);
   if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) return 'booked';
-  if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: oldEndMs, end: matches[0] }, 60))) return 'turnover';
+  if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: oldEndMs, end: matches[0] }, slot.bufferMinutes ?? 60))) return 'turnover';
   return null;
 }
 
@@ -116,7 +117,7 @@ export function extendedSessionSnapshot(snapshot: CloseoutSnapshot, blockIndex: 
 /** Appends the paid extra time as its own slot; a dated (multi-day) visit keeps its operating date. */
 export function appendExtensionSlot(slots: Array<OperatingSlot & { date?: string }>, startTime: string, endTime: string): Array<OperatingSlot & { date?: string }> {
   const before = slots.find(slot => slot.endTime === startTime);
-  return [...slots, { startTime, endTime, ...(before?.date ? { date: before.date } : {}) }];
+  return [...slots, { startTime, endTime, ...(before?.date ? { date: before.date } : {}), ...(before?.windowStartTime ? { windowStartTime: before.windowStartTime } : {}) }];
 }
 
 /** The chef may ask from 60 minutes before the booked end until the end. */
@@ -154,7 +155,7 @@ const clockOf = (minutes: number) => { const normalized = ((minutes % 1440) + 14
 export function earlyStartOptions(input: {
   operatingDate: string; windowStartTime: string; startTime: string; startAt: string; timezone: string;
   durationMinutes: number; maxMinutes: number | null; occupied: Array<{ start: number; end: number }>;
-  turnoverOccupied?: InstantInterval[];
+  turnoverOccupied?: Array<InstantInterval & { bufferMinutes?: number }>;
   hourlyRateCents: number; ratios: Parameters<typeof extensionPrice>[2]; now?: Date | number;
 }): EarlyStartOption[] {
   const start = minutesInOperatingWindow(input.startTime, input.windowStartTime);
@@ -173,7 +174,7 @@ export function earlyStartOptions(input: {
     if (matches[0] + 15 * 60_000 <= nowMs) break;
     const candidate = absoluteOperatingSlotInterval(input.operatingDate, { startTime, endTime: input.startTime }, input.windowStartTime);
     if (input.occupied.some(slot => candidate.start < slot.end && candidate.end > slot.start)) break;
-    if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: matches[0], end: oldStartMs }, 60))) break;
+    if (input.turnoverOccupied?.some(slot => bookingIntervalsConflict(slot, { start: matches[0], end: oldStartMs }, slot.bufferMinutes ?? 60))) break;
     options.push({ minutes, startTime, startAt: new Date(matches[0]).toISOString(), defaultFree: defaultFree(minutes),
       billedMinutes: billedMinutes(minutes), startNow: matches[0] <= nowMs, ...extensionPrice(billedMinutes(minutes), input.hourlyRateCents, input.ratios) });
   }
@@ -194,5 +195,5 @@ export function earlierSessionSnapshot(snapshot: CloseoutSnapshot, blockIndex: n
 /** Prepends the paid early time as its own slot on the same operating date. */
 export function prependEarlySlot(slots: Array<OperatingSlot & { date?: string }>, startTime: string, endTime: string): Array<OperatingSlot & { date?: string }> {
   const after = slots.find(slot => slot.startTime === endTime);
-  return [{ startTime, endTime, ...(after?.date ? { date: after.date } : {}) }, ...slots];
+  return [{ startTime, endTime, ...(after?.date ? { date: after.date } : {}), ...(after?.windowStartTime ? { windowStartTime: after.windowStartTime } : {}) }, ...slots];
 }

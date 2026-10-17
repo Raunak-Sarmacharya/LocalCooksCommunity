@@ -1837,7 +1837,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         const operatingDate = new Date(bookingDate).toISOString().slice(0, 10);
         const calendarStartDate = calendarDateForOperatingTime(operatingDate, startTime, availability.windowStartTime!);
         const { getHoursUntilBooking } = await import('../date-utils');
-        if (getHoursUntilBooking(calendarStartDate, startTime, 'America/St_Johns')
+        if (getHoursUntilBooking(calendarStartDate, startTime, location?.timezone || 'America/St_Johns')
             < (kitchen.minimumBookingWindowHours ?? location?.minimumBookingWindowHours ?? 1)) {
             return res.status(400).json({ error: 'Booking time is too soon' });
         }
@@ -2194,26 +2194,21 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             return res.status(403).json(bookingRefusalBody(applicationStatus));
         }
 
-        // Validate booking availability
+        // One server check for the day: hours and occupancy with buffers, longest hourly booking, notice in the
+        // location's time zone, minimum hours and the chef's weekly hours at this kitchen.
         const bookingDateObj = new Date(bookingDate);
-        const availabilityCheck = await bookingService.validateBookingAvailability(
-            kitchenId,
-            bookingDateObj,
-            startTime,
-            endTime,
-            {
-                selectedSlots,
-                fullDay: selectedPricingMode === 'daily',
-                // The request being changed does not block its own replacement (10-11 can become 10-12).
-                ...(replacesBookingId ? { excludeBookingId: replacesBookingId, keepAdvanceWindow: true } : {}),
-            }
-        );
-
-        if (!availabilityCheck.valid) {
-            return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
+        const { validateBookingDays, bookingDaysErrorBody } = await import('../services/booking-days-validation');
+        const dayCheck = await validateBookingDays({
+            kitchenId, chefId, legacySingleDay: true,
+            days: [{ date: bookingDateObj.toISOString().split('T')[0], pricingMode: selectedPricingMode, slots: selectedSlots, startTime, endTime }],
+            // The request being changed does not block its own replacement (10-11 can become 10-12).
+            ...(replacesBookingId ? { excludeBookingId: replacesBookingId, keepAdvanceWindow: true } : {}),
+        });
+        if (!dayCheck.ok) {
+            return res.status(dayCheck.kind === 'weekly' ? 409 : 400).json(bookingDaysErrorBody(dayCheck));
         }
-
-        const bookingSlots = availabilityCheck.slots!;
+        const availabilityCheck = { windowStartTime: dayCheck.days[0].windowStartTime };
+        const bookingSlots = dayCheck.days[0].slots;
 
         // Get location details
         const location = await locationService.getLocationById(kitchenLocationId);
@@ -2221,33 +2216,10 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
         }
-        // Kitchen override first, then the location default; null = no longest-booking cap.
-        const hourlyLimit = (kitchenDetails as any).defaultDailyBookingLimit ?? location.defaultDailyBookingLimit ?? null;
-        if (selectedPricingMode === 'hourly' && hourlyLimit != null && bookingSlots.length > hourlyLimit) {
-            return res.status(400).json({ error: `Select no more than ${hourlyLimit} hourly slots` });
-        }
 
-        const timezone = 'America/St_Johns';
-        const minimumBookingWindowHours = (location as any).minimumBookingWindowHours ?? 1;
-
-        // Validate booking time
         const bookingDateStr = typeof bookingDate === 'string'
             ? bookingDate.split('T')[0]
             : bookingDateObj.toISOString().split('T')[0];
-
-        const { isBookingTimePast, getHoursUntilBooking } = await import('../date-utils');
-
-        const startCalendarDate = calendarDateForOperatingTime(bookingDateStr, startTime, availabilityCheck.windowStartTime!);
-        if (isBookingTimePast(startCalendarDate, startTime, timezone)) {
-            return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
-        }
-
-        const hoursUntilBooking = getHoursUntilBooking(startCalendarDate, startTime, timezone);
-        if (hoursUntilBooking < minimumBookingWindowHours) {
-            return res.status(400).json({
-                error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
-            });
-        }
 
         // Get manager's Stripe Connect account
         const manager = await userService.getUser((location as any).managerId);
@@ -2268,14 +2240,6 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             return res.status(400).json({ error: "Chef email not found" });
         }
         const chefEmail = chef.username;
-
-        // Enforce minimum booking hours (0 = no restriction)
-        const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
-        if (selectedPricingMode === 'hourly' && minimumBookingHours > 0 && bookingSlots.length < minimumBookingHours) {
-            return res.status(400).json({
-                error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. You selected ${bookingSlots.length}.`
-            });
-        }
 
         // Calculate total price
         // IMPORTANT: When staggered slots are selected, use slot count for pricing
@@ -2339,7 +2303,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         const cancellationPolicySnapshot = await checkoutCancellationSnapshot(kitchenId, bookingDateStr, startTime,
             availabilityCheck.windowStartTime!, location.timezone || 'America/St_Johns', cancellationPolicyAccepted, cancellationPolicyVersion, cancellationDisclosureVersion);
         const holdId = await reserveKitchenCheckout(kitchenId, chefId, bookingDateStr, bookingSlots,
-            availabilityCheck.windowStartTime!, selectedPricingMode === 'daily', replacesBookingId);
+            availabilityCheck.windowStartTime, selectedPricingMode === 'daily', replacesBookingId);
         let checkoutSession: Awaited<ReturnType<typeof createPendingCheckoutSession>>;
         try {
         checkoutSession = await createPendingCheckoutSession({
@@ -2417,6 +2381,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         });
     } catch (error: any) {
         logger.error("Error creating booking checkout:", error);
+        const { WeeklyChefHoursLimitError } = await import('../services/kitchen-booking-quota');
+        if (error instanceof WeeklyChefHoursLimitError) return res.status(409).json(error.body());
         const { KitchenSlotUnavailableError } = await import('../services/kitchen-checkout-holds');
         res.status(error instanceof KitchenSlotUnavailableError ? 409 : 500).json({ error: error.message || "Failed to create booking checkout" });
     }
@@ -2483,7 +2449,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             location = await locationService.getLocationById(kitchenLocationId2);
             Object.assign(location, resolveKitchenBookingPolicies(kitchenDetails, location));
             if (location) {
-                timezone = 'America/St_Johns';
+                timezone = (location as any).timezone || 'America/St_Johns';
                 // Use manager's setting - allow 0 for same-day bookings
                 const minWindow = (location as any).minimumBookingWindowHours ?? (location as any).minimum_booking_window_hours;
                 if (minWindow !== null && minWindow !== undefined) {
@@ -2681,6 +2647,8 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         res.status(201).json(booking);
     } catch (error: any) {
         logger.error("Error creating booking:", error);
+        const { WeeklyChefHoursLimitError } = await import('../services/kitchen-booking-quota');
+        if (error instanceof WeeklyChefHoursLimitError) return res.status(409).json(error.body());
         res.status(500).json({ error: error.message || "Failed to create booking" });
     }
 });
