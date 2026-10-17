@@ -12,9 +12,11 @@ import { bookingAddonPrices } from '@shared/booking-addon-prices';
 import { capturedComponentAllocations } from '@shared/captured-component-allocations';
 import { getBookingResponseDeadline } from './booking-response-deadline';
 import { kitchenPayoutTiming } from '@shared/kitchen-payout';
+import { verifyDatedQuote, verifyDatedCheckout } from './dated-booking-quote';
 
 type ItemAction = { action: 'confirmed' | 'cancelled'; storageBookingId?: number; equipmentBookingId?: number };
 type Decision = { id: string; target: 'confirmed' | 'cancelled'; state: 'pending' | 'complete'; intentId: string;
+  datedQuoteHash?: string;
   actorId?: number;
   /** Optional note from the kitchen to the chef when it declines (max 500 chars). */
   declineMessage?: string;
@@ -63,6 +65,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
   options: { supersedeDeadEnd?: boolean; message?: string; replacedBy?: Decision['replacedBy'] } = {}) {
   const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
   if (!booking?.paymentIntentId) throw new BookingTermsReviewRequired();
+  if (booking.scheduleRevision > 0 && (storageActions.length || equipmentActions.some(action => action.action !== target)))
+    throw new Error('Accept all dated days and equipment, or decline the whole booking');
   let decision = booking.paymentDecision as Decision | null;
   if (!decision && target === 'confirmed' && booking.status === 'pending' && booking.paymentStatus === 'authorized') {
     const { lazyExpireKitchenBookingAuth } = await import('./auth-expiry-service');
@@ -95,12 +99,24 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       if (!session || session.status !== 'complete' || session.currency !== 'cad' || session.amount_total !== intent.amount
         || session.metadata?.type !== 'kitchen_booking' || session.metadata.chef_id !== String(booking.chefId)
         || session.metadata.kitchen_id !== String(booking.kitchenId)) throw new BookingTermsReviewRequired();
-      terms = bookingCaptureTerms(session.metadata, intent.amount);
-      itemPrices = bookingAddonPrices(session.metadata);
+      if (booking.scheduleRevision > 0) {
+        const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1);
+        const quote = verifyDatedQuote((source?.metadata as any)?.datedQuote);
+        verifyDatedCheckout(quote, session, intent);
+        const m = quote.manifest;
+        if (source?.payoutPartition !== 'per_day' || source.bookingId !== bookingId || Number(source.amount) !== m.totalCents
+          || Number(booking.totalPrice) !== m.subtotalCents || Number(booking.serviceFee) !== m.serviceFeeCents) throw new BookingTermsReviewRequired();
+        terms = { subtotal: m.subtotalCents, tax: m.taxCents, commission: m.serviceFeeCents, rate: m.taxRatePercent, authorizedAmount: m.totalCents };
+      } else {
+        terms = bookingCaptureTerms(session.metadata, intent.amount);
+        itemPrices = bookingAddonPrices(session.metadata);
+      }
       // A checkout opened before storage left kitchen booking (ST12) priced storage that no rental now backs.
       if (itemPrices?.s.length) throw new BookingTermsReviewRequired();
     }
     decision = await db.transaction(async tx => {
+      if (booking.scheduleRevision > 0) await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
       const [current] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1).for('update');
       if (current?.paymentDecision) return current.paymentDecision as Decision;
       if (!current || current.status !== 'pending' || current.paymentStatus !== 'authorized'
@@ -113,6 +129,12 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
           throw new Error('Booking item changed; refresh before deciding');
       }
       if (equipment.some(item => !['pending', 'cancelled'].includes(item.status))) throw new BookingTermsReviewRequired();
+      if (current.scheduleRevision > 0 && target === 'confirmed') {
+        const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1);
+        if (!source) throw new BookingTermsReviewRequired();
+        const { quote } = await (await import('./dated-booking-allocations')).datedSourceComponents(tx, source);
+        if (equipment.some(item => item.status !== 'pending') || quote.manifest.totalCents !== intent.amount) throw new BookingTermsReviewRequired();
+      }
       const plan = (items: typeof equipment, actions: ItemAction[], key: 'storageBookingId' | 'equipmentBookingId') =>
         items.map(item => ({ id: item.id, status: (target === 'cancelled' || item.status === 'cancelled' ? 'cancelled'
           : actions.find(action => action[key] === item.id)?.action || 'confirmed') as 'confirmed' | 'cancelled' }));
@@ -131,6 +153,8 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       if (target === 'confirmed' && rejectedCents > 0 && !itemPrices) throw new BookingTermsReviewRequired();
       const subtotal = target === 'confirmed' ? terms.subtotal - rejectedCents : 0;
       const capture = target === 'confirmed' ? approvedBookingCapture(terms, subtotal) : { amount: 0, tax: 0, commission: 0 };
+      if (current.scheduleRevision > 0 && target === 'confirmed' && capture.amount !== terms.authorizedAmount)
+        throw new Error('Dated bookings require full capture');
       const next: Decision = { id: randomUUID(), target, state: 'pending', intentId: intent.id, subtotal, actorId, expiry,
         ...capture, authorizedAmount: terms.authorizedAmount, taxRate: terms.rate, storage: [],
         equipment: equipmentPlan, startedAt: new Date().toISOString(),
@@ -139,6 +163,7 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       // The webhook needs this split before capture to calculate the manager transfer.
       const [transaction] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, intent.id)).limit(1).for('update');
       if (!transaction && target === 'confirmed') throw new BookingTermsReviewRequired();
+      if (current.scheduleRevision > 0 && transaction) next.datedQuoteHash = verifyDatedQuote((transaction.metadata as any)?.datedQuote).hash;
       const components = target === 'confirmed' ? [
         ...equipment.filter(item => equipmentPlan.find(plan => plan.id === item.id)?.status === 'confirmed').map(item => ({ kind: 'equipment' as const, bookingId: item.id, subtotalCents: Number(item.totalPrice) })),
       ] : [];
@@ -147,13 +172,14 @@ export async function decideAuthorizedBooking(bookingId: number, target: 'confir
       ], next.tax) : [];
       if (target === 'confirmed' && transaction) await tx.update(paymentTransactions).set({ amount: String(next.amount),
         // Snapshot at capture: only this env opt-in defers the kitchen transfer until the visit closes.
-        payoutTiming: kitchenPayoutTiming(process.env.KITCHEN_PAYOUT_TIMING),
+        payoutTiming: current.scheduleRevision > 0 ? 'after_closeout' : kitchenPayoutTiming(process.env.KITCHEN_PAYOUT_TIMING),
+        ...(current.scheduleRevision > 0 ? { payoutPartition: 'per_day' } : {}),
         baseAmount: String(subtotal + next.tax), taxAmount: String(next.tax), serviceFee: String(next.commission),
         // Kitchen share of what is actually captured (approved items + their HST); a declined add-on must not inflate it.
         managerRevenue: String(subtotal + next.tax),
         metadata: { ...(transaction.metadata as object || {}), partialCapture: next.amount < terms.authorizedAmount,
           approvedSubtotal: subtotal, approvedTax: next.tax, taxRatePercent: terms.rate, platformCommission: next.commission,
-          bookingDecisionId: next.id, capturedComponentAllocations: allocations, componentAllocationVersion: 'original-tax-largest-remainder-v1' } }).where(eq(paymentTransactions.id, transaction.id));
+          bookingDecisionId: next.id, ...(current.scheduleRevision > 0 ? {} : { capturedComponentAllocations: allocations, componentAllocationVersion: 'original-tax-largest-remainder-v1' }) } }).where(eq(paymentTransactions.id, transaction.id));
       await tx.update(kitchenBookings).set({ paymentDecision: next, updatedAt: new Date() }).where(eq(kitchenBookings.id, bookingId));
       return next;
     });
@@ -251,7 +277,14 @@ export async function reconcileBookingDecision(bookingId: number, recorded?: Dec
   }
   if (decision.target === 'cancelled' && intent.status !== 'canceled')
     throw new Error('The payment hold has not been verified as released. Local Cooks must review this booking.');
+  const datedEvidence = decision.target === 'confirmed' && decision.datedQuoteHash
+    ? await (await import('./stripe-service')).getDatedCaptureEvidence(decision.intentId) : undefined;
   await db.transaction(async tx => {
+    if (datedEvidence) {
+      const [source] = await tx.select().from(paymentTransactions).where(eq(paymentTransactions.paymentIntentId, decision!.intentId)).limit(1).for('update');
+      if (!source || verifyDatedQuote((source.metadata as any)?.datedQuote).hash !== decision!.datedQuoteHash) throw new BookingTermsReviewRequired();
+      await (await import('./dated-booking-allocations')).writeDatedCaptureAllocations(tx, source.id, datedEvidence);
+    }
     const [booking] = await tx.select().from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1).for('update');
     const current = booking?.paymentDecision as Decision | null;
     if (current?.id !== decision!.id) throw new Error('Payment decision changed; Local Cooks review required');

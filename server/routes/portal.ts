@@ -345,6 +345,7 @@ router.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req: R
 
 // Submit portal booking (authenticated portal user)
 router.post("/bookings", requirePortalUser, async (req: Request, res: Response) => {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'days')) return res.status(400).json({ error: 'Dated bookings must use chef checkout' });
     try {
         const userId = req.neonUser!.id;
         const {

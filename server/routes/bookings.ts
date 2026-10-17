@@ -1802,6 +1802,7 @@ async function sendCancellationNotifications(
 
 // Create PaymentIntent for booking (custom flow)
 router.post("/payments/create-intent", requireChef, async (req: Request, res: Response) => {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'days')) return res.status(400).json({ error: 'Dated bookings must use checkout' });
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser!.id;
@@ -2150,6 +2151,15 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         const chefId = req.neonUser!.id;
         if (req.body.selectedStorage?.length || req.body.selectedStorageIds?.length) return res.status(400).json({ error: STORAGE_SEPARATE, code: "storage_rented_separately" });
 
+        if (Object.prototype.hasOwnProperty.call(req.body, 'days')) {
+            const { checkoutDatedBooking, DatedCheckoutRefused } = await import('../services/dated-booking-checkout');
+            try { return res.json(await checkoutDatedBooking(chefId, req.body, getBaseUrl(req))); }
+            catch (error) {
+                if (error instanceof DatedCheckoutRefused) return res.status(error.status).json(error.body);
+                throw error;
+            }
+        }
+
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
             return res.status(400).json({ error: "Missing required booking fields" });
         }
@@ -2390,6 +2400,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
 // Create a booking
 router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'days')) return res.status(400).json({ error: 'Dated bookings must use checkout' });
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;

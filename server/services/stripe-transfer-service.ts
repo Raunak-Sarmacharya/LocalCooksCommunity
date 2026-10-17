@@ -153,12 +153,13 @@ async function fetchPlatformCommission(connection: Pick<typeof db, 'select'>): P
 export async function transferToManagerForBooking(
   params: TransferToManagerParams,
 ): Promise<TransferResult> {
+  const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
+  if (source?.payoutPartition === 'per_day') return deferredDayTransfer(params);
   if (params.existingMetadata?.damage_claim_v2 === 'true') {
     const result = await (await import('./damage-claim-money')).sendClaimKitchenMoney(Number(params.existingMetadata.damage_claim_id), 'payment');
     return { transferred: !!result.transferId, transferId: result.transferId, actualStripeFeeCents: params.actualStripeFeeCents,
       platformCommissionCents: 0, feeWithheldCents: 0, transferredCents: result.transferId ? params.chargeAmountCents : 0 };
   }
-  const [source] = await db.select().from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
   if ((source?.metadata as any)?.kitchenChangeId) return transferKitchenChangeSource(params);
   return db.transaction(async tx => {
     await tx.select({ id: paymentTransactions.id }).from(paymentTransactions)
@@ -218,6 +219,11 @@ async function transferKitchenChangeSource(params: TransferToManagerParams): Pro
 
 /** Reason prefix for an after-closeout kitchen charge that has no release decision yet. Not an error. */
 export const PAYOUT_DEFERRED_REASON = 'deferred: the kitchen payout is sent after the visit closes';
+export const DAY_PAYOUT_DEFERRED_REASON = 'deferred: this payment is partitioned per day';
+function deferredDayTransfer(params: TransferToManagerParams): TransferResult {
+  return { transferred: false, transferId: null, transferredCents: 0, actualStripeFeeCents: params.actualStripeFeeCents,
+    platformCommissionCents: 0, feeWithheldCents: 0, reason: DAY_PAYOUT_DEFERRED_REASON };
+}
 
 async function transferLockedSource(params: TransferToManagerParams, connection: Parameters<Parameters<typeof db.transaction>[0]>[0], deferWrites = false): Promise<TransferResult> {
   const saveTransfer = async (transferId: string) => {
@@ -238,8 +244,9 @@ async function transferLockedSource(params: TransferToManagerParams, connection:
   // NULL/at_capture rows (legacy) skip this block entirely.
   const [payout] = await connection.select({ payoutTiming: paymentTransactions.payoutTiming, payoutReleasedAt: paymentTransactions.payoutReleasedAt,
     payoutHoldReason: paymentTransactions.payoutHoldReason, transferId: paymentTransactions.transferId, bookingId: paymentTransactions.bookingId,
-    metadata: paymentTransactions.metadata })
+    metadata: paymentTransactions.metadata, payoutPartition: paymentTransactions.payoutPartition })
     .from(paymentTransactions).where(eq(paymentTransactions.id, params.paymentTransactionId)).limit(1);
+  if (payout?.payoutPartition === 'per_day') return deferredDayTransfer(params);
   if ((payout?.metadata as { damage_claim_v2?: string } | null)?.damage_claim_v2 === 'true')
     return { ...baseResult, reason: 'Claim payment uses full-amount fulfillment; retry from the claim support case' };
   if (payout?.payoutTiming === 'after_closeout' && !payout.transferId) {

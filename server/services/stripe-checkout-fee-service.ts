@@ -26,6 +26,7 @@ import { platformSettings } from '@shared/schema';
 import { estimateManagerPayoutFeesCents } from "@shared/booking-pricing-breakdown";
 
 export interface FeeCalculationResult {
+  platformCommissionRate?: number;
   bookingPriceInCents: number;
   stripeProcessingFeeInCents: number;
   platformCommissionInCents: number;
@@ -339,6 +340,7 @@ export async function calculateCheckoutFeesAsync(
   return {
     bookingPriceInCents,
     stripeProcessingFeeInCents: estimated.stripeProcessingFeeCents,
+    platformCommissionRate: config.platformCommissionRate,
     platformCommissionInCents: estimated.platformCommissionCents,
     totalPlatformFeeInCents,
     totalChargeInCents: estimated.totalChargeCents,

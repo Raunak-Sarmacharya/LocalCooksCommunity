@@ -28,6 +28,15 @@ beforeEach(() => {
 });
 
 describe('payout-after-closeout gate in the transfer engine', () => {
+  it('never transfers a per_day source, including change/claim dispatch and a legacy release override', async () => {
+    state.source.payoutPartition = 'per_day'; state.source.payoutReleasedAt = new Date();
+    for (const metadata of [{}, { kitchenChangeId: 'change' }, { damage_claim_v2: 'true' }]) {
+      state.source.metadata = metadata;
+      expect(await transferToManagerForBooking({ ...params, existingMetadata: metadata })).toMatchObject({ transferred: false, transferredCents: 0,
+        reason: 'deferred: this payment is partitioned per day' });
+    }
+    expect(state.create).not.toHaveBeenCalled(); expect(state.retrieve).not.toHaveBeenCalled(); expect(state.record).not.toHaveBeenCalled();
+  });
   it('capture before AND after storage approval never transfers a storage term, even with a release timestamp', async () => {
     state.source.payoutTiming = 'storage_term'; state.source.bookingType = 'storage';
     for (const status of ['authorized', 'succeeded']) {

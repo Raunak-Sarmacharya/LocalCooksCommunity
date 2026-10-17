@@ -58,6 +58,32 @@ export interface CheckoutSessionResult {
   sessionUrl: string;
 }
 
+/** The durable head quote is saved before this call. Retries use the same provider key and exact expiry. */
+export async function createDatedKitchenCheckoutSession(params: {
+  quote: import('./dated-booking-quote').DatedQuote; customerEmail: string; successUrl: string; cancelUrl: string;
+}, provider: Stripe | null = stripe): Promise<CheckoutSessionResult> {
+  if (!provider) throw Error('Stripe is not configured');
+  const { datedCheckoutMetadata } = await import('./dated-booking-quote');
+  const metadata = datedCheckoutMetadata(params.quote), m = params.quote.manifest;
+  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+  const add = (name: string, amount: number) => {
+    if (amount) lineItems.push({ price_data: { currency: 'cad', product_data: { name }, unit_amount: amount }, quantity: 1 });
+  };
+  for (const day of m.days) {
+    add(`${day.date}: Kitchen (${day.pricingMode === 'daily' ? 'full day' : `${day.slots.length} hours`})`, day.kitchenCents);
+    add(`${day.date}: Equipment`, day.equipment.reduce((sum, item) => sum + item.cents, 0));
+  }
+  add(`Tax (${m.taxRatePercent}%)`, m.taxCents); add('Service Fee', m.serviceFeeCents);
+  const session = await provider.checkout.sessions.create({ mode: 'payment', submit_type: 'book', payment_method_types: ['card'],
+    customer_email: params.customerEmail, expires_at: m.checkoutExpiresAt, line_items: lineItems, metadata,
+    payment_intent_data: { capture_method: 'manual', metadata, receipt_email: params.customerEmail, setup_future_usage: 'off_session' },
+    success_url: params.successUrl, cancel_url: params.cancelUrl,
+    custom_text: { submit: { message: 'Your card is held for the whole booking. You are charged in full only if the kitchen accepts all days.' } },
+  }, { idempotencyKey: `kitchen-days-checkout:${m.headId}` });
+  if (!session.url) throw Error('Checkout URL is unavailable; keep the saved quote for recovery');
+  return { sessionId: session.id, sessionUrl: session.url };
+}
+
 /**
  * ENTERPRISE-GRADE: Checkout session params for payment-first flow
  * Booking is NOT created before checkout - all data is passed in metadata

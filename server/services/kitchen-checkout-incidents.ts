@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { and, asc, eq, inArray, notInArray, or, sql } from 'drizzle-orm';
-import { kitchenCheckoutIncidents, kitchenBookings, users, emailLogs } from '@shared/schema';
+import { kitchenCheckoutIncidents, kitchenCheckoutHolds, kitchenBookings, users, emailLogs } from '@shared/schema';
 import { db } from '../db';
 import { getAppBaseUrl } from '../config';
 import { resolveLocale, tLocale } from '../i18n';
@@ -19,6 +19,9 @@ export function checkoutRecoveryStripe() {
 export async function registerKitchenCheckout(sessionId: string, chefId: number, kitchenId: number, operatingDate: string, quoteSnapshot?: unknown) {
   await db.insert(kitchenCheckoutIncidents).values({ sessionId, chefId, kitchenId, operatingDate, ...(quoteSnapshot != null ? { quoteSnapshot } : {}) })
     .onConflictDoNothing({ target: kitchenCheckoutIncidents.sessionId });
+  if (quoteSnapshot != null) await db.update(kitchenCheckoutIncidents).set({ quoteSnapshot }).where(and(
+    eq(kitchenCheckoutIncidents.sessionId, sessionId), eq(kitchenCheckoutIncidents.chefId, chefId), eq(kitchenCheckoutIncidents.kitchenId, kitchenId),
+    sql`${kitchenCheckoutIncidents.quoteSnapshot} IS NULL`));
 }
 export async function checkoutIncident(sessionId: string) {
   const [row] = await db.select().from(kitchenCheckoutIncidents).where(eq(kitchenCheckoutIncidents.sessionId, sessionId)).limit(1);
@@ -149,6 +152,8 @@ export async function reconcileKitchenCheckout(sessionId: string, stripe = check
   }
   const intent = session.payment_intent;
   if (!intent || typeof intent === 'string') throw Error('Checkout payment evidence is unavailable');
+  if (session.metadata.booking_contract || session.metadata.quote_hash)
+    return (await import('./booking-checkout-fulfillment')).fulfillQuotedKitchenBooking(session, intent, stripe);
   const [booking] = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.paymentIntentId, intent.id), eq(kitchenBookings.chefId, row.chefId))).limit(1);
   if (booking) {
     await updateCheckoutIncident(sessionId, { outcome: 'booking_created', bookingId: booking.id, paymentIntentId: intent.id, lastCheckedAt: new Date() });
@@ -158,11 +163,25 @@ export async function reconcileKitchenCheckout(sessionId: string, stripe = check
   }
   if (row.inventoryConflict) return resolveCheckoutConflict(session, intent, stripe);
   if (!['requires_capture', 'succeeded'].includes(intent.status)) throw Error('Completed checkout payment needs review');
-  if (!session.metadata.addon_prices) throw Error('Legacy checkout requires Local Cooks review of its quoted items');
+  if (!session.metadata.booking_contract && !session.metadata.quote_hash && !session.metadata.addon_prices) throw Error('Legacy checkout requires Local Cooks review of its quoted items');
   return (await import('./booking-checkout-fulfillment')).fulfillQuotedKitchenBooking(session, intent, stripe);
 }
 
+/** A signed expiry event can arrive before binding did; archive the unbound head before its group is released. */
+export async function archiveExpiredDatedCheckout(session: Stripe.Checkout.Session) {
+  const meta = session.metadata ?? {};
+  const existing = await checkoutIncident(session.id);
+  const [head] = meta.hold_id ? await db.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, meta.hold_id)).limit(1) : [];
+  const { verifyDatedQuote, datedCheckoutMetadata } = await import('./dated-booking-quote');
+  const quote = verifyDatedQuote(existing?.quoteSnapshot ?? head?.quoteSnapshot), m = quote.manifest;
+  if (session.status !== 'expired' || Object.entries(datedCheckoutMetadata(quote)).some(([key, value]) => meta[key] !== value))
+    throw Error('Dated checkout expiry evidence needs review');
+  await registerKitchenCheckout(session.id, m.chefId, m.kitchenId, m.days[0].date, quote);
+  await updateCheckoutIncident(session.id, { outcome: 'closed', lastCheckedAt: new Date() });
+}
+
 export async function recoverKitchenCheckouts(limit = 3) {
+  await recoverUnboundDatedCheckouts();
   const key = 'checkoutRecovery', pageSize = Math.min(limit, 3);
   const rows = await db.select().from(kitchenCheckoutIncidents).where(and(
     or(notInArray(kitchenCheckoutIncidents.outcome, ['booking_created', 'closed']),
@@ -187,6 +206,41 @@ export async function recoverKitchenCheckouts(limit = 3) {
   return { recovered, errors };
 }
 
+/** Archive/discover an expired unbound head before any deletion. Its provider request may have succeeded remotely. */
+export async function recoverUnboundDatedCheckouts(provider?: Stripe) {
+  const heads = await db.select().from(kitchenCheckoutHolds).where(sql`${kitchenCheckoutHolds.id} = ${kitchenCheckoutHolds.groupId}
+    AND ${kitchenCheckoutHolds.stripeSessionId} IS NULL AND ${kitchenCheckoutHolds.expiresAt} <= now()
+    AND ${kitchenCheckoutHolds.quoteSnapshot}->'manifest'->>'contract' = 'kitchen-days-v1'`).orderBy(asc(kitchenCheckoutHolds.expiresAt)).limit(3);
+  for (const head of heads) {
+    assertWorkerTime(2500);
+    const stripe = provider ?? checkoutRecoveryStripe();
+    const { verifyDatedQuote, datedCheckoutMetadata } = await import('./dated-booking-quote');
+    const quote = verifyDatedQuote(head.quoteSnapshot), m = quote.manifest;
+    // Search the entire creation window. An incomplete provider page cannot prove that no session was created.
+    const sessions = await stripe.checkout.sessions.list({ created: { gte: Math.floor(Date.parse(m.createdAt) / 1000) - 60,
+      lte: m.checkoutExpiresAt }, limit: 100 });
+    const matching = sessions.data.filter(session => session.metadata?.hold_id === head.id);
+    if (sessions.has_more || matching.length > 1) continue;
+    const session = matching[0];
+    if (session) {
+      if (Object.entries(datedCheckoutMetadata(quote)).some(([key, value]) => session.metadata?.[key] !== value))
+        throw Error('Recovered checkout differs from its immutable manifest');
+      await (await import('./kitchen-checkout-holds')).bindKitchenCheckout(head.id, session.id);
+      if (session.status === 'complete') await reconcileKitchenCheckout(session.id, stripe);
+      else if (session.status === 'expired') {
+        await updateCheckoutIncident(session.id, { outcome: 'closed', lastCheckedAt: new Date() });
+        await (await import('./kitchen-checkout-holds')).releaseKitchenCheckout(head.id);
+      }
+    } else {
+      // Checkout's creation expiry has passed and the complete provider listing has no matching session.
+      const archiveId = `unbound:${head.id}`;
+      await registerKitchenCheckout(archiveId, m.chefId, m.kitchenId, m.days[0].date, quote);
+      await updateCheckoutIncident(archiveId, { outcome: 'closed', lastCheckedAt: new Date(), error: 'No provider session found in the complete creation window' });
+      await (await import('./kitchen-checkout-holds')).releaseKitchenCheckout(head.id);
+    }
+  }
+}
+
 export async function listCheckoutIncidents(query = '') {
   return db.select().from(kitchenCheckoutIncidents).where(and(inArray(kitchenCheckoutIncidents.outcome, ['inventory_conflict', 'needs_support', 'verifying']),
     query ? or(eq(kitchenCheckoutIncidents.sessionId, query), eq(kitchenCheckoutIncidents.paymentIntentId, query)) : undefined))
@@ -202,9 +256,14 @@ export async function readKitchenCheckoutResult(sessionId: string, chefId: numbe
   if (!row) {
     const session = await checkoutRecoveryStripe().checkout.sessions.retrieve(sessionId);
     if (session.metadata?.type !== 'kitchen_booking' || session.metadata.chef_id !== String(chefId)) return null;
-    const kitchenId = Number(session.metadata.kitchen_id), date = session.metadata.booking_date?.slice(0, 10);
+    const [head] = session.metadata.hold_id ? await db.select().from(kitchenCheckoutHolds).where(eq(kitchenCheckoutHolds.id, session.metadata.hold_id)).limit(1) : [];
+    const quote = session.metadata.booking_contract || session.metadata.quote_hash
+      ? (await import('./dated-booking-quote')).verifyDatedQuote(head?.quoteSnapshot) : undefined;
+    if (quote && (quote.manifest.chefId !== chefId || String(quote.manifest.kitchenId) !== session.metadata.kitchen_id
+      || quote.hash !== session.metadata.quote_hash)) return null;
+    const kitchenId = Number(session.metadata.kitchen_id), date = quote?.manifest.days[0].date ?? session.metadata.booking_date?.slice(0, 10);
     if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return null;
-    await registerKitchenCheckout(sessionId, chefId, kitchenId, date);
+    await registerKitchenCheckout(sessionId, chefId, kitchenId, date, quote);
     const intentId = reference(session.payment_intent);
     const [booking] = intentId ? await db.select().from(kitchenBookings)
       .where(and(eq(kitchenBookings.paymentIntentId, intentId), eq(kitchenBookings.chefId, chefId))).limit(1) : [];
