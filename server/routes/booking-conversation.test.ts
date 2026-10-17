@@ -30,10 +30,23 @@ describe('real booking conversation route', () => {
   it('rejects foreign participants before conversation creation/healing', async () => {
     expect((await open(99)).status).toHaveBeenCalledWith(404); expect(state.initialize).not.toHaveBeenCalled();
   });
-  it('protects unconfirmed bookings and reports the exact missing legacy application prerequisite', async () => {
-    state.row.booking.status = 'pending'; expect((await open()).status).toHaveBeenCalledWith(409);
+  it('allows messaging on a pending request and reports the exact missing legacy application prerequisite', async () => {
+    state.row.booking.status = 'pending';
+    const pending = await open();
+    expect(state.initialize).toHaveBeenCalledWith(state.application);
+    expect(pending.json).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'existing-thread', bookingId: 10 }));
+    state.initialize.mockClear();
     state.row.booking.status = 'confirmed'; state.application = null;
-    expect((await open()).json).toHaveBeenCalledWith({ error: 'The kitchen application conversation is unavailable. Contact Local Cooks for help.' });
+    const missing = await open();
+    expect(missing.status).toHaveBeenCalledWith(409);
+    expect(missing.json).toHaveBeenCalledWith({ error: 'The kitchen application conversation is unavailable. Contact Local Cooks for help.' });
+    expect(state.initialize).not.toHaveBeenCalled();
+  });
+  it('blocks messaging for a status that is not messageable', async () => {
+    state.row.booking.status = 'no_show';
+    const response = await open();
+    expect(response.status).toHaveBeenCalledWith(409);
+    expect(response.json).toHaveBeenCalledWith({ error: 'Messaging is not available for this booking' });
     expect(state.initialize).not.toHaveBeenCalled();
   });
 });

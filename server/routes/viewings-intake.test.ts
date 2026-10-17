@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ saved: undefined as any, adminRows: undefined as any[] | undefined,
   managerUsers: [] as any[], insert: vi.fn(), select: vi.fn(), queue: vi.fn(), transaction: vi.fn() }));
 vi.mock('../db', () => {
-  const settings = { isActive: true, defaultDurationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0, advanceNoticeHours: 0, maxAdvanceBookingDays: 90 };
+  const settings = { isActive: true, defaultDurationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0, advanceNoticeHours: 0, maxAdvanceBookingDays: 90,
+    arrivalNotes: 'Side entrance', departureNotes: 'Return badge' };
   const db: any = {
     execute: vi.fn(), transaction: state.transaction,
     select: (selection: unknown) => {
