@@ -62,7 +62,9 @@ describe('POST /chef/bookings/checkout with replacesBookingId', () => {
     const res = await checkout(checkoutBody({ replacesBookingId: 10 }));
     expect(bookingService.validateBookingAvailability).toHaveBeenCalledWith(4, expect.any(Date), '10:00', '12:00',
       expect.objectContaining({ excludeBookingId: 10, keepAdvanceWindow: true }));
-    expect(res.json).toHaveBeenCalledWith({ error: 'stop here' });
+    // Paid checkout validates through validateBookingDays (CP3), which wraps the availability error.
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'stop here', code: 'unavailable',
+      dayErrors: [expect.objectContaining({ date: '2099-10-04', reason: 'unavailable', message: 'stop here' })] }));
   });
 
   it('a normal checkout excludes nothing and never looks for an earlier request', async () => {

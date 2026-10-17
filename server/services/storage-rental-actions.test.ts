@@ -29,9 +29,9 @@ import { storageTermPayoutFacts } from './storage-payouts';
 import { assertBookingMoneyWritable } from './booking-money-guard';
 
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, bookingFlags, supportActions,
-  commitmentProblems, damageClaims, storageOverstayRecords, platformSettings } = schema;
+  commitmentProblems, damageClaims, storageOverstayRecords, platformSettings, kitchenBookingDayPayouts } = schema;
 const tables = [kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, bookingFlags, supportActions,
-  commitmentProblems, damageClaims, storageOverstayRecords, platformSettings, schema.emailLogs, schema.equipmentBookings, schema.kitchenBookings, schema.kitchenBookingChanges];
+  commitmentProblems, damageClaims, storageOverstayRecords, platformSettings, schema.emailLogs, schema.equipmentBookings, schema.kitchenBookings, schema.kitchenBookingChanges, kitchenBookingDayPayouts];
 let pg: PGlite;
 const now = new Date('2026-10-10T12:00:00Z');
 const manager = { id: 2, role: 'manager' as const }, admin = { id: 4, role: 'admin' as const };
