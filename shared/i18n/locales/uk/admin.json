@@ -317,5 +317,6 @@
   "bsProposalTerms": "Пропозиція",
   "bsProposalTermsValue": "{newTotal} (було {oldTotal}) без {items}",
   "bsDeadlineChefAnswer": "Кухар відповідає до",
-  "bsProposalSupportReason": "Примітка підтримки"
+  "bsProposalSupportReason": "Примітка підтримки",
+  "bsProposalState_hold_ended": "Блокування на картці закінчилося"
 }

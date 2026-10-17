@@ -141,3 +141,19 @@ describe('chef My bookings', () => {
     expect(find).toHaveBeenCalled();
   });
 });
+
+describe('chef My bookings: the kitchen offered a new total', () => {
+  it('shows "Answer needed" with the deadline in the kitchen zone and a link to answer', () => {
+    mount([row({ id: 301, kitchenName: 'Offer Kitchen', status: 'pending', paymentStatus: 'authorized', bookingDate: '2026-10-18T00:00:00.000Z',
+      partialAcceptance: { id: 'p1', state: 'waiting', deadlineAt: '2026-10-15T23:30:00.000Z' } })]);
+    const offer = card('Offer Kitchen');
+    expect(within(offer).getByTestId('booking-status-pill')).toHaveTextContent('Answer needed');
+    expect(within(offer).getByText('The kitchen offered a new total. Answer by Thu, Oct 15, 9:00 p.m. Newfoundland Time.')).toBeInTheDocument();
+    expect(within(offer).getByRole('link', { name: 'Review the new total' })).toHaveAttribute('href', '/booking/301');
+  });
+  it('an answered offer is an ordinary request again', () => {
+    mount([row({ id: 302, kitchenName: 'Answered Kitchen', status: 'pending', paymentStatus: 'authorized', bookingDate: '2026-10-18T00:00:00.000Z',
+      partialAcceptance: { id: 'p2', state: 'declined', deadlineAt: '2026-10-15T23:30:00.000Z' } })]);
+    expect(within(card('Answered Kitchen')).getByTestId('booking-status-pill')).not.toHaveTextContent('Answer needed');
+  });
+});

@@ -130,7 +130,7 @@ export async function completeReplacement(newBookingId: number, oldBookingId: nu
     try {
       const { decideAuthorizedBooking } = await import('./booking-payment-decision');
       await decideAuthorizedBooking(oldBookingId, 'cancelled', [], [], chefId, undefined,
-        { replacedBy: { bookingId: newBookingId, reference: newRef, ...(deadlineAt ? { deadlineAt } : {}) } });
+        { replacedBy: { bookingId: newBookingId, reference: newRef, ...(deadlineAt ? { deadlineAt } : {}) }, proposalOutcome: 'closed' });
     } catch (error) {
       logger.warn('[Replacement] The earlier request could not be withdrawn yet', { oldBookingId, newBookingId, error: error instanceof Error ? error.message : String(error) });
     }

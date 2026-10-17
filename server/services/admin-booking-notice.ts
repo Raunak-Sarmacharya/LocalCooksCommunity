@@ -47,6 +47,8 @@ export function adminBookingNotice(kind: string, facts: AdminBookingFacts): { ti
       return { title: `Booking confirmed · ${facts.chef}`, message: `${who}. The kitchen accepted and the chef's card was charged.` };
     case 'cancelled': {
       const offer = facts.partialAcceptance;
+      if (offer?.variant === 'hold_ended') return { title: `Card hold ended · ${facts.chef}`,
+        message: `${who}. The card hold ended before the booking could be confirmed (the kitchen's new total was waiting for the chef). Nothing was charged.` };
       if (offer?.variant === 'declined' || offer?.variant === 'expired') {
         const terms = `${facts.kitchen} offered to host without ${(offer.items || []).map(item => item.name).join(', ')} for ${money(offer.newCents)} (was ${money(offer.oldCents)})`;
         return offer.variant === 'declined'

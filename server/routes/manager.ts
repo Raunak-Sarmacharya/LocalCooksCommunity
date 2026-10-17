@@ -4463,6 +4463,32 @@ router.get(
   },
 );
 
+// The review dialog's new total when the kitchen declines items: computed by the same function the capture uses, plus
+// whether there is still time to ask the chef (owner, Oct 17). Read-only.
+router.post(
+  "/bookings/:id/partial-acceptance/preview",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const ids = req.body?.equipmentBookingIds;
+    if (!Number.isSafeInteger(id) || id <= 0 || !Array.isArray(ids) || ids.length > 100 || ids.some((value: unknown) => !Number.isSafeInteger(value) || (value as number) <= 0))
+      return res.status(400).json({ error: 'Invalid booking items' });
+    try {
+      const booking = await bookingService.getBookingById(id);
+      const kitchen = booking ? await kitchenService.getKitchenById(booking.kitchenId) : null;
+      const location = kitchen ? await locationService.getLocationById(kitchen.locationId) : null;
+      if (!booking || !location || location.managerId !== req.neonUser!.id) return res.status(404).json({ error: 'Booking not found' });
+      const { previewPartialAcceptance } = await import('../services/booking-payment-decision');
+      res.json(await previewPartialAcceptance(id, ids));
+    } catch (e: any) {
+      if (e instanceof BookingTermsReviewRequired) return res.status(e.status).json({ error: e.message, code: e.code });
+      logger.error('Partial acceptance preview failed', { bookingId: id, error: e });
+      res.status(500).json({ error: 'Couldn’t calculate the new total. Try again.' });
+    }
+  },
+);
+
 // Update booking status (Manager approves/rejects pending bookings)
 router.put(
   "/bookings/:id/status",

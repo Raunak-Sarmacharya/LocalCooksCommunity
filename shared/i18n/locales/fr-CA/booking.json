@@ -1294,5 +1294,9 @@
   "paKitchenWithdraw": "Retirer et refuser la demande",
   "paAcceptedToast": "Accepté. Votre réservation est confirmée.",
   "paDeclinedToast": "Refusé. Le blocage sur votre carte a été libéré.",
-  "paAnswerFailed": "Nous n’avons pas pu enregistrer votre réponse"
+  "paAnswerFailed": "Nous n’avons pas pu enregistrer votre réponse",
+  "paChefHoldEndedTitle": "Demande fermée",
+  "paChefHoldEndedBody": "Le blocage sur votre carte pour votre demande chez {kitchen} a pris fin avant que la réservation puisse être confirmée. Rien n’a été débité.",
+  "paKitchenHoldEndedTitle": "Demande fermée",
+  "paKitchenHoldEndedBody": "Le blocage sur la carte pour la demande de {chef} a pris fin avant que la réservation puisse être confirmée. Rien n’a été débité."
 }

@@ -3,7 +3,8 @@
  * stays pending, the card hold and reserved days stay, and nothing is captured until the chef accepts the new total.
  * Saved on `kitchen_bookings.partial_acceptance`; its answer is written in the same transaction as the payment decision.
  */
-export type PartialAcceptanceOutcome = 'accepted' | 'declined' | 'expired' | 'withdrawn' | 'closed';
+/** `hold_ended`: the card hold ended at the card network before the booking could be confirmed. */
+export type PartialAcceptanceOutcome = 'accepted' | 'declined' | 'expired' | 'withdrawn' | 'closed' | 'hold_ended';
 export type PartialAcceptance = {
   id: string;
   state: 'waiting' | PartialAcceptanceOutcome;
@@ -33,6 +34,23 @@ export function waitingPartialAcceptance(booking: { partialAcceptance?: unknown;
 
 /** Owner (Oct 17): the chef must have at least this long to answer, or the kitchen may only accept everything or decline. */
 export const PARTIAL_ACCEPTANCE_MIN_HOURS = 3;
+
+/**
+ * The chef's answer deadline: 24 h after the proposal, or 1 h before the refund deadline (first start − notice hours) if sooner.
+ * Unlike the kitchen's request rule there is no 30-minute floor: the 3-hour guard decides whether an offer is possible at all.
+ * A booking without free cancellation has its refund deadline at the first start.
+ */
+export function partialAcceptanceDeadline({ now, firstStart, freeCancelHours }: { now: Date; firstStart: Date; freeCancelHours: number | null }) {
+  const notice = freeCancelHours != null && Number.isFinite(freeCancelHours) && freeCancelHours > 0 ? freeCancelHours : 0;
+  return new Date(Math.min(now.getTime() + 24 * 3_600_000, firstStart.getTime() - (notice + 1) * 3_600_000));
+}
+
+/** Fields only Local Cooks sees (who acted, the internal support note); chef and kitchen responses drop them. */
+export function publicPartialAcceptance(proposal: unknown) {
+  if (!proposal || typeof proposal !== 'object') return proposal ?? null;
+  const { actorId: _actor, answeredBy: _answeredBy, supportReason: _reason, ...rest } = proposal as PartialAcceptance;
+  return rest;
+}
 
 /** A new total may be proposed only when the chef keeps ≥ 3 h to answer and the deadline is not after the first booked start. */
 export function partialAcceptanceAllowed(deadline: Date, firstStart: Date, now: Date) {

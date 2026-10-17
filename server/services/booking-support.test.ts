@@ -6,7 +6,8 @@ const state = vi.hoisted(() => ({ booking: {} as any, payments: [] as any[], vis
   closeoutVisits: [] as any[], release: vi.fn(), payout: { timing: 'at_capture', status: 'sent', holdReason: null, expectedAt: null, sentAt: null, amountCents: 9680 } as any }));
 vi.mock('../db', () => ({ db: { select: (...args: any[]) => state.database.select(...args), insert: (...args: any[]) => state.database.insert(...args),
   update: (...args: any[]) => state.database.update(...args), transaction: (run: any) => run(state.database) } }));
-vi.mock('./booking-payment-decision', () => ({ decideAuthorizedBooking: state.provider, reconcileBookingDecision: state.provider }));
+vi.mock('./booking-payment-decision', () => ({ decideAuthorizedBooking: state.provider, reconcileBookingDecision: state.provider,
+  answerPartialAcceptance: state.provider }));
 vi.mock('./booking-cancellation-refund', () => ({ acceptCancellationRefund: state.provider, requestChefCancellation: state.provider,
   refundSupportGoodwill: state.goodwill, cancelKitchenCausedBooking: state.provider, retryCancellationRefund: state.provider,
   readCancellationRefund: async () => ({ quoteHash: 'a'.repeat(64), parentVersion: state.booking.updatedAt.toISOString(), sources: [{ managerRefund: 9000 }] }) }));
@@ -116,6 +117,25 @@ describe('support state × action matrix', () => {
     expect(availableSupportActions(context(), new Date('2099-01-01T00:00:00Z')).map(row => row.type)).not.toContain('accept_proposal_for_chef');
     state.booking.partialAcceptance = null;
     expect(availableSupportActions(context(), new Date('2098-12-31T23:00:00Z')).map(row => row.type)).not.toContain('accept_proposal_for_chef');
+  });
+  it.each([
+    'This offer is no longer open. Refresh the booking for its current state.',
+    'The time to answer has passed, so this request is closed. You weren’t charged.',
+    'The card hold ended before the booking could be confirmed, so this request is closed. Nothing was charged.',
+  ])('accept-for-chef refused before any money moved is recorded as failed with its reason, not recovery: %s', async reason => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized' }); state.payments[0].status = 'authorized';
+    state.booking.partialAcceptance = { id: 'p1', state: 'waiting', deadlineAt: '2099-01-01T00:00:00.000Z' };
+    state.provider.mockRejectedValueOnce(Object.assign(new Error(reason), { status: 409, refusal: true }));
+    const result = await executeBookingSupportAction(1, 7, input('accept_proposal_for_chef', { actingFor: 'chef', amountCents: undefined, reasonCode: 'customer_asked' }));
+    expect(result.action.status).toBe('failed');
+    expect(state.actions[0]).toMatchObject({ status: 'failed', error: reason });
+  });
+  it('accept-for-chef with an unknown provider failure still stays in recovery', async () => {
+    Object.assign(state.booking, { status: 'pending', paymentStatus: 'authorized' }); state.payments[0].status = 'authorized';
+    state.booking.partialAcceptance = { id: 'p1', state: 'waiting', deadlineAt: '2099-01-01T00:00:00.000Z' };
+    state.provider.mockRejectedValueOnce(Error('Stripe timeout'));
+    const result = await executeBookingSupportAction(1, 7, input('accept_proposal_for_chef', { actingFor: 'chef', amountCents: undefined, reasonCode: 'customer_asked' }));
+    expect(result.action.status).toBe('recovery_required');
   });
   it('offers recovery only for a saved pending decision', () => {
     expect(availableSupportActions(context()).some(row => row.type === 'replay_payment_decision')).toBe(false);

@@ -5,8 +5,7 @@ import { eq } from 'drizzle-orm';
 import * as s from '@shared/schema';
 import { createTestDatabase } from './kitchen-booking-changes.pglite';
 import { allocateCents, DATED_DISCLOSURE_VERSION } from '@shared/cancellation-policy';
-import { responseDeadlineForBooking, bookingFirstStart } from '@shared/booking-response-deadline';
-import { partialAcceptanceAllowed } from '@shared/partial-acceptance';
+import { responseDeadlineForBooking } from '@shared/booking-response-deadline';
 
 const h = vi.hoisted(() => ({ db: null as any, client: null as any, provider: null as any, sessions: [] as any[], intent: null as any,
   policy: {} as any, closed: new Set<string>(), canBook: true, loseCreate: false, loseCapture: false, capturedKeys: new Set<string>(),
@@ -24,11 +23,9 @@ vi.mock('../domains/bookings/booking.service', () => ({ bookingService: {
 } }));
 vi.mock('../reference-code', () => ({ generateReferenceCode: async () => `CP4-${++h.next}` }));
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: h.event }));
-vi.mock('./booking-response-deadline', () => ({ getBookingResponseDeadline: async (booking: any) => responseDeadlineForBooking(booking, 'UTC'),
-  getPartialAcceptanceWindow: async (booking: any, now = new Date()) => {
-    const deadline = responseDeadlineForBooking({ ...booking, createdAt: now }, 'UTC');
-    return { deadline, allowed: partialAcceptanceAllowed(deadline, bookingFirstStart(booking, 'UTC'), now) };
-  } }));
+// The chef's window is the real function (the same one the kitchen's dialog reads); only the request rule is simplified.
+vi.mock('./booking-response-deadline', async importOriginal => ({ ...await importOriginal<object>(),
+  getBookingResponseDeadline: async (booking: any) => responseDeadlineForBooking(booking, 'UTC') }));
 vi.mock('./advance-reminders', () => ({ scheduleAdvanceReminders: vi.fn() }));
 vi.mock('./visit-code-challenge', () => ({ ensureChallengesForBooking: vi.fn() }));
 vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
@@ -46,7 +43,7 @@ vi.mock('./stripe-service', () => ({ getBookingPaymentIntent: async () => struct
 
 import { datedCheckoutMetadata, datedManifestHash, verifyDatedQuote, verifyDatedCheckout, allocateDatedCapture } from './dated-booking-quote';
 import { fulfillQuotedKitchenBooking } from './booking-checkout-fulfillment';
-import { decideAuthorizedBooking, answerPartialAcceptance, recoverPendingBookingDecisions } from './booking-payment-decision';
+import { decideAuthorizedBooking, answerPartialAcceptance, recoverPendingBookingDecisions, previewPartialAcceptance, LAST_MINUTE_MESSAGE } from './booking-payment-decision';
 import { verifiedDatedCaptureEvidence, syncDatedPayment } from './dated-booking-allocations';
 import { recoverUnboundDatedCheckouts, reconcileKitchenCheckout, registerKitchenCheckout, archiveExpiredDatedCheckout } from './kitchen-checkout-incidents';
 import { assertLegacyBookingRefund } from './dated-booking-refund-guard';
@@ -297,12 +294,41 @@ describe('Partial acceptance: the chef approves the new total before any capture
       expect(h.capture.mock.calls.length + h.cancel.mock.calls.length).toBe(1);
       expect(booking.partialAcceptance.state).toBe(booking.status === 'confirmed' ? 'accepted' : _name === 'expiry' ? 'expired' : 'withdrawn');
     });
-  it('the card hold ended at the card network: accepting closes the request without charging', async () => {
+  it('the card hold ended at the card network: accepting closes the request without charging, as "hold ended" (not "didn’t answer")', async () => {
     const { id, proposal } = await propose();
     h.intent.status = 'canceled';
-    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).rejects.toThrow('card hold ended');
+    await expect(answerPartialAcceptance(id, proposal.id, 'accept', 3)).rejects.toThrow('The card hold ended before the booking could be confirmed');
     expect(h.capture).not.toHaveBeenCalled();
-    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', partialAcceptance: { state: 'expired' } });
+    expect((await rows(s.kitchenBookings))[0]).toMatchObject({ status: 'cancelled', partialAcceptance: { state: 'hold_ended' } });
+    expect(h.event).toHaveBeenLastCalledWith(expect.anything(), id, 'cancelled', 'Request closed',
+      'The card hold ended before the booking could be confirmed. Nothing was charged.', undefined,
+      expect.objectContaining({ partialAcceptance: expect.objectContaining({ variant: 'hold_ended' }) }));
+  });
+  it('the kitchen’s preview is the exact amount the proposal saves and the capture takes (dated, frozen quote)', async () => {
+    const id = await fulfill();
+    const visits = await rows(s.kitchenBookingVisits), items = await rows(s.equipmentBookings);
+    const mixer = items.find((row: any) => row.equipmentListingId === 10 && row.kitchenBookingVisitId === visits.find((v: any) => v.visitDate === '2099-10-07').id);
+    const preview = await previewPartialAcceptance(id, [mixer.id]);
+    expect(preview).toMatchObject({ oldTotalCents: 11232, newTotalCents: 11109, subtotalCents: 9106, taxCents: 1366, serviceFeeCents: 637, allowed: true });
+    const result: any = await decideAuthorizedBooking(id, 'confirmed', [], [{ equipmentBookingId: mixer.id, action: 'cancelled' }], 2);
+    expect(result.proposal.newTotalCents).toBe(preview.newTotalCents);
+    expect(result.proposal).not.toHaveProperty('actorId');
+    partialCharge(11109);
+    await answerPartialAcceptance(id, result.proposal.id, 'accept', 3);
+    expect(h.capture).toHaveBeenCalledWith(h.intent.id, preview.newTotalCents, undefined, expect.any(String));
+    expect(h.create).toHaveBeenCalledOnce();
+  });
+  it('review example: 24 h free cancellation and first start in 25 h 20 min leaves 20 min, so the offer is refused (409), never a full 24 h', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2099-10-04T08:40:00Z'));   // first day 2099-10-05 10:00Z = 25 h 20 min away
+      const id = await fulfill(), items = await rows(s.equipmentBookings);
+      expect((await previewPartialAcceptance(id, [items[0].id])).allowed).toBe(false);
+      await expect(decideAuthorizedBooking(id, 'confirmed', [], [{ equipmentBookingId: items[0].id, action: 'cancelled' }], 2))
+        .rejects.toMatchObject({ status: 409, message: LAST_MINUTE_MESSAGE });
+      expect((await rows(s.kitchenBookings))[0].partialAcceptance).toBeNull();
+      expect(h.capture).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
   it('refuses to answer someone else’s or an unknown proposal', async () => {
     const { id } = await propose();

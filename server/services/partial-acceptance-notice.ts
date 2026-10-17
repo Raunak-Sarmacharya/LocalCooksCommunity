@@ -6,7 +6,7 @@ import { partialAcceptanceDeadlineText } from '@shared/partial-acceptance';
  * Raw facts travel in the event metadata; wording and formats are resolved per recipient locale here.
  */
 export type PartialAcceptanceNotice = {
-  variant: 'proposed' | 'declined' | 'expired';
+  variant: 'proposed' | 'declined' | 'expired' | 'hold_ended';
   /** Declined equipment; `date` (YYYY-MM-DD) names the day of a dated booking. */
   items: Array<{ name: string; date?: string }>;
   newCents: number; oldCents: number;
@@ -25,7 +25,8 @@ export async function partialAcceptanceNotice(role: 'chef' | 'manager', locale: 
   // A deadline always names the kitchen's zone ("Tue, Oct 21, 9:00 p.m. Newfoundland Time").
   const deadline = partialAcceptanceDeadlineText(notice.deadlineAt, lng, names.timezone);
   const values = { kitchen: names.kitchenName, chef: names.chefName || t('paTheChef'), items, newTotal: money(notice.newCents), oldTotal: money(notice.oldCents), deadline };
-  const key = `pa${role === 'chef' ? 'Chef' : 'Kitchen'}${notice.variant[0].toUpperCase()}${notice.variant.slice(1)}`;
+  const variant = notice.variant === 'hold_ended' ? 'HoldEnded' : `${notice.variant[0].toUpperCase()}${notice.variant.slice(1)}`;
+  const key = `pa${role === 'chef' ? 'Chef' : 'Kitchen'}${variant}`;
   return { title: t(`${key}Title`, values), message: t(`${key}Body`, values).replace(/\.\.(?=\s|$)/g, '.'),
     ...(role === 'chef' && notice.variant === 'proposed' ? { actionLabel: t('paChefProposedAction') } : {}) };
 }

@@ -2,7 +2,7 @@
 
 Owner decision (Oct 17), spec `multiday-spec-2026-10-17.md` "Consistency with single-day bookings". Applies to single-day and
 dated (multi-day) bookings. Airbnb special offer / Peerspace invite model: no capture happens before the chef agrees, so no
-card fee is lost. **Migration 0102 is written and tested in PGlite but not applied anywhere.**
+card fee is lost. **Migration 0103 is written and tested in PGlite but not applied anywhere.**
 
 ## Behaviour
 
@@ -52,9 +52,31 @@ Dated money (CP4): the frozen quote is unchanged. Declined equipment ids are sav
 (`approvedBookingCapture`); allocation/evidence checks verify the exact smaller capture and exclude declined rows; the
 checkout/evidence verifiers accept a capture ≤ the authorization (the exact amount is checked against the source).
 
+## Money review fix round (Oct 17)
+
+1. **Chef deadline without the request rule's 30-minute floor.** `partialAcceptanceDeadline` = min(offer + 24 h, first start −
+   (notice hours + 1) h). Example from the review: 24 h notice, first start in 25 h 20 min → 20 min left → refused (409) and
+   the dialog disables item declines (the details response and the preview both read `getPartialAcceptanceWindow`).
+2. **Dialog shows the server's new total.** `POST /api/manager/bookings/:id/partial-acceptance/preview` returns the total from
+   `previewPartialAcceptance`, which shares `confirmationTerms` + `acceptedCapture` with the proposal and the capture (frozen tax,
+   dated quote). The dialog no longer recomputes; full approval shows the hold itself.
+3. **Hold ended** is its own outcome (`hold_ended`): "The card hold ended before the booking could be confirmed. Nothing was
+   charged." for chef, kitchen and admins (never "didn't answer").
+4. **Support refusals** (offer closed, past deadline, hold ended) are recorded as `failed` with their reason; unknown provider
+   failures still go to recovery.
+5. **Privacy:** `actorId`, `answeredBy` and `supportReason` are stripped from every chef/kitchen booking response (repository DTO
+   and the proposal returned to the kitchen); Local Cooks' support console reads the raw row.
+6. **Replacement** closes a waiting offer as `closed` → "Request replaced" notices.
+7. Migration renumbered to **0103** (`0102` belongs to CP5).
+8. Chef "My bookings": "Answer needed" pill, "The kitchen offered a new total. Answer by {deadline in the kitchen zone}." and
+   "Review the new total".
+9. The manager bookings list already carried `partialAcceptance` (repository spreads the row); now tested through the real query
+   (PGlite), together with the chef list and booking-by-id projections.
+
 ## Files
 
-New: `shared/partial-acceptance.ts`, `server/services/partial-acceptance-notice.ts`, `migrations/0102_partial_acceptance.sql`,
+New: `shared/partial-acceptance.ts`, `server/services/partial-acceptance-notice.ts`, `migrations/0103_partial_acceptance.sql`,
+`server/domains/bookings/booking-partial-acceptance-projection.test.ts`,
 `client/src/components/booking/PartialAcceptanceCard.tsx`, tests `server/services/partial-acceptance.test.ts`,
 `client/src/components/booking/PartialAcceptanceCard.test.tsx`.
 Changed: `server/services/{booking-payment-decision,auth-expiry-service,booking-response-deadline,booking-lifecycle-delivery,
@@ -74,7 +96,7 @@ See the final section (filled in after the checks).
   cancellation, extensions), including 10 new PGlite partial-acceptance tests (proposal, exact partial capture 11109 of 11232
   with allocations conserving, free-item decline, chef decline, expiry/late accept, kitchen withdraw, accept-vs-withdraw and
   accept-vs-expiry races, hold ended at Stripe, unknown proposal), 17 in `partial-acceptance.test.ts` (3 h guard boundaries
-  2 h 59 / 3 h 00 and after-start, migration 0102 executed in PGlite, en/fr/uk notices, admin copy), 6 single-day decision tests,
+  2 h 59 / 3 h 00 and after-start, migration 0103 executed in PGlite, en/fr/uk notices, admin copy), 6 single-day decision tests,
   1 expiry and 1 support-availability test.
 - Client: 11 files, **267 passed**, including dialog copy ("Accept without …", ask-chef line, last-minute line + "Message the
   chef" link, full accept/decline unchanged), the chef card (accept, confirm-before-decline, refused answer, kitchen view)

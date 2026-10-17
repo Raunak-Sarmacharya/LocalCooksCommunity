@@ -269,7 +269,10 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
     it('declining an item saves a proposal for the chef: nothing captured or released, hold and pending state kept', async () => {
       const result: any = await decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2);
       expect(result).toMatchObject({ success: true, status: 'pending', proposal: { state: 'waiting', oldTotalCents: 2440, newTotalCents: 1220,
-        equipment: [{ id: 2, status: 'cancelled' }], declined: [{ id: 2, cents: 1000 }], actorId: 2 } });
+        equipment: [{ id: 2, status: 'cancelled' }], declined: [{ id: 2, cents: 1000 }] } });
+      // The kitchen's response never carries who acted or support notes.
+      expect(result.proposal).not.toHaveProperty('actorId');
+      expect(mocks.state.kitchen_bookings[0].partialAcceptance.actorId).toBe(2);
       expect(mocks.capture).not.toHaveBeenCalled(); expect(mocks.cancel).not.toHaveBeenCalled();
       expect(mocks.state.kitchen_bookings[0]).toMatchObject({ status: 'pending', paymentStatus: 'authorized', partialAcceptance: { state: 'waiting' } });
       expect(mocks.state.kitchen_bookings[0].paymentDecision).toBeUndefined();
@@ -306,6 +309,20 @@ describe('durable booking capture recovery (isolated Stripe and transaction mode
       await expect(decideAuthorizedBooking(1, 'confirmed', [], [], 2)).rejects.toThrow('Waiting for the chef');
       await expect(decideAuthorizedBooking(1, 'confirmed', [], [{ equipmentBookingId: 2, action: 'cancelled' }], 2)).rejects.toThrow('Waiting for the chef');
       expect(mocks.capture).not.toHaveBeenCalled();
+    });
+    it('a change request (replacement) closes a waiting offer as replaced: no "New total declined" notice', async () => {
+      waitingProposal();
+      mocks.state.kitchen_bookings[0].referenceCode = 'KB-OLD111';
+      mocks.intent.mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValueOnce({ id: 'pi_fixture', status: 'requires_capture', amount: 2440 })
+        .mockResolvedValue({ id: 'pi_fixture', status: 'canceled', amount: 2440 });
+      // booking-replacement's fallback path: the chef is the actor and only `replacedBy` is passed.
+      await decideAuthorizedBooking(1, 'cancelled', [], [], 3, undefined, { replacedBy: { bookingId: 11, reference: 'KB-NEW222' } });
+      expect(mocks.state.kitchen_bookings[0]).toMatchObject({ partialAcceptance: { state: 'closed' }, paymentDecision: { proposal: { outcome: 'closed' } } });
+      const cancelled = vi.mocked(queueBookingLifecycleEvent).mock.calls.find(entry => entry[2] === 'cancelled')!;
+      expect(cancelled[3]).not.toBe('New total declined');
+      expect(cancelled[6]).toMatchObject({ requestOutcome: 'replaced' });
+      expect(cancelled[6]).not.toHaveProperty('partialAcceptance');
     });
     it('the chef withdrawing the request closes the proposal as declined', async () => {
       waitingProposal();

@@ -3701,5 +3701,7 @@
   "paSentTitle": "Sent to the chef",
   "paSentBody": "We’ll ask the chef to confirm the new total. Nothing is charged until they do.",
   "paSentenceChef": "{kitchen} answered with a new total. Accept or decline it below.",
-  "paSentenceKitchen": "{chef} is reviewing your new total."
+  "paSentenceKitchen": "{chef} is reviewing your new total.",
+  "paListAnswerNeeded": "Answer needed",
+  "paListAnswerBy": "The kitchen offered a new total. Answer by {deadline}."
 }

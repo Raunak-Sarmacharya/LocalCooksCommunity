@@ -1,6 +1,7 @@
 import { EquipmentIcon as Package, StorageIcon as Boxes } from "@/components/ui/inventory-icons";
 import { bookingStartDateKey } from '@/lib/calendar-date';
-import { useState, useMemo, useRef, type ReactNode } from "react";
+import { useState, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { getAuthHeaders } from "@/lib/api";
 import { mt } from "@/i18n/manager";
 import { Dialog } from "@/components/ui/dialog";
 import { AppDialogContent, AppDialogHeader, AppDialogBody, AppDialogFooter } from "@/components/ui/app-dialog";
@@ -402,76 +403,49 @@ function BookingActionDialogContent({
     };
   }, [kitchenAction, storageDecisions, equipmentDecisions, booking, actionableStorageItems.length, actionableEquipmentItems.length]);
 
+  // Owner (Oct 17): accepting without some equipment asks the chef to approve the new total; nothing is captured before.
+  const declinedEquipment = isAuthorized && !kitchenIsRejected
+    ? actionableEquipmentItems.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled") : [];
+  const asksChef = declinedEquipment.length > 0;
+  const declinedKey = declinedEquipment.map((item) => item.equipmentBookingId).join(",");
+  // The new total comes from the server (the same function the capture uses: frozen tax rate and dated quote); never recomputed here.
+  const [preview, setPreview] = useState<{ key: string; newTotalCents: number; serviceFeeCents: number } | null>(null);
+  useEffect(() => {
+    if (!declinedKey) return;
+    let live = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/manager/bookings/${booking.id}/partial-acceptance/preview`, { method: "POST", credentials: "include",
+          headers: await getAuthHeaders(), body: JSON.stringify({ equipmentBookingIds: declinedKey.split(",").map(Number) }) });
+        const data = await response.json().catch(() => null);
+        if (live && response.ok && data) setPreview({ key: declinedKey, newTotalCents: data.newTotalCents, serviceFeeCents: data.serviceFeeCents });
+      } catch { /* The total stays hidden; the server still computes it on submit. */ }
+    })();
+    return () => { live = false; };
+  }, [booking.id, declinedKey]);
+
   // ── Capture Calculation (for authorized bookings only) ───────────────────
-  // Calculates what will be captured vs released when manager partially approves
+  // Full approval captures the whole hold; a new total is the server's preview; a declined request captures nothing.
   const captureCalc = useMemo(() => {
     if (!isAuthorized) return null;
-
-    const kitchenPriceCents = booking.totalPrice || 0;
     const transactionAmount = booking.transactionAmount || 0;
-    const originalServiceFee = booking.serviceFee || 0;
-    const taxRatePercent = booking.taxRatePercent || 0;
-
-    // Kitchen is approved when kitchenAction === 'confirmed'
-    const approvedKitchenCents = kitchenAction === "confirmed" ? kitchenPriceCents : 0;
-
-    // Approved storage (skip already-rejected)
-    let approvedStorageCents = 0;
-    if (booking.storageItems) {
-      for (const item of booking.storageItems) {
-        if (item.rejected) continue;
-        const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
-        if (decision === "confirmed") approvedStorageCents += item.totalPrice;
-      }
-    }
-
-    // Approved equipment (skip already-rejected)
-    let approvedEquipmentCents = 0;
-    if (booking.equipmentItems) {
-      for (const item of booking.equipmentItems) {
-        if (item.rejected) continue;
-        const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
-        if (decision === "confirmed") approvedEquipmentCents += item.totalPrice;
-      }
-    }
-
-    const approvedSubtotal = approvedKitchenCents + approvedStorageCents + approvedEquipmentCents;
-    const approvedTax = Math.round((approvedSubtotal * taxRatePercent) / 100);
-    const originalSubtotal = Math.max(
-      0,
-      kitchenPriceCents
-        + (booking.storageItems || []).reduce((sum, item) => sum + (item.rejected ? 0 : item.totalPrice), 0)
-        + (booking.equipmentItems || []).reduce((sum, item) => sum + (item.rejected ? 0 : item.totalPrice), 0),
-    );
-    const approvedServiceFee = originalSubtotal > 0
-      ? Math.round(originalServiceFee * approvedSubtotal / originalSubtotal)
-      : 0;
-    const captureAmount = approvedSubtotal + approvedTax + approvedServiceFee;
-    const releaseAmount = Math.max(0, transactionAmount - captureAmount);
-
+    const figures = kitchenIsRejected ? { amount: 0, fee: 0 }
+      : asksChef ? (preview && preview.key === declinedKey ? { amount: preview.newTotalCents, fee: preview.serviceFeeCents } : null)
+      : { amount: transactionAmount, fee: booking.serviceFee || 0 };
+    if (!figures) return null;
+    const captureAmount = figures.amount;
     // Estimated Stripe fee on capture amount (2.9% + $0.30)
-    const estimatedStripeFee = captureAmount > 0
-      ? Math.round(captureAmount * 0.029 + 30)
-      : 0;
-    const estimatedManagerNet = Math.max(0, approvedSubtotal + approvedTax - estimatedStripeFee);
-    const isPartialCapture = captureAmount > 0 && captureAmount < transactionAmount;
-
+    const estimatedStripeFee = captureAmount > 0 ? Math.round(captureAmount * 0.029 + 30) : 0;
     return {
-      approvedKitchenCents,
-      approvedStorageCents,
-      approvedEquipmentCents,
-      approvedSubtotal,
-      approvedTax,
-      approvedServiceFee,
+      approvedServiceFee: figures.fee,
       captureAmount,
-      releaseAmount,
+      releaseAmount: Math.max(0, transactionAmount - captureAmount),
       estimatedStripeFee,
-      estimatedManagerNet,
-      isPartialCapture,
-      taxRatePercent,
+      estimatedManagerNet: Math.max(0, captureAmount - figures.fee - estimatedStripeFee),
+      isPartialCapture: captureAmount > 0 && captureAmount < transactionAmount,
       transactionAmount,
     };
-  }, [isAuthorized, kitchenAction, storageDecisions, equipmentDecisions, booking]);
+  }, [isAuthorized, kitchenIsRejected, asksChef, preview, declinedKey, booking]);
 
   // Custom refund amount (user-editable, capped at max)
   const effectiveRefundAmount = useMemo(() => {
@@ -545,10 +519,6 @@ function BookingActionDialogContent({
 
   const allApproved = rejectedCount === 0;
   const allRejected = approvedCount === 0;
-  // Owner (Oct 17): accepting without some equipment asks the chef to approve the new total; nothing is captured before.
-  const declinedEquipment = isAuthorized && !kitchenIsRejected
-    ? actionableEquipmentItems.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled") : [];
-  const asksChef = declinedEquipment.length > 0;
   const lastMinute = isAuthorized && booking.canAskChef === false;
   const itemLabel = (item: EquipmentItemForAction) => item.visitDate ? `${item.name} (${formatDate(item.visitDate)})` : item.name;
   const declinedNames = new Intl.ListFormat(i18n.language || "en-CA", { type: "conjunction" }).format(declinedEquipment.map(itemLabel));

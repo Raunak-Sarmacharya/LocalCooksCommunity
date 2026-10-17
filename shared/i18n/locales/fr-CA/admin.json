@@ -317,5 +317,6 @@
   "bsProposalTerms": "Offre",
   "bsProposalTermsValue": "{newTotal} (au lieu de {oldTotal}) sans {items}",
   "bsDeadlineChefAnswer": "Réponse du chef d’ici le",
-  "bsProposalSupportReason": "Note du soutien"
+  "bsProposalSupportReason": "Note du soutien",
+  "bsProposalState_hold_ended": "Blocage sur la carte terminé"
 }

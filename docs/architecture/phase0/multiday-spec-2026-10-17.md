@@ -92,4 +92,5 @@ accepts); no marketplace changes a guest's booking without consent. Owner: the c
    decline it and message the chef." with a "Message the chef" link.
 6. The chef's copy names the exact deadline in the kitchen's zone ("Accept or decline by Tue, Oct 21, 9:00 p.m. Newfoundland
    Time") and what happens without an answer ("If you don't answer, the request closes and your card hold is released.").
-   Built Oct 17: `partial-acceptance-implementation.md`.
+   Built Oct 17: `partial-acceptance-implementation.md`. Money review fix (Oct 17): the chef's deadline is
+   min(offer + 24 h, first start − (notice + 1) h) with no 30-minute floor, so the 3-hour guard always decides.

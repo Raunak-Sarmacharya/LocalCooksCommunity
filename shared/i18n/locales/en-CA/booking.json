@@ -1294,5 +1294,9 @@
   "paKitchenWithdraw": "Withdraw and decline the request",
   "paAcceptedToast": "Accepted. Your booking is confirmed.",
   "paDeclinedToast": "Declined. Your card hold was released.",
-  "paAnswerFailed": "We couldn’t record your answer"
+  "paAnswerFailed": "We couldn’t record your answer",
+  "paChefHoldEndedTitle": "Request closed",
+  "paChefHoldEndedBody": "The card hold for your request at {kitchen} ended before the booking could be confirmed. Nothing was charged.",
+  "paKitchenHoldEndedTitle": "Request closed",
+  "paKitchenHoldEndedBody": "The card hold for {chef}’s request ended before the booking could be confirmed. Nothing was charged."
 }

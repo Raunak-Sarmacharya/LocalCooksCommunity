@@ -588,10 +588,15 @@ export async function executeBookingSupportAction(id: number, actorId: number, r
       const sources = result.sources as Array<{ operation?: { status?: string } }> | undefined;
       if (!sources?.length || sources.some(source => source.operation?.status !== 'succeeded')) throw Error('The cancellation refund still needs review.');
     }
-  } catch {
+  } catch (caught) {
+    // A refused offer answer (closed, past its deadline, hold ended) moved no money: record it as failed with its reason.
+    if ((caught as { refusal?: boolean } | null)?.refusal === true || (input.type === 'accept_proposal_for_chef' && caught instanceof BookingSupportError)) {
+      outcome = 'failed'; error = (caught as Error).message;
+    } else {
     // A rejected/unknown provider response is never evidence that no money moved.
     outcome = ['confirm_for_manager', 'accept_proposal_for_chef', 'decline_for_manager', 'release_hold_for_chef', 'replay_payment_decision', 'goodwill_refund', 'cancel_kitchen_caused', 'refund_captured_request', 'finish_kitchen_refund', 'accept_cancellation_for_manager', 'release_payout', 'retry_refund', 'mark_refunded'].includes(input.type) ? 'recovery_required' : 'failed';
     error = outcome === 'recovery_required' ? 'Local Cooks needs to verify this original payment operation before another attempt.' : 'The update could not be completed. Refresh the booking and review the next step.';
+    }
   }
   await db.transaction(async tx => {
     const [currentAction] = await tx.select().from(supportActions).where(eq(supportActions.operationKey, input.operationKey)).for('update');

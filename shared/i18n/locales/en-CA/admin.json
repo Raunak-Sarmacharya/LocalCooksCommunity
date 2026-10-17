@@ -317,5 +317,6 @@
   "bsProposalTerms": "Offer",
   "bsProposalTermsValue": "{newTotal} (was {oldTotal}) without {items}",
   "bsDeadlineChefAnswer": "Chef answers by",
-  "bsProposalSupportReason": "Support note"
+  "bsProposalSupportReason": "Support note",
+  "bsProposalState_hold_ended": "Card hold ended"
 }
