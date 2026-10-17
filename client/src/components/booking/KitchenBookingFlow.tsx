@@ -1566,6 +1566,7 @@ export default function KitchenBookingFlow({
                 components={{ Day: DatedCalendarDay }}
                 className="w-full bg-transparent p-1" classNames={{ ...BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES, day: `${BOOKING_CALENDAR_CLASS_NAMES.day} h-11 w-11 max-w-[44px]`, cell: 'relative h-11 p-0 text-center text-sm' }} />
               <p role="status" aria-live="polite" className="mt-2 text-sm">{dateAnnouncement || t('mdSelectedDays', { count: selectedDates.length })}</p>
+              {dateSetError && <p role="alert" className="text-sm">{dateSetError}</p>}
             </DatedCalendarContext.Provider> : <UICalendar
               mode="single"
               numberOfMonths={2}
@@ -1796,23 +1797,6 @@ export default function KitchenBookingFlow({
             </Button>
           </div>
 
-          {isMultiDay && <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('mdEquipmentHelp')}</p>
-            {datedDays.map(day => <fieldset key={day.date} className="space-y-2 rounded-xl border p-3">
-              <legend className="px-1 text-sm font-semibold">{formatDate(new Date(`${day.date}T12:00:00`))}</legend>
-              {equipmentListings.all.filter(item => dayResources[day.date]?.equipmentIds.includes(item.id)).map(item => {
-                const chosen = selectedEquipmentIds.includes(item.id) || equipmentListings.included.some(included => included.id === item.id);
-                return <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm">
-                  <input type="checkbox" checked={day.equipmentIds.includes(item.id)} onChange={event => {
-                    if (!chosen) setSelectedEquipmentIds(current => [...current, item.id]);
-                    setDayEquipmentExcluded(current => ({ ...current, [day.date]: event.target.checked
-                      ? (current[day.date] ?? []).filter(id => id !== item.id) : [...(current[day.date] ?? []), item.id] }));
-                  }} />
-                  {equipmentName(item)} · {formatCurrency(item.sessionRate || 0)}
-                </label>;
-              })}
-            </fieldset>)}
-          </div>}
           {isLoadingAddons ? (
             <div className="flex justify-center py-12">
               <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#E10939]" aria-hidden />
@@ -1878,6 +1862,23 @@ export default function KitchenBookingFlow({
               ) : null}
             </div>
           )}
+          {isMultiDay && <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{t('mdEquipmentHelp')}</p>
+            {datedDays.map(day => <fieldset key={day.date} className="space-y-2 rounded-xl border p-3">
+              <legend className="px-1 text-sm font-semibold">{formatDate(new Date(`${day.date}T12:00:00`))}</legend>
+              {equipmentListings.all.filter(item => dayResources[day.date]?.equipmentIds.includes(item.id)).map(item => {
+                const chosen = selectedEquipmentIds.includes(item.id) || equipmentListings.included.some(included => included.id === item.id);
+                return <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm">
+                  <input type="checkbox" checked={day.equipmentIds.includes(item.id)} onChange={event => {
+                    if (!chosen) setSelectedEquipmentIds(current => [...current, item.id]);
+                    setDayEquipmentExcluded(current => ({ ...current, [day.date]: event.target.checked
+                      ? (current[day.date] ?? []).filter(id => id !== item.id) : [...(current[day.date] ?? []), item.id] }));
+                  }} />
+                  {equipmentName(item)} · {formatCurrency(item.sessionRate || 0)}
+                </label>;
+              })}
+            </fieldset>)}
+          </div>}
         </div>
       );
     }
@@ -2276,7 +2277,7 @@ export default function KitchenBookingFlow({
   };
 
   const continueDisabled =
-    (currentStep === "calendar" && (!selectedDate || !isDayAvailable(selectedDate))) ||
+    (currentStep === "calendar" && (!selectedDate || !isDayAvailable(selectedDate) || !!dateSetError)) ||
     (currentStep === "slots" && (isMultiDay ? daysLoading : selectedSlots.length === 0)) ||
     (currentStep === "equipment" && isLoadingAddons) ||
     bookingBlocked;
