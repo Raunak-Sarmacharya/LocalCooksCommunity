@@ -1509,6 +1509,7 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
         const [booking] = await db
             .select({
                 id: kitchenBookings.id,
+                scheduleRevision: kitchenBookings.scheduleRevision,
                 chefId: kitchenBookings.chefId,
                 visitDuties: kitchenBookings.visitDuties,
                 selectedSlots: kitchenBookings.selectedSlots,
@@ -1573,7 +1574,7 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
             ...derived,
             instructionsReleased: release.instructionsReleased,
             instructionsReleaseAt: release.instructionsReleaseAt,
-            visits: derived.visits.map(visit => {
+            visits: derived.visits.filter(visit => !booking.scheduleRevision || visit.closeout).map(visit => {
                 const state = release.visits.find(state => state.blockIndex === visit.blockIndex)!;
                 return { ...visit, visitCode: visitCodeFor(visit.id), instructionsReleased: state.instructionsReleased,
                     instructionsReleaseAt: state.instructionsReleaseAt,

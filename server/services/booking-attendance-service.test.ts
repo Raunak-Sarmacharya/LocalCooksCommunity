@@ -81,6 +81,13 @@ describe('explicit booking attendance statements (mocked database only)', () => 
   it('rejects a manipulated visit ID', async () => {
     prepare(); await expect(recordBookingAttendance(10, actor, { ...input, visitId: 999 })).rejects.toThrow(/belonging/);
   });
+  it.each(['cancelled', 'superseded'])('rejects a dated %s target before attendance mutation', async scheduleState => {
+    const visit = { id: 5, blockIndex: 4, visitDate: '2026-10-02', scheduleRevision: 1, scheduleState, startTime: '09:00', endTime: '10:00',
+      checkinStatus: 'not_checked_in', updatedAt: new Date(timestamp) };
+    state.rows.push([context({ scheduleRevision: 1 })], [visit], [visit]);
+    await expect(recordBookingAttendance(10, actor, { ...input, visitId: 5 })).rejects.toThrow(/active visit/);
+    expect(state.updates).toEqual([]); expect(state.events).toEqual([]);
+  });
   it('reports an earlier visit after its own end with tracking off, without completing later visits', async () => {
     vi.setSystemTime(new Date('2026-10-02T14:00:00Z'));
     const visit = { id: 5, blockIndex: 0, startTime: '09:00', endTime: '10:00', checkinStatus: 'not_checked_in', updatedAt: new Date(timestamp) };

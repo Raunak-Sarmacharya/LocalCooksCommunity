@@ -55,3 +55,8 @@ export function validateDutySection(section: DutySection, photos?: string[], ite
   if (missing.length) fieldErrors.items = `Complete required checklist items: ${missing.map(item => item.label).join(', ')}`;
   return Object.keys(fieldErrors).length ? { valid: false, error: Object.values(fieldErrors).join('. '), fieldErrors } : { valid: true };
 }
+
+/** Prefill choices only. Submission, daily photos and attendance remain fresh evidence. */
+export function previousVisitTaskAnswers(requirements: Array<{ id: string }>, previous: Array<{ id: string; checked: boolean }> | null | undefined) {
+  return requirements.filter(item => previous?.some(answer => answer.id === item.id && answer.checked)).map(item => item.id);
+}

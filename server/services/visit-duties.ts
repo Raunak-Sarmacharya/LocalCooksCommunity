@@ -6,7 +6,7 @@ import { getCheckinSettings } from './kitchen-checkout-service';
 import { resolveKitchenChecklist } from '@shared/kitchen-checklist';
 import { validateDutySection, VisitDutyValidationError } from '@shared/visit-duties';
 import { instructionReleaseAt, isInstructionReleased } from '@shared/instruction-release';
-import { makeCloseoutSnapshot, savedCloseout, matchVisitEvidence, type ClockBooking, type ClockEvidence } from '@shared/clock-closeout';
+import { makeCloseoutSnapshot, savedCloseout, matchVisitEvidence, currentVisitSnapshot, type ClockBooking, type ClockEvidence } from '@shared/clock-closeout';
 import { getLifecycleSettings, lifecycleSettings } from './lifecycle-settings';
 import { chefVisitCodes, arrivalModeFor } from './visit-code-challenge';
 import { locations, kitchenBookingVisits } from '@shared/schema';
@@ -22,19 +22,26 @@ export function instructionStateForVisit(start: Date, preparationHours: number, 
 
 export function bookingInstructionRelease(booking: ClockBooking, timezone: string, visits: ClockEvidence[],
   preparationHours: number, checkinWindowMinutesBefore: number, now = new Date()) {
-  const clock = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone,
-    { checkinWindowMinutesBefore, serviceEndGraceMinutes: lifecycleSettings.serviceEndGraceMinutes.defaultValue, inspectionAutoCloseHours: 0 });
+  const rawClock = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone,
+    { checkinWindowMinutesBefore, serviceEndGraceMinutes: lifecycleSettings.serviceEndGraceMinutes.defaultValue, inspectionAutoCloseHours: 0 }, visits);
+  const clock = currentVisitSnapshot(booking, visits, rawClock);
   const live = ['confirmed', 'cancellation_requested'].includes(booking.status);
   const states = clock.visits.map((visit, index) => {
     const blockIndex = visit.blockIndex ?? index;
-    const evidence = matchVisitEvidence(visits, blockIndex, visit.localDate || visit.scheduledStartAt.slice(0, 10)) || (visits.length ? undefined : booking);
+    const evidence = matchVisitEvidence(visits, blockIndex, visit.localDate || visit.scheduledStartAt.slice(0, 10), visit.operatingDate) || (visits.length ? undefined : booking);
     const unfinished = !['checked_out', 'checkout_requested', 'checkout_claim_filed', 'no_show'].includes(evidence?.checkinStatus || '')
       && Date.parse(visit.scheduledEndAt) + clock.serviceEndGraceMinutes * 60000 > now.getTime();
     return { blockIndex, visitId: evidence?.id ?? null, start: visit.scheduledStartAt, end: visit.scheduledEndAt, unfinished,
       ...instructionStateForVisit(new Date(visit.scheduledStartAt), preparationHours, clock.checkinWindowMinutesBefore, live && unfinished, now) };
   });
+  if (booking.scheduleRevision) {
+    const firstStart = rawClock.visits.reduce((first, visit) => visit.scheduledStartAt < first ? visit.scheduledStartAt : first, rawClock.visits[0]?.scheduledStartAt || '');
+    const shared = firstStart ? instructionStateForVisit(new Date(firstStart), 48, 0, live || booking.status === 'completed', now)
+      : { instructionsReleased: false, instructionsReleaseAt: '' };
+    return { ...shared, visits: states.map(visit => ({ ...visit, ...shared })) };
+  }
   const first = states.filter(visit => visit.unfinished).sort((a, b) => Date.parse(a.start) - Date.parse(b.start))[0] || states[0];
-  return { instructionsReleased: first.instructionsReleased, instructionsReleaseAt: first.instructionsReleaseAt, visits: states };
+  return { instructionsReleased: first?.instructionsReleased || false, instructionsReleaseAt: first?.instructionsReleaseAt || '', visits: states };
 }
 
 export function redactInstructionDuties(value: unknown, released: boolean) {

@@ -1,3 +1,4 @@
+import { requireCurrentVisit, isCurrentVisit } from '@shared/dated-visits';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { kitchenBookings, kitchenBookingVisits, kitchenBookingAttendanceEvents, kitchens, locations } from '@shared/schema';
@@ -48,9 +49,9 @@ export async function withReportedAttendance<C extends { visits: Array<{ visitId
 export async function projectBookingCloseout<T extends ClockBooking, V extends ClockEvidence>(booking: T, timezone: string,
   visits: V[] = [], timing?: CloseoutTiming, reader: Reader = db, reports?: AttendanceReport[]) {
   const stored = savedCloseout(booking.visitDuties);
-  const saved = stored || makeCloseoutSnapshot(booking, timezone, timing || await closeoutTiming(undefined, reader));
+  const saved = stored || makeCloseoutSnapshot(booking, timezone, timing || await closeoutTiming(undefined, reader), visits);
   const reduced = await withReportedAttendance((booking as { id?: number }).id, reduceClockCloseout(booking, visits, saved, new Date()), reader, reports);
-  const closeout = stored ? reduced : { ...reduced, legacy: true };
+  const closeout = stored || booking.scheduleRevision ? reduced : { ...reduced, legacy: true };
   return { ...booking, status: closeout.status, closeout, timezone: closeout.timezone,
     checkoutReviewDeadline: closeout.visits[0]?.inspection.deadline,
     // Stored rows pair with their clock by row id (set by the reducer from block index), never by hours.
@@ -66,7 +67,7 @@ export async function projectBookingCloseout<T extends ClockBooking, V extends C
 export async function lateDepartureOpen(booking: ClockBooking, timezone: string, visits: ClockEvidence[], visitId: number | undefined,
   locationId?: number, reader: Reader = db, now = new Date()) {
   if (!['confirmed', 'completed'].includes(booking.status)) return false;
-  const saved = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone, await closeoutTiming(locationId, reader));
+  const saved = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone, await closeoutTiming(locationId, reader), visits);
   const projection = reduceClockCloseout(booking, visits, saved, now);
   const clock = visitId ? projection.visits.find(visit => visit.visitId === visitId) : projection.visits.length === 1 ? projection.visits[0] : undefined;
   return lateCheckoutOpen(clock);
@@ -89,7 +90,7 @@ export async function projectBookingCloseouts<T extends { id: number }>(items: T
     const derived = await projectBookingCloseout(row.booking, row.timezone, own, timing, db, reports);
     // Read-only list facts so a list row derives the same phase as the booking page (visit states, check-in window).
     return { ...item, status: derived.status, closeout: derived.closeout, timezone: derived.timezone,
-      visitStates: own.map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus, checkoutRequestedAt: visit.checkoutRequestedAt })),
+      visitStates: own.filter(visit => isCurrentVisit(row.booking, visit)).map(visit => ({ id: visit.id, blockIndex: visit.blockIndex, checkinStatus: visit.checkinStatus, checkoutRequestedAt: visit.checkoutRequestedAt })),
       checkinWindowMinutesBefore: row.checkinWindow ?? timing.checkinWindowMinutesBefore };
   }));
 }
@@ -104,7 +105,8 @@ export async function inspectionContext(bookingId: number, managerId: number, vi
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId)).orderBy(asc(kitchenBookingVisits.blockIndex));
   const evidence = visitId ? visits.find(visit => visit.id === visitId) : visits.length ? undefined : row.booking;
   if (!evidence) throw Error('Choose a visit belonging to this booking');
-  const saved = savedCloseout(row.booking.visitDuties) || makeCloseoutSnapshot(row.booking, row.timezone, await closeoutTiming(row.locationId, tx));
+  requireCurrentVisit(row.booking, visitId ? visits.find(visit => visit.id === visitId) : undefined);
+  const saved = savedCloseout(row.booking.visitDuties) || makeCloseoutSnapshot(row.booking, row.timezone, await closeoutTiming(row.locationId, tx), visits);
   const projection = reduceClockCloseout(row.booking, visits, saved, new Date());
   // A booking-level (legacy) inspection is only unambiguous for a single saved visit.
   const visit = visitId ? projection.visits.find(visit => visit.visitId === visitId)
@@ -155,7 +157,7 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
     .every(visit => ['checked_out', 'checkout_claim_filed'].includes(visit.checkinStatus || ''))) return { changed: false };
   if (!row.timezone) throw Error('Location timezone is required for booking closeout');
   const timing = existing || await closeoutTiming(row.locationId, tx);
-  const saved = existing || makeCloseoutSnapshot(row.booking, row.timezone, timing);
+  const saved = existing || makeCloseoutSnapshot(row.booking, row.timezone, timing, visits);
   const projection = reduceClockCloseout(row.booking, visits, saved, now);
   const next = closeoutTransition(saved, projection);
   const changed = !existing || JSON.stringify(next) !== JSON.stringify(existing) || projection.status !== row.booking.status;
@@ -171,7 +173,22 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
       && attended.visits.some(visit => visit.attendance === 'recorded') ? { feedbackRequestedAt: now } : {}),
     status: projection.status as typeof row.booking.status, updatedAt: now }).where(eq(kitchenBookings.id, bookingId));
   await (await import('./kitchen-payout-service')).scheduleKitchenPayout(bookingId, tx, now);
-  const announcesEnd = !existing?.serviceEndedAt && !!next.serviceEndedAt;
+  const announcesEnd = !existing?.serviceEndedAt && !!next.serviceEndedAt && !row.booking.scheduleRevision;
+  if (row.booking.scheduleRevision) {
+    const cutover = await getCloseoutNotificationsFrom(tx, now);
+    for (const visit of attended.visits.filter(visit => visit.phase === 'ended'
+      && existing?.visitPhases?.[visit.key] !== 'ended' && existing?.visitPhases?.[visit.clockKey] !== 'ended')) {
+      if (new Date(visit.scheduledEndAt) < cutover || row.booking.status === 'cancellation_requested') continue;
+      const checkedIn = visits.find(row => row.id === visit.visitId)?.checkinStatus === 'checked_in';
+      await queueBookingLifecycleEvent(tx, bookingId, 'service_ended', 'Booked time ended',
+        'The booked time for this visit has ended. Open this visit for checkout and inspection details.', undefined,
+        { recipientPolicy: 'participants', visitId: visit.visitId, visitKey: visit.key, scheduleRevision: row.booking.scheduleRevision,
+          serviceEndedAt: new Date(Date.parse(visit.scheduledEndAt) + saved.serviceEndGraceMinutes * 60000).toISOString(),
+          roleText: visit.attendance === 'unknown' ? await noArrivalRoleText(row, { visits: [visit] }) : checkedIn ? {
+            chef: { title: 'Your booked time has ended', message: 'You are still checked in for this visit. Please check out now.' },
+            manager: { title: 'Booked time ended', message: 'The chef has not checked out for this visit. Open it to record their departure.' } } : undefined });
+    }
+  }
   const closedInspections = projection.visits.filter(visit => next.inspections?.[visit.key]
     && !(existing?.inspections?.[visit.key] ?? existing?.inspections?.[visit.clockKey]));
   if (announcesEnd || closedInspections.length) {
@@ -202,7 +219,7 @@ export async function persistBookingCloseout(bookingId: number, tx: Transaction,
       // Manager only: the chef is not told an inspection window closed.
       for (const visit of closedInspections) await queueBookingLifecycleEvent(tx, bookingId, 'inspection_auto_closed',
         'Inspection window closed', `The inspection window for ${reference} has ended without a kitchen review. Contact Local Cooks if you have a concern.`,
-        undefined, { recipientPolicy: 'manager', visitKey: visit.key, closedAt: next.inspections![visit.key].closedAt });
+        undefined, { recipientPolicy: 'manager', visitId: visit.visitId, visitKey: visit.key, closedAt: next.inspections![visit.key].closedAt });
     }
   }
   return { changed: true, projection };

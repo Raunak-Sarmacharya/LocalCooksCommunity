@@ -18,8 +18,8 @@ import { getLifecycleSettings, lifecycleSettings } from './lifecycle-settings';
 import { ensureServerI18n } from '../i18n';
 import { tEmail } from '../i18n/outbound';
 import { chefVisitCodes } from './visit-code-challenge';
-import { instructionStateForVisit } from './visit-duties';
-import { makeCloseoutSnapshot, savedCloseout } from '@shared/clock-closeout';
+import { instructionStateForVisit, bookingInstructionRelease } from './visit-duties';
+import { makeCloseoutSnapshot, savedCloseout, currentVisitSnapshot, type ClockEvidence } from '@shared/clock-closeout';
 import { getCheckinSettings } from './kitchen-checkout-service';
 import { managerNoCheckinNotice } from './kitchen-payout-notice';
 
@@ -140,10 +140,10 @@ export async function acknowledgeConfirmationReminders(tx: Transaction, bookingI
 }
 
 /** Uses the same operating-day interpretation as the visit lifecycle, never host timezone. */
-export function reminderVisitTimes(booking: typeof kitchenBookings.$inferSelect, timezone: string) {
+export function reminderVisitTimes(booking: typeof kitchenBookings.$inferSelect, timezone: string, visits?: ClockEvidence[]) {
   const clock = savedCloseout(booking.visitDuties) || makeCloseoutSnapshot(booking, timezone,
-    { checkinWindowMinutesBefore: 0, serviceEndGraceMinutes: 0, inspectionAutoCloseHours: 0 });
-  return clock.visits.map((visit, index) => ({ ...visit, index: visit.blockIndex ?? index,
+    { checkinWindowMinutesBefore: 0, serviceEndGraceMinutes: 0, inspectionAutoCloseHours: 0 }, visits);
+  return (visits ? currentVisitSnapshot(booking, visits, clock) : clock).visits.map((visit, index) => ({ ...visit, index: visit.blockIndex ?? index,
     start: new Date(visit.scheduledStartAt), end: new Date(visit.scheduledEndAt) }));
 }
 
@@ -225,12 +225,13 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
     const duties = makeVisitDuties(row.checklist, false, settings, savedDuties?.source || 'legacy_first_action');
     // The chef's own heads-up (kind 'running_late' lifecycle events) moves the manager's no-check-in alert to their stated arrival.
     const runningLate = await (await import('./running-late')).readRunningLate(id, tx);
-    return reminderVisitTimes(row.booking, timezone).flatMap(block => {
+    return reminderVisitTimes(row.booking, timezone, visits).flatMap(block => {
       if (now >= block.end) return [];
       const visit = visits.find(visit => visit.blockIndex === block.index);
       const state = visit?.checkinStatus || (visits.length ? 'not_checked_in' : row.booking.checkinStatus);
       const mode = codes.find(code => code.visitId === (visit?.id ?? null))?.mode || 'legacy';
-      const release = instructionStateForVisit(block.start, policy!.preparationReminderHours!, settings.checkinWindowMinutesBefore, true, now);
+      const release = row.booking.scheduleRevision ? bookingInstructionRelease(row.booking, timezone, visits, 48, settings.checkinWindowMinutesBefore, now)
+        : instructionStateForVisit(block.start, policy!.preparationReminderHours!, settings.checkinWindowMinutesBefore, true, now);
       const visitPath = `/booking/${id}/visit${visit ? `?visitId=${visit.id}` : ''}`;
       const facts = `${row.kitchen.name} at ${row.location.name}. Address: ${row.location.address || 'See booking details'}. ` +
         `Visit: ${formatVisitRange(block.start, block.end, timezone)}. `;
@@ -251,7 +252,7 @@ export async function currentReminders(tx: Transaction, source: ReminderSource, 
           time: new Intl.DateTimeFormat(locale || 'en-CA', { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(block.end),
           zone: friendlyTimezoneName(timezone, locale || 'en-CA'), count: duties.departure.items.filter(item => item.required !== false).length + duties.departure.photos.filter(photo => photo.required !== false).length }),
         checkinWindowMinutesBefore: savedDuties?.checkinWindowMinutesBefore,
-        requirement: [block.start.toISOString(), block.end.toISOString(), timezone, chef?.username] }, policy).map(reminder => ({ ...reminder,
+        requirement: [block.start.toISOString(), block.end.toISOString(), timezone, chef?.username, ...(row.booking.scheduleRevision ? [row.booking.scheduleRevision] : [])] }, policy).map(reminder => ({ ...reminder,
           message: reminder.kind === 'preparation' ? facts + (release.instructionsReleased
             ? `${arrivalModeLine(mode, locale)} ${tEmail(locale, 'instructionsReleased')} Arrival instructions: ${endInstructionSentence(duties.arrival.instructions || '')} Departure instructions: ${endInstructionSentence(duties.departure.instructions || '')} Required tasks/photos: ${tasks || 'None requested'}. Contact: ${manager?.username || 'Support'}.`
             : arrivalModeLine(mode, locale))

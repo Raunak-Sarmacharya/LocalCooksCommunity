@@ -95,8 +95,8 @@ export async function currentArrivalNotice(bookingId: number, kind: string, targ
   const { kitchenDuties } = await import('./visit-duties');
   const duties = await kitchenDuties(bookingId, tx);
   const { reminderVisitTimes } = await import('./advance-reminders');
-  const blocks = reminderVisitTimes(row.booking, timezone);
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
+  const blocks = reminderVisitTimes(row.booking, timezone, visits);
   const formatter = new Intl.DateTimeFormat(row.chef.preferredLocale || 'en-CA', { timeZone: timezone, year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
   const zoneName = new Intl.DateTimeFormat(row.chef.preferredLocale || 'en-CA', { timeZone: timezone, timeZoneName: 'longGeneric' }).formatToParts(new Date()).find(part => part.type === 'timeZoneName')?.value || timezone;
   const facts = current.flatMap(target => {

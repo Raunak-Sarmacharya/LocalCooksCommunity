@@ -51,6 +51,16 @@ describe('closeout notice emails (rendered from current state, mocked database)'
     expect((await send('service_ended', 3, 'maya@example.test'))?.text).not.toContain('#feedback');
   });
 
+  it('renders only the targeted dated visit and suppresses a cancelled target at delivery', async () => {
+    state.booking.status = 'confirmed'; state.booking.scheduleRevision = 1;
+    state.visits = ['2026-10-13', '2026-10-16'].map((visitDate, blockIndex) => ({ id: 31 + blockIndex, bookingId: 128, blockIndex,
+      visitDate, scheduleRevision: 1, scheduleState: 'active', operatingWindowStartTime: '08:00', startTime: '10:00', endTime: '11:00', checkinStatus: 'not_checked_in' }));
+    state.booking.visitDuties = { clockCloseout: makeCloseoutSnapshot(state.booking, 'America/St_Johns', { serviceEndGraceMinutes: 15, inspectionAutoCloseHours: 24, checkinWindowMinutesBefore: 15 }, state.visits) };
+    const email = await send('service_ended', 7, 'sam@example.test', { visitKey: '31' });
+    expect(email?.text).toContain('Oct 13'); expect(email?.text).not.toContain('Oct 16');
+    state.visits[0].scheduleState = 'cancelled';
+    expect(await send('service_ended', 7, 'sam@example.test', { visitKey: '31' })).toBeNull();
+  });
   it.each(['submitted', 'charge_succeeded', 'rejected'])('chef closeout email reflects a %s claim without kitchen-only state', async status => {
     state.claims = [{ id: 1, claimVersion: 2, chefVisibleAt: new Date(), status, claimedAmountCents: 7000, finalAmountCents: 7000,
       chefResponseDeadline: new Date('2026-10-18T12:00:00Z') }];

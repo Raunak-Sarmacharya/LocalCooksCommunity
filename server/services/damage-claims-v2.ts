@@ -1,3 +1,5 @@
+import { isCurrentVisit } from '@shared/dated-visits';
+import { visitAttendanceEnd } from '@shared/booking-attendance';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
@@ -9,8 +11,6 @@ import { approvedClaimAmount, claimFilingWindow, claimResponseDeadline, claimTot
 import { occupancyRange, toDateRange, localToday, type RentalDates } from '@shared/storage-rental';
 import { scheduleStorageTermPayout } from './storage-payouts';
 import { recordedDepartureAt } from '@shared/clock-closeout';
-import { calendarDateForBookingTime } from '@shared/operating-hours';
-import { createBookingDateTime } from '@shared/timezone-utils';
 import { generateReferenceCode } from '../reference-code';
 import { workerAfter, workerPageEnd, workerRecord, isWorkerBudgetError, assertWorkerTime } from './worker-context';
 import { assertBookingMoneyWritable } from './booking-money-guard';
@@ -53,9 +53,10 @@ async function bookingContext(bookingId: number, managerId: number, visitId: num
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, bookingId));
   const visit = visitId ? visits.find(item => item.id === visitId) : visits.length === 1 ? visits[0] : visits.length ? null : row.booking;
   if (!visit) throw new DamageClaimError('Choose the affected visit.');
-  const day = row.booking.bookingDate.toISOString().slice(0, 10);
-  const endDay = calendarDateForBookingTime(day, visit.endTime, row.booking.operatingWindowStartTime, row.booking.startTime);
-  const window = claimFilingWindow(createBookingDateTime(endDay, visit.endTime, row.timezone), recordedDepartureAt(visit));
+  if (row.booking.scheduleRevision && (!('bookingId' in visit) || !isCurrentVisit(row.booking, visit)))
+    throw new DamageClaimError('Choose an active visit from the current booking schedule.');
+  if (row.booking.scheduleRevision && !visitId) throw new DamageClaimError('Choose the affected visit.');
+  const window = claimFilingWindow(visitAttendanceEnd({ ...row.booking, timezone: row.timezone }, visit), recordedDepartureAt(visit));
   return { ...row, visit, window };
 }
 async function storageClaimContext(rentalId: number, managerId: number, tx: ClaimTx) {

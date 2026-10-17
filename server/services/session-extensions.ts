@@ -88,10 +88,11 @@ export async function priceTerms(tx: Tx, row: Context) {
 }
 async function clocks(tx: Tx, row: Context, now: Date) {
   const visits = await tx.select().from(kitchenBookingVisits).where(eq(kitchenBookingVisits.bookingId, row.booking.id)).orderBy(asc(kitchenBookingVisits.blockIndex));
-  const snapshot = savedCloseout(row.booking.visitDuties) || makeCloseoutSnapshot(row.booking, row.timezone!, await closeoutTiming(row.kitchen.locationId, tx));
+  const snapshot = savedCloseout(row.booking.visitDuties) || makeCloseoutSnapshot(row.booking, row.timezone!, await closeoutTiming(row.kitchen.locationId, tx), visits);
   return { visits, snapshot, projection: reduceClockCloseout(row.booking, visits, snapshot, now) };
 }
 function operatingDateFor(row: Context, visit: VisitCloseout) {
+  if (visit.operatingDate) return visit.operatingDate;
   const day = new Date(`${visit.localDate}T12:00:00Z`);
   if (timeToMinutes(visit.startTime) < timeToMinutes(row.booking.operatingWindowStartTime || row.booking.startTime)) day.setUTCDate(day.getUTCDate() - 1);
   return day.toISOString().slice(0, 10);
@@ -170,6 +171,7 @@ const isInSession = (row: Context, visit: VisitCloseout, evidence: { checkoutReq
   && !evidence?.checkoutRequestedAt && !evidence?.checkedOutAt && now.getTime() < Date.parse(visit.scheduledEndAt)
   && (!finalHour || inExtensionWindow(now, visit.scheduledEndAt));
 async function chooseSession(tx: Tx, row: Context, now: Date, visitId?: number | null, kind?: ExtensionKind) {
+  if (row.booking.scheduleRevision && !visitId) throw new SessionExtensionError('Choose a dated visit');
   const clock = await clocks(tx, row, now);
   const evidenceFor = (visit: VisitCloseout) => visit.visitId ? clock.visits.find(item => item.id === visit.visitId) : row.booking;
   const visit = visitId ? clock.projection.visits.find(visit => visit.visitId === visitId)

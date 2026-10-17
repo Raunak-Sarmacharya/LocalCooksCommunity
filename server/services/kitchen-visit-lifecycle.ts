@@ -1,9 +1,10 @@
+import { isCurrentVisit, visitDateKey } from '@shared/dated-visits';
 import { workerAfter, workerBatch, workerRecord, workerPageEnd, inRecurringWorker } from './worker-context';
 import { queueBookingLifecycleEvent } from './booking-lifecycle-delivery';
 import { and, eq, gte, lt, sql, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { damageClaims, kitchenBookingVisits, kitchenBookings, kitchens, locations } from '@shared/schema';
-import { calendarDateForOperatingTime } from '@shared/operating-hours';
+import { calendarDateForBookingTime } from '@shared/operating-hours';
 import { createBookingDateTime, DEFAULT_TIMEZONE, formatInTimezone } from '@shared/timezone-utils';
 import { ensureKitchenBookingVisits } from './kitchen-booking-visits';
 import { getCheckinSettings, validateRequiredChecklistItems, validateRequiredPhotos } from './kitchen-checkout-service';
@@ -32,7 +33,7 @@ async function visitContext(bookingId: number, visitId: number) {
     .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
     .innerJoin(locations, eq(locations.id, kitchens.locationId))
     .where(and(eq(kitchenBookingVisits.id, visitId), eq(kitchenBookingVisits.bookingId, bookingId))).limit(1);
-  return row;
+  return row && isCurrentVisit(row.booking, row.visit) ? row : undefined;
 }
 
 /** Scheduled instants for one stored visit: the saved closeout clock when present, else the legacy single-date derivation. */
@@ -40,10 +41,10 @@ function visitWindow(context: NonNullable<Awaited<ReturnType<typeof visitContext
   const saved = savedCloseout(context.booking.visitDuties);
   const clock = saved ? savedClockForVisit(saved, context.visit) : undefined;
   if (clock) return { start: new Date(clock.scheduledStartAt), end: new Date(clock.scheduledEndAt) };
-  const operatingDate = context.booking.bookingDate.toISOString().slice(0, 10);
-  const windowStart = context.booking.operatingWindowStartTime || context.booking.startTime;
-  return { start: createBookingDateTime(calendarDateForOperatingTime(operatingDate, context.visit.startTime, windowStart), context.visit.startTime, timezone),
-    end: createBookingDateTime(calendarDateForOperatingTime(operatingDate, context.visit.endTime, windowStart), context.visit.endTime, timezone) };
+  const operatingDate = visitDateKey(context.visit.visitDate || context.booking.bookingDate);
+  const windowStart = context.visit.operatingWindowStartTime || context.booking.operatingWindowStartTime || context.booking.startTime;
+  return { start: createBookingDateTime(calendarDateForBookingTime(operatingDate, context.visit.startTime, windowStart), context.visit.startTime, timezone),
+    end: createBookingDateTime(calendarDateForBookingTime(operatingDate, context.visit.endTime, windowStart, context.visit.startTime), context.visit.endTime, timezone) };
 }
 
 async function finishBookingIfAllVisitsDone(bookingId: number, transaction?: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<boolean> {
@@ -55,10 +56,12 @@ async function finishBookingIfAllVisitsDone(bookingId: number, transaction?: Par
 async function updateConfirmedVisit(bookingId: number,visitId: number,expectedStatus: typeof kitchenBookingVisits.$inferSelect.checkinStatus,values: Partial<typeof kitchenBookingVisits.$inferInsert>,expectedParentUpdatedAt?: Date, duties?: VisitDuties, arrival?: ArrivalInput, lateDeparture = false) {
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
-    const [parent]=await tx.select({ status: kitchenBookings.status,updatedAt: kitchenBookings.updatedAt }).from(kitchenBookings).where(eq(kitchenBookings.id,bookingId)).limit(1);
+    const [parent]=await tx.select({ status: kitchenBookings.status,updatedAt: kitchenBookings.updatedAt, scheduleRevision: kitchenBookings.scheduleRevision }).from(kitchenBookings).where(eq(kitchenBookings.id,bookingId)).limit(1);
     // A late departure may land after the booking already reads "completed" (its booked time and grace are over).
     const parentOpen = parent?.status === 'confirmed' || lateDeparture && parent?.status === 'completed';
     if(!parentOpen||(expectedParentUpdatedAt&&parent.updatedAt.getTime()!==expectedParentUpdatedAt.getTime())) return [];
+    const [target] = parent.scheduleRevision ? await tx.select().from(kitchenBookingVisits).where(and(eq(kitchenBookingVisits.id, visitId), eq(kitchenBookingVisits.bookingId, bookingId))).limit(1) : [];
+    if (parent.scheduleRevision && (!target || !isCurrentVisit(parent, target))) return [];
     if (values.checkinStatus === 'checked_in') await validateCurrentKitchenSubmission(tx, bookingId, 'arrival', values.checkinPhotoUrls as string[] | undefined, values.checkinChecklistItems as ChecklistItems | undefined);
     if (values.checkinStatus === 'checkout_requested') await validateCurrentKitchenSubmission(tx, bookingId, 'departure', values.checkoutPhotoUrls as string[] | undefined, values.checkoutChecklistItems as ChecklistItems | undefined);
     // Lock order: booking (above) -> visit -> challenge. The code is a gate here, not another writer of check-in state.
@@ -303,7 +306,8 @@ export async function getHistoricalVisitReviewQueue() {
           WHERE newer.visit_id = e.visit_id AND newer.id > e.id))`,
       lt(kitchenBookings.bookingDate, new Date())));
   return [...rows, ...legacyRows].filter(row => {
-    const end = row.visit.id ? visitAttendanceEnd(row.booking, row.visit) : bookingAttendanceEnd(row.booking);
+    if (row.booking.scheduleRevision && (!('scheduleRevision' in row.visit) || !isCurrentVisit(row.booking, row.visit))) return false;
+    const end = row.visit.id ? visitAttendanceEnd({ ...row.booking, timezone: row.timezone }, row.visit) : bookingAttendanceEnd({ ...row.booking, timezone: row.timezone });
     return end.getTime() < cutoff;
   });
 }

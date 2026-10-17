@@ -84,7 +84,7 @@ export function sortTimesInOperatingWindow(times: string[], windowStartTime: str
   );
 }
 
-export type OperatingSlot = { startTime: string; endTime: string };
+export type OperatingSlot = { date?: string; windowStartTime?: string; startTime: string; endTime: string };
 
 /** Compare occupancy across operating days using Newfoundland wall-clock minutes. */
 export function absoluteOperatingSlotInterval(

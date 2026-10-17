@@ -1,6 +1,6 @@
 import { BookingProblemReport } from "./BookingProblemReport"
 import { friendlyTimezoneName } from '@shared/timezone-utils';
-import { VisitDutyValidationError, type DutyFieldErrors } from '@shared/visit-duties';
+import { previousVisitTaskAnswers, VisitDutyValidationError, type DutyFieldErrors } from '@shared/visit-duties';
 /**
  * KitchenCheckinTracker
  *
@@ -161,6 +161,14 @@ export function KitchenCheckinTracker({
     setArrivalChanged(false)
     requestKeyRef.current = crypto.randomUUID()
   }, [bookingId, data?.visitId])
+
+  const previousVisit = data?.scheduleRevision && data.visitId ? data.visits?.filter(visit =>
+    visit.id !== data.visitId && visit.visitDate && visit.visitDate < data.bookingDate.slice(0, 10))
+    .sort((a, b) => b.visitDate!.localeCompare(a.visitDate!))[0] : undefined;
+  const copyPreviousTasks = (stage: 'checkin' | 'checkout') => {
+    setCheckedItems(new Set(previousVisitTaskAnswers(stage === 'checkin' ? checklist?.checkinItems || [] : checklist?.checkoutItems || [],
+      stage === 'checkin' ? previousVisit?.checkinChecklistItems : previousVisit?.checkoutChecklistItems)));
+  };
 
   const checkinStatus: KitchenCheckinStatus =
     (data?.checkinStatus as KitchenCheckinStatus) || "not_checked_in"
@@ -546,23 +554,24 @@ export function KitchenCheckinTracker({
             departureInstructions={checklist?.checkoutInstructions || undefined} requiredTaskCount={requiredCheckoutTasks} />
         )}
 
-        {data?.visits && data.visits.length > 1 && (
+        {data?.visits && (data.visits.length > 1 || data.visitUnavailable) && (
           <div className="space-y-2" role="group" aria-labelledby="kitchen-visit-choice">
             <p id="kitchen-visit-choice" className="text-sm font-medium">{t("kciChooseVisit", "Choose a visit")}</p>
-            {data.visits.map(visit => (
+            {data.visits.map((visit, ordinal) => (
               <Button key={visit.id} type="button" size="sm"
                 variant={data.visitId === visit.id ? 'default' : 'outline'}
                 className="w-full h-auto whitespace-normal flex-wrap gap-2 justify-between text-left"
                 aria-pressed={data.visitId === visit.id}
                 disabled={isPending}
                 onClick={() => setSelectedVisitId(visit.id)}>
-                <span>{t("kciVisitNumber", `Visit ${visit.blockIndex + 1}`, { number: visit.blockIndex + 1 })}: {formatVisit(visit.startTime, visit.endTime)}</span>
+                <span>{data.scheduleRevision ? `${visit.visitDate} - Day ${ordinal + 1} of ${data.visits!.length}: ${formatVisit(visit.startTime, visit.endTime)}` : <>{t("kciVisitNumber", `Visit ${visit.blockIndex + 1}`, { number: visit.blockIndex + 1 })}: {formatVisit(visit.startTime, visit.endTime)}</>}</span>
                 <span>{t(`visitStatus_${visit.checkinStatus}`, visit.checkinStatus.replaceAll("_", " "))}</span>
               </Button>
             ))}
           </div>
         )}
 
+        {data?.visitUnavailable && <p role="alert">This visit is no longer in the current schedule. Choose a current visit to continue.</p>}
         {submitError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive space-y-2">
           <p>{submitError}</p>
           <Button variant="outline" disabled={isPending} onClick={() => void refetch()}>{t("kciRetryVisit", "Retry visit details")}</Button>
@@ -601,6 +610,7 @@ export function KitchenCheckinTracker({
                   <BookingProblemReport bookingId={bookingId} initialCategory="access" />
                 </div>}
                 {!!checklist?.checkinItems?.length && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
+                {!!previousVisit?.checkinChecklistItems?.length && <Button type="button" variant="outline" onClick={() => copyPreviousTasks('checkin')}>{t("kciSameAsPreviousVisit", "Same as previous visit")}</Button>}
                 {(checklist?.checkinItems || []).length > 0 && renderChecklist(checklist?.checkinItems || [], t("kciChecklistLabel"))}
 
                 {fieldErrors.items && <p role="alert" className="text-sm text-destructive">{fieldErrors.items}</p>}
@@ -673,6 +683,7 @@ export function KitchenCheckinTracker({
               <section id="visit-checkout-section" className="rounded-2xl border bg-card p-5 sm:p-6 space-y-3" aria-labelledby="visit-checkout-title">
                 <h2 id="visit-checkout-title" tabIndex={-1} className="font-semibold outline-none">{t("kciCheckOutHeading", "Check out")}</h2>
                 {hasCheckoutTasks && <p className="text-sm text-muted-foreground">{requirementsMessage}</p>}
+                {!!previousVisit?.checkoutChecklistItems?.length && <Button type="button" variant="outline" onClick={() => copyPreviousTasks('checkout')}>{t("kciSameAsPreviousVisit", "Same as previous visit")}</Button>}
                 {(checklist?.checkoutItems || []).length > 0 && renderChecklist(checklist?.checkoutItems || [], t("coChecklistLabel"))}
 
                 {fieldErrors.items && <p role="alert" className="text-sm text-destructive">{fieldErrors.items}</p>}
