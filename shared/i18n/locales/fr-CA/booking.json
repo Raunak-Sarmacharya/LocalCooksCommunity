@@ -943,6 +943,7 @@
   "chgStart": "Heure de début",
   "chgNoTimes": "Aucun créneau libre ce jour-là. Essayez une autre date.",
   "chgPickDifferent": "Choisissez une autre date, heure de début ou durée.",
+  "chgTooLong": "À partir de {time}, la cuisine est libre pendant {count, plural, one {# heure} other {# heures}}. Choisissez une durée plus courte ou une autre heure de début.",
   "chgNewTime": "Nouvel horaire : {when}",
   "chgYouPay": "Vous paierez {amount} de plus",
   "chgYouGetBack": "Vous récupérerez {amount}",

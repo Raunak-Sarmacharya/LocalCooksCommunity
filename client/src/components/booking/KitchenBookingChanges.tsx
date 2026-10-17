@@ -195,6 +195,7 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
                   onClick={() => setStart(slot.time)}>{formatTime(slot.time, f.locale)}</Button>)}</div>}
           </fieldset>
           {unchanged && <p className="text-sm text-muted-foreground">{t('chgPickDifferent')}</p>}
+          {start && slots !== null && maxHours > 0 && hours > maxHours && <p role="status" className="text-sm text-amber-800">{t('chgTooLong', { count: maxHours, time: formatTime(start, f.locale) })}</p>}
           {preview && m && <section className="space-y-2 rounded-xl border bg-muted/30 p-4 text-sm" aria-live="polite" data-testid="change-preview">
             <p>{t('chgNewTime', { when: f.schedule(preview.destination) })}</p>
             <p className="text-lg font-semibold">{headline}</p>

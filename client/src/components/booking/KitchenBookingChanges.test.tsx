@@ -97,4 +97,15 @@ describe('Change date or time dialog', () => {
     const sent = calls.find(call => call.url.endsWith('/api/bookings/10/changes') && call.body);
     expect(sent?.body).toMatchObject({ destination, quoteHash: 'a'.repeat(64) });
   });
+  it('says why when the chosen length no longer fits after picking a later start', async () => {
+    // 10:00 and 11:00 free, 12:00 taken (e.g. buffer before another booking): a 2-hour change can start at 10:00 but not 11:00.
+    const slots = [['10:00', true], ['11:00', true], ['12:00', false]].map(([time, ok]) => ({ time, available: ok ? 1 : 0, capacity: 1, isFullyBooked: !ok }));
+    routes = { '/slots': slots, '/changes': { original, canRequest: { allowed: true }, timezone: 'America/St_Johns' } };
+    render(<ChangeBookingDialog bookingId={10} kitchenId={54} kitchenName="PHASE0 Main Kitchen" timezone="America/St_Johns" open onOpenChange={() => {}} onChanged={async () => {}} />);
+    await screen.findByRole('button', { name: /11:00/ });
+    fireEvent.change(screen.getByLabelText('Length'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /11:00/ }));
+
+    expect(await screen.findByText(/the kitchen is free for 1 hour/)).toBeInTheDocument();
+  });
 });

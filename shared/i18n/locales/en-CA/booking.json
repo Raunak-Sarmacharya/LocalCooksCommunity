@@ -943,6 +943,7 @@
   "chgStart": "Start time",
   "chgNoTimes": "No free times on this day. Try another date.",
   "chgPickDifferent": "Choose a different date, start time or length.",
+  "chgTooLong": "From {time}, the kitchen is free for {count, plural, one {# hour} other {# hours}}. Choose a shorter length or another start time.",
   "chgNewTime": "New time: {when}",
   "chgYouPay": "You’ll pay {amount} more",
   "chgYouGetBack": "You’ll get {amount} back",
