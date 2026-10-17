@@ -160,6 +160,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
             { id: Number(expiredSession.metadata.chef_id), role: 'chef' });
         }
         if (expiredSession.metadata?.type === 'kitchen_booking' && expiredSession.metadata.hold_id) {
+          if (expiredSession.metadata.booking_contract || expiredSession.metadata.quote_hash)
+            await (await import('../services/kitchen-checkout-incidents')).archiveExpiredDatedCheckout(expiredSession);
           const { releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
           await releaseKitchenCheckout(expiredSession.metadata.hold_id);
           const { releaseInvitationCheckout } = await import('../services/kitchen-invitations');
@@ -362,6 +364,14 @@ async function handleCheckoutSessionCompleted(
         expand: ["line_items", "payment_intent"],
       },
     );
+
+    // Dated contracts own their ledger/evidence from the first write, including replay of an already-created source.
+    if (expandedSession.metadata?.booking_contract || expandedSession.metadata?.quote_hash) {
+      const intent = expandedSession.payment_intent;
+      if (!intent || typeof intent === 'string') throw Error('Dated checkout payment intent was not expanded');
+      await (await import('../services/booking-checkout-fulfillment')).fulfillQuotedKitchenBooking(expandedSession, intent, stripe);
+      return;
+    }
 
     // Extract payment intent and charge IDs
     const paymentIntent = expandedSession.payment_intent;
@@ -1359,6 +1369,10 @@ async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
   webhookEventId: string,
 ) {
+  if (paymentIntent.metadata.booking_contract || paymentIntent.metadata.quote_hash) {
+    await (await import('../services/dated-booking-allocations')).syncDatedPayment(paymentIntent.id);
+    return;
+  }
   if (paymentIntent.metadata.damage_claim_v2 === 'true') {
     await (await import('../services/damage-claim-money')).settleClaimPayment(paymentIntent);
     return;
@@ -2935,6 +2949,12 @@ async function handleChargeUpdated(
   previousAttributes: Record<string, unknown> | undefined,
   _webhookEventId: string,
 ) {
+  if (charge.metadata.booking_contract || charge.metadata.quote_hash) {
+    const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+    if (!intentId) throw Error('Dated charge payment identity is missing');
+    await (await import('../services/dated-booking-allocations')).syncDatedPayment(intentId);
+    return;
+  }
   if (charge.metadata.damage_claim_v2 === 'true') {
     const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
     if (intentId && process.env.STRIPE_SECRET_KEY) {

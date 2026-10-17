@@ -176,6 +176,8 @@ export type HoldGroupDay = { operatingDate: string; windowStartTime: string; slo
  */
 export async function reserveKitchenCheckoutGroup(input: HoldOptions & {
   kitchenId: number; chefId: number; days: HoldGroupDay[]; quoteSnapshot: unknown;
+  /** Server-generated before pricing so the immutable quote can bind its head identity. */
+  groupId?: string;
   /** The chef's own booking being replaced/moved: its time does not block (server-owned). */
   excludeBookingId?: number;
 }): Promise<string> {
@@ -209,7 +211,7 @@ export async function reserveKitchenCheckoutGroup(input: HoldOptions & {
         throw new KitchenSlotUnavailableError();
     }
     await assertWeeklyQuota(input.kitchenId, input.chefId, proposed, { ...input, excludeBookingId: input.excludeBookingId }, tx);
-    const groupId = randomUUID(), expiresAt = new Date(Date.now() + HOLD_MINUTES * 60_000);
+    const groupId = input.groupId ?? randomUUID(), expiresAt = new Date(Date.now() + HOLD_MINUTES * 60_000);
     await tx.insert(kitchenCheckoutHolds).values(days.map((day, index) => ({
       id: index === 0 ? groupId : randomUUID(), groupId, kitchenId: input.kitchenId, chefId: input.chefId,
       operatingDate: day.operatingDate, windowStartTime: day.windowStartTime, selectedSlots: day.slots,

@@ -57,6 +57,9 @@ export function bookingFreeCancelHours(booking: { cancellationPolicySnapshot?: u
 
 export function responseDeadlineForBooking(booking: ClockBooking & { createdAt: Date | string; cancellationPolicySnapshot?: unknown; cancellationPolicyHours?: number | null },
   timezone: string, bufferHours = 1): Date {
-  return resolveResponseDeadline({ createdAt: booking.createdAt, startAt: firstBookingVisitStart(booking, timezone), bufferHours,
+  const policy = booking.cancellationPolicySnapshot as { deadlineBasis?: string; sessions?: Array<{ startAt: string }> } | null;
+  // The dated policy already freezes every unambiguous start; no visit clock has to be initialized just to answer a request.
+  const startAt = policy?.deadlineBasis === 'booking_first_day' ? new Date(policy.sessions?.[0]?.startAt ?? NaN) : firstBookingVisitStart(booking, timezone);
+  return resolveResponseDeadline({ createdAt: booking.createdAt, startAt, bufferHours,
     freeCancelHours: bookingFreeCancelHours(booking) });
 }

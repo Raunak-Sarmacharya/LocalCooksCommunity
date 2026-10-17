@@ -32,10 +32,11 @@ vi.mock('./booking-money-guard', () => ({ assertBookingMoneyWritable: state.guar
 vi.mock('./booking-lifecycle-delivery', () => ({ queueBookingLifecycleEvent: state.queue }));
 vi.mock('./stripe-service', () => ({ getStripePaymentAmounts: state.amounts }));
 vi.mock('./stripe-transfer-service', () => ({ transferToManagerForBooking: state.transfer }));
+vi.mock('./booking-documents', () => ({ issueBookingDocumentsSafely: vi.fn() }));
 vi.mock('./worker-context', () => ({ workerAfter: () => undefined, workerRecord: async () => {}, workerPageEnd: async () => {}, isWorkerBudgetError: () => false }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 import { db } from '../db';
-import { releaseDuePayouts, releaseKitchenPayout, recordReleasedPayout, flushReleasedPayoutNotices, scheduleKitchenPayout, readKitchenPayout, upcomingKitchenPayouts } from './kitchen-payout-service';
+import { releaseDuePayouts, releaseKitchenPayout, recordReleasedPayout, flushReleasedPayoutNotices, scheduleKitchenPayout, readKitchenPayout, upcomingKitchenPayouts, recoverCaptureTransfer } from './kitchen-payout-service';
 
 const visit = (outcome: string, deadline = '2026-10-15T10:30:00.000Z') => ({ attendance: 'recorded', inspection: { outcome, deadline } });
 const now = new Date('2026-10-15T11:00:00Z');
@@ -53,6 +54,13 @@ beforeEach(() => {
 });
 
 describe('releaseKitchenPayout', () => {
+  it('defers per_day sources before scheduling, release overrides or capture-transfer recovery can reach a provider', async () => {
+    state.source.payoutPartition = 'per_day';
+    await scheduleKitchenPayout(7, db as any, now);
+    expect(await releaseKitchenPayout(7, 'support_override', now, { override: true })).toMatchObject({ deferred: true });
+    expect(await recoverCaptureTransfer(state.source)).toBe('skipped');
+    expect(state.amounts).not.toHaveBeenCalled(); expect(state.transfer).not.toHaveBeenCalled(); expect(state.log).toEqual([]);
+  });
   it('does not look at manager damage claims and holds only chef-reported kitchen problems', async () => {
     state.closeout.visits = [visit('issue_filed')];
     expect((await releaseKitchenPayout(7, 'manager_claim', now)).transferred).toBe(true);

@@ -79,7 +79,7 @@ async function saveEligibility(source: Source, context: Awaited<ReturnType<typeo
 /** Local decision only; called under the closeout/cancellation lock and never contacts a provider. */
 export async function scheduleKitchenPayout(bookingId: number, tx: Tx, now = new Date()) {
   const source = await originalSource(bookingId, tx);
-  if (!source || source.payoutTiming !== 'after_closeout' || source.transferId || source.payoutReleasedAt
+  if (!source || source.payoutPartition === 'per_day' || source.payoutTiming !== 'after_closeout' || source.transferId || source.payoutReleasedAt
     || !capturedStatuses.includes(source.status)) return;
   await saveEligibility(source, await payoutContext(bookingId, tx, now, supportReleased(source)), tx, now);
 }
@@ -96,6 +96,7 @@ async function releaseKitchenPayoutInTick(bookingId: number, reason: string, now
       inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']))).orderBy(asc(paymentTransactions.id)).for('update');
     await tx.execute(sql`SELECT id FROM kitchen_bookings WHERE id = ${bookingId} FOR UPDATE`);
     const source = await originalSource(bookingId, tx);
+    if (source?.payoutPartition === 'per_day') return { result: { success: false, deferred: true, reason: 'This payment is partitioned per day' } };
     if (!source || source.payoutTiming !== 'after_closeout') return { result: { success: false, notApplicable: true, reason: 'Not an after-closeout payout' } };
     if (source.transferId) return { result: { success: true, transferred: true, transferId: source.transferId, reason: 'Already sent' } };
     if ((source.metadata as { payoutNoEntitlement?: boolean } | null)?.payoutNoEntitlement)
@@ -306,7 +307,7 @@ export async function releaseDuePayouts(limit = 3) {
   for (const bookingId of Array.from(new Set(unannounced.map(row => row.bookingId)))) await flushReleasedPayoutNotices(bookingId);
   const rows = await db.select({ id: paymentTransactions.id, bookingId: paymentTransactions.bookingId,
     extensionId: sql<string | null>`${paymentTransactions.metadata}->>'sessionExtensionId'` }).from(paymentTransactions)
-    .where(and(eq(paymentTransactions.payoutTiming, 'after_closeout'), isNull(paymentTransactions.transferId),
+    .where(and(eq(paymentTransactions.payoutTiming, 'after_closeout'), sql`${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day'`, isNull(paymentTransactions.transferId),
       workerAfter('closeoutPayouts', paymentTransactions.id), or(
         and(isNull(paymentTransactions.payoutReleasedAt), or(isNull(paymentTransactions.payoutEligibleAt), lte(paymentTransactions.payoutEligibleAt, now))),
         sql`${paymentTransactions.payoutReleasedAt} IS NOT NULL AND COALESCE(${paymentTransactions.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`)))
@@ -345,6 +346,7 @@ export async function recoverCaptureTransfers(limit = 3) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Transfer recovery batch must be between one and three.');
   const rows = await db.select().from(paymentTransactions).where(and(
     workerAfter('captureTransfers', paymentTransactions.id), isNull(paymentTransactions.transferId),
+    sql`${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day'`,
     inArray(paymentTransactions.bookingType, ['kitchen', 'bundle']), inArray(paymentTransactions.status, ['succeeded', 'partially_refunded']),
     or(isNull(paymentTransactions.payoutTiming), eq(paymentTransactions.payoutTiming, 'at_capture')),
     sql`${paymentTransactions.paymentIntentId} IS NOT NULL AND ${paymentTransactions.managerId} IS NOT NULL`,
@@ -368,6 +370,7 @@ export async function recoverCaptureTransfers(limit = 3) {
 }
 
 export async function recoverCaptureTransfer(row: Source): Promise<'sent' | 'blocked' | 'skipped'> {
+  if (row.payoutPartition === 'per_day') return 'skipped';
   const amounts = await (await import('./stripe-service')).getStripePaymentAmounts(row.paymentIntentId!);
   let result: TransferResult | undefined, failure: string | undefined;
   if (!amounts?.chargeId) failure = 'The payment provider has no captured charge for this payment yet.';

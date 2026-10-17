@@ -60,11 +60,17 @@ export async function validateBookingDays(input: {
   /** Skip the notice period (a kitchen-approved change keeps its own deadline rules). */
   skipNotice?: boolean;
   now?: Date;
+  /** Already-authorized immutable contracts remain recoverable if the rollout switch is later disabled. */
+  authorizedContract?: boolean;
+  reader?: Pick<typeof db, 'select'>;
 }): Promise<BookingDaysValidation> {
   const policy = await kitchenBookingPolicies(input.kitchenId);
+  if (!policy.multidayCreationEnabled && !input.legacySingleDay && !input.authorizedContract)
+    return { ok: false, code: 'MULTIDAY_DISABLED', error: 'Multi-day bookings are not available yet.', dayErrors: [], kind: 'contract' };
+  const reader = input.reader ?? db;
   const contract = validateBookingDaysContract(input.days as BookingDayInput[], {
     maxBookingDays: effectiveMaxBookingDays(policy),
-    multidayCreationEnabled: policy.multidayCreationEnabled || !!input.legacySingleDay && input.days.length === 1,
+    multidayCreationEnabled: policy.multidayCreationEnabled || !!input.authorizedContract || !!input.legacySingleDay && input.days.length === 1,
   });
   if (!contract.ok) return { ok: false, code: contract.code, error: contract.message, dayErrors: [], kind: 'contract' };
 
@@ -80,7 +86,7 @@ export async function validateBookingDays(input: {
 
   const equipmentIds = Array.from(new Set(contract.days.flatMap(day => Array.isArray(day.equipmentIds) ? day.equipmentIds : [])));
   if (equipmentIds.some(id => !Number.isSafeInteger(id))) return { ok: false, code: 'equipment_unavailable', error: 'Choose equipment from this kitchen.', dayErrors: [], kind: 'rules' };
-  const listings = equipmentIds.length ? await db.select({ id: equipmentListings.id }).from(equipmentListings).where(and(
+  const listings = equipmentIds.length ? await reader.select({ id: equipmentListings.id }).from(equipmentListings).where(and(
     inArray(equipmentListings.id, equipmentIds as number[]), eq(equipmentListings.kitchenId, input.kitchenId),
     eq(equipmentListings.isActive, true), isNull(equipmentListings.archivedAt))) : [];
   const activeEquipment = new Set(listings.map(listing => listing.id));
@@ -145,7 +151,7 @@ export async function validateBookingDays(input: {
 
   const proposed: DatedSlot[] = days.flatMap(day => day.slots.map(slot => ({ date: day.date, windowStartTime: day.windowStartTime, ...slot })));
   const weeks = await weeklyQuotaShortfallsFor({ kitchenId: input.kitchenId, chefId: input.chefId, limitHours: policy.weeklyChefHoursLimit,
-    proposed, excludeBookingId: input.excludeBookingId, excludeHoldId: input.excludeHoldId, override: input.override });
+    proposed, excludeBookingId: input.excludeBookingId, excludeHoldId: input.excludeHoldId, override: input.override }, reader);
   if (weeks.length) {
     const message = weeklyQuotaMessage(weeks[0]);
     const blocked = new Set(weeks.map(week => week.weekStart));

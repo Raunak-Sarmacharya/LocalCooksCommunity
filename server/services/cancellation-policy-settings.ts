@@ -167,7 +167,8 @@ export async function checkoutCancellationSnapshot(kitchenId: number, date: stri
 export function cancellationSnapshotMetadata(snapshot: CancellationPolicySnapshot): Record<string, string> {
   return { cancellation_policy_id: String(snapshot.policyId), cancellation_policy_version: String(snapshot.version), cancellation_notice: String(snapshot.noticeHours),
     cancellation_charge: String(snapshot.lateChargePercent), cancellation_timezone: snapshot.timezone, cancellation_start: snapshot.sessions[0].startAt,
-    cancellation_disclosure: snapshot.disclosureVersion, cancellation_accepted_at: snapshot.acceptedAt! };
+    cancellation_disclosure: snapshot.disclosureVersion, cancellation_accepted_at: snapshot.acceptedAt!,
+    ...(snapshot.deadlineBasis ? { cancellation_deadline_basis: snapshot.deadlineBasis } : {}) };
 }
 export function cancellationSnapshotFromMetadata(metadata: Record<string, string>): CancellationPolicySnapshot | null {
   if (!metadata.cancellation_policy_id) return null; // Historical sessions remain fulfillable on their original hours.
@@ -176,5 +177,7 @@ export function cancellationSnapshotFromMetadata(metadata: Record<string, string
   if (!Number.isSafeInteger(policyId) || policyId <= 0 || !Number.isSafeInteger(version) || version <= 0 || !metadata.cancellation_timezone
     || !Number.isFinite(Date.parse(metadata.cancellation_start)) || !Number.isFinite(Date.parse(metadata.cancellation_accepted_at)) || !ACCEPTED_DISCLOSURE_VERSIONS.includes(metadata.cancellation_disclosure)) throw Error('Checkout cancellation acceptance needs review');
   new Intl.DateTimeFormat('en-CA', { timeZone: metadata.cancellation_timezone });
-  return { policyId, version, noticeHours, lateChargePercent, tiers, timezone: metadata.cancellation_timezone, sessions: [{ startAt: metadata.cancellation_start }], disclosureVersion: metadata.cancellation_disclosure, acceptedAt: metadata.cancellation_accepted_at };
+  if (metadata.cancellation_deadline_basis && metadata.cancellation_deadline_basis !== 'booking_first_day') throw Error('Checkout deadline basis needs review');
+  return { policyId, version, noticeHours, lateChargePercent, tiers, timezone: metadata.cancellation_timezone, sessions: [{ startAt: metadata.cancellation_start }], disclosureVersion: metadata.cancellation_disclosure, acceptedAt: metadata.cancellation_accepted_at,
+    ...(metadata.cancellation_deadline_basis ? { deadlineBasis: 'booking_first_day' as const } : {}) };
 }

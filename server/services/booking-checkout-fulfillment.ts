@@ -65,6 +65,8 @@ async function chefRequestCopy(booking: Parameters<typeof getBookingResponseDead
 /** New sessions commit the booking, quoted items, payment ledger and delivery evidence together. */
 export async function fulfillQuotedKitchenBooking(session: Stripe.Checkout.Session, intent: Stripe.PaymentIntent, stripe: Stripe) {
   const metadata = session.metadata || {};
+  if (metadata.booking_contract || metadata.quote_hash)
+    return (await import('./dated-booking-fulfillment')).fulfillDatedKitchenBooking(session, intent, stripe);
   const prices = bookingAddonPrices(metadata);
   const terms = bookingCaptureTerms(metadata, intent.amount);
   const kitchenId = Number(metadata.kitchen_id), chefId = Number(metadata.chef_id);

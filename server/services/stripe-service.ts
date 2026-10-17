@@ -292,6 +292,14 @@ export async function getBookingPaymentIntent(paymentIntentId: string) {
   return stripe.paymentIntents.retrieve(paymentIntentId);
 }
 
+/** Dated allocation evidence: no estimate and no invented zero when the balance transaction is still absent. */
+export async function getDatedCaptureEvidence(paymentIntentId: string) {
+  const provider = decisionStripe();
+  if (!provider) throw Error('Stripe is not configured');
+  const intent = await provider.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge.balance_transaction'] });
+  return (await import('./dated-booking-allocations')).verifiedDatedCaptureEvidence(intent, provider);
+}
+
 export async function getPaymentIntentRefunds(paymentIntentId: string) {
   const stripe = decisionStripe();
   if (!stripe) throw new Error('Stripe is not configured');
