@@ -14,12 +14,23 @@ vi.mock("@/hooks/use-presigned-document-url", () => ({ usePresignedDocumentUrl: 
 vi.mock("@/lib/manager-bookings-query", () => ({ fetchManagerBookings: async () => [] }));
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 vi.mock("@/lib/api", () => ({ apiGet: api.get, apiPut: api.put, apiPutWithMessage: api.put }));
+if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
 const location = { id: 33, name: "Harbour", kitchenTermsUrl: "https://cdn.example.com/harbour-terms.pdf" };
-const effective = { cancellationPolicyHours: 24, minimumBookingWindowHours: 1, defaultDailyBookingLimit: 8,
-  maxAdvanceBookingDays: 30, turnoverBufferEnabled: false, maxAdvanceBookingDaysCap: 60 };
-const workspace = { kitchen: { name: "Prep Kitchen", cancellationPolicyHours: null, minimumBookingWindowHours: null, defaultDailyBookingLimit: null,
-  maxAdvanceBookingDays: null, turnoverBufferEnabled: null, minimumBookingHours: 0 }, effective, defaults: effective };
+const effective = {
+  cancellationPolicyHours: 24, minimumBookingWindowHours: 1, defaultDailyBookingLimit: 8,
+  maxAdvanceBookingDays: 30, turnoverBufferEnabled: false, bookingBufferMinutes: 0,
+  allowMultiDayBookings: true, maxBookingDays: 7, maxBookingDaysCap: 14,
+  weeklyChefHoursLimit: null, maxAdvanceBookingDaysCap: 60,
+};
+const workspace = {
+  kitchen: {
+    name: "Prep Kitchen", cancellationPolicyHours: null, minimumBookingWindowHours: null, defaultDailyBookingLimit: null,
+    maxAdvanceBookingDays: null, turnoverBufferEnabled: null, bookingBufferMinutes: null,
+    allowMultiDayBookings: null, maxBookingDays: null, weeklyChefHoursLimit: null, minimumBookingHours: 0,
+  },
+  effective, defaults: effective,
+};
 const policy = { policy: { id: 1, version: 3, noticeHours: 24, lateChargePercent: 100, adminOverrideReason: null }, settings: { noticeOptions: [24, 48, 72], chargeOptions: [50, 100] } };
 const extension = { kitchenId: 40, kitchenName: "Prep Kitchen", enabled: true, autoApprove: false, override: null, overrideReason: null, effectiveAutoApprove: false };
 
@@ -49,15 +60,19 @@ describe("Booking Policies tab", () => {
     await waitFor(() => expect(screen.getByLabelText("Free cancellation until")).toBeEnabled());
     expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(
       ["Booking rules", "Cancellation policy", "Extra time", "Damage and cleaning", "Terms and conditions"]);
-    // One save per editable section, all disabled at rest; no consequence preview yet.
     expect(saveRules()).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save cancellation policy" })).toBeDisabled();
     await waitFor(() => expect(within(screen.getByTestId("session-extension-settings")).getByRole("button", { name: "Save changes" })).toBeDisabled());
     expect(screen.queryByTestId("setting-change-preview")).not.toBeInTheDocument();
-    // Each row reads label · what it means for chefs.
     expect(screen.getByText("Chefs can book up to 30 days ahead.")).toBeInTheDocument();
     expect(screen.getByText("Chefs can book back to back.")).toBeInTheDocument();
-    // Damage and cleaning is read-only and collapsed.
+    expect(screen.getByText("Longest booking: 8 hours per day")).toBeInTheDocument();
+    expect(screen.getByText(/One hourly booking can last up to 8 hours/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /More about Longest booking/i }));
+    expect(await screen.findByText(/Applies to hourly bookings/)).toBeInTheDocument();
+    expect(screen.getByText(/Full days are booked at your daily rate/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /More about Limit hours per chef each week/i }));
+    expect(await screen.findByText(/Monday–Sunday/)).toBeInTheDocument();
     expect(screen.queryByText(/Report damage or extra cleaning within 72 hours/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "How claims work" }));
     expect(screen.getByText(/Report damage or extra cleaning within 72 hours/)).toBeInTheDocument();
@@ -89,21 +104,24 @@ describe("Booking Policies tab", () => {
     expect(input).toHaveValue("1");
   });
 
-  it("previews the free hour between bookings and can apply it to every kitchen", async () => {
+  it("previews the buffer between bookings and can apply it to every kitchen", async () => {
     const { ref } = mount();
     api.put.mockResolvedValue({ updatedKitchens: 2 });
-    fireEvent.click(screen.getByRole("switch", { name: "Keep an hour free between bookings" }));
+    const trigger = screen.getByRole("combobox", { name: "Time free between bookings" });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("option", { name: "1 hour" }));
     expect(within(rulesSection()).getByTestId("setting-change-preview")).toHaveTextContent("can’t start or end within an hour of another booking");
     expect(saveRules()).toBeEnabled();
     expect(await ref.current!.saveAllChanges("location")).toBe(true);
-    expect(api.put).toHaveBeenCalledWith("/manager/locations/33/kitchen-booking-policies", { turnoverBufferEnabled: true });
+    expect(api.put).toHaveBeenCalledWith("/manager/locations/33/kitchen-booking-policies", { bookingBufferMinutes: 60 });
   });
 
-  it("discards edits back to the saved values", () => {
+  it("discards edits back to the saved values", async () => {
     mount();
-    fireEvent.click(screen.getByRole("switch", { name: "Keep an hour free between bookings" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Time free between bookings" }));
+    fireEvent.click(await screen.findByRole("option", { name: "1 hour" }));
     fireEvent.click(within(rulesSection()).getByRole("button", { name: "Discard" }));
-    expect(screen.getByRole("switch", { name: "Keep an hour free between bookings" })).not.toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Time free between bookings" })).toHaveTextContent("Off");
     expect(saveRules()).toBeDisabled();
   });
 
@@ -117,7 +135,7 @@ describe("Booking Policies tab", () => {
   it("works with an older server that has no window or buffer settings", async () => {
     const { ref } = mount({ ...workspace, effective: { cancellationPolicyHours: 24, minimumBookingWindowHours: 1, defaultDailyBookingLimit: 8 } });
     expect(screen.queryByText("How far ahead chefs can book")).not.toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "Keep an hour free between bookings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Time free between bookings" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "Advance notice" }), { target: { value: "4" } });
     expect(within(rulesSection()).getByTestId("setting-change-preview")).toHaveTextContent("Chefs must book at least 4 hours before the start.");
     expect(await ref.current!.saveAllChanges("kitchen")).toBe(true);

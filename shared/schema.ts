@@ -367,8 +367,12 @@ export const locations = pgTable("locations", {
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
-  maxAdvanceBookingDays: integer("max_advance_booking_days").default(30).notNull(),
+  maxAdvanceBookingDays: integer("max_advance_booking_days").default(60).notNull(),
   turnoverBufferEnabled: boolean("turnover_buffer_enabled").default(false).notNull(),
+  // Multi-day / buffer controls (migration 0099). Numeric buffer nulls inherit legacy boolean.
+  maxBookingDays: integer("max_booking_days").default(7).notNull(),
+  allowMultiDayBookings: boolean("allow_multiday_bookings").default(true).notNull(),
+  bookingBufferMinutes: integer("booking_buffer_minutes").default(0),
   minimumBookingWindowHours: integer("minimum_booking_window_hours").default(1).notNull(),
   logoUrl: text("logo_url"), // Logo URL for the location (for manager header)
   brandImageUrl: text("brand_image_url"), // Brand image URL for the location (displayed on public kitchen listings)
@@ -495,6 +499,10 @@ export const kitchens = pgTable("kitchens", {
   cancellationPolicyHours: integer("cancellation_policy_hours"),
   maxAdvanceBookingDays: integer("max_advance_booking_days"),
   turnoverBufferEnabled: boolean("turnover_buffer_enabled"),
+  maxBookingDays: integer("max_booking_days"),
+  allowMultiDayBookings: boolean("allow_multiday_bookings"),
+  bookingBufferMinutes: integer("booking_buffer_minutes"),
+  weeklyChefHoursLimit: integer("weekly_chef_hours_limit"),
   minimumBookingWindowHours: integer("minimum_booking_window_hours"),
   defaultDailyBookingLimit: integer("default_daily_booking_limit"),
   checkinCheckoutEnabled: boolean("checkin_checkout_enabled").default(false).notNull(),
@@ -545,7 +553,13 @@ export const kitchenCheckoutHolds = pgTable("kitchen_checkout_holds", {
   stripeSessionId: text("stripe_session_id").unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+  bufferMinutesSnapshot: integer("buffer_minutes_snapshot"),
+  groupId: text("group_id"),
+  quoteSnapshot: jsonb("quote_snapshot"),
+}, table => [
+  uniqueIndex("kitchen_holds_group_day_unique").on(table.groupId, table.operatingDate)
+    .where(sql`${table.groupId} IS NOT NULL`),
+]);
 
 export const kitchenInvitations = pgTable("kitchen_invitations", {
   id: text("id").primaryKey(),
@@ -585,6 +599,9 @@ export const kitchenInvitations = pgTable("kitchen_invitations", {
   // The SQL migration owns this FK to avoid a circular TypeScript table initializer.
   bookingId: integer("booking_id"),
   unavailableReason: text("unavailable_reason"),
+  bufferMinutesSnapshot: integer("buffer_minutes_snapshot"),
+  bookingRuleOverrides: jsonb("booking_rule_overrides"),
+  daysSnapshot: jsonb("days_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [
@@ -627,6 +644,7 @@ export const kitchenCheckoutIncidents = pgTable("kitchen_checkout_incidents", {
   notificationState: text("notification_state"),
   recoveryHistory: jsonb("recovery_history").default([]).notNull(),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  quoteSnapshot: jsonb("quote_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -683,6 +701,10 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   cancellationEffectiveAt: timestamp('cancellation_effective_at', { withTimezone: true }),
   cancellationOperationKey: text('cancellation_operation_key'),
   cancellationCause: text('cancellation_cause'),
+  bufferMinutesSnapshot: integer("buffer_minutes_snapshot"),
+  bookingRuleOverrides: jsonb("booking_rule_overrides"),
+  scheduleRevision: integer("schedule_revision").default(0).notNull(),
+  kitchenDayCancellationOffer: jsonb("kitchen_day_cancellation_offer"),
   // Stripe fields for off-session damage claim charging
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for damage claims
   stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
@@ -756,6 +778,14 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
   blockIndex: integer("block_index").notNull(),
   startTime: text("start_time").notNull(),
   endTime: text("end_time").notNull(),
+  visitDate: date("visit_date"),
+  scheduleRevision: integer("schedule_revision"),
+  scheduleState: text("schedule_state").default("active"),
+  operatingWindowStartTime: text("operating_window_start_time"),
+  pricingMode: text("pricing_mode"),
+  selectedSlots: jsonb("selected_slots"),
+  priceSnapshot: jsonb("price_snapshot"),
+  cancellationPlan: jsonb("cancellation_plan"),
   checkinStatus: kitchenCheckinStatusEnum("checkin_status").default("not_checked_in").notNull(),
   checkedInAt: timestamp("checked_in_at"),
   checkedInMethod: text("checked_in_method"),
@@ -775,7 +805,12 @@ export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
   actualEndTime: text("actual_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, table => [
+  uniqueIndex("kitchen_visits_revision_day_unique").on(table.bookingId, table.scheduleRevision, table.visitDate)
+    .where(sql`${table.scheduleRevision} IS NOT NULL AND ${table.visitDate} IS NOT NULL`),
+  index("kitchen_visits_date_lookup").on(table.visitDate, table.bookingId)
+    .where(sql`${table.visitDate} IS NOT NULL`),
+]);
 
 // Separate saved-card charges; decisions commit before provider I/O and the parent owns payout timing.
 export const kitchenBookingExtensions = pgTable('kitchen_booking_extensions', {
@@ -1823,6 +1858,7 @@ export const equipmentBookings = pgTable("equipment_bookings", {
   id: serial("id").primaryKey(),
   equipmentListingId: integer("equipment_listing_id").references(() => equipmentListings.id, { onDelete: "restrict" }).notNull(),
   kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "restrict" }).notNull(), // REQUIRED - no standalone bookings
+  kitchenBookingVisitId: integer("kitchen_booking_visit_id").references(() => kitchenBookingVisits.id, { onDelete: "restrict" }),
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Nullable for external bookings
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
@@ -1837,7 +1873,10 @@ export const equipmentBookings = pgTable("equipment_bookings", {
   // NOTE: No delivery/pickup fields - equipment stays in kitchen
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, table => [
+  index("equipment_booking_visit_lookup").on(table.kitchenBookingVisitId)
+    .where(sql`${table.kitchenBookingVisitId} IS NOT NULL`),
+]);
 
 // Zod validation schemas for equipment bookings
 export const insertEquipmentBookingSchema = createInsertSchema(equipmentBookings, {
@@ -2106,6 +2145,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   payoutEligibleAt: timestamp("payout_eligible_at", { withTimezone: true }),
   payoutHoldReason: text("payout_hold_reason"),
   payoutReleasedAt: timestamp("payout_released_at", { withTimezone: true }), // durable release decision, not bank arrival
+  payoutPartition: text("payout_partition"), // null | 'per_day' (multi-day installment release)
   // Status tracking
   status: transactionStatusEnum("status").notNull().default("pending"),
   stripeStatus: text("stripe_status"), // Raw Stripe status for comparison
@@ -2126,6 +2166,44 @@ export const paymentTransactions = pgTable("payment_transactions", {
   index('payment_transactions_closeout_payout_retry').on(table.id)
     .where(sql`${table.payoutTiming} = 'after_closeout' AND ${table.transferId} IS NULL AND ${table.payoutReleasedAt} IS NOT NULL
       AND COALESCE(${table.metadata}->>'payoutNoEntitlement', 'false') <> 'true'`),
+]);
+
+// Per-day money allocation / installment release for dated multi-day bookings (migration 0099).
+export const kitchenBookingDayAllocations = pgTable("kitchen_booking_day_allocations", {
+  id: serial("id").primaryKey(),
+  sourceId: integer("source_id").references(() => paymentTransactions.id, { onDelete: "restrict" }).notNull(),
+  visitId: integer("visit_id").references(() => kitchenBookingVisits.id, { onDelete: "restrict" }).notNull(),
+  allocationRevision: integer("allocation_revision").default(1).notNull(),
+  componentKey: text("component_key").notNull(),
+  subtotalCents: integer("subtotal_cents").notNull(),
+  taxCents: integer("tax_cents").notNull(),
+  serviceFeeCents: integer("service_fee_cents").notNull(),
+  stripeFeeCents: integer("stripe_fee_cents"),
+  evidence: jsonb("evidence").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  uniqueIndex("kitchen_day_alloc_unique").on(table.sourceId, table.allocationRevision, table.visitId, table.componentKey),
+]);
+
+export const kitchenBookingDayPayouts = pgTable("kitchen_booking_day_payouts", {
+  id: serial("id").primaryKey(),
+  sourceId: integer("source_id").references(() => paymentTransactions.id, { onDelete: "restrict" }).notNull(),
+  visitId: integer("visit_id").references(() => kitchenBookingVisits.id, { onDelete: "restrict" }).notNull(),
+  allocationRevision: integer("allocation_revision").default(1).notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  eligibleAt: timestamp("eligible_at", { withTimezone: true }),
+  holdReason: text("hold_reason"),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  transferAmountCents: integer("transfer_amount_cents"),
+  transferId: text("transfer_id").unique(),
+  noEntitlement: boolean("no_entitlement").default(false).notNull(),
+  evidence: jsonb("evidence").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  uniqueIndex("kitchen_day_payout_unique").on(table.sourceId, table.allocationRevision, table.visitId),
+  index("kitchen_day_payout_due").on(table.eligibleAt, table.id)
+    .where(sql`${table.transferId} IS NULL AND ${table.noEntitlement} = false`),
 ]);
 
 // ===== PAYMENT HISTORY TABLE =====

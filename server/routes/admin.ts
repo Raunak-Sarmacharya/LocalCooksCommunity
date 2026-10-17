@@ -4469,6 +4469,19 @@ router.put('/booking-window-cap', requireFirebaseAuthWithUser, requireAdmin, asy
         res.json({ maxAdvanceBookingDaysCap: cap });
     } catch { res.status(500).json({ error: 'Booking window cap could not be saved' }); }
 });
+router.get('/booking-days-cap', requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    try { res.json({ maxBookingDaysCap: await (await import('../services/booking-policy-settings')).bookingDaysCap() }); }
+    catch { res.status(500).json({ error: 'Booking days cap unavailable' }); }
+});
+router.put('/booking-days-cap', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    const cap = req.body?.maxBookingDaysCap;
+    if (!Number.isSafeInteger(cap) || cap < 1 || cap > 14) return res.status(400).json({ error: 'Cap must be a whole number from 1 to 14 days' });
+    try {
+        await db.insert(platformSettings).values({ key: 'booking_max_days_cap', value: String(cap), updatedBy: req.neonUser!.id })
+            .onConflictDoUpdate({ target: platformSettings.key, set: { value: String(cap), updatedBy: req.neonUser!.id, updatedAt: new Date() } });
+        res.json({ maxBookingDaysCap: cap });
+    } catch { res.status(500).json({ error: 'Booking days cap could not be saved' }); }
+});
 
 router.get("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -4490,6 +4503,7 @@ router.patch("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async 
     try {
         const { key } = req.params;
         if (key === 'booking_max_advance_days_cap') return res.status(400).json({ error: 'Use the booking window cap endpoint' });
+        if (key === 'booking_max_days_cap') return res.status(400).json({ error: 'Use the booking days cap endpoint' });
         const value = JSON.stringify(req.body);
         if (['cancellation_notice_options', 'cancellation_charge_options', 'cancellation_default'].includes(key)) return res.status(400).json({ error: 'Use the audited cancellation settings endpoint' });
 

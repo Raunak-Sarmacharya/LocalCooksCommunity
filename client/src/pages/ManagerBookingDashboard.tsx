@@ -92,6 +92,13 @@ interface Location {
   notificationEmail?: string;
   notificationPhone?: string;
   minimumBookingWindowHours?: number;
+  maxAdvanceBookingDays?: number;
+  turnoverBufferEnabled?: boolean;
+  bookingBufferMinutes?: number;
+  allowMultiDayBookings?: boolean;
+  maxBookingDays?: number;
+  maxBookingDaysCap?: number;
+  maxAdvanceBookingDaysCap?: number;
   logoUrl?: string;
   timezone?: string;
   kitchenLicenseUrl?: string;
@@ -916,7 +923,7 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone }: {
+    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, maxAdvanceBookingDays, turnoverBufferEnabled, bookingBufferMinutes, allowMultiDayBookings, maxBookingDays, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone, checkinWindowMinutesBefore, noShowGraceMinutes }: {
       locationId: number;
       name?: string;
       address?: string;
@@ -924,13 +931,24 @@ export default function ManagerBookingDashboard() {
       cancellationPolicyMessage?: string;
       defaultDailyBookingLimit?: number;
       minimumBookingWindowHours?: number;
+      maxAdvanceBookingDays?: number;
+      turnoverBufferEnabled?: boolean;
+      bookingBufferMinutes?: number;
+      allowMultiDayBookings?: boolean;
+      maxBookingDays?: number;
       notificationEmail?: string;
       notificationPhone?: string;
       logoUrl?: string;
       customOnboardingLink?: string;
       timezone?: string;
+      checkinWindowMinutesBefore?: number | null;
+      noShowGraceMinutes?: number | null;
     }) => {
-      const payload = { name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone };
+      const payload = {
+        name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours,
+        maxAdvanceBookingDays, turnoverBufferEnabled, bookingBufferMinutes, allowMultiDayBookings, maxBookingDays,
+        notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone, checkinWindowMinutesBefore, noShowGraceMinutes,
+      };
       logger.info('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       logger.info('📡 Request body:', payload);
       logger.info('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);

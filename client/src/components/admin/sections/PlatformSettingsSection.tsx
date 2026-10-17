@@ -1,4 +1,5 @@
 import { BookingWindowCapSetting } from "../BookingWindowCapSetting";
+import { BookingDaysCapSetting } from "../BookingDaysCapSetting";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -344,6 +345,7 @@ export function PlatformSettingsSection() {
   return (
     <div className="max-w-4xl space-y-6">
       <BookingWindowCapSetting />
+      <BookingDaysCapSetting />
       {/* Stripe Processing Fees Card */}
       <Card>
         <CardHeader>

@@ -14,7 +14,7 @@ import { mt } from "@/i18n/manager";
  * - Location settings page (header shown): the page header keeps its save, as before.
  * - Onboarding (`hideHeader`, no `onRequestSave`): the parent saves through the imperative handle.
  *
- * The two newest settings (`maxAdvanceBookingDays`, `turnoverBufferEnabled`) render only when the
+ * Newer settings (`maxAdvanceBookingDays`, buffer, multi-day, weekly limit) render only when the
  * server sends them, so an older server never receives fields it does not know.
  */
 
@@ -25,6 +25,7 @@ import { ClipboardCheck, ChevronRight, Loader2 } from "@/components/ui/manager-i
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { apiGet } from "@/lib/api";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -34,6 +35,8 @@ import { ManagerDamagePolicySection, PolicySection } from "./PolicySection";
 import { KitchenTermsSection } from "./KitchenTermsSection";
 import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 
+const SELECT_CLASS = "h-11 w-full min-w-[12rem] sm:w-56";
+
 interface Location {
   id: number;
   name: string;
@@ -42,8 +45,14 @@ interface Location {
   minimumBookingWindowHours?: number;
   /** Days ahead chefs can book. Absent on servers that predate the setting. */
   maxAdvanceBookingDays?: number | null;
-  /** "Keep an hour free between bookings". Absent on servers that predate the setting. */
+  /** Legacy boolean buffer. Prefer `bookingBufferMinutes` when present. */
   turnoverBufferEnabled?: boolean | null;
+  /** Off / 1 h / 2 h buffer in minutes. Absent on servers that predate the setting. */
+  bookingBufferMinutes?: number | null;
+  allowMultiDayBookings?: boolean | null;
+  maxBookingDays?: number | null;
+  maxBookingDaysCap?: number | null;
+  weeklyChefHoursLimit?: number | null;
   /** Read-only platform ceiling for `maxAdvanceBookingDays`, set by Local Cooks. */
   maxAdvanceBookingDaysCap?: number | null;
   kitchenTermsUrl?: string | null;
@@ -56,8 +65,21 @@ type PolicyOverrides = {
   minimumBookingWindowHours?: number | null;
   maxAdvanceBookingDays?: number | null;
   turnoverBufferEnabled?: boolean | null;
+  bookingBufferMinutes?: number | null;
+  allowMultiDayBookings?: boolean | null;
+  maxBookingDays?: number | null;
+  weeklyChefHoursLimit?: number | null;
 };
-export type ResettablePolicyField = "cancellationPolicyHours" | "defaultDailyBookingLimit" | "minimumBookingWindowHours" | "maxAdvanceBookingDays" | "turnoverBufferEnabled";
+export type ResettablePolicyField =
+  | "cancellationPolicyHours"
+  | "defaultDailyBookingLimit"
+  | "minimumBookingWindowHours"
+  | "maxAdvanceBookingDays"
+  | "turnoverBufferEnabled"
+  | "bookingBufferMinutes"
+  | "allowMultiDayBookings"
+  | "maxBookingDays"
+  | "weeklyChefHoursLimit";
 
 interface BookingRulesSettingsProps {
   hideHeader?: boolean;
@@ -142,12 +164,23 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     useEffect(() => setMinimumDuration(minimumBookingHours ?? 0), [minimumBookingHours]);
 
     const hasWindow = location.maxAdvanceBookingDays != null;
-    const hasBuffer = location.turnoverBufferEnabled != null;
+    const hasBuffer = location.bookingBufferMinutes != null || location.turnoverBufferEnabled != null;
+    const hasMultiDay = location.allowMultiDayBookings != null || location.maxBookingDays != null;
+    const hasWeeklyLimit = "weeklyChefHoursLimit" in location;
     const windowCap = location.maxAdvanceBookingDaysCap ?? undefined;
+    const daysCap = location.maxBookingDaysCap ?? 14;
     const savedWindow = location.maxAdvanceBookingDays ?? 30;
-    const savedBuffer = location.turnoverBufferEnabled ?? false;
+    const savedBufferMinutes = location.bookingBufferMinutes
+      ?? (location.turnoverBufferEnabled ? 60 : 0);
+    const savedAllowMultiDay = location.allowMultiDayBookings ?? true;
+    const savedMaxBookingDays = location.maxBookingDays ?? 7;
+    const savedWeeklyLimit = location.weeklyChefHoursLimit ?? null;
     const [windowDays, setWindowDays] = useState(savedWindow);
-    const [buffer, setBuffer] = useState(savedBuffer);
+    const [bufferMinutes, setBufferMinutes] = useState(savedBufferMinutes);
+    const [allowMultiDay, setAllowMultiDay] = useState(savedAllowMultiDay);
+    const [maxBookingDays, setMaxBookingDays] = useState(savedMaxBookingDays);
+    const [weeklyLimitEnabled, setWeeklyLimitEnabled] = useState(savedWeeklyLimit != null);
+    const [weeklyLimitHours, setWeeklyLimitHours] = useState(savedWeeklyLimit ?? 8);
 
     // Arrival timings. These live on the locations table but the check-in/check-out
     // endpoint owns them, so read them (plus the platform defaults shown as hints)
@@ -162,12 +195,15 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const [checkinWindow, setCheckinWindow] = useState<number | null>(null);
     const [noShowGrace, setNoShowGrace] = useState<number | null>(null);
 
+    const effectiveWeeklyLimit = weeklyLimitEnabled ? weeklyLimitHours : null;
     const changed = {
       notice: minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1),
       window: hasWindow && windowDays !== savedWindow,
       shortest: minimumBookingHours !== undefined && minimumDuration !== minimumBookingHours,
       longest: dailyBookingLimit !== (location.defaultDailyBookingLimit || 2),
-      buffer: hasBuffer && buffer !== savedBuffer,
+      buffer: hasBuffer && bufferMinutes !== savedBufferMinutes,
+      multiDay: hasMultiDay && (allowMultiDay !== savedAllowMultiDay || maxBookingDays !== savedMaxBookingDays),
+      weekly: hasWeeklyLimit && effectiveWeeklyLimit !== savedWeeklyLimit,
     };
     const rulesChanged = Object.values(changed).some(Boolean) || cancellationHours !== (location.cancellationPolicyHours ?? 24);
     const timingChanged = !hideArrivalTimings && (checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
@@ -183,7 +219,12 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
       setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
       setWindowDays(location.maxAdvanceBookingDays ?? 30);
-      setBuffer(location.turnoverBufferEnabled ?? false);
+      setBufferMinutes(location.bookingBufferMinutes ?? (location.turnoverBufferEnabled ? 60 : 0));
+      setAllowMultiDay(location.allowMultiDayBookings ?? true);
+      setMaxBookingDays(location.maxBookingDays ?? 7);
+      const weekly = location.weeklyChefHoursLimit ?? null;
+      setWeeklyLimitEnabled(weekly != null);
+      setWeeklyLimitHours(weekly ?? 8);
     }, [location]);
 
     // Update state when location changes
@@ -230,7 +271,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         ...(minimumBookingHours !== undefined ? { minimumBookingHours: minimumDuration } : {}),
         // Only send the newer settings to a server that told us about them.
         ...(hasWindow ? { maxAdvanceBookingDays: windowDays } : {}),
-        ...(hasBuffer ? { turnoverBufferEnabled: buffer } : {}),
+        ...(hasBuffer ? { bookingBufferMinutes: bufferMinutes } : {}),
+        ...(hasMultiDay ? { allowMultiDayBookings: allowMultiDay, maxBookingDays } : {}),
+        ...(hasWeeklyLimit ? { weeklyChefHoursLimit: effectiveWeeklyLimit } : {}),
         // null clears the per-location override so the platform default applies.
         checkinWindowMinutesBefore: checkinWindow,
         noShowGraceMinutes: noShowGrace,
@@ -240,7 +283,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       queryClient.invalidateQueries({ queryKey: ["checkin-checkout-settings", location.id] });
     }, [
       onSave, location.id, cancellationHours, dailyBookingLimit, minimumBookingWindowHours, minimumBookingHours,
-      minimumDuration, hasWindow, windowDays, hasBuffer, buffer, checkinWindow, noShowGrace, queryClient,
+      minimumDuration, hasWindow, windowDays, hasBuffer, bufferMinutes, hasMultiDay, allowMultiDay, maxBookingDays,
+      hasWeeklyLimit, effectiveWeeklyLimit, checkinWindow, noShowGrace, queryClient,
     ]);
 
     const saveRulesAction = useStatusButton(saveRules);
@@ -289,12 +333,23 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const windowLine = mt("bpWindowValue", { count: windowDays });
     const shortestLine = mt("bpShortestValue", { count: minimumDuration });
     const longestLine = mt("bpLongestValue", { count: dailyBookingLimit });
+    const bufferLine = bufferMinutes === 0 ? mt("bpBufferOff")
+      : bufferMinutes === 120 ? mt("bpBufferOnWhat2h")
+      : mt("bpBufferOnWhat");
+    const multiDayLine = allowMultiDay
+      ? mt("bpMultiDayOnValue", { count: maxBookingDays })
+      : mt("bpMultiDayOffValue");
+    const weeklyLine = effectiveWeeklyLimit == null
+      ? mt("bpWeeklyOff")
+      : mt("bpWeeklyOnValue", { count: effectiveWeeklyLimit });
     const changeLines = [
       changed.notice && noticeLine,
       changed.window && windowLine,
       changed.shortest && shortestLine,
       changed.longest && longestLine,
-      changed.buffer && mt(buffer ? "bpBufferOnWhat" : "bpBufferOff"),
+      changed.multiDay && multiDayLine,
+      changed.buffer && bufferLine,
+      changed.weekly && weeklyLine,
     ].filter((line): line is string => Boolean(line));
 
     const rulesPreview = rulesChanged && changeLines.length > 0 ? <SettingChangePreview
@@ -365,16 +420,55 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 onValueChange={(value) => setMinimumDuration(Math.min(24, Math.max(0, parseInt(value, 10) || 0)))} />
             </SettingsRow>}
 
-            <SettingsRow id="daily-limit" label={mt("bpLongestLabel")} hint={hint(longestLine, "defaultDailyBookingLimit")}
-              help={mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}>
+            <SettingsRow id="daily-limit" label={mt("bpLongestLabel", { count: dailyBookingLimit })} hint={hint(longestLine, "defaultDailyBookingLimit")}
+              help={mt("bpLongestHelp")}>
               <NumericInput id="daily-limit" disabled={policyUpdating} suffix={hourUnit(dailyBookingLimit)}
                 value={String(dailyBookingLimit)} className="h-11 w-32"
                 onValueChange={(val) => setDailyBookingLimit(Math.min(24, Math.max(1, parseInt(val, 10) || 2)))} />
             </SettingsRow>
 
+            {hasMultiDay && <>
+              <SettingsRow id="allow-multiday" label={mt("bpMultiDayLabel")} help={mt("bpMultiDayHelp")}
+                hint={hint(multiDayLine, "allowMultiDayBookings")}>
+                <Switch id="allow-multiday" checked={allowMultiDay} disabled={policyUpdating}
+                  onCheckedChange={setAllowMultiDay} />
+              </SettingsRow>
+              {allowMultiDay && <SettingsRow id="max-booking-days" label={mt("bpMaxDaysLabel", { count: maxBookingDays })}
+                hint={hint(mt("bpMultiDayOnValue", { count: maxBookingDays }), "maxBookingDays")}>
+                <div className="flex flex-col items-end gap-1">
+                  <NumericInput id="max-booking-days" disabled={policyUpdating} suffix={mt("bpDaysUnit", { count: maxBookingDays })}
+                    value={String(maxBookingDays)} className="h-11 w-32" aria-describedby="max-booking-days-cap"
+                    onValueChange={(val) => {
+                      const parsed = parseInt(val, 10);
+                      setMaxBookingDays(isNaN(parsed) ? 1 : Math.min(daysCap, Math.max(1, parsed)));
+                    }} />
+                  <span id="max-booking-days-cap" className="text-xs text-muted-foreground">{mt("bpMaxDaysCap", { cap: daysCap })}</span>
+                </div>
+              </SettingsRow>}
+            </>}
+
             {hasBuffer && <SettingsRow id="turnover-buffer" label={mt("bpBufferLabel")} help={mt("bpBufferHelp")}
-              hint={hint(mt(buffer ? "bpBufferOn" : "bpBufferOff"), "turnoverBufferEnabled")}>
-              <Switch id="turnover-buffer" checked={buffer} disabled={policyUpdating} onCheckedChange={setBuffer} />
+              hint={hint(bufferMinutes === 0 ? mt("bpBufferOff") : bufferMinutes === 120 ? mt("bpBufferOn2h") : mt("bpBufferOn"), "bookingBufferMinutes")}>
+              <Select value={String(bufferMinutes)} disabled={policyUpdating}
+                onValueChange={(value) => setBufferMinutes(Number(value) as 0 | 60 | 120)}>
+                <SelectTrigger id="turnover-buffer" className={SELECT_CLASS}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">{mt("bpBufferOptionOff")}</SelectItem>
+                  <SelectItem value="60">{mt("bpBufferOption1h")}</SelectItem>
+                  <SelectItem value="120">{mt("bpBufferOption2h")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingsRow>}
+
+            {hasWeeklyLimit && <SettingsRow id="weekly-chef-limit" label={mt("bpWeeklyLabel")} help={mt("bpWeeklyHelp")}
+              hint={hint(weeklyLine)}>
+              <div className="flex flex-col items-end gap-2">
+                <Switch id="weekly-chef-limit" checked={weeklyLimitEnabled} disabled={policyUpdating}
+                  onCheckedChange={setWeeklyLimitEnabled} />
+                {weeklyLimitEnabled && <NumericInput id="weekly-chef-limit-hours" disabled={policyUpdating}
+                  suffix={hourUnit(weeklyLimitHours)} value={String(weeklyLimitHours)} className="h-11 w-32"
+                  onValueChange={(val) => setWeeklyLimitHours(Math.min(168, Math.max(1, parseInt(val, 10) || 1)))} />}
+              </div>
             </SettingsRow>}
           </div>
         </PolicySection>
