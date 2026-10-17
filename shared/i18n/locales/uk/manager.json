@@ -4228,5 +4228,6 @@
   "reviewNewTotalReleasedNote": "Якщо кухар прийме, буде списано лише нову суму, а решту блокування буде знято.",
   "reviewNewTotalAmount": "Нова сума: {amount}",
   "reviewLastMinuteLine": "Це бронювання скоро починається, тож немає часу запитати кухаря про зміну. Прийміть запит повністю або відхиліть його й напишіть кухарю.",
-  "reviewMessageChef": "Написати кухарю"
+  "reviewMessageChef": "Написати кухарю",
+  "reviewChargedIfChefAccepts": "Списується, якщо кухар прийме"
 }

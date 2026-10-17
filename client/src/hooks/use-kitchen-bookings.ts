@@ -34,6 +34,8 @@ interface Booking {
   checkinWindowMinutesBefore?: number | null;
   responseDeadlineAt?: string | null;
   paymentDecision?: { state?: string; target?: string; actorId?: number | null } | null;
+  /** Kitchen offered a new total; the list shows "Answer needed" while state is waiting. */
+  partialAcceptance?: unknown;
   kitchenPhoto?: string | null;
   chefDue?: { kind: 'claim' | 'extra_time'; amountCents: number } | null;
 }
@@ -190,6 +192,8 @@ export function useKitchenBookings() {
         checkinWindowMinutesBefore: booking.checkinWindowMinutesBefore ?? null,
         responseDeadlineAt: booking.responseDeadlineAt ?? null,
         paymentDecision: booking.paymentDecision ?? null,
+        // Needed for the "Answer needed" pill on My bookings (server mapKitchenBookingToDTO).
+        partialAcceptance: booking.partialAcceptance ?? booking.partial_acceptance ?? null,
         kitchenPhoto: booking.kitchenPhoto ?? null,
         chefDue: booking.chefDue ?? null,
       }));

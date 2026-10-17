@@ -3704,5 +3704,10 @@
   "paSentenceKitchen": "{chef} examine votre nouveau total.",
   "paListAnswerNeeded": "Réponse requise",
   "paListAnswerBy": "La cuisine propose un nouveau total. Répondez d’ici le {deadline}.",
-  "assistTimeOfDay": "Heure"
+  "assistTimeOfDay": "Heure",
+  "paChargedIfYouAccept": "Si vous acceptez, {amount} sera facturé et le reste sera libéré.",
+  "paPayoutDependsOnChef": "Le versement dépend de la réponse du chef",
+  "paItemKitchenDeciding": "La cuisine ne peut pas fournir · le chef décide",
+  "paItemChefIfAccept": "Non inclus si vous acceptez",
+  "paItemNotIncluded": "Non inclus"
 }

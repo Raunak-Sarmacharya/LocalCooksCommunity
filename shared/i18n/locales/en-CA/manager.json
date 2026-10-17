@@ -4228,5 +4228,6 @@
   "reviewNewTotalReleasedNote": "If the chef accepts, only the new total is charged and the rest of the hold is released.",
   "reviewNewTotalAmount": "New total: {amount}",
   "reviewLastMinuteLine": "This booking starts soon, so there isn’t time to ask the chef about a change. Accept the full request, or decline it and message the chef.",
-  "reviewMessageChef": "Message the chef"
+  "reviewMessageChef": "Message the chef",
+  "reviewChargedIfChefAccepts": "Charged if the chef accepts"
 }

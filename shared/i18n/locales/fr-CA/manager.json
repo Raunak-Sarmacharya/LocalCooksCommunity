@@ -4228,5 +4228,6 @@
   "reviewNewTotalReleasedNote": "Si le chef accepte, seul le nouveau total est débité et le reste du blocage est libéré.",
   "reviewNewTotalAmount": "Nouveau total : {amount}",
   "reviewLastMinuteLine": "Cette réservation commence bientôt; il n’y a donc pas le temps de demander au chef d’accepter un changement. Acceptez la demande complète, ou refusez-la et écrivez au chef.",
-  "reviewMessageChef": "Écrire au chef"
+  "reviewMessageChef": "Écrire au chef",
+  "reviewChargedIfChefAccepts": "Facturé si le chef accepte"
 }

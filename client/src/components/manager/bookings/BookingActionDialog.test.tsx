@@ -67,6 +67,9 @@ describe('manager booking request review', () => {
     expect(await screen.findByText('New total: $146.40')).toBeInTheDocument();
     expect(previews.calls).toEqual([[31]]);
     expect(screen.getByText('We’ll ask the chef to confirm the new total. Nothing is charged until they do.')).toBeInTheDocument();
+    // Nothing is charged yet — the money panel labels the new total as conditional on the chef.
+    expect(screen.getByText('Charged if the chef accepts')).toBeInTheDocument();
+    expect(screen.queryByText('Total charged')).not.toBeInTheDocument();
     expect(screen.getByText('$36.60')).toBeInTheDocument();
     expect(screen.getByText('$133.45')).toBeInTheDocument();
     expect(screen.queryByText('No charge')).not.toBeInTheDocument();
@@ -75,6 +78,12 @@ describe('manager booking request review', () => {
     expect(submit).toHaveBeenCalledWith({ bookingId: 112, status: 'confirmed',
       storageActions: [{ storageBookingId: 21, action: 'confirmed' }],
       equipmentActions: [{ equipmentBookingId: 31, action: 'cancelled' }] });
+  });
+
+  it('full accept keeps “Total charged” (nothing is waiting on the chef)', () => {
+    setup();
+    expect(screen.getByText('Total charged')).toBeInTheDocument();
+    expect(screen.queryByText('Charged if the chef accepts')).not.toBeInTheDocument();
   });
 
   it('dated booking: shows the server’s new total (frozen tax, equipment already in the total), never a client recomputation', async () => {
