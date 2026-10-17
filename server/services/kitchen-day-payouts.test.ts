@@ -91,8 +91,12 @@ describe('CP5 daily releases', () => {
     await releaseDayPayout((await day(1)).id, new Date('2099-10-08T14:00:00Z'));
     expect(h.transfers).toHaveLength(2);
   });
-  it('holds a manager operational problem on its visit, independently of damage claims', async () => {
+  it('like single-day payouts, only a problem the chef reports on the day holds it (a kitchen-raised one does not)', async () => {
     await h.db.insert(s.commitmentProblems).values({ sourceKey: 'manager-problem', kind: 'live', bookingId: 1, visitId: 1, reportedBy: 2, description: 'Operational access problem' });
+    expect((await releaseDayPayout((await day()).id, now())).transferred).toBe(true);
+  });
+  it('holds a problem the chef reported on its visit', async () => {
+    await h.db.insert(s.commitmentProblems).values({ sourceKey: 'chef-problem', kind: 'live', bookingId: 1, visitId: 1, reportedBy: 3, description: 'Could not get in' });
     await releaseDayPayout((await day()).id, now()); expect(h.create).not.toHaveBeenCalled();
     expect((await day()).holdReason).toBe('reported_issue');
   });

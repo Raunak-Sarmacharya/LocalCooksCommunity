@@ -43,9 +43,9 @@ import { assertBookingMoneyWritable } from './booking-money-guard';
 import { changeStorageFlag, handleBookingSupportWebhook } from './booking-support-flags';
 
 const { kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems, damageClaims,
-  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings, platformSettings } = schema;
+  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings, platformSettings, kitchenBookingDayPayouts } = schema;
 const tables = [kitchens, locations, storageListings, storageBookings, storageRentalTerms, paymentTransactions, users, commitmentProblems, damageClaims,
-  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings, platformSettings];
+  bookingFlags, supportActions, kitchenBookingChanges, equipmentBookings, platformSettings, kitchenBookingDayPayouts];
 const dialect = new PgDialect();
 let pg: PGlite;
 const endOfTerm = new Date('2026-10-20T02:30:00Z'); // start of Oct 20 in St. John's (NDT)

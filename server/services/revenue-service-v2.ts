@@ -214,11 +214,13 @@ export async function getRevenueMetricsFromTransactions(
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as paid_booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN pt.payout_partition = 'per_day' THEN ${dayPendingSql} WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
+        COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         -- Pending payments: payments still processing, plus captured payouts held until after closeout (the kitchen's
         -- net share, i.e. manager revenue minus processing fee and refund debits, not yet transferred).
         COALESCE(SUM(
           CASE WHEN pt.status = 'processing' THEN pt.amount::numeric
+            -- Per-day sources: only installments not yet transferred (manager_revenue math would double-count the fee).
+            WHEN pt.payout_partition = 'per_day' THEN ${dayPendingSql}
             WHEN pt.status IN ('succeeded', 'partially_refunded') AND pt.payout_timing = 'after_closeout' AND pt.transfer_id IS NULL
               AND COALESCE(pt.metadata->>'payoutNoEntitlement', 'false') <> 'true'
             THEN GREATEST(0, COALESCE(pt.manager_revenue::numeric, 0) - COALESCE(pt.stripe_processing_fee::numeric, 0)

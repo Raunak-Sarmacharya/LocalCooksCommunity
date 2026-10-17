@@ -69,7 +69,9 @@ async function context(tx: Tx, source: Source, visitId: number, now: Date) {
   const result = await tx.execute(sql`SELECT
     EXISTS(SELECT 1 FROM booking_flags f WHERE f.booking_id = ${source.bookingId} AND f.resolved_at IS NULL
       AND f.kind <> 'chargeback' AND (f.visit_id IS NULL OR f.visit_id = ${visitId})) AS flag,
-    EXISTS(SELECT 1 FROM commitment_problems p WHERE p.booking_id = ${source.bookingId}
+    -- Same rule as single-day payouts: only a problem the chef reported holds the kitchen's money.
+    EXISTS(SELECT 1 FROM commitment_problems p JOIN kitchen_bookings kb ON kb.id = p.booking_id
+      WHERE p.booking_id = ${source.bookingId} AND p.reported_by = kb.chef_id
       AND p.status <> 'resolved' AND (p.visit_id IS NULL OR p.visit_id = ${visitId})) AS issue`);
   const facts = result.rows[0] as { flag: boolean; issue: boolean } | undefined;
   if (!facts) throw Error('Day hold evidence unavailable');

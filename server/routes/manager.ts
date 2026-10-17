@@ -2105,7 +2105,6 @@ router.get(
           and(
             eq(locations.managerId, managerId),
             eq(kitchenBookings.paymentStatus, "paid"),
-            sql`${paymentTransactions.payoutPartition} IS DISTINCT FROM 'per_day'`,
             sql`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
             sql`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`,
           ),
