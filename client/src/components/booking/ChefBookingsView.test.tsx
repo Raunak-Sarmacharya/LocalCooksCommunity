@@ -9,8 +9,6 @@ import ChefBookingsView, { type ChefListBooking } from './ChefBookingsView';
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: null } }));
 vi.mock('firebase/auth', () => ({ onAuthStateChanged: () => () => undefined }));
 vi.mock('../chef/PendingOverstayPenalties', () => ({ PendingOverstayPenalties: () => null }));
-vi.mock('./ExpiringStorageNotification', () => ({ ExpiringStorageNotification: () => null }));
-vi.mock('./ChefStorageBookings', () => ({ ChefStorageBookings: () => null }));
 
 // "Now" is Wed Oct 14 2026, 2:00 p.m. NDT (UTC-2:30) = 16:30Z.
 const NOW = Date.parse('2026-10-14T16:30:00Z');

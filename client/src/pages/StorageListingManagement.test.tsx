@@ -25,26 +25,6 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("storage workspace", () => {
-  it("shows inherited platform values without creating location overrides, and preserves zero overrides", async () => {
-    state.fetch.mockResolvedValue({ ok: true, json: async () => ({ locationDefaults: { gracePeriodDays: null, penaltyRate: 0, maxPenaltyDays: null, policyText: null }, platformDefaults: { gracePeriodDays: 3, penaltyRate: 0.1, maxPenaltyDays: 30 } }) });
-    const dirty = vi.fn();
-    render(<StorageListingContent selectedLocationId={33} selectedKitchenId={10} onPenaltyDirtyChange={dirty} />);
-    await screen.findByText("noStorageListedYet");
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "storagePenaltySettingsTab" }), { button: 0, ctrlKey: false });
-    expect(await screen.findByRole("textbox", { name: "penaltyRate" })).toHaveValue("0");
-    expect(screen.getByRole("textbox", { name: "gracePeriod" })).toHaveValue("3");
-    expect(screen.getByRole("textbox", { name: "maxPenaltyDays" })).toHaveValue("30");
-    expect(dirty).not.toHaveBeenCalledWith(true);
-    expect(screen.queryByRole("button", { name: "savePenaltyDefaults" })).toBeNull();
-  });
-  it("keeps penalty fields reachable with no inventory or penalties", async () => {
-    render(<StorageListingContent selectedLocationId={33} selectedKitchenId={10} onConfigureInspections={vi.fn()} />);
-    await screen.findByText("noStorageListedYet");
-    expect(screen.queryByText("storageChecklistBannerTitle")).toBeNull();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "storagePenaltySettingsTab" }), { button: 0, ctrlKey: false });
-    expect(await screen.findByRole("textbox", { name: "penaltyRate" })).toHaveValue("10");
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
   it("offers checklist setup only after a storage option exists", async () => {
     state.listings = [{ id: 48, kitchenId: 10, name: "Dry shelf", storageType: "dry", basePrice: 500, isActive: true }];
     const configure = vi.fn();

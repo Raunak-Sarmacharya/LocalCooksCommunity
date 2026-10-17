@@ -18,7 +18,6 @@ vi.mock('@/components/chef/seller-revenue/hooks/useSellerRevenue', () => ({ useS
 vi.mock('@/components/chat/ChatPanel', () => ({ default: () => null }));
 vi.mock('@/components/chat/UnifiedChatView', () => ({ default: () => null }));
 vi.mock('@/components/booking/ChefBookingsView', () => ({ default: () => null }));
-vi.mock('@/components/booking/PendingStorageExtensions', () => ({ PendingStorageExtensions: () => null }));
 vi.mock('@/components/chef/ChefCommandPalette', () => ({ default: () => null }));
 vi.mock('@/components/training/TrainingOverviewPanel', () => ({ default: () => null }));
 vi.mock('@/components/application/ApplicationFormPanel', () => ({ default: () => null }));

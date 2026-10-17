@@ -3,8 +3,9 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { managerNavIcons } from "@/lib/manager-nav-icons";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Clock, Settings, Check, Save, AlertCircle, FileText, ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, ClipboardCheck, Plus, Loader2, HelpCircle, Trash2, KitchenTour } from "@/components/ui/manager-icons";
+import { Calendar, Clock, Settings, Check, Save, AlertCircle, FileText, ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2, KitchenTour } from "@/components/ui/manager-icons";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
@@ -32,8 +33,6 @@ import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOve
 import { CustomersList } from "@/components/manager/customers/CustomersList";
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
-import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
-import { PendingStorageCheckins } from "@/components/manager/PendingStorageCheckins";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
@@ -163,10 +162,11 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 type KitchenNavigationDestination = { view: ViewType; kitchenId?: number; section?: KitchenSection; focus?: "tracking" | "tour-notes"; returnTourId?: number; historyUrl?: string };
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'customers' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'customers' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'security' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'support';
 
 
 export default function ManagerBookingDashboard() {
+  const { t: st } = useTranslation("storage");
   
   const queryClient = useQueryClient();
   const [currentPath, setLocation] = useLocation();
@@ -185,7 +185,7 @@ export default function ManagerBookingDashboard() {
     if (routeTourId) return 'viewings';
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'support'];
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'my-locations') return 'profile';
     if (view === 'settings-storage-checkout') {
@@ -386,7 +386,7 @@ export default function ManagerBookingDashboard() {
       if (location) setSelectedLocation(location);
       setDeepLinkConversationId(params.get("conversation"));
       setDeepLinkTourId(params.get("tour"));
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'customers', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'support'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'my-locations') {
         params.set('view', 'profile');
@@ -711,7 +711,6 @@ export default function ManagerBookingDashboard() {
   };
   const storageChildLabel: Partial<Record<ViewType, string>> = {
     overstays: mt("navOverstayPenalties"),
-    "storage-checkouts": mt("navStorageInspections"),
   };
   const isKitchenChild = Boolean(kitchenChildLabel[activeView]);
   const isBookingChild = activeView === 'damage-claims';
@@ -721,7 +720,7 @@ export default function ManagerBookingDashboard() {
   const shellActiveView = isKitchenChild ? 'kitchens' : isBookingChild ? 'bookings' : isStorageChild ? 'storage-bookings' : isApplicationChild ? 'applications' : isMessageChild ? 'messages' : activeView;
   const viewLabels: Record<ViewType, string> = {
     'my-locations': 'navMyLocations', overview: 'navDashboard', bookings: 'navBookings',
-    'storage-bookings': 'navStorageBookings', viewings: 'kitchenTours', availability: 'navAvailability',
+    'storage-bookings': 'navStorage', viewings: 'kitchenTours', availability: 'navAvailability',
     'tour-availability': 'kitchenTours', settings: 'navSettings', applications: 'navRequests', customers: 'navCustomers', pricing: 'navPricing',
     'storage-listings': 'navStorage', 'equipment-listings': 'navEquipment', payments: 'navPayments',
     security: 'navAccount', revenue: 'navRevenue', messages: 'navMessages', profile: 'shellProfile',
@@ -730,7 +729,7 @@ export default function ManagerBookingDashboard() {
     'settings-location': 'navPropertySettings', 'settings-checkin-checkout': 'setupUx.tasksStep',
     'settings-storage-checkin-checkout': 'navStorageCheckinCheckout', 'application-requirements': 'navApplicationRequirements',
     notifications: 'navNotifications', 'notification-settings': 'navNotificationSettings',
-    overstays: 'navOverstayPenalties', 'damage-claims': 'navDamageClaims', 'storage-checkouts': 'navStorageInspections', support: 'navSupport',
+    overstays: 'navOverstayPenalties', 'damage-claims': 'navDamageClaims', support: 'navSupport',
   };
   const breadcrumbs: ManagerBreadcrumb[] = activeView === 'viewings' && detailTourId
     ? [{ label: mt('kitchenTours'), navId: 'viewings', onClick: () => handleViewChange('viewings') }, { label: `TOUR-${detailTourId}` }]
@@ -755,10 +754,10 @@ export default function ManagerBookingDashboard() {
           { label: kitchenChildLabel[activeView]!, navId: activeView },
         ]
       : activeView === 'storage-bookings'
-        ? [{ label: mt("navStorageBookings"), navId: "storage-bookings" }]
+        ? [{ label: mt("navStorage"), navId: "storage-bookings" }]
         : isStorageChild
           ? [
-              { label: mt("navStorageBookings"), navId: "storage-bookings", onClick: () => handleViewChange('storage-bookings') },
+              { label: mt("navStorage"), navId: "storage-bookings", onClick: () => handleViewChange('storage-bookings') },
               { label: storageChildLabel[activeView]!, navId: activeView },
             ]
           : isApplicationChild
@@ -1283,7 +1282,7 @@ export default function ManagerBookingDashboard() {
             description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("manageUpcomingAndPastKitchenTours")}
             actions={activeView === 'bookings' ? (
               <Button variant="outline" size="sm" onClick={() => handleViewChange('storage-bookings')}>
-                <Package className="mr-2 h-4 w-4" />{mt("navStorageBookings")}
+                <Package className="mr-2 h-4 w-4" />{mt("navStorage")}
               </Button>
             ) : undefined}
           />}
@@ -1322,18 +1321,11 @@ export default function ManagerBookingDashboard() {
       {activeView === 'storage-bookings' && (
         <div className="space-y-6 animate-fade-in">
           <ChefPageHeader
-            title={mt("navStorageBookings")}
-            description={mt("manageStorageBookingsDescription")}
-            actions={<Button
-              variant="ghost"
-              size="sm"
-              className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={() => handleViewChange('settings-storage-checkin-checkout')}
-            ><ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navStorageCheckinCheckout")}</Button>}
+            title={st("stBoardTitle")}
+            description={st("stBoardSubtitle")}
           />
           <ManagerStorageBookingsPage
             onOpenOverstays={() => handleViewChange('overstays')}
-            onOpenInspections={() => handleViewChange('storage-checkouts')}
           />
         </div>
       )}
@@ -1411,16 +1403,6 @@ export default function ManagerBookingDashboard() {
       {activeView === 'damage-claims' && (
         <div className="animate-fade-in">
           <DamageClaimQueue />
-        </div>
-      )}
-
-      {activeView === 'storage-checkouts' && (
-        <div className="space-y-6 animate-fade-in">
-          <ChefPageHeader
-            title={mt("navStorageInspections")}
-          />
-          <PendingStorageCheckins />
-          <PendingStorageCheckouts />
         </div>
       )}
 

@@ -4,8 +4,6 @@ import PromoCodeSender from "@/components/admin/PromoCodeSender";
 import ChefKitchenAccessManager from "@/components/admin/ChefKitchenAccessManager";
 import DamageClaimReview from "@/components/admin/DamageClaimReview";
 import DamageClaimSettings from "@/components/admin/DamageClaimSettings";
-import OverstayPenaltySettings from "@/components/admin/OverstayPenaltySettings";
-import EscalatedPenalties from "@/components/admin/EscalatedPenalties";
 import { AdminUserManagement } from "@/components/admin/sections/AdminUserManagement";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
@@ -18,7 +16,6 @@ import { PlatformRequirementsSection } from "@/components/admin/sections/Platfor
 import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerRevenuesSection";
 import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOverviewSection";
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
-import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
 import { BookingSupportSection } from "@/components/admin/booking-support/BookingSupportSection";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
 import { AdminStorageRentalsSection } from "@/components/admin/sections/AdminStorageRentalsSection";
@@ -96,11 +93,11 @@ function AdminDashboard() {
   const [credentialsAppId, setCredentialsAppId] = useState<number | null>(null);
   
   const validSections: AdminSection[] = useMemo(() => [
-    "applications", "kitchen-applications-step1", "tour-requests", "kitchen-licenses", "damage-claims", "escalated-penalties",
+    "applications", "kitchen-applications-step1", "tour-requests", "kitchen-licenses", "damage-claims",
     "chef-kitchen-access", "kitchen-management", "user-management", "promos", "manager-revenues",
-    "platform-overview", "platform-settings", "overstay-settings",
+    "platform-overview", "platform-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
-    "overstay-penalties-history", "damage-claims-history", "storage-rentals",
+    "damage-claims-history", "storage-rentals",
     "security-settings", "password-reset", "email-log", "live-problems", "booking-support",
   ], []);
 
@@ -1151,14 +1148,6 @@ function AdminDashboard() {
           </ErrorBoundary>
         );
 
-      case "escalated-penalties":
-        return (
-          <ErrorBoundary>
-            <EscalatedPenalties />
-          </ErrorBoundary>
-        );
-
-
       case "user-management":
         return <AdminUserManagement />;
 
@@ -1196,13 +1185,6 @@ function AdminDashboard() {
           </ErrorBoundary>
         );
 
-      case "overstay-penalties-history":
-        return (
-          <ErrorBoundary>
-            <AdminOverstayPenalties getFirebaseToken={getFirebaseToken} />
-          </ErrorBoundary>
-        );
-
       case "damage-claims-history":
         return (
           <ErrorBoundary>
@@ -1228,13 +1210,6 @@ function AdminDashboard() {
 
       case "platform-requirements":
         return <PlatformRequirementsSection />;
-
-      case "overstay-settings":
-        return (
-          <ErrorBoundary>
-            <OverstayPenaltySettings />
-          </ErrorBoundary>
-        );
 
       case "damage-claim-settings":
         return <DamageClaimSettings />;

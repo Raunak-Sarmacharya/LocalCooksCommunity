@@ -6,7 +6,8 @@ export type BookingPriceItem = { name: string; priceCents: number };
 interface BookingPriceSummaryProps {
   kitchenSubtotal: number;
   equipmentSubtotal: number;
-  storageSubtotal: number;
+  /** Kitchen sessions no longer sell storage; kept optional for callers that have none. */
+  storageSubtotal?: number;
   equipmentItems?: BookingPriceItem[];
   storageItems?: BookingPriceItem[];
   taxRatePercent: number;
@@ -17,7 +18,7 @@ interface BookingPriceSummaryProps {
 }
 
 /** Cents and rounding match the wizard estimate; presentation never changes the quote. */
-export function BookingPriceSummary({ kitchenSubtotal, equipmentSubtotal, storageSubtotal,
+export function BookingPriceSummary({ kitchenSubtotal, equipmentSubtotal, storageSubtotal = 0,
   equipmentItems, storageItems, taxRatePercent, taxLabel, serviceFeeRate, currency = "CAD",
 }: BookingPriceSummaryProps) {
   const { t } = useTranslation("booking");

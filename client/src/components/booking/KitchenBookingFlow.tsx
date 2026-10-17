@@ -1,5 +1,5 @@
 import { ct } from '@/i18n/chef-ns';
-import { EQUIPMENT_ICON_NAME, STORAGE_ICON_NAME } from "@/components/ui/inventory-icons";
+import { EQUIPMENT_ICON_NAME } from "@/components/ui/inventory-icons";
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,10 +14,8 @@ import { useBookingEligibility } from "@/hooks/use-booking-eligibility";
 import { BookingEligibilityBanner } from "./BookingEligibilityBanner";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
-import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { formatCurrency, formatHourSlotRange, formatTime as formatClockTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
-import { BookingStorageSelector } from "./BookingStorageSelector";
 import { BookingPriceSummary } from "./BookingPriceSummary";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
 
@@ -30,7 +28,7 @@ import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Stepper, StepperDescription, StepperIndicator, StepperItem, StepperNav, StepperSeparator, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
 import { findPersistedBookingForKitchens, notifyBookingPrefsChanged } from "@/lib/persisted-booking-prefs";
-import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
+import { resolveEquipmentIcon } from "@/lib/kitchen-inventory-icons";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Icon } from "@iconify/react";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -44,9 +42,6 @@ import { validateKitchenSlotSelection, CONSECUTIVE_SLOTS_MESSAGE } from '@shared
 import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
 import { firstBookingVisitStart, responseDeadlineForBooking } from '@shared/booking-response-deadline';
 import { formatResponseDeadline } from '@/lib/booking-response-deadline';
-
-/** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
-const STORAGE_PREVIEW_COUNT = 12;
 
 function kitchenCoverUrl(kitchen: {
   imageUrl?: string | null;
@@ -288,7 +283,6 @@ export interface KitchenBookingFlowProps {
   initialDateIso?: string;
   initialSlots?: string[];
   initialNotes?: string;
-  initialStorage?: string;
   initialEquipment?: string;
   /** "Change request": the chef's pending request that is withdrawn once this new one is sent. */
   replacesBookingId?: number;
@@ -303,7 +297,7 @@ export interface KitchenBookingFlowProps {
   ) => void;
 }
 
-type BookingStep = "calendar" | "slots" | "equipment" | "storage" | "confirm";
+type BookingStep = "calendar" | "slots" | "equipment" | "confirm";
 type BookingRateMode = KitchenBookingRateMode;
 
 type StepMeta = { key: BookingStep; label: string; subtext: string };
@@ -359,7 +353,6 @@ export default function KitchenBookingFlow({
   initialDateIso,
   initialSlots,
   initialNotes,
-  initialStorage,
   initialEquipment,
   replacesBookingId,
   onCancel,
@@ -476,32 +469,21 @@ export default function KitchenBookingFlow({
   } | null>(null);
 
   // Add-ons state
-  const [storageListings, setStorageListings] = useState<any[]>([]);
   const [equipmentListings, setEquipmentListings] = useState<{
     all: any[];
     included: any[];
     rental: any[];
   }>({ all: [], included: [], rental: [] });
   const [isLoadingAddons, setIsLoadingAddons] = useState(false);
-  const [selectedStorage, setSelectedStorage] = useState<Array<{
-    storageListingId: number;
-    startDate: Date;
-    endDate: Date;
-  }>>([]);
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([]);
   const [notes, setNotes] = useState<string>(initialNotes ?? "");
   const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
   const [equipmentInventoryModal, setEquipmentInventoryModal] = useState<"included" | "rental" | null>(null);
-  const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [cancellationPolicyOpen, setCancellationPolicyOpen] = useState(false);
   const [pendingEquipmentIds, setPendingEquipmentIds] = useState<number[]>([]);
-  const [discardModal, setDiscardModal] = useState<"equipment" | "storage" | "time" | null>(null);
+  const [discardModal, setDiscardModal] = useState<"equipment" | "time" | null>(null);
   const [confirmDatePopoverOpen, setConfirmDatePopoverOpen] = useState(false);
-  const storageStepRef = useRef<HTMLDivElement>(null);
   const pendingLeaveRef = useRef<(() => void) | null>(null);
-
-  // Storage pricing
-  const storagePricing = useStoragePricing(selectedStorage, storageListings);
 
   // Equipment pricing
   const equipmentPricing = useMemo(() => {
@@ -532,10 +514,9 @@ export default function KitchenBookingFlow({
   // Combined pricing
   const combinedSubtotal = useMemo(() => {
     const kitchenBase = estimatedPrice?.basePrice || 0;
-    const storageBaseCents = storagePricing.subtotal || 0;
     const equipmentBaseCents = equipmentPricing.subtotal || 0;
-    return kitchenBase + storageBaseCents + equipmentBaseCents;
-  }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
+    return kitchenBase + equipmentBaseCents;
+  }, [estimatedPrice?.basePrice, equipmentPricing.subtotal]);
 
   const tax = useMemo(() => {
     if (combinedSubtotal <= 0) return 0;
@@ -837,27 +818,11 @@ export default function KitchenBookingFlow({
   const fetchKitchenAddons = async (kitchenId: number, authHeader?: string) => {
     setIsLoadingAddons(true);
     const empty = {
-      storage: [] as any[],
       equipment: { all: [] as any[], included: [] as any[], rental: [] as any[] },
     };
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
-
-      // Fetch storage
-      const storageRes = await fetch(`/api/chef/kitchens/${kitchenId}/storage-listings`, {
-        credentials: "include",
-        headers,
-        cache: 'no-store',
-      });
-
-      let storageData: any[] = [];
-      if (storageRes.ok) {
-        storageData = await storageRes.json();
-        setStorageListings(storageData);
-      } else {
-        setStorageListings([]);
-      }
 
       // Fetch equipment
       const equipmentRes = await fetch(`/api/chef/kitchens/${kitchenId}/equipment-listings`, {
@@ -886,22 +851,15 @@ export default function KitchenBookingFlow({
         setEquipmentListings(empty.equipment);
       }
 
-      return { storage: storageData, equipment };
+      return { equipment };
     } catch (error) {
       logger.error('Error fetching kitchen addons:', error);
       setLoadError(t("bookingErrorLoadOptions", "We could not load this kitchen's add-on options. Reload the page to try again."));
-      setStorageListings([]);
       setEquipmentListings(empty.equipment);
       return empty;
     } finally {
       setIsLoadingAddons(false);
     }
-  };
-
-  const stepAfterTime = (hasEquipment: boolean, hasStorage: boolean): BookingStep => {
-    if (hasEquipment) return "equipment";
-    if (hasStorage) return "storage";
-    return "confirm";
   };
 
   const handleKitchenSelect = async (
@@ -917,7 +875,6 @@ export default function KitchenBookingFlow({
     setSelectedDate(null);
     setSelectedSlots([]);
     setAllSlots([]);
-    setSelectedStorage([]);
     setSelectedEquipmentIds([]);
 
     // Fetch pricing
@@ -981,15 +938,6 @@ export default function KitchenBookingFlow({
       if (initialDateIso && initialEquipment) {
         const offered = new Set(addons.equipment.all.map((item: any) => item.id));
         setSelectedEquipmentIds(initialEquipment.split(',').map(Number).filter(id => Number.isSafeInteger(id) && offered.has(id)));
-      }
-      if (initialDateIso && initialStorage) {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(initialStorage));
-          const offered = new Set(addons.storage.map((item: any) => item.id));
-          if (Array.isArray(parsed)) setSelectedStorage(parsed.filter((item: any) =>
-            offered.has(item.storageListingId) && !isNaN(new Date(item.startDate).getTime()) && !isNaN(new Date(item.endDate).getTime()))
-            .map((item: any) => ({ storageListingId: item.storageListingId, startDate: new Date(item.startDate), endDate: new Date(item.endDate) })));
-        } catch (error) { logger.error('Invalid legacy storage selection:', error); }
       }
 
       if (restore?.dateIso) {
@@ -1096,11 +1044,10 @@ export default function KitchenBookingFlow({
   };
 
   const hasEquipment = equipmentListings.all.length > 0;
-  const hasStorage = storageListings.length > 0;
 
   // Step configuration — date first; kitchen is auto-selected (not a step).
   // When a date was already chosen (preview), hide the Date step entirely.
-  // Omit equipment/storage when this kitchen has none.
+  // Omit equipment when this kitchen has none.
   const steps = useMemo(() => {
     const all: StepMeta[] = [
       {
@@ -1119,11 +1066,6 @@ export default function KitchenBookingFlow({
         subtext: t("sheetStepEquipmentSubtext", "Add gear"),
       },
       {
-        key: "storage",
-        label: t("sheetStepStorage", "Storage"),
-        subtext: t("sheetStepStorageSubtext", "Add storage"),
-      },
-      {
         key: "confirm",
         label: t("sheetStepConfirm", "Confirm"),
         subtext: t("sheetStepConfirmSubtext", "Review & pay"),
@@ -1132,10 +1074,9 @@ export default function KitchenBookingFlow({
     return all.filter((s) => {
       if (s.key === "calendar" && hideDateStep) return false;
       if (s.key === "equipment" && !hasEquipment) return false;
-      if (s.key === "storage" && !hasStorage) return false;
       return true;
     });
-  }, [hideDateStep, hasEquipment, hasStorage, t]);
+  }, [hideDateStep, hasEquipment, t]);
 
   const stepOrder = steps.map((s) => s.key);
   const currentStepIndex = Math.max(0, stepOrder.indexOf(currentStep));
@@ -1257,11 +1198,6 @@ export default function KitchenBookingFlow({
           })),
           pricingMode: bookingRateMode,
           specialNotes: notes,
-          selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
-            storageListingId: s.storageListingId,
-            startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
-            endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
-          })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
           ...(replacesBookingId ? { replacesBookingId } : {}),
         }),
@@ -1351,11 +1287,6 @@ export default function KitchenBookingFlow({
           endTime: addHour(slot),
         })),
         specialNotes: notes,
-        selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
-          storageListingId: s.storageListingId,
-          startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
-          endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
-        })) : undefined,
         selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
       },
       {
@@ -1738,83 +1669,6 @@ export default function KitchenBookingFlow({
       );
     }
 
-    // Step: Storage
-    if (currentStep === "storage" && selectedKitchen) {
-      const activeStorage = storageListings.filter((storage: any) => storage.isActive !== false);
-      const storagePreview = activeStorage.slice(0, STORAGE_PREVIEW_COUNT);
-      const storageRemaining = Math.max(0, activeStorage.length - storagePreview.length);
-      return (
-        <div ref={storageStepRef} className="space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">{t("sheetStorageOptionsTitle", "Storage options")}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t("sheetNeedStorageDesc", "Reserve refrigerator, freezer, or dry storage for your ingredients.")}
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              className={chefPrimaryCtaClass("shrink-0")}
-              onClick={() => setStorageModalOpen(true)}
-            >
-              <Icon icon={STORAGE_ICON_NAME} width={17} height={17} className="mr-1.5" aria-hidden />
-              {selectedStorage.length > 0 ? `Edit (${selectedStorage.length})` : t("sheetSelectStorage", "Select storage")}
-            </Button>
-          </div>
-
-          {isLoadingAddons ? (
-            <div className="flex justify-center py-12">
-              <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-                {storagePreview.map((storage: any) => {
-                  const selection = selectedStorage.find((item) => item.storageListingId === storage.id);
-                  return (
-                    <div key={storage.id} className="flex min-w-0 items-center gap-2.5 border-b border-gray-100 py-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#F51042]">
-                        <Icon
-                          icon={resolveStorageIcon(storage.storageType, storage.name)}
-                          width={18}
-                          height={18}
-                          aria-hidden
-                        />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-gray-900">{storage.name}</p>
-                        <p className="truncate text-sm text-muted-foreground">
-                          {formatCurrency(storage.basePrice || 0)}{ct('sweepLabel21')}</p>
-                        {selection ? (
-                          <p className="truncate text-sm font-medium text-gray-900">
-                            {formatDate(selection.startDate)} – {formatDate(selection.endDate)}
-                          </p>
-                        ) : null}
-                      </div>
-                      {selection ? (
-                        <Icon icon="mdi:check" className="h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-              {storageRemaining > 0 ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
-                  onClick={() => setStorageModalOpen(true)}
-                >
-                  {t("sheetShowAllButton", { defaultValue: "Show all" })} +{storageRemaining}
-                  <Icon icon="mdi:chevron-right" className="ml-1 inline h-4 w-4" aria-hidden />
-                </button>
-              ) : null}
-            </div>
-          )}
-        </div>
-      );
-    }
-
     // Step: Confirm — editable choices only (kitchen + price live in the left rail)
     if (currentStep === 'confirm' && selectedKitchen && selectedDate && selectedSlots.length > 0) {
       const editLinkClass =
@@ -1946,23 +1800,6 @@ export default function KitchenBookingFlow({
                 </button>
               </div>
             ) : null}
-
-            {hasStorage && selectedStorage.length > 0 ? (
-              <div className="flex items-start justify-between gap-3 px-4 py-3.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{t("sheetStepStorage", "Storage")}</p>
-                  <div className="mt-1 space-y-1 text-sm text-muted-foreground">
-                    {storagePricing.items.length ? storagePricing.items.map((item, index) => <div key={index} className="flex justify-between gap-4">
-                      <span>{item.listing.name}</span><span className="shrink-0 tabular-nums">{formatCurrency(item.basePrice)}</span>
-                    </div>) : t("sheetNoStorageSelected")}
-                  </div>
-                </div>
-                <button type="button" className={editLinkClass} onClick={() => setStorageModalOpen(true)}>
-                  <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
-                  {t("sheetEdit", "Edit")}
-                </button>
-              </div>
-            ) : null}
           </div>
 
           <div>
@@ -1999,7 +1836,7 @@ export default function KitchenBookingFlow({
 
   // Sticky order summary for the left rail (desktop) + mobile footer strip
   const renderPriceBreakdown = (variant: "rail" | "mobile" = "rail") => {
-    const hasAddons = selectedEquipmentIds.length > 0 || selectedStorage.length > 0;
+    const hasAddons = selectedEquipmentIds.length > 0;
     const hasTimeSlots = selectedSlots.length > 0;
     const showDetails = selectedKitchen && (hasAddons || hasTimeSlots);
 
@@ -2020,10 +1857,9 @@ export default function KitchenBookingFlow({
             <span className="font-semibold tabular-nums">{formatCurrency(grandTotal)} {kitchenPricing?.currency || "CAD"}</span>
           </summary>
           <BookingPriceSummary kitchenSubtotal={estimatedPrice?.basePrice || 0} equipmentSubtotal={equipmentPricing.subtotal}
-            storageSubtotal={storagePricing.subtotal} taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
+            taxRatePercent={selectedKitchen?.taxRatePercent || 0} taxLabel={selectedKitchen?.taxLabel}
             serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0} currency={kitchenPricing?.currency || "CAD"}
-            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
-            storageItems={storagePricing.items.map(item => ({ name: item.listing.name, priceCents: item.basePrice }))} />
+            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))} />
         </details>
       );
     }
@@ -2100,9 +1936,7 @@ export default function KitchenBookingFlow({
             <BookingPriceSummary
               kitchenSubtotal={estimatedPrice?.basePrice || 0}
               equipmentSubtotal={equipmentPricing.subtotal}
-              storageSubtotal={storagePricing.subtotal}
               equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
-              storageItems={storagePricing.items.map(item => ({ name: item.listing.name, priceCents: item.basePrice }))}
               taxRatePercent={selectedKitchen?.taxRatePercent || 0}
               taxLabel={selectedKitchen?.taxLabel}
               serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
@@ -2151,8 +1985,6 @@ export default function KitchenBookingFlow({
     if (discardModal === "equipment") {
       setPendingEquipmentIds(selectedEquipmentIds);
       setEquipmentModalOpen(false);
-    } else if (discardModal === "storage") {
-      setStorageModalOpen(false);
     } else if (discardModal === "time") {
       setPendingTimeSlots(selectedSlots);
       setTimeModalOpen(false);
@@ -2209,7 +2041,7 @@ export default function KitchenBookingFlow({
         ? t("sheetContinueButton", "Continue")
         : t("sheetSelectTimeSlotsToContinueButton", "Choose your hours");
     }
-    if (currentStep === "equipment" || currentStep === "storage") {
+    if (currentStep === "equipment") {
       const next = goToStepRelative(currentStep, 1);
       if (next === "confirm") return t("sheetContinueToConfirmButton", "Continue to confirm");
       return t("sheetContinueButton", "Continue");
@@ -2220,7 +2052,7 @@ export default function KitchenBookingFlow({
   const continueDisabled =
     (currentStep === "calendar" && (!selectedDate || !isDayAvailable(selectedDate))) ||
     (currentStep === "slots" && selectedSlots.length === 0) ||
-    ((currentStep === "equipment" || currentStep === "storage") && isLoadingAddons) ||
+    (currentStep === "equipment" && isLoadingAddons) ||
     bookingBlocked;
 
   const renderStepActions = () => {
@@ -2274,8 +2106,7 @@ export default function KitchenBookingFlow({
     if (
       currentStep === "calendar" ||
       currentStep === "slots" ||
-      currentStep === "equipment" ||
-      currentStep === "storage"
+      currentStep === "equipment"
     ) {
       return (
         <>
@@ -2567,7 +2398,6 @@ export default function KitchenBookingFlow({
             <BookingPriceSummary
               kitchenSubtotal={estimatedPrice?.basePrice || 0}
               equipmentSubtotal={pendingEquipmentSubtotal}
-              storageSubtotal={storagePricing.subtotal || 0}
               taxRatePercent={selectedKitchen?.taxRatePercent || 0}
               serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
               currency={kitchenPricing?.currency || "CAD"}
@@ -2575,7 +2405,6 @@ export default function KitchenBookingFlow({
                 const item = equipmentListings.rental.find((equipment: any) => equipment.id === id);
                 return item ? [{ name: equipmentName(item), priceCents: item.sessionRate || 0 }] : [];
               })}
-              storageItems={storagePricing.items.map(item => ({ name: item.listing.name, priceCents: item.basePrice }))}
               taxLabel={selectedKitchen?.taxLabel}
               focusAddon="equipment"
             />
@@ -2597,37 +2426,6 @@ export default function KitchenBookingFlow({
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={storageModalOpen} onOpenChange={(open) => { if (open) setStorageModalOpen(true); }}>
-        <DialogContent
-          showCloseButton={false}
-          onPointerDownOutside={(event) => event.preventDefault()}
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          className="flex max-h-[90vh] w-[min(100vw-1.5rem,52rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
-        >
-          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-            <DialogTitle>{t("sheetSelectStorage", "Select storage")}</DialogTitle>
-            <DialogDescription>
-              {t("sheetSelectStorageDesc", "Choose storage first, then set one shared date range or different dates for each selection.")}
-            </DialogDescription>
-          </DialogHeader>
-          <BookingStorageSelector
-            storageListings={storageListings}
-            selectedStorage={selectedStorage}
-            onSelectionChange={setSelectedStorage}
-            kitchenBookingDate={selectedDate || undefined}
-            onDone={() => setStorageModalOpen(false)}
-            onCancel={() => setDiscardModal("storage")}
-            kitchenSubtotal={estimatedPrice?.basePrice || 0}
-            equipmentSubtotal={equipmentPricing.subtotal || 0}
-            equipmentItems={equipmentPricing.items.map(item => ({ name: item.name, priceCents: item.rate }))}
-            taxLabel={selectedKitchen?.taxLabel}
-            taxRatePercent={selectedKitchen?.taxRatePercent || 0}
-            serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
-            currency={kitchenPricing?.currency || "CAD"}
-          />
         </DialogContent>
       </Dialog>
 

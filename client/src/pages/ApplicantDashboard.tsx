@@ -11,7 +11,6 @@ import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
 import ChefBookingsView from "@/components/booking/ChefBookingsView";
-import { PendingStorageExtensions } from "@/components/booking/PendingStorageExtensions";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
@@ -731,9 +730,6 @@ export default function ApplicantDashboard() {
           </button>
         }
       />
-
-      {/* Pending Storage Extension Requests */}
-      <PendingStorageExtensions />
 
       <ChefBookingsView
         bookings={enrichedBookings}

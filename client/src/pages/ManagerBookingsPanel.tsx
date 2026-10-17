@@ -8,7 +8,6 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ManagerShell } from "@/layouts/ManagerShell";
-import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 import { PendingCancellationRequests } from "@/components/manager/PendingCancellationRequests";
 import { BookingActionDialog, type BookingForAction } from "@/components/manager/bookings/BookingActionDialog";
 import { Button } from "@/components/ui/button";
@@ -402,7 +401,7 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
           }} />
         )}
 
-        {/* Cancellation Requests + Storage Extensions — side-by-side below bookings */}
+        {/* Cancellation requests — side-by-side grid kept for future panels; empty when none. */}
         {/* Storage-item requests only (kitchen cancellation requests are rows under "Needs action"); nothing when empty. */}
         <div className="mt-8 grid grid-cols-1 gap-6 empty:hidden lg:grid-cols-2">
           <PendingCancellationRequests
@@ -415,7 +414,6 @@ export default function ManagerBookingsPanel({ embedded = false, onGoToKitchens 
             onDeclineStorageCancellation={handleDeclineStorageCancellation}
             isProcessing={cancellationRequestMutation.isPending || storageCancellationMutation.isPending}
           />
-          <StorageExtensionApprovals hideWhenEmpty />
         </div>
       </div>
 
