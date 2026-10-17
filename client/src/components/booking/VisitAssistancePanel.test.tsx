@@ -2,12 +2,19 @@ vi.mock('@/i18n/chef-ns', async () => ({ ct: (await import('@/test/booking-i18n'
 vi.mock('react-i18next', async () => ({ useTranslation: (await import('@/test/booking-i18n')).useBookingTranslation }));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatTime } from '@/lib/formatters';
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: { getIdToken: async () => 'test-token' } } }));
+// The real DateField is a popover calendar; these cases care about the zone/DST
+// maths, so the date half is a plain input and only the time half is a real Select.
+vi.mock('@/components/ui/date-field', () => ({ DateField: ({ id, value, onChange, disabled }: any) => <input id={id} value={value} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
 import { VisitAssistancePanel } from './VisitAssistancePanel';
 const fetchMock = vi.fn();
 const updatedAt = '2026-10-02T18:00:00Z';
-function enterEvidence(time = '2026-10-02T17:00') {
-  fireEvent.change(screen.getByLabelText(/Departure time/), { target: { value: time } });
+function enterEvidence(value = '2026-10-02T17:00') {
+  const [date, time] = value.split('T');
+  fireEvent.change(screen.getByRole('textbox', { name: /Departure time/ }), { target: { value: date } });
+  fireEvent.click(screen.getByRole('combobox', { name: /Departure time/ }));
+  fireEvent.click(screen.getByRole('option', { name: formatTime(time) }));
   fireEvent.change(screen.getByLabelText(/Note to/), { target: { value: 'Chef reported leaving after upload failed' } });
 }
 describe('manager assistance consumer', () => {
@@ -47,7 +54,7 @@ describe('manager assistance consumer', () => {
     fireEvent.click(screen.getByLabelText(/This time occurs twice/));
     fireEvent.click(screen.getByRole('option', { name: /Second occurrence/ }));
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeEnabled();
-    fireEvent.change(screen.getByLabelText(/Departure time/), { target: { value: '2026-03-08T02:30' } });
+    enterEvidence('2026-03-08T02:30');
     expect(screen.getByRole('button', { name: 'Save departure time' })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -55,7 +62,7 @@ describe('manager assistance consumer', () => {
   it('does not invent a repeated time for a kitchen without daylight saving time', async () => {
     render(<VisitAssistancePanel bookingId={10} updatedAt={updatedAt} timezone="Asia/Tokyo" onSaved={async () => {}} />);
     enterEvidence('2026-11-01T01:30');
-    expect(screen.getByLabelText(/Departure time/)).toHaveAccessibleName(/Japan Standard Time/);
+    expect(screen.getByRole('textbox', { name: /Departure time/ })).toHaveAccessibleName(/Japan Standard Time/);
     expect(screen.queryByLabelText(/This time occurs twice/)).not.toBeInTheDocument();
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
     fireEvent.click(screen.getByRole('button', { name: 'Save departure time' }));

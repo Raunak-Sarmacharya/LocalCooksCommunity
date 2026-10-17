@@ -7,6 +7,7 @@ import { formatVisitTime } from '@/lib/visit-time';
 import { friendlyTimezoneName } from '@shared/timezone-utils';
 import { formatTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
+import { DateField } from '@/components/ui/date-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -178,9 +179,10 @@ export function ChangeBookingDialog({ bookingId, kitchenId, kitchenName, timezon
         </div>
         : <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <label className="text-sm font-medium">{t('chgDate')}
-              <input type="date" className="mt-1 block min-h-11 w-full rounded-md border bg-background px-3" value={date} disabled={busy} onChange={event => setDate(event.target.value)} />
-            </label>
+            <div className="space-y-1">
+              <label className="text-sm font-medium" htmlFor="change-booking-date">{t('chgDate')}</label>
+              <DateField id="change-booking-date" value={date} onChange={setDate} placeholder={t('chgDate')} minToday disabled={busy} className="h-11" />
+            </div>
             <label className="text-sm font-medium">{t('chgHours')}
               <Select value={String(hours)} disabled={busy} onValueChange={value => setHours(Number(value))}>
                 <SelectTrigger className="mt-1 min-h-11"><SelectValue /></SelectTrigger>

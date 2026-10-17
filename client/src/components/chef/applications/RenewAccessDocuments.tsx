@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 
 export function RenewAccessDocuments({ applicationId, renewals = [], onRenewed }: { applicationId: number; renewals?: Array<{ key: string; status: string; expiry?: string | null; rejectionReason?: string | null }>; onRenewed: () => void }) {
@@ -10,6 +11,9 @@ export function RenewAccessDocuments({ applicationId, renewals = [], onRenewed }
   const dateOf = (expiry?: string | null) => expiry ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${expiry}T00:00:00Z`)) : '';
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
+  // The form posts multipart FormData, so the picked expiry rides along in a hidden
+  // field while DateField (a button + popover) owns the visible control.
+  const [expiries, setExpiries] = useState<Record<string, string>>({});
   return <form className="space-y-4 rounded-xl border bg-card p-5" onSubmit={async event => {
     event.preventDefault();
     const body = new FormData(event.currentTarget);
@@ -34,7 +38,11 @@ export function RenewAccessDocuments({ applicationId, renewals = [], onRenewed }
     {(['foodSafetyLicense', 'foodEstablishmentCert'] as const).map(field => <fieldset key={field} disabled={pending} className="space-y-2">
       <label htmlFor={`${field}File`} className="text-sm font-medium">{field === 'foodSafetyLicense' ? t('foodSafetyLicense') : t('foodEstablishmentCertRenewal')}</label>
       <Input id={`${field}File`} name={`${field}File`} type="file" accept="application/pdf,image/jpeg,image/png" />
-      <label htmlFor={`${field}Expiry`} className="text-sm">{t('renewDocumentExpiry')}</label><Input id={`${field}Expiry`} name={`${field}Expiry`} type="date" />
+      <label htmlFor={`${field}Expiry`} className="text-sm">{t('renewDocumentExpiry')}</label>
+      <DateField id={`${field}Expiry`} minToday={false} value={expiries[field] || ''}
+        onChange={value => setExpiries(current => ({ ...current, [field]: value }))}
+        placeholder={t('renewDocumentExpiry')} />
+      <input type="hidden" name={`${field}Expiry`} value={expiries[field] || ''} />
     </fieldset>)}
     {message && <p role="status" className="text-sm">{message}</p>}<Button type="submit" disabled={pending}>{t('renewDocumentsSubmit')}</Button>
   </form>;

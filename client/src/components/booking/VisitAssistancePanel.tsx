@@ -4,6 +4,8 @@ import { formatVisitTime, friendlyTimezoneName } from '@/lib/visit-time';
 import { formatTime } from '@/lib/formatters';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { DateField } from '@/components/ui/date-field';
+import { TimeSelect } from '@/components/ui/time-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { matchingLocalInstants } from '@shared/booking-dst';
@@ -37,6 +39,9 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
   const displayedZone = storage ? DEFAULT_TIMEZONE : timezone || DEFAULT_TIMEZONE;
   const zoneName = friendlyTimezoneName(displayedZone, locale);
   const [actualDate, actualTime] = actualAt.split('T');
+  const timeLabel = t(action === 'arrival' ? 'assistArrivalTime' : 'assistDepartureTime', { zone: zoneName });
+  /** The API wants one "yyyy-MM-ddTHH:mm" wall-clock string; either half alone stays incomplete. */
+  const setActual = (date: string, time: string) => { setActualAt(date || time ? `${date}T${time}` : ''); setOccurrence(''); };
   const instants = actualDate && actualTime ? matchingLocalInstants(actualDate, actualTime, displayedZone) : [];
   const submit = async () => {
     if (disabled || saving) return;
@@ -76,8 +81,11 @@ export function VisitAssistancePanel({ bookingId, updatedAt, visits = [], onSave
         {storage && <SelectItem value="confirm_removal">{t('assistRemoval')}</SelectItem>}
       </SelectContent>
     </Select></label>}
-    <label className="block text-sm" htmlFor={`${prefix}-time`}>{t(action === 'arrival' ? 'assistArrivalTime' : 'assistDepartureTime', { zone: zoneName })}</label>
-    <input id={`${prefix}-time`} type="datetime-local" className="w-full rounded border bg-background p-2" value={actualAt} required onChange={event => { setActualAt(event.target.value); setOccurrence(''); }} disabled={saving} />
+    <label className="block text-sm" htmlFor={`${prefix}-time`}>{timeLabel}</label>
+    <div className="grid gap-2 sm:grid-cols-2">
+      <DateField id={`${prefix}-time`} minToday={false} value={actualDate ?? ''} onChange={date => setActual(date, actualTime ?? '')} placeholder="yyyy-mm-dd" disabled={saving} />
+      <TimeSelect aria-label={timeLabel} value={actualTime ?? ''} onChange={time => setActual(actualDate ?? '', time)} stepMinutes={5} disabled={saving} />
+    </div>
     {instants.length > 1 && <label className="block text-sm">{t('assistRepeated')} <Select value={occurrence === '' ? EMPTY : occurrence} onValueChange={value => setOccurrence(value === EMPTY ? '' : value)}>
       <SelectTrigger><SelectValue /></SelectTrigger>
       <SelectContent>

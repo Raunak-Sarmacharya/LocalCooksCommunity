@@ -99,7 +99,7 @@ describe("dialog validation", () => {
   });
   it("requires the per-action details (arrival time) and labels the zone", async () => {
     mountDialog("record_assisted_arrival");
-    expect(screen.getByLabelText(/When they arrived \(Newfoundland Time\)/)).toBeVisible();
+    expect(screen.getByRole("button", { name: /When they arrived \(Newfoundland Time\)/ })).toBeVisible();
     type(/Internal note/, NOTE);
     fireEvent.click(screen.getByRole("button", { name: "Do this now" }));
     expect(await screen.findByText("Enter when they arrived.")).toBeVisible();

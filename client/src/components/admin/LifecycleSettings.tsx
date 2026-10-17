@@ -6,6 +6,8 @@ import { auth } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { NumericInput } from '@/components/ui/numeric-input';
+import { DateField } from '@/components/ui/date-field';
+import { TimeSelect } from '@/components/ui/time-select';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
@@ -40,9 +42,9 @@ export function LifecycleSettings() {
   return <Card><CardHeader><CardTitle>Lifecycle notification and review timing</CardTitle></CardHeader><CardContent className="space-y-4">
     <p className="text-sm text-muted-foreground">Platform defaults for bookings and tours. Changes update pending reminders; accepted reminders are not sent again. Saved visit requirements and recorded claim deadlines keep their original values.</p>
     {timingFields.map(field => <div key={field.key}><Label htmlFor={field.key}>{field.label}</Label>
-      {field.key === 'tourPreparationMinuteOfDay' ? <input id={field.key} type="time" className="block rounded border p-2"
-        value={values[field.key] === undefined ? '' : `${String(Math.floor(Number(values[field.key]) / 60)).padStart(2, '0')}:${String(Number(values[field.key]) % 60).padStart(2, '0')}`}
-        onChange={event => { const [hours, minutes] = event.target.value.split(':').map(Number); setValues(current => ({ ...current, [field.key]: event.target.value ? String(hours * 60 + minutes) : '' })); }} />
+      {field.key === 'tourPreparationMinuteOfDay' ? <TimeSelect id={field.key}
+        value={values[field.key] ? `${String(Math.floor(Number(values[field.key]) / 60)).padStart(2, '0')}:${String(Number(values[field.key]) % 60).padStart(2, '0')}` : ''}
+        onChange={value => { const [hours, minutes] = value.split(':').map(Number); setValues(current => ({ ...current, [field.key]: value ? String(hours * 60 + minutes) : '' })); }} />
         : field.key.endsWith('Enabled') ? <input id={field.key} type="checkbox" className="ml-2" checked={values[field.key] === '1'}
           onChange={event => setValues(current => ({ ...current, [field.key]: event.target.checked ? '1' : '0' }))} />
         : <NumericInput id={field.key} suffix={field.unit} min={field.min} max={field.max} value={values[field.key] ?? ''}
@@ -58,10 +60,14 @@ const toLocalInput = (iso: string) => { const at = new Date(iso); return new Dat
 /** Bookings that finished before this moment close silently, so rollout never emails about historic bookings. */
 function CloseoutNotificationCutover() {
   const { data, refetch } = useQuery({ queryKey: ['/api/admin/closeout-notifications-from'], queryFn: () => lifecycleAdminRequest('closeout-notifications-from') });
-  const [value, setValue] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [saving, setSaving] = useState(false);
   const saved: string | null | undefined = data?.closeoutNotificationsFrom;
-  useEffect(() => { if (saved) setValue(toLocalInput(saved)); }, [saved]);
+  useEffect(() => { if (saved) { const [day, clock] = toLocalInput(saved).split('T'); setDate(day || ''); setTime(clock || ''); } }, [saved]);
+  // Both halves are needed: a lone date or time is not a moment, and the save
+  // button's validity check below already refuses it.
+  const value = date && time ? `${date}T${time}` : '';
   async function save() {
     setSaving(true);
     try {
@@ -76,7 +82,10 @@ function CloseoutNotificationCutover() {
     finally { setSaving(false); }
   }
   return <div className="space-y-2 border-t pt-4"><Label htmlFor="closeoutNotificationsFrom">Visit finished and inspection closed notices start</Label>
-    <input id="closeoutNotificationsFrom" type="datetime-local" className="block rounded border p-2" value={value} onChange={event => setValue(event.target.value)} />
+    <div className="grid gap-2 sm:grid-cols-2">
+      <DateField id="closeoutNotificationsFrom" minToday={false} value={date} onChange={setDate} placeholder="yyyy-mm-dd" />
+      <TimeSelect aria-label="Visit finished and inspection closed notices start" value={time} onChange={setTime} stepMinutes={5} />
+    </div>
     <p className="text-sm text-muted-foreground">Bookings whose service ended before this moment are closed silently, with no emails or notices. {saved ? '' : 'Not set yet: it is set to the time of the first closeout run after rollout. '}Times are in your browser's time zone.</p>
     <Button variant="outline" disabled={!value || saving || !Number.isFinite(new Date(value).getTime())} onClick={save}>Save notification start</Button>
   </div>;

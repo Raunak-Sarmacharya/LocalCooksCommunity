@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TimeSelect } from "@/components/ui/time-select";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -802,28 +803,26 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                     <div className="order-3 col-span-2 flex items-center gap-2 sm:order-2 sm:col-span-1 sm:justify-end">
                       {isAvailable ? (
                         <>
-                          <Input
-                            type="time"
+                          <TimeSelect
                             aria-label={`${dayName} ${mt("open")}`}
-                            className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none"
+                            className="h-9 min-h-9 flex-1 text-sm sm:w-28 sm:flex-none"
                             value={schedule.startTime || "09:00"}
-                            onChange={(e) => {
+                            onChange={(value) => {
                               setWeeklySchedule(prev => ({
                                 ...prev,
-                                [index]: { ...prev[index], startTime: e.target.value }
+                                [index]: { ...prev[index], startTime: value }
                               }));
                             }}
                           />
                           <span className="select-none text-muted-foreground" aria-hidden>–</span>
-                          <Input
-                            type="time"
+                          <TimeSelect
                             aria-label={`${dayName} ${mt("closed")}`}
-                            className="h-9 min-w-0 flex-1 text-sm sm:w-28 sm:flex-none"
+                            className="h-9 min-h-9 flex-1 text-sm sm:w-28 sm:flex-none"
                             value={schedule.endTime || "17:00"}
-                            onChange={(e) => {
+                            onChange={(value) => {
                               setWeeklySchedule(prev => ({
                                 ...prev,
-                                [index]: { ...prev[index], endTime: e.target.value }
+                                [index]: { ...prev[index], endTime: value }
                               }));
                             }}
                           />
@@ -998,19 +997,19 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
             {exceptionForm.isAvailable && (
               <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 fade-in">
                 <div className="space-y-2">
-                  <Label>{mt("openTime")}</Label>
-                  <Input
-                    type="time"
+                  <Label htmlFor="exception-open-time">{mt("openTime")}</Label>
+                  <TimeSelect
+                    id="exception-open-time"
                     value={exceptionForm.startTime}
-                    onChange={(e) => setExceptionForm({ ...exceptionForm, startTime: e.target.value })}
+                    onChange={(value) => setExceptionForm({ ...exceptionForm, startTime: value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{mt("closeTime")}</Label>
-                  <Input
-                    type="time"
+                  <Label htmlFor="exception-close-time">{mt("closeTime")}</Label>
+                  <TimeSelect
+                    id="exception-close-time"
                     value={exceptionForm.endTime}
-                    onChange={(e) => setExceptionForm({ ...exceptionForm, endTime: e.target.value })}
+                    onChange={(value) => setExceptionForm({ ...exceptionForm, endTime: value })}
                   />
                 </div>
               </div>

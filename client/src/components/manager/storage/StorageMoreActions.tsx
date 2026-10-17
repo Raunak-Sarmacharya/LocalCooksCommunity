@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -131,8 +132,9 @@ export function StorageMoreActions({ rental, onDone }: { rental: StorageRental; 
                   {field === 'photoUrls' ? <Textarea id={`action-${field}`} aria-label={t('stPhotosLabel')} value={values.photoUrls ?? ''} onChange={event => setValues(prev => ({ ...prev, photoUrls: event.target.value }))} /> : field === "note" ? (
                     <Textarea id={`action-${field}`} value={reason} onChange={(event) => setReason(event.target.value)} />
                   ) : field === "byDate" ? (
-                    <Input id={`action-${field}`} type="date" value={typeof values.byDate === "string" ? values.byDate : ""}
-                      onChange={(event) => { setPreview(null); setValues((prev) => ({ ...prev, byDate: event.target.value })); }} />
+                    <DateField id={`action-${field}`} minToday={false} value={typeof values.byDate === "string" ? values.byDate : ""}
+                      placeholder={t(fieldLabelKey(field) as never)}
+                      onChange={(value) => { setPreview(null); setValues((prev) => ({ ...prev, byDate: value })); }} />
                   ) : (
                     <Input id={`action-${field}`} type="number" inputMode="numeric" min={field === "amountCents" ? 0 : 1} step={field === "amountCents" ? 0.01 : 1}
                       value={values[field] == null ? "" : String(field === 'amountCents' ? Number(values[field]) / 100 : values[field])}
